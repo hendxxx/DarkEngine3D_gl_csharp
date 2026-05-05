@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace DarkEngine3D_gl_csharp.Engine
 {
-    public unsafe class KeyBoard
+    public unsafe class Keyboard
     {
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int> glfwGetKey;
          
@@ -48,7 +48,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
 
             // Kecepatan sekarang dikalikan deltaTime (misal: 2.5 unit per detik)
-            float speed = 2.5f * deltaTime;
+            float speed = 10.0f * deltaTime;
 
             // Logic & Input di sini 
             if (glfwGetKey(window, Const.GLFW_KEY_W) == Const.GLFW_PRESS) camera.Position += camera.Front * speed;

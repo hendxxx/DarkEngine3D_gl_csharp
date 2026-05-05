@@ -89,7 +89,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         }
 
         
-        public static void ShowFPS(float deltaTime)
+        public static void ShowFPS(float deltaTime,int renderedTris)
         {
             //FPS
             timer += deltaTime;
@@ -97,7 +97,10 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             if (timer >= 1.0f) // Setiap 1 detik
             {
-                string title = $"DarkEngine3D | FPS: {frameCount} | DeltaTime: {deltaTime:F4}s";
+                // Hitung total segitiga jika seluruh map dirender (untuk perbandingan)
+                int totalMapTris = (256 / 16) * (256 / 16) * (16 * 16 * 2);
+
+                string title = $"DarkEngine3D | FPS: {frameCount} | Tris: {renderedTris:N0} / {totalMapTris:N0}";
                 fixed (byte* pTitle = Encoding.UTF8.GetBytes(title + "\0"))
                 {
                     glfwSetWindowTitle(window, pTitle);
@@ -107,30 +110,32 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, uint shaderProgram, int viewLocation, int projectionLocation, TerrainManager terrainMan)
+        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, uint shaderProgram, int viewLocation, int projectionLocation, TerrainManager terrainMan, Terrain gameTerrain)
         {
 
+
+            OpenGL.EnableDepthTest(true);
 
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             while (glfwWindow(window) == 0)
-            {
-                OpenGL.EnableDepthTest(true);
-                 
+            {     
                 deltaTime = Glfw.GetDeltaTime();
 
-                KeyBoard.Update(glfwLib, window, camera, deltaTime);
+                Keyboard.Update(glfwLib, window, camera, deltaTime);
                 Mouse.Update(window, camera);
 
                 camera.UpdateVectors();
 
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
-                GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+                GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
                 GL.UseProgram(shaderProgram);
 
                 //terrain.Draw();
-                terrainMan.Update(shaderProgram,camera.Position);
+                int renderedTris = gameTerrain.Render(camera, 800f / 600f);
+                //terrainMan.Update(shaderProgram,camera.Position);
+
 
                 objTriangle.Draw(deltaTime, window);
 
@@ -139,7 +144,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 OpenGL.SwapBuffer(glfwLib, window);
                 OpenGL.PoolEvents(glfwLib);
 
-                Glfw.ShowFPS(deltaTime);
+                Glfw.ShowFPS(deltaTime, renderedTris);
 
                 Shader.Cleanup();
             }

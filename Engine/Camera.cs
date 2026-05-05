@@ -37,7 +37,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         }
 
         public Matrix4x4 GetViewMatrix() => Matrix4x4.CreateLookAt(Position, Position + Front, Up);
-        public static Matrix4x4 GetProjectionMatrix(float aspect) => Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 4, aspect, 0.1f, 100.0f);
+        public Matrix4x4 GetProjectionMatrix(float aspect) => Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 4, aspect, 0.1f, 1000.0f);
 
         public void SetViewAndProjection(int Width, int Height, int viewLocation, int projectionLocation)
         {

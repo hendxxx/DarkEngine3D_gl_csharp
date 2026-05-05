@@ -26,6 +26,8 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public static IntPtr PolygonModePtr;
 
+        public static IntPtr DeleteVertexArraysPtr;
+        public static IntPtr DeleteBuffersPtr;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
         public static void ClearColor(float r, float g, float b, float a)
@@ -119,6 +121,12 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static void PolygonMode(uint face, uint mode)
             => ((delegate* unmanaged[Cdecl]<uint, uint, void>)PolygonModePtr)(face, mode);
 
+        public static void DeleteVertexArrays(int n, uint* arrays)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteVertexArraysPtr)(n, arrays);
+
+        public static void DeleteBuffers(int n, uint* buffers)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteBuffersPtr)(n, buffers);
+
     }
 
     public static class ApiLoader
@@ -167,6 +175,9 @@ namespace DarkEngine3D_gl_csharp.Engine
             "GenVertexArrays" => typeof(GenVertexArraysDelegate),
             "BindVertexArray" => typeof(BindVertexArrayDelegate),
             "Enable" => typeof(EnableDelegate),
+            "PolygonMode" => typeof(PolygonModeDelegate),
+            "DeleteVertexArrays" => typeof(DeleteVertexArraysDelegate),
+            "DeleteBuffers" => typeof(DeleteBuffersDelegate),
             _ => throw new NotImplementedException()
         };
     }
@@ -236,4 +247,13 @@ namespace DarkEngine3D_gl_csharp.Engine
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public unsafe delegate void EnableDelegate(uint cap);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void PolygonModeDelegate(uint face, uint mode);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void DeleteVertexArraysDelegate(int n, uint* arrays);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void DeleteBuffersDelegate(int n, uint* buffers);
 }

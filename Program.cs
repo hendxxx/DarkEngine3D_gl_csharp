@@ -21,12 +21,10 @@ public unsafe class Program
         // Init Camera
         Camera camera = new(0, 5, 20);
 
-        // Init KeyBoard and Mouse
-        KeyBoard.Init(glfwLib);
+        // Init Keyboard and Mouse
+        Keyboard.Init(glfwLib);
         Mouse.Init(glfwLib,window);
-         
-         
-
+          
         Shader.Init();
         Shader.ActiveShader();
         shaderProgram = Shader.GetShaderProgram();
@@ -34,6 +32,9 @@ public unsafe class Program
 
         //Terrain terrain = new Terrain();
         //terrain.Generate(shaderProgram, 0, 0);
+        Terrain gameTerrain = new Terrain();
+        gameTerrain.Init(shaderProgram); 
+        
         TerrainManager terrainMan = new();
 
 
@@ -45,7 +46,7 @@ public unsafe class Program
         projectionLocation = Shader.GetProjection();
 
          
-        Glfw.Loop(glfwLib, camera, objTriangle, shaderProgram, viewLocation, projectionLocation, terrainMan);        
+        Glfw.Loop(glfwLib, camera, objTriangle, shaderProgram, viewLocation, projectionLocation, terrainMan, gameTerrain);        
 
         Console.WriteLine("Engine Shutdown.");
     }

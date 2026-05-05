@@ -35,6 +35,8 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             GL.PolygonModePtr = GetProcAddress(glLib, "glPolygonMode");
 
+            GL.DeleteVertexArraysPtr = GetProcAddress(glLib, "glDeleteVertexArrays");
+            GL.DeleteBuffersPtr = GetProcAddress(glLib, "glDeleteBuffers");
 
             return glLib;
         }

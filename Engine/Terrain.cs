@@ -9,168 +9,121 @@ using static DarkEngine3D_gl_csharp.Engine.Helpers;
 
 namespace DarkEngine3D_gl_csharp.Engine
 {
-    public unsafe class Terrain
+    public class Terrain
     {
-        public const int SIZE = 16;
-        public uint VAO, VBO;
-        private int _vertexCount;
+        public const int MAP_SIZE = 256; // 256x256 agar pas dengan pembagian 16
+        public const int CHUNK_SIZE = 16;
+        private static int chunksPerSide = MAP_SIZE / CHUNK_SIZE; // 16x16 chunk
+
+        private TerrainChunk[,] worldMap;
+
+        private static Plane[] planes;
 
         private uint shaderProgram;
-        private int modelLocation; 
-
-        public Terrain(  )
-        {
-
-        }
-        public void Generate(uint _shaderProgram, int chunkX, int chunkZ)
-        {
-            List<Vertex> vertices = new List<Vertex>();
-
-            for (int z = 0; z < SIZE; z++)
-            {
-                for (int x = 0; x < SIZE; x++)
-                {
-                    float xPos = x + (chunkX * SIZE);
-                    float zPos = z + (chunkZ * SIZE);
-
-                    // Membuat satu petak (Quad) yang terdiri dari 2 segitiga (6 vertex)
-                    AddQuad(vertices, xPos, zPos);
-                }
-            }
-            modelLocation = GL.GetUniformLocation(_shaderProgram, "model");
-            shaderProgram = _shaderProgram;
-            _vertexCount = vertices.Count;
-            SetupGPUResources(vertices.ToArray());
-        } 
-
-        private void AddQuad(List<Vertex> vertices, float x, float z)
-        {
-            // Ambil ketinggian untuk tiap sudut petak
-            //float h00 = Noise.GetHeight(x, z);
-            //float h10 = Noise.GetHeight(x + 1, z);
-            //float h01 = Noise.GetHeight(x, z + 1);
-            //float h11 = Noise.GetHeight(x + 1, z + 1);
-            float h00 = 0; // Contoh datar
-            float h10 = 0; // Contoh datar
-            float h01 = 0; // Contoh datar
-            float h11 = 0; // Contoh datar
-
-            // Warna berdasarkan ketinggian (Contoh sederhana: semakin tinggi semakin putih/salju)
-            Vector3 color = new Vector3(0.2f, 0.5f, 0.2f); // Hijau Rumput
-
-            // Segitiga 1
-            vertices.Add(new Vertex(x, h00, z, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x + 1, h10, z, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x, h01, z + 1, color.X, color.Y, color.Z));
-
-            // Segitiga 2
-            vertices.Add(new Vertex(x + 1, h10, z, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x + 1, h11, z + 1, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x, h01, z + 1, color.X, color.Y, color.Z));
-        }
-
-        private void SetupGPUResources(Vertex[] data)
-        {
-            // Pastikan Anda sudah mem-binding fungsi VAO (GenVertexArrays, BindVertexArray) di class GL
-            fixed (uint* pVao = &VAO) GL.GenVertexArrays(1, pVao);
-            fixed (uint* pVbo = &VBO) GL.GenBuffers(1, pVbo);
-
-            GL.BindVertexArray(VAO);
-            GL.BindBuffer(0x8892, VBO); // GL_ARRAY_BUFFER
-
-            fixed (void* ptr = data)
-            {
-                GL.BufferData(0x8892, (nuint)(data.Length * sizeof(Vertex)), ptr, 0x88E4); // GL_STATIC_DRAW
-            }
-
-            // Setup Attributes (Posisi & Warna)
-            int stride = sizeof(Vertex);
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, 0x1406, false, stride, (void*)0);
-            GL.EnableVertexAttribArray(1);
-            GL.VertexAttribPointer(1, 3, 0x1406, false, stride, (void*)sizeof(Vector3));
-        }
-
-        public void Draw()
-        {
-            Matrix4x4 terrainModel = Matrix4x4.Identity;
-            unsafe
-            {
-                // TIMPA matriks model terakhir dengan matriks identity agar terrain kembali ke (0,0,0)
-                GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&terrainModel);
-            }
-            GL.BindVertexArray(VAO);
-            GL.DrawArrays(0x0004, 0, _vertexCount); // GL_TRIANGLES
-            GL.BindVertexArray(0); // <--- PENTING: Lepaskan VAO terrain
-        }
-    }
-
-    public class TerrainManager
-    {
-
         private int modelLocation;
 
-        private Dictionary<(int x, int z), Terrain> _chunks = new();
-        private int _renderDistance = 4; // Jumlah chunk ke segala arah (9x9 chunk)
-
-        public void Update(uint shaderProgram,  Vector3 playerPos)
+        public void Init(uint _shaderProgram)
         {
-            modelLocation = GL.GetUniformLocation(shaderProgram, "model");
+            worldMap = new TerrainChunk[chunksPerSide, chunksPerSide];
+            
+            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
 
-            // 1. Hitung koordinat chunk tempat pemain berdiri
-            int currentChunkX = (int)MathF.Floor(playerPos.X / Terrain.SIZE);
-            int currentChunkZ = (int)MathF.Floor(playerPos.Z / Terrain.SIZE);
-
-            // 2. Load chunk baru yang masuk dalam radius pandang
-            for (int z = -_renderDistance; z <= _renderDistance; z++)
+            for (int z = 0; z < chunksPerSide; z++)
             {
-                for (int x = -_renderDistance; x <= _renderDistance; x++)
+                for (int x = 0; x < chunksPerSide; x++)
                 {
-                    var coord = (currentChunkX + x, currentChunkZ + z);
-                    if (!_chunks.ContainsKey(coord))
-                    {
-                        var newChunk = new Terrain();
-                        newChunk.Generate(shaderProgram, coord.Item1, coord.Item2);
-                        _chunks.Add(coord, newChunk);
-                    }
+                    worldMap[x, z] = new TerrainChunk();
+
+                    // Kirim offset agar (0,0) ada di tengah
+                    // Contoh: Jika map 256, maka offset x dan z dimulai dari -128
+                    int offsetX = (x * CHUNK_SIZE) - halfMapSize;
+                    int offsetZ = (z * CHUNK_SIZE) - halfMapSize;
+
+                    // Kita ubah parameter Generate agar menerima koordinat dunia langsung
+                    worldMap[x, z].Generate(offsetX, offsetZ);
                 }
             }
 
-
-            Render(modelLocation);
-            // 3. (Opsional) Unload chunk yang terlalu jauh untuk menghemat VRAM
-            // Anda bisa melakukan loop pada _chunks dan menghapus yang jaraknya > _renderDistance + 1
+            modelLocation = GL.GetUniformLocation(_shaderProgram, "model");
+            shaderProgram = _shaderProgram;
         }
 
-        public void Render(int modelLocation)
+        public int Render( Camera camera, float aspect)
         {
-            foreach (var entry in _chunks)
-            {
-                // PENTING: Pindahkan posisi render tiap chunk ke koordinat dunianya
-                Matrix4x4 model = Matrix4x4.CreateTranslation(0, 0, 0);
-                // Karena Generate() kita sudah menghitung posisi world di vertex, 
-                // model matrix cukup Identity. 
-                // Tapi jika Generate() pakai koordinat lokal (0-16), gunakan:
-                // Matrix4x4.CreateTranslation(entry.Key.x * TerrainChunk.SIZE, 0, entry.Key.z * TerrainChunk.SIZE);
+            int totalTriangles = 0;
+ 
+            // 1. Hitung Matriks Gabungan (View * Projection)
+            Matrix4x4 vp = camera.GetViewMatrix() * camera.GetProjectionMatrix(aspect);
 
-                unsafe
+            planes = ExtractPlanes(vp);
+
+            for (int z = 0; z < chunksPerSide; z++)
+            {
+                for (int x = 0; x < chunksPerSide; x++)
                 {
-                    float[] modelArray = new float[16]
+                    // 2. Cek apakah chunk terlihat oleh kamera
+                    if (IsChunkInFrustum(x, z, planes))
                     {
-                        model.M11, model.M12, model.M13, model.M14,
-                        model.M21, model.M22, model.M23, model.M24,
-                        model.M31, model.M32, model.M33, model.M34,
-                        model.M41, model.M42, model.M43, model.M44
-                    };
-                    fixed (float* pModel = modelArray)
-                    {
-                        GL.UniformMatrix4fv(modelLocation, 1, false, pModel);
+                        Matrix4x4 model = Matrix4x4.Identity;
+                        unsafe
+                        {
+                            GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&model);
+                        }
+
+                        worldMap[x, z].Draw();
+                        totalTriangles += (CHUNK_SIZE * CHUNK_SIZE * 2);
                     }
-                }   
-                entry.Value.Draw();
+                }
             }
+            return totalTriangles;
+        }
+
+        private static bool IsChunkInFrustum(int chunkIndexX, int chunkIndexZ, Plane[] planes)
+        {
+            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
+
+            // Hitung posisi kotak berdasarkan koordinat baru
+            float minX = (chunkIndexX * CHUNK_SIZE) - halfMapSize;
+            float maxX = minX + CHUNK_SIZE;
+            float minZ = (chunkIndexZ * CHUNK_SIZE) - halfMapSize;
+            float maxZ = minZ + CHUNK_SIZE;
+            float minY = -500.0f;
+            float maxY = 500.0f;
+
+            foreach (var p in planes)
+            {
+                // Cari titik kotak yang paling searah dengan normal bidang (p-vertex)
+                float px = (p.Normal.X >= 0) ? maxX : minX;
+                float py = (p.Normal.Y >= 0) ? maxY : minY;
+                float pz = (p.Normal.Z >= 0) ? maxZ : minZ;
+
+                // Jika titik yang paling 'dalam' saja masih di luar bidang, maka chunk pasti di luar
+                if (Vector3.Dot(p.Normal, new Vector3(px, py, pz)) + p.D < -20.0f)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private Plane[] ExtractPlanes(Matrix4x4 vp)
+        {
+            var planes = new Plane[6];
+
+            // Left
+            planes[0] = Plane.Normalize(new Plane(vp.M14 + vp.M11, vp.M24 + vp.M21, vp.M34 + vp.M31, vp.M44 + vp.M41));
+            // Right
+            planes[1] = Plane.Normalize(new Plane(vp.M14 - vp.M11, vp.M24 - vp.M21, vp.M34 - vp.M31, vp.M44 - vp.M41));
+            // Bottom
+            planes[2] = Plane.Normalize(new Plane(vp.M14 + vp.M12, vp.M24 + vp.M22, vp.M34 + vp.M32, vp.M44 + vp.M42));
+            // Top
+            planes[3] = Plane.Normalize(new Plane(vp.M14 - vp.M12, vp.M24 - vp.M22, vp.M34 - vp.M32, vp.M44 - vp.M42));
+            // Near
+            planes[4] = Plane.Normalize(new Plane(vp.M13, vp.M23, vp.M33, vp.M43));
+            // Far
+            planes[5] = Plane.Normalize(new Plane(vp.M14 - vp.M13, vp.M24 - vp.M23, vp.M34 - vp.M33, vp.M44 - vp.M43));
+
+            return planes;
         }
     }
-
-
 }
