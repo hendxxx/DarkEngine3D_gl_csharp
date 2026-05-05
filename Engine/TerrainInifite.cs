@@ -41,32 +41,31 @@ namespace DarkEngine3D_gl_csharp.Engine
             shaderProgram = _shaderProgram;
             _vertexCount = vertices.Count;
             SetupGPUResources(vertices.ToArray());
-        } 
+        }
 
         private void AddQuad(List<Vertex> vertices, float x, float z)
         {
-            // Ambil ketinggian untuk tiap sudut petak
-            //float h00 = Noise.GetHeight(x, z);
-            //float h10 = Noise.GetHeight(x + 1, z);
-            //float h01 = Noise.GetHeight(x, z + 1);
-            //float h11 = Noise.GetHeight(x + 1, z + 1);
-            float h00 = 0; // Contoh datar
-            float h10 = 0; // Contoh datar
-            float h01 = 0; // Contoh datar
-            float h11 = 0; // Contoh datar
+            //float h00 = Noise.GetHeight(x, z);          // Kiri Bawah
+            //float h10 = Noise.GetHeight(x + 1, z);      // Kanan Bawah
+            //float h01 = Noise.GetHeight(x, z + 1);      // Kiri Atas
+            //float h11 = Noise.GetHeight(x + 1, z + 1);  // Kanan Atas
 
-            // Warna berdasarkan ketinggian (Contoh sederhana: semakin tinggi semakin putih/salju)
-            Vector3 color = new Vector3(0.2f, 0.5f, 0.2f); // Hijau Rumput
+            float h00 = 0.0f;
+            float h10 = 0.0f;
+            float h01 = 0.0f;
+            float h11 = 0.0f;
 
-            // Segitiga 1
-            vertices.Add(new Vertex(x, h00, z, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x + 1, h10, z, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x, h01, z + 1, color.X, color.Y, color.Z));
+            Vector3 color = new Vector3(0.1f, 0.4f, 0.1f);
 
-            // Segitiga 2
-            vertices.Add(new Vertex(x + 1, h10, z, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x + 1, h11, z + 1, color.X, color.Y, color.Z));
-            vertices.Add(new Vertex(x, h01, z + 1, color.X, color.Y, color.Z));
+            // --- SEGITIGA 1 (Dibalik ke urutan CCW yang benar agar menghadap ke atas) ---
+            vertices.Add(new Vertex(x, h00, z, color.X, color.Y, color.Z));         // 1. Kiri Bawah
+            vertices.Add(new Vertex(x, h01, z + 1, color.X, color.Y, color.Z));     // 2. Kiri Atas
+            vertices.Add(new Vertex(x + 1, h11, z + 1, color.X, color.Y, color.Z)); // 3. Kanan Atas
+
+            // --- SEGITIGA 2 (Dibalik ke urutan CCW yang benar agar menghadap ke atas) ---
+            vertices.Add(new Vertex(x, h00, z, color.X, color.Y, color.Z));         // 1. Kiri Bawah
+            vertices.Add(new Vertex(x + 1, h11, z + 1, color.X, color.Y, color.Z)); // 2. Kanan Atas
+            vertices.Add(new Vertex(x + 1, h10, z, color.X, color.Y, color.Z));     // 3. Kanan Bawah
         }
 
         private void SetupGPUResources(Vertex[] data)

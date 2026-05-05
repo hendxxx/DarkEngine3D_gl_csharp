@@ -23,11 +23,16 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static IntPtr GenVertexArraysPtr;
         public static IntPtr BindVertexArrayPtr;
         public static IntPtr EnablePtr;
+        public static IntPtr DisablePtr;
 
         public static IntPtr PolygonModePtr;
 
         public static IntPtr DeleteVertexArraysPtr;
         public static IntPtr DeleteBuffersPtr;
+
+        public static IntPtr CullFacePtr;
+        public static IntPtr FrontFacePtr;
+
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
         public static void ClearColor(float r, float g, float b, float a)
@@ -65,12 +70,18 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static void ShaderSource(uint shader, string source)
         {
             var ptr = (delegate* unmanaged[Cdecl]<uint, int, byte**, int*, void>)ShaderSourcePtr;
-            // Konversi string C# ke C-style string array
-            byte* sPtr = (byte*)Marshal.StringToHGlobalAnsi(source);
-            byte** sPtrArray = &sPtr;
-            ptr(shader, 1, sPtrArray, null);
-            Marshal.FreeHGlobal((nint)sPtr);
+
+            // Pastikan string dikonversi ke byte array UTF8 dengan null terminator
+            byte[] sourceBytes = System.Text.Encoding.UTF8.GetBytes(source + "\0");
+
+            fixed (byte* pSource = sourceBytes)
+            {
+                byte** pSourcePointerToPointer = &pSource;
+                // Berikan null pada parameter terakhir agar OpenGL menghitung panjang string secara otomatis berdasarkan null terminator (\0)
+                ptr(shader, 1, pSourcePointerToPointer, null);
+            }
         }
+
 
         public static void CompileShader(uint shader)
             => ((delegate* unmanaged[Cdecl]<uint, void>)CompileShaderPtr)(shader);
@@ -118,6 +129,9 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static void Enable(uint cap)
             => ((delegate* unmanaged[Cdecl]<uint, void>)EnablePtr)(cap);
 
+        public static void Disable(uint cap)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)DisablePtr)(cap);
+
         public static void PolygonMode(uint face, uint mode)
             => ((delegate* unmanaged[Cdecl]<uint, uint, void>)PolygonModePtr)(face, mode);
 
@@ -126,6 +140,13 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public static void DeleteBuffers(int n, uint* buffers)
             => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteBuffersPtr)(n, buffers);
+
+        public static void CullFace(uint mode)
+        => ((delegate* unmanaged[Cdecl]<uint, void>)CullFacePtr)(mode);
+
+        public static void FrontFace(uint mode)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)FrontFacePtr)(mode);
+
 
     }
 
@@ -171,13 +192,16 @@ namespace DarkEngine3D_gl_csharp.Engine
             "DeleteShader" => typeof(DeleteShaderDelegate),
             "VertexAttribPointer" => typeof(VertexAttribPointerDelegate),
             "EnableVertexAttribArray" => typeof(EnableVertexAttribArrayDelegate),
+            "Disable" => typeof(EnableDelegate), 
             "DrawArrays" => typeof(DrawArraysDelegate),
             "GenVertexArrays" => typeof(GenVertexArraysDelegate),
             "BindVertexArray" => typeof(BindVertexArrayDelegate),
-            "Enable" => typeof(EnableDelegate),
+            "Enable" => typeof(DisableDelegate),
             "PolygonMode" => typeof(PolygonModeDelegate),
             "DeleteVertexArrays" => typeof(DeleteVertexArraysDelegate),
             "DeleteBuffers" => typeof(DeleteBuffersDelegate),
+            "CullFace" => typeof(CullFaceDelegate),
+            "FrontFace" => typeof(FrontFaceDelegate),
             _ => throw new NotImplementedException()
         };
     }
@@ -249,6 +273,9 @@ namespace DarkEngine3D_gl_csharp.Engine
     public unsafe delegate void EnableDelegate(uint cap);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void DisableDelegate(uint cap);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public unsafe delegate void PolygonModeDelegate(uint face, uint mode);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -256,4 +283,10 @@ namespace DarkEngine3D_gl_csharp.Engine
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public unsafe delegate void DeleteBuffersDelegate(int n, uint* buffers);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void CullFaceDelegate(uint mode);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void FrontFaceDelegate(uint mode);
 }

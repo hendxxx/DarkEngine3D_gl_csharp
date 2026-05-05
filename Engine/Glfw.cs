@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace DarkEngine3D_gl_csharp.Engine
@@ -89,7 +90,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         }
 
         
-        public static void ShowFPS(float deltaTime,int renderedTris)
+        public static void ShowFPS(int mapSize, int chunkSize,float deltaTime,int renderedTris)
         {
             //FPS
             timer += deltaTime;
@@ -98,7 +99,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             if (timer >= 1.0f) // Setiap 1 detik
             {
                 // Hitung total segitiga jika seluruh map dirender (untuk perbandingan)
-                int totalMapTris = (256 / 16) * (256 / 16) * (16 * 16 * 2);
+                int totalMapTris = (mapSize / chunkSize) * (mapSize / chunkSize) * (chunkSize * chunkSize * 2);
 
                 string title = $"DarkEngine3D | FPS: {frameCount} | Tris: {renderedTris:N0} / {totalMapTris:N0}";
                 fixed (byte* pTitle = Encoding.UTF8.GetBytes(title + "\0"))
@@ -110,43 +111,41 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, uint shaderProgram, int viewLocation, int projectionLocation, TerrainManager terrainMan, Terrain gameTerrain)
+        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, uint shaderProgram, uint lineShaderProgram, int viewLocation, int projectionLocation, Terrain gameTerrain)
         {
-
-
+            float aspect = 0;
             OpenGL.EnableDepthTest(true);
 
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             while (glfwWindow(window) == 0)
-            {     
-                deltaTime = Glfw.GetDeltaTime();
-
-                Keyboard.Update(glfwLib, window, camera, deltaTime);
-                Mouse.Update(window, camera);
-
-                camera.UpdateVectors();
-
+            {
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
                 GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-                GL.UseProgram(shaderProgram);
-
-                //terrain.Draw();
-                int renderedTris = gameTerrain.Render(camera, 800f / 600f);
-                //terrainMan.Update(shaderProgram,camera.Position);
+                deltaTime = Glfw.GetDeltaTime();
+                aspect = WindowWidth / WindowHeight; // Rasio lebar:tinggi window
 
 
+                camera.UpdateVectors();
+                GL.UseProgram(shaderProgram); 
+                 
+                int renderedTris = gameTerrain.Render(camera, WindowWidth / WindowHeight);
+                 
                 objTriangle.Draw(deltaTime, window);
 
                 camera.SetViewAndProjection(WindowWidth, WindowHeight, viewLocation, projectionLocation);
-                 
-                OpenGL.SwapBuffer(glfwLib, window);
-                OpenGL.PoolEvents(glfwLib);
 
-                Glfw.ShowFPS(deltaTime, renderedTris);
+                Keyboard.Update(glfwLib, window, camera, deltaTime, aspect, gameTerrain, lineShaderProgram);
+                Mouse.Update(window, camera);
+
+
+                Glfw.ShowFPS(gameTerrain.GetMapSize(), gameTerrain.GetChunkSize(), deltaTime, renderedTris);
 
                 Shader.Cleanup();
+
+                OpenGL.SwapBuffer(glfwLib, window);
+                OpenGL.PoolEvents(glfwLib);
             }
 
             Console.WriteLine("Engine Shutdown.");

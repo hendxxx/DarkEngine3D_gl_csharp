@@ -32,11 +32,15 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.GenVertexArraysPtr = GetProcAddress(glLib, "glGenVertexArrays");
             GL.BindVertexArrayPtr = GetProcAddress(glLib, "glBindVertexArray");
             GL.EnablePtr = GetProcAddress(glLib, "glEnable");
+            GL.DisablePtr = GetProcAddress(glLib, "glDisable");
 
             GL.PolygonModePtr = GetProcAddress(glLib, "glPolygonMode");
 
             GL.DeleteVertexArraysPtr = GetProcAddress(glLib, "glDeleteVertexArrays");
             GL.DeleteBuffersPtr = GetProcAddress(glLib, "glDeleteBuffers");
+
+            GL.CullFacePtr = GetProcAddress(glLib, "glCullFace");
+            GL.FrontFacePtr = GetProcAddress(glLib, "glFrontFace");
 
             return glLib;
         }

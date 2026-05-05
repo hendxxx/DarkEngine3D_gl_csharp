@@ -10,19 +10,26 @@ namespace DarkEngine3D_gl_csharp.Engine
          
         static bool isWireframe = false;
         static bool f1Pressed = false;
+        static int lineVLoc = 0;
+        static int linePLoc =0;     // Lokasi uniform view & projection untuk shader garis
+        static uint lineShaderProgram; // ID shader program untuk rendering garis
+        static Vector3[] frozenCorners = null; // Untuk menyimpan koordinat frustum yang di-freeze
 
-        public static unsafe void Init(nint glfwLib )
+        public static unsafe void Init(nint glfwLib, uint _lineShaderProgram )
         {
+            lineShaderProgram = _lineShaderProgram;
             glfwGetKey = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetKey");
 
             isWireframe = false;
             f1Pressed = false;
-             
+
+            lineVLoc = GL.GetUniformLocation(lineShaderProgram, "view");
+            linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
+
         }
 
-        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime)
+        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, float aspect, Terrain gameTerrain, uint lineShaderProgram)
         { 
-
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
             {
@@ -55,6 +62,25 @@ namespace DarkEngine3D_gl_csharp.Engine
             if (glfwGetKey(window, Const.GLFW_KEY_S) == Const.GLFW_PRESS) camera.Position -= camera.Front * speed;
             if (glfwGetKey(window, Const.GLFW_KEY_A) == Const.GLFW_PRESS) camera.Position -= Vector3.Normalize(Vector3.Cross(camera.Front, camera.Up)) * speed;
             if (glfwGetKey(window, Const.GLFW_KEY_D) == Const.GLFW_PRESS) camera.Position += Vector3.Normalize(Vector3.Cross(camera.Front, camera.Up)) * speed;
+
+            if (glfwGetKey(window, 80) == 1) // 80 adalah GLFW_KEY_P
+            { 
+                Matrix4x4 view = camera.GetViewMatrix();
+                Matrix4x4 proj = camera.GetProjectionMatrix(aspect);
+
+                frozenCorners = gameTerrain.GetFrustumCorners(view,proj);
+                
+            }
+
+            if (frozenCorners != null)
+            {
+                // Matikan Depth Test agar garis terlihat menembus tanah (X-ray mode)
+                GL.Disable(0x0B71);
+                GL.UseProgram(lineShaderProgram); // <--- WAJIB: Ganti ke shader garis
+                GL.Enable(Const.GL_DEPTH_CLAMP);
+                gameTerrain.RenderFrustumDebug(frozenCorners, lineShaderProgram, lineVLoc, linePLoc, camera, aspect);
+                GL.Enable(0x0B71);
+            }
 
 
         }

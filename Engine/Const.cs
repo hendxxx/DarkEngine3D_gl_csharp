@@ -37,5 +37,16 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const uint GL_VERTEX_SHADER = 0x8B31;
         public const uint GL_FRAGMENT_SHADER = 0x8B30;
 
+        public const uint GL_LINES = 0x0001;
+        public const int GLFW_KEY_P = 80;
+
+        public const uint GL_DEPTH_CLAMP = 0x864F;
+
+        public const uint GL_CULL_FACE = 0x0B44;
+        public const uint GL_BACK = 0x0405;
+        public const uint GL_CCW = 0x0901;
+        public const uint GL_CW = 0x0900;
+
+
     }
 }
