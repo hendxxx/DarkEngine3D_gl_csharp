@@ -77,6 +77,12 @@ namespace DarkEngine3D_gl_csharp.Engine
             return window;
         }
 
+        // New accessor so Keyboard class can query key state
+        public static int GetKey(nint windowHandle, int key)
+        {
+            return glfwGetKey((IntPtr)windowHandle, key);
+        }
+
         public static float GetDeltaTime()
         {
 

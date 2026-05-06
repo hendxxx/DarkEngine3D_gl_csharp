@@ -2,7 +2,7 @@
 {
     public class Helpers
     {
-        public static class Math
+        public static class OGLMath
         {
             public static float ToRadians(float degrees) => degrees * (MathF.PI / 180.0f);
         }

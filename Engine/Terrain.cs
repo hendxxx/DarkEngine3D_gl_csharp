@@ -23,6 +23,17 @@ namespace DarkEngine3D_gl_csharp.Engine
         private uint shaderProgram;
         private int modelLocation;
 
+        // Line shader + uniform locations untuk menggambar kotak
+        private uint lineShaderProgram;
+        private int lineViewLocation;
+        private int lineProjLocation;
+
+        // Frozen frustum storage (populated when user presses P)
+        private Vector3[] frozenCorners = null;
+        private Plane[] frozenPlanes = null;
+
+        private bool highlightFrustumMatches = false;
+
         public void Init(uint _shaderProgram)
         {
             worldMap = new TerrainChunk[chunksPerSide, chunksPerSide];
@@ -35,18 +46,33 @@ namespace DarkEngine3D_gl_csharp.Engine
                 {
                     worldMap[x, z] = new TerrainChunk();
 
-                    // Kirim offset agar (0,0) ada di tengah
-                    // Contoh: Jika map 256, maka offset x dan z dimulai dari -128
                     int offsetX = (x * CHUNK_SIZE) - halfMapSize;
                     int offsetZ = (z * CHUNK_SIZE) - halfMapSize;
 
-                    // Kita ubah parameter Generate agar menerima koordinat dunia langsung
                     worldMap[x, z].Generate(CHUNK_SIZE, offsetX, offsetZ);
                 }
             }
 
             modelLocation = GL.GetUniformLocation(_shaderProgram, "model");
             shaderProgram = _shaderProgram;
+
+            // Ambil program shader garis dan lokasi uniform view/projection-nya
+            lineShaderProgram = Shader.GetLineShaderProgram();
+            lineViewLocation = GL.GetUniformLocation(lineShaderProgram, "view");
+            lineProjLocation = GL.GetUniformLocation(lineShaderProgram, "projection");
+        }
+
+        // Called by Keyboard when user presses P
+        public void SetFrozenFrustumCorners(Vector3[] corners)
+        {
+            frozenCorners = corners;
+            frozenPlanes = BuildPlanesFromCorners(corners);
+        }
+
+        public void ClearFrozenFrustumCorners()
+        {
+            frozenCorners = null;
+            frozenPlanes = null;
         }
 
         public int GetMapSize()
@@ -59,6 +85,11 @@ namespace DarkEngine3D_gl_csharp.Engine
             return CHUNK_SIZE;
         }
 
+        public void SetHighlightFrustumMatches(bool enabled)
+        {
+            highlightFrustumMatches = enabled;
+        }
+
         public int Render( Camera camera, float aspect)
         {
             int totalTriangles = 0;
@@ -68,12 +99,16 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             planes = ExtractPlanes(vp);
 
+            bool usingFrozen = frozenPlanes != null;
+
             for (int z = 0; z < chunksPerSide; z++)
             {
                 for (int x = 0; x < chunksPerSide; x++)
                 {
-                    // 2. Cek apakah chunk terlihat oleh kamera
-                    if (IsChunkInFrustum(x, z, planes))
+                    // 2. Cek apakah chunk terlihat oleh kamera (tetap digunakan untuk mesh render)
+                    bool inside = IsChunkInFrustum(x, z, planes);
+
+                    if (inside)
                     {
                         Matrix4x4 model = Matrix4x4.Identity;
                         unsafe
@@ -84,31 +119,126 @@ namespace DarkEngine3D_gl_csharp.Engine
                         worldMap[x, z].Draw();
                         totalTriangles += (CHUNK_SIZE * CHUNK_SIZE * 2);
                     }
+
+                    // Determine "insideFrozen" only when frozen frustum exists
+                    bool insideFrozen = false;
+                    if (usingFrozen)
+                    {
+                        insideFrozen = IsAABBInsideFrustum(frozenPlanes, x, z);
+                    }
+
+                    // Draw bounding box:
+                    // - If frozen frustum exists: blue = insideFrozen, yellow = outsideFrozen
+                    // - If no frozen frustum: yellow if outside camera frustum, blue if inside
+                    DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, aspect);
                 }
             }
+
+            // If frozen frustum exists, draw the frozen frustum wireframe
+            if (frozenCorners != null)
+            {
+                GL.Disable(Const.GL_DEPTH_TEST);
+                GL.UseProgram(lineShaderProgram);
+                Matrix4x4 v = camera.GetViewMatrix();
+                Matrix4x4 p = camera.GetProjectionMatrix(aspect);
+                unsafe
+                {
+                    GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
+                    GL.UniformMatrix4fv(lineProjLocation, 1, true, (float*)&p);
+                }
+                RenderFrustumDebug(frozenCorners, lineShaderProgram, lineViewLocation, lineProjLocation, camera, aspect);
+                GL.Enable(Const.GL_DEPTH_TEST);
+            }
+
             return totalTriangles;
+        }
+
+        // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)
+        private static Plane[] BuildPlanesFromCorners(Vector3[] c)
+        {
+            if (c == null || c.Length < 8) return null;
+
+            var planes = new Plane[6];
+
+            // Create helper to make a plane from three points
+            Plane MakePlane(Vector3 a, Vector3 b, Vector3 d)
+            {
+                var n = Vector3.Normalize(Vector3.Cross(b - a, d - a));
+                float D = -Vector3.Dot(n, a);
+                return Plane.Normalize(new Plane(n, D));
+            }
+
+            // Use triangles that define each face (orientation doesn't matter for our inside-test)
+            planes[0] = MakePlane(c[1], c[2], c[6]); // Right
+            planes[1] = MakePlane(c[3], c[0], c[4]); // Left
+            planes[2] = MakePlane(c[0], c[1], c[5]); // Bottom
+            planes[3] = MakePlane(c[2], c[3], c[7]); // Top
+            planes[4] = MakePlane(c[0], c[3], c[2]); // Near
+            planes[5] = MakePlane(c[5], c[6], c[7]); // Far
+
+            return planes;
+        }
+
+        // Test AABB (chunk) against frustum planes.
+        // Return true if AABB is at least partially inside (i.e. NOT completely outside any plane).
+        private static bool IsAABBInsideFrustum(Plane[] frustumPlanes, int chunkIndexX, int chunkIndexZ)
+        {
+            if (frustumPlanes == null) return true;
+
+            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
+            float minX = (chunkIndexX * CHUNK_SIZE) - halfMapSize;
+            float maxX = minX + CHUNK_SIZE;
+            float minZ = (chunkIndexZ * CHUNK_SIZE) - halfMapSize;
+            float maxZ = minZ + CHUNK_SIZE;
+            float minY = -0.0f;
+            float maxY = 1.0f;
+
+            // eight corners of chunk AABB
+            Vector3[] corners = {
+                new Vector3(minX, minY, minZ),
+                new Vector3(maxX, minY, minZ),
+                new Vector3(maxX, maxY, minZ),
+                new Vector3(minX, maxY, minZ),
+                new Vector3(minX, minY, maxZ),
+                new Vector3(maxX, minY, maxZ),
+                new Vector3(maxX, maxY, maxZ),
+                new Vector3(minX, maxY, maxZ)
+            };
+
+            foreach (var pl in frustumPlanes)
+            {
+                // compute maximum signed distance of AABB corners to plane
+                float maxDist = float.NegativeInfinity;
+                for (int i = 0; i < 8; i++)
+                {
+                    float d = Vector3.Dot(pl.Normal, corners[i]) + pl.D;
+                    if (d > maxDist) maxDist = d;
+                }
+
+                // if the maximum distance is < 0 => all corners are on 'negative' side => completely outside
+                if (maxDist < 0.0f) return false;
+            }
+
+            return true;
         }
 
         private static bool IsChunkInFrustum(int chunkIndexX, int chunkIndexZ, Plane[] planes)
         {
             int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
 
-            // Hitung posisi kotak berdasarkan koordinat baru
             float minX = (chunkIndexX * CHUNK_SIZE) - halfMapSize;
             float maxX = minX + CHUNK_SIZE;
             float minZ = (chunkIndexZ * CHUNK_SIZE) - halfMapSize;
             float maxZ = minZ + CHUNK_SIZE;
             float minY = -0.0f;
-            float maxY = 50.0f;
+            float maxY = 1.0f;
 
             foreach (var p in planes)
             {
-                // Cari titik kotak yang paling searah dengan normal bidang (p-vertex)
                 float px = (p.Normal.X >= 0) ? maxX : minX;
                 float py = (p.Normal.Y >= 0) ? maxY : minY;
                 float pz = (p.Normal.Z >= 0) ? maxZ : minZ;
 
-                // Jika titik yang paling 'dalam' saja masih di luar bidang, maka chunk pasti di luar
                 if (Vector3.Dot(p.Normal, new Vector3(px, py, pz)) + p.D < -100.0f)
                 {
                     return false;
@@ -116,27 +246,191 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
             return true;
         }
-        public Vector3[] GetFrustumCorners(Matrix4x4 view, Matrix4x4 proj)
+
+        public static unsafe void DrawLine(Vector3 start, Vector3 end, uint shader, int vLoc, int pLoc, Camera camera, float aspect)
         {
-            // Kalikan View lalu Projection (Urutan Row-Major .NET)
-            Matrix4x4 viewProj = view * proj;
-            if (!Matrix4x4.Invert(viewProj, out Matrix4x4 invVP)) return new Vector3[8];
+            float[] lineData = { start.X, start.Y, start.Z, end.X, end.Y, end.Z };
+            uint vao, vbo;
 
-            Vector3[] corners = new Vector3[8];
-            // 8 titik sudut NDC (-1 sampai 1)
-            Vector3[] ndc = {
-                new(-1, -1, -1), new( 1, -1, -1), new( 1,  1, -1), new(-1,  1, -1), // Near
-                new(-1, -1,  1), new( 1, -1,  1), new( 1,  1,  1), new(-1,  1,  1)  // Far
-            };
+            GL.GenVertexArrays(1, &vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(0x8892, vbo);
 
-            for (int i = 0; i < 8; i++)
+            fixed (void* p = lineData)
             {
-                Vector4 worldPos = Vector4.Transform(ndc[i], invVP);
-                corners[i] = new Vector3(worldPos.X / worldPos.W, worldPos.Y / worldPos.W, worldPos.Z / worldPos.W);
+                GL.BufferData(0x8892, (nuint)(sizeof(float) * 6), p, 0x88E4);
             }
-            return corners;
+
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, 0x1406, false, 0, (void*)0);
+
+            Matrix4x4 view = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix(aspect);
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&view);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+
+            GL.DrawArrays(0x0001, 0, 2);
+
+            GL.DeleteVertexArrays(1, &vao);
+            GL.DeleteBuffers(1, &vbo);
         }
 
+        public unsafe void RenderFrustumDebug(Vector3[] c, uint shader, int vLoc, int pLoc, Camera camera, float aspect)
+        {
+            float r = 1.0f; float g = 0.0f; float b = 0.0f;
+
+            float[] lineVerticesWithColor = {
+                c[0].X, c[0].Y, c[0].Z, r, g, b,  c[1].X, c[1].Y, c[1].Z, r, g, b,
+                c[1].X, c[1].Y, c[1].Z, r, g, b,  c[2].X, c[2].Y, c[2].Z, r, g, b,
+                c[2].X, c[2].Y, c[2].Z, r, g, b,  c[3].X, c[3].Y, c[3].Z, r, g, b,
+                c[3].X, c[3].Y, c[3].Z, r, g, b,  c[0].X, c[0].Y, c[0].Z, r, g, b,
+
+                c[4].X, c[4].Y, c[4].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
+                c[5].X, c[5].Y, c[5].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
+                c[6].X, c[6].Y, c[6].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b,
+                c[7].X, c[7].Y, c[7].Z, r, g, b,  c[4].X, c[4].Y, c[4].Z, r, g, b,
+
+                c[0].X, c[0].Y, c[0].Z, r, g, b,  c[4].X, c[4].Y, c[4].Z, r, g, b,
+                c[1].X, c[1].Y, c[1].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
+                c[2].X, c[2].Y, c[2].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
+                c[3].X, c[3].Y, c[3].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b
+            };
+
+            uint vao, vbo;
+            GL.GenVertexArrays(1, &vao);
+            GL.GenBuffers(1, &vbo);
+
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+
+            fixed (void* ptr = lineVerticesWithColor)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineVerticesWithColor.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
+            }
+
+            int stride = 6 * sizeof(float);
+
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
+
+            GL.UseProgram(shader);
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 p = camera.GetProjectionMatrix(aspect);
+            GL.UniformMatrix4fv(vLoc, 1, true, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, true, (float*)&p);
+
+            GL.DrawArrays(Const.GL_LINES, 0, 24);
+
+            GL.DeleteVertexArrays(1, &vao);
+            GL.DeleteBuffers(1, &vbo);
+        }
+
+        // Menambahkan method untuk menggambar kotak wireframe per chunk
+        private unsafe void DrawChunkBoundingBox(int chunkIndexX, int chunkIndexZ, bool usingFrozen, bool insideFrozen, bool insideCamera, Camera camera, float aspect)
+        {
+            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
+
+            float minX = (chunkIndexX * CHUNK_SIZE) - halfMapSize;
+            float maxX = minX + CHUNK_SIZE;
+            float minZ = (chunkIndexZ * CHUNK_SIZE) - halfMapSize;
+            float maxZ = minZ + CHUNK_SIZE;
+            float minY = -0.0f;
+            float maxY = 1.0f;
+
+            Vector3[] c = new Vector3[8];
+            c[0] = new Vector3(minX, minY, minZ);
+            c[1] = new Vector3(maxX, minY, minZ);
+            c[2] = new Vector3(maxX, maxY, minZ);
+            c[3] = new Vector3(minX, maxY, minZ);
+            c[4] = new Vector3(minX, minY, maxZ);
+            c[5] = new Vector3(maxX, minY, maxZ);
+            c[6] = new Vector3(maxX, maxY, maxZ);
+            c[7] = new Vector3(minX, maxY, maxZ);
+
+            // Color logic per request:
+            // - when frozen frustum exists: blue if inside frozen, yellow if outside frozen
+            // - when frozen not set: yellow if outside camera frustum, blue if inside
+            float r, g, b;
+            if (usingFrozen)
+            {
+                if (insideFrozen)
+                {
+                    r = 0.0f; g = 0.0f; b = 1.0f; // blue
+                }
+                else
+                {
+                    r = 1.0f; g = 1.0f; b = 0.0f; // yellow
+                }
+            }
+            else
+            {
+                if (insideCamera)
+                {
+                    r = 0.0f; g = 0.0f; b = 1.0f; // blue
+                }
+                else
+                {
+                    r = 1.0f; g = 1.0f; b = 0.0f; // yellow when outside camera frustum
+                }
+            }
+
+            float[] verts = {
+                c[0].X, c[0].Y, c[0].Z, r, g, b,  c[1].X, c[1].Y, c[1].Z, r, g, b,
+                c[1].X, c[1].Y, c[1].Z, r, g, b,  c[2].X, c[2].Y, c[2].Z, r, g, b,
+                c[2].X, c[2].Y, c[2].Z, r, g, b,  c[3].X, c[3].Y, c[3].Z, r, g, b,
+                c[3].X, c[3].Y, c[3].Z, r, g, b,  c[0].X, c[0].Y, c[0].Z, r, g, b,
+
+                c[4].X, c[4].Y, c[4].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
+                c[5].X, c[5].Y, c[5].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
+                c[6].X, c[6].Y, c[6].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b,
+                c[7].X, c[7].Y, c[7].Z, r, g, b,  c[4].X, c[4].Y, c[4].Z, r, g, b,
+
+                c[0].X, c[0].Y, c[0].Z, r, g, b,  c[4].X, c[4].Y, c[4].Z, r, g, b,
+                c[1].X, c[1].Y, c[1].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
+                c[2].X, c[2].Y, c[2].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
+                c[3].X, c[3].Y, c[3].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b
+            };
+
+            uint vao, vbo;
+            GL.GenVertexArrays(1, &vao);
+            GL.GenBuffers(1, &vbo);
+
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+
+            fixed (void* ptr = verts)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(verts.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
+            }
+
+            int stride = 6 * sizeof(float);
+
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
+
+            GL.UseProgram(lineShaderProgram);
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 p = camera.GetProjectionMatrix(aspect);
+            unsafe
+            {
+                GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
+                GL.UniformMatrix4fv(lineProjLocation, 1, true, (float*)&p);
+            }
+
+            GL.DrawArrays(Const.GL_LINES, 0, 24);
+
+            GL.DeleteVertexArrays(1, &vao);
+            GL.DeleteBuffers(1, &vbo);
+        }
 
         private Plane[] ExtractPlanes(Matrix4x4 vp)
         {
@@ -158,104 +452,25 @@ namespace DarkEngine3D_gl_csharp.Engine
             return planes;
         }
 
-        public static unsafe void DrawLine(Vector3 start, Vector3 end, uint shader, int vLoc, int pLoc, Camera camera, float aspect)
+        public Vector3[] GetFrustumCorners(Matrix4x4 view, Matrix4x4 proj)
         {
-            float[] lineData = { start.X, start.Y, start.Z, end.X, end.Y, end.Z };
-            uint vao, vbo;
+            // Kalikan View lalu Projection (Urutan Row-Major .NET)
+            Matrix4x4 viewProj = view * proj;
+            if (!Matrix4x4.Invert(viewProj, out Matrix4x4 invVP)) return new Vector3[8];
 
-            GL.GenVertexArrays(1, &vao);
-            GL.GenBuffers(1, &vbo);
-            GL.BindVertexArray(vao);
-            GL.BindBuffer(0x8892, vbo); // GL_ARRAY_BUFFER
-
-            fixed (void* p = lineData)
-            {
-                GL.BufferData(0x8892, (nuint)(sizeof(float) * 6), p, 0x88E4); // GL_STATIC_DRAW
-            }
-
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, 0x1406, false, 0, (void*)0); // 0x1406 = GL_FLOAT
-
-            // Update Kamera khusus untuk shader garis
-            Matrix4x4 view = camera.GetViewMatrix();
-            Matrix4x4 proj = camera.GetProjectionMatrix(aspect);
-            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&view);
-            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
-
-            GL.DrawArrays(0x0001, 0, 2); // 0x0001 = GL_LINES
-
-            // Cleanup agar tidak memory leak
-            GL.DeleteVertexArrays(1, &vao);
-            GL.DeleteBuffers(1, &vbo);
-        }
-
-
-        public unsafe void RenderFrustumDebug(Vector3[] c, uint shader, int vLoc, int pLoc, Camera camera, float aspect)
-        {
-            // R, G, B untuk warna merah murni
-            float r = 1.0f; float g = 0.0f; float b = 0.0f;
-
-            // Susun 24 vertex (12 pasang garis). Format: X, Y, Z, R, G, B
-            float[] lineVerticesWithColor = {
-                // Near Plane (Kotak Depan)
-                c[0].X, c[0].Y, c[0].Z, r, g, b,  c[1].X, c[1].Y, c[1].Z, r, g, b,
-                c[1].X, c[1].Y, c[1].Z, r, g, b,  c[2].X, c[2].Y, c[2].Z, r, g, b,
-                c[2].X, c[2].Y, c[2].Z, r, g, b,  c[3].X, c[3].Y, c[3].Z, r, g, b,
-                c[3].X, c[3].Y, c[3].Z, r, g, b,  c[0].X, c[0].Y, c[0].Z, r, g, b,
-
-                // Far Plane (Kotak Belakang)
-                c[4].X, c[4].Y, c[4].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
-                c[5].X, c[5].Y, c[5].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
-                c[6].X, c[6].Y, c[6].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b,
-                c[7].X, c[7].Y, c[7].Z, r, g, b,  c[4].X, c[4].Y, c[4].Z, r, g, b,
-
-                // Garis Penghubung (Near ke Far)
-                c[0].X, c[0].Y, c[0].Z, r, g, b,  c[4].X, c[4].Y, c[4].Z, r, g, b,
-                c[1].X, c[1].Y, c[1].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
-                c[2].X, c[2].Y, c[2].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
-                c[3].X, c[3].Y, c[3].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b
+            Vector3[] corners = new Vector3[8];
+            // 8 titik sudut NDC (-1 sampai 1)
+            Vector3[] ndc = {
+                new(-1, -1, -1), new( 1, -1, -1), new( 1,  1, -1), new(-1,  1, -1), // Near
+                new(-1, -1,  1), new( 1, -1,  1), new( 1,  1,  1), new(-1,  1,  1)  // Far
             };
 
-            uint vao, vbo;
-            GL.GenVertexArrays(1, &vao);
-            GL.GenBuffers(1, &vbo);
-
-            GL.BindVertexArray(vao);
-            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
-
-            fixed (void* ptr = lineVerticesWithColor)
+            for (int i = 0; i < 8; i++)
             {
-                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineVerticesWithColor.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
+                Vector4 worldPos = Vector4.Transform(ndc[i], invVP);
+                corners[i] = new Vector3(worldPos.X / worldPos.W, worldPos.Y / worldPos.W, worldPos.Z / worldPos.W);
             }
-
-            // Ukuran satu vertex utuh sekarang adalah 6 float (3 posisi + 3 warna) = 24 bytes
-            int stride = 6 * sizeof(float);
-
-            // Atribut 0: Posisi (X, Y, Z)
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
-
-            // Atribut 1: Warna (R, G, B) -> Menyuntikkan warna merah agar shader terrain tidak membaca warna hitam
-            GL.EnableVertexAttribArray(1);
-            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
-
-            // Gunakan shader utama terrain Anda agar pasti tervisualisasi
-            GL.UseProgram(shader);
-
-            // Kirim matriks kamera (Gunakan transpose = true untuk format .NET Matrix)
-            Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = camera.GetProjectionMatrix(aspect);
-            GL.UniformMatrix4fv(vLoc, 1, true, (float*)&v);
-            GL.UniformMatrix4fv(pLoc, 1, true, (float*)&p);
-
-            // Gambar 24 titik vertex sebagai barisan garis murni
-            GL.DrawArrays(Const.GL_LINES, 0, 24);
-
-            // Bersihkan kembali objek penampung di GPU agar tidak terjadi memory leak
-            GL.DeleteVertexArrays(1, &vao);
-            GL.DeleteBuffers(1, &vbo);
+            return corners;
         }
-
-
     }
 }

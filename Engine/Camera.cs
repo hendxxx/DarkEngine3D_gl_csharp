@@ -30,9 +30,9 @@ namespace DarkEngine3D_gl_csharp.Engine
         {
             // Matematika untuk mengubah Yaw/Pitch menjadi vektor arah (Front)
             Vector3 direction;
-            direction.X = MathF.Cos(Helpers.Math.ToRadians(Yaw)) * MathF.Cos(Helpers.Math.ToRadians(Pitch));
-            direction.Y = MathF.Sin(Helpers.Math.ToRadians(Pitch));
-            direction.Z = MathF.Sin(Helpers.Math.ToRadians(Yaw)) * MathF.Cos(Helpers.Math.ToRadians(Pitch));
+            direction.X = MathF.Cos(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
+            direction.Y = MathF.Sin(Helpers.OGLMath.ToRadians(Pitch));
+            direction.Z = MathF.Sin(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
             Front = Vector3.Normalize(direction);
         }
 
