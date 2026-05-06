@@ -16,7 +16,6 @@ namespace DarkEngine3D_gl_csharp.Engine
             private set => _shaderProgram = value;
         }
 
-
         private int modelLocation;
         private Vector3 trianglePosition;
 
@@ -24,17 +23,15 @@ namespace DarkEngine3D_gl_csharp.Engine
         private int _vertexCount;
         public Object3D(nint glfwLib ,  float x, float y, float z)
         {
-            ShaderProgram = Shader.GetShaderProgram();
-
             glfwGetKey = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetKey");
-             
+
+            ShaderProgram = Shader.GetShaderProgram(); 
             Generate(ShaderProgram);
             SetPosition(x, y, z);   
         }
         public void SetPosition(float x, float y, float z)
         {
-
-            modelLocation = GL.GetUniformLocation(ShaderProgram, "model");
+            // Hanya menyimpan posisi; lokasi uniform sudah dicache di Generate()
             trianglePosition = new Vector3(x,y,z); // Posisi awal segitiga
         }
         public Vector3 GetPosition()
@@ -45,11 +42,11 @@ namespace DarkEngine3D_gl_csharp.Engine
         public void Generate(uint shaderProgram) {
             // Buat Segitiga Sederhana
             // Data Segitiga
-            Vertex[] vertices = [
+            Vertex[] vertices = new Vertex[] {
                 new (-0.5f, -0.5f, 0.0f,  1.0f, 0.0f, 0.0f),
                 new ( 0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f),
                 new ( 0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f)
-            ];
+            };
 
             // Buat VBO di GPU
             uint vbo;
@@ -65,6 +62,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             _vertexCount = vertices.Length;
             SetupGPUResources(vertices);
 
+            // Cache lokasi uniform 'model' sekali saja (shader program sudah aktif di loop sebelum Draw)
+            modelLocation = GL.GetUniformLocation(shaderProgram, "model");
         }
 
         private void SetupGPUResources(Vertex[] data)
@@ -89,21 +88,26 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.VertexAttribPointer(1, 3, 0x1406, false, stride, (void*)sizeof(Vector3));
         }
 
-        public void Draw(float deltaTime, nint window)
+        public void Draw(float deltaTime, nint window,float _moveSpeed)
         {
 
-            float moveSpeed = 5.0f * deltaTime;
+            // If Shift is held, boost the movement speed for the object as well
+            bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
+                                || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
+
+            float moveSpeed = _moveSpeed * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
 
             // Contoh kontrol: Panah atau IJKL untuk gerak segitiga
-            if (glfwGetKey(window, 73) == 1) trianglePosition.Y += moveSpeed; // I (Atas)
-            if (glfwGetKey(window, 75) == 1) trianglePosition.Y -= moveSpeed; // K (Bawah)
-            if (glfwGetKey(window, 74) == 1) trianglePosition.X -= moveSpeed; // J (Kiri)
-            if (glfwGetKey(window, 76) == 1) trianglePosition.X += moveSpeed; // L (Kanan)
+            if (glfwGetKey(window, Const.GLFW_KEY_I) == Const.GLFW_PRESS) trianglePosition.Y += moveSpeed; // I (Atas)
+            if (glfwGetKey(window, Const.GLFW_KEY_K) == Const.GLFW_PRESS) trianglePosition.Y -= moveSpeed; // K (Bawah)
+            if (glfwGetKey(window, Const.GLFW_KEY_J) == Const.GLFW_PRESS) trianglePosition.X -= moveSpeed; // J (Kiri)
+            if (glfwGetKey(window, Const.GLFW_KEY_L) == Const.GLFW_PRESS) trianglePosition.X += moveSpeed; // L (Kanan)
 
-            SetPosition(trianglePosition.X, trianglePosition.Y, trianglePosition.Z);
+            // Set posisi (cukup update trianglePosition; uniform sudah dicache)
+            // SetPosition(trianglePosition.X, trianglePosition.Y, trianglePosition.Z);
 
             Matrix4x4 modelMatrix = Matrix4x4.CreateTranslation(trianglePosition);
-            GL.UniformMatrix4fv(modelLocation, 1, true, (float*)&modelMatrix); 
+            GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&modelMatrix); 
 
             // GAMBAR!
             GL.BindVertexArray(VAO);

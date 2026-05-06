@@ -37,7 +37,7 @@ public unsafe class Program
         Terrain gameTerrain = new(256,16); 
 
         // Init Object3D
-        Object3D objTriangle = new(glfwLib, 0, 5, 0);
+        Object3D objTriangle = new(glfwLib, 0.0f, 7.0f, 0.0f);
          
         OpenGL.EnableDepthTest(true);
         OpenGL.EnableFaceCulling(true);

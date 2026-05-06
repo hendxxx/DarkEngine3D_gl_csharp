@@ -158,7 +158,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 Mouse.Update(window, camera);
 
 
-                objTriangle.Draw(deltaTime, window);
+                objTriangle.Draw(deltaTime, window, 5.0f);
 
 
                 Glfw.ShowFPS(Terrain.GetMapSize(), Terrain.GetChunkSize(), deltaTime, renderedTris);
