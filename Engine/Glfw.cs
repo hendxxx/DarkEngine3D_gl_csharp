@@ -27,6 +27,8 @@ namespace DarkEngine3D_gl_csharp.Engine
         private static delegate* unmanaged[Cdecl]<IntPtr, byte*, void> glfwSetWindowTitle;
         private static delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void> glfwSetCursorPos;
 
+        private static delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, int, int, void>, void> glfwSetWindowSizeCallback;
+
         static nint window;
         static nint glfwLib;
         private static delegate* unmanaged[Cdecl]<IntPtr, int> glfwWindow;
@@ -38,8 +40,8 @@ namespace DarkEngine3D_gl_csharp.Engine
         static float lastFrame = 0.0f;
 
         private static int _windowWidth;
-        private static int _windowHeight;
-
+        private static int _windowHeight; 
+        
         public static int WindowWidth
         {
             get => _windowWidth;
@@ -51,7 +53,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             get => _windowHeight;
             private set => _windowHeight = value;
         }
-
+        public static float aspect = 1;
         public static void Init(int width, int height, string title)
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
@@ -63,6 +65,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             var glfwWindowShouldClose = (delegate* unmanaged[Cdecl]<IntPtr, int>)NativeLibrary.GetExport(glfwLib, "glfwWindowShouldClose");
             glfwGetKey = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetKey");
 
+            glfwSetWindowSizeCallback = (delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, int, int, void>, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowSizeCallback");
+               
             glfwWindow = glfwWindowShouldClose;
 
             glfwGetTime = (delegate* unmanaged[Cdecl]<double>)NativeLibrary.GetExport(glfwLib, "glfwGetTime");
@@ -81,7 +85,12 @@ namespace DarkEngine3D_gl_csharp.Engine
             if (window == nint.Zero) return;
 
             glfwMakeContextCurrent(window);
-             
+
+            
+
+            glfwSetWindowSizeCallback(window, &OnWindowResized);
+
+
         }
         public static nint GetglfwLib()
         {
@@ -110,7 +119,18 @@ namespace DarkEngine3D_gl_csharp.Engine
             return deltaTime;
         }
 
-        
+        // Fungsi yang akan dipanggil saat resize
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+        public static void OnWindowResized(IntPtr window, int width, int height)
+        {
+            // 1. Update area gambar GPU
+            GL.Viewport(0, 0, width, height);
+
+            // 2. Update variabel aspect ratio global (agar matriks proyeksi tidak gepeng)
+            // Pastikan variabel 'aspect' bisa diakses dari sini
+            aspect = (float)width / (float)height;
+        }
+
         public static void ShowFPS(int mapSize, int chunkSize,float deltaTime,int renderedTris)
         {
             //FPS
@@ -132,7 +152,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, TerrainChunkChunk gameTerrainChunk)
+        public static void Loop(nint glfwLib , Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk)
         {
             uint shaderProgram = Shader.GetShaderProgram();
 
@@ -143,18 +163,18 @@ namespace DarkEngine3D_gl_csharp.Engine
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             while (glfwWindow(window) == 0)
-            {
+            { 
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
-                GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                GL.ClearColor(1.0f, 1.0f, 0.0f, 1.0f);
 
                 deltaTime = Glfw.GetDeltaTime();
 
                 camera.UpdateVectors();
-                GL.UseProgram(shaderProgram); 
-                 
-                int renderedTris = gameTerrainChunk.Render(camera, WindowWidth / WindowHeight, gameTerrainChunk.GetFrozenPlanes());
-                 
+                GL.UseProgram(shaderProgram);
+                GL.BindVertexArray(0);
 
+                int renderedTris = gameTerrainChunk.Render(camera, WindowWidth / WindowHeight, gameTerrainChunk.GetFrozenPlanes());
+                  
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
            
                 Keyboard.Update(glfwLib, window, camera, deltaTime, gameTerrainChunk);
@@ -163,8 +183,9 @@ namespace DarkEngine3D_gl_csharp.Engine
 
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
+                light.Update();
 
-                Glfw.ShowFPS(TerrainChunkChunk.GetMapSize(), TerrainChunkChunk.GetChunkSize(), deltaTime, renderedTris);
+                Glfw.ShowFPS(TerrainChunk.GetMapSize(), TerrainChunk.GetChunkSize(), deltaTime, renderedTris);
 
                 Shader.Cleanup();
 

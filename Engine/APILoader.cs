@@ -18,6 +18,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static IntPtr CreateProgramPtr, AttachShaderPtr, LinkProgramPtr, UseProgramPtr, DeleteShaderPtr;
         public static IntPtr VertexAttribPointerPtr;
         public static IntPtr EnableVertexAttribArrayPtr;
+        public static IntPtr DisableVertexAttribArrayPtr;
         public static IntPtr DrawArraysPtr;
 
         public static IntPtr GenVertexArraysPtr;
@@ -32,6 +33,9 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public static IntPtr CullFacePtr;
         public static IntPtr FrontFacePtr;
+        public static IntPtr Uniform3fPtr;
+
+        public static IntPtr ViewportPtr;
 
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
@@ -107,6 +111,9 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static void EnableVertexAttribArray(uint index)
             => ((delegate* unmanaged[Cdecl]<uint, void>)EnableVertexAttribArrayPtr)(index);
 
+        public static void DisableVertexAttribArray(uint index)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)DisableVertexAttribArrayPtr)(index);
+
         public static void DrawArrays(uint mode, int first, int count)
             => ((delegate* unmanaged[Cdecl]<uint, int, int, void>)DrawArraysPtr)(mode, first, count);
 
@@ -147,7 +154,11 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static void FrontFace(uint mode)
             => ((delegate* unmanaged[Cdecl]<uint, void>)FrontFacePtr)(mode);
 
+        public static void Uniform3f(int location, float v0, float v1, float v2)
+            => ((delegate* unmanaged[Cdecl]<int, float, float, float, void>)Uniform3fPtr)(location, v0, v1, v2);
 
+        public static void Viewport(int x, int y, int width, int height)
+            => ((delegate* unmanaged<int, int, int, int, void>)ViewportPtr)(x, y, width, height);
     }
 
     public static class ApiLoader
@@ -192,16 +203,19 @@ namespace DarkEngine3D_gl_csharp.Engine
             "DeleteShader" => typeof(DeleteShaderDelegate),
             "VertexAttribPointer" => typeof(VertexAttribPointerDelegate),
             "EnableVertexAttribArray" => typeof(EnableVertexAttribArrayDelegate),
-            "Disable" => typeof(EnableDelegate), 
+            "DisableVertexAttribArray" => typeof(DisableVertexAttribArrayDelegate),  
+            "Disable" => typeof(DisableDelegate),
+            "Enable" => typeof(EnableDelegate),
             "DrawArrays" => typeof(DrawArraysDelegate),
             "GenVertexArrays" => typeof(GenVertexArraysDelegate),
             "BindVertexArray" => typeof(BindVertexArrayDelegate),
-            "Enable" => typeof(DisableDelegate),
             "PolygonMode" => typeof(PolygonModeDelegate),
             "DeleteVertexArrays" => typeof(DeleteVertexArraysDelegate),
             "DeleteBuffers" => typeof(DeleteBuffersDelegate),
             "CullFace" => typeof(CullFaceDelegate),
             "FrontFace" => typeof(FrontFaceDelegate),
+            "Uniform3f" => typeof(Uniform3fDelegate),
+            "Viewport" => typeof(ViewportDelegate),
             _ => throw new NotImplementedException()
         };
     }
@@ -261,6 +275,10 @@ namespace DarkEngine3D_gl_csharp.Engine
     public unsafe delegate void EnableVertexAttribArrayDelegate(uint index);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void DisableVertexAttribArrayDelegate(uint index);
+
+
+ [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public unsafe delegate void DrawArraysDelegate(uint mode, int first, int count);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -289,4 +307,10 @@ namespace DarkEngine3D_gl_csharp.Engine
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public unsafe delegate void FrontFaceDelegate(uint mode);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void Uniform3fDelegate(int location, float v0, float v1, float v2);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void ViewportDelegate(int x, int y, int width, int height);
 }

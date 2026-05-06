@@ -1,21 +1,25 @@
-﻿namespace DarkEngine3D_gl_csharp.Engine
+﻿using System.Numerics;
+
+namespace DarkEngine3D_gl_csharp.Engine
 {
     public class Helpers
     {
+        public static Vector3 CalculateNormal(float x, float z)
+        {
+            float off = 0.1f;
+            float hL = Noise.GetHeight(x - off, z);
+            float hR = Noise.GetHeight(x + off, z);
+            float hD = Noise.GetHeight(x, z - off);
+            float hU = Noise.GetHeight(x, z + off);
+
+            // Semakin curam tanah, semakin kuat bayangannya
+            Vector3 normal = new Vector3(hL - hR, 2.0f * off, hD - hU);
+            return Vector3.Normalize(normal);
+        }
         public static class OGLMath
         {
             public static float ToRadians(float degrees) => degrees * (MathF.PI / 180.0f);
         }
-
-        public static class Noise
-        {
-            public static float GetHeight(float x, float z, float scale = 0.1f, float amplitude = 5.0f)
-            {
-                // .NET tidak punya Perlin bawaan, untuk tes awal Anda bisa gunakan ini:
-                // Ini mensimulasikan bukit-bukit kecil
-                float noise = MathF.Sin(x * scale) + MathF.Sin(z * scale);
-                return noise * amplitude;
-            }
-        }
+         
     }
 }

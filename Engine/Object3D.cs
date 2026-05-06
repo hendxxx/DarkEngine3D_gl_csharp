@@ -40,12 +40,16 @@ namespace DarkEngine3D_gl_csharp.Engine
         }
 
         public void Generate(uint shaderProgram) {
-            // Buat Segitiga Sederhana
-            // Data Segitiga
+
             Vertex[] vertices = new Vertex[] {
-                new (-0.5f, -0.5f, 0.0f,  1.0f, 0.0f, 0.0f),
-                new ( 0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f),
-                new ( 0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f)
+                // 1. Kiri Bawah
+                new Vertex(-0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f), 
+    
+                // 2. Atas (Puncak) - Ditukar ke posisi kedua
+                new Vertex( 0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, 1.0f),
+    
+                // 3. Kanan Bawah - Ditukar ke posisi ketiga
+                new Vertex( 0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, 0.0f)
             };
 
             // Buat VBO di GPU
@@ -86,11 +90,14 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.VertexAttribPointer(0, 3, 0x1406, false, stride, (void*)0);
             GL.EnableVertexAttribArray(1);
             GL.VertexAttribPointer(1, 3, 0x1406, false, stride, (void*)sizeof(Vector3));
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 3, 0x1406, false, stride, (void*)(sizeof(Vector3) * 2));
+
         }
 
         public void Draw(float deltaTime, nint window,float _moveSpeed)
         {
-
+            OpenGL.EnableFaceCulling(false);
             // If Shift is held, boost the movement speed for the object as well
             bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
                                 || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
@@ -113,6 +120,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.BindVertexArray(VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount); // 0x0004 = GL_TRIANGLES
             GL.BindVertexArray(0); // <--- PENTING: Lepaskan VAO TerrainChunk
+
+            OpenGL.EnableFaceCulling(true);
         }
     }
 }

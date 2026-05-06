@@ -27,6 +27,8 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             GL.VertexAttribPointerPtr = GetProcAddress(glLib, "glVertexAttribPointer");
             GL.EnableVertexAttribArrayPtr = GetProcAddress(glLib, "glEnableVertexAttribArray");
+            GL.DisableVertexAttribArrayPtr = GetProcAddress(glLib, "glDisableVertexAttribArray");
+
             GL.DrawArraysPtr = GetProcAddress(glLib, "glDrawArrays");
 
             GL.GenVertexArraysPtr = GetProcAddress(glLib, "glGenVertexArrays");
@@ -41,6 +43,9 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             GL.CullFacePtr = GetProcAddress(glLib, "glCullFace");
             GL.FrontFacePtr = GetProcAddress(glLib, "glFrontFace");
+            GL.Uniform3fPtr = GetProcAddress(glLib, "glUniform3f");
+
+            GL.ViewportPtr = GetProcAddress(glLib, "glViewport");
 
             return glLib;
         }
@@ -51,7 +56,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             {
                 GL.Enable(Const.GL_CULL_FACE);
                 GL.CullFace(Const.GL_BACK);
-                GL.FrontFace(CCW ? Const.GL_CCW : Const.GL_CW);
+                GL.FrontFace(CCW ? Const.GL_CW : Const.GL_CCW);
             }
             else
             {

@@ -48,7 +48,8 @@
             lineFragmentShader = GL.CreateShader(Const.GL_FRAGMENT_SHADER);
             GL.ShaderSource(lineFragmentShader, lineFragmentShaderSource);
             GL.CompileShader(lineFragmentShader);
-             
+
+            // 3. Link ke dalam Shader Program Line
             lineShaderProgram = GL.CreateProgram();
             GL.AttachShader(lineShaderProgram, lineVertexShader);
             GL.AttachShader(lineShaderProgram, lineFragmentShader);
