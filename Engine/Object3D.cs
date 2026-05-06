@@ -112,7 +112,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             // GAMBAR!
             GL.BindVertexArray(VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount); // 0x0004 = GL_TRIANGLES
-            GL.BindVertexArray(0); // <--- PENTING: Lepaskan VAO terrain
+            GL.BindVertexArray(0); // <--- PENTING: Lepaskan VAO TerrainChunk
         }
     }
 }

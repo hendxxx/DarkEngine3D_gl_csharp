@@ -33,8 +33,8 @@ public unsafe class Program
         Keyboard.Init(glfwLib, 10.0f);
         Mouse.Init(glfwLib, window);
         
-        // Init Terrain
-        Terrain gameTerrain = new(256,16); 
+        // Init TerrainChunk
+        TerrainChunkChunk gameTerrainChunk = new(256,16); 
 
         // Init Object3D
         Object3D objTriangle = new(glfwLib, 0.0f, 7.0f, 0.0f);
@@ -42,7 +42,7 @@ public unsafe class Program
         OpenGL.EnableDepthTest(true);
         OpenGL.EnableFaceCulling(true);
 
-        Glfw.Loop(glfwLib, camera, objTriangle, gameTerrain);        
+        Glfw.Loop(glfwLib, camera, objTriangle, gameTerrainChunk);        
 
         Console.WriteLine("Engine Shutdown."); 
     }

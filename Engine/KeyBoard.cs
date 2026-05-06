@@ -34,7 +34,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
         }
 
-        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, Terrain gameTerrain)
+        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, TerrainChunkChunk gameTerrainChunk)
         { 
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
@@ -73,7 +73,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             if (glfwGetKey(window, Const.GLFW_KEY_A) == Const.GLFW_PRESS) camera.Position -= Vector3.Normalize(Vector3.Cross(camera.Front, camera.Up)) * speed;
             if (glfwGetKey(window, Const.GLFW_KEY_D) == Const.GLFW_PRESS) camera.Position += Vector3.Normalize(Vector3.Cross(camera.Front, camera.Up)) * speed;
              
-            // P: toggle freeze frustum and set it into Terrain (rising edge)
+            // P: toggle freeze frustum and set it into TerrainChunk (rising edge)
             int pState = glfwGetKey(window, Const.GLFW_KEY_P);
             if (pState == Const.GLFW_PRESS && prevPState != Const.GLFW_PRESS)
             {
@@ -83,20 +83,20 @@ namespace DarkEngine3D_gl_csharp.Engine
                 {
                     Matrix4x4 view = camera.GetViewMatrix();
                     Matrix4x4 proj = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
-                    frozenCorners = Terrain.GetFrustumCorners(view, proj);
-                    gameTerrain.SetFrozenFrustumCorners(frozenCorners); // PASS frozen corners to Terrain
-                    gameTerrain.SetHighlightFrustumMatches(true);
+                    frozenCorners = TerrainChunkChunk.GetFrustumCorners(view, proj);
+                    gameTerrainChunk.SetFrozenFrustumCorners(frozenCorners); // PASS frozen corners to TerrainChunk
+                    gameTerrainChunk.SetHighlightFrustumMatches(true);
                 }
                 else
                 {
                     frozenCorners = null;
-                    gameTerrain.ClearFrozenFrustumCorners();
-                    gameTerrain.SetHighlightFrustumMatches(false);
+                    gameTerrainChunk.ClearFrozenFrustumCorners();
+                    gameTerrainChunk.SetHighlightFrustumMatches(false);
                 }
             }
             prevPState = pState;
 
-            // NOTE: drawing of the frozen frustum lines is handled inside Terrain.Render now.
+            // NOTE: drawing of the frozen frustum lines is handled inside TerrainChunk.Render now.
         }
     } 
 }

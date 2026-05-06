@@ -132,7 +132,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, Terrain gameTerrain)
+        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, TerrainChunkChunk gameTerrainChunk)
         {
             uint shaderProgram = Shader.GetShaderProgram();
 
@@ -152,19 +152,19 @@ namespace DarkEngine3D_gl_csharp.Engine
                 camera.UpdateVectors();
                 GL.UseProgram(shaderProgram); 
                  
-                int renderedTris = gameTerrain.Render(camera, WindowWidth / WindowHeight, gameTerrain.GetFrozenPlanes());
+                int renderedTris = gameTerrainChunk.Render(camera, WindowWidth / WindowHeight, gameTerrainChunk.GetFrozenPlanes());
                  
 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
            
-                Keyboard.Update(glfwLib, window, camera, deltaTime, gameTerrain);
+                Keyboard.Update(glfwLib, window, camera, deltaTime, gameTerrainChunk);
                 Mouse.Update(window, camera);
 
 
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
 
-                Glfw.ShowFPS(Terrain.GetMapSize(), Terrain.GetChunkSize(), deltaTime, renderedTris);
+                Glfw.ShowFPS(TerrainChunkChunk.GetMapSize(), TerrainChunkChunk.GetChunkSize(), deltaTime, renderedTris);
 
                 Shader.Cleanup();
 

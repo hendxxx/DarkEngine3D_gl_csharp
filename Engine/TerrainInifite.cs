@@ -9,7 +9,7 @@ using static DarkEngine3D_gl_csharp.Engine.Helpers;
 
 namespace DarkEngine3D_gl_csharp.Engine
 {
-    public unsafe class TerrainInifite
+    public unsafe class TerrainChunkInifite
     {
         public const int SIZE = 16;
         public uint VAO, VBO;
@@ -18,7 +18,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         private uint shaderProgram;
         private int modelLocation; 
 
-        public TerrainInifite(  )
+        public TerrainChunkInifite(  )
         {
 
         }
@@ -92,24 +92,24 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public void Draw()
         {
-            Matrix4x4 terrainModel = Matrix4x4.Identity;
+            Matrix4x4 TerrainChunkModel = Matrix4x4.Identity;
             unsafe
             {
-                // TIMPA matriks model terakhir dengan matriks identity agar terrain kembali ke (0,0,0)
-                GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&terrainModel);
+                // TIMPA matriks model terakhir dengan matriks identity agar TerrainChunk kembali ke (0,0,0)
+                GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&TerrainChunkModel);
             }
             GL.BindVertexArray(VAO);
             GL.DrawArrays(0x0004, 0, _vertexCount); // GL_TRIANGLES
-            GL.BindVertexArray(0); // <--- PENTING: Lepaskan VAO terrain
+            GL.BindVertexArray(0); // <--- PENTING: Lepaskan VAO TerrainChunk
         }
     }
 
-    public class TerrainManager
+    public class TerrainChunkManager
     {
 
         private int modelLocation;
 
-        private Dictionary<(int x, int z), TerrainInifite> _chunks = new();
+        private Dictionary<(int x, int z), TerrainChunkInifite> _chunks = new();
         private int _renderDistance = 4; // Jumlah chunk ke segala arah (9x9 chunk)
 
         public void Update(uint shaderProgram,  Vector3 playerPos)
@@ -117,8 +117,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             modelLocation = GL.GetUniformLocation(shaderProgram, "model");
 
             // 1. Hitung koordinat chunk tempat pemain berdiri
-            int currentChunkX = (int)MathF.Floor(playerPos.X / TerrainInifite.SIZE);
-            int currentChunkZ = (int)MathF.Floor(playerPos.Z / TerrainInifite.SIZE);
+            int currentChunkX = (int)MathF.Floor(playerPos.X / TerrainChunkInifite.SIZE);
+            int currentChunkZ = (int)MathF.Floor(playerPos.Z / TerrainChunkInifite.SIZE);
 
             // 2. Load chunk baru yang masuk dalam radius pandang
             for (int z = -_renderDistance; z <= _renderDistance; z++)
@@ -128,7 +128,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                     var coord = (currentChunkX + x, currentChunkZ + z);
                     if (!_chunks.ContainsKey(coord))
                     {
-                        var newChunk = new TerrainInifite();
+                        var newChunk = new TerrainChunkInifite();
                         newChunk.Generate(shaderProgram, coord.Item1, coord.Item2);
                         _chunks.Add(coord, newChunk);
                     }
@@ -150,7 +150,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 // Karena Generate() kita sudah menghitung posisi world di vertex, 
                 // model matrix cukup Identity. 
                 // Tapi jika Generate() pakai koordinat lokal (0-16), gunakan:
-                // Matrix4x4.CreateTranslation(entry.Key.x * TerrainChunk.SIZE, 0, entry.Key.z * TerrainChunk.SIZE);
+                // Matrix4x4.CreateTranslation(entry.Key.x * TerrainChunkData.SIZE, 0, entry.Key.z * TerrainChunkData.SIZE);
 
                 unsafe
                 {
