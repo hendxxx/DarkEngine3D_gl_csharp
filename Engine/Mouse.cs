@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Drawing;
+using System.Runtime.InteropServices;
 
 namespace DarkEngine3D_gl_csharp.Engine
 {
@@ -6,23 +7,31 @@ namespace DarkEngine3D_gl_csharp.Engine
     {
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int, void> glfwSetInputMode;
         private static delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void> glfwGetCursorPos;
-        
-        static double lastX = 0, lastY = 0;
+        private static delegate* unmanaged[Cdecl]<IntPtr, double, double, void> glfwSetCursorPos;
+
+        static double lastX, lastY;
         static bool firstMouse = true;
         static float sensitivity = 0.1f;
 
         public static unsafe void Init(nint glfwLib, nint window ,float _sensitivity = 0.1f)
         {
+
+            glfwSetCursorPos = (delegate* unmanaged[Cdecl]<IntPtr, double, double, void>)NativeLibrary.GetExport(glfwLib, "glfwSetCursorPos");
+
             glfwGetCursorPos = (delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void>)NativeLibrary.GetExport(glfwLib, "glfwGetCursorPos");
 
             glfwSetInputMode = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetInputMode");
 
             glfwSetInputMode(window, Const.GLFW_CURSOR, Const.GLFW_CURSOR_NORMAL);
              
+
             lastX = Glfw.WindowWidth / 2;
             lastY = Glfw.WindowHeight / 2;
             firstMouse = true;
             sensitivity = _sensitivity;
+
+            glfwSetCursorPos(window, lastX, lastY);
+
         }
 
         public static unsafe void Update(nint window, Camera camera)

@@ -44,7 +44,7 @@ public unsafe class Program
 
         Glfw.Loop(glfwLib, camera, objTriangle, gameTerrain);        
 
-        Console.WriteLine("Engine Shutdown.");
+        Console.WriteLine("Engine Shutdown."); 
     }
 
    

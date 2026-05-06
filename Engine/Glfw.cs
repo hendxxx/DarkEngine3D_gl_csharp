@@ -25,6 +25,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         private static delegate* unmanaged[Cdecl]<double> glfwGetTime;
 
         private static delegate* unmanaged[Cdecl]<IntPtr, byte*, void> glfwSetWindowTitle;
+        private static delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void> glfwSetCursorPos;
 
         static nint window;
         static nint glfwLib;
@@ -67,6 +68,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             glfwGetTime = (delegate* unmanaged[Cdecl]<double>)NativeLibrary.GetExport(glfwLib, "glfwGetTime");
             
             glfwSetWindowTitle = (delegate* unmanaged[Cdecl]<IntPtr, byte*, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowTitle");
+
+            glfwSetCursorPos= (delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void>)NativeLibrary.GetExport(glfwLib, "glfwSetCursorPos");
 
             // Init window
             if (glfwInit() == 0) return;
