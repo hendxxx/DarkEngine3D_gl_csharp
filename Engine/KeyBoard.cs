@@ -10,6 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine
          
         static bool isWireframe = false;
         static bool f1Pressed = false;
+        static float speedCam = 1.0f;
         static int lineVLoc = 0;
         static int linePLoc = 0;     // Lokasi uniform view & projection untuk shader garis
         static uint lineShaderProgram; // ID shader program untuk rendering garis
@@ -19,19 +20,21 @@ namespace DarkEngine3D_gl_csharp.Engine
         static int prevPState = 0;
         static bool frozenMode = false;
 
-        public static unsafe void Init(nint glfwLib, uint _lineShaderProgram)
+        public static unsafe void Init(nint glfwLib, float _speedCam)
         {
-            lineShaderProgram = _lineShaderProgram;
+            lineShaderProgram = Shader.GetLineShaderProgram();
             glfwGetKey = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetKey");
 
             isWireframe = false;
             f1Pressed = false;
 
+            speedCam = _speedCam;
+
             lineVLoc = GL.GetUniformLocation(lineShaderProgram, "view");
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
         }
 
-        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, float aspect, Terrain gameTerrain)
+        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, Terrain gameTerrain)
         { 
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
@@ -59,12 +62,12 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
 
             // Movement
-            float speed = 100.0f * deltaTime;
+            float speed = speedCam * deltaTime;
             if (glfwGetKey(window, Const.GLFW_KEY_W) == Const.GLFW_PRESS) camera.Position += camera.Front * speed;
             if (glfwGetKey(window, Const.GLFW_KEY_S) == Const.GLFW_PRESS) camera.Position -= camera.Front * speed;
             if (glfwGetKey(window, Const.GLFW_KEY_A) == Const.GLFW_PRESS) camera.Position -= Vector3.Normalize(Vector3.Cross(camera.Front, camera.Up)) * speed;
             if (glfwGetKey(window, Const.GLFW_KEY_D) == Const.GLFW_PRESS) camera.Position += Vector3.Normalize(Vector3.Cross(camera.Front, camera.Up)) * speed;
-
+             
             // P: toggle freeze frustum and set it into Terrain (rising edge)
             int pState = glfwGetKey(window, Const.GLFW_KEY_P);
             if (pState == Const.GLFW_PRESS && prevPState != Const.GLFW_PRESS)
@@ -74,7 +77,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 if (frozenMode)
                 {
                     Matrix4x4 view = camera.GetViewMatrix();
-                    Matrix4x4 proj = Camera.GetProjectionMatrix(aspect);
+                    Matrix4x4 proj = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
                     frozenCorners = Terrain.GetFrustumCorners(view, proj);
                     gameTerrain.SetFrozenFrustumCorners(frozenCorners); // PASS frozen corners to Terrain
                     gameTerrain.SetHighlightFrustumMatches(true);

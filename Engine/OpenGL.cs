@@ -44,6 +44,23 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             return glLib;
         }
+
+        public static unsafe void EnableFaceCulling(bool active,bool CCW = true)
+        {
+            if (active)
+            {
+                GL.Enable(Const.GL_CULL_FACE);
+                GL.CullFace(Const.GL_BACK);
+                GL.FrontFace(CCW ? Const.GL_CCW : Const.GL_CW);
+            }
+            else
+            {
+                GL.Disable(Const.GL_CULL_FACE);
+            }
+        }
+
+
+
         public static unsafe void EnableDepthTest(bool active)
         {
             if (active)

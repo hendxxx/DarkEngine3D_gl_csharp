@@ -12,10 +12,27 @@ namespace DarkEngine3D_gl_csharp.Engine
 {
     public class Terrain
     {
-        public const int MAP_SIZE = 256; // 256x256 agar pas dengan pembagian 16
-        public const int CHUNK_SIZE = 16;
-        private readonly static int chunksPerSide = MAP_SIZE / CHUNK_SIZE; // 16x16 chunk
+        private static int _MAP_SIZE = 256; // 256x256 agar pas dengan pembagian 16
+        private static int _CHUNK_SIZE = 16;
+        private static int _chunksPerSide = MAP_SIZE / CHUNK_SIZE; // 16x16 chunk
 
+        public static int MAP_SIZE
+        {
+            get => _MAP_SIZE;
+            private set => _MAP_SIZE = value;
+        }
+
+        public static int CHUNK_SIZE
+        {
+            get => _CHUNK_SIZE;
+            private set => _CHUNK_SIZE = value;
+        }
+
+        public static int ChunksPerSide
+        {
+            get => _chunksPerSide;
+            private set => _chunksPerSide = MAP_SIZE / CHUNK_SIZE;
+        }
         private static TerrainChunk[,]? worldMap = null;
 
         private static Plane[]? planes = null;
@@ -34,15 +51,25 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         private bool highlightFrustumMatches = false;
 
-        public void Init(uint _shaderProgram)
+        public Terrain(int mapSize, int chunkSize)
         {
-            worldMap = new TerrainChunk[chunksPerSide, chunksPerSide];
-            
-            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
+            Init(mapSize, chunkSize);
+        }
 
-            for (int z = 0; z < chunksPerSide; z++)
+        public void Init(int mapSize, int chunkSize)
+        {
+            MAP_SIZE = mapSize;
+            CHUNK_SIZE = chunkSize;
+
+            uint _shaderProgram = Shader.GetShaderProgram();
+
+            worldMap = new TerrainChunk[ChunksPerSide, ChunksPerSide];
+            
+            int halfMapSize = (ChunksPerSide * CHUNK_SIZE) / 2;
+
+            for (int z = 0; z < ChunksPerSide; z++)
             {
-                for (int x = 0; x < chunksPerSide; x++)
+                for (int x = 0; x < ChunksPerSide; x++)
                 {
                     worldMap[x, z] = new TerrainChunk();
 
@@ -100,15 +127,15 @@ namespace DarkEngine3D_gl_csharp.Engine
             int totalTriangles = 0;
  
             // 1. Hitung Matriks Gabungan (View * Projection)
-            Matrix4x4 vp = camera.GetViewMatrix() * Camera.GetProjectionMatrix(aspect);
+            Matrix4x4 vp = camera.GetViewMatrix() * Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
 
             planes = ExtractPlanes(vp);
 
             bool usingFrozen = frozenPlanes != null;
 
-            for (int z = 0; z < chunksPerSide; z++)
+            for (int z = 0; z < ChunksPerSide; z++)
             {
-                for (int x = 0; x < chunksPerSide; x++)
+                for (int x = 0; x < ChunksPerSide; x++)
                 {
                     // 2. Cek apakah chunk terlihat oleh kamera (tetap digunakan untuk mesh render)
                     bool inside = IsChunkInFrustum(x, z, planes);
@@ -146,7 +173,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 GL.Disable(Const.GL_DEPTH_TEST);
                 GL.UseProgram(lineShaderProgram);
                 Matrix4x4 v = camera.GetViewMatrix();
-                Matrix4x4 p = Camera.GetProjectionMatrix(aspect);
+                Matrix4x4 p = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
                 unsafe
                 {
                     GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
@@ -191,7 +218,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         {
             if (frustumPlanes == null) return true;
 
-            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
+            int halfMapSize = (ChunksPerSide * CHUNK_SIZE) / 2;
             float minX = (chunkIndexX * CHUNK_SIZE) - halfMapSize;
             float maxX = minX + CHUNK_SIZE;
             float minZ = (chunkIndexZ * CHUNK_SIZE) - halfMapSize;
@@ -230,7 +257,7 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         private static bool IsChunkInFrustum(int chunkIndexX, int chunkIndexZ, Plane[] planes)
         {
-            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
+            int halfMapSize = (ChunksPerSide * CHUNK_SIZE) / 2;
 
             float minX = (chunkIndexX * CHUNK_SIZE) - halfMapSize;
             float maxX = minX + CHUNK_SIZE;
@@ -272,7 +299,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.VertexAttribPointer(0, 3, 0x1406, false, 0, (void*)0);
 
             Matrix4x4 view = camera.GetViewMatrix();
-            Matrix4x4 proj = Camera.GetProjectionMatrix(aspect);
+            Matrix4x4 proj = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
             GL.UniformMatrix4fv(vLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
 
@@ -326,7 +353,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.UseProgram(shader);
 
             Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = Camera.GetProjectionMatrix(aspect);
+            Matrix4x4 p = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
             GL.UniformMatrix4fv(vLoc, 1, true, (float*)&v);
             GL.UniformMatrix4fv(pLoc, 1, true, (float*)&p);
 
@@ -339,7 +366,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         // Menambahkan method untuk menggambar kotak wireframe per chunk
         private unsafe void DrawChunkBoundingBox(int chunkIndexX, int chunkIndexZ, bool usingFrozen, bool insideFrozen, bool insideCamera, Camera camera, float aspect)
         {
-            int halfMapSize = (chunksPerSide * CHUNK_SIZE) / 2;
+            int halfMapSize = (ChunksPerSide * CHUNK_SIZE) / 2;
 
             float minX = (chunkIndexX * CHUNK_SIZE) - halfMapSize;
             float maxX = minX + CHUNK_SIZE;
@@ -427,7 +454,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.UseProgram(lineShaderProgram);
 
             Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = Camera.GetProjectionMatrix(aspect);
+            Matrix4x4 p = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
             unsafe
             {
                 GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);

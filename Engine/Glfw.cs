@@ -36,8 +36,20 @@ namespace DarkEngine3D_gl_csharp.Engine
         static float deltaTime = 0.0f;
         static float lastFrame = 0.0f;
 
-        private static int WindowWidth;
-        private static int WindowHeight;
+        private static int _windowWidth;
+        private static int _windowHeight;
+
+        public static int WindowWidth
+        {
+            get => _windowWidth;
+            private set => _windowWidth = value;
+        }
+
+        public static int WindowHeight
+        {
+            get => _windowHeight;
+            private set => _windowHeight = value;
+        }
 
         public static void Init(int width, int height, string title)
         {
@@ -117,9 +129,13 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, uint shaderProgram, int viewLocation, int projectionLocation, Terrain gameTerrain)
+        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, Terrain gameTerrain)
         {
-            OpenGL.EnableDepthTest(true);
+            uint shaderProgram = Shader.GetShaderProgram();
+
+            // Pastikan nama string "view" dan "projection" sama persis dengan yang ada di kode GLSL Anda
+            int viewLocation = Shader.GetView();
+            int projectionLocation = Shader.GetProjection();
 
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
@@ -129,20 +145,20 @@ namespace DarkEngine3D_gl_csharp.Engine
                 GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
                 deltaTime = Glfw.GetDeltaTime();
-                float aspect = WindowWidth / WindowHeight;
-
 
                 camera.UpdateVectors();
                 GL.UseProgram(shaderProgram); 
                  
                 int renderedTris = gameTerrain.Render(camera, WindowWidth / WindowHeight, gameTerrain.GetFrozenPlanes());
                  
-                objTriangle.Draw(deltaTime, window);
 
-                camera.SetViewAndProjection(WindowWidth, WindowHeight, viewLocation, projectionLocation);
-
-                Keyboard.Update(glfwLib, window, camera, deltaTime, aspect, gameTerrain);
+                camera.SetViewAndProjection(viewLocation, projectionLocation);
+           
+                Keyboard.Update(glfwLib, window, camera, deltaTime, gameTerrain);
                 Mouse.Update(window, camera);
+
+
+                objTriangle.Draw(deltaTime, window);
 
 
                 Glfw.ShowFPS(Terrain.GetMapSize(), Terrain.GetChunkSize(), deltaTime, renderedTris);

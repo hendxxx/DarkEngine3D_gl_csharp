@@ -11,10 +11,20 @@ namespace DarkEngine3D_gl_csharp.Engine
         // Tambahkan variabel rotasi
         public float Yaw = 0.0f; // Menghadap ke depan (sumbu -Z)
         public float Pitch = 0.0f;
-         
-        public Camera(float x, float y, float z)
+
+        public float foV ;
+        public float nearDist;
+        public float farDist;
+        public float aspect;
+
+        public Camera(float x, float y, float z, float _aspect, float _foV, float _nearDist, float _farDist)
         { 
-            Init(x,y,z);
+            aspect = _aspect;
+            foV = _foV;
+            nearDist = _nearDist;
+            farDist = _farDist; 
+
+            Init(x, y, z);
         }
         public void Init(float x, float y, float z)
         {
@@ -35,15 +45,16 @@ namespace DarkEngine3D_gl_csharp.Engine
             direction.Z = MathF.Sin(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
             Front = Vector3.Normalize(direction);
         }
+        public float GetAspect() => aspect;
 
         public Matrix4x4 GetViewMatrix() => Matrix4x4.CreateLookAt(Position, Position + Front, Up);
-        public static Matrix4x4 GetProjectionMatrix(float aspect) => Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 4, aspect, 0.01f, 1000.0f);
+        public static Matrix4x4 GetProjectionMatrix(float aspect, float foV, float nearDist, float farDist) => Matrix4x4.CreatePerspectiveFieldOfView(foV, aspect, nearDist, farDist);
 
-        public void SetViewAndProjection(int Width, int Height, int viewLocation, int projectionLocation)
+        public void SetViewAndProjection(  int viewLocation, int projectionLocation)
         {
-            //Cameraaa and .. action..
+            
             Matrix4x4 view = GetViewMatrix();
-            Matrix4x4 projection = GetProjectionMatrix((float)Width / Height);
+            Matrix4x4 projection = GetProjectionMatrix(aspect, foV, nearDist, farDist);
             unsafe
             {
                 // Mengambil pointer dari matriks C# dan mengirimnya ke GPU

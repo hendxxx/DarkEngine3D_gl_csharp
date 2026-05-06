@@ -18,7 +18,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         // Kita gunakan List sementara saat Generate, lalu upload ke Native Memory
         public void Generate(int ChunkSize,int worldStartX, int worldStartZ)
         {
-            List<Vertex> vertices = new List<Vertex>();
+            List<Vertex> vertices = [];
             int size = ChunkSize;
 
             for (int z = 0; z < size; z++)
@@ -34,10 +34,10 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
 
             _vertexCount = vertices.Count;
-            SetupGPUResources(vertices.ToArray());
+            SetupGPUResources([.. vertices]);
         }
 
-        private void AddQuad(List<Vertex> vertices, float x, float z)
+        private static void AddQuad(List<Vertex> vertices, float x, float z)
         {
             //float h00 = Noise.GetHeight(x, z);          // Kiri Bawah
             //float h10 = Noise.GetHeight(x + 1, z);      // Kanan Bawah
@@ -49,7 +49,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             float h01 =0.0f;
             float h11 =0.0f;
 
-            Vector3 color = new Vector3(0.1f, 0.4f, 0.1f);
+            Vector3 color = new(0.1f, 0.4f, 0.1f);
 
             // --- SEGITIGA 1 (Dibalik ke urutan CCW yang benar agar menghadap ke atas) ---
             vertices.Add(new Vertex(x, h00, z, color.X, color.Y, color.Z));         // 1. Kiri Bawah
@@ -102,6 +102,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             // Penting: Hapus resource di GPU saat chunk tidak lagi digunakan
             fixed (uint* pVao = &VAO) GL.DeleteVertexArrays(1, pVao);
             fixed (uint* pVbo = &VBO) GL.DeleteBuffers(1, pVbo);
+            GC.SuppressFinalize(this);
         }
     }
 

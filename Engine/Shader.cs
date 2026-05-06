@@ -6,6 +6,9 @@
         static uint lineShaderProgram;
         static int viewLocation;
         static int projectionLocation;
+        static int viewLineLocation;
+        static int projectionLineLocation;
+
         static uint vertexShader;
         static uint fragmentShader;
 
@@ -58,6 +61,9 @@
             SetView();
             SetProjection();
 
+            SetLineView();
+            SetLineProjection(); 
+
         }
         public static void Cleanup()
         {
@@ -74,18 +80,42 @@
 
             return shaderProgram;
         }
+        public static uint GetLineShaderProgram()
+        {
+            return lineShaderProgram;
+        }
+
         public static int GetView()
         {
 
             return viewLocation;
         }
-        public static uint GetLineShaderProgram()
-        {
-            return lineShaderProgram;
-        }
         public static int GetProjection()
         {
             return projectionLocation;
+        }
+
+
+        public static int GetLineView()
+        {
+
+            return viewLineLocation;
+        }
+        public static int GetLineProjection()
+        {
+            return projectionLineLocation;
+        }
+
+        public static void SetLineView()
+        {
+
+            viewLineLocation = GL.GetUniformLocation(lineShaderProgram, "view"); 
+        }
+        public static void SetLineProjection()
+        {
+             
+            projectionLineLocation = GL.GetUniformLocation(lineShaderProgram, "projection");
+             
         }
 
         public static void SetView( ) {

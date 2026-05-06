@@ -10,6 +10,8 @@ namespace DarkEngine3D_gl_csharp.Engine
     {
         public const int GLFW_KEY_W = 87, GLFW_KEY_S = 83, GLFW_KEY_A = 65, GLFW_KEY_D = 68;
         public const int GLFW_PRESS = 1;
+        
+        public const int GLFW_KEY_I = 73;
 
         public const int GLFW_KEY_ESCAPE = 256;
         public const int GLFW_RELEASE = 0;
@@ -24,6 +26,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const uint GL_DEPTH_BUFFER_BIT = 0x00000100;
          
         public const int GLFW_CURSOR = 0x00033001;
+        public const int GLFW_CURSOR_NORMAL = 0x00034001;
         public const int GLFW_CURSOR_DISABLED = 0x00034003;
 
         public const uint GL_DEPTH_TEST = 0x0B71;

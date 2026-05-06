@@ -5,7 +5,7 @@ namespace DarkEngine3D_gl_csharp.Engine
 {
     // Definisikan class GL untuk menampung function pointers
     public static unsafe class GL
-    { 
+    {
         // Simpan alamat mentahnya
         public static IntPtr ClearColorPtr;
         public static IntPtr ClearPtr;

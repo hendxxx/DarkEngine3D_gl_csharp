@@ -8,45 +8,41 @@ public unsafe class Program
 { 
     public static void Main()
     {
+        int WindowWidth = 1920;
+        int WindowHeight = 1080;
 
+        // Init GLFW and Create Window
+        Glfw.Init(WindowWidth, WindowHeight, "My Native C# Engine");
+        
         // Load Library GLFW
-        Glfw.Init(1920,1080, "My Native C# Engine");
         IntPtr glfwLib = Glfw.GetglfwLib();
         IntPtr window = Glfw.GetWindow();
-
+        
         // Load Library OpenGL
         OpenGL.Init();
 
         // Init Camera
-        Camera camera = new(0, 5, 20);
-         
+        Camera camera = new(0, 5, 20, WindowWidth/ WindowHeight, (float)Math.PI/4 , 0.01f,1000.0f);
+
+        // Init Shader
         Shader.Init();
         Shader.ActiveShader();
-        uint shaderProgram = Shader.GetShaderProgram();
-        uint lineShaderProgram = Shader.GetLineShaderProgram();
+
 
         // Init Keyboard and Mouse
-        Keyboard.Init(glfwLib, lineShaderProgram);
+        Keyboard.Init(glfwLib, 10.0f);
         Mouse.Init(glfwLib, window);
-
-        //Terrain terrain = new Terrain();
-        //terrain.Generate(shaderProgram, 0, 0);
-        Terrain gameTerrain = new();
-        gameTerrain.Init(shaderProgram); 
         
-        //TerrainManager terrainMan = new();
+        // Init Terrain
+        Terrain gameTerrain = new(256,16); 
+
+        // Init Object3D
+        Object3D objTriangle = new(glfwLib, 0, 5, 0);
          
-        Object3D objTriangle = new(glfwLib, shaderProgram, 0, 1, 0);
+        OpenGL.EnableDepthTest(true);
+        OpenGL.EnableFaceCulling(true);
 
-        // Pastikan nama string "view" dan "projection" sama persis dengan yang ada di kode GLSL Anda
-        int viewLocation = Shader.GetView();
-        int projectionLocation = Shader.GetProjection();
-
-        GL.Enable(Const.GL_CULL_FACE);
-        GL.CullFace(Const.GL_BACK);
-        GL.FrontFace(Const.GL_CCW);
-
-        Glfw.Loop(glfwLib, camera, objTriangle, shaderProgram, viewLocation, projectionLocation, gameTerrain);        
+        Glfw.Loop(glfwLib, camera, objTriangle, gameTerrain);        
 
         Console.WriteLine("Engine Shutdown.");
     }

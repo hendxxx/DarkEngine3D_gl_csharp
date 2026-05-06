@@ -9,25 +9,37 @@ namespace DarkEngine3D_gl_csharp.Engine
     {
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int> glfwGetKey;
 
-        private uint shaderProgram;
+        private uint _shaderProgram;
+        public uint ShaderProgram
+        {
+            get => _shaderProgram;
+            private set => _shaderProgram = value;
+        }
+
+
         private int modelLocation;
         private Vector3 trianglePosition;
 
         public uint VAO, VBO;
         private int _vertexCount;
-        public Object3D(nint glfwLib , uint _shaderProgram, float x, float y, float z)
+        public Object3D(nint glfwLib ,  float x, float y, float z)
         {
-            glfwGetKey = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetKey");
+            ShaderProgram = Shader.GetShaderProgram();
 
-            shaderProgram = _shaderProgram;
-            Generate(shaderProgram);
+            glfwGetKey = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetKey");
+             
+            Generate(ShaderProgram);
             SetPosition(x, y, z);   
         }
         public void SetPosition(float x, float y, float z)
         {
 
-            modelLocation = GL.GetUniformLocation(shaderProgram, "model");
+            modelLocation = GL.GetUniformLocation(ShaderProgram, "model");
             trianglePosition = new Vector3(x,y,z); // Posisi awal segitiga
+        }
+        public Vector3 GetPosition()
+        {
+            return trianglePosition;
         }
 
         public void Generate(uint shaderProgram) {
@@ -91,7 +103,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             SetPosition(trianglePosition.X, trianglePosition.Y, trianglePosition.Z);
 
             Matrix4x4 modelMatrix = Matrix4x4.CreateTranslation(trianglePosition);
-            GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&modelMatrix);
+            GL.UniformMatrix4fv(modelLocation, 1, true, (float*)&modelMatrix); 
 
             // GAMBAR!
             GL.BindVertexArray(VAO);
