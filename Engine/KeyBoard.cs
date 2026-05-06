@@ -13,7 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         static int lineVLoc = 0;
         static int linePLoc = 0;     // Lokasi uniform view & projection untuk shader garis
         static uint lineShaderProgram; // ID shader program untuk rendering garis
-        static Vector3[] frozenCorners = null; // Untuk menyimpan koordinat frustum yang di-freeze
+        static Vector3[]?frozenCorners = null; // Untuk menyimpan koordinat frustum yang di-freeze
 
         // state untuk tombol P (edge detection)
         static int prevPState = 0;
@@ -31,7 +31,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
         }
 
-        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, float aspect, Terrain gameTerrain, uint lineShaderProgramParam)
+        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, float aspect, Terrain gameTerrain)
         { 
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
@@ -74,8 +74,8 @@ namespace DarkEngine3D_gl_csharp.Engine
                 if (frozenMode)
                 {
                     Matrix4x4 view = camera.GetViewMatrix();
-                    Matrix4x4 proj = camera.GetProjectionMatrix(aspect);
-                    frozenCorners = gameTerrain.GetFrustumCorners(view, proj);
+                    Matrix4x4 proj = Camera.GetProjectionMatrix(aspect);
+                    frozenCorners = Terrain.GetFrustumCorners(view, proj);
                     gameTerrain.SetFrozenFrustumCorners(frozenCorners); // PASS frozen corners to Terrain
                     gameTerrain.SetHighlightFrustumMatches(true);
                 }

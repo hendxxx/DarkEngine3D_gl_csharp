@@ -14,11 +14,11 @@ namespace DarkEngine3D_gl_csharp.Engine
     {
         public const int MAP_SIZE = 256; // 256x256 agar pas dengan pembagian 16
         public const int CHUNK_SIZE = 16;
-        private static int chunksPerSide = MAP_SIZE / CHUNK_SIZE; // 16x16 chunk
+        private readonly static int chunksPerSide = MAP_SIZE / CHUNK_SIZE; // 16x16 chunk
 
-        private TerrainChunk[,] worldMap;
+        private static TerrainChunk[,]? worldMap = null;
 
-        private static Plane[] planes;
+        private static Plane[]? planes = null;
 
         private uint shaderProgram;
         private int modelLocation;
@@ -29,8 +29,8 @@ namespace DarkEngine3D_gl_csharp.Engine
         private int lineProjLocation;
 
         // Frozen frustum storage (populated when user presses P)
-        private Vector3[] frozenCorners = null;
-        private Plane[] frozenPlanes = null;
+        private Vector3[]? frozenCorners = null;
+        private Plane[]? frozenPlanes = null;
 
         private bool highlightFrustumMatches = false;
 
@@ -75,12 +75,12 @@ namespace DarkEngine3D_gl_csharp.Engine
             frozenPlanes = null;
         }
 
-        public int GetMapSize()
+        public static int GetMapSize()
         {
             return MAP_SIZE;
         }
 
-        public int GetChunkSize()
+        public static int GetChunkSize()
         {
             return CHUNK_SIZE;
         }
@@ -90,12 +90,17 @@ namespace DarkEngine3D_gl_csharp.Engine
             highlightFrustumMatches = enabled;
         }
 
-        public int Render( Camera camera, float aspect)
+        public Plane[]? GetFrozenPlanes()
+        {
+            return frozenPlanes;
+        }
+
+        public int Render( Camera camera, float aspect, Plane[]? frozenPlanes )
         {
             int totalTriangles = 0;
  
             // 1. Hitung Matriks Gabungan (View * Projection)
-            Matrix4x4 vp = camera.GetViewMatrix() * camera.GetProjectionMatrix(aspect);
+            Matrix4x4 vp = camera.GetViewMatrix() * Camera.GetProjectionMatrix(aspect);
 
             planes = ExtractPlanes(vp);
 
@@ -115,22 +120,23 @@ namespace DarkEngine3D_gl_csharp.Engine
                         {
                             GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&model);
                         }
+                        
+                        worldMap?[x, z].Draw();
 
-                        worldMap[x, z].Draw();
                         totalTriangles += (CHUNK_SIZE * CHUNK_SIZE * 2);
                     }
 
                     // Determine "insideFrozen" only when frozen frustum exists
-                    bool insideFrozen = false;
                     if (usingFrozen)
                     {
-                        insideFrozen = IsAABBInsideFrustum(frozenPlanes, x, z);
+                        bool insideFrozen = IsAABBInsideFrustum(frozenPlanes, x, z);
+
+                        // Draw bounding box:
+                        // - If frozen frustum exists: blue = insideFrozen, yellow = outsideFrozen
+                        // - If no frozen frustum: yellow if outside camera frustum, blue if inside
+                        DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, aspect);
                     }
 
-                    // Draw bounding box:
-                    // - If frozen frustum exists: blue = insideFrozen, yellow = outsideFrozen
-                    // - If no frozen frustum: yellow if outside camera frustum, blue if inside
-                    DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, aspect);
                 }
             }
 
@@ -140,7 +146,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 GL.Disable(Const.GL_DEPTH_TEST);
                 GL.UseProgram(lineShaderProgram);
                 Matrix4x4 v = camera.GetViewMatrix();
-                Matrix4x4 p = camera.GetProjectionMatrix(aspect);
+                Matrix4x4 p = Camera.GetProjectionMatrix(aspect);
                 unsafe
                 {
                     GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
@@ -154,14 +160,14 @@ namespace DarkEngine3D_gl_csharp.Engine
         }
 
         // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)
-        private static Plane[] BuildPlanesFromCorners(Vector3[] c)
+        private static Plane[]? BuildPlanesFromCorners(Vector3[] c)
         {
             if (c == null || c.Length < 8) return null;
 
             var planes = new Plane[6];
 
             // Create helper to make a plane from three points
-            Plane MakePlane(Vector3 a, Vector3 b, Vector3 d)
+            static Plane MakePlane(Vector3 a, Vector3 b, Vector3 d)
             {
                 var n = Vector3.Normalize(Vector3.Cross(b - a, d - a));
                 float D = -Vector3.Dot(n, a);
@@ -181,7 +187,7 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         // Test AABB (chunk) against frustum planes.
         // Return true if AABB is at least partially inside (i.e. NOT completely outside any plane).
-        private static bool IsAABBInsideFrustum(Plane[] frustumPlanes, int chunkIndexX, int chunkIndexZ)
+        private static bool IsAABBInsideFrustum(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)
         {
             if (frustumPlanes == null) return true;
 
@@ -194,16 +200,16 @@ namespace DarkEngine3D_gl_csharp.Engine
             float maxY = 1.0f;
 
             // eight corners of chunk AABB
-            Vector3[] corners = {
-                new Vector3(minX, minY, minZ),
-                new Vector3(maxX, minY, minZ),
-                new Vector3(maxX, maxY, minZ),
-                new Vector3(minX, maxY, minZ),
-                new Vector3(minX, minY, maxZ),
-                new Vector3(maxX, minY, maxZ),
-                new Vector3(maxX, maxY, maxZ),
-                new Vector3(minX, maxY, maxZ)
-            };
+            Vector3[] corners = [
+                new(minX, minY, minZ),
+                new(maxX, minY, minZ),
+                new(maxX, maxY, minZ),
+                new(minX, maxY, minZ),
+                new(minX, minY, maxZ),
+                new(maxX, minY, maxZ),
+                new(maxX, maxY, maxZ),
+                new(minX, maxY, maxZ)
+            ];
 
             foreach (var pl in frustumPlanes)
             {
@@ -249,7 +255,7 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public static unsafe void DrawLine(Vector3 start, Vector3 end, uint shader, int vLoc, int pLoc, Camera camera, float aspect)
         {
-            float[] lineData = { start.X, start.Y, start.Z, end.X, end.Y, end.Z };
+            float[] lineData = [start.X, start.Y, start.Z, end.X, end.Y, end.Z];
             uint vao, vbo;
 
             GL.GenVertexArrays(1, &vao);
@@ -266,7 +272,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.VertexAttribPointer(0, 3, 0x1406, false, 0, (void*)0);
 
             Matrix4x4 view = camera.GetViewMatrix();
-            Matrix4x4 proj = camera.GetProjectionMatrix(aspect);
+            Matrix4x4 proj = Camera.GetProjectionMatrix(aspect);
             GL.UniformMatrix4fv(vLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
 
@@ -280,7 +286,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         {
             float r = 1.0f; float g = 0.0f; float b = 0.0f;
 
-            float[] lineVerticesWithColor = {
+            float[] lineVerticesWithColor = [
                 c[0].X, c[0].Y, c[0].Z, r, g, b,  c[1].X, c[1].Y, c[1].Z, r, g, b,
                 c[1].X, c[1].Y, c[1].Z, r, g, b,  c[2].X, c[2].Y, c[2].Z, r, g, b,
                 c[2].X, c[2].Y, c[2].Z, r, g, b,  c[3].X, c[3].Y, c[3].Z, r, g, b,
@@ -295,7 +301,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 c[1].X, c[1].Y, c[1].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
                 c[2].X, c[2].Y, c[2].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
                 c[3].X, c[3].Y, c[3].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b
-            };
+            ];
 
             uint vao, vbo;
             GL.GenVertexArrays(1, &vao);
@@ -320,7 +326,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.UseProgram(shader);
 
             Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = camera.GetProjectionMatrix(aspect);
+            Matrix4x4 p = Camera.GetProjectionMatrix(aspect);
             GL.UniformMatrix4fv(vLoc, 1, true, (float*)&v);
             GL.UniformMatrix4fv(pLoc, 1, true, (float*)&p);
 
@@ -342,15 +348,17 @@ namespace DarkEngine3D_gl_csharp.Engine
             float minY = -0.0f;
             float maxY = 1.0f;
 
-            Vector3[] c = new Vector3[8];
-            c[0] = new Vector3(minX, minY, minZ);
-            c[1] = new Vector3(maxX, minY, minZ);
-            c[2] = new Vector3(maxX, maxY, minZ);
-            c[3] = new Vector3(minX, maxY, minZ);
-            c[4] = new Vector3(minX, minY, maxZ);
-            c[5] = new Vector3(maxX, minY, maxZ);
-            c[6] = new Vector3(maxX, maxY, maxZ);
-            c[7] = new Vector3(minX, maxY, maxZ);
+            Vector3[] c =
+            [
+                new Vector3(minX, minY, minZ),
+                new Vector3(maxX, minY, minZ),
+                new Vector3(maxX, maxY, minZ),
+                new Vector3(minX, maxY, minZ),
+                new Vector3(minX, minY, maxZ),
+                new Vector3(maxX, minY, maxZ),
+                new Vector3(maxX, maxY, maxZ),
+                new Vector3(minX, maxY, maxZ),
+            ];
 
             // Color logic per request:
             // - when frozen frustum exists: blue if inside frozen, yellow if outside frozen
@@ -379,7 +387,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 }
             }
 
-            float[] verts = {
+            float[] verts = [
                 c[0].X, c[0].Y, c[0].Z, r, g, b,  c[1].X, c[1].Y, c[1].Z, r, g, b,
                 c[1].X, c[1].Y, c[1].Z, r, g, b,  c[2].X, c[2].Y, c[2].Z, r, g, b,
                 c[2].X, c[2].Y, c[2].Z, r, g, b,  c[3].X, c[3].Y, c[3].Z, r, g, b,
@@ -394,7 +402,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 c[1].X, c[1].Y, c[1].Z, r, g, b,  c[5].X, c[5].Y, c[5].Z, r, g, b,
                 c[2].X, c[2].Y, c[2].Z, r, g, b,  c[6].X, c[6].Y, c[6].Z, r, g, b,
                 c[3].X, c[3].Y, c[3].Z, r, g, b,  c[7].X, c[7].Y, c[7].Z, r, g, b
-            };
+            ];
 
             uint vao, vbo;
             GL.GenVertexArrays(1, &vao);
@@ -419,7 +427,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.UseProgram(lineShaderProgram);
 
             Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = camera.GetProjectionMatrix(aspect);
+            Matrix4x4 p = Camera.GetProjectionMatrix(aspect);
             unsafe
             {
                 GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
@@ -432,7 +440,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.DeleteBuffers(1, &vbo);
         }
 
-        private Plane[] ExtractPlanes(Matrix4x4 vp)
+        private static Plane[] ExtractPlanes(Matrix4x4 vp)
         {
             var planes = new Plane[6];
 
@@ -452,7 +460,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             return planes;
         }
 
-        public Vector3[] GetFrustumCorners(Matrix4x4 view, Matrix4x4 proj)
+        public static Vector3[] GetFrustumCorners(Matrix4x4 view, Matrix4x4 proj)
         {
             // Kalikan View lalu Projection (Urutan Row-Major .NET)
             Matrix4x4 viewProj = view * proj;
@@ -460,10 +468,17 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             Vector3[] corners = new Vector3[8];
             // 8 titik sudut NDC (-1 sampai 1)
-            Vector3[] ndc = {
-                new(-1, -1, -1), new( 1, -1, -1), new( 1,  1, -1), new(-1,  1, -1), // Near
-                new(-1, -1,  1), new( 1, -1,  1), new( 1,  1,  1), new(-1,  1,  1)  // Far
-            };
+            Vector3[] value = [
+                new(-1, -1, -1),
+                new(1, -1, -1),
+                new(1, 1, -1),
+                new(-1, 1, -1), // Near
+                new(-1, -1, 1),
+                new(1, -1, 1),
+                new(1, 1, 1),
+                new(-1, 1, 1)  // Far
+            ];
+            Vector3[] ndc = value;
 
             for (int i = 0; i < 8; i++)
             {

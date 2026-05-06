@@ -117,9 +117,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, uint shaderProgram, uint lineShaderProgram, int viewLocation, int projectionLocation, Terrain gameTerrain)
+        public static void Loop(nint glfwLib , Camera camera, Object3D objTriangle, uint shaderProgram, int viewLocation, int projectionLocation, Terrain gameTerrain)
         {
-            float aspect = 0;
             OpenGL.EnableDepthTest(true);
 
             // Game Loop (Zero-GC)
@@ -130,23 +129,23 @@ namespace DarkEngine3D_gl_csharp.Engine
                 GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
                 deltaTime = Glfw.GetDeltaTime();
-                aspect = WindowWidth / WindowHeight; // Rasio lebar:tinggi window
+                float aspect = WindowWidth / WindowHeight;
 
 
                 camera.UpdateVectors();
                 GL.UseProgram(shaderProgram); 
                  
-                int renderedTris = gameTerrain.Render(camera, WindowWidth / WindowHeight);
+                int renderedTris = gameTerrain.Render(camera, WindowWidth / WindowHeight, gameTerrain.GetFrozenPlanes());
                  
                 objTriangle.Draw(deltaTime, window);
 
                 camera.SetViewAndProjection(WindowWidth, WindowHeight, viewLocation, projectionLocation);
 
-                Keyboard.Update(glfwLib, window, camera, deltaTime, aspect, gameTerrain, lineShaderProgram);
+                Keyboard.Update(glfwLib, window, camera, deltaTime, aspect, gameTerrain);
                 Mouse.Update(window, camera);
 
 
-                Glfw.ShowFPS(gameTerrain.GetMapSize(), gameTerrain.GetChunkSize(), deltaTime, renderedTris);
+                Glfw.ShowFPS(Terrain.GetMapSize(), Terrain.GetChunkSize(), deltaTime, renderedTris);
 
                 Shader.Cleanup();
 
