@@ -54,6 +54,9 @@ namespace DarkEngine3D_gl_csharp.Engine
             private set => _windowHeight = value;
         }
         public static float aspect = 1;
+
+        // Smoothed FPS (recomputed once per second inside ShowFPS) — read by the UI overlay.
+        public static float CurrentFps = 0f;
         public static void Init(int width, int height, string title)
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
@@ -129,6 +132,10 @@ namespace DarkEngine3D_gl_csharp.Engine
             // 2. Update variabel aspect ratio global (agar matriks proyeksi tidak gepeng)
             // Pastikan variabel 'aspect' bisa diakses dari sini
             aspect = (float)width / (float)height;
+
+            // 3. Track current window size so UI overlay stays correct after resize
+            WindowWidth = width;
+            WindowHeight = height;
         }
 
         public static void ShowFPS(int mapSize, int chunkSize,float deltaTime,int renderedTris)
@@ -142,6 +149,8 @@ namespace DarkEngine3D_gl_csharp.Engine
                 // Hitung total segitiga jika seluruh map dirender (untuk perbandingan)
                 int totalMapTris = (mapSize / chunkSize) * (mapSize / chunkSize) * (chunkSize * chunkSize * 2);
 
+                CurrentFps = frameCount / timer;
+
                 string title = $"DarkEngine3D | FPS: {frameCount} | Tris: {renderedTris:N0} / {totalMapTris:N0}";
                 fixed (byte* pTitle = Encoding.UTF8.GetBytes(title + "\0"))
                 {
@@ -152,7 +161,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk)
+        public static void Loop(nint glfwLib , Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, UIRenderer ui, MovingObjects movers)
         {
             uint shaderProgram = Shader.GetShaderProgram();
 
@@ -183,9 +192,17 @@ namespace DarkEngine3D_gl_csharp.Engine
 
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
+                // Update + draw the bumper cubes. Update runs after Keyboard so player input
+                // is applied first, then collisions resolve any new overlaps.
+                movers.Update(deltaTime, camera);
+                movers.Draw();
+
                 light.Update();
 
                 Glfw.ShowFPS(TerrainChunk.GetMapSize(), TerrainChunk.GetChunkSize(), deltaTime, renderedTris);
+
+                // 2D UI overlay — drawn last so it sits on top of the 3D scene.
+                ui.Render(WindowWidth, WindowHeight, CurrentFps, camera.Position, Keyboard.SelectedQuickSlot, deltaTime);
 
                 Shader.Cleanup();
 
