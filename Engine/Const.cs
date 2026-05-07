@@ -12,6 +12,25 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const uint GL_LINE = 0x1B01;
         public const uint GL_FILL = 0x1B02;
         public const uint GL_DYNAMIC_DRAW = 0x88E4;
+
+        // Texture-related
+        public const uint GL_TEXTURE_2D          = 0x0DE1;
+        public const uint GL_RGB                 = 0x1907;
+        public const uint GL_RGBA                = 0x1908;
+        public const uint GL_UNSIGNED_BYTE       = 0x1401;
+        public const uint GL_TEXTURE_MIN_FILTER  = 0x2801;
+        public const uint GL_TEXTURE_MAG_FILTER  = 0x2800;
+        public const uint GL_TEXTURE_WRAP_S      = 0x2802;
+        public const uint GL_TEXTURE_WRAP_T      = 0x2803;
+        public const uint GL_LINEAR              = 0x2601;
+        public const uint GL_NEAREST             = 0x2600;
+        public const uint GL_LINEAR_MIPMAP_LINEAR = 0x2703;
+        public const uint GL_REPEAT              = 0x2901;
+        public const uint GL_CLAMP_TO_EDGE       = 0x812F;
+        public const uint GL_TEXTURE0            = 0x84C0;
+        public const uint GL_BLEND               = 0x0BE2;
+        public const uint GL_SRC_ALPHA           = 0x0302;
+        public const uint GL_ONE_MINUS_SRC_ALPHA = 0x0303;
         
         public const uint GL_COLOR_BUFFER_BIT = 0x00004000;
         public const uint GL_DEPTH_BUFFER_BIT = 0x00000100;
@@ -47,6 +66,10 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const int GLFW_KEY_W = 87, GLFW_KEY_S = 83, GLFW_KEY_A = 65, GLFW_KEY_D = 68;
         
         public const int GLFW_KEY_I = 73;
+
+        // Mouse buttons
+        public const int GLFW_MOUSE_BUTTON_LEFT  = 0;
+        public const int GLFW_MOUSE_BUTTON_RIGHT = 1;
 
         public const int GLFW_KEY_ESCAPE = 256;
         public const int GLFW_KEY_F1 = 290;
@@ -89,5 +112,24 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const float STAMINA_LOW_THRESHOLD_PCT = 30.0f; // below this %, movement crawls
         public const float STAMINA_LOW_SPEED_FACTOR = 0.15f;  // very slow when tired
         public const float STAMINA_JUMP_COST = 10.0f;         // flat cost per jump
+
+        // Player attacks
+        public const float STONE_SPEED         = 25.0f;   // launch velocity along camera forward
+        public const float STONE_LAUNCH_UP     = 3.0f;    // small upward arc on throw
+        public const float STONE_GRAVITY       = 30.0f;
+        public const float STONE_RADIUS        = 0.25f;   // collision sphere
+        public const float STONE_DAMAGE        = 18.0f;
+        public const float STONE_LIFETIME      = 5.0f;
+        public const float THROW_COOLDOWN      = 0.55f;
+        public const float THROW_ANIM_DURATION = 0.4f;
+        public const float PUNCH_RANGE         = 2.5f;
+        public const float PUNCH_DAMAGE        = 14.0f;
+        public const float PUNCH_CONE_DOT      = 0.5f;    // cos(60°): hits anything within ±60° of view
+        public const float PUNCH_COOLDOWN      = 0.4f;
+        public const float PUNCH_ANIM_DURATION = 0.3f;
+
+        // Enemy
+        public const float ENEMY_MAX_HP        = 30.0f;   // smaller than player's 100
+        public const float ENEMY_DEATH_DURATION = 0.8f;   // fall-over animation length
     }
 }

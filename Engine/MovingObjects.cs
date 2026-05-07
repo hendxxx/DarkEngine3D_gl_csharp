@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine
@@ -13,34 +14,55 @@ namespace DarkEngine3D_gl_csharp.Engine
             public float HitFlashTimer;  // > 0 while a "bump" animation is active
             public bool IsChasing;       // true → AI is locked on the player
             public float WanderTimer;    // counts down; on expiry, pick a new random direction
+            public float YawDegrees;     // facing direction (derived from velocity)
+
+            public float HP;             // current HP; <= 0 → dies
+            public bool IsDead;          // true once killed; AI + collisions skipped
+            public float DeathTimer;     // counts UP from 0 during the fall-over animation
         }
 
         // Tunables
-        private const float MoverRadius     = 1.5f;
-        private const float MoverHalfHeight = 1.0f;
+        private const float MoverRadius     = 0.6f;
+        private const float MoverYOffset    = 0.0f;    // anime-character feet at local y≈0
+        private const float ModelScale      = 0.65f;   // anime-character is ~3.04u tall → ~2m
         private const float WanderSpeed     = 5.0f;
-        private const float ChaseSpeed      = 12.0f;   // faster than walk (10) — player must run to escape
-        private const float ChaseStartRange = 30.0f;   // detection: spot the player at this radius
-        private const float ChaseStopRange  = 50.0f;   // hysteresis: must escape past this to break aggro
+        private const float ChaseSpeed      = 12.0f;   // faster than walk (10)
+        private const float ChaseStartRange = 30.0f;
+        private const float ChaseStopRange  = 50.0f;
         private const float PlayerRadius    = 0.7f;
-        private const float PlayerDamage    = 12f;     // HP per bump
+        private const float PlayerDamage    = 12f;
         private const float PlayerHitCooldownDuration = 1.0f;
         private const float FlashDuration   = 0.4f;
-        private const float CubeSide        = 2.0f;    // visual size
+        // If the model ends up looking the wrong way, flip this to 180.
+        private const float ModelYawOffsetDeg = 0.0f;
+
+        // One sub-mesh of the enemy model — all triangles sharing a single material.
+        private class MeshSegment
+        {
+            public uint Vao, Vbo;
+            public int VertexCount;
+            public Texture? DiffuseTex;
+        }
 
         private readonly Mover[] _movers;
         private readonly Random _rng;
-        private uint _vao, _vbo;
-        private int _vertexCount;
+        private readonly System.Collections.Generic.List<MeshSegment> _segments = new();
+        private readonly System.Collections.Generic.Dictionary<string, Texture> _textureCache = new(StringComparer.OrdinalIgnoreCase);
         private uint _shaderProgram;
         private int _modelLocation;
+        private int _useTextureLocation;
+        private int _diffuseTexLocation;
+        private int _alphaCutoffLocation;
         private float _playerHitCooldown = 0f;
 
         public MovingObjects(int count, int seed = 12345)
         {
-            _shaderProgram = Shader.GetShaderProgram();
-            _modelLocation = GL.GetUniformLocation(_shaderProgram, "model");
-            BuildCube();
+            _shaderProgram        = Shader.GetShaderProgram();
+            _modelLocation        = GL.GetUniformLocation(_shaderProgram, "model");
+            _useTextureLocation   = GL.GetUniformLocation(_shaderProgram, "useTexture");
+            _diffuseTexLocation   = GL.GetUniformLocation(_shaderProgram, "diffuseTex");
+            _alphaCutoffLocation  = GL.GetUniformLocation(_shaderProgram, "alphaCutoff");
+            LoadDennisMesh();
 
             _rng = new Random(seed);
             float half = TerrainChunk.GetHalfMapSize();
@@ -58,66 +80,82 @@ namespace DarkEngine3D_gl_csharp.Engine
                     Radius = MoverRadius,
                     HitFlashTimer = 0f,
                     IsChasing = false,
-                    WanderTimer = NextWanderInterval()
+                    WanderTimer = NextWanderInterval(),
+                    YawDegrees = MathF.Atan2(MathF.Cos(angle), MathF.Sin(angle)) * 180f / MathF.PI,
+                    HP = Const.ENEMY_MAX_HP,
+                    IsDead = false,
+                    DeathTimer = 0f
                 };
-                _movers[i].Position.Y = TerrainChunk.GetHeightAt(x, z) + MoverHalfHeight;
+                _movers[i].Position.Y = TerrainChunk.GetHeightAt(x, z) + MoverYOffset;
             }
         }
 
         // Random 2–5 second interval between wander direction changes.
         private float NextWanderInterval() => 2.0f + (float)_rng.NextDouble() * 3.0f;
 
-        // Unit cube (side = 1) with per-face normals, one solid color.
-        private void BuildCube()
+        // Load the enemy mesh once into multi-material segments. All Movers share these VBOs.
+        // Each material in the OBJ becomes a MeshSegment with its own VAO, color, and (optional) texture.
+        private void LoadDennisMesh()
         {
-            float h = 0.5f;
-            float r = 1.0f, g = 0.45f, b = 0.1f; // orange
+            Vector3 fallback = new(0.85f, 0.55f, 0.65f); // used only when MTL has no Kd
+            ObjMesh mesh = ObjLoader.Load("Artifacts/Models/anime-character.obj");
 
-            Vertex V(float x, float y, float z, float nx, float ny, float nz)
-                => new Vertex(x, y, z, nx, ny, nz, r, g, b);
-
-            Vertex[] v = new Vertex[]
+            foreach (MeshGroup mg in mesh.Groups)
             {
-                // +Z (front)
-                V(-h,-h, h, 0,0, 1), V( h,-h, h, 0,0, 1), V( h, h, h, 0,0, 1),
-                V(-h,-h, h, 0,0, 1), V( h, h, h, 0,0, 1), V(-h, h, h, 0,0, 1),
-                // -Z (back)
-                V( h,-h,-h, 0,0,-1), V(-h,-h,-h, 0,0,-1), V(-h, h,-h, 0,0,-1),
-                V( h,-h,-h, 0,0,-1), V(-h, h,-h, 0,0,-1), V( h, h,-h, 0,0,-1),
-                // +X (right)
-                V( h,-h, h, 1,0, 0), V( h,-h,-h, 1,0, 0), V( h, h,-h, 1,0, 0),
-                V( h,-h, h, 1,0, 0), V( h, h,-h, 1,0, 0), V( h, h, h, 1,0, 0),
-                // -X (left)
-                V(-h,-h,-h,-1,0, 0), V(-h,-h, h,-1,0, 0), V(-h, h, h,-1,0, 0),
-                V(-h,-h,-h,-1,0, 0), V(-h, h, h,-1,0, 0), V(-h, h,-h,-1,0, 0),
-                // +Y (top)
-                V(-h, h, h, 0,1, 0), V( h, h, h, 0,1, 0), V( h, h,-h, 0,1, 0),
-                V(-h, h, h, 0,1, 0), V( h, h,-h, 0,1, 0), V(-h, h,-h, 0,1, 0),
-                // -Y (bottom)
-                V(-h,-h,-h, 0,-1,0), V( h,-h,-h, 0,-1,0), V( h,-h, h, 0,-1,0),
-                V(-h,-h,-h, 0,-1,0), V( h,-h, h, 0,-1,0), V(-h,-h, h, 0,-1,0),
-            };
+                if (mg.Vertices.Count == 0) continue;
 
-            _vertexCount = v.Length;
+                Vector3 color = fallback;
+                Texture? tex = null;
+                if (mesh.Materials.TryGetValue(mg.MaterialName, out MaterialDef? mat) && mat != null)
+                {
+                    color = mat.DiffuseColor;
+                    if (!string.IsNullOrEmpty(mat.DiffuseMapPath) && File.Exists(mat.DiffuseMapPath))
+                    {
+                        if (!_textureCache.TryGetValue(mat.DiffuseMapPath, out tex))
+                        {
+                            try { tex = new Texture(mat.DiffuseMapPath); _textureCache[mat.DiffuseMapPath] = tex; }
+                            catch (Exception ex) { Console.WriteLine($"  [tex fail] {mat.DiffuseMapPath}: {ex.Message}"); tex = null; }
+                        }
+                    }
+                }
 
-            fixed (uint* p = &_vao) GL.GenVertexArrays(1, p);
-            fixed (uint* p = &_vbo) GL.GenBuffers(1, p);
+                // Stamp the segment color into per-vertex Color so the no-texture path lights correctly.
+                Vertex[] verts = new Vertex[mg.Vertices.Count];
+                for (int i = 0; i < verts.Length; i++)
+                {
+                    Vertex v = mg.Vertices[i];
+                    v.Color = color;
+                    verts[i] = v;
+                }
 
-            GL.BindVertexArray(_vao);
-            GL.BindBuffer(Const.GL_ARRAY_BUFFER, _vbo);
-            fixed (void* ptr = v)
-            {
-                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(v.Length * sizeof(Vertex)), ptr, Const.GL_STATIC_DRAW);
+                MeshSegment seg = new() { VertexCount = verts.Length, DiffuseTex = tex };
+
+                fixed (uint* p = &seg.Vao) GL.GenVertexArrays(1, p);
+                fixed (uint* p = &seg.Vbo) GL.GenBuffers(1, p);
+
+                GL.BindVertexArray(seg.Vao);
+                GL.BindBuffer(Const.GL_ARRAY_BUFFER, seg.Vbo);
+                fixed (void* ptr = verts)
+                {
+                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(verts.Length * sizeof(Vertex)), ptr, Const.GL_STATIC_DRAW);
+                }
+                int stride = sizeof(Vertex);
+                GL.EnableVertexAttribArray(0);
+                GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+                GL.EnableVertexAttribArray(1);
+                GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)sizeof(Vector3));
+                GL.EnableVertexAttribArray(2);
+                GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 2));
+                GL.EnableVertexAttribArray(3);
+                GL.VertexAttribPointer(3, 2, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 3));
+                GL.BindVertexArray(0);
+
+                _segments.Add(seg);
             }
 
-            int stride = sizeof(Vertex);
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
-            GL.EnableVertexAttribArray(1);
-            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)sizeof(Vector3));
-            GL.EnableVertexAttribArray(2);
-            GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 2));
-            GL.BindVertexArray(0);
+            int textured = 0;
+            foreach (var s in _segments) if (s.DiffuseTex != null) textured++;
+            Console.WriteLine($"  Enemy mesh: {_segments.Count} segment(s), {textured} textured.");
         }
 
         public void Update(float dt, Camera player)
@@ -131,6 +169,13 @@ namespace DarkEngine3D_gl_csharp.Engine
             for (int i = 0; i < _movers.Length; i++)
             {
                 ref Mover m = ref _movers[i];
+
+                // Dead enemies don't move, don't chase, don't collide. Just tick the fall-over animation.
+                if (m.IsDead)
+                {
+                    m.DeathTimer += dt;
+                    continue;
+                }
 
                 // Distance to player on the XZ plane.
                 float ddx = px - m.Position.X;
@@ -202,15 +247,24 @@ namespace DarkEngine3D_gl_csharp.Engine
                     if (!m.IsChasing) { m.Velocity.Z = -m.Velocity.Z; m.HitFlashTimer = FlashDuration; }
                 }
 
-                m.Position.Y = TerrainChunk.GetHeightAt(m.Position.X, m.Position.Z) + MoverHalfHeight;
+                m.Position.Y = TerrainChunk.GetHeightAt(m.Position.X, m.Position.Z) + MoverYOffset;
+
+                // Face the way we're moving (skip the update if velocity is essentially zero so yaw doesn't snap to noise)
+                if (m.Velocity.X * m.Velocity.X + m.Velocity.Z * m.Velocity.Z > 1e-3f)
+                {
+                    m.YawDegrees = MathF.Atan2(m.Velocity.X, m.Velocity.Z) * 180f / MathF.PI;
+                }
+
                 if (m.HitFlashTimer > 0f) m.HitFlashTimer -= dt;
             }
 
             // --- Mover ↔ Mover collisions (XZ sphere–sphere) ---
             for (int i = 0; i < _movers.Length; i++)
             {
+                if (_movers[i].IsDead) continue;
                 for (int j = i + 1; j < _movers.Length; j++)
                 {
+                    if (_movers[j].IsDead) continue;
                     ref Mover a = ref _movers[i];
                     ref Mover b = ref _movers[j];
                     float dx = b.Position.X - a.Position.X;
@@ -246,6 +300,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             for (int i = 0; i < _movers.Length; i++)
             {
                 ref Mover m = ref _movers[i];
+                if (m.IsDead) continue;
                 float dx = m.Position.X - px;
                 float dz = m.Position.Z - pz;
                 float distSq = dx * dx + dz * dz;
@@ -285,32 +340,134 @@ namespace DarkEngine3D_gl_csharp.Engine
         public void Draw()
         {
             GL.UseProgram(_shaderProgram);
-            OpenGL.EnableFaceCulling(false); // skip winding concerns for the cube
-            GL.BindVertexArray(_vao);
+            OpenGL.EnableFaceCulling(false);
+
+            // Sampler unit + alpha cutoff are constant across all draw calls here.
+            if (_diffuseTexLocation  >= 0) GL.Uniform1i(_diffuseTexLocation, 0);
+            if (_alphaCutoffLocation >= 0) GL.Uniform1f(_alphaCutoffLocation, 0.5f);
 
             for (int i = 0; i < _movers.Length; i++)
             {
                 ref Mover m = ref _movers[i];
 
                 // Bump animation: scale up briefly when flashing.
-                // Chasing cubes are also slightly larger so the player can see who's locked on.
+                // Chasing characters are also slightly larger so the player can see who's locked on.
                 float t = MathF.Max(0f, m.HitFlashTimer / FlashDuration);
-                float chaseBoost = m.IsChasing ? 1.15f : 1.0f;
-                float scale = CubeSide * chaseBoost * (1.0f + t * 0.4f);
+                float chaseBoost = !m.IsDead && m.IsChasing ? 1.15f : 1.0f;
+                float scale = ModelScale * chaseBoost * (1.0f + t * 0.4f);
+                float yawRad = (m.YawDegrees + ModelYawOffsetDeg) * MathF.PI / 180f;
 
-                Matrix4x4 model = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateTranslation(m.Position);
+                // Death animation: tilt forward (rotate around X) from 0 to 90° over the death duration.
+                float deathPitch = 0f;
+                if (m.IsDead)
+                {
+                    float dt2 = MathF.Min(1f, m.DeathTimer / Const.ENEMY_DEATH_DURATION);
+                    deathPitch = -dt2 * (MathF.PI * 0.5f);
+                }
+
+                Matrix4x4 model =
+                    Matrix4x4.CreateScale(scale) *
+                    Matrix4x4.CreateRotationX(deathPitch) *
+                    Matrix4x4.CreateRotationY(yawRad) *
+                    Matrix4x4.CreateTranslation(m.Position);
                 GL.UniformMatrix4fv(_modelLocation, 1, false, (float*)&model);
-                GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount);
+
+                // Draw each material segment with its own texture (or the fallback color).
+                foreach (MeshSegment seg in _segments)
+                {
+                    bool hasTex = seg.DiffuseTex != null;
+                    if (_useTextureLocation >= 0) GL.Uniform1i(_useTextureLocation, hasTex ? 1 : 0);
+                    if (hasTex) seg.DiffuseTex!.Bind(0);
+
+                    GL.BindVertexArray(seg.Vao);
+                    GL.DrawArrays(Const.GL_TRIANGLES, 0, seg.VertexCount);
+                }
             }
 
+            // Reset texture state so other renderers (terrain, cubes) keep using the vertex-color path.
+            if (_useTextureLocation >= 0) GL.Uniform1i(_useTextureLocation, 0);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             GL.BindVertexArray(0);
             OpenGL.EnableFaceCulling(true);
         }
 
+        // Damage the first live mover whose collision sphere contains `point`.
+        // Returns true if a mover was hit (so the projectile knows to despawn).
+        public bool HitProjectile(Vector3 point, float radius, float damage)
+        {
+            for (int i = 0; i < _movers.Length; i++)
+            {
+                ref Mover m = ref _movers[i];
+                if (m.IsDead) continue;
+                float dx = m.Position.X - point.X;
+                float dy = m.Position.Y - point.Y;
+                float dz = m.Position.Z - point.Z;
+                float r = m.Radius + radius;
+                if (dx * dx + dy * dy + dz * dz <= r * r)
+                {
+                    DamageMover(ref m, damage);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Cone hit-test in the XZ plane: damage every live mover within `range` of `from`
+        // whose direction is within `coneDot` (cos of half-angle) of `forward`.
+        public int HitMelee(Vector3 from, Vector3 forward, float range, float coneDot, float damage)
+        {
+            int hits = 0;
+            // Flatten forward to XZ + normalize for the angular test.
+            float fx = forward.X, fz = forward.Z;
+            float fl = MathF.Sqrt(fx * fx + fz * fz);
+            if (fl < 1e-4f) return 0;
+            fx /= fl; fz /= fl;
+
+            for (int i = 0; i < _movers.Length; i++)
+            {
+                ref Mover m = ref _movers[i];
+                if (m.IsDead) continue;
+                float dx = m.Position.X - from.X;
+                float dz = m.Position.Z - from.Z;
+                float distSq = dx * dx + dz * dz;
+                float reach = range + m.Radius;
+                if (distSq > reach * reach) continue;
+                float dist = MathF.Sqrt(distSq);
+                if (dist < 1e-4f) { DamageMover(ref m, damage); hits++; continue; }
+                float dot = (dx * fx + dz * fz) / dist;
+                if (dot >= coneDot)
+                {
+                    DamageMover(ref m, damage);
+                    hits++;
+                }
+            }
+            return hits;
+        }
+
+        private static void DamageMover(ref Mover m, float damage)
+        {
+            m.HP -= damage;
+            m.HitFlashTimer = FlashDuration;
+            if (m.HP <= 0f && !m.IsDead)
+            {
+                m.HP = 0f;
+                m.IsDead = true;
+                m.DeathTimer = 0f;
+                // Freeze velocity so a dying enemy doesn't keep sliding.
+                m.Velocity = Vector3.Zero;
+            }
+        }
+
         public void Dispose()
         {
-            if (_vao != 0) { fixed (uint* p = &_vao) GL.DeleteVertexArrays(1, p); _vao = 0; }
-            if (_vbo != 0) { fixed (uint* p = &_vbo) GL.DeleteBuffers(1, p); _vbo = 0; }
+            foreach (MeshSegment seg in _segments)
+            {
+                if (seg.Vao != 0) { fixed (uint* p = &seg.Vao) GL.DeleteVertexArrays(1, p); seg.Vao = 0; }
+                if (seg.Vbo != 0) { fixed (uint* p = &seg.Vbo) GL.DeleteBuffers(1, p); seg.Vbo = 0; }
+            }
+            _segments.Clear();
+            foreach (var t in _textureCache.Values) t.Dispose();
+            _textureCache.Clear();
             GC.SuppressFinalize(this);
         }
     }

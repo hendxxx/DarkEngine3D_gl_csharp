@@ -161,7 +161,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
         } 
 
-        public static void Loop(nint glfwLib , Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, UIRenderer ui, MovingObjects movers)
+        public static void Loop(nint glfwLib , Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, UIRenderer ui, MovingObjects movers, Model[] staticModels, Projectiles projectiles)
         {
             uint shaderProgram = Shader.GetShaderProgram();
 
@@ -186,16 +186,24 @@ namespace DarkEngine3D_gl_csharp.Engine
                   
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
            
-                Keyboard.Update(glfwLib, window, camera, deltaTime, gameTerrainChunk);
+                Keyboard.Update(glfwLib, window, camera, deltaTime, gameTerrainChunk, movers, projectiles);
                 Mouse.Update(window, camera);
 
 
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
+                // Static .obj models (trees, buildings, props…). Each owns its transform.
+                for (int i = 0; i < staticModels.Length; i++)
+                    staticModels[i].Draw();
+
                 // Update + draw the bumper cubes. Update runs after Keyboard so player input
                 // is applied first, then collisions resolve any new overlaps.
                 movers.Update(deltaTime, camera);
                 movers.Draw();
+
+                // Stones in flight.
+                projectiles.Update(deltaTime, movers);
+                projectiles.Draw();
 
                 light.Update();
 

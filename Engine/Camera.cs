@@ -8,6 +8,10 @@ namespace DarkEngine3D_gl_csharp.Engine
         public Vector3 Front = new(0, 0, 0);
         public Vector3 Up = Vector3.UnitY;
 
+        // Visual-only offset added during view-matrix construction. Used by attack animations so
+        // the camera bobs/thrusts without disturbing the physics position.
+        public Vector3 ViewBobOffset = Vector3.Zero;
+
         // Tambahkan variabel rotasi
         public float Yaw = 0.0f; // Menghadap ke depan (sumbu -Z)
         public float Pitch = 0.0f;
@@ -47,7 +51,11 @@ namespace DarkEngine3D_gl_csharp.Engine
         }
         public float GetAspect() => aspect;
 
-        public Matrix4x4 GetViewMatrix() => Matrix4x4.CreateLookAt(Position, Position + Front, Up);
+        public Matrix4x4 GetViewMatrix()
+        {
+            Vector3 eye = Position + ViewBobOffset;
+            return Matrix4x4.CreateLookAt(eye, eye + Front, Up);
+        }
         public static Matrix4x4 GetProjectionMatrix(float aspect, float foV, float nearDist, float farDist) => Matrix4x4.CreatePerspectiveFieldOfView(foV, aspect, nearDist, farDist);
 
         public void SetViewAndProjection(  int viewLocation, int projectionLocation)
