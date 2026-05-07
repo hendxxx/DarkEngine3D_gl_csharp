@@ -51,7 +51,13 @@ public unsafe class Program
 
         Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc);
 
-        Glfw.Loop(glfwLib, camera, light, objTriangle, gameTerrainChunk);        
+        // 2D UI overlay (HP bar, quick slots, FPS + coords).
+        UIRenderer ui = new();
+
+        // 10 random moving cubes that bump each other and damage the player on contact.
+        MovingObjects movers = new(10);
+
+        Glfw.Loop(glfwLib, camera, light, objTriangle, gameTerrainChunk, ui, movers);
 
         Console.WriteLine("Engine Shutdown."); 
     }

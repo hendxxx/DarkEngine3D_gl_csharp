@@ -35,6 +35,9 @@ namespace DarkEngine3D_gl_csharp.Engine
         }
         private static TerrainChunkData[,]? worldMap = null;
 
+        // Reference to the MapLoader used to build the terrain — needed for runtime height queries (physics).
+        private static MapLoader? _mapLoader = null;
+
         private static Plane[]? planes = null;
 
         private uint shaderProgram;
@@ -81,6 +84,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                 worldMap = null;
             }
             MapLoader mapLoader = new MapLoader(imagePath);
+            _mapLoader = mapLoader;
 
             MAP_SIZE = mapLoader.Width;
             CHUNK_SIZE = MAP_SIZE/16;
@@ -126,9 +130,40 @@ namespace DarkEngine3D_gl_csharp.Engine
             frozenPlanes = null;
         }
 
+        // Bilinearly interpolated terrain height at any world (x,z).
+        // Uses the same MapLoader.GetHeight grid sampling that the mesh was built from,
+        // so the returned height matches the rendered surface (within bilinear vs. triangle approximation).
+        public static float GetHeightAt(float worldX, float worldZ)
+        {
+            if (_mapLoader == null) return 0f;
+
+            int x0 = (int)MathF.Floor(worldX);
+            int z0 = (int)MathF.Floor(worldZ);
+            int x1 = x0 + 1;
+            int z1 = z0 + 1;
+
+            float fx = worldX - x0;
+            float fz = worldZ - z0;
+
+            float h00 = _mapLoader.GetHeight(x0, z0);
+            float h10 = _mapLoader.GetHeight(x1, z0);
+            float h01 = _mapLoader.GetHeight(x0, z1);
+            float h11 = _mapLoader.GetHeight(x1, z1);
+
+            float h0 = h00 * (1f - fx) + h10 * fx;
+            float h1 = h01 * (1f - fx) + h11 * fx;
+            return h0 * (1f - fz) + h1 * fz;
+        }
+
         public static int GetMapSize()
         {
             return MAP_SIZE;
+        }
+
+        // World extent on each axis: terrain spans [-half, +half] in X and Z.
+        public static float GetHalfMapSize()
+        {
+            return (ChunksPerSide * CHUNK_SIZE) / 2f;
         }
 
         public static int GetChunkSize()

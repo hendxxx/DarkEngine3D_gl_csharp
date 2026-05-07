@@ -50,7 +50,18 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public const int GLFW_KEY_ESCAPE = 256;
         public const int GLFW_KEY_F1 = 290;
+        public const int GLFW_KEY_F2 = 291;
         public const int GLFW_KEY_P = 80;
+        public const int GLFW_KEY_SPACE = 32;
+        public const int GLFW_KEY_C = 67;
+
+        // Number row 1..6 — quick-slot shortcuts
+        public const int GLFW_KEY_1 = 49;
+        public const int GLFW_KEY_2 = 50;
+        public const int GLFW_KEY_3 = 51;
+        public const int GLFW_KEY_4 = 52;
+        public const int GLFW_KEY_5 = 53;
+        public const int GLFW_KEY_6 = 54;
 
         // Added keys for object controls (I J K L)
         public const int GLFW_KEY_J = 74;
@@ -63,5 +74,20 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         // Speed multiplier while shift is held
         public const float SHIFT_SPEED_MULTIPLIER = 10.0f;
+
+        // Player eye height above terrain in walk mode
+        public const float PLAYER_EYE_HEIGHT = 2.0f;
+        public const float PLAYER_CROUCH_HEIGHT = 1.0f;
+        public const float PLAYER_JUMP_SPEED = 15.0f; // initial upward velocity on jump
+        public const float PLAYER_GRAVITY = 40.0f;    // world-units / sec^2
+
+        // Stamina tunables (units per second)
+        public const float STAMINA_MAX = 100.0f;
+        public const float STAMINA_DRAIN_WALK = 8.0f;
+        public const float STAMINA_DRAIN_RUN = 25.0f;
+        public const float STAMINA_REGEN = 15.0f;
+        public const float STAMINA_LOW_THRESHOLD_PCT = 30.0f; // below this %, movement crawls
+        public const float STAMINA_LOW_SPEED_FACTOR = 0.15f;  // very slow when tired
+        public const float STAMINA_JUMP_COST = 15.0f;         // flat cost per jump
     }
 }
