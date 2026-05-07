@@ -26,27 +26,28 @@ public unsafe class Program
         OpenGL.EnableDepthTest(true);
         OpenGL.EnableFaceCulling(true);
 
-        // Init Camera
-        Camera camera = new(0, 5, 20, WindowWidth/ WindowHeight, (float)Math.PI/4 , 0.01f,1000.0f);
-         
         // Init Shader
         Shader.Init();
         Shader.ActiveShader();
-         
 
+        // Init Camera
+        Camera camera = new(0, 5, 20, WindowWidth/ WindowHeight, (float)Math.PI/4 , 0.01f,10000.0f);
+
+        Vector3 sunDirLoc = new(-0.2f, -1.0f, -0.3f);
+        Vector3 sunColorLoc = new(1.0f, 1.0f, 1.0f); // Cahaya Putih
+        Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z); // Cahaya Putih
+
+
+          
         // Init Keyboard and Mouse
         Keyboard.Init(glfwLib, 10.0f);
         Mouse.Init(glfwLib, window);
         
         // Init TerrainChunk
-        TerrainChunk gameTerrainChunk = new(256,16); 
+        TerrainChunk gameTerrainChunk = new("Artifacts\\Maps\\map.jpg"); 
 
         // Init Object3D
-        Object3D objTriangle = new(glfwLib, 0.0f, 7.0f, 0.0f);
-
-        Vector3 sunDirLoc = new(-0.2f, -1.0f, -0.3f);
-        Vector3 sunColorLoc = new(1.0f, 1.0f, 1.0f); // Cahaya Putih
-        Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z); // Cahaya Putih
+        Object3D objTriangle = new(glfwLib, 0.0f, 15.0f, 0.0f);
 
         Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc);
 

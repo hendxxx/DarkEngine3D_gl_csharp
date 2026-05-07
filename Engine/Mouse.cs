@@ -22,7 +22,7 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             glfwSetInputMode = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetInputMode");
 
-            glfwSetInputMode(window, Const.GLFW_CURSOR, Const.GLFW_CURSOR_NORMAL);
+            glfwSetInputMode(window, Const.GLFW_CURSOR, Const.GLFW_CURSOR_DISABLED);
              
 
             lastX = Glfw.WindowWidth / 2;

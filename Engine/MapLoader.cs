@@ -1,34 +1,61 @@
-﻿using System.Numerics;
-using System.Drawing;
+﻿using System;
+using System.Numerics;
+using System.IO;
+using StbImageSharp;
 
 namespace DarkEngine3D_gl_csharp.Engine
 {
     public class MapLoader
     {
-        //private readonly Bitmap _map;
-        //public int Width => _map.Width;
-        //public int Height => _map.Height;
+        private readonly byte[] _pixels;
+        private readonly int _channels;
+        public int Width { get; }
+        public int Height { get; }
 
-        //public MapLoader(string path)
-        //{
-        //    _map = new Bitmap(path);
-        //}
+        public MapLoader(string path)
+        {
+            using var stream = File.OpenRead(path);
+            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            Width = image.Width;
+            Height = image.Height;
+            _channels = (int)image.Comp; // typically 3 or 4
+            _pixels = image.Data;
+        }
 
-        //// Ambil Ketinggian (Y) berdasarkan kecerahan pixel
-        //public float GetHeight(int x, int z)
-        //{
-        //    if (x < 0 || x >= Width || z < 0 || z >= Height) return 0f;
-        //    Color pixel = _map.GetPixel(x, z);
-        //    // Semakin putih semakin tinggi, dikali skala (misal 50.0f)
-        //    return (pixel.R / 255f) * 50.0f;
-        //}
+        // Ambil Ketinggian (Y) berdasarkan kecerahan pixel
+        // Coordinat dunia dipusatkan ke tengah heightmap seperti sebelumnya
+        public float GetHeight(int x, int z)
+        {
+            int px = x + (Width / 2);
+            int pz = z + (Height / 2);
 
-        //// Ambil Warna (RGB)
-        //public Vector3 GetColor(int x, int z)
-        //{
-        //    if (x < 0 || x >= Width || z < 0 || z >= Height) return new Vector3(0, 1, 0); // Default Hijau
-        //    Color pixel = _map.GetPixel(x, z);
-        //    return new Vector3(pixel.R / 255f, pixel.G / 255f, pixel.B / 255f);
-        //}
+            if (px < 0) px = 0;
+            if (px >= Width) px = Width - 1;
+            if (pz < 0) pz = 0;
+            if (pz >= Height) pz = Height - 1;
+
+            int idx = (pz * Width + px) * _channels;
+            byte r = _pixels[idx];
+            // If image has alpha channel, channels >= 4; we still use R for height
+            return (r / 255f) * 25.0f;
+        }
+
+        // Ambil Warna (RGB)
+        public Vector3 GetColor(int x, int z)
+        {
+            int px = x + (Width / 2);
+            int pz = z + (Height / 2);
+
+            if (px < 0) px = 0;
+            if (px >= Width) px = Width - 1;
+            if (pz < 0) pz = 0;
+            if (pz >= Height) pz = Height - 1;
+
+            int idx = (pz * Width + px) * _channels;
+            float r = _pixels[idx] / 255f;
+            float g = _pixels[idx + 1] / 255f;
+            float b = _pixels[idx + 2] / 255f;
+            return new Vector3(r, g, b);
+        }
     }
 }

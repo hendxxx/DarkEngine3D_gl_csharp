@@ -56,12 +56,12 @@ namespace DarkEngine3D_gl_csharp.Engine
         private static uint debugVbo = 0;
         private static readonly object debugBufferLock = new object();
 
-        public TerrainChunk(int mapSize, int chunkSize)
+        public TerrainChunk(string imagePath)
         {
-            Init(mapSize, chunkSize);
+            Init(imagePath);
         }
 
-        public void Init(int mapSize, int chunkSize)
+        public void Init(string imagePath)
         {
             // Dispose existing world map contents (avoid GPU resource leak on re-init)
             if (worldMap != null)
@@ -80,9 +80,10 @@ namespace DarkEngine3D_gl_csharp.Engine
                 }
                 worldMap = null;
             }
+            MapLoader mapLoader = new MapLoader(imagePath);
 
-            MAP_SIZE = mapSize;
-            CHUNK_SIZE = chunkSize;
+            MAP_SIZE = mapLoader.Width;
+            CHUNK_SIZE = MAP_SIZE/16;
 
             uint _shaderProgram = Shader.GetShaderProgram();
 
@@ -99,7 +100,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                     int offsetX = (x * CHUNK_SIZE) - halfMapSize;
                     int offsetZ = (z * CHUNK_SIZE) - halfMapSize;
 
-                    worldMap[x, z].Generate(CHUNK_SIZE, offsetX, offsetZ);
+                    worldMap[x, z].Generate(CHUNK_SIZE, offsetX, offsetZ, mapLoader);
                 }
             }
 

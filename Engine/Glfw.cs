@@ -165,7 +165,7 @@ namespace DarkEngine3D_gl_csharp.Engine
             while (glfwWindow(window) == 0)
             { 
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
-                GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                GL.ClearColor(0.6f, 0.6f, 1.0f, 1.0f);
 
                 deltaTime = Glfw.GetDeltaTime();
 

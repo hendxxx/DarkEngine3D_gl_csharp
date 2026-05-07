@@ -10,7 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine
          
         static bool isWireframe = false;
         static bool f1Pressed = false;
-        static float speedCam = 1.0f;
+        static float speedCam = 1000.0f;
         static int lineVLoc = 0;
         static int linePLoc = 0;     // Lokasi uniform view & projection untuk shader garis
         static uint lineShaderProgram; // ID shader program untuk rendering garis

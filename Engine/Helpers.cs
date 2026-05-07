@@ -4,13 +4,14 @@ namespace DarkEngine3D_gl_csharp.Engine
 {
     public class Helpers
     {
-        public static Vector3 CalculateNormal(float x, float z)
+        // Ini untuk Noice
+        public static Vector3 CalculateNormalForNoice(float x, float z)
         {
             float off = 0.1f;
-            float hL = Noise.GetHeight(x - off, z);
-            float hR = Noise.GetHeight(x + off, z);
-            float hD = Noise.GetHeight(x, z - off);
-            float hU = Noise.GetHeight(x, z + off);
+            float hL = Noise.GetHeight((x - off), z);
+            float hR = Noise.GetHeight((x + off), z);
+            float hD = Noise.GetHeight(x, (z - off));
+            float hU = Noise.GetHeight(x,  (z + off));
 
             // Semakin curam tanah, semakin kuat bayangannya
             Vector3 normal = new Vector3(hL - hR, 2.0f * off, hD - hU);

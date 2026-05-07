@@ -9,7 +9,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Update="Artifacts\Maps\map.bmp">
+    <PackageReference Include="StbImageSharp" Version="2.30.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Artifacts\Maps\map.jpg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\Maps\map.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\fragment_shader.glsl">
