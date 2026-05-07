@@ -11,6 +11,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const uint GL_FRONT_AND_BACK = 0x0408;
         public const uint GL_LINE = 0x1B01;
         public const uint GL_FILL = 0x1B02;
+        public const uint GL_DYNAMIC_DRAW = 0x88E4;
         
         public const uint GL_COLOR_BUFFER_BIT = 0x00004000;
         public const uint GL_DEPTH_BUFFER_BIT = 0x00000100;

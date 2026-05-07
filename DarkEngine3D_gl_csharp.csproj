@@ -9,6 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Update="Artifacts\Maps\map.bmp">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\shaders\fragment_shader.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
