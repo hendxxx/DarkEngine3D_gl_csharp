@@ -73,7 +73,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const int GLFW_KEY_RIGHT_SHIFT = 344;
 
         // Speed multiplier while shift is held
-        public const float SHIFT_SPEED_MULTIPLIER = 10.0f;
+        public const float SHIFT_SPEED_MULTIPLIER = 3.0f;
 
         // Player eye height above terrain in walk mode
         public const float PLAYER_EYE_HEIGHT = 2.0f;
@@ -83,11 +83,11 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         // Stamina tunables (units per second)
         public const float STAMINA_MAX = 100.0f;
-        public const float STAMINA_DRAIN_WALK = 8.0f;
-        public const float STAMINA_DRAIN_RUN = 25.0f;
+        public const float STAMINA_DRAIN_WALK = 3.5f;
+        public const float STAMINA_DRAIN_RUN = 10.0f;
         public const float STAMINA_REGEN = 15.0f;
         public const float STAMINA_LOW_THRESHOLD_PCT = 30.0f; // below this %, movement crawls
         public const float STAMINA_LOW_SPEED_FACTOR = 0.15f;  // very slow when tired
-        public const float STAMINA_JUMP_COST = 15.0f;         // flat cost per jump
+        public const float STAMINA_JUMP_COST = 10.0f;         // flat cost per jump
     }
 }

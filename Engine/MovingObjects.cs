@@ -11,12 +11,17 @@ namespace DarkEngine3D_gl_csharp.Engine
             public Vector3 Velocity;     // XZ velocity; Y is set from terrain each frame
             public float Radius;
             public float HitFlashTimer;  // > 0 while a "bump" animation is active
+            public bool IsChasing;       // true → AI is locked on the player
+            public float WanderTimer;    // counts down; on expiry, pick a new random direction
         }
 
         // Tunables
         private const float MoverRadius     = 1.5f;
         private const float MoverHalfHeight = 1.0f;
-        private const float MoverSpeed      = 5.0f;
+        private const float WanderSpeed     = 5.0f;
+        private const float ChaseSpeed      = 12.0f;   // faster than walk (10) — player must run to escape
+        private const float ChaseStartRange = 30.0f;   // detection: spot the player at this radius
+        private const float ChaseStopRange  = 50.0f;   // hysteresis: must escape past this to break aggro
         private const float PlayerRadius    = 0.7f;
         private const float PlayerDamage    = 12f;     // HP per bump
         private const float PlayerHitCooldownDuration = 1.0f;
@@ -24,6 +29,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         private const float CubeSide        = 2.0f;    // visual size
 
         private readonly Mover[] _movers;
+        private readonly Random _rng;
         private uint _vao, _vbo;
         private int _vertexCount;
         private uint _shaderProgram;
@@ -36,25 +42,30 @@ namespace DarkEngine3D_gl_csharp.Engine
             _modelLocation = GL.GetUniformLocation(_shaderProgram, "model");
             BuildCube();
 
-            Random rng = new(seed);
+            _rng = new Random(seed);
             float half = TerrainChunk.GetHalfMapSize();
             _movers = new Mover[count];
 
             for (int i = 0; i < count; i++)
             {
-                float x = (float)(rng.NextDouble() * 2 - 1) * (half - 4f);
-                float z = (float)(rng.NextDouble() * 2 - 1) * (half - 4f);
-                float angle = (float)(rng.NextDouble() * Math.PI * 2);
+                float x = (float)(_rng.NextDouble() * 2 - 1) * (half - 4f);
+                float z = (float)(_rng.NextDouble() * 2 - 1) * (half - 4f);
+                float angle = (float)(_rng.NextDouble() * Math.PI * 2);
                 _movers[i] = new Mover
                 {
                     Position = new Vector3(x, 0, z),
-                    Velocity = new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * MoverSpeed,
+                    Velocity = new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * WanderSpeed,
                     Radius = MoverRadius,
-                    HitFlashTimer = 0f
+                    HitFlashTimer = 0f,
+                    IsChasing = false,
+                    WanderTimer = NextWanderInterval()
                 };
                 _movers[i].Position.Y = TerrainChunk.GetHeightAt(x, z) + MoverHalfHeight;
             }
         }
+
+        // Random 2–5 second interval between wander direction changes.
+        private float NextWanderInterval() => 2.0f + (float)_rng.NextDouble() * 3.0f;
 
         // Unit cube (side = 1) with per-face normals, one solid color.
         private void BuildCube()
@@ -114,18 +125,82 @@ namespace DarkEngine3D_gl_csharp.Engine
             if (_playerHitCooldown > 0f) _playerHitCooldown -= dt;
 
             float half = TerrainChunk.GetHalfMapSize();
+            float px = player.Position.X, pz = player.Position.Z;
 
-            // --- Move + bounce off map edges ---
+            // --- AI + Move + bounce off map edges ---
             for (int i = 0; i < _movers.Length; i++)
             {
                 ref Mover m = ref _movers[i];
+
+                // Distance to player on the XZ plane.
+                float ddx = px - m.Position.X;
+                float ddz = pz - m.Position.Z;
+                float distSq = ddx * ddx + ddz * ddz;
+
+                // State transitions with hysteresis: easy to start chasing, harder to lose interest.
+                if (m.IsChasing)
+                {
+                    if (distSq > ChaseStopRange * ChaseStopRange)
+                    {
+                        m.IsChasing = false;
+                        // Pick a fresh wander direction so the cube doesn't keep flying toward last-known location.
+                        float angle = (float)(_rng.NextDouble() * Math.PI * 2);
+                        m.Velocity.X = MathF.Cos(angle) * WanderSpeed;
+                        m.Velocity.Z = MathF.Sin(angle) * WanderSpeed;
+                        m.WanderTimer = NextWanderInterval();
+                    }
+                }
+                else
+                {
+                    if (distSq < ChaseStartRange * ChaseStartRange)
+                        m.IsChasing = true;
+                }
+
+                // Drive velocity from current state.
+                if (m.IsChasing && distSq > 1e-4f)
+                {
+                    float dist = MathF.Sqrt(distSq);
+                    m.Velocity.X = ddx / dist * ChaseSpeed;
+                    m.Velocity.Z = ddz / dist * ChaseSpeed;
+                }
+                else if (!m.IsChasing)
+                {
+                    m.WanderTimer -= dt;
+                    if (m.WanderTimer <= 0f)
+                    {
+                        float angle = (float)(_rng.NextDouble() * Math.PI * 2);
+                        m.Velocity.X = MathF.Cos(angle) * WanderSpeed;
+                        m.Velocity.Z = MathF.Sin(angle) * WanderSpeed;
+                        m.WanderTimer = NextWanderInterval();
+                    }
+                }
+
+                // Move.
                 m.Position.X += m.Velocity.X * dt;
                 m.Position.Z += m.Velocity.Z * dt;
 
-                if (m.Position.X < -half + m.Radius) { m.Position.X = -half + m.Radius; m.Velocity.X = -m.Velocity.X; m.HitFlashTimer = FlashDuration; }
-                if (m.Position.X >  half - m.Radius) { m.Position.X =  half - m.Radius; m.Velocity.X = -m.Velocity.X; m.HitFlashTimer = FlashDuration; }
-                if (m.Position.Z < -half + m.Radius) { m.Position.Z = -half + m.Radius; m.Velocity.Z = -m.Velocity.Z; m.HitFlashTimer = FlashDuration; }
-                if (m.Position.Z >  half - m.Radius) { m.Position.Z =  half - m.Radius; m.Velocity.Z = -m.Velocity.Z; m.HitFlashTimer = FlashDuration; }
+                // Edge handling: always clamp position. Reflect velocity only while wandering —
+                // chasers re-target the player next frame anyway, no need to bounce them off walls.
+                if (m.Position.X < -half + m.Radius)
+                {
+                    m.Position.X = -half + m.Radius;
+                    if (!m.IsChasing) { m.Velocity.X = -m.Velocity.X; m.HitFlashTimer = FlashDuration; }
+                }
+                if (m.Position.X > half - m.Radius)
+                {
+                    m.Position.X = half - m.Radius;
+                    if (!m.IsChasing) { m.Velocity.X = -m.Velocity.X; m.HitFlashTimer = FlashDuration; }
+                }
+                if (m.Position.Z < -half + m.Radius)
+                {
+                    m.Position.Z = -half + m.Radius;
+                    if (!m.IsChasing) { m.Velocity.Z = -m.Velocity.Z; m.HitFlashTimer = FlashDuration; }
+                }
+                if (m.Position.Z > half - m.Radius)
+                {
+                    m.Position.Z = half - m.Radius;
+                    if (!m.IsChasing) { m.Velocity.Z = -m.Velocity.Z; m.HitFlashTimer = FlashDuration; }
+                }
 
                 m.Position.Y = TerrainChunk.GetHeightAt(m.Position.X, m.Position.Z) + MoverHalfHeight;
                 if (m.HitFlashTimer > 0f) m.HitFlashTimer -= dt;
@@ -168,7 +243,6 @@ namespace DarkEngine3D_gl_csharp.Engine
             }
 
             // --- Mover ↔ Player collision (damage + push) ---
-            float px = player.Position.X, pz = player.Position.Z;
             for (int i = 0; i < _movers.Length; i++)
             {
                 ref Mover m = ref _movers[i];
@@ -219,8 +293,10 @@ namespace DarkEngine3D_gl_csharp.Engine
                 ref Mover m = ref _movers[i];
 
                 // Bump animation: scale up briefly when flashing.
+                // Chasing cubes are also slightly larger so the player can see who's locked on.
                 float t = MathF.Max(0f, m.HitFlashTimer / FlashDuration);
-                float scale = CubeSide * (1.0f + t * 0.4f);
+                float chaseBoost = m.IsChasing ? 1.15f : 1.0f;
+                float scale = CubeSide * chaseBoost * (1.0f + t * 0.4f);
 
                 Matrix4x4 model = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateTranslation(m.Position);
                 GL.UniformMatrix4fv(_modelLocation, 1, false, (float*)&model);
