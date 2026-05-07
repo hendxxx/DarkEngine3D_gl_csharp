@@ -395,49 +395,69 @@ namespace DarkEngine3D_gl_csharp.Engine
             // 8 Titik Sudut
             Vector3[] c = [
                             new(minX, minY, minZ), new(maxX, minY, minZ), new(maxX, maxY, minZ), new(minX, maxY, minZ),
-                            new(minX, minY, maxZ), new(maxX, minY, maxZ), new(maxX, maxY, maxZ), new(minX, maxY, maxZ)
-                          ];
+                            new(minX, minY, maxZ), new(maxX, minY, maxZ),  new(maxX, maxY, minZ), new(minX, maxY, minZ),new(minX, minY, minZ)
+                           ];
 
-            // Kirim POSISI SAJA (X, Y, Z) - 3 float per titik
-            float[] verts = [
-                c[0].X, c[0].Y, c[0].Z, c[1].X, c[1].Y, c[1].Z,
-        c[1].X, c[1].Y, c[1].Z, c[2].X, c[2].Y, c[2].Z,
-        c[2].X, c[2].Y, c[2].Z, c[3].X, c[3].Y, c[3].Z,
-        c[3].X, c[3].Y, c[3].Z, c[0].X, c[0].Y, c[0].Z,
-
-        c[4].X, c[4].Y, c[4].Z, c[5].X, c[5].Y, c[5].Z,
-        c[5].X, c[5].Y, c[5].Z, c[6].X, c[6].Y, c[6].Z,
-        c[6].X, c[6].Y, c[6].Z, c[7].X, c[7].Y, c[7].Z,
-        c[7].X, c[7].Y, c[7].Z, c[4].X, c[4].Y, c[4].Z,
-
-        c[0].X, c[0].Y, c[0].Z, c[4].X, c[4].Y, c[4].Z,
-        c[1].X, c[1].Y, c[1].Z, c[5].X, c[5].Y, c[5].Z,
-        c[2].X, c[2].Y, c[2].Z, c[6].X, c[6].Y, c[6].Z,
-        c[3].X, c[3].Y, c[3].Z, c[7].X, c[7].Y, c[7].Z
-            ];
-
-            uint vao, vbo;
-            GL.GenVertexArrays(1, &vao);
-            GL.GenBuffers(1, &vbo);
-            GL.BindVertexArray(vao);
-            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
-            fixed (void* ptr = verts)
-            {
-                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(verts.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
-            }
-
-            // Stride 0 karena hanya ada posisi
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 0, (void*)0);
-
-            GL.UseProgram(lineShaderProgram);
-
+            float r = 1.0f; float g = 0.0f; float b = 0.0f;
             // --- LOGIKA WARNA VIA UNIFORM ---
             Vector3 finalColor;
             if (usingFrozen)
                 finalColor = insideFrozen ? new(0, 0, 1) : new(1, 1, 0); // Blue / Yellow
             else
                 finalColor = insideCamera ? new(0, 0, 1) : new(1, 1, 0); // Blue / Yellow
+
+            r= finalColor.X; g = finalColor.Y; b = finalColor.Z;
+
+
+            // Normal dummy (menghadap atas) agar lighting shader tidak menghasilkan warna hitam
+            float nx = 0.0f; float ny = 1.0f; float nz = 0.0f;
+
+            // Gunakan format 9 float per titik: Pos(3), Normal(3), Color(3)
+            float[] lineData = [
+                // Near Plane
+                c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b,  c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b,
+                c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b,  c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b,
+                c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b,  c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b,
+                c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b,  c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b,
+                // Far Plane
+                c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b,  c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b,
+                c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b,  c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b,
+                c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b,  c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b,
+                c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b,  c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b,
+                // Bridge
+                c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b,  c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b,
+                c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b,  c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b,
+                c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b,  c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b,
+                c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b,  c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b
+            ];
+
+            uint vao, vbo;
+            GL.GenVertexArrays(1, &vao);
+            GL.GenBuffers(1, &vbo);
+
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+
+            fixed (void* ptr = lineData)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
+            }
+
+            int stride = 9 * sizeof(float); // 36 bytes
+
+            // Atribut 0: Posisi
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+
+            // Atribut 1: Normal (Sangat penting agar shader tidak hitam)
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
+
+            // Atribut 2: Warna
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, stride, (void*)(6 * sizeof(float)));
+
+            GL.UseProgram(lineShaderProgram);
 
             int lineColorLocation = GL.GetUniformLocation(lineShaderProgram, "lineColor");
 
