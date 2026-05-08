@@ -47,6 +47,16 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             GL.ViewportPtr = GetProcAddress(glLib, "glViewport");
 
+            GL.GenTexturesPtr     = GetProcAddress(glLib, "glGenTextures");
+            GL.BindTexturePtr     = GetProcAddress(glLib, "glBindTexture");
+            GL.DeleteTexturesPtr  = GetProcAddress(glLib, "glDeleteTextures");
+            GL.TexImage2DPtr      = GetProcAddress(glLib, "glTexImage2D");
+            GL.TexParameteriPtr   = GetProcAddress(glLib, "glTexParameteri");
+            GL.ActiveTexturePtr   = GetProcAddress(glLib, "glActiveTexture");
+            GL.Uniform1iPtr       = GetProcAddress(glLib, "glUniform1i");
+            GL.Uniform1fPtr       = GetProcAddress(glLib, "glUniform1f");
+            GL.BlendFuncPtr       = GetProcAddress(glLib, "glBlendFunc");
+
             return glLib;
         }
 

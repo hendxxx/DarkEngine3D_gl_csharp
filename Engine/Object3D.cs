@@ -92,7 +92,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             GL.VertexAttribPointer(1, 3, 0x1406, false, stride, (void*)sizeof(Vector3));
             GL.EnableVertexAttribArray(2);
             GL.VertexAttribPointer(2, 3, 0x1406, false, stride, (void*)(sizeof(Vector3) * 2));
-
+            GL.EnableVertexAttribArray(3);
+            GL.VertexAttribPointer(3, 2, 0x1406, false, stride, (void*)(sizeof(Vector3) * 3));
         }
 
         public void Draw(float deltaTime, nint window,float _moveSpeed)

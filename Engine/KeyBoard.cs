@@ -29,6 +29,13 @@ namespace DarkEngine3D_gl_csharp.Engine
         public static int SelectedQuickSlot = 1;
         static int[] prevNumKeyState = new int[6];
 
+        // Attack state
+        static bool prevLmbDown = false;
+        static float throwCooldown = 0f;
+        static float punchCooldown = 0f;
+        static float throwAnimTimer = 0f;   // counts DOWN
+        static float punchAnimTimer = 0f;   // counts DOWN
+
         public static unsafe void Init(nint glfwLib, float _speedCam)
         {
             lineShaderProgram = Shader.GetLineShaderProgram();
@@ -43,8 +50,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
         }
 
-        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, TerrainChunk gameTerrainChunk)
-        { 
+        public static unsafe void Update(nint glfwLib, nint window, Camera camera, float deltaTime, TerrainChunk gameTerrainChunk, MovingObjects movers, Projectiles projectiles)
+        {
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
             {
@@ -243,6 +250,52 @@ namespace DarkEngine3D_gl_csharp.Engine
             prevPState = pState;
 
             // NOTE: drawing of the frozen frustum lines is handled inside TerrainChunk.Render now.
+
+            // === Attack handling ===
+            // Tick cooldowns + animation timers.
+            if (throwCooldown > 0f)  throwCooldown  -= deltaTime;
+            if (punchCooldown > 0f)  punchCooldown  -= deltaTime;
+            if (throwAnimTimer > 0f) throwAnimTimer -= deltaTime;
+            if (punchAnimTimer > 0f) punchAnimTimer -= deltaTime;
+
+            bool lmbDown = !dead && Mouse.IsButtonDown(window, Const.GLFW_MOUSE_BUTTON_LEFT);
+            // Rising-edge: only fire on the moment of click, not on hold.
+            if (lmbDown && !prevLmbDown)
+            {
+                if (SelectedQuickSlot == 1 && throwCooldown <= 0f)
+                {
+                    // Spawn a stone in front of the player with a small upward arc.
+                    Vector3 spawn = camera.Position + camera.Front * 0.8f;
+                    Vector3 vel = camera.Front * Const.STONE_SPEED + Vector3.UnitY * Const.STONE_LAUNCH_UP;
+                    projectiles.Spawn(spawn, vel);
+                    throwCooldown  = Const.THROW_COOLDOWN;
+                    throwAnimTimer = Const.THROW_ANIM_DURATION;
+                }
+                else if (SelectedQuickSlot == 2 && punchCooldown <= 0f)
+                {
+                    movers.HitMelee(camera.Position, camera.Front, Const.PUNCH_RANGE, Const.PUNCH_CONE_DOT, Const.PUNCH_DAMAGE);
+                    punchCooldown  = Const.PUNCH_COOLDOWN;
+                    punchAnimTimer = Const.PUNCH_ANIM_DURATION;
+                }
+            }
+            prevLmbDown = lmbDown;
+
+            // Drive the camera ViewBobOffset from whichever animation is active.
+            // Throw: a downward dip (sin pulse). Punch: a forward thrust (sin pulse).
+            Vector3 bob = Vector3.Zero;
+            if (throwAnimTimer > 0f)
+            {
+                float t = 1f - (throwAnimTimer / Const.THROW_ANIM_DURATION);
+                bob.Y += MathF.Sin(t * MathF.PI) * -0.20f;
+            }
+            if (punchAnimTimer > 0f)
+            {
+                float t = 1f - (punchAnimTimer / Const.PUNCH_ANIM_DURATION);
+                Vector3 fwd = camera.Front; fwd.Y = 0f;
+                if (fwd.LengthSquared() > 1e-6f) fwd = Vector3.Normalize(fwd);
+                bob += fwd * (MathF.Sin(t * MathF.PI) * 0.30f);
+            }
+            camera.ViewBobOffset = bob;
         }
-    } 
+    }
 }

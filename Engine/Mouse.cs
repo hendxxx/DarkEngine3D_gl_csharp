@@ -8,6 +8,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int, void> glfwSetInputMode;
         private static delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void> glfwGetCursorPos;
         private static delegate* unmanaged[Cdecl]<IntPtr, double, double, void> glfwSetCursorPos;
+        private static delegate* unmanaged[Cdecl]<IntPtr, int, int> glfwGetMouseButton;
 
         static double lastX, lastY;
         static bool firstMouse = true;
@@ -21,6 +22,8 @@ namespace DarkEngine3D_gl_csharp.Engine
             glfwGetCursorPos = (delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void>)NativeLibrary.GetExport(glfwLib, "glfwGetCursorPos");
 
             glfwSetInputMode = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetInputMode");
+
+            glfwGetMouseButton = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetMouseButton");
 
             glfwSetInputMode(window, Const.GLFW_CURSOR, Const.GLFW_CURSOR_DISABLED);
              
@@ -58,6 +61,12 @@ namespace DarkEngine3D_gl_csharp.Engine
             if (camera.Pitch < -89.0f) camera.Pitch = -89.0f;
 
 
+        }
+
+        // True while the given mouse button is held this frame.
+        public static unsafe bool IsButtonDown(nint window, int button)
+        {
+            return glfwGetMouseButton((IntPtr)window, button) == Const.GLFW_PRESS;
         }
     }
 }

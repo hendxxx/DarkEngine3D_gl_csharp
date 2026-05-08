@@ -37,6 +37,17 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public static IntPtr ViewportPtr;
 
+        // Texture / blending
+        public static IntPtr GenTexturesPtr;
+        public static IntPtr BindTexturePtr;
+        public static IntPtr DeleteTexturesPtr;
+        public static IntPtr TexImage2DPtr;
+        public static IntPtr TexParameteriPtr;
+        public static IntPtr ActiveTexturePtr;
+        public static IntPtr Uniform1iPtr;
+        public static IntPtr Uniform1fPtr;
+        public static IntPtr BlendFuncPtr;
+
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
         public static void ClearColor(float r, float g, float b, float a)
@@ -159,6 +170,33 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         public static void Viewport(int x, int y, int width, int height)
             => ((delegate* unmanaged<int, int, int, int, void>)ViewportPtr)(x, y, width, height);
+
+        public static void GenTextures(int n, uint* textures)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenTexturesPtr)(n, textures);
+
+        public static void BindTexture(uint target, uint texture)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BindTexturePtr)(target, texture);
+
+        public static void DeleteTextures(int n, uint* textures)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteTexturesPtr)(n, textures);
+
+        public static void TexImage2D(uint target, int level, int internalFormat, int width, int height, int border, uint format, uint type, void* pixels)
+            => ((delegate* unmanaged[Cdecl]<uint, int, int, int, int, int, uint, uint, void*, void>)TexImage2DPtr)(target, level, internalFormat, width, height, border, format, type, pixels);
+
+        public static void TexParameteri(uint target, uint pname, int param)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, int, void>)TexParameteriPtr)(target, pname, param);
+
+        public static void ActiveTexture(uint texture)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)ActiveTexturePtr)(texture);
+
+        public static void Uniform1i(int location, int v0)
+            => ((delegate* unmanaged[Cdecl]<int, int, void>)Uniform1iPtr)(location, v0);
+
+        public static void Uniform1f(int location, float v0)
+            => ((delegate* unmanaged[Cdecl]<int, float, void>)Uniform1fPtr)(location, v0);
+
+        public static void BlendFunc(uint sfactor, uint dfactor)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BlendFuncPtr)(sfactor, dfactor);
     }
 
     public static class ApiLoader

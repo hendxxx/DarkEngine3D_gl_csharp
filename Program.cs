@@ -57,7 +57,13 @@ public unsafe class Program
         // 10 random moving cubes that bump each other and damage the player on contact.
         MovingObjects movers = new(10);
 
-        Glfw.Loop(glfwLib, camera, light, objTriangle, gameTerrainChunk, ui, movers);
+        // No static models for now (trees/cottage removed).
+        Model[] staticModels = Array.Empty<Model>();
+
+        // Player projectiles (stones thrown via slot 1 + LMB).
+        Projectiles projectiles = new();
+
+        Glfw.Loop(glfwLib, camera, light, objTriangle, gameTerrainChunk, ui, movers, staticModels, projectiles);
 
         Console.WriteLine("Engine Shutdown."); 
     }
