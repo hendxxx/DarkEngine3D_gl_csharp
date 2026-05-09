@@ -70,8 +70,19 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             for (int i = 0; i < count; i++)
             {
-                float x = (float)(_rng.NextDouble() * 2 - 1) * (half - 4f);
-                float z = (float)(_rng.NextDouble() * 2 - 1) * (half - 4f);
+                float x, z;
+                // Keep rerolling coordinates until we are outside the safe zone around the player's spawn.
+                while (true)
+                {
+                    x = (float)(_rng.NextDouble() * 2 - 1) * (half - 4f);
+                    z = (float)(_rng.NextDouble() * 2 - 1) * (half - 4f);
+
+                    float dx = x - Const.PLAYER_SPAWN_X;
+                    float dz = z - Const.PLAYER_SPAWN_Z;
+                    if (MathF.Sqrt(dx * dx + dz * dz) > Const.SPAWN_SAFE_ZONE_RADIUS)
+                        break;
+                }
+
                 float angle = (float)(_rng.NextDouble() * Math.PI * 2);
                 _movers[i] = new Mover
                 {
@@ -330,6 +341,7 @@ namespace DarkEngine3D_gl_csharp.Engine
                     if (_playerHitCooldown <= 0f && UIRenderer.CurrentHP > 0)
                     {
                         UIRenderer.CurrentHP = (int)MathF.Max(0f, UIRenderer.CurrentHP - PlayerDamage);
+                        UIRenderer.HPAccumulator = (float)UIRenderer.CurrentHP; // sync the float tracker
                         _playerHitCooldown = PlayerHitCooldownDuration;
                         UIRenderer.HitFlashTimer = FlashDuration;
                     }

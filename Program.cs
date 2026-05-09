@@ -11,7 +11,7 @@ public unsafe class Program
     public static void Main()
     {
         int WindowWidth = 1920;
-        int WindowHeight = 1080;
+        int WindowHeight = 960;
 
         // Init GLFW and Create Window
         Glfw.Init(WindowWidth, WindowHeight, "My Native C# Engine");
@@ -31,7 +31,7 @@ public unsafe class Program
         Shader.ActiveShader();
 
         // Init Camera
-        Camera camera = new(0, 5, 20, WindowWidth/ WindowHeight, (float)Math.PI/4 , 0.01f,10000.0f);
+        Camera camera = new(Const.PLAYER_SPAWN_X, 5, Const.PLAYER_SPAWN_Z, WindowWidth/ WindowHeight, (float)Math.PI/4 , 0.01f,10000.0f);
 
         Vector3 sunDirLoc = new(-0.2f, -1.0f, -0.3f);
         Vector3 sunColorLoc = new(1.0f, 1.0f, 1.0f); // Cahaya Putih

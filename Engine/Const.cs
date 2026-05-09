@@ -77,6 +77,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         public const int GLFW_KEY_P = 80;
         public const int GLFW_KEY_SPACE = 32;
         public const int GLFW_KEY_C = 67;
+        public const int GLFW_KEY_R = 82;
 
         // Number row 1..6 — quick-slot shortcuts
         public const int GLFW_KEY_1 = 49;
@@ -106,12 +107,18 @@ namespace DarkEngine3D_gl_csharp.Engine
 
         // Stamina tunables (units per second)
         public const float STAMINA_MAX = 100.0f;
-        public const float STAMINA_DRAIN_WALK = 3.5f;
-        public const float STAMINA_DRAIN_RUN = 10.0f;
+        public const float STAMINA_DRAIN_WALK = 0.2f;
+        public const float STAMINA_DRAIN_RUN = 12.0f;
         public const float STAMINA_REGEN = 15.0f;
         public const float STAMINA_LOW_THRESHOLD_PCT = 30.0f; // below this %, movement crawls
         public const float STAMINA_LOW_SPEED_FACTOR = 0.15f;  // very slow when tired
         public const float STAMINA_JUMP_COST = 10.0f;         // flat cost per jump
+
+        // Health regeneration tunables (units per second)
+        public const float HP_REGEN_STAND = 1.5f;
+        public const float HP_REGEN_WALK = 0.3f;
+        public const float HP_REGEN_CROUCH = 3.0f;
+        public const float HP_REGEN_RUN = 0.0f;
 
         // Player attacks
         public const float STONE_SPEED         = 25.0f;   // launch velocity along camera forward
@@ -131,5 +138,10 @@ namespace DarkEngine3D_gl_csharp.Engine
         // Enemy
         public const float ENEMY_MAX_HP        = 30.0f;   // smaller than player's 100
         public const float ENEMY_DEATH_DURATION = 0.8f;   // fall-over animation length
+
+        // Spawn
+        public const float PLAYER_SPAWN_X = -100.0f;
+        public const float PLAYER_SPAWN_Z = -100.0f;
+        public const float SPAWN_SAFE_ZONE_RADIUS = 30.0f;
     }
 }

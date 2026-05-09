@@ -13,6 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine
         // Display state — game logic can write to these later.
         public static int CurrentHP = 100;
         public static int MaxHP = 100;
+        public static float HPAccumulator = 100f; // Track HP as float for smooth regen
         public static float CurrentStamina = Const.STAMINA_MAX;
         public static float MaxStamina = Const.STAMINA_MAX;
 

@@ -95,6 +95,19 @@ namespace DarkEngine3D_gl_csharp.Engine
 
             // === Read movement-related inputs ===
             bool dead = UIRenderer.CurrentHP <= 0;
+
+            // R: Respawn if dead
+            if (dead && glfwGetKey(window, Const.GLFW_KEY_R) == Const.GLFW_PRESS)
+            {
+                UIRenderer.CurrentHP = 100;
+                UIRenderer.HPAccumulator = 100f;
+                UIRenderer.CurrentStamina = Const.STAMINA_MAX;
+                camera.Position = new Vector3(Const.PLAYER_SPAWN_X, 5, Const.PLAYER_SPAWN_Z);
+                verticalVelocity = 0;
+                isGrounded = true;
+                dead = false;
+            }
+
             bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
                                 || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
             bool wPressed = !dead && glfwGetKey(window, Const.GLFW_KEY_W) == Const.GLFW_PRESS;
@@ -126,6 +139,36 @@ namespace DarkEngine3D_gl_csharp.Engine
             else
             {
                 UIRenderer.CurrentStamina = MathF.Min(UIRenderer.MaxStamina, UIRenderer.CurrentStamina + Const.STAMINA_REGEN * deltaTime);
+            }
+
+            // === Health Regeneration ===
+            // Health increases over time based on state: 
+            // - Running: 0 regen
+            // - Walking: very slight
+            // - Standing still: bit better
+            // - Crouching (stationary): fastest
+            if (!dead && UIRenderer.HPAccumulator < UIRenderer.MaxHP)
+            {
+                float hpRegenRate = 0f;
+                if (running)
+                {
+                    hpRegenRate = Const.HP_REGEN_RUN;
+                }
+                else if (moving)
+                {
+                    hpRegenRate = Const.HP_REGEN_WALK;
+                }
+                else if (crouching)
+                {
+                    hpRegenRate = Const.HP_REGEN_CROUCH;
+                }
+                else
+                {
+                    hpRegenRate = Const.HP_REGEN_STAND;
+                }
+
+                UIRenderer.HPAccumulator = MathF.Min((float)UIRenderer.MaxHP, UIRenderer.HPAccumulator + hpRegenRate * deltaTime);
+                UIRenderer.CurrentHP = (int)MathF.Floor(UIRenderer.HPAccumulator);
             }
 
             // === Speed factor from stamina ===
