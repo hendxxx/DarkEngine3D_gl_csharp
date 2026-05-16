@@ -38,6 +38,9 @@
     <None Update="Artifacts\fonts\Worldstar.ttf">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\Maps\moon.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\Maps\Ngaco.ttf">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>   <None Update="Artifacts\Maps\angaco.jpg">
