@@ -12,11 +12,11 @@ public unsafe class Program
 
     public static void Main()
     {
-        Glfw.WindowWidth = 1920;
-        Glfw.WindowHeight = 1080;
+        Glfw.WindowWidth = 2560;
+        Glfw.WindowHeight = 1440;
 
         // Init GLFW and Create Window
-        Glfw.Init("My Native C# Engine");
+        Glfw.Init("My Native C# Engine",false);
 
         // Load Library GLFW
         IntPtr glfwLib = Glfw.GetglfwLib();
@@ -35,6 +35,8 @@ public unsafe class Program
 
         // Init Camera
         Camera camera = new(0, 50, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 10000.0f);
+        Glfw.SetMainCamera(camera);
+         
         Keyboard.IsFogActive = false;
 
         // Init Light

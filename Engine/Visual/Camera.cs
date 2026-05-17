@@ -17,7 +17,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float foV ;
         public float nearDist;
         public float farDist;
-        public float aspect;
+        private float aspect;
          
         float _currentVelocityY = 0f;
         public Camera(float x, float y, float z, float _aspect, float _foV, float _nearDist, float _farDist)
@@ -51,6 +51,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float GetAspect() => aspect;
 
         public Matrix4x4 GetViewMatrix() => Matrix4x4.CreateLookAt(Position, Position + Front, Up);
+
         public static Matrix4x4 GetProjectionMatrix(float aspect, float foV, float nearDist, float farDist) => Matrix4x4.CreatePerspectiveFieldOfView(foV, aspect, nearDist, farDist);
 
         public void SetViewAndProjection(  int viewLocation, int projectionLocation)
@@ -66,6 +67,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
         }
 
+        // Tambahkan fungsi ini di dalam class Camera Anda
+        public void UpdateAspectRatio(float newWidth, float newHeight)
+        {
+            // Cegah pembagian dengan nol jika jendela diminimize
+            if (newHeight <= 0) newHeight = 1;
+
+            aspect = newWidth / newHeight;
+        }
 
         public void ClampToTerrain(MapLoader mapLoader, float deltaTime)
         {

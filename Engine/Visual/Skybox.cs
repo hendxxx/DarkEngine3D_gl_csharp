@@ -55,6 +55,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures)
         {
             int weatherModeLoc = GL.GetUniformLocation(skyShader, "weatherMode");
+            int aspectLoc = GL.GetUniformLocation(skyShader, "u_aspectRatio");
+            float currentAspect = camera.GetAspect();
+
             float currentWeatherVal = Keyboard.GetCurrentWeather();
             
             totalTime += deltaTime;
@@ -67,7 +70,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             view.M41 = 0; view.M42 = 0; view.M43 = 0;
             view.M14 = 0; view.M24 = 0; view.M34 = 0; view.M44 = 1;
 
-            Matrix4x4 projection = Camera.GetProjectionMatrix(camera.aspect, camera.foV, camera.nearDist, camera.farDist);
+            Matrix4x4 projection = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
 
             GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(projLoc, 1, false, (float*)&projection);
@@ -85,7 +88,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // WAJIB: Kunci tekstur agar tidak mengulang (tiling) jika UV jebol
             GL.TexParameterf(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, Const.GL_CLAMP_TO_EDGE);
             GL.TexParameterf(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, Const.GL_CLAMP_TO_EDGE);
-             
+
+            GL.Uniform1f(aspectLoc, currentAspect);
+
             GL.Uniform1i(GL.GetUniformLocation(skyShader, "moonTex"), 4);
              
             // Kirimkan nilai berjalan halus (CurrentWeather) dari kalkulasi input class C#

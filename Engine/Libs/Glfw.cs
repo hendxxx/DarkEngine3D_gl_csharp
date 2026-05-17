@@ -57,7 +57,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             set => _windowHeight = value;
         }
 
-        public static void Init(string title)
+        public static Camera MainCamera; // Pastikan ada kata 'static'
+
+        public static void Init(string title, bool fullscreen=true, int ratioNumerator = 16, int ratioDenominator = 9)
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
 
@@ -66,19 +68,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             var glfwCreateWindow = Marshal.GetDelegateForFunctionPointer<glfwCreateWindowDelegate>(NativeLibrary.GetExport(glfwLib, "glfwCreateWindow"));
             var glfwMakeContextCurrent = (delegate* unmanaged[Cdecl]<IntPtr, void>)NativeLibrary.GetExport(glfwLib, "glfwMakeContextCurrent");
             var glfwWindowShouldClose = (delegate* unmanaged[Cdecl]<IntPtr, int>)NativeLibrary.GetExport(glfwLib, "glfwWindowShouldClose");
+            var glfwSetWindowPos = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowPos");
 
             glfwSetWindowSizeCallback = (delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, int, int, void>, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowSizeCallback");
 
             glfwWindow = glfwWindowShouldClose;
-
             glfwGetTime = (delegate* unmanaged[Cdecl]<double>)NativeLibrary.GetExport(glfwLib, "glfwGetTime");
             glfwSetWindowTitle = (delegate* unmanaged[Cdecl]<IntPtr, byte*, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowTitle");
 
+            // Tambahkan pointer fungsi untuk monitor utama
+            var glfwGetPrimaryMonitor = (delegate* unmanaged[Cdecl]<nint>)NativeLibrary.GetExport(glfwLib, "glfwGetPrimaryMonitor");
+             
             // Init window
             if (glfwInit() == 0) return;
 
-            window = glfwCreateWindow(_windowWidth, _windowHeight, title, nint.Zero, nint.Zero);
-            if (window == nint.Zero) return;
+            // Atur rasio di sini jika tidak dalam mode fullscreen
+            if (!fullscreen)
+            { 
+                window = glfwCreateWindow(_windowWidth, _windowHeight, title, nint.Zero, nint.Zero);
+                if (window == nint.Zero) return;
+
+            }
+            else
+            {
+                // Tentukan monitor jika fullscreen, atau nint.Zero jika windowed
+                nint monitor = fullscreen ? glfwGetPrimaryMonitor() : nint.Zero;
+
+                window = glfwCreateWindow(_windowWidth, _windowHeight, title, monitor, nint.Zero);
+                if (window == nint.Zero) return;
+            }
+            glfwSetWindowPos(window, 0, 0);
 
             glfwMakeContextCurrent(window);
             glfwSetWindowSizeCallback(window, &OnWindowResized);
@@ -93,6 +112,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return window;
         }
 
+        public static void SetMainCamera(Camera camera)
+        {
+            MainCamera = camera;
+            MainCamera.UpdateAspectRatio((float)_windowWidth, (float)_windowHeight);
+        }
         public static float GetDeltaTime()
         {
 
@@ -103,14 +127,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             lastFrame = currentFrame;
 
             return deltaTime;
-        }
-
+        } 
         // Fungsi yang akan dipanggil saat resize
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         public static void OnWindowResized(IntPtr window, int width, int height)
         {
             // 1. Update area gambar GPU
             GL.Viewport(0, 0, width, height);
+
+            // 2. Update aspek rasio kamera global jika sudah diinisialisasi
+            if (MainCamera != null)
+            {
+                MainCamera.UpdateAspectRatio((float)width, (float)height);
+            }
+
+            // 3. Update variabel ukuran window global Anda (opsional)
+            _windowWidth = width;
+            _windowHeight = height;
+
         }
 
         public static void ShowFPS(float deltaTime, int renderedTris, int totalMapTris, string gameTime)
@@ -157,8 +191,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 GL.UseProgram(shaderProgram);
                 GL.BindVertexArray(0);
-
-                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, WindowWidth / WindowHeight, gameTerrainChunk.GetFrozenPlanes());
+                 
+                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
 
@@ -197,8 +231,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 // 2. Gambar Tulisan di atasnya
                 //hud.DrawText("Halo Dunia", 20, 30, new Vector3(1, 1, 1)); // Teks Putih
+                string title = $"🕒 [ {gTime} ]    ⚡ FPS: {lastFPS}    📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
 
-                hud.DrawText("TIME: " + gTime + "| FPS: " + Glfw.GetLastFPS() + " | POS: " + camera.Position , 10, 60, new Vector3(1, 0, 0));
+                hud.DrawText(title + " POS: " + camera.Position , 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText("a brown fox quickly jump over the lazy dog", 10, 90, new Vector3(0, 0, 0), new Vector3(1, 1, 1));
                 hud.DrawText("`1234567890-=~!@#$%^&*()_+[]\\{}|;':\",./<>?", 10, 120, new Vector3(0, 0, 0), new Vector3(1, 0, 1));
 

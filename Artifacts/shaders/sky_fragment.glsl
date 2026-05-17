@@ -158,13 +158,13 @@ void main()
         float d = length(sunUV);
 
         // Hard sun disc (~3° radius). smoothstep gives a soft anti-aliased edge.
-        const float sunAngularRadius = 0.052;
+        const float sunAngularRadius = 0.025;
         sunCoreMask = smoothstep(sunAngularRadius, sunAngularRadius * 0.75, d);
 
         // Wider halo + sharper inner bloom, both circular in the tangent plane.
         // Coefficients chosen to roughly match the previous pow(cos, 45) / pow(cos, 300) feel.
-        sunGlowMask  = exp(-d * d * 22.5);
-        sunBloomMask = exp(-d * d * 150.0);
+        sunGlowMask  = exp(-d * d * 250.0);
+        sunBloomMask = exp(-d * d * 500.0);
     }
 
     skyWithCelestial += dynamicSunCore * sunCoreMask * 4.0 * sunVisible * sunBlocker;
