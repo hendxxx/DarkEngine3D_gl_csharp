@@ -59,7 +59,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public static Camera MainCamera; // Pastikan ada kata 'static'
 
-        public static void Init(string title, bool fullscreen=true, int ratioNumerator = 16, int ratioDenominator = 9)
+        public static void Init(string title, bool fullscreen = true, int ratioNumerator = 16, int ratioDenominator = 9)
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
 
@@ -78,13 +78,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
             // Tambahkan pointer fungsi untuk monitor utama
             var glfwGetPrimaryMonitor = (delegate* unmanaged[Cdecl]<nint>)NativeLibrary.GetExport(glfwLib, "glfwGetPrimaryMonitor");
-             
+
             // Init window
             if (glfwInit() == 0) return;
 
             // Atur rasio di sini jika tidak dalam mode fullscreen
             if (!fullscreen)
-            { 
+            {
                 window = glfwCreateWindow(_windowWidth, _windowHeight, title, nint.Zero, nint.Zero);
                 if (window == nint.Zero) return;
 
@@ -127,7 +127,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             lastFrame = currentFrame;
 
             return deltaTime;
-        } 
+        }
         // Fungsi yang akan dipanggil saat resize
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         public static void OnWindowResized(IntPtr window, int width, int height)
@@ -158,7 +158,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 lastFPS = frameCount;
                 // Format HUD Premium: 🕒 [ 06:05 ]  |  ⚡ FPS: 60  |  📐 TRIS: 1.2M / 4.0M
                 string title = $"🕒 [ {gameTime} ]    ⚡ FPS: {lastFPS}    📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
-                
+
                 fixed (byte* pTitle = Encoding.UTF8.GetBytes(title + "\0"))
                 {
                     glfwSetWindowTitle(window, pTitle);
@@ -168,7 +168,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
         }
 
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager? objectManager = null)
         {
             uint shaderProgram = Shader.GetShaderProgram();
 
@@ -191,7 +191,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 GL.UseProgram(shaderProgram);
                 GL.BindVertexArray(0);
-                 
+
                 int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
@@ -202,19 +202,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
+                // ---- glTF Object Manager ----
+                if (objectManager != null)
+                {
+                    objectManager.Update(deltaTime);
+                    OpenGL.EnableFaceCulling(false); // Xbot model might have CCW issues
+                    objectManager.Draw(camera, light);
+                    OpenGL.EnableFaceCulling(true);
+                    GL.UseProgram(shaderProgram); // Kembalikan ke terrain shader
+                }
+
                 // --- TIME SYSTEM ---
                 float baseSpeed = 0.0043f; // Normal: 1 real second = 1 game minute
                 float manualMultiplier = 60.0f; // Fast Forward: 1 real second = 1 game hour
-                
+
                 // Always progress time slowly
                 light.WorldTime += deltaTime * baseSpeed;
 
                 // Manual Override / Fast Forward
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_EQUAL)) 
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_EQUAL))
                     light.WorldTime += deltaTime * baseSpeed * manualMultiplier;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_MINUS)) 
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_MINUS))
                     light.WorldTime -= deltaTime * baseSpeed * manualMultiplier;
-                
+
                 light.Update(camera.Position);
                 // --------------------
 
@@ -233,19 +243,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 //hud.DrawText("Halo Dunia", 20, 30, new Vector3(1, 1, 1)); // Teks Putih
                 string title = $"🕒 [ {gTime} ]    ⚡ FPS: {lastFPS}    📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
 
-                hud.DrawText(title + " POS: " + camera.Position , 10, 60, new Vector3(1, 0, 0));
+                hud.DrawText(title + " POS: " + camera.Position, 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText("a brown fox quickly jump over the lazy dog", 10, 90, new Vector3(0, 0, 0), new Vector3(1, 1, 1));
                 hud.DrawText("`1234567890-=~!@#$%^&*()_+[]\\{}|;':\",./<>?", 10, 120, new Vector3(0, 0, 0), new Vector3(1, 0, 1));
 
 
 
-                // Static Console HUD
-                Console.Write("\x1b[H"); 
-                Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("========================================================================");
-                Console.WriteLine($"  [ DARK ENGINE 3D ]   TIME: {gTime}   FPS: {Glfw.GetLastFPS()}   TRIS: {renderedTris:N0}  ");
-                Console.WriteLine("========================================================================");
-                Console.ResetColor();
+                // // Static Console HUD
+                // Console.Write("\x1b[H"); 
+                // Console.ForegroundColor = ConsoleColor.Cyan;
+                // Console.WriteLine("========================================================================");
+                // Console.WriteLine($"  [ DARK ENGINE 3D ]   TIME: {gTime}   FPS: {Glfw.GetLastFPS()}   TRIS: {renderedTris:N0}  ");
+                // Console.WriteLine("========================================================================");
+                // Console.ResetColor();
+                // if (objectManager != null)
+                // {
+                //     Console.ForegroundColor = ConsoleColor.Yellow;
+                //     Console.WriteLine($"  [OBJECTS] Drawn: {objectManager.DrawnObjects}  Culled: {objectManager.CulledObjects}  CullOff: {objectManager.DisableFrustumCull}");
+                //     Console.ResetColor();
+                // }
+
 
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();

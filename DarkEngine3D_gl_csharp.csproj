@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -38,129 +38,129 @@
     <None Update="Artifacts\fonts\Worldstar.ttf">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\moon.png">
+    <None Update="Artifacts\maps\\moon.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\Ngaco.ttf">
+    <None Update="Artifacts\maps\\Ngaco.ttf">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>   <None Update="Artifacts\Maps\angaco.jpg">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\Maps\coastMountain64.raw">
+    </None>   <None Update="Artifacts\maps\\angaco.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\crater1.raw">
+    <None Update="Artifacts\maps\\coastMountain64.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\crater2.raw">
+    <None Update="Artifacts\maps\\crater1.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\crater3.raw">
+    <None Update="Artifacts\maps\\crater2.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h.raw">
+    <None Update="Artifacts\maps\\crater3.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h0.raw">
+    <None Update="Artifacts\maps\\h.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h1.raw">
+    <None Update="Artifacts\maps\\h0.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h2.raw">
+    <None Update="Artifacts\maps\\h1.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h3.raw">
+    <None Update="Artifacts\maps\\h2.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h4.raw">
+    <None Update="Artifacts\maps\\h3.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h5.raw">
+    <None Update="Artifacts\maps\\h4.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\h6.raw">
+    <None Update="Artifacts\maps\\h5.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\Heightmap0.jpg">
+    <None Update="Artifacts\maps\\h6.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\heightmap19_129.raw">
+    <None Update="Artifacts\maps\\Heightmap0.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\heightmap1_129.raw">
+    <None Update="Artifacts\maps\\heightmap19_129.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\heightmap20_129.raw">
+    <None Update="Artifacts\maps\\heightmap1_129.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\iceland_heightmap.png">
+    <None Update="Artifacts\maps\\heightmap20_129.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map.jpg">
+    <None Update="Artifacts\maps\\iceland_heightmap.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map.png">
+    <None Update="Artifacts\maps\\map.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map0.jpg">
+    <None Update="Artifacts\maps\\map.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map0.png">
+    <None Update="Artifacts\maps\\map0.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map1.jpg">
+    <None Update="Artifacts\maps\\map0.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map1.png">
+    <None Update="Artifacts\maps\\map1.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map10.png">
+    <None Update="Artifacts\maps\\map1.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map11.png">
+    <None Update="Artifacts\maps\\map10.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map12.png">
+    <None Update="Artifacts\maps\\map11.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map2.png">
+    <None Update="Artifacts\maps\\map12.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map3.png">
+    <None Update="Artifacts\maps\\map2.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map4.jpg">
+    <None Update="Artifacts\maps\\map3.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map4.png">
+    <None Update="Artifacts\maps\\map4.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map5.png">
+    <None Update="Artifacts\maps\\map4.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map6.png">
+    <None Update="Artifacts\maps\\map5.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map7.png">
+    <None Update="Artifacts\maps\\map6.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map8.png">
+    <None Update="Artifacts\maps\\map7.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\map9.png">
+    <None Update="Artifacts\maps\\map8.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\photoreal_v1.raw">
+    <None Update="Artifacts\maps\\map9.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\photoreal_v2.raw">
+    <None Update="Artifacts\maps\\photoreal_v1.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\terrain-heightmap-01.png">
+    <None Update="Artifacts\maps\\photoreal_v2.raw">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\Maps\test.png">
+    <None Update="Artifacts\maps\\terrain-heightmap-01.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\maps\\test.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\fragment_shader.glsl">
@@ -188,6 +188,15 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\vertex_shader.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\shaders\gltf_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\shaders\gltf_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\Xbot.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\Textures\aerial grass\aerial_grass_rock_diff_4k.jpg">

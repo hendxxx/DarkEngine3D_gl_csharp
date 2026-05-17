@@ -50,6 +50,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr PixelStorePtr = IntPtr.Zero;
         internal static IntPtr BufferSubDataPtr = IntPtr.Zero;
         internal static IntPtr PolygonOffsetPtr = IntPtr.Zero;
+        internal static IntPtr VertexAttribIPointerPtr = IntPtr.Zero;
+        internal static IntPtr GetShaderivPtr = IntPtr.Zero;
+        internal static IntPtr GetShaderInfoLogPtr = IntPtr.Zero;
+        internal static IntPtr GetProgramivPtr = IntPtr.Zero;
+        internal static IntPtr GetProgramInfoLogPtr = IntPtr.Zero;
+        internal static IntPtr GetErrorPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -265,6 +271,53 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void PolygonOffset(float factor, float units)
             => ((delegate* unmanaged[Cdecl]<float, float, void>)PolygonOffsetPtr)(factor, units);
+
+        /// <summary>Expose raw ptr for glVertexAttribIPointer (integer attributes).</summary>
+        public static IntPtr GetVertexAttribIPointerFn() => VertexAttribIPointerPtr;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GetShaderiv(uint shader, uint pname, int* param)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, int*, void>)GetShaderivPtr)(shader, pname, param);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GetProgramiv(uint program, uint pname, int* param)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, int*, void>)GetProgramivPtr)(program, pname, param);
+
+        public static string GetShaderInfoLog(uint shader)
+        {
+            if (GetShaderInfoLogPtr == IntPtr.Zero) return "(GetShaderInfoLog not loaded)";
+            int status = 0;
+            GetShaderiv(shader, 0x8B81u /*GL_COMPILE_STATUS*/, &status);
+            if (status == 1) return "";
+            int len = 0;
+            GetShaderiv(shader, 0x8B84u /*GL_INFO_LOG_LENGTH*/, &len);
+            if (len <= 0) return "(no log)";
+            byte[] buf = new byte[len];
+            fixed (byte* pb = buf)
+                ((delegate* unmanaged[Cdecl]<uint, int, int*, byte*, void>)GetShaderInfoLogPtr)(shader, len, null, pb);
+            return System.Text.Encoding.UTF8.GetString(buf, 0, len - 1);
+        }
+
+        public static string GetProgramInfoLog(uint program)
+        {
+            if (GetProgramInfoLogPtr == IntPtr.Zero) return "(GetProgramInfoLog not loaded)";
+            int status = 0;
+            GetProgramiv(program, 0x8B82u /*GL_LINK_STATUS*/, &status);
+            if (status == 1) return "";
+            int len = 0;
+            GetProgramiv(program, 0x8B84u /*GL_INFO_LOG_LENGTH*/, &len);
+            if (len <= 0) return "(no log)";
+            byte[] buf = new byte[len];
+            fixed (byte* pb = buf)
+                ((delegate* unmanaged[Cdecl]<uint, int, int*, byte*, void>)GetProgramInfoLogPtr)(program, len, null, pb);
+            return System.Text.Encoding.UTF8.GetString(buf, 0, len - 1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static uint GetError()
+            => GetErrorPtr != IntPtr.Zero
+                ? ((delegate* unmanaged[Cdecl]<uint>)GetErrorPtr)()
+                : 0u;
     }
 
     public static class ApiLoader

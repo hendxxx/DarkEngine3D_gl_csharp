@@ -1,0 +1,62 @@
+using DarkEngine3D_gl_csharp.Engine.Libs;
+
+namespace DarkEngine3D_gl_csharp.Engine.Objects
+{
+    // ===========================================================================
+    //  GltfShader — skinned mesh shader (compile sekali, pakai berkali-kali)
+    // ===========================================================================
+    public static class GltfShader
+    {
+        private static uint _program;
+        private static bool _initialized;
+
+        public static uint GetProgram()
+        {
+            if (!_initialized) Init();
+            return _program;
+        }
+
+        public static void Init()
+        {
+            if (_initialized) return;
+
+            string vSrc = File.ReadAllText("Artifacts\\shaders\\gltf_vertex.glsl");
+            string fSrc = File.ReadAllText("Artifacts\\shaders\\gltf_fragment.glsl");
+
+            uint vs = GL.CreateShader(Const.GL_VERTEX_SHADER);
+            GL.ShaderSource(vs, vSrc);
+            GL.CompileShader(vs);
+            string vsLog = GL.GetShaderInfoLog(vs);
+            if (!string.IsNullOrEmpty(vsLog))
+                Console.WriteLine($"[GltfShader] VERTEX ERROR:\n{vsLog}");
+
+            uint fs = GL.CreateShader(Const.GL_FRAGMENT_SHADER);
+            GL.ShaderSource(fs, fSrc);
+            GL.CompileShader(fs);
+            string fsLog = GL.GetShaderInfoLog(fs);
+            if (!string.IsNullOrEmpty(fsLog))
+                Console.WriteLine($"[GltfShader] FRAGMENT ERROR:\n{fsLog}");
+
+            _program = GL.CreateProgram();
+            GL.AttachShader(_program, vs);
+            GL.AttachShader(_program, fs);
+            GL.LinkProgram(_program);
+            string pLog = GL.GetProgramInfoLog(_program);
+            if (!string.IsNullOrEmpty(pLog))
+                Console.WriteLine($"[GltfShader] LINK ERROR:\n{pLog}");
+
+            GL.DeleteShader(vs);
+            GL.DeleteShader(fs);
+
+            // Cek apakah glVertexAttribIPointer ter-load
+            var iptr = GL.GetVertexAttribIPointerFn();
+            Console.WriteLine(iptr != IntPtr.Zero
+                ? "[GltfShader] glVertexAttribIPointer: OK"
+                : "[GltfShader] WARNING: glVertexAttribIPointer NOT LOADED — bone ids akan salah!");
+
+            _initialized = true;
+            Console.WriteLine($"[GltfShader] Program ID={_program}. Init done.");
+        }
+
+    }
+}

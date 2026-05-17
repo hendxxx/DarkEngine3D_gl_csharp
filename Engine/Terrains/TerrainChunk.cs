@@ -334,7 +334,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
 
                             worldMap[x, z].Draw(lodIndex);
-                             
+
                             //GL.Disable(Const.GL_POLYGON_OFFSET_FILL);
 
                             // Estimate actual triangles rendered based on LOD
@@ -801,6 +801,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         public static int GetTotalMapTriangles()
         {
             return cachedTotalMapTriangles;
+        }
+
+        /// <summary>Dapatkan tinggi terrain di posisi world X,Z (untuk snap object ke terrain).</summary>
+        public float GetHeightAt(float worldX, float worldZ)
+        {
+            return mapLoader?.GetHeightInterpolated(worldX, worldZ) ?? 0f;
         }
     }
 }

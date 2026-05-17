@@ -1,9 +1,9 @@
-﻿using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
-{ 
+{
     public unsafe class Camera
     {
         public Vector3 Position = new(0, 0, 0);
@@ -14,24 +14,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float Yaw = 0.0f; // Menghadap ke depan (sumbu -Z)
         public float Pitch = 0.0f;
 
-        public float foV ;
+        public float foV;
         public float nearDist;
         public float farDist;
         private float aspect;
-         
+
         float _currentVelocityY = 0f;
         public Camera(float x, float y, float z, float _aspect, float _foV, float _nearDist, float _farDist)
-        { 
+        {
             aspect = _aspect;
             foV = _foV;
             nearDist = _nearDist;
-            farDist = _farDist; 
+            farDist = _farDist;
 
             Init(x, y, z);
         }
         public void Init(float x, float y, float z)
         {
-            Position = new(x,y,z);
+            Position = new(x, y, z);
             Front = new(0, 0, -1);
             Up = Vector3.UnitY;
 
@@ -52,11 +52,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public Matrix4x4 GetViewMatrix() => Matrix4x4.CreateLookAt(Position, Position + Front, Up);
 
+        public Matrix4x4 GetProjectionMatrix() => Matrix4x4.CreatePerspectiveFieldOfView(foV, aspect, nearDist, farDist);
+
         public static Matrix4x4 GetProjectionMatrix(float aspect, float foV, float nearDist, float farDist) => Matrix4x4.CreatePerspectiveFieldOfView(foV, aspect, nearDist, farDist);
 
-        public void SetViewAndProjection(  int viewLocation, int projectionLocation)
+
+        public void SetViewAndProjection(int viewLocation, int projectionLocation)
         {
-            
+
             Matrix4x4 view = GetViewMatrix();
             Matrix4x4 projection = GetProjectionMatrix(aspect, foV, nearDist, farDist);
             unsafe
@@ -78,7 +81,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void ClampToTerrain(MapLoader mapLoader, float deltaTime)
         {
-            float minHeight = 1.0f;
+            float minHeight = 2.0f;  // eye level — cukup tinggi agar bisa lihat object di bawah
+
             float gravity = 9.8f;
 
             float terrainHeight = mapLoader.GetHeightInterpolated(Position.X, Position.Z);
