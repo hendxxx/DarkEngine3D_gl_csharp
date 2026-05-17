@@ -156,19 +156,6 @@ public unsafe class Program
         Console.WriteLine($"[ObjectManager] {objectManager.GetObjects().Count} objects spawned.");
         objectManager.DisableFrustumCull = true; // DEBUG: bypass frustum cull sementara
 
-        // // Posisikan kamera: tepat di atas titik spawn, cukup tinggi untuk lihat object
-        // float terrainY0 = gameTerrainChunk.GetHeightAt(0f, 0f);
-        // Console.WriteLine($"[Debug] terrain Y at (0,0) = {terrainY0:F2}");
-        // Console.WriteLine($"[Debug] first obj Y = {objectManager.GetObjects()[0].Position.Y:F2}");
-        // // Kamera 10 unit di atas terrain, 15 unit di belakang spawn
-        // camera.Position = new Vector3(0f, terrainY0 + 10f, 15f);
-        // camera.Yaw   = -90f;   // hadap ke -Z (arah spawn)
-        // camera.Pitch = -15f;   // sedikit menunduk
-        // camera.UpdateVectors();
-
-
-
-
         // Init Loop
         Glfw.Loop(SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud, objectManager);
 

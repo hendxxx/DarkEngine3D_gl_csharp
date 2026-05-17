@@ -3,7 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Libs;
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
     // ===========================================================================
-    //  GltfShader — skinned mesh shader (compile sekali, pakai berkali-kali)
+    //  GltfShader — static mesh shader (compile once, reuse)
     // ===========================================================================
     public static class GltfShader
     {
@@ -48,15 +48,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.DeleteShader(vs);
             GL.DeleteShader(fs);
 
-            // Cek apakah glVertexAttribIPointer ter-load
-            var iptr = GL.GetVertexAttribIPointerFn();
-            Console.WriteLine(iptr != IntPtr.Zero
-                ? "[GltfShader] glVertexAttribIPointer: OK"
-                : "[GltfShader] WARNING: glVertexAttribIPointer NOT LOADED — bone ids akan salah!");
-
             _initialized = true;
-            Console.WriteLine($"[GltfShader] Program ID={_program}. Init done.");
+            Console.WriteLine($"[GltfShader] Program ID={_program}. Ready.");
         }
-
     }
 }
