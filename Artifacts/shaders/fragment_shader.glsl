@@ -72,7 +72,7 @@ void main() {
     vec3 texColor;
     if (useTexture == 1) {
         float tilingDatar = 0.5; 
-        float tilingTebing = 0.55; 
+        float tilingTebing = 0.055; 
         
         vec3 t3 = stochasticTriplanarCliff(tex3, FragPos, norm, tilingTebing);
 
