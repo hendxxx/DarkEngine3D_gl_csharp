@@ -23,6 +23,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int  _fogColorLoc;
         private readonly int  _viewPosLoc;
         private readonly int  _useFogLoc;
+        private readonly int  _baseColorFactorLoc;
+        private readonly int  _useAlbedoLoc;
+        private readonly int  _albedoMapLoc;
 
         public int  DrawnObjects  { get; private set; }
         public int  CulledObjects { get; private set; }
@@ -31,15 +34,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public ObjectManager()
         {
-            _shaderProgram = GltfShader.GetProgram();
-            _modelLoc      = GL.GetUniformLocation(_shaderProgram, "model");
-            _viewLoc       = GL.GetUniformLocation(_shaderProgram, "view");
-            _projLoc       = GL.GetUniformLocation(_shaderProgram, "projection");
-            _sunDirLoc     = GL.GetUniformLocation(_shaderProgram, "sunDir");
-            _lightColorLoc = GL.GetUniformLocation(_shaderProgram, "lightColor");
-            _fogColorLoc   = GL.GetUniformLocation(_shaderProgram, "fogColor");
-            _viewPosLoc    = GL.GetUniformLocation(_shaderProgram, "viewPos");
-            _useFogLoc     = GL.GetUniformLocation(_shaderProgram, "useFog");
+            _shaderProgram      = GltfShader.GetProgram();
+            _modelLoc           = GL.GetUniformLocation(_shaderProgram, "model");
+            _viewLoc            = GL.GetUniformLocation(_shaderProgram, "view");
+            _projLoc            = GL.GetUniformLocation(_shaderProgram, "projection");
+            _sunDirLoc          = GL.GetUniformLocation(_shaderProgram, "sunDir");
+            _lightColorLoc      = GL.GetUniformLocation(_shaderProgram, "lightColor");
+            _fogColorLoc        = GL.GetUniformLocation(_shaderProgram, "fogColor");
+            _viewPosLoc         = GL.GetUniformLocation(_shaderProgram, "viewPos");
+            _useFogLoc          = GL.GetUniformLocation(_shaderProgram, "useFog");
+            _baseColorFactorLoc = GL.GetUniformLocation(_shaderProgram, "baseColorFactor");
+            _useAlbedoLoc       = GL.GetUniformLocation(_shaderProgram, "useAlbedo");
+            _albedoMapLoc       = GL.GetUniformLocation(_shaderProgram, "albedoMap");
 
             Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
         }
@@ -68,7 +74,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public void Update(float dt)
         {
-            foreach (var obj in _objects) obj.Update(dt);
+            foreach (var obj in _objects) GltfObject.Update(dt);
         }
 
         // -----------------------------------------------------------------------
@@ -99,7 +105,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     CulledObjects++;
                     continue;
                 }
-                obj.Draw(_modelLoc);
+                obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc);
                 DrawnObjects++;
             }
         }

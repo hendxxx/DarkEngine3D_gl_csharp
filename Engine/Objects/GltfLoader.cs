@@ -7,9 +7,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     // ===========================================================================
     //  glTF 2.0 Data Model — static mesh only (no animation, no skinning)
     // ===========================================================================
-    public class GltfData
+    public class GltfMaterial
     {
-        public GltfMeshData[] Meshes = [];
+        public string Name = "";
+        public Vector4 BaseColorFactor = Vector4.One;
+        public int TextureIndex = -1;
+        public bool DoubleSided = false;
+    }
+
+    public class GltfImage
+    {
+        public byte[] Data = [];
+        public string MimeType = "";
+        public string Uri = "";
+    }
+
+    public class GltfTexture
+    {
+        public int ImageIndex = -1;
     }
 
     public class GltfMeshData
@@ -17,6 +32,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public string Name = "";
         public SkinnedVertex[] Vertices = [];
         public uint[] Indices = [];
+        public int MaterialIndex = -1;
+    }
+
+    public class GltfData
+    {
+        public GltfMeshData[] Meshes = [];
+        public GltfMaterial[] Materials = [];
+        public GltfImage[] Images = [];
+        public GltfTexture[] Textures = [];
     }
 
     // ===========================================================================
@@ -32,11 +56,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public static GltfData Load(string path)
         {
             var raw = File.ReadAllBytes(path);
-            return new GltfLoader().ParseGlb(raw);
+            string baseDir = Path.GetDirectoryName(path) ?? "";
+            return new GltfLoader().ParseGlb(raw, baseDir);
         }
 
         // -----------------------------------------------------------------------
-        private GltfData ParseGlb(byte[] raw)
+        private GltfData ParseGlb(byte[] raw, string baseDir)
         {
             if (R32(raw, 0) != 0x46546C67u) throw new Exception("Bukan file GLB valid!");
 
@@ -53,11 +78,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 Array.Copy(raw, binOff + 8, _bin, 0, (int)binLen);
             }
 
-            return ParseJson(json);
+            return ParseJson(json, baseDir);
         }
 
         // -----------------------------------------------------------------------
-        private GltfData ParseJson(string jsonStr)
+        private GltfData ParseJson(string jsonStr, string baseDir)
         {
             var doc = JsonDocument.Parse(jsonStr);
             var root = doc.RootElement;
@@ -65,6 +90,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             _bvs = ParseBufferViews(root);
             _accs = ParseAccessors(root);
+
+            data.Images = ParseImages(root, baseDir);
+            data.Textures = ParseTextures(root);
+            data.Materials = ParseMaterials(root);
             data.Meshes = ParseMeshes(root);
 
             return data;
@@ -104,6 +133,115 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return arr;
         }
 
+        // ========================= IMAGES =======================================
+        private GltfImage[] ParseImages(JsonElement root, string baseDir)
+        {
+            if (!root.TryGetProperty("images", out var el)) return [];
+            var list = new List<GltfImage>();
+            foreach (var img in el.EnumerateArray())
+            {
+                var image = new GltfImage();
+                if (img.TryGetProperty("mimeType", out var mimeProp))
+                    image.MimeType = mimeProp.GetString() ?? "";
+
+                if (img.TryGetProperty("bufferView", out var bvProp))
+                {
+                    int bvIdx = bvProp.GetInt32();
+                    var (off, len, _) = _bvs[bvIdx];
+                    image.Data = new byte[len];
+                    Array.Copy(_bin, off, image.Data, 0, len);
+                }
+                else if (img.TryGetProperty("uri", out var uriProp))
+                {
+                    string uri = uriProp.GetString() ?? "";
+                    image.Uri = uri;
+                    if (uri.StartsWith("data:"))
+                    {
+                        int commaIdx = uri.IndexOf(',');
+                        if (commaIdx >= 0)
+                        {
+                            string base64Data = uri.Substring(commaIdx + 1);
+                            image.Data = Convert.FromBase64String(base64Data);
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(baseDir))
+                    {
+                        string imgPath = Path.Combine(baseDir, uri);
+                        if (File.Exists(imgPath))
+                        {
+                            image.Data = File.ReadAllBytes(imgPath);
+                        }
+                    }
+                }
+                list.Add(image);
+            }
+            return [..list];
+        }
+
+        // ========================= TEXTURES =====================================
+        private GltfTexture[] ParseTextures(JsonElement root)
+        {
+            if (!root.TryGetProperty("textures", out var el)) return [];
+            var list = new List<GltfTexture>();
+            foreach (var tex in el.EnumerateArray())
+            {
+                var texture = new GltfTexture();
+                if (tex.TryGetProperty("source", out var srcProp))
+                {
+                    texture.ImageIndex = srcProp.GetInt32();
+                }
+                list.Add(texture);
+            }
+            return [..list];
+        }
+
+        // ========================= MATERIALS ====================================
+        private GltfMaterial[] ParseMaterials(JsonElement root)
+        {
+            if (!root.TryGetProperty("materials", out var el)) return [];
+            var list = new List<GltfMaterial>();
+            foreach (var mat in el.EnumerateArray())
+            {
+                var material = new GltfMaterial();
+                if (mat.TryGetProperty("name", out var nameProp))
+                    material.Name = nameProp.GetString() ?? "";
+
+                if (mat.TryGetProperty("pbrMetallicRoughness", out var pbr))
+                {
+                    if (pbr.TryGetProperty("baseColorFactor", out var factorProp) && factorProp.ValueKind == JsonValueKind.Array)
+                    {
+                        float r = 1f, g = 1f, b = 1f, a = 1f;
+                        int idx = 0;
+                        foreach (var val in factorProp.EnumerateArray())
+                        {
+                            if (idx == 0) r = val.GetSingle();
+                            else if (idx == 1) g = val.GetSingle();
+                            else if (idx == 2) b = val.GetSingle();
+                            else if (idx == 3) a = val.GetSingle();
+                            idx++;
+                        }
+                        material.BaseColorFactor = new Vector4(r, g, b, a);
+                    }
+
+                    if (pbr.TryGetProperty("baseColorTexture", out var texProp))
+                    {
+                        if (texProp.TryGetProperty("index", out var indexProp))
+                        {
+                            material.TextureIndex = indexProp.GetInt32();
+                        }
+                    }
+                }
+
+                if (mat.TryGetProperty("doubleSided", out var dsProp))
+                {
+                    material.DoubleSided = dsProp.GetBoolean();
+                }
+
+                list.Add(material);
+            }
+            return [..list];
+        }
+
         // ========================= MESHES =======================================
         private GltfMeshData[] ParseMeshes(JsonElement root)
         {
@@ -129,7 +267,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         ? RIndices(idxEl.GetInt32())
                         : [];
 
-                    list.Add(new GltfMeshData { Name = meshName, Vertices = verts, Indices = indices });
+                    int matIdx = prim.TryGetProperty("material", out var matEl) ? matEl.GetInt32() : -1;
+
+                    list.Add(new GltfMeshData { Name = meshName, Vertices = verts, Indices = indices, MaterialIndex = matIdx });
                 }
             }
             return [..list];

@@ -57,7 +57,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             set => _windowHeight = value;
         }
 
-        public static Camera MainCamera; // Pastikan ada kata 'static'
+        private static Camera? MainCamera;
 
         public static void Init(string title, bool fullscreen = true, int ratioNumerator = 16, int ratioDenominator = 9)
         {
@@ -111,6 +111,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         {
             return window;
         }
+
 
         public static void SetMainCamera(Camera camera)
         {

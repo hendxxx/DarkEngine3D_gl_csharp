@@ -35,6 +35,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr Uniform2fPtr;
         internal static IntPtr ViewportPtr;
         internal static IntPtr GenTexturesPtr;
+        internal static IntPtr DeleteTexturesPtr = IntPtr.Zero;
         internal static IntPtr BindTexturePtr;
         internal static IntPtr TexImage2DPtr;
         internal static IntPtr TexParameteriPtr;
@@ -214,6 +215,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GenTextures(int n, uint* textures)
             => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenTexturesPtr)(n, textures);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DeleteTextures(int n, uint* textures)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteTexturesPtr)(n, textures);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void BindTexture(uint target, uint texture)

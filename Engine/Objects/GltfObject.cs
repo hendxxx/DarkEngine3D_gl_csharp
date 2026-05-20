@@ -2,6 +2,7 @@ using DarkEngine3D_gl_csharp.Engine.Libs;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using StbImageSharp;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
@@ -41,6 +42,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     }
 
     // ===========================================================================
+    //  MeshMaterialGpu — material parameters on the GPU
+    // ===========================================================================
+    public struct MeshMaterialGpu
+    {
+        public Vector4 BaseColorFactor;
+        public uint TextureID;
+        public bool HasTexture;
+        public bool DoubleSided;
+    }
+
+    // ===========================================================================
     //  MeshGpu — per-primitive GPU buffers
     // ===========================================================================
     public struct MeshGpu
@@ -48,6 +60,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public uint VAO, VBO, EBO;
         public int  VertexCount;
         public int  IndexCount;
+        public MeshMaterialGpu Material;
     }
 
     // ===========================================================================
@@ -58,15 +71,61 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public readonly GltfData Data;
         public readonly MeshGpu[] Meshes;
         public readonly AABB LocalAABB;
+        public readonly uint[] TextureIDs;
 
         public GltfModelGpuData(GltfData data)
         {
             Data   = data;
+            TextureIDs = UploadTextures(data);
             Meshes = new MeshGpu[data.Meshes.Length];
             UploadToGpu(data);
             LocalAABB = data.Meshes.Length > 0
                 ? AABB.FromVertices(data.Meshes[0].Vertices)
                 : new AABB(Vector3.Zero, Vector3.One);
+        }
+
+        private uint[] UploadTextures(GltfData data)
+        {
+            if (data.Textures.Length == 0 || data.Images.Length == 0) return [];
+            var ids = new uint[data.Textures.Length];
+            for (int i = 0; i < data.Textures.Length; i++)
+            {
+                var tex = data.Textures[i];
+                if (tex.ImageIndex < 0 || tex.ImageIndex >= data.Images.Length) continue;
+                var img = data.Images[tex.ImageIndex];
+                if (img.Data == null || img.Data.Length == 0) continue;
+
+                ids[i] = CreateTextureFromBytes(img.Data);
+            }
+            return ids;
+        }
+
+        private uint CreateTextureFromBytes(byte[] bytes)
+        {
+            uint textureID;
+            GL.GenTextures(1, &textureID);
+            GL.BindTexture(Const.GL_TEXTURE_2D, textureID);
+
+            using var stream = new MemoryStream(bytes);
+            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+
+            fixed (byte* ptr = image.Data)
+            {
+                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
+                              image.Width, image.Height, 0,
+                              Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, ptr);
+            }
+
+            GL.GenerateMipmap(Const.GL_TEXTURE_2D);
+            GL.TexParameterf(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAX_ANISOTROPY, 4.0f);
+
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            return textureID;
         }
 
         private void UploadToGpu(GltfData data)
@@ -115,14 +174,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 GL.BindVertexArray(0);
 
+                // Setup material values for this primitive
+                var matGpu = new MeshMaterialGpu
+                {
+                    BaseColorFactor = Vector4.One,
+                    TextureID = 0,
+                    HasTexture = false,
+                    DoubleSided = false
+                };
+
+                if (mesh.MaterialIndex >= 0 && mesh.MaterialIndex < data.Materials.Length)
+                {
+                    var mat = data.Materials[mesh.MaterialIndex];
+                    matGpu.BaseColorFactor = mat.BaseColorFactor;
+                    matGpu.DoubleSided = mat.DoubleSided;
+                    if (mat.TextureIndex >= 0 && mat.TextureIndex < TextureIDs.Length)
+                    {
+                        matGpu.TextureID = TextureIDs[mat.TextureIndex];
+                        matGpu.HasTexture = matGpu.TextureID != 0;
+                    }
+                }
+
                 Meshes[m] = new MeshGpu
                 {
                     VAO = vao, VBO = vbo, EBO = ebo,
                     VertexCount = mesh.Vertices.Length,
-                    IndexCount  = mesh.Indices.Length
+                    IndexCount  = mesh.Indices.Length,
+                    Material = matGpu
                 };
 
-                Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} stride={stride}");
+                Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} stride={stride} hasTex={matGpu.HasTexture} color={matGpu.BaseColorFactor}");
             }
 
             Console.WriteLine($"[GltfGPU] AABB min={LocalAABB.Min} max={LocalAABB.Max}");
@@ -136,6 +217,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.DeleteVertexArrays(1, &vao);
                 GL.DeleteBuffers(1, &vbo);
                 if (ebo != 0) GL.DeleteBuffers(1, &ebo);
+            }
+
+            if (TextureIDs.Length > 0)
+            {
+                fixed (uint* pTex = TextureIDs)
+                {
+                    GL.DeleteTextures(TextureIDs.Length, pTex);
+                }
             }
         }
     }
@@ -166,10 +255,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             => Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
 
         /// <summary>Tidak ada animasi — Update kosong, reserved untuk masa depan.</summary>
-        public void Update(float dt) { }
+        public static void Update(float dt) { }
 
         /// <summary>Kirim draw call ke GPU.</summary>
-        public void Draw(int modelLoc)
+        public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc)
         {
             var modelMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
@@ -179,6 +268,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             foreach (var mesh in GpuData.Meshes)
             {
+                // Material properties
+                if (baseColorFactorLoc != -1)
+                {
+                    var factor = mesh.Material.BaseColorFactor;
+                    GL.Uniform4f(baseColorFactorLoc, factor.X, factor.Y, factor.Z, factor.W);
+                }
+
+                if (mesh.Material.HasTexture && mesh.Material.TextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.TextureID);
+                    if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 1);
+                    if (albedoMapLoc != -1) GL.Uniform1i(albedoMapLoc, 0); // texture unit 0
+                }
+                else
+                {
+                    if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 0);
+                }
+
+                if (mesh.Material.DoubleSided)
+                {
+                    GL.Disable(Const.GL_CULL_FACE);
+                }
+                else
+                {
+                    GL.Enable(Const.GL_CULL_FACE);
+                }
+
                 GL.BindVertexArray(mesh.VAO);
                 if (mesh.IndexCount > 0)
                     GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
@@ -186,6 +303,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
             }
             GL.BindVertexArray(0);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            GL.Enable(Const.GL_CULL_FACE); // restore backface culling default
         }
     }
 }

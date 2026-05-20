@@ -14,7 +14,8 @@ uniform vec3 fogColor;
 
 // ── Texture ───────────────────────────────────────────────────────────────────
 uniform sampler2D albedoMap;
-uniform int       useAlbedo;    // 1 = gunakan texture, 0 = warna default
+uniform int       useAlbedo;        // 1 = gunakan texture, 0 = warna default
+uniform vec4      baseColorFactor;  // warna dasar tambahan sesuai glTF 2.0
 
 // ── Fog toggle ────────────────────────────────────────────────────────────────
 uniform int useFog;
@@ -24,11 +25,18 @@ void main()
     vec3 norm = normalize(Normal);
 
     // ── Base color ────────────────────────────────────────────────────────────
-    vec3 baseColor;
+    vec4 albedo = vec4(0.72, 0.68, 0.62, 1.0); // warna skin netral default
     if (useAlbedo == 1)
-        baseColor = texture(albedoMap, TexCoord).rgb;
-    else
-        baseColor = vec3(0.72, 0.68, 0.62); // warna skin netral default
+        albedo = texture(albedoMap, TexCoord);
+
+    // Kalikan dengan baseColorFactor (glTF 2.0)
+    albedo *= baseColorFactor;
+
+    // Alpha masking untuk bagian transparan (misal pakaian/rambut/aksesoris)
+    if (albedo.a < 0.1)
+        discard;
+
+    vec3 baseColor = albedo.rgb;
 
     // ── Phong lighting (sederhana, cepat) ─────────────────────────────────────
     float nightBlend = smoothstep(0.15, 0.0, sunDir.y);
