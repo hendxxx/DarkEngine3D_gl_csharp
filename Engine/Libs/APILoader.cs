@@ -19,6 +19,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr CreateShaderPtr, ShaderSourcePtr, CompileShaderPtr;
         internal static IntPtr CreateProgramPtr, AttachShaderPtr, LinkProgramPtr, UseProgramPtr, DeleteShaderPtr;
         internal static IntPtr VertexAttribPointerPtr;
+        internal static IntPtr VertexAttribIPointerPtr;
+
         internal static IntPtr EnableVertexAttribArrayPtr;
         internal static IntPtr DisableVertexAttribArrayPtr;
         internal static IntPtr DrawArraysPtr;
@@ -51,7 +53,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr PixelStorePtr = IntPtr.Zero;
         internal static IntPtr BufferSubDataPtr = IntPtr.Zero;
         internal static IntPtr PolygonOffsetPtr = IntPtr.Zero;
-        internal static IntPtr VertexAttribIPointerPtr = IntPtr.Zero;
+
         internal static IntPtr GetShaderivPtr = IntPtr.Zero;
         internal static IntPtr GetShaderInfoLogPtr = IntPtr.Zero;
         internal static IntPtr GetProgramivPtr = IntPtr.Zero;
@@ -153,6 +155,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             => ((delegate* unmanaged[Cdecl]<uint, int, uint, byte, int, void*, void>)VertexAttribPointerPtr)(index, size, type, (byte)(normalized ? 1 : 0), stride, pointer);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void VertexAttribIPointer(uint index, int size, uint type, int stride, void* pointer)
+            => ((delegate* unmanaged[Cdecl]<uint, int, uint, int, void*, void>)VertexAttribIPointerPtr)(index, size, type, stride, pointer);
+
         public static void EnableVertexAttribArray(uint index)
             => ((delegate* unmanaged[Cdecl]<uint, void>)EnableVertexAttribArrayPtr)(index);
 

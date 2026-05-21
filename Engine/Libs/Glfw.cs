@@ -201,22 +201,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 Mouse.Update(window, camera);
 
-                objTriangle.Draw(deltaTime, window, 5.0f);
-
-                // ---- glTF Object Manager ----
-                if (objectManager != null)
-                {
-                     
-
-                    objectManager.Update(deltaTime);
-                    OpenGL.EnableFaceCulling(false); // Xbot model might have CCW issues
-                    objectManager.Draw(camera, light);
-                    objectManager.SnapAllToTerrain(gameTerrainChunk);
-
-                    OpenGL.EnableFaceCulling(true);
-                    GL.UseProgram(shaderProgram); // Kembalikan ke terrain shader
-                }
-
                 // --- TIME SYSTEM ---
                 float baseSpeed = 0.0043f; // Normal: 1 real second = 1 game minute
                 float manualMultiplier = 60.0f; // Fast Forward: 1 real second = 1 game hour
@@ -234,6 +218,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // --------------------
 
                 camera.UpdateVectors();
+                 
+                objTriangle.Draw(deltaTime, window, 5.0f);
+
+                // ---- glTF Object Manager ----
+                if (objectManager != null)
+                {
+
+                    objectManager.Draw(camera, light);
+                    objectManager.Update(deltaTime);
+
+                }
 
                 // --- HUD SYSTEM ---
                 int totalMapTris = TerrainChunk.GetTotalMapTriangles();

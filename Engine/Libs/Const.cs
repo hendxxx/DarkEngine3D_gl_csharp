@@ -20,6 +20,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_STATIC_DRAW = 0x88E8;
         public const uint GL_FLOAT = 0x1406;
+        public const uint GL_INT = 0x1404;
+
         public const uint GL_TRIANGLES = 0x0004;
         public const uint GL_BLEND = 0x0BE2;
         public const uint GL_TRIANGLE_STRIP = 0x0005;

@@ -177,19 +177,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             (nuint)(mesh.Indices.Length * sizeof(uint)),
                             iptr, Const.GL_STATIC_DRAW);
                 }
+                    
+                int offsetWeights = (int)Marshal.OffsetOf<SkinnedVertex>("BoneWeights");
+                int offsetBoneIds = (int)Marshal.OffsetOf<SkinnedVertex>("BoneIds");
 
-                // Vertex attributes
-                // loc 0: Position (vec3) offset 0
+                // POSITION
                 GL.EnableVertexAttribArray(0);
                 GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
 
-                // loc 1: Normal (vec3) offset 12
+                // NORMAL
                 GL.EnableVertexAttribArray(1);
                 GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)12);
 
-                // loc 2: UV (vec2) offset 24
+                // TEXCOORD
                 GL.EnableVertexAttribArray(2);
                 GL.VertexAttribPointer(2, 2, Const.GL_FLOAT, false, stride, (void*)24);
+
+                // BONE WEIGHTS (float4)
+                GL.EnableVertexAttribArray(3);
+                GL.VertexAttribPointer(3, 4, Const.GL_FLOAT, false, stride, (IntPtr*)offsetWeights);
+
+                // BONE IDS (int4)
+                GL.EnableVertexAttribArray(4);
+                GL.VertexAttribIPointer(4, 4, Const.GL_INT, stride, (IntPtr*)offsetBoneIds);
 
                 GL.BindVertexArray(0);
 
@@ -272,6 +282,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // per-node matrices (local + global)
         private Matrix4x4[] _nodeLocal;
         private Matrix4x4[] _nodeGlobal;
+        private Matrix4x4[][] _jointMatrices;
 
         public GltfObject(GltfModelGpuData gpuData, Vector3 position, Quaternion rotation, float scale = 1f)
         {
@@ -312,6 +323,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 _currentAnim = found >= 0 ? found : 0;
                 _animDuration = data.Animations[_currentAnim].Duration;
                 _animTime = 0f;
+                 
+                if (data.Skins != null && data.Skins.Length > 0)
+                {
+                    _jointMatrices = new Matrix4x4[data.Skins.Length][];
+
+                    for (int s = 0; s < data.Skins.Length; s++)
+                    {
+                        int jointCount = data.Skins[s].Joints.Length;
+                        _jointMatrices[s] = new Matrix4x4[jointCount];
+
+                        // isi awal identity
+                        for (int j = 0; j < jointCount; j++)
+                            _jointMatrices[s][j] = Matrix4x4.Identity;
+                    }
+                }
+                else
+                {
+                    _jointMatrices = Array.Empty<Matrix4x4[]>();
+                }
+                 
 
                 var chosenName = data.Animations[_currentAnim].Name ?? $"anim#{_currentAnim}";
                 Console.WriteLine($"[GltfObject] Animation selected for object: index={_currentAnim} name='{chosenName}' duration={_animDuration:F3}s");
@@ -321,110 +352,237 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void SetFacing(float yawDegrees)
             => Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
 
-        // Update per-instance animation & procedural fallback
+
         public void Update(float dt)
         {
-            // advance animation time
+            // ============================
+            // 1. UPDATE ANIMATION TIME
+            // ============================
             if (_hasAnimations && _currentAnim >= 0)
             {
                 _animTime += dt;
+
                 var anim = GpuData.Data.Animations[_currentAnim];
                 float dur = MathF.Max(0.0001f, anim.Duration);
-                // wrap
-                if (_animTime > dur) _animTime %= dur;
 
-                // reset local transforms to base
-                for (int ni = 0; ni < _nodeLocal.Length; ni++)
-                    _nodeLocal[ni] = GpuData.Data.Nodes[ni].LocalMatrix;
+                if (_animTime > dur)
+                    _animTime %= dur;
 
-                // apply channels
+                // ============================
+                // 2. RESET LOCAL TO BASE POSE
+                // ============================
+                for (int i = 0; i < _nodeLocal.Length; i++)
+                    _nodeLocal[i] = GpuData.Data.Nodes[i].LocalMatrix;
+
+                // ============================
+                // 3. APPLY ANIMATION CHANNELS
+                // ============================
                 foreach (var ch in anim.Channels)
                 {
-                    if (ch.TargetNode < 0 || ch.TargetNode >= _nodeLocal.Length) continue;
-                    var sampler = anim.Samplers[ch.SamplerIndex];
-                    if (sampler == null || sampler.Input == null || sampler.Input.Length == 0) continue;
+                    int node = ch.TargetNode;
+                    if (node < 0 || node >= _nodeLocal.Length)
+                        continue;
 
-                    // find keyframe interval (linear)
+                    var sampler = anim.Samplers[ch.SamplerIndex];
+                    if (sampler == null || sampler.Input == null || sampler.Input.Length == 0)
+                        continue;
+
+                    // ---- SINGLE KEYFRAME ----
+                    if (sampler.Input.Length == 1)
+                    {
+                        int off = 0;
+
+                        if (sampler.OutputStride == 3 && (ch.Path == "translation" || ch.Path == "scale"))
+                        {
+                            var v = new Vector3(
+                                sampler.Output[off + 0],
+                                sampler.Output[off + 1],
+                                sampler.Output[off + 2]
+                            );
+                            DecomposeLocalAndApply(ch.Path, node, v);
+                        }
+                        else if (sampler.OutputStride == 4 && ch.Path == "rotation")
+                        {
+                            var q = new Quaternion(
+                                sampler.Output[off + 0],
+                                sampler.Output[off + 1],
+                                sampler.Output[off + 2],
+                                sampler.Output[off + 3]
+                            );
+                            DecomposeLocalAndApply(ch.Path, node, q);
+                        }
+
+                        continue;
+                    }
+
+                    // ---- FIND INTERVAL (WITH WRAP) ----
                     int idx = Array.BinarySearch(sampler.Input, _animTime);
                     if (idx < 0) idx = ~idx;
-                    int i0 = Math.Max(0, idx - 1);
-                    int i1 = Math.Min(sampler.Input.Length - 1, idx);
 
-                    float t0 = sampler.Input[i0];
-                    float t1 = sampler.Input[i1];
-                    float localT = (t1 - t0) <= 1e-6f ? 0f : ((_animTime - t0) / (t1 - t0));
+                    int i0, i1;
+                    float t0, t1;
+
+                    if (idx == 0)
+                    {
+                        i0 = sampler.Input.Length - 1;
+                        i1 = 0;
+
+                        t0 = sampler.Input[i0];
+                        t1 = sampler.Input[i1] + dur;
+                    }
+                    else if (idx >= sampler.Input.Length)
+                    {
+                        i0 = sampler.Input.Length - 1;
+                        i1 = 0;
+
+                        t0 = sampler.Input[i0];
+                        t1 = sampler.Input[i1] + dur;
+                    }
+                    else
+                    {
+                        i0 = idx - 1;
+                        i1 = idx;
+
+                        t0 = sampler.Input[i0];
+                        t1 = sampler.Input[i1];
+                    }
+
+                    float localT = (_animTime - t0) / (t1 - t0);
                     localT = Math.Clamp(localT, 0f, 1f);
 
-                    // sample output
+                    // ---- SAMPLE OUTPUT ----
                     if (sampler.OutputStride == 3 && (ch.Path == "translation" || ch.Path == "scale"))
                     {
                         int off0 = i0 * 3;
                         int off1 = i1 * 3;
-                        var v0 = new Vector3(sampler.Output[off0 + 0], sampler.Output[off0 + 1], sampler.Output[off0 + 2]);
-                        var v1 = new Vector3(sampler.Output[off1 + 0], sampler.Output[off1 + 1], sampler.Output[off1 + 2]);
+
+                        var v0 = new Vector3(
+                            sampler.Output[off0 + 0],
+                            sampler.Output[off0 + 1],
+                            sampler.Output[off0 + 2]
+                        );
+
+                        var v1 = new Vector3(
+                            sampler.Output[off1 + 0],
+                            sampler.Output[off1 + 1],
+                            sampler.Output[off1 + 2]
+                        );
+
                         var v = Vector3.Lerp(v0, v1, localT);
-                        // decompose existing local to preserve other components
-                        DecomposeLocalAndApply(ch.Path, ch.TargetNode, v);
+                        DecomposeLocalAndApply(ch.Path, node, v);
                     }
                     else if (sampler.OutputStride == 4 && ch.Path == "rotation")
                     {
                         int off0 = i0 * 4;
                         int off1 = i1 * 4;
-                        var q0 = new Quaternion(sampler.Output[off0 + 0], sampler.Output[off0 + 1], sampler.Output[off0 + 2], sampler.Output[off0 + 3]);
-                        var q1 = new Quaternion(sampler.Output[off1 + 0], sampler.Output[off1 + 1], sampler.Output[off1 + 2], sampler.Output[off1 + 3]);
+
+                        var q0 = new Quaternion(
+                            sampler.Output[off0 + 0],
+                            sampler.Output[off0 + 1],
+                            sampler.Output[off0 + 2],
+                            sampler.Output[off0 + 3]);
+
+                        var q1 = new Quaternion(
+                            sampler.Output[off1 + 0],
+                            sampler.Output[off1 + 1],
+                            sampler.Output[off1 + 2],
+                            sampler.Output[off1 + 3]);
+
                         var q = Quaternion.Slerp(q0, q1, localT);
-                        DecomposeLocalAndApply(ch.Path, ch.TargetNode, q);
+                        DecomposeLocalAndApply(ch.Path, node, q);
                     }
-                    // other output types ignored for now
                 }
 
-                // compute global node matrices by hierarchy
-                for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
+                // ============================
+                // 4. RECOMPUTE GLOBAL MATRICES
+                // ============================
+                for (int i = 0; i < _nodeGlobal.Length; i++)
+                    _nodeGlobal[i] = Matrix4x4.Identity;
+
                 for (int i = 0; i < _nodeLocal.Length; i++)
-                {
                     if (GpuData.Data.Nodes[i].Parent == -1)
                         ComputeGlobalRec(i, Matrix4x4.Identity);
+
+                // ============================
+                // 5. BUILD JOINT MATRICES (SKINNING)
+                // ============================
+
+                for (int s = 0; s < GpuData.Data.Skins.Length; s++)
+                {
+                    var skin = GpuData.Data.Skins[s];
+                    var joints = skin.Joints;
+                    var invBind = skin.InverseBindMatrices;
+
+                    for (int j = 0; j < joints.Length; j++)
+                    {
+                        int node = joints[j];
+                        _jointMatrices[s][j] = _nodeGlobal[node] * invBind[j];
+                    }
                 }
             }
             else
             {
-                // no animation: keep node local==default; compute globals
-                for (int i = 0; i < _nodeLocal.Length; i++) _nodeLocal[i] = GpuData.Data.Nodes[i].LocalMatrix;
-                for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
+                // no animation
                 for (int i = 0; i < _nodeLocal.Length; i++)
-                {
+                    _nodeLocal[i] = GpuData.Data.Nodes[i].LocalMatrix;
+
+                for (int i = 0; i < _nodeGlobal.Length; i++)
+                    _nodeGlobal[i] = Matrix4x4.Identity;
+
+                for (int i = 0; i < _nodeLocal.Length; i++)
                     if (GpuData.Data.Nodes[i].Parent == -1)
                         ComputeGlobalRec(i, Matrix4x4.Identity);
-                }
             }
         }
+
 
         // helper: decompose current local matrix, replace translation/rotation/scale component and recompose
         private void DecomposeLocalAndApply(string path, int nodeIdx, Vector3 vec)
         {
-            var m = GpuData.Data.Nodes[nodeIdx].LocalMatrix;
-            // try decompose previous local (but we use current _nodeLocal as base)
-            Matrix4x4.Decompose(_nodeLocal[nodeIdx], out var sc, out var rot, out var trans);
+            // ALWAYS decompose BASE local matrix, not the animated one
+            var baseMat = GpuData.Data.Nodes[nodeIdx].LocalMatrix;
+
+            Matrix4x4.Decompose(baseMat, out var sc, out var rot, out var trans);
+
             if (path == "translation")
-            {
                 trans = vec;
-            }
             else if (path == "scale")
-            {
                 sc = vec;
-            }
-            _nodeLocal[nodeIdx] = Matrix4x4.CreateScale(sc) * Matrix4x4.CreateFromQuaternion(rot) * Matrix4x4.CreateTranslation(trans);
+
+            _nodeLocal[nodeIdx] =
+                Matrix4x4.CreateScale(sc) *
+                Matrix4x4.CreateFromQuaternion(rot) *
+                Matrix4x4.CreateTranslation(trans);
         }
 
-        private void DecomposeLocalAndApply(string path, int nodeIdx, Quaternion quat)
+        private void DecomposeLocalAndApply(string path, int nodeIdx, Quaternion q)
         {
-            Matrix4x4.Decompose(_nodeLocal[nodeIdx], out var sc, out var rot, out var trans);
+            var baseMat = GpuData.Data.Nodes[nodeIdx].LocalMatrix;
+
+            Matrix4x4.Decompose(baseMat, out var sc, out var rot, out var trans);
+
             if (path == "rotation")
-            {
-                rot = quat;
-            }
-            _nodeLocal[nodeIdx] = Matrix4x4.CreateScale(sc) * Matrix4x4.CreateFromQuaternion(rot) * Matrix4x4.CreateTranslation(trans);
+                rot = q;
+
+            _nodeLocal[nodeIdx] =
+                Matrix4x4.CreateScale(sc) *
+                Matrix4x4.CreateFromQuaternion(rot) *
+                Matrix4x4.CreateTranslation(trans);
         }
+        private void ApplyRotation(int nodeIdx, Quaternion q)
+        {
+            var baseMat = GpuData.Data.Nodes[nodeIdx].LocalMatrix;
+
+            Matrix4x4.Decompose(baseMat, out var sc, out var rot, out var trans);
+
+            rot = q;
+
+            _nodeLocal[nodeIdx] =
+                Matrix4x4.CreateScale(sc) *
+                Matrix4x4.CreateFromQuaternion(rot) *
+                Matrix4x4.CreateTranslation(trans);
+        }
+
 
         private void ComputeGlobalRec(int idx, Matrix4x4 parent)
         {
@@ -447,29 +605,54 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>Kirim draw call ke GPU. Applies per-mesh model matrix (object * nodeGlobal).</summary>
-        public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc)
+        public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc, int jointsLoc)
         {
-            var objMat = Matrix4x4.CreateScale(Scale)
-                         * Matrix4x4.CreateFromQuaternion(Rotation)
-                         * Matrix4x4.CreateTranslation(Position);
+            var objMat =
+                Matrix4x4.CreateScale(Scale) *
+                Matrix4x4.CreateFromQuaternion(Rotation) *
+                Matrix4x4.CreateTranslation(Position);
 
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
                 var mesh = GpuData.Meshes[mi];
 
-                // compute model matrix for this mesh: object transform * nodeGlobal (if any)
+                // ============================
+                // 1. MODEL MATRIX
+                // ============================
                 Matrix4x4 modelMat = objMat;
+
                 int nodeIdx = -1;
-                if (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length) nodeIdx = GpuData.MeshToNode[mi];
+                if (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length)
+                    nodeIdx = GpuData.MeshToNode[mi];
+
                 if (nodeIdx >= 0 && nodeIdx < _nodeGlobal.Length)
-                {
-                    // FIX: apply object transform first, then node-global (correct world transform)
-                    modelMat = objMat * _nodeGlobal[nodeIdx];
-                }
+                    modelMat = _nodeGlobal[nodeIdx] * objMat;
 
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
 
-                // Material properties
+                // ============================
+                // 2. SKINNING (UPLOAD JOINT MATRICES)
+                // ============================
+                int skinIndex = -1;
+                if (nodeIdx >= 0)
+                    skinIndex = GpuData.Data.Nodes[nodeIdx].Skin;
+
+                if (skinIndex >= 0)
+                {
+                    var skin = GpuData.Data.Skins[skinIndex];
+                    int jointCount = skin.Joints.Length;
+
+                    GL.UniformMatrix4fv(
+                        jointsLoc,
+                        jointCount,
+                        false,
+                        (float*)Unsafe.AsPointer(ref _jointMatrices[skinIndex][0])
+                    );
+                }
+
+                // ============================
+                // 3. MATERIAL
+                // ============================
                 if (baseColorFactorLoc != -1)
                 {
                     var factor = mesh.Material.BaseColorFactor;
@@ -481,7 +664,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.ActiveTexture(Const.GL_TEXTURE0);
                     GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.TextureID);
                     if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 1);
-                    if (albedoMapLoc != -1) GL.Uniform1i(albedoMapLoc, 0); // texture unit 0
+                    if (albedoMapLoc != -1) GL.Uniform1i(albedoMapLoc, 0);
                 }
                 else
                 {
@@ -489,15 +672,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 if (mesh.Material.DoubleSided)
-                {
                     GL.Disable(Const.GL_CULL_FACE);
-                }
                 else
-                {
                     GL.Enable(Const.GL_CULL_FACE);
-                }
 
+                // ============================
+                // 4. DRAW
+                // ============================
                 GL.BindVertexArray(mesh.VAO);
+
                 if (mesh.IndexCount > 0)
                     GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
                 else
@@ -506,8 +689,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-            GL.Enable(Const.GL_CULL_FACE); // restore backface culling default
+            GL.Enable(Const.GL_CULL_FACE);
         }
+
 
         // compute a conservative world-space AABB by transforming mesh vertices with current node/global matrices
         public AABB ComputeWorldAABB()
@@ -552,21 +736,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             return new AABB(mn, mx);
         }
-
-        // Align object's base so lowest point sits on terrain at object's X,Z
-        public void AlignToTerrain(DarkEngine3D_gl_csharp.Engine.Terrains.TerrainChunk terrain)
-        {
-            // compute current world AABB (updates should have been applied via Update)
-            var aabb = ComputeWorldAABB();
-
-            // sample terrain at object's horizontal position (use Position.X,Z)
-            float terrainY = terrain.GetHeightAt(Position.X, Position.Z);
-
-            float currentMinY = aabb.Min.Y;
-            float delta = terrainY - currentMinY;
-
-            // shift object vertically by delta
-            Position = new Vector3(Position.X, Position.Y + delta, Position.Z);
-        }
+         
     }
 }

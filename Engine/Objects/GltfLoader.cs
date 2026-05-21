@@ -1,6 +1,9 @@
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
+using static DarkEngine3D_gl_csharp.Engine.Objects.SkinnedVertex;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
@@ -42,6 +45,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int[] Children = [];
         public Matrix4x4 LocalMatrix = Matrix4x4.Identity;
         public int Parent = -1; // filled during parse
+        public int Skin = -1;
     }
 
     public class GltfAnimationSampler
@@ -66,6 +70,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public GltfAnimationChannel[] Channels = [];
         public float Duration = 0f;
     }
+    public class GltfSkin
+    {
+        public int[] Joints = [];                 // index node tulang
+        public Matrix4x4[] InverseBindMatrices = [];
+    }
 
     public class GltfData
     {
@@ -75,6 +84,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public GltfTexture[] Textures = [];
         public GltfNode[] Nodes = [];
         public GltfAnimation[] Animations = [];
+        public GltfSkin[] Skins = [];
     }
 
     // ===========================================================================
@@ -129,10 +139,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             data.Images = ParseImages(root, baseDir);
             data.Textures = ParseTextures(root);
             data.Materials = ParseMaterials(root);
-            data.Meshes = ParseMeshes(root);
+            data.Meshes = ParseMeshes(root);    
+            data.Skins = ParseSkins(root); 
+            
             data.Nodes = ParseNodes(root);
             data.Animations = ParseAnimations(root);
-
+            
             // establish parent links
             for (int i = 0; i < data.Nodes.Length; i++)
             {
@@ -140,7 +152,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 foreach (var c in n.Children)
                 {
                     if (c >= 0 && c < data.Nodes.Length) data.Nodes[c].Parent = i;
-                }
+                } 
             }
 
             return data;
@@ -304,11 +316,51 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     var positions = RVec3(attrs.GetProperty("POSITION").GetInt32());
                     var normals = attrs.TryGetProperty("NORMAL", out var nEl) ? RVec3(nEl.GetInt32()) : new Vector3[positions.Length];
-                    var uvs = attrs.TryGetProperty("TEXCOORD_0", out var uEl) ? RVec2(uEl.GetInt32()) : new Vector2[positions.Length];
+                    var texCoord = attrs.TryGetProperty("TEXCOORD_0", out var uEl) ? RVec2(uEl.GetInt32()) : new Vector2[positions.Length];
+                    var joints = attrs.TryGetProperty("JOINTS_0", out var jointsProp)
+                        ? ReadJoints(jointsProp.GetInt32(), _bin)
+                        : new Vector4[positions.Length];
+
+                    var weights = attrs.TryGetProperty("WEIGHTS_0", out var weightsProp)
+                        ? ReadWeights(weightsProp.GetInt32(), _bin)
+                        : new Vector4[positions.Length];
+
+                    for (int i = 0; i < weights.Length; i++)
+                    {
+                        float sum =
+                            weights[i].X +
+                            weights[i].Y +
+                            weights[i].Z +
+                            weights[i].W;
+
+                        if (sum > 0.00001f)
+                            weights[i] /= sum;
+                        else
+                            weights[i] = new Vector4(1, 0, 0, 0); // fallback
+                    } 
 
                     var verts = new SkinnedVertex[positions.Length];
                     for (int i = 0; i < positions.Length; i++)
-                        verts[i] = new SkinnedVertex(positions[i], normals[i], uvs[i]);
+                    {
+                        verts[i].Position = positions[i];
+                        verts[i].Normal = normals[i];
+                        verts[i].TexCoord = texCoord[i];
+                        verts[i].BoneWeights = weights[i];
+
+                        verts[i].BoneIds.X = (int)joints[i].X;
+                        verts[i].BoneIds.Y = (int)joints[i].Y;
+                        verts[i].BoneIds.Z = (int)joints[i].Z;
+                        verts[i].BoneIds.W = (int)joints[i].W;
+                    }
+
+
+                    // Tambahkan debug print di sini
+                    for (int i = 0; i < Math.Min(20, verts.Length); i++)
+                    {
+                        Console.WriteLine(
+                            $"v{i} BoneIds = {verts[i].BoneIds.X}, {verts[i].BoneIds.Y}, {verts[i].BoneIds.Z}, {verts[i].BoneIds.W}"
+                        );
+                    }
 
                     uint[] indices = prim.TryGetProperty("indices", out var idxEl)
                         ? RIndices(idxEl.GetInt32())
@@ -321,6 +373,118 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             return [..list];
         }
+
+        private Vector4[] ReadJoints(int accessorIndex, byte[] bin)
+        {
+            var acc = _accs[accessorIndex];
+            var view = _bvs[acc.BufView];
+
+            int count = acc.Count;
+            Vector4[] result = new Vector4[count];
+
+            int stride = view.stride > 0
+                ? view.stride
+                : (acc.CompType == 5121 ? 4 : 8);
+
+            int baseOffset = view.off + acc.ByteOffset;
+
+            for (int i = 0; i < count; i++)
+            {
+                int pos = baseOffset + i * stride;
+
+                if (acc.CompType == 5121) // UNSIGNED_BYTE
+                {
+                    result[i] = new Vector4(
+                        bin[pos + 0],
+                        bin[pos + 1],
+                        bin[pos + 2],
+                        bin[pos + 3]
+                    );
+                }
+                else if (acc.CompType == 5123) // UNSIGNED_SHORT
+                {
+                    result[i] = new Vector4(
+                        BitConverter.ToUInt16(bin, pos + 0),
+                        BitConverter.ToUInt16(bin, pos + 2),
+                        BitConverter.ToUInt16(bin, pos + 4),
+                        BitConverter.ToUInt16(bin, pos + 6)
+                    );
+                }
+                else
+                {
+                    throw new Exception("Unsupported JOINTS_0 componentType");
+                }
+            }
+
+            return result;
+        }
+
+        private Vector4[] ReadWeights(int accessorIndex, byte[] bin)
+        {
+            var acc = _accs[accessorIndex];
+            var view = _bvs[acc.BufView];
+
+            int count = acc.Count;
+            Vector4[] result = new Vector4[count];
+
+            int stride = view.stride > 0
+             ? view.stride
+             : acc.CompType switch
+             {
+                 5126 => 16, // FLOAT
+                 5121 => 4,  // UBYTE
+                 5123 => 8,  // USHORT
+                 _ => throw new Exception($"Unsupported WEIGHTS_0 componentType: {acc.CompType}")
+             };
+
+            int baseOffset = view.off + acc.ByteOffset;
+
+            for (int i = 0; i < count; i++)
+            {
+                int pos = baseOffset + i * stride;
+
+                if (acc.CompType == 5126) // FLOAT
+                {
+                    result[i] = new Vector4(
+                        BitConverter.ToSingle(bin, pos + 0),
+                        BitConverter.ToSingle(bin, pos + 4),
+                        BitConverter.ToSingle(bin, pos + 8),
+                        BitConverter.ToSingle(bin, pos + 12)
+                    );  
+                }
+                else if (acc.CompType == 5121) // UNSIGNED_BYTE normalized
+                {
+                    result[i] = new Vector4(
+                        bin[pos + 0] / 255f,
+                        bin[pos + 1] / 255f,
+                        bin[pos + 2] / 255f,
+                        bin[pos + 3] / 255f
+                    );
+                }
+                else // UNSIGNED_SHORT normalized
+                {
+                    result[i] = new Vector4(
+                        BitConverter.ToUInt16(bin, pos + 0) / 65535f,
+                        BitConverter.ToUInt16(bin, pos + 2) / 65535f,
+                        BitConverter.ToUInt16(bin, pos + 4) / 65535f,
+                        BitConverter.ToUInt16(bin, pos + 6) / 65535f
+                    );
+                }
+            }
+
+            // normalize safety
+            for (int i = 0; i < result.Length; i++)
+            {
+                float sum = result[i].X + result[i].Y + result[i].Z + result[i].W;
+                if (sum > 0.00001f)
+                    result[i] /= sum;
+                else
+                    result[i] = new Vector4(1, 0, 0, 0);
+            }
+
+            return result;
+        }
+
 
         // ========================= NODES ========================================
         private GltfNode[] ParseNodes(JsonElement root)
@@ -339,45 +503,170 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     node.Children = ids.ToArray();
                 }
 
-                // matrix or TRS
+                // ============================
+                // PARSE NODE LOCAL TRANSFORM
+                // ============================
                 if (nd.TryGetProperty("matrix", out var matProp) && matProp.ValueKind == JsonValueKind.Array)
                 {
-                    float[] mm = new float[16];
-                    int i = 0;
-                    foreach (var v in matProp.EnumerateArray()) mm[i++] = v.GetSingle();
-                    node.LocalMatrix = new Matrix4x4(
-                        mm[0], mm[1], mm[2], mm[3],
-                        mm[4], mm[5], mm[6], mm[7],
-                        mm[8], mm[9], mm[10], mm[11],
-                        mm[12], mm[13], mm[14], mm[15]);
+                    // GLTF matrix = COLUMN MAJOR
+                    float[] mat = new float[16];
+                    int k = 0;
+                    foreach (var v in matProp.EnumerateArray())
+                        mat[k++] = v.GetSingle();
+
+                    // Convert to C# row-major
+                    var matrix = new Matrix4x4(
+                        mat[0], mat[1], mat[2], mat[3],
+                        mat[4], mat[5], mat[6], mat[7],
+                        mat[8], mat[9], mat[10], mat[11],
+                        mat[12], mat[13], mat[14], mat[15]
+                    );
+
+                    node.LocalMatrix = Matrix4x4.Transpose(matrix);   // WAJIB
                 }
                 else
                 {
+                    // TRS
                     Vector3 t = Vector3.Zero;
                     Quaternion r = Quaternion.Identity;
                     Vector3 s = Vector3.One;
+
                     if (nd.TryGetProperty("translation", out var tProp))
                     {
                         var arr = tProp.EnumerateArray().ToArray();
-                        if (arr.Length >= 3) t = new Vector3(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle());
+                        t = new Vector3(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle());
                     }
+
                     if (nd.TryGetProperty("rotation", out var rProp))
                     {
                         var arr = rProp.EnumerateArray().ToArray();
-                        if (arr.Length >= 4) r = new Quaternion(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle(), arr[3].GetSingle());
+                        r = new Quaternion(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle(), arr[3].GetSingle());
+                        r = Quaternion.Normalize(r);   // WAJIB
                     }
+
                     if (nd.TryGetProperty("scale", out var sProp))
                     {
                         var arr = sProp.EnumerateArray().ToArray();
-                        if (arr.Length >= 3) s = new Vector3(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle());
+                        s = new Vector3(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle());
                     }
-                    // keep same multiplication order used elsewhere in code (S * R * T)
-                    node.LocalMatrix = Matrix4x4.CreateScale(s) * Matrix4x4.CreateFromQuaternion(r) * Matrix4x4.CreateTranslation(t);
+
+                    // GLTF ORDER: T * R * S  (WAJIB)
+                    node.LocalMatrix =
+                        Matrix4x4.CreateScale(s);
+
+                    node.LocalMatrix =
+                        Matrix4x4.CreateFromQuaternion(r) * node.LocalMatrix;
+
+                    node.LocalMatrix =
+                        Matrix4x4.CreateTranslation(t) * node.LocalMatrix;
                 }
+
+
+                if (nd.TryGetProperty("skin", out var skinProp))
+                    node.Skin = skinProp.GetInt32();
+                else
+                    node.Skin = -1;
+
                 list.Add(node);
             }
             return [..list];
         }
+        private Matrix4x4[] ReadMatrix4x4Accessor(int accessorIndex, byte[] bin)
+        {
+            var acc = _accs[accessorIndex];
+            var view = _bvs[acc.BufView];
+
+            int count = acc.Count;
+            Matrix4x4[] result = new Matrix4x4[count];
+
+            int stride = view.stride > 0 ? view.stride : 64; // 16 float * 4 bytes
+            int offset = view.off + acc.ByteOffset;
+
+            for (int i = 0; i < count; i++)
+            {
+                int pos = offset + i * stride;
+
+                var m = new Matrix4x4(
+                    BitConverter.ToSingle(bin, pos + 0),
+                    BitConverter.ToSingle(bin, pos + 4),
+                    BitConverter.ToSingle(bin, pos + 8),
+                    BitConverter.ToSingle(bin, pos + 12),
+
+                    BitConverter.ToSingle(bin, pos + 16),
+                    BitConverter.ToSingle(bin, pos + 20),
+                    BitConverter.ToSingle(bin, pos + 24),
+                    BitConverter.ToSingle(bin, pos + 28),
+
+                    BitConverter.ToSingle(bin, pos + 32),
+                    BitConverter.ToSingle(bin, pos + 36),
+                    BitConverter.ToSingle(bin, pos + 40),
+                    BitConverter.ToSingle(bin, pos + 44),
+
+                    BitConverter.ToSingle(bin, pos + 48),
+                    BitConverter.ToSingle(bin, pos + 52),
+                    BitConverter.ToSingle(bin, pos + 56),
+                    BitConverter.ToSingle(bin, pos + 60)
+                );
+
+                // ⭐ WAJIB
+                m = Matrix4x4.Transpose(m);
+                result[i] = m;
+            }
+
+            return result;
+        }
+
+        private GltfSkin[] ParseSkins(JsonElement root )
+        {
+            if (!root.TryGetProperty("skins", out var el))
+                return [];
+
+            var list = new List<GltfSkin>();
+
+            foreach (var skinJson in el.EnumerateArray())
+            {
+                var skin = new GltfSkin();
+
+                // -------------------------
+                // JOINTS
+                // -------------------------
+                if (skinJson.TryGetProperty("joints", out var jointsProp))
+                {
+                    int count = jointsProp.GetArrayLength();
+                    skin.Joints = new int[count];
+
+                    int idx = 0;
+                    foreach (var j in jointsProp.EnumerateArray())
+                    {
+                        skin.Joints[idx++] = j.GetInt32();
+                    }
+                }
+                else
+                {
+                    skin.Joints = [];
+                } 
+
+                // -------------------------
+                // INVERSE BIND MATRICES
+                // -------------------------
+                if (skinJson.TryGetProperty("inverseBindMatrices", out var ibmProp))
+                {
+                    int accessorIndex = ibmProp.GetInt32();
+                    skin.InverseBindMatrices = ReadMatrix4x4Accessor(accessorIndex, _bin);
+                }
+                else
+                {
+                    // default: identity
+                    skin.InverseBindMatrices = new Matrix4x4[skin.Joints.Length];
+                    for (int i = 0; i < skin.InverseBindMatrices.Length; i++)
+                        skin.InverseBindMatrices[i] = Matrix4x4.Identity;
+                } 
+                list.Add(skin);
+            }
+
+            return [.. list];
+        }
+
 
         // ========================= ANIMATIONS ===================================
         private GltfAnimation[] ParseAnimations(JsonElement root)

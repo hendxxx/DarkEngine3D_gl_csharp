@@ -30,6 +30,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.UniformMatrix4fvPtr = GetProcAddress(glLib, "glUniformMatrix4fv");
 
             GL.VertexAttribPointerPtr = GetProcAddress(glLib, "glVertexAttribPointer");
+            GL.VertexAttribIPointerPtr = GetProcAddress(glLib, "glVertexAttribIPointer");
             GL.EnableVertexAttribArrayPtr = GetProcAddress(glLib, "glEnableVertexAttribArray");
             GL.DisableVertexAttribArrayPtr = GetProcAddress(glLib, "glDisableVertexAttribArray");
 

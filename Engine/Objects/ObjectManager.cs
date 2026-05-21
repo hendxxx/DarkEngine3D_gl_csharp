@@ -26,6 +26,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int  _baseColorFactorLoc;
         private readonly int  _useAlbedoLoc;
         private readonly int  _albedoMapLoc;
+        private readonly int  _jointLoc;
 
         public int  DrawnObjects  { get; private set; }
         public int  CulledObjects { get; private set; }
@@ -46,6 +47,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _baseColorFactorLoc = GL.GetUniformLocation(_shaderProgram, "baseColorFactor");
             _useAlbedoLoc       = GL.GetUniformLocation(_shaderProgram, "useAlbedo");
             _albedoMapLoc       = GL.GetUniformLocation(_shaderProgram, "albedoMap");
+            _jointLoc           = GL.GetUniformLocation(_shaderProgram, "joints");
 
             Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
         }
@@ -88,13 +90,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var view = camera.GetViewMatrix();
             var proj = camera.GetProjectionMatrix();
             GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)Unsafe.AsPointer(ref view));
-            GL.UniformMatrix4fv(_projLoc, 1, false, (float*)Unsafe.AsPointer(ref proj));
+            GL.UniformMatrix4fv(_projLoc, 1, false, (float*)Unsafe.AsPointer(ref proj)); 
 
             GL.Uniform3f(_sunDirLoc,     light.SunDir.X,     light.SunDir.Y,     light.SunDir.Z);
             GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
             GL.Uniform3f(_fogColorLoc,   light.FogColor.X,   light.FogColor.Y,   light.FogColor.Z);
             GL.Uniform3f(_viewPosLoc,    camera.Position.X,  camera.Position.Y,  camera.Position.Z);
-            GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+            GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0); 
 
             var frustum = ExtractFrustumPlanes(Matrix4x4.Multiply(view, proj));
 
@@ -105,7 +107,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     CulledObjects++;
                     continue;
                 }
-                obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc);
+                obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc, _jointLoc);
                 DrawnObjects++;
             }
         }
@@ -113,16 +115,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
         {
-            // Sample terrain height at object's X,Z
+
             float terrainY = terrain.GetHeightAt(obj.Position.X, obj.Position.Z);
-
-            // Use model local AABB (built from mesh vertices) to compute lowest vertex Y in local space.
-            // Account for object scale so lowest vertex lands on terrain.
-            float localMinY = 0f;
-            if (obj.GpuData != null)
-                localMinY = obj.GpuData.LocalAABB.Min.Y;
-
-            obj.Position = new Vector3(obj.Position.X, (terrainY - localMinY) * obj.Scale, obj.Position.Z);
+            obj.Position = new Vector3(obj.Position.X, terrainY, obj.Position.Z);
         }
 
         public void SnapAllToTerrain(TerrainChunk terrain)
