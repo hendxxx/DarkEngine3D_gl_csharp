@@ -74,7 +74,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public void Update(float dt)
         {
-            foreach (var obj in _objects) GltfObject.Update(dt);
+            foreach (var obj in _objects) obj.Update(dt);
         }
 
         // -----------------------------------------------------------------------
@@ -113,8 +113,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
         {
+            // Sample terrain height at object's X,Z
             float terrainY = terrain.GetHeightAt(obj.Position.X, obj.Position.Z);
-            obj.Position   = new Vector3(obj.Position.X, terrainY, obj.Position.Z);
+
+            // Use model local AABB (built from mesh vertices) to compute lowest vertex Y in local space.
+            // Account for object scale so lowest vertex lands on terrain.
+            float localMinY = 0f;
+            if (obj.GpuData != null)
+                localMinY = obj.GpuData.LocalAABB.Min.Y;
+
+            obj.Position = new Vector3(obj.Position.X, (terrainY - localMinY) * obj.Scale, obj.Position.Z);
         }
 
         public void SnapAllToTerrain(TerrainChunk terrain)

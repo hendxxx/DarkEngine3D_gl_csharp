@@ -206,9 +206,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // ---- glTF Object Manager ----
                 if (objectManager != null)
                 {
+                     
+
                     objectManager.Update(deltaTime);
                     OpenGL.EnableFaceCulling(false); // Xbot model might have CCW issues
                     objectManager.Draw(camera, light);
+                    objectManager.SnapAllToTerrain(gameTerrainChunk);
+
                     OpenGL.EnableFaceCulling(true);
                     GL.UseProgram(shaderProgram); // Kembalikan ke terrain shader
                 }

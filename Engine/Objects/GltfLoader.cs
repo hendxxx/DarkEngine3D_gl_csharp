@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
     // ===========================================================================
-    //  glTF 2.0 Data Model — static mesh only (no animation, no skinning)
+    //  glTF 2.0 Data Model — extended with Nodes & Animations (TRS sampling)
     // ===========================================================================
     public class GltfMaterial
     {
@@ -35,16 +35,51 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int MaterialIndex = -1;
     }
 
+    public class GltfNode
+    {
+        public string Name = "";
+        public int Mesh = -1;
+        public int[] Children = [];
+        public Matrix4x4 LocalMatrix = Matrix4x4.Identity;
+        public int Parent = -1; // filled during parse
+    }
+
+    public class GltfAnimationSampler
+    {
+        public float[] Input = [];     // times
+        public float[] Output = [];    // flattened output values
+        public int OutputStride = 0;   // components per key (3 = vec3, 4 = quat)
+        public string Interpolation = "LINEAR";
+    }
+
+    public class GltfAnimationChannel
+    {
+        public int SamplerIndex;
+        public int TargetNode;
+        public string Path = ""; // "translation" | "rotation" | "scale"
+    }
+
+    public class GltfAnimation
+    {
+        public string Name = "";
+        public GltfAnimationSampler[] Samplers = [];
+        public GltfAnimationChannel[] Channels = [];
+        public float Duration = 0f;
+    }
+
     public class GltfData
     {
         public GltfMeshData[] Meshes = [];
         public GltfMaterial[] Materials = [];
         public GltfImage[] Images = [];
         public GltfTexture[] Textures = [];
+        public GltfNode[] Nodes = [];
+        public GltfAnimation[] Animations = [];
     }
 
     // ===========================================================================
     //  GLB Parser — pure C#, zero external dependencies
+    //  Extended: parse nodes + animations (TRS)
     // ===========================================================================
     public class GltfLoader
     {
@@ -95,6 +130,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             data.Textures = ParseTextures(root);
             data.Materials = ParseMaterials(root);
             data.Meshes = ParseMeshes(root);
+            data.Nodes = ParseNodes(root);
+            data.Animations = ParseAnimations(root);
+
+            // establish parent links
+            for (int i = 0; i < data.Nodes.Length; i++)
+            {
+                var n = data.Nodes[i];
+                foreach (var c in n.Children)
+                {
+                    if (c >= 0 && c < data.Nodes.Length) data.Nodes[c].Parent = i;
+                }
+            }
 
             return data;
         }
@@ -275,6 +322,171 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return [..list];
         }
 
+        // ========================= NODES ========================================
+        private GltfNode[] ParseNodes(JsonElement root)
+        {
+            if (!root.TryGetProperty("nodes", out var el)) return [];
+            var list = new List<GltfNode>();
+            foreach (var nd in el.EnumerateArray())
+            {
+                var node = new GltfNode();
+                if (nd.TryGetProperty("name", out var nm)) node.Name = nm.GetString() ?? "";
+                if (nd.TryGetProperty("mesh", out var m)) node.Mesh = m.GetInt32();
+                if (nd.TryGetProperty("children", out var ch))
+                {
+                    var ids = new List<int>();
+                    foreach (var c in ch.EnumerateArray()) ids.Add(c.GetInt32());
+                    node.Children = ids.ToArray();
+                }
+
+                // matrix or TRS
+                if (nd.TryGetProperty("matrix", out var matProp) && matProp.ValueKind == JsonValueKind.Array)
+                {
+                    float[] mm = new float[16];
+                    int i = 0;
+                    foreach (var v in matProp.EnumerateArray()) mm[i++] = v.GetSingle();
+                    node.LocalMatrix = new Matrix4x4(
+                        mm[0], mm[1], mm[2], mm[3],
+                        mm[4], mm[5], mm[6], mm[7],
+                        mm[8], mm[9], mm[10], mm[11],
+                        mm[12], mm[13], mm[14], mm[15]);
+                }
+                else
+                {
+                    Vector3 t = Vector3.Zero;
+                    Quaternion r = Quaternion.Identity;
+                    Vector3 s = Vector3.One;
+                    if (nd.TryGetProperty("translation", out var tProp))
+                    {
+                        var arr = tProp.EnumerateArray().ToArray();
+                        if (arr.Length >= 3) t = new Vector3(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle());
+                    }
+                    if (nd.TryGetProperty("rotation", out var rProp))
+                    {
+                        var arr = rProp.EnumerateArray().ToArray();
+                        if (arr.Length >= 4) r = new Quaternion(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle(), arr[3].GetSingle());
+                    }
+                    if (nd.TryGetProperty("scale", out var sProp))
+                    {
+                        var arr = sProp.EnumerateArray().ToArray();
+                        if (arr.Length >= 3) s = new Vector3(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle());
+                    }
+                    // keep same multiplication order used elsewhere in code (S * R * T)
+                    node.LocalMatrix = Matrix4x4.CreateScale(s) * Matrix4x4.CreateFromQuaternion(r) * Matrix4x4.CreateTranslation(t);
+                }
+                list.Add(node);
+            }
+            return [..list];
+        }
+
+        // ========================= ANIMATIONS ===================================
+        private GltfAnimation[] ParseAnimations(JsonElement root)
+        {
+            if (!root.TryGetProperty("animations", out var el)) return [];
+            var list = new List<GltfAnimation>();
+
+            foreach (var animEl in el.EnumerateArray())
+            {
+                var anim = new GltfAnimation();
+                if (animEl.TryGetProperty("name", out var n)) anim.Name = n.GetString() ?? "";
+
+                // samplers
+                var samplers = new List<GltfAnimationSampler>();
+                if (animEl.TryGetProperty("samplers", out var samArr))
+                {
+                    foreach (var sEl in samArr.EnumerateArray())
+                    {
+                        int inputIdx = sEl.GetProperty("input").GetInt32();
+                        int outputIdx = sEl.GetProperty("output").GetInt32();
+                        string interp = sEl.TryGetProperty("interpolation", out var ip) ? ip.GetString() ?? "LINEAR" : "LINEAR";
+
+                        var aIn = _accs[inputIdx];
+                        var aOut = _accs[outputIdx];
+
+                        var sampler = new GltfAnimationSampler
+                        {
+                            Input = RFloat(inputIdx),
+                            Interpolation = interp
+                        };
+
+                        if (aOut.Type == "VEC3")
+                        {
+                            sampler.OutputStride = 3;
+                            var vecs = RVec3(outputIdx);
+                            sampler.Output = new float[vecs.Length * 3];
+                            for (int i = 0; i < vecs.Length; i++)
+                            {
+                                sampler.Output[i * 3 + 0] = vecs[i].X;
+                                sampler.Output[i * 3 + 1] = vecs[i].Y;
+                                sampler.Output[i * 3 + 2] = vecs[i].Z;
+                            }
+                        }
+                        else if (aOut.Type == "VEC4")
+                        {
+                            sampler.OutputStride = 4;
+                            var vecs = RVec4(outputIdx);
+                            sampler.Output = new float[vecs.Length * 4];
+                            for (int i = 0; i < vecs.Length; i++)
+                            {
+                                sampler.Output[i * 4 + 0] = vecs[i].X;
+                                sampler.Output[i * 4 + 1] = vecs[i].Y;
+                                sampler.Output[i * 4 + 2] = vecs[i].Z;
+                                sampler.Output[i * 4 + 3] = vecs[i].W;
+                            }
+                        }
+                        else if (aOut.Type == "SCALAR")
+                        {
+                            sampler.OutputStride = 1;
+                            var f = RFloat(outputIdx);
+                            sampler.Output = f;
+                        }
+                        else
+                        {
+                            // unsupported output type => skip
+                            sampler.OutputStride = 0;
+                            sampler.Output = [];
+                        }
+
+                        samplers.Add(sampler);
+                    }
+                }
+
+                // channels
+                var channels = new List<GltfAnimationChannel>();
+                if (animEl.TryGetProperty("channels", out var chArr))
+                {
+                    foreach (var chEl in chArr.EnumerateArray())
+                    {
+                        int samplerIndex = chEl.GetProperty("sampler").GetInt32();
+                        var target = chEl.GetProperty("target");
+                        int nodeIdx = target.TryGetProperty("node", out var nidx) ? nidx.GetInt32() : -1;
+                        string path = target.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+
+                        channels.Add(new GltfAnimationChannel { SamplerIndex = samplerIndex, TargetNode = nodeIdx, Path = path });
+                    }
+                }
+
+                anim.Samplers = samplers.ToArray();
+                anim.Channels = channels.ToArray();
+
+                // compute duration
+                float maxT = 0f;
+                foreach (var s in anim.Samplers)
+                {
+                    if (s.Input != null && s.Input.Length > 0)
+                    {
+                        float last = s.Input[^1];
+                        if (last > maxT) maxT = last;
+                    }
+                }
+                anim.Duration = maxT;
+
+                list.Add(anim);
+            }
+
+            return [..list];
+        }
+
         // ========================= BINARY READERS ===============================
         private Span<byte> Span(int accIdx)
         {
@@ -289,6 +501,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var r = new Vector3[acc.Count];
             for (int j = 0; j < r.Length; j++)
             { int o = j * 12; r[j] = new Vector3(ToF(sp, o), ToF(sp, o + 4), ToF(sp, o + 8)); }
+            return r;
+        }
+
+        private Vector4[] RVec4(int i)
+        {
+            var acc = _accs[i]; var sp = Span(i);
+            var r = new Vector4[acc.Count];
+            for (int j = 0; j < r.Length; j++)
+            { int o = j * 16; r[j] = new Vector4(ToF(sp, o), ToF(sp, o + 4), ToF(sp, o + 8), ToF(sp, o + 12)); }
+            return r;
+        }
+
+        private float[] RFloat(int i)
+        {
+            var acc = _accs[i]; var sp = Span(i);
+            var r = new float[acc.Count];
+            for (int j = 0; j < r.Length; j++)
+            { int o = j * 4; r[j] = ToF(sp, o); }
             return r;
         }
 
