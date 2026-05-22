@@ -108,6 +108,7 @@ public unsafe class Program
         GltfShader.Init(); // Compile gltf shader setelah OpenGL siap
         ObjectManager objectManager = new();
 
+        //string xbotPath = "Artifacts\\objects\\LittlestTokyo.glb";
         string xbotPath = "Artifacts\\objects\\Stuntman.glb";
         var rng = new Random(42);
 
