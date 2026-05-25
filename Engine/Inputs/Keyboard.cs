@@ -176,7 +176,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 if (frozenMode)
                 {
                     Matrix4x4 view = camera.GetViewMatrix();
-                    Matrix4x4 proj = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
+                    Matrix4x4 proj = camera.GetProjectionMatrix();
                     frozenCorners = TerrainChunk.GetFrustumCorners(view, proj);
                     gameTerrainChunk.SetFrozenFrustumCorners(frozenCorners);
                     gameTerrainChunk.SetHighlightFrustumMatches(true);

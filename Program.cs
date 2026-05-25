@@ -99,7 +99,7 @@ public unsafe class Program
         ];
 
         // Init TerrainChunk
-        TerrainChunk.GlobalLODLevel = 1;
+        TerrainChunk.GlobalLODLevel = 3;
         TerrainChunk.HeightScale = 80.0f;
         TerrainChunk.TerrainScale = 1.0f;
         TerrainChunk.OnLoadProgress += (progress) =>
@@ -143,11 +143,11 @@ public unsafe class Program
         float spawnCX = 0f;
         float spawnCZ = 0f;
         float minDist = 1.6f;    // jarak minimum antar object (meter)
-        float spawnRadius = 13f; // area spawn (wider to fit twice as many)
+        float spawnRadius = 100f; // area spawn (wider to fit twice as many)
 
         var spawnedPositions = new List<Vector2>();
 
-        for (int i = 0; i < 20; i++)   // twice as many characters
+        for (int i = 0; i < 100; i++)   // twice as many characters
         {
             float px, pz;
             int tries = 0;
@@ -214,9 +214,7 @@ public unsafe class Program
         objectManager.WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
         objectManager.WanderRadius = 38f;
         objectManager.InitWanderingAgents();   // after clips are loaded
-
-        objectManager.DisableFrustumCull = true; // DEBUG: bypass frustum cull sementara
-
+          
         // Init Loop
         Glfw.Loop(SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud, objectManager);
 

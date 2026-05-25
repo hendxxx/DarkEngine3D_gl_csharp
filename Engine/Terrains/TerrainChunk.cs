@@ -289,7 +289,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             int totalTriangles = 0;
 
             // 1. Hitung Matriks Gabungan (View * Projection)
-            Matrix4x4 vp = camera.GetViewMatrix() * Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
+            Matrix4x4 vp = camera.GetViewMatrix() * camera.GetProjectionMatrix();
 
             ExtractPlanes(vp, planes);
 
@@ -368,7 +368,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 GL.Disable(Const.GL_DEPTH_TEST);
 
                 Matrix4x4 v = camera.GetViewMatrix();
-                Matrix4x4 p = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
+                Matrix4x4 p = camera.GetProjectionMatrix();
                 unsafe
                 {
                     GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
@@ -505,7 +505,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 0, (void*)0);
 
             Matrix4x4 view = camera.GetViewMatrix();
-            Matrix4x4 proj = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
+            Matrix4x4 proj = camera.GetProjectionMatrix();
             unsafe
             {
                 // Use transpose = true for System.Numerics memory layout with these GL bindings
@@ -581,7 +581,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             GL.UseProgram(shader);
 
             Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
+            Matrix4x4 p = camera.GetProjectionMatrix();
 
             // Pastikan transpose = true untuk System.Numerics
             GL.UniformMatrix4fv(vLoc, 1, true, (float*)&v);
@@ -697,7 +697,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             // Kirim Matriks
             Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
+            Matrix4x4 p = camera.GetProjectionMatrix();
             unsafe
             {
                 GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);

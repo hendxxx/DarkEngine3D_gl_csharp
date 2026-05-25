@@ -163,10 +163,37 @@
     <None Update="Artifacts\maps\\test.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\body-block.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\dying.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\entry.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\Fighting-idle.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\fist-fight.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\hook.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\LittlestTokyo.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\looking-around.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\punching-bag.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\Stuntman.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\taking-punch.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\fragment_shader.glsl">

@@ -217,7 +217,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 light.Update(camera.Position);
                 // --------------------
 
-                camera.UpdateVectors();
                  
                 objTriangle.Draw(deltaTime, window, 5.0f);
 

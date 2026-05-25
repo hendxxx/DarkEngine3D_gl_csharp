@@ -57,8 +57,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             // Batasi agar tidak bisa menoleh ke belakang (salto)
             if (camera.Pitch > 89.0f) camera.Pitch = 89.0f;
             if (camera.Pitch < -89.0f) camera.Pitch = -89.0f;
-
-
+             
+            camera.UpdateVectors();
         }
     }
 }
