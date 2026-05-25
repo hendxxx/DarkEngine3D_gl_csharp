@@ -241,7 +241,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     Material = matGpu
                 };
 
-                Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} hasTex={matGpu.HasTexture}");
+                //Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} hasTex={matGpu.HasTexture}");
             }
         }
 
@@ -329,21 +329,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var nodes = GpuData.Data.Nodes ?? [];
             AllocateBuffers(nodes);
 
-            // Register the model's own (internal) animations. Their channels already
-            // reference this model's node indices, so no remapping is required.
-            if (GpuData.Data.Animations != null)
-                foreach (var anim in GpuData.Data.Animations)
-                    RegisterClip(anim);
+            //// Register the model's own (internal) animations. Their channels already
+            //// reference this model's node indices, so no remapping is required.
+            //if (GpuData.Data.Animations != null)
+            //    foreach (var anim in GpuData.Data.Animations)
+            //        RegisterClip(anim);
 
             // Default to an idle clip (or the first clip) so the model is animated
             // and looping the moment it is loaded.
-            int def = FindClip("idle", "stand", "rest", "wait");
-            if (def < 0 && _clips.Count > 0) def = 0;
-            if (def >= 0)
-            {
-                _curClip = def; _curTime = 0f; _blend = 1f; _prevClip = -1;
-                Console.WriteLine($"[GltfObject] Default clip '{_clips[def].Name}' dur={_clips[def].Duration:F2}s ({_clips.Count} clips total)");
-            }
+            //int def = FindClip("idle", "stand", "rest", "wait");
+            //if (def < 0 && _clips.Count > 0) def = 0;
+            //if (def >= 0)
+            //{
+            //    _curClip = def; _curTime = 0f; _blend = 1f; _prevClip = -1;
+                //Console.WriteLine($"[GltfObject] Default clip '{_clips[def].Name}' dur={_clips[def].Duration:F2}s ({_clips.Count} clips total)");
+            //}
         }
 
         // -----------------------------------------------------------------------
@@ -521,11 +521,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             // Prefer an idle clip from the freshly added external set.
-            int idle = FindClip("idle", "stand", "rest", "wait");
+            int idle = FindClip("Idle_Loop");
             if (idle >= 0) PlayIndex(idle, 0f);
             else if (_curClip < 0 && _clips.Count > 0) PlayIndex(0, 0f);
 
-            Console.WriteLine($"[GltfObject] External animation applied: {_clips.Count} clips total, {totalMatched} bones retargeted, current='{CurrentClipName}'");
+            //Console.WriteLine($"[GltfObject] External animation applied: {_clips.Count} clips total, {totalMatched} bones retargeted, current='{CurrentClipName}'");
         }
 
         // Strip a Mixamo-style namespace prefix ("mixamorig:", "mixamorig8:", …) so

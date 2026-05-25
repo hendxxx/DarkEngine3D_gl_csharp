@@ -45,7 +45,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             MaxY = float.MinValue;
 
             int lodToLoadFirst = 3;
-            int[] subdivsLOD = [ 4, 2, 1, 1 ];
+            int[] subdivsLOD = [ 7, 5, 3, 1 ];
 
             // Each cell at LOD 0 is split into subdivisions^2 quads = subdivisions^2 * 2 triangles.
             int subLOD0 = subdivsLOD[0];

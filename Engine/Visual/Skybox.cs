@@ -70,7 +70,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             view.M41 = 0; view.M42 = 0; view.M43 = 0;
             view.M14 = 0; view.M24 = 0; view.M34 = 0; view.M44 = 1;
 
-            Matrix4x4 projection = Camera.GetProjectionMatrix(camera.GetAspect(), camera.foV, camera.nearDist, camera.farDist);
+            Matrix4x4 projection = camera.GetProjectionMatrix();
 
             GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(projLoc, 1, false, (float*)&projection);

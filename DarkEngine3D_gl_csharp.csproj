@@ -163,10 +163,19 @@
     <None Update="Artifacts\maps\\test.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\LittlestTokyo.glb">
+    <None Update="Artifacts\objects\Paladin.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\Stuntman.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\UAL1_Standard.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\UAL2_Standard.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\Women.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\fragment_shader.glsl">
@@ -182,9 +191,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\lineVertex_shader.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\sky_fragment2.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\sky_fragment.glsl">

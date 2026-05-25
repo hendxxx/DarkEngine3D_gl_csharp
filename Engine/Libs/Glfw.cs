@@ -192,6 +192,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 GL.UseProgram(shaderProgram);
                 GL.BindVertexArray(0);
+                Mouse.Update(window, camera);
 
                 int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
 
@@ -199,7 +200,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 Keyboard.Update(window, camera, deltaTime, gameTerrainChunk);
 
-                Mouse.Update(window, camera);
 
                 // --- TIME SYSTEM ---
                 float baseSpeed = 0.0043f; // Normal: 1 real second = 1 game minute
@@ -217,7 +217,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 light.Update(camera.Position);
                 // --------------------
 
-                camera.UpdateVectors();
                  
                 objTriangle.Draw(deltaTime, window, 5.0f);
 

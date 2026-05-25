@@ -37,28 +37,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
         public static unsafe void Update(nint window, Camera camera)
         {
-
             double mouseX, mouseY;
             glfwGetCursorPos(window, &mouseX, &mouseY);
 
             if (firstMouse)
             {
-                lastX = mouseX; lastY = mouseY;
+                lastX = mouseX;
+                lastY = mouseY;
                 firstMouse = false;
             }
 
             float offsetX = (float)(mouseX - lastX);
-            float offsetY = (float)(lastY - mouseY); // Terbalik karena koordinat Y GLFW dari atas ke bawah
-            lastX = mouseX; lastY = mouseY;
+            float offsetY = (float)(lastY - mouseY); // Y terbalik
+            lastX = mouseX;
+            lastY = mouseY;
 
             camera.Yaw += offsetX * sensitivity;
             camera.Pitch += offsetY * sensitivity;
 
-            // Batasi agar tidak bisa menoleh ke belakang (salto)
+            // Clamp pitch
             if (camera.Pitch > 89.0f) camera.Pitch = 89.0f;
             if (camera.Pitch < -89.0f) camera.Pitch = -89.0f;
 
-
+            // **WAJIB**: update arah kamera
+            camera.UpdateVectors();
         }
+
     }
 }

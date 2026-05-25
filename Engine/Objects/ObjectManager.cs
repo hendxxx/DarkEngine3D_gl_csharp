@@ -51,14 +51,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _jointLoc           = GL.GetUniformLocation(_shaderProgram, "joints");
             _jointsLoc          = GL.GetUniformLocation(_shaderProgram, "u_Joints");
 
-            Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
+            //Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
         }
 
         // -----------------------------------------------------------------------
         public GltfModelGpuData LoadModel(string path)
         {
             if (_modelCache.TryGetValue(path, out var cached)) return cached;
-            Console.WriteLine($"[ObjectManager] Loading: {path}");
+            //Console.WriteLine($"[ObjectManager] Loading: {path}");
             var data    = GltfLoader.Load(path);
             var gpuData = new GltfModelGpuData(data);
             _modelCache[path] = gpuData;
@@ -68,7 +68,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public GltfData LoadAnimationFile(string path)
         {
-            Console.WriteLine($"[ObjectManager] Loading animation file: {path}");
+            //Console.WriteLine($"[ObjectManager] Loading animation file: {path}");
             try
             {
                 return GltfLoader.Load(path);

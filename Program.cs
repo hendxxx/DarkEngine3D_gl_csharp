@@ -32,34 +32,7 @@ public unsafe class Program
         // Init Shader
         Shader.Init();
         Shader.ActiveShader();
-        // Add this right after GltfShader.Init() and before spawning objects
-        {
-            Console.WriteLine("\n=== GLB INSPECTION ===");
-            var inspectData = GltfLoader.Load("Artifacts\\objects\\Stuntman.glb");
-
-            Console.WriteLine($"Meshes: {inspectData.Meshes.Length}");
-            for (int i = 0; i < inspectData.Meshes.Length; i++)
-            {
-                var m = inspectData.Meshes[i];
-                bool hasJoints = m.Vertices.Length > 0 && m.Vertices[0].BoneIds.X >= 0;
-                bool hasWeights = m.Vertices.Length > 0 && m.Vertices[0].BoneWeights.X > 0;
-                Console.WriteLine($"  [{i}] '{m.Name}': verts={m.Vertices.Length}, hasJoints={hasJoints}, hasWeights={hasWeights}");
-            }
-
-            Console.WriteLine($"Nodes: {inspectData.Nodes.Length}");
-            for (int i = 0; i < inspectData.Nodes.Length; i++)
-                Console.WriteLine($"  [{i}] '{inspectData.Nodes[i].Name}' mesh={inspectData.Nodes[i].Mesh}");
-
-            Console.WriteLine($"Skins: {inspectData.Skins.Length}");
-            for (int i = 0; i < inspectData.Skins.Length; i++)
-                Console.WriteLine($"  [{i}] joints={inspectData.Skins[i].Joints.Length}, invBindMat={inspectData.Skins[i].InverseBindMatrices.Length}");
-
-            Console.WriteLine($"Animations: {inspectData.Animations.Length}");
-            for (int i = 0; i < inspectData.Animations.Length; i++)
-                Console.WriteLine($"  [{i}] '{inspectData.Animations[i].Name}' duration={inspectData.Animations[i].Duration:F3}s, channels={inspectData.Animations[i].Channels.Length}");
-
-            Console.WriteLine("===================\n");
-        }
+        
         // Init Camera
         Camera camera = new(0, 50, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 10000.0f);
         Glfw.SetMainCamera(camera);
@@ -99,7 +72,7 @@ public unsafe class Program
         ];
 
         // Init TerrainChunk
-        TerrainChunk.GlobalLODLevel = 1;
+        TerrainChunk.GlobalLODLevel = 3;
         TerrainChunk.HeightScale = 80.0f;
         TerrainChunk.TerrainScale = 1.0f;
         TerrainChunk.OnLoadProgress += (progress) =>
@@ -137,17 +110,17 @@ public unsafe class Program
 
         // Stuntman is the rendered model; its idle/walk/run animations are layered on
         // afterwards from Xbot.glb (see ApplyAnimationFileToAll below).
-        string xbotPath = "Artifacts\\objects\\Stuntman.glb";
+        string xbotPath = "Artifacts\\objects\\Women.glb";
         var rng = new Random(42);
 
         float spawnCX = 0f;
         float spawnCZ = 0f;
-        float minDist = 1.5f;   // jarak minimum antar object (meter)
-        float spawnRadius = 8f; // area spawn
+        float minDist = 5f;   // jarak minimum antar object (meter)
+        float spawnRadius = 100f; // area spawn
 
         var spawnedPositions = new List<Vector2>();
 
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 100; i++)
         {
             float px, pz;
             int tries = 0;
@@ -178,20 +151,17 @@ public unsafe class Program
 
             var obj = objectManager.AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
             objectManager.SnapToTerrain(obj, gameTerrainChunk);
-            Console.WriteLine($"[Spawn] Xbot #{i + 1} pos=({px:F1}, {obj.Position.Y:F1}, {pz:F1}) yaw={yaw:F0}° tries={tries}");
+            //Console.WriteLine($"[Spawn] Xbot #{i + 1} pos=({px:F1}, {obj.Position.Y:F1}, {pz:F1}) yaw={yaw:F0}° tries={tries}");
         }
 
-
-        Console.WriteLine($"[ObjectManager] {objectManager.GetObjects().Count} objects spawned.");
+        //Console.WriteLine($"[ObjectManager] {objectManager.GetObjects().Count} objects spawned.");
 
         // Load animations from a SEPARATE file and apply them to the already-loaded
         // model (TODO #2). Stuntman ships only one baked clip, so its idle/walk/run
         // come from Xbot.glb — bones are matched by normalized name and rotations are
         // retargeted across the two rigs. Controls: hold 8 = walk, hold 9 = run,
         // release = idle (smooth crossfade between them).
-        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
-
-        objectManager.DisableFrustumCull = true; // DEBUG: bypass frustum cull sementara
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb"); 
 
         // Init Loop
         Glfw.Loop(SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud, objectManager);

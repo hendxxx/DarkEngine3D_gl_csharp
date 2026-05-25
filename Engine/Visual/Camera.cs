@@ -4,113 +4,137 @@ using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
-    public unsafe class Camera
+    public sealed class Camera
     {
+        // Transform
         public Vector3 Position = new(0, 0, 0);
-        public Vector3 Front = new(0, 0, 0);
+        public Vector3 Front = new(0, 0, -1);
         public Vector3 Up = Vector3.UnitY;
+        public Vector3 Right = Vector3.UnitX;
 
-        // Tambahkan variabel rotasi
-        public float Yaw = 0.0f; // Menghadap ke depan (sumbu -Z)
+        // Euler (bisa nanti diganti quaternion kalau mau)
+        public float Yaw = -90.0f; // menghadap -Z
         public float Pitch = 0.0f;
 
-        public float foV;
-        public float nearDist;
-        public float farDist;
-        private float aspect;
+        // Projection params
+        public float FoV;
+        public float NearDist;
+        public float FarDist;
+        private float _aspect;
 
-        float _currentVelocityY = 0f;
-        public Camera(float x, float y, float z, float _aspect, float _foV, float _nearDist, float _farDist)
+        // Cached projection
+        private Matrix4x4 _projection;
+        private bool _projectionDirty = true;
+
+        // Terrain clamp
+        private float _currentVelocityY = 0f;
+
+        public Camera(float x, float y, float z, float aspect, float fov, float nearDist, float farDist)
         {
-            aspect = _aspect;
-            foV = _foV;
-            nearDist = _nearDist;
-            farDist = _farDist;
+            _aspect = aspect;
+            FoV = fov;
+            NearDist = nearDist;
+            FarDist = farDist;
 
             Init(x, y, z);
         }
+
         public void Init(float x, float y, float z)
         {
             Position = new(x, y, z);
-            Front = new(0, 0, -1);
-            Up = Vector3.UnitY;
 
-            // Tambahkan variabel rotasi
-            Yaw = -90.0f; // Menghadap ke depan (sumbu -Z)
+            Yaw = -90.0f;
             Pitch = 0.0f;
+
+            UpdateVectors();
+            _projectionDirty = true;
         }
+
         public void UpdateVectors()
         {
-            // Matematika untuk mengubah Yaw/Pitch menjadi vektor arah (Front)
-            Vector3 direction;
-            direction.X = MathF.Cos(Helpers.TerrainsHelpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.TerrainsHelpers.OGLMath.ToRadians(Pitch));
-            direction.Y = MathF.Sin(Helpers.TerrainsHelpers.OGLMath.ToRadians(Pitch));
-            direction.Z = MathF.Sin(Helpers.TerrainsHelpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.TerrainsHelpers.OGLMath.ToRadians(Pitch));
-            Front = Vector3.Normalize(direction);
+            float yawRad = Helpers.TerrainsHelpers.OGLMath.ToRadians(Yaw);
+            float pitchRad = Helpers.TerrainsHelpers.OGLMath.ToRadians(Pitch);
+
+            Vector3 front;
+            front.X = MathF.Cos(yawRad) * MathF.Cos(pitchRad);
+            front.Y = MathF.Sin(pitchRad);
+            front.Z = MathF.Sin(yawRad) * MathF.Cos(pitchRad);
+            Front = Vector3.Normalize(front);
+
+            // Right & Up yang stabil
+            Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
+            Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }
-        public float GetAspect() => aspect;
 
-        public Matrix4x4 GetViewMatrix() => Matrix4x4.CreateLookAt(Position, Position + Front, Up);
+        public float GetAspect() => _aspect;
 
-        public Matrix4x4 GetProjectionMatrix() => Matrix4x4.CreatePerspectiveFieldOfView(foV, aspect, nearDist, farDist);
+        public Matrix4x4 GetViewMatrix()
+        {
+            // Pastikan UpdateVectors() sudah dipanggil sebelum render frame ini
+            return Matrix4x4.CreateLookAt(Position, Position + Front, Up);
+        }
 
-        public static Matrix4x4 GetProjectionMatrix(float aspect, float foV, float nearDist, float farDist) => Matrix4x4.CreatePerspectiveFieldOfView(foV, aspect, nearDist, farDist);
+        public void UpdateAspectRatio(float newWidth, float newHeight)
+        {
+            if (newHeight <= 0) newHeight = 1;
+            _aspect = newWidth / newHeight;
+            _projectionDirty = true;
+        }
 
+        public Matrix4x4 GetProjectionMatrix()
+        {
+            if (_projectionDirty)
+            {
+                _projection = Matrix4x4.CreatePerspectiveFieldOfView(FoV, _aspect, NearDist, FarDist);
+                _projectionDirty = false;
+            }
+            return _projection;
+        }
 
         public void SetViewAndProjection(int viewLocation, int projectionLocation)
         {
-
             Matrix4x4 view = GetViewMatrix();
-            Matrix4x4 projection = GetProjectionMatrix(aspect, foV, nearDist, farDist);
+            Matrix4x4 projection = GetProjectionMatrix();
+
             unsafe
             {
-                // Mengambil pointer dari matriks C# dan mengirimnya ke GPU
                 GL.UniformMatrix4fv(viewLocation, 1, false, (float*)&view);
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
 
-        // Tambahkan fungsi ini di dalam class Camera Anda
-        public void UpdateAspectRatio(float newWidth, float newHeight)
-        {
-            // Cegah pembagian dengan nol jika jendela diminimize
-            if (newHeight <= 0) newHeight = 1;
-
-            aspect = newWidth / newHeight;
-        }
-
         public void ClampToTerrain(MapLoader mapLoader, float deltaTime)
         {
-            float minHeight = 2.0f;  // eye level — cukup tinggi agar bisa lihat object di bawah
-
-            float gravity = 9.8f;
+            float minHeight = 1.0f;
+            float gravity = 25.0f;   // lebih besar → lebih stabil
+            float damping = 6.0f;    // untuk menghilangkan jitter
 
             float terrainHeight = mapLoader.GetHeightInterpolated(Position.X, Position.Z);
             float targetY = terrainHeight + minHeight;
 
-            if (Position.Y > targetY)
+            float diff = Position.Y - targetY;
+
+            // Jika kamera terlalu tinggi → jatuhkan
+            if (diff > 0.01f)
             {
-                // Jatuh pelan-pelan seperti gravitasi
                 _currentVelocityY -= gravity * deltaTime;
                 Position.Y += _currentVelocityY * deltaTime;
-
-                // Jangan lewat batas minimum
-                if (Position.Y < targetY)
-                {
-                    Position.Y = targetY;
-                    _currentVelocityY = 0f; // reset velocity saat menyentuh tanah
-                }
             }
-            else if (Position.Y < targetY)
+            // Jika kamera terlalu rendah → snap ke target
+            else if (diff < -0.01f)
             {
-                // Jika entah bagaimana di bawah tanah, dorong ke atas
                 Position.Y = targetY;
                 _currentVelocityY = 0f;
             }
             else
             {
-                _currentVelocityY = 0f;
+                // Dalam dead-zone → stabilkan
+                Position.Y = targetY;
+                _currentVelocityY *= (1f - damping * deltaTime);
+                if (MathF.Abs(_currentVelocityY) < 0.01f)
+                    _currentVelocityY = 0f;
             }
         }
+
     }
 }
