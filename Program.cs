@@ -135,7 +135,8 @@ public unsafe class Program
         GltfShader.Init(); // Compile gltf shader setelah OpenGL siap
         ObjectManager objectManager = new();
 
-        //string xbotPath = "Artifacts\\objects\\LittlestTokyo.glb";
+        // Stuntman is the rendered model; its idle/walk/run animations are layered on
+        // afterwards from Xbot.glb (see ApplyAnimationFileToAll below).
         string xbotPath = "Artifacts\\objects\\Stuntman.glb";
         var rng = new Random(42);
 
@@ -182,6 +183,14 @@ public unsafe class Program
 
 
         Console.WriteLine($"[ObjectManager] {objectManager.GetObjects().Count} objects spawned.");
+
+        // Load animations from a SEPARATE file and apply them to the already-loaded
+        // model (TODO #2). Stuntman ships only one baked clip, so its idle/walk/run
+        // come from Xbot.glb — bones are matched by normalized name and rotations are
+        // retargeted across the two rigs. Controls: hold 8 = walk, hold 9 = run,
+        // release = idle (smooth crossfade between them).
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
+
         objectManager.DisableFrustumCull = true; // DEBUG: bypass frustum cull sementara
 
         // Init Loop

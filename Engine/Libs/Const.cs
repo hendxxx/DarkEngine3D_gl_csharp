@@ -107,6 +107,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const int GLFW_KEY_2 = 50;
         public const int GLFW_KEY_3 = 51;
 
+        // Animation control keys (idle / walk / run)
+        public const int GLFW_KEY_7 = 55;
+        public const int GLFW_KEY_8 = 56;
+        public const int GLFW_KEY_9 = 57;
+
         public const int GLFW_KEY_KP_1 = 321;
         public const int GLFW_KEY_KP_2 = 322;
         public const int GLFW_KEY_KP_3 = 323;

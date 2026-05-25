@@ -63,7 +63,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public MeshMaterialGpu Material;
     }
 
-    // =========================================================================== 
+    // ===========================================================================
+    //  NodeTransform — per-node TRS used while sampling/blending animations.
+    //  (System.Numerics row-vector convention: composed as Scale * Rotation * Translation)
+    // ===========================================================================
+    public struct NodeTransform
+    {
+        public Vector3    T;
+        public Quaternion R;
+        public Vector3    S;
+    }
+
+    // ===========================================================================
     //  GltfModelGpuData — shared GPU data (Flyweight pattern)
     //  Extended: map meshes to nodes (if nodes parsed)
     // ===========================================================================
@@ -165,14 +176,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         (nuint)(mesh.Vertices.Length * sizeof(SkinnedVertex)),
                         ptr, Const.GL_STATIC_DRAW);
 
-                // Debug: verify first vertex data in buffer
-                if (mesh.Vertices.Length > 0)
-                {
-                    var v0 = mesh.Vertices[0];
-                    Console.WriteLine($"[UploadToGpu] Mesh[{m}] first vertex: pos={v0.Position} joints=({v0.BoneIds.X},{v0.BoneIds.Y},{v0.BoneIds.Z},{v0.BoneIds.W}) weights={v0.BoneWeights}");
-                    Console.WriteLine($"[UploadToGpu] Mesh[{m}] stride={Marshal.SizeOf<SkinnedVertex>()} sizeof(SkinnedVertex)={sizeof(SkinnedVertex)} bytes");
-                }
-
                 // Upload indices
                 if (mesh.Indices.Length > 0)
                 {
@@ -183,7 +186,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             (nuint)(mesh.Indices.Length * sizeof(uint)),
                             iptr, Const.GL_STATIC_DRAW);
                 }
-                    
+
                 // Vertex attributes
                 int stride = Marshal.SizeOf<SkinnedVertex>(); // 64 bytes: pos(12) + normal(12) + uv(8) + weights(16) + joints(16)
 
@@ -238,10 +241,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     Material = matGpu
                 };
 
-                Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} stride={stride} hasTex={matGpu.HasTexture} color={matGpu.BaseColorFactor}");
+                Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} hasTex={matGpu.HasTexture}");
             }
-
-            Console.WriteLine($"[GltfGPU] AABB min={LocalAABB.Min} max={LocalAABB.Max}");
         }
 
         public void Dispose()
@@ -264,8 +265,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
     }
 
-    // =========================================================================== 
-    //  GltfObject — per-instance anim player, supports external anim files
+    // ===========================================================================
+    //  GltfObject — per-instance skeletal animation player.
+    //
+    //  Animation model:
+    //    * A model can carry its own (internal) clips, and external clips can be
+    //      merged in from an animation-only glTF via ApplyExternalAnimation().
+    //    * On load the object auto-selects an "idle" clip (or the first clip) and
+    //      loops it seamlessly.
+    //    * Play(name) crossfades from the current clip to the requested one over a
+    //      blend duration, producing a smooth transition (e.g. idle <-> walk).
+    //
+    //  All matrices use the System.Numerics row-vector convention (translation in
+    //  M41..M43); node globals are computed as local * parentGlobal and skinning
+    //  joint matrices as inverseBind * jointGlobal.
     // ===========================================================================
     public unsafe class GltfObject
     {
@@ -278,23 +291,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public AABB LocalAABB => GpuData.LocalAABB;
         public AABB WorldAABB => LocalAABB.ToWorld(Position, Scale);
 
-        // per-node matrices
-        private Matrix4x4[] _nodeLocal;
-        private Matrix4x4[] _nodeGlobal;
-
-        // internal animations (from model file)
-        private bool _hasAnimations = false;
-        private int  _currentAnim = -1;
-        private float _animTime = 0f;
-        private float _animDuration = 0f;
-
-        // external animations mapped to this model
-        private GltfAnimation[] _externalClips = [];
-        private bool _usingExternal = false;
-        private int  _currentExternal = -1;
-        private float _externalTime = 0f;
-
+        // ---- node hierarchy working buffers ----
+        private Matrix4x4[] _nodeLocal     = [];
+        private Matrix4x4[] _nodeGlobal    = [];
         private Matrix4x4[] _jointMatrices = [];
+
+        // ---- animation clips (channels remapped to THIS model's node indices) ----
+        private readonly List<GltfAnimation> _clips = new();
+        private readonly Dictionary<string, int> _clipByName = new(StringComparer.OrdinalIgnoreCase);
+
+        // ---- playback state machine (with crossfade blending) ----
+        private int   _curClip   = -1;
+        private float _curTime   = 0f;
+        private int   _prevClip  = -1;
+        private float _prevTime  = 0f;
+        private float _blend     = 1f;   // weight of the current clip (1 = fully current)
+        private float _blendRate = 0f;   // per-second growth of _blend during a transition
+
+        // ---- pose scratch buffers (sized to node count) ----
+        private NodeTransform[] _basePose = [];
+        private NodeTransform[] _poseCur  = [];
+        private NodeTransform[] _posePrev = [];
+        private NodeTransform[] _poseOut  = [];
+
+        public string CurrentClipName =>
+            (_curClip >= 0 && _curClip < _clips.Count) ? (_clips[_curClip].Name ?? $"#{_curClip}") : "(none)";
+
+        public bool HasAnimations => _clips.Count > 0;
 
         public GltfObject(GltfModelGpuData gpuData, Vector3 position, Quaternion rotation, float scale = 1f)
         {
@@ -303,227 +326,404 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Rotation = rotation;
             Scale    = scale;
 
-            var data = GpuData.Data;
-            int nCount = data.Nodes?.Length ?? 0;
-            _nodeLocal = new Matrix4x4[nCount];
-            _nodeGlobal = new Matrix4x4[nCount];
+            var nodes = GpuData.Data.Nodes ?? [];
+            AllocateBuffers(nodes);
 
-            for (int i = 0; i < nCount; i++)
+            // Register the model's own (internal) animations. Their channels already
+            // reference this model's node indices, so no remapping is required.
+            if (GpuData.Data.Animations != null)
+                foreach (var anim in GpuData.Data.Animations)
+                    RegisterClip(anim);
+
+            // Default to an idle clip (or the first clip) so the model is animated
+            // and looping the moment it is loaded.
+            int def = FindClip("idle", "stand", "rest", "wait");
+            if (def < 0 && _clips.Count > 0) def = 0;
+            if (def >= 0)
             {
-                _nodeLocal[i] = data.Nodes[i].LocalMatrix;
-                _nodeGlobal[i] = data.Nodes[i].LocalMatrix;
-            }
-
-            if (data.Animations != null && data.Animations.Length > 0)
-            {
-                _hasAnimations = true;
-                string[] hacks = new[] { "idle", "stand", "rest", "wait" };
-                int found = -1;
-                for (int i = 0; i < data.Animations.Length; i++)
-                {
-                    var nm = (data.Animations[i].Name ?? "").ToLowerInvariant();
-                    foreach (var h in hacks)
-                        if (!string.IsNullOrEmpty(nm) && nm.Contains(h))
-                        {
-                            found = i; break;
-                        }
-                    if (found >= 0) break;
-                }
-
-                    _currentAnim = found >= 0 ? found : 0;
-                _animDuration = data.Animations[_currentAnim].Duration;
-                _animTime = 0f;
-                var chosenName = data.Animations[_currentAnim].Name ?? $"anim#{_currentAnim}";
-                Console.WriteLine($"[GltfObject] Internal animation selected: index={_currentAnim} name='{chosenName}' dur={_animDuration:F3}s");
+                _curClip = def; _curTime = 0f; _blend = 1f; _prevClip = -1;
+                Console.WriteLine($"[GltfObject] Default clip '{_clips[def].Name}' dur={_clips[def].Duration:F2}s ({_clips.Count} clips total)");
             }
         }
+
+        // -----------------------------------------------------------------------
+        //  Public animation API
+        // -----------------------------------------------------------------------
 
         public void SetFacing(float yawDegrees)
             => Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
 
-        // Apply external animation data (GltfData from Loader with Animations/Nodes)
+        public IReadOnlyList<string> GetClipNames()
+        {
+            var names = new List<string>(_clips.Count);
+            foreach (var c in _clips) names.Add(c.Name ?? "");
+            return names;
+        }
+
+        // Crossfade to the named clip. Accepts an exact name or a case-insensitive
+        // substring (so "walk" matches "Armature|walk"). Returns false if not found.
+        public bool Play(string name, float blendTime = 0.25f)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            if (!_clipByName.TryGetValue(name, out int idx))
+            {
+                idx = FindClip(name.ToLowerInvariant());
+                if (idx < 0) return false;
+            }
+            return PlayIndex(idx, blendTime);
+        }
+
+        public bool PlayIndex(int idx, float blendTime = 0.25f)
+        {
+            if (idx < 0 || idx >= _clips.Count) return false;
+            if (idx == _curClip) return true;            // already the active clip
+
+            if (blendTime > 0f && _curClip >= 0)
+            {
+                _prevClip  = _curClip;
+                _prevTime  = _curTime;
+                _blend     = 0f;
+                _blendRate = 1f / blendTime;
+            }
+            else
+            {
+                _prevClip  = -1;
+                _blend     = 1f;
+                _blendRate = 0f;
+            }
+            _curClip = idx;
+            _curTime = 0f;
+            return true;
+        }
+
+        // Apply animations from an external (animation-only) glTF file to this model.
+        //
+        // Bones are matched by *normalized* name (the Mixamo namespace prefix such as
+        // "mixamorig:" / "mixamorig8:" is stripped), so a clip authored on one rig can
+        // drive a different-but-topologically-identical rig. The two rigs can use
+        // completely different bone-local axis conventions (e.g. one has every bone
+        // world-aligned at bind, the other bone-aligned), so rotations are retargeted
+        // in WORLD space: each source bone's world rotation-delta from its bind is
+        // reapplied on the target bone's bind, then converted back to the target's
+        // local frame. Translation/scale stay at the target's bind values (the
+        // character keeps its own proportions and animates in place).
         public void ApplyExternalAnimation(GltfData animData)
         {
-            if (animData == null || animData.Animations == null || animData.Animations.Length == 0)
+            if (animData?.Animations == null || animData.Animations.Length == 0)
             {
                 Console.WriteLine("[GltfObject] No animations in external file.");
                 return;
             }
 
-            // build name->index map for model nodes
-            var modelNodes = GpuData.Data.Nodes ?? [];
-            var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < modelNodes.Length; i++)
-                if (!string.IsNullOrEmpty(modelNodes[i].Name))
-                    map[modelNodes[i].Name] = i;
+            var dstNodes = GpuData.Data.Nodes ?? [];
+            var srcNodes = animData.Nodes ?? [];
+            if (dstNodes.Length == 0 || srcNodes.Length == 0) return;
 
-            // remap animations channels to this model nodes
-            var remapped = new List<GltfAnimation>();
+            // normalized bone name -> destination node index
+            var dstByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < dstNodes.Length; i++)
+            {
+                var nm = NormalizeBoneName(dstNodes[i].Name);
+                if (!string.IsNullOrEmpty(nm)) dstByName[nm] = i;
+            }
+
+            // source node -> destination node (-1 if unmatched)
+            var srcToDst = new int[srcNodes.Length];
+            for (int i = 0; i < srcNodes.Length; i++)
+                srcToDst[i] = dstByName.TryGetValue(NormalizeBoneName(srcNodes[i].Name), out int di) ? di : -1;
+
+            // Global bind orientations of both skeletons.
+            var srcBindLocal = new Quaternion[srcNodes.Length];
+            for (int i = 0; i < srcNodes.Length; i++) srcBindLocal[i] = Quaternion.Normalize(srcNodes[i].BaseRotation);
+            var dstBindLocal = new Quaternion[dstNodes.Length];
+            for (int i = 0; i < dstNodes.Length; i++) dstBindLocal[i] = Quaternion.Normalize(dstNodes[i].BaseRotation);
+            var srcGlobalBind = ComputeGlobalRotations(srcNodes, srcBindLocal);
+            var dstGlobalBind = ComputeGlobalRotations(dstNodes, dstBindLocal);
+            var invSrcGlobalBind = new Quaternion[srcNodes.Length];
+            for (int i = 0; i < srcNodes.Length; i++) invSrcGlobalBind[i] = Quaternion.Conjugate(srcGlobalBind[i]);
+
+            int totalMatched = 0;
             foreach (var src in animData.Animations)
             {
-                var dst = new GltfAnimation { Name = src.Name, Duration = src.Duration };
-                dst.Samplers = src.Samplers;
-
-                var chs = new List<GltfAnimationChannel>();
+                // Per source node: its rotation sampler in this clip (null if not animated).
+                var srcRot = new GltfAnimationSampler?[srcNodes.Length];
+                var timeSet = new SortedSet<float>();
                 foreach (var ch in src.Channels)
                 {
-                    int mapped = -1;
-                    string name = (ch.TargetNode >= 0 && ch.TargetNode < animData.Nodes.Length) ? (animData.Nodes[ch.TargetNode].Name ?? "") : "";
-                    if (!string.IsNullOrEmpty(name) && map.TryGetValue(name, out var mi))
-                        mapped = mi;
-                    else if (ch.TargetNode >= 0 && ch.TargetNode < modelNodes.Length)
-                        mapped = ch.TargetNode;
-                    chs.Add(new GltfAnimationChannel { SamplerIndex = ch.SamplerIndex, TargetNode = mapped, Path = ch.Path });
+                    if (ch.Path != "rotation" || ch.TargetNode < 0 || ch.TargetNode >= srcNodes.Length) continue;
+                    if (ch.SamplerIndex < 0 || ch.SamplerIndex >= src.Samplers.Length) continue;
+                    var s = src.Samplers[ch.SamplerIndex];
+                    if (s?.Input == null || s.OutputStride != 4) continue;
+                    srcRot[ch.TargetNode] = s;
+                    foreach (var t in s.Input) timeSet.Add(t);
+                }
+                if (timeSet.Count == 0) continue;
+                var times = new float[timeSet.Count];
+                timeSet.CopyTo(times);
+
+                // Destination nodes that will receive baked rotation tracks.
+                var matchedDst = new List<int>();
+                var seenDst = new HashSet<int>();
+                for (int si = 0; si < srcNodes.Length; si++)
+                    if (srcRot[si] != null && srcToDst[si] >= 0 && seenDst.Add(srcToDst[si]))
+                        matchedDst.Add(srcToDst[si]);
+                if (matchedDst.Count == 0) continue;
+
+                var baked = new Dictionary<int, float[]>();
+                foreach (var di in matchedDst) baked[di] = new float[times.Length * 4];
+
+                var srcLocal = new Quaternion[srcNodes.Length];
+                for (int f = 0; f < times.Length; f++)
+                {
+                    float t = times[f];
+
+                    // Sample source local rotations (bind where not animated), then FK.
+                    for (int si = 0; si < srcNodes.Length; si++)
+                        srcLocal[si] = srcRot[si] != null ? SampleQuat(srcRot[si]!, t) : srcBindLocal[si];
+                    var srcGlobal = ComputeGlobalRotations(srcNodes, srcLocal);
+
+                    // Target globals: bind, with each matched bone driven by the source
+                    // bone's world-space delta.
+                    var dstGlobal = (Quaternion[])dstGlobalBind.Clone();
+                    for (int si = 0; si < srcNodes.Length; si++)
+                    {
+                        int di = srcToDst[si];
+                        if (di < 0 || srcRot[si] == null) continue;
+                        var worldDelta = srcGlobal[si] * invSrcGlobalBind[si];
+                        dstGlobal[di] = Quaternion.Normalize(worldDelta * dstGlobalBind[di]);
+                    }
+
+                    // Convert each matched bone's target global back to a local rotation.
+                    foreach (var di in matchedDst)
+                    {
+                        int p = dstNodes[di].Parent;
+                        var pg = (p >= 0 && p < dstGlobal.Length) ? dstGlobal[p] : Quaternion.Identity;
+                        var loc = Quaternion.Normalize(Quaternion.Conjugate(pg) * dstGlobal[di]);
+                        var o = baked[di];
+                        o[f * 4] = loc.X; o[f * 4 + 1] = loc.Y; o[f * 4 + 2] = loc.Z; o[f * 4 + 3] = loc.W;
+                    }
                 }
 
-                dst.Channels = chs.ToArray();
-                remapped.Add(dst);
+                var newSamplers = new List<GltfAnimationSampler>();
+                var newChannels = new List<GltfAnimationChannel>();
+                foreach (var di in matchedDst)
+                {
+                    int si = newSamplers.Count;
+                    newSamplers.Add(new GltfAnimationSampler { Input = times, Output = baked[di], OutputStride = 4, Interpolation = "LINEAR" });
+                    newChannels.Add(new GltfAnimationChannel { SamplerIndex = si, TargetNode = di, Path = "rotation" });
+                }
+                totalMatched += newChannels.Count;
+                RegisterClip(new GltfAnimation
+                {
+                    Name = src.Name, Duration = src.Duration,
+                    Samplers = newSamplers.ToArray(), Channels = newChannels.ToArray()
+                });
             }
 
-            _externalClips = remapped.ToArray();
-            _usingExternal = true;
+            // Prefer an idle clip from the freshly added external set.
+            int idle = FindClip("idle", "stand", "rest", "wait");
+            if (idle >= 0) PlayIndex(idle, 0f);
+            else if (_curClip < 0 && _clips.Count > 0) PlayIndex(0, 0f);
 
-            // pick default external clip (idle heuristics or first)
-            int foundEx = -1;
-            var hacks = new[] { "idle", "stand", "rest", "wait" };
-            for (int i = 0; i < _externalClips.Length; i++)
-            {
-                var nm = (_externalClips[i].Name ?? "").ToLowerInvariant();
-                foreach (var h in hacks) if (!string.IsNullOrEmpty(nm) && nm.Contains(h)) { foundEx = i; break; }
-                if (foundEx >= 0) break;
-            }
-            _currentExternal = foundEx >= 0 ? foundEx : 0;
-            _externalTime = 0f;
-            Console.WriteLine($"[GltfObject] External animation applied: idx={_currentExternal} name='{_externalClips[_currentExternal].Name}'");
+            Console.WriteLine($"[GltfObject] External animation applied: {_clips.Count} clips total, {totalMatched} bones retargeted, current='{CurrentClipName}'");
         }
 
-        // Update per-frame (advance either internal or external animation)
+        // Strip a Mixamo-style namespace prefix ("mixamorig:", "mixamorig8:", …) so
+        // bones can be matched across rigs exported in different sessions.
+        private static string NormalizeBoneName(string? name)
+        {
+            if (string.IsNullOrEmpty(name)) return "";
+            int c = name.IndexOf(':');
+            return c >= 0 ? name.Substring(c + 1) : name;
+        }
+
+        // Forward-kinematics for rotations only: global[i] = parentGlobal * local[i].
+        private static Quaternion[] ComputeGlobalRotations(GltfNode[] nodes, Quaternion[] local)
+        {
+            var g = new Quaternion[nodes.Length];
+            for (int i = 0; i < g.Length; i++) g[i] = Quaternion.Identity;
+
+            void Rec(int idx, Quaternion parent)
+            {
+                var gg = Quaternion.Normalize(parent * local[idx]);
+                g[idx] = gg;
+                foreach (var c in nodes[idx].Children)
+                    if (c >= 0 && c < nodes.Length) Rec(c, gg);
+            }
+            for (int i = 0; i < nodes.Length; i++)
+                if (nodes[i].Parent == -1) Rec(i, Quaternion.Identity);
+            return g;
+        }
+
+        private static Quaternion SampleQuat(GltfAnimationSampler s, float time)
+        {
+            var inp = s.Input;
+            int idx = Array.BinarySearch(inp, time);
+            if (idx < 0) idx = ~idx;
+            int i0 = Math.Max(0, idx - 1), i1 = Math.Min(inp.Length - 1, idx);
+            float t0 = inp[i0], t1 = inp[i1];
+            float lt = (t1 - t0) <= 1e-6f ? 0f : Math.Clamp((time - t0) / (t1 - t0), 0f, 1f);
+            var q0 = new Quaternion(s.Output[i0 * 4], s.Output[i0 * 4 + 1], s.Output[i0 * 4 + 2], s.Output[i0 * 4 + 3]);
+            var q1 = new Quaternion(s.Output[i1 * 4], s.Output[i1 * 4 + 1], s.Output[i1 * 4 + 2], s.Output[i1 * 4 + 3]);
+            return Quaternion.Normalize(Quaternion.Slerp(q0, q1, lt));
+        }
+
+        // -----------------------------------------------------------------------
+        //  Per-frame update: advance + blend clips, then rebuild the skeleton.
+        // -----------------------------------------------------------------------
         public void Update(float dt)
         {
             var nodes = GpuData.Data.Nodes ?? [];
-            if (_nodeLocal == null || _nodeLocal.Length != nodes.Length)
+            EnsureBuffers(nodes);
+
+            if (_curClip >= 0 && _curClip < _clips.Count)
             {
-                _nodeLocal = new Matrix4x4[nodes.Length];
-                _nodeGlobal = new Matrix4x4[nodes.Length];
-                for (int i = 0; i < nodes.Length; i++)
-                    _nodeLocal[i] = nodes[i].LocalMatrix;
-            }
+                var cur = _clips[_curClip];
+                _curTime = Advance(_curTime, dt, cur.Duration);
 
-            if (_usingExternal && _externalClips.Length > 0 && _currentExternal >= 0)
-            {
-                var clip = _externalClips[_currentExternal];
-                _externalTime += dt;
-                float dur = MathF.Max(0.0001f, clip.Duration);
-                if (_externalTime >= dur) _externalTime %= dur;
-
-                for (int i = 0; i < _nodeLocal.Length; i++) _nodeLocal[i] = nodes[i].LocalMatrix;
-
-                foreach (var ch in clip.Channels)
+                bool blending = _blend < 1f && _prevClip >= 0 && _prevClip < _clips.Count;
+                if (blending)
                 {
-                    if (ch.TargetNode < 0 || ch.TargetNode >= _nodeLocal.Length) continue;
-                    var sampler = clip.Samplers[ch.SamplerIndex];
-                    if (sampler == null || sampler.Input == null || sampler.Input.Length == 0) continue;
-
-                    int idx = Array.BinarySearch(sampler.Input, _externalTime);
-                    if (idx < 0) idx = ~idx;
-                    int i0 = Math.Max(0, idx - 1);
-                    int i1 = Math.Min(sampler.Input.Length - 1, idx);
-
-                    float t0 = sampler.Input[i0];
-                    float t1 = sampler.Input[i1];
-                    float localT = (t1 - t0) <= 1e-6f ? 0f : ((_externalTime - t0) / (t1 - t0));
-                    localT = Math.Clamp(localT, 0f, 1f);
-
-                    if (sampler.OutputStride == 3 && (ch.Path == "translation" || ch.Path == "scale"))
-                    {
-                        int off0 = i0 * 3;
-                        int off1 = i1 * 3;
-                        var v0 = new Vector3(sampler.Output[off0 + 0], sampler.Output[off0 + 1], sampler.Output[off0 + 2]);
-                        var v1 = new Vector3(sampler.Output[off1 + 0], sampler.Output[off1 + 1], sampler.Output[off1 + 2]);
-                        var v = Vector3.Lerp(v0, v1, localT);
-                        DecomposeLocalAndApply(ch.Path, ch.TargetNode, v);
-                    }
-                    else if (sampler.OutputStride == 4 && ch.Path == "rotation")
-                    {
-                        int off0 = i0 * 4;
-                        int off1 = i1 * 4;
-                        var q0 = new Quaternion(sampler.Output[off0 + 0], sampler.Output[off0 + 1], sampler.Output[off0 + 2], sampler.Output[off0 + 3]);
-                        var q1 = new Quaternion(sampler.Output[off1 + 0], sampler.Output[off1 + 1], sampler.Output[off1 + 2], sampler.Output[off1 + 3]);
-                        var q = Quaternion.Slerp(q0, q1, localT);
-                        DecomposeLocalAndApply(ch.Path, ch.TargetNode, q);
-                    }
+                    _prevTime = Advance(_prevTime, dt, _clips[_prevClip].Duration);
+                    _blend += _blendRate * dt;
+                    if (_blend >= 1f) { _blend = 1f; _prevClip = -1; blending = false; }
                 }
 
-                // compute global: parent * local
-                for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
-                for (int i = 0; i < _nodeLocal.Length; i++)
-                    if (GpuData.Data.Nodes[i].Parent == -1)
-                        ComputeGlobalRec(i, Matrix4x4.Identity);
-            }
-            else if (_hasAnimations && _currentAnim >= 0)
-            {
-                // internal animation playback (same approach)
-                _animTime += dt;
-                var anim = GpuData.Data.Animations[_currentAnim];
-                float dur = MathF.Max(0.0001f, anim.Duration);
-                if (_animTime > dur) _animTime %= dur;
+                SamplePose(cur, _curTime, _poseCur);
 
-                for (int ni = 0; ni < _nodeLocal.Length; ni++)
-                    _nodeLocal[ni] = GpuData.Data.Nodes[ni].LocalMatrix;
-
-                foreach (var ch in anim.Channels)
+                if (blending)
                 {
-                    if (ch.TargetNode < 0 || ch.TargetNode >= _nodeLocal.Length) continue;
-                    var sampler = anim.Samplers[ch.SamplerIndex];
-                    if (sampler == null || sampler.Input == null || sampler.Input.Length == 0) continue;
-
-                    int idx = Array.BinarySearch(sampler.Input, _animTime);
-                    if (idx < 0) idx = ~idx;
-                    int i0 = Math.Max(0, idx - 1);
-                    int i1 = Math.Min(sampler.Input.Length - 1, idx);
-
-                    float t0 = sampler.Input[i0];
-                    float t1 = sampler.Input[i1];
-                    float localT = (t1 - t0) <= 1e-6f ? 0f : ((_animTime - t0) / (t1 - t0));
-                    localT = Math.Clamp(localT, 0f, 1f);
-
-                    if (sampler.OutputStride == 3 && (ch.Path == "translation" || ch.Path == "scale"))
-                    {
-                        int off0 = i0 * 3;
-                        int off1 = i1 * 3;
-                        var v0 = new Vector3(sampler.Output[off0 + 0], sampler.Output[off0 + 1], sampler.Output[off0 + 2]);
-                        var v1 = new Vector3(sampler.Output[off1 + 0], sampler.Output[off1 + 1], sampler.Output[off1 + 2]);
-                        var v = Vector3.Lerp(v0, v1, localT);
-                        DecomposeLocalAndApply(ch.Path, ch.TargetNode, v);
-                    }
-                    else if (sampler.OutputStride == 4 && ch.Path == "rotation")
-                    {
-                        int off0 = i0 * 4;
-                        int off1 = i1 * 4;
-                        var q0 = new Quaternion(sampler.Output[off0 + 0], sampler.Output[off0 + 1], sampler.Output[off0 + 2], sampler.Output[off0 + 3]);
-                        var q1 = new Quaternion(sampler.Output[off1 + 0], sampler.Output[off1 + 1], sampler.Output[off1 + 2], sampler.Output[off1 + 3]);
-                        var q = Quaternion.Slerp(q0, q1, localT);
-                        DecomposeLocalAndApply(ch.Path, ch.TargetNode, q);
-                    }
+                    SamplePose(_clips[_prevClip], _prevTime, _posePrev);
+                    for (int i = 0; i < _poseOut.Length; i++)
+                        _poseOut[i] = BlendTransform(_posePrev[i], _poseCur[i], _blend);
+                }
+                else
+                {
+                    Array.Copy(_poseCur, _poseOut, _poseOut.Length);
                 }
 
-                for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
                 for (int i = 0; i < _nodeLocal.Length; i++)
-                    if (GpuData.Data.Nodes[i].Parent == -1)
-                        ComputeGlobalRec(i, Matrix4x4.Identity);
+                    _nodeLocal[i] = ComposeTRS(_poseOut[i]);
             }
             else
             {
-                // no animation: ensure global matrices computed from base locals
-                for (int i = 0; i < _nodeLocal.Length; i++) _nodeLocal[i] = GpuData.Data.Nodes[i].LocalMatrix;
-                for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
+                // No clip: rest in bind pose.
                 for (int i = 0; i < _nodeLocal.Length; i++)
-                    if (GpuData.Data.Nodes[i].Parent == -1)
-                        ComputeGlobalRec(i, Matrix4x4.Identity);
+                    _nodeLocal[i] = nodes[i].LocalMatrix;
             }
 
-            // Compute joint matrices if model has skins:
+            // global = local * parentGlobal  (row-vector convention)
+            for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
+            for (int i = 0; i < _nodeLocal.Length; i++)
+                if (nodes[i].Parent == -1)
+                    ComputeGlobalRec(i, Matrix4x4.Identity);
+
             ComputeJointMatricesIfNeeded();
+        }
+
+        public Matrix4x4[] GetJointMatrices() => _jointMatrices;
+
+        // -----------------------------------------------------------------------
+        //  Internal helpers
+        // -----------------------------------------------------------------------
+
+        private void RegisterClip(GltfAnimation anim)
+        {
+            if (anim?.Channels == null || anim.Channels.Length == 0) return;
+            int idx = _clips.Count;
+            _clips.Add(anim);
+            string name = string.IsNullOrEmpty(anim.Name) ? $"clip{idx}" : anim.Name;
+            _clipByName[name] = idx;
+        }
+
+        // First clip whose (lower-cased) name contains any of the given keys.
+        private int FindClip(params string[] keys)
+        {
+            for (int i = 0; i < _clips.Count; i++)
+            {
+                var nm = (_clips[i].Name ?? "").ToLowerInvariant();
+                if (nm.Length == 0) continue;
+                foreach (var k in keys)
+                    if (!string.IsNullOrEmpty(k) && nm.Contains(k)) return i;
+            }
+            return -1;
+        }
+
+        private static float Advance(float time, float dt, float duration)
+        {
+            float dur = MathF.Max(0.0001f, duration);
+            time += dt;
+            if (time >= dur) time %= dur;   // seamless loop
+            if (time < 0f) time = 0f;
+            return time;
+        }
+
+        private static NodeTransform BlendTransform(in NodeTransform a, in NodeTransform b, float w)
+            => new NodeTransform
+            {
+                T = Vector3.Lerp(a.T, b.T, w),
+                R = Quaternion.Slerp(a.R, b.R, w),
+                S = Vector3.Lerp(a.S, b.S, w)
+            };
+
+        private static Matrix4x4 ComposeTRS(in NodeTransform n)
+            => Matrix4x4.CreateScale(n.S)
+             * Matrix4x4.CreateFromQuaternion(n.R)
+             * Matrix4x4.CreateTranslation(n.T);
+
+        // Sample a clip at the given time into pose[], starting from the bind pose
+        // and overriding only the channels the clip animates.
+        private void SamplePose(GltfAnimation clip, float time, NodeTransform[] pose)
+        {
+            Array.Copy(_basePose, pose, _basePose.Length);
+            if (clip?.Channels == null) return;
+
+            foreach (var ch in clip.Channels)
+            {
+                if (ch.TargetNode < 0 || ch.TargetNode >= pose.Length) continue;
+                if (ch.SamplerIndex < 0 || ch.SamplerIndex >= clip.Samplers.Length) continue;
+                var sampler = clip.Samplers[ch.SamplerIndex];
+                if (sampler?.Input == null || sampler.Input.Length == 0) continue;
+
+                FindKeyframes(sampler.Input, time, out int i0, out int i1, out float lt);
+
+                if (sampler.OutputStride == 3 && (ch.Path == "translation" || ch.Path == "scale"))
+                {
+                    int o0 = i0 * 3, o1 = i1 * 3;
+                    var v0 = new Vector3(sampler.Output[o0], sampler.Output[o0 + 1], sampler.Output[o0 + 2]);
+                    var v1 = new Vector3(sampler.Output[o1], sampler.Output[o1 + 1], sampler.Output[o1 + 2]);
+                    var v = Vector3.Lerp(v0, v1, lt);
+                    if (ch.Path == "translation") pose[ch.TargetNode].T = v;
+                    else                          pose[ch.TargetNode].S = v;
+                }
+                else if (sampler.OutputStride == 4 && ch.Path == "rotation")
+                {
+                    int o0 = i0 * 4, o1 = i1 * 4;
+                    var q0 = new Quaternion(sampler.Output[o0], sampler.Output[o0 + 1], sampler.Output[o0 + 2], sampler.Output[o0 + 3]);
+                    var q1 = new Quaternion(sampler.Output[o1], sampler.Output[o1 + 1], sampler.Output[o1 + 2], sampler.Output[o1 + 3]);
+                    pose[ch.TargetNode].R = Quaternion.Normalize(Quaternion.Slerp(q0, q1, lt));
+                }
+            }
+        }
+
+        private static void FindKeyframes(float[] input, float time, out int i0, out int i1, out float lt)
+        {
+            int idx = Array.BinarySearch(input, time);
+            if (idx < 0) idx = ~idx;
+            i0 = Math.Max(0, idx - 1);
+            i1 = Math.Min(input.Length - 1, idx);
+            float t0 = input[i0], t1 = input[i1];
+            lt = (t1 - t0) <= 1e-6f ? 0f : Math.Clamp((time - t0) / (t1 - t0), 0f, 1f);
+        }
+
+        private void ComputeGlobalRec(int idx, Matrix4x4 parentGlobal)
+        {
+            // Row-vector: child first, then parent  ->  global = local * parentGlobal
+            var global = _nodeLocal[idx] * parentGlobal;
+            _nodeGlobal[idx] = global;
+            foreach (var c in GpuData.Data.Nodes[idx].Children)
+                if (c >= 0 && c < _nodeLocal.Length)
+                    ComputeGlobalRec(c, global);
         }
 
         private void ComputeJointMatricesIfNeeded()
@@ -531,162 +731,93 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var skins = GpuData.Data.Skins ?? [];
             if (skins.Length == 0) { _jointMatrices = []; return; }
 
-            // Use first skin for now (most models have one skin)
-            var skin = skins[0];
+            var skin = skins[0]; // most rigs have a single skin
             int jointCount = skin.Joints?.Length ?? 0;
             if (jointCount == 0) { _jointMatrices = []; return; }
 
-            if (_jointMatrices == null || _jointMatrices.Length != jointCount)
+            if (_jointMatrices.Length != jointCount)
                 _jointMatrices = new Matrix4x4[jointCount];
 
             for (int i = 0; i < jointCount; i++)
             {
-                int jointNodeIndex = skin.Joints[i];
-                if (jointNodeIndex < 0 || jointNodeIndex >= _nodeGlobal.Length)
-                {
-                    _jointMatrices[i] = Matrix4x4.Identity;
-                    continue;
-                }
-                var jointGlobal = _nodeGlobal[jointNodeIndex];
+                int node = skin.Joints[i];
+                if (node < 0 || node >= _nodeGlobal.Length) { _jointMatrices[i] = Matrix4x4.Identity; continue; }
+
                 var invBind = (skin.InverseBindMatrices != null && i < skin.InverseBindMatrices.Length)
                     ? skin.InverseBindMatrices[i]
                     : Matrix4x4.Identity;
-                // Some exporters store bind matrices instead of inverse-bind. Detect and invert if needed.
-                var useInv = invBind;
-                bool inverted = false;
-                if (MathF.Abs(invBind.M11) > 10f || MathF.Abs(invBind.M22) > 10f || MathF.Abs(invBind.M33) > 10f)
-                {
-                    if (Matrix4x4.Invert(invBind, out var inv))
-                    {
-                        useInv = inv;
-                        inverted = true;
-                    }
-                }
 
-                // Standard glTF skinning joint matrix: jointGlobal * inverseBind (useInv may be inverted)
-                _jointMatrices[i] = Matrix4x4.Multiply(jointGlobal, useInv);
-                
-                // Debug: log first 3 joint matrices
-                if (i < 3)
-                {
-                    Console.WriteLine($"[Joint{i}] nodeIdx={jointNodeIndex} global.M11={jointGlobal.M11:F6} global.M14={jointGlobal.M14:F6} global.M41={jointGlobal.M41:F6}");
-                    Console.WriteLine($"[Joint{i}] inv.M11={invBind.M11:F6} inv.M14={invBind.M14:F6} inv.M41={invBind.M41:F6} inverted={inverted}");
-                    var r = _jointMatrices[i];
-                    Console.WriteLine($"[Joint{i}] result.M11={r.M11:F6} result.M14={r.M14:F6} result.M41={r.M41:F6}");
-                }
+                // Row-vector skinning matrix: v * (invBind * jointGlobal)
+                _jointMatrices[i] = invBind * _nodeGlobal[node];
             }
-            
-            Console.WriteLine($"[ComputeJointMatrices] Total joints: {jointCount}");
         }
 
-        // Expose getter
-        public Matrix4x4[] GetJointMatrices() => _jointMatrices;
-
-        // Debug: compute skinned position for a specific vertex using current joint matrices
-        public Vector3? ComputeSkinnedVertexPosition(int meshIndex, int vertIndex)
+        private void AllocateBuffers(GltfNode[] nodes)
         {
-            if (GpuData == null || GpuData.Data == null) return null;
-            if (meshIndex < 0 || meshIndex >= GpuData.Data.Meshes.Length) return null;
-            var mesh = GpuData.Data.Meshes[meshIndex];
-            if (mesh.Vertices == null || vertIndex < 0 || vertIndex >= mesh.Vertices.Length) return null;
+            int n = nodes.Length;
+            _nodeLocal  = new Matrix4x4[n];
+            _nodeGlobal = new Matrix4x4[n];
+            _basePose   = new NodeTransform[n];
+            _poseCur    = new NodeTransform[n];
+            _posePrev   = new NodeTransform[n];
+            _poseOut    = new NodeTransform[n];
 
-            var v = mesh.Vertices[vertIndex];
-            if (_jointMatrices == null || _jointMatrices.Length == 0) return v.Position;
-
-            Vector4 sk = Vector4.Zero;
-            // accumulate weight * (joint * pos)
-            var ids = v.BoneIds;
-            var w = v.BoneWeights;
-            int[] bi = new int[] { ids.X, ids.Y, ids.Z, ids.W };
-            float[] bw = new float[] { w.X, w.Y, w.Z, w.W };
-
-            var p = new Vector4(v.Position, 1f);
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < n; i++)
             {
-                int j = bi[i];
-                if (j < 0 || j >= _jointMatrices.Length) continue;
-                var jm = _jointMatrices[j];
-                // multiply jm * p
-                var tp = new Vector4(
-                    jm.M11 * p.X + jm.M12 * p.Y + jm.M13 * p.Z + jm.M14 * p.W,
-                    jm.M21 * p.X + jm.M22 * p.Y + jm.M23 * p.Z + jm.M24 * p.W,
-                    jm.M31 * p.X + jm.M32 * p.Y + jm.M33 * p.Z + jm.M34 * p.W,
-                    jm.M41 * p.X + jm.M42 * p.Y + jm.M43 * p.Z + jm.M44 * p.W);
-
-                sk += tp * bw[i];
-            }
-
-            // return 3D position
-            if (MathF.Abs(sk.W) > 1e-6f) return new Vector3(sk.X / sk.W, sk.Y / sk.W, sk.Z / sk.W);
-            return new Vector3(sk.X, sk.Y, sk.Z);
-        }
-
-        private void DecomposeLocalAndApply(string path, int nodeIdx, Vector3 vec)
-        {
-            Matrix4x4.Decompose(_nodeLocal[nodeIdx], out var sc, out var rot, out var trans);
-            if (path == "translation") trans = vec;
-            else if (path == "scale") sc = vec;
-            // Compose as T * R * S to match glTF TRS order
-            _nodeLocal[nodeIdx] = Matrix4x4.CreateTranslation(trans) * Matrix4x4.CreateFromQuaternion(rot) * Matrix4x4.CreateScale(sc);
-        }
-
-        private void DecomposeLocalAndApply(string path, int nodeIdx, Quaternion quat)
-        {
-            Matrix4x4.Decompose(_nodeLocal[nodeIdx], out var sc, out var rot, out var trans);
-            if (path == "rotation") rot = quat;
-            // Compose as T * R * S to match glTF TRS order
-            _nodeLocal[nodeIdx] = Matrix4x4.CreateTranslation(trans) * Matrix4x4.CreateFromQuaternion(rot) * Matrix4x4.CreateScale(sc);
-        }
-
-        private void ComputeGlobalRec(int idx, Matrix4x4 parent)
-        {
-            var local = _nodeLocal[idx];
-            var global = parent * local; // CORRECT: parent * local
-            _nodeGlobal[idx] = global;
-            var children = GpuData.Data.Nodes[idx].Children;
-            foreach (var c in children)
-            {
-                if (c >= 0 && c < _nodeLocal.Length)
-                    ComputeGlobalRec(c, global);
+                _nodeLocal[i]  = nodes[i].LocalMatrix;
+                _nodeGlobal[i] = nodes[i].LocalMatrix;
+                _basePose[i]   = new NodeTransform
+                {
+                    T = nodes[i].BaseTranslation,
+                    R = nodes[i].BaseRotation,
+                    S = nodes[i].BaseScale
+                };
             }
         }
 
-        public void SetBasePosition(Vector3 pos)
+        private void EnsureBuffers(GltfNode[] nodes)
         {
-            Position = pos;
+            if (_nodeLocal != null && _nodeLocal.Length == nodes.Length) return;
+            AllocateBuffers(nodes);
         }
 
-        // compute conservative world AABB using transformed vertices (used by snapping)
+        // -----------------------------------------------------------------------
+        //  World-space helpers (positioning / terrain snapping)
+        // -----------------------------------------------------------------------
+
+        public void SetBasePosition(Vector3 pos) => Position = pos;
+
+        // Conservative world AABB using the current node globals (used by snapping).
         public AABB ComputeWorldAABB()
         {
             if (GpuData.Data.Meshes == null || GpuData.Data.Meshes.Length == 0)
                 return LocalAABB.ToWorld(Position, Scale);
 
-            var inf = float.PositiveInfinity;
-            var ninf = float.NegativeInfinity;
-            Vector3 mn = new Vector3(inf, inf, inf);
-            Vector3 mx = new Vector3(ninf, ninf, ninf);
+            Vector3 mn = new Vector3(float.PositiveInfinity);
+            Vector3 mx = new Vector3(float.NegativeInfinity);
 
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
                          * Matrix4x4.CreateTranslation(Position);
 
+            bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
+
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
-                int nodeIdx = -1;
-                if (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length) nodeIdx = GpuData.MeshToNode[mi];
-
                 Matrix4x4 modelMat = objMat;
-                if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
-                    modelMat = objMat * _nodeGlobal[nodeIdx];
+                if (!isSkinned)
+                {
+                    int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length) ? GpuData.MeshToNode[mi] : -1;
+                    if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
+                        modelMat = _nodeGlobal[nodeIdx] * objMat;   // node-to-world, then object transform
+                }
 
                 var verts = GpuData.Data.Meshes[mi].Vertices;
                 if (verts == null || verts.Length == 0) continue;
 
                 for (int vi = 0; vi < verts.Length; vi++)
                 {
-                    var v = verts[vi].Position;
-                    var wp = Vector3.Transform(v, modelMat);
+                    var wp = Vector3.Transform(verts[vi].Position, modelMat);
                     mn = Vector3.Min(mn, wp);
                     mx = Vector3.Max(mx, wp);
                 }
@@ -702,33 +833,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             var aabb = ComputeWorldAABB();
             float terrainY = terrain.GetHeightAt(Position.X, Position.Z);
-            float currentMinY = aabb.Min.Y;
-            float delta = terrainY - currentMinY;
+            float delta = terrainY - aabb.Min.Y;
             Position = new Vector3(Position.X, Position.Y + delta, Position.Z);
         }
 
+        // -----------------------------------------------------------------------
+        //  Draw
+        // -----------------------------------------------------------------------
         public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc)
         {
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
                          * Matrix4x4.CreateTranslation(Position);
 
+            // For skinned meshes the joint matrices already fold in every node
+            // transform, so the model matrix is just the object placement. For
+            // non-skinned meshes we additionally apply the mesh node's global.
+            bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
+
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
                 var mesh = GpuData.Meshes[mi];
 
                 Matrix4x4 modelMat = objMat;
-                int nodeIdx = -1;
-                if (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length) nodeIdx = GpuData.MeshToNode[mi];
-
-                // If this model uses skinning (joint matrices present), node transforms
-                // are already applied via joint matrices. In that case upload only the
-                // object transform as `model`. For non-skinned meshes include the node's
-                // global transform in the model matrix.
-                bool isSkinned = (_jointMatrices != null && _jointMatrices.Length > 0);
-                if (!isSkinned && nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
+                if (!isSkinned)
                 {
-                    modelMat = objMat * _nodeGlobal[nodeIdx];
+                    int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length) ? GpuData.MeshToNode[mi] : -1;
+                    if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
+                        modelMat = _nodeGlobal[nodeIdx] * objMat;
                 }
 
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));

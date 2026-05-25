@@ -224,10 +224,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // ---- glTF Object Manager ----
                 if (objectManager != null)
                 {
+                    // Animation state machine driven by the keyboard:
+                    //   hold 9 = run, hold 8 = walk, otherwise idle.
+                    // The crossfade in PlayAll makes the return to idle smooth and
+                    // pause-free (TODO #4/#5/#6); idle/walk/run each loop while held.
+                    string animTarget = "idle";
+                    if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_9)) animTarget = "run";
+                    else if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_8)) animTarget = "walk";
+                    objectManager.PlayAll(animTarget, 0.25f);
 
-                    objectManager.Draw(camera, light);
+                    // Update (advance + skin) before drawing so there is no 1-frame lag.
                     objectManager.Update(deltaTime);
-
+                    objectManager.Draw(camera, light);
                 }
 
                 // --- HUD SYSTEM ---

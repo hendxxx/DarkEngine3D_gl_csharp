@@ -115,6 +115,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // -----------------------------------------------------------------------
+        //  Load an animation-only glTF once and apply (retarget) its clips to every
+        //  managed object. This is the "one model file + one animation file" workflow:
+        //  the model is loaded normally, then animations from another file are layered
+        //  on and become playable by name (idle/walk/run/…).
+        public void ApplyAnimationFileToAll(string animPath)
+        {
+            if (string.IsNullOrEmpty(animPath) || !File.Exists(animPath))
+            {
+                Console.WriteLine($"[ObjectManager] Animation file not found: {animPath}");
+                return;
+            }
+            var animData = LoadAnimationFile(animPath);
+            if (animData == null || animData.Animations.Length == 0) return;
+            foreach (var obj in _objects) obj.ApplyExternalAnimation(animData);
+        }
+
+        // -----------------------------------------------------------------------
+        //  Crossfade every managed object to the named animation clip. Objects
+        //  that already play that clip are left untouched, so this is safe to call
+        //  every frame from input handling.
+        public void PlayAll(string clipName, float blendTime = 0.25f)
+        {
+            foreach (var obj in _objects) obj.Play(clipName, blendTime);
+        }
+
+        // -----------------------------------------------------------------------
         public void Draw(Camera camera, Lights light)
         {
             DrawnObjects  = 0;
@@ -144,47 +170,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 // ─── SEND JOINT MATRICES ───
+                // Joint matrices are System.Numerics row-vector matrices. Upload with
+                // transpose=FALSE (same as the `model`/`view`/`projection` uniforms):
+                // OpenGL then reads the row-major storage column-major, which yields
+                // the column-vector skinning matrix the GLSL shader expects. Using
+                // transpose=TRUE keeps the row-vector form, i.e. the transpose of the
+                // correct matrix — invisible at bind pose but it explodes the mesh
+                // (spikes/detached blobs) as soon as a joint rotates.
                 var joints = obj.GetJointMatrices();
                 if (joints != null && joints.Length > 0 && _jointsLoc >= 0)
                 {
-                    // Debug: compute CPU-skinned position for first mesh vertex to compare
-                    try
-                    {
-                        var sk = obj.ComputeSkinnedVertexPosition(0, 0);
-                        if (sk != null)
-                        {
-                            Console.WriteLine($"[DebugSkin] Vert0 skinnedPos={sk.Value}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[DebugSkin] failed compute skinned pos: {ex.Message}");
-                    }
-
-                    Console.WriteLine($"[ObjectManager.Draw] Uploading {joints.Length} joint matrices to uniform location {_jointsLoc}");
-
-                    // Upload joint matrices directly and ask GL to transpose from row-major -> column-major
-                    if (joints.Length > 0)
-                    {
-                        var j0 = joints[0];
-                        Console.WriteLine($"[ObjectManager.Draw] Joint0 pre.M11={j0.M11:F6} pre.M14={j0.M14:F6} pre.M41={j0.M41:F6}");
-                    }
-
-                    unsafe
-                    {
-                        fixed (Matrix4x4* p = &joints[0])
-                        {
-                            GL.UniformMatrix4fv(_jointsLoc, joints.Length, true, (float*)p);
-                            var err = GL.GetError();
-                            if (err != 0) Console.WriteLine($"[ObjectManager.Draw] GL error after UniformMatrix4fv: {err}");
-                        }
-                    }
+                    fixed (Matrix4x4* p = &joints[0])
+                        GL.UniformMatrix4fv(_jointsLoc, joints.Length, false, (float*)p);
                 }
-                else
-                {
-                    if (_jointsLoc < 0) Console.WriteLine("[ObjectManager.Draw] Joint uniform location invalid!");
-                    if (joints == null || joints.Length == 0) Console.WriteLine("[ObjectManager.Draw] No joint matrices available");
-                }
+
                 obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc);
                 DrawnObjects++;
             }

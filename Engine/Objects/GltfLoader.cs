@@ -46,6 +46,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int[] Children = [];
         public Matrix4x4 LocalMatrix = Matrix4x4.Identity;
         public int Parent = -1;
+
+        // Base (bind-pose) TRS, used as the starting point for animation sampling.
+        // All matrices in this engine use the System.Numerics row-vector convention
+        // (translation in M41..M43), composed as Scale * Rotation * Translation.
+        public Vector3    BaseTranslation = Vector3.Zero;
+        public Quaternion BaseRotation    = Quaternion.Identity;
+        public Vector3    BaseScale       = Vector3.One;
     }
 
     public class GltfAnimationSampler
@@ -342,12 +349,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         var bw = weights != null ? weights[i] : new Vector4(1, 0, 0, 0);
                         var bj = joints != null ? joints[i] : new SkinnedVertex.BoneIndex4 { X = 0, Y = 0, Z = 0, W = 0 };
                         verts[i] = new SkinnedVertex(positions[i], normals[i], uvs[i], bw, bj);
-                        
-                        // Debug: log first 3 vertices
-                        if (i < 3)
-                        {
-                            Console.WriteLine($"[ParseMeshes] Vert[{i}] pos={positions[i]} joints=({bj.X},{bj.Y},{bj.Z},{bj.W}) weights={bw}");
-                        }
                     }
 
                     uint[] indices = prim.TryGetProperty("indices", out var idxEl)
@@ -379,30 +380,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     node.Children = ids.ToArray();
                 }
 
-                // matrix or TRS
+                // Resolve base TRS (System.Numerics row-vector convention).
+                Vector3 t = Vector3.Zero;
+                Quaternion r = Quaternion.Identity;
+                Vector3 s = Vector3.One;
+
                 if (nd.TryGetProperty("matrix", out var matProp) && matProp.ValueKind == JsonValueKind.Array)
                 {
-                    // glTF stores matrices in column-major order. Convert to C# Matrix4x4 (row-major)
+                    // glTF stores matrices column-major for the column-vector convention (M*v).
+                    // The row-vector equivalent is the transpose, which is obtained by loading
+                    // the 16 floats straight into M11..M44 (translation lands in M41..M43).
                     float[] mm = new float[16];
                     int i = 0;
                     foreach (var v in matProp.EnumerateArray()) mm[i++] = v.GetSingle();
 
-                    float m00 = mm[0]; float m10 = mm[1]; float m20 = mm[2]; float m30 = mm[3];
-                    float m01 = mm[4]; float m11 = mm[5]; float m21 = mm[6]; float m31 = mm[7];
-                    float m02 = mm[8]; float m12 = mm[9]; float m22 = mm[10]; float m32 = mm[11];
-                    float m03 = mm[12]; float m13 = mm[13]; float m23 = mm[14]; float m33 = mm[15];
+                    var loaded = new Matrix4x4(
+                        mm[0],  mm[1],  mm[2],  mm[3],
+                        mm[4],  mm[5],  mm[6],  mm[7],
+                        mm[8],  mm[9],  mm[10], mm[11],
+                        mm[12], mm[13], mm[14], mm[15]);
 
-                    node.LocalMatrix = new Matrix4x4(
-                        m00, m01, m02, m03,
-                        m10, m11, m12, m13,
-                        m20, m21, m22, m23,
-                        m30, m31, m32, m33);
+                    Matrix4x4.Decompose(loaded, out s, out r, out t);
                 }
                 else
                 {
-                    Vector3 t = Vector3.Zero;
-                    Quaternion r = Quaternion.Identity;
-                    Vector3 s = Vector3.One;
                     if (nd.TryGetProperty("translation", out var tProp))
                     {
                         var arr = tProp.EnumerateArray().ToArray();
@@ -418,9 +419,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         var arr = sProp.EnumerateArray().ToArray();
                         if (arr.Length >= 3) s = new Vector3(arr[0].GetSingle(), arr[1].GetSingle(), arr[2].GetSingle());
                     }
-                    // Compose as Translation * Rotation * Scale (glTF TRS order)
-                    node.LocalMatrix = Matrix4x4.CreateTranslation(t) * Matrix4x4.CreateFromQuaternion(r) * Matrix4x4.CreateScale(s);
                 }
+
+                node.BaseTranslation = t;
+                node.BaseRotation    = r;
+                node.BaseScale       = s;
+                // Row-vector TRS: v * S * R * T  ->  Scale * Rotation * Translation
+                node.LocalMatrix = Matrix4x4.CreateScale(s)
+                                 * Matrix4x4.CreateFromQuaternion(r)
+                                 * Matrix4x4.CreateTranslation(t);
                 list.Add(node);
             }
             return [..list];
@@ -443,39 +450,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                 if (s.TryGetProperty("inverseBindMatrices", out var ibm))
                 {
-                    int accIdx = ibm.GetInt32();
-                    // Debug: print accessor + bufferview metadata for inverseBindMatrices
-                    if (accIdx >= 0 && accIdx < _accs.Length)
-                    {
-                        var acc = _accs[accIdx];
-                        var bv = _bvs[acc.BufView];
-                        Console.WriteLine($"[ParseSkins] inverseBind accessor idx={accIdx} bufView={acc.BufView} byteOffset={acc.ByteOffset} count={acc.Count} compType={acc.CompType} type={acc.Type}");
-                        Console.WriteLine($"[ParseSkins] bufferView off={bv.off} len={bv.len} stride={bv.stride}");
-                        // print raw bytes of first matrix (up to 64 bytes)
-                        try
-                        {
-                            var sp = Span(accIdx);
-                            int bytes = Math.Min(sp.Length, 64);
-                            var sb = new System.Text.StringBuilder();
-                            for (int bi = 0; bi < bytes; bi++) sb.AppendFormat("{0:X2}", sp[bi]);
-                            Console.WriteLine($"[ParseSkins] inverseBind rawBytes={sb}\n");
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"[ParseSkins] failed to dump raw bytes: {ex.Message}");
-                        }
-                    }
-
-                    skin.InverseBindMatrices = RMat4(accIdx);
-                    // Debug: print first inverse bind matrix elements
-                    if (skin.InverseBindMatrices != null && skin.InverseBindMatrices.Length > 0)
-                    {
-                        var m = skin.InverseBindMatrices[0];
-                        Console.WriteLine($"[ParseSkins] InvBind[0] M11={m.M11:F6} M12={m.M12:F6} M13={m.M13:F6} M14={m.M14:F6}");
-                        Console.WriteLine($"[ParseSkins] InvBind[0] M21={m.M21:F6} M22={m.M22:F6} M23={m.M23:F6} M24={m.M24:F6}");
-                        Console.WriteLine($"[ParseSkins] InvBind[0] M31={m.M31:F6} M32={m.M32:F6} M33={m.M33:F6} M34={m.M34:F6}");
-                        Console.WriteLine($"[ParseSkins] InvBind[0] M41={m.M41:F6} M42={m.M42:F6} M43={m.M43:F6} M44={m.M44:F6}");
-                    }
+                    skin.InverseBindMatrices = RMat4(ibm.GetInt32());
                 }
                 list.Add(skin);
             }
@@ -663,33 +638,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             for (int j = 0; j < r.Length; j++)
             {
                 int o = j * step;
-                // glTF stores matrices in column-major order, read columns
-                float m00 = ToF(sp, o + 0);   // col0
-                float m10 = ToF(sp, o + 4);
-                float m20 = ToF(sp, o + 8);
-                float m30 = ToF(sp, o + 12);
-
-                float m01 = ToF(sp, o + 16);  // col1
-                float m11 = ToF(sp, o + 20);
-                float m21 = ToF(sp, o + 24);
-                float m31 = ToF(sp, o + 28);
-
-                float m02 = ToF(sp, o + 32);  // col2
-                float m12 = ToF(sp, o + 36);
-                float m22 = ToF(sp, o + 40);
-                float m32 = ToF(sp, o + 44);
-
-                float m03 = ToF(sp, o + 48);  // col3
-                float m13 = ToF(sp, o + 52);
-                float m23 = ToF(sp, o + 56);
-                float m33 = ToF(sp, o + 60);
-
-                // Convert to row-major Matrix4x4
+                // glTF stores matrices column-major for the column-vector convention.
+                // Loading the 16 floats straight into M11..M44 yields the transpose,
+                // i.e. the row-vector form this engine uses (translation in M41..M43).
                 r[j] = new Matrix4x4(
-                    m00, m01, m02, m03,
-                    m10, m11, m12, m13,
-                    m20, m21, m22, m23,
-                    m30, m31, m32, m33);
+                    ToF(sp, o + 0),  ToF(sp, o + 4),  ToF(sp, o + 8),  ToF(sp, o + 12),
+                    ToF(sp, o + 16), ToF(sp, o + 20), ToF(sp, o + 24), ToF(sp, o + 28),
+                    ToF(sp, o + 32), ToF(sp, o + 36), ToF(sp, o + 40), ToF(sp, o + 44),
+                    ToF(sp, o + 48), ToF(sp, o + 52), ToF(sp, o + 56), ToF(sp, o + 60));
             }
             return r;
         }
