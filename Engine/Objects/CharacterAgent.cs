@@ -80,6 +80,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly string?       _blockClip;
         private readonly string?       _hurtClip;
         private readonly string?       _dyingClip;
+        private readonly string?       _lookClip;
+        private readonly string?       _entryClip;
+        private readonly float         _victoryDur;
         private readonly List<string>  _attackClips;
 
         private float    _heading;
@@ -106,6 +109,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // retaliation (turn around and fight whoever struck you, even from behind)
         private CharacterAgent? _struckBy;
         private float           _struckTimer;
+        private float           _victoryTimer;   // post-win celebration (entry pose)
 
         public CharacterAgent(GltfObject obj, Random rng)
         {
@@ -123,6 +127,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _blockClip  = First(clips, "block", "bodyblock", "body-block", "defend");
             _hurtClip   = First(clips, "hurt", "takepunch", "taking-punch", "takingpunch", "flinch", "impact");
             _dyingClip  = First(clips, "dying", "death", "die", "dead");
+            _lookClip   = First(clips, "lookaround", "looking", "look");   // nervous coward idle
+            _entryClip  = First(clips, "entry", "victory", "taunt", "celebrat", "win");
+            _victoryDur = _entryClip != null ? MathF.Min(obj.GetClipDuration(_entryClip), 3.5f) : 0f;
             _attackClips = All(clips, "fistfight", "punchbag", "hook", "jab", "cross", "uppercut", "kick", "strike");
             _attackClips.RemoveAll(c =>
                    string.Equals(c, _stanceClip, StringComparison.OrdinalIgnoreCase)
@@ -146,6 +153,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             if (_giveUpTimer > 0f) _giveUpTimer -= dt;
             if (_struckTimer > 0f) _struckTimer -= dt;
+            if (_victoryTimer > 0f) _victoryTimer -= dt;
 
             AdvanceAction(dt);
 
@@ -185,6 +193,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 Target = _struckBy;
                 Mode = DistTo(_struckBy.Position) <= FightRange ? Behavior.Fight : Behavior.Chase;
             }
+            else if (_victoryTimer > 0f)
+            {
+                // Celebrating a win — hold position until the entry pose finishes.
+                Mode = Behavior.Wander; Target = null;
+            }
             else if (Temper == Mentality.Aggressive) DecideAggressive(nearestSeen, attacker);
             else                                     DecideCoward(threat, attacker);
 
@@ -194,7 +207,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         private void DecideAggressive(CharacterAgent? seen, CharacterAgent? attacker)
         {
-            if (Target != null && Target.Dead) Target = null;             // opponent down → find another
+            if (Target != null && Target.Dead)
+            {
+                // We won — celebrate with the entry pose before seeking another fight.
+                Target = null;
+                if (_entryClip != null && _victoryDur > 0f)
+                {
+                    _victoryTimer = _victoryDur;
+                    _obj.PlayOnce(_entryClip, _idleClip, BlendTime);
+                    Mode = Behavior.Wander;
+                    return;
+                }
+            }
 
             if (Target != null)
             {
@@ -228,6 +252,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private void Act(float dt)
         {
             _obj.PlaybackSpeed = 1f;
+            if (_victoryTimer > 0f) { _speed = 0f; return; }   // hold the entry/victory pose
 
             switch (Mode)
             {
@@ -352,6 +377,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (Dead) return;
             _struckBy = from; _struckTimer = RetaliateTime;   // provoke retaliation
+            _victoryTimer = 0f;                               // hit mid-celebration → react
             if (_act == CombatAct.Block)
             {
                 Health -= damage * BlockedMul;           // chip damage through the guard
@@ -386,7 +412,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Health = MaxHealth;
             Target = null;
             _gaveUpOn = null; _giveUpTimer = 0f;
-            _struckBy = null; _struckTimer = 0f;
+            _struckBy = null; _struckTimer = 0f; _victoryTimer = 0f;
             _act = CombatAct.None;
             Mode = _prevMode = Behavior.Wander;
             _obj.Position = pos;
@@ -402,7 +428,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _speed = g switch { Gait.Walk => WalkSpeed, Gait.Run => RunSpeed, _ => 0f };
             _targetHeading = RandomAngle();
             _wanderTimer = 2.0f + (float)_rng.NextDouble() * 4.0f;
-            _obj.Play(g switch { Gait.Walk => _walkClip, Gait.Run => _runClip, _ => _idleClip }, BlendTime);
+
+            // A coward standing idle nervously looks around; otherwise the plain idle.
+            string idle = (Temper == Mentality.Coward && _lookClip != null) ? _lookClip : _idleClip;
+            _obj.Play(g switch { Gait.Walk => _walkClip, Gait.Run => _runClip, _ => idle }, BlendTime);
         }
 
         // -----------------------------------------------------------------------

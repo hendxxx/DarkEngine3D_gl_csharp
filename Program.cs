@@ -200,6 +200,8 @@ public unsafe class Program
         objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\body-block.glb",    "block");
         objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\taking-punch.glb",  "hurt");
         objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\dying.glb",         "dying", retargetRoot: true);
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\looking-around.glb","lookaround");  // nervous coward idle
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\entry.glb",         "entry");        // winner's celebration pose
 
         // Extra fighting clips (jab / hook / cross / …): drop converted Mixamo GLBs
         // into Artifacts\animations\ and they are auto-loaded + retargeted, each named
