@@ -202,8 +202,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 Mouse.Update(window, camera);
 
                 // --- TIME SYSTEM ---
-                float baseSpeed = 0.0043f; // Normal: 1 real second = 1 game minute
-                float manualMultiplier = 60.0f; // Fast Forward: 1 real second = 1 game hour
+                float baseSpeed = 0.0011f; // Slow day/night cycle (~4x slower than before)
+                float manualMultiplier = 60.0f; // Fast Forward: hold +/- to scrub time
 
                 // Always progress time slowly
                 light.WorldTime += deltaTime * baseSpeed;
@@ -221,21 +221,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                  
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
-                // ---- glTF Object Manager ----
+                // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)
                 {
-                    // Animation state machine driven by the keyboard:
-                    //   hold 9 = run, hold 8 = walk, otherwise idle.
-                    // The crossfade in PlayAll makes the return to idle smooth and
-                    // pause-free (TODO #4/#5/#6); idle/walk/run each loop while held.
-                    string animTarget = "idle";
-                    if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_9)) animTarget = "run";
-                    else if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_8)) animTarget = "walk";
-                    objectManager.PlayAll(animTarget, 0.25f);
-
-                    // Update (advance + skin) before drawing so there is no 1-frame lag.
-                    objectManager.Update(deltaTime);
+                    // Each character decides on its own whether to idle/walk/run, picks
+                    // a direction, moves at a gait-matched speed, avoids the others, and
+                    // stays on the terrain. Updated before drawing to avoid a 1-frame lag.
+                    objectManager.UpdateAgents(deltaTime, gameTerrainChunk);
                     objectManager.Draw(camera, light);
+                    objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                 }
 
                 // --- HUD SYSTEM ---

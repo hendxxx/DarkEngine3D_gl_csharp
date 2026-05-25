@@ -138,16 +138,16 @@ public unsafe class Program
         // Stuntman is the rendered model; its idle/walk/run animations are layered on
         // afterwards from Xbot.glb (see ApplyAnimationFileToAll below).
         string xbotPath = "Artifacts\\objects\\Stuntman.glb";
-        var rng = new Random(42);
+        var rng = new Random();   // time-seeded → different spawn layout each run
 
         float spawnCX = 0f;
         float spawnCZ = 0f;
-        float minDist = 1.5f;   // jarak minimum antar object (meter)
-        float spawnRadius = 8f; // area spawn
+        float minDist = 1.6f;    // jarak minimum antar object (meter)
+        float spawnRadius = 13f; // area spawn (wider to fit twice as many)
 
         var spawnedPositions = new List<Vector2>();
 
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 20; i++)   // twice as many characters
         {
             float px, pz;
             int tries = 0;
@@ -187,9 +187,31 @@ public unsafe class Program
         // Load animations from a SEPARATE file and apply them to the already-loaded
         // model (TODO #2). Stuntman ships only one baked clip, so its idle/walk/run
         // come from Xbot.glb — bones are matched by normalized name and rotations are
-        // retargeted across the two rigs. Controls: hold 8 = walk, hold 9 = run,
-        // release = idle (smooth crossfade between them).
+        // retargeted across the two rigs.
         objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
+
+        // Fighting animations, retargeted onto Stuntman. Stance + attack variations
+        // (fist-fight / punching-bag / hook) plus block, hit-reaction and death clips
+        // that the combat AI uses for blocking, taking damage and dying.
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\Fighting-idle.glb", "fightstance");
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\fist-fight.glb",    "fistfight");
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\punching-bag.glb",  "punchbag");
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\hook.glb",          "hook");
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\body-block.glb",    "block");
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\taking-punch.glb",  "hurt");
+        objectManager.ApplyAnimationFileToAll("Artifacts\\objects\\dying.glb",         "dying", retargetRoot: true);
+
+        // Extra fighting clips (jab / hook / cross / …): drop converted Mixamo GLBs
+        // into Artifacts\animations\ and they are auto-loaded + retargeted, each named
+        // after its file. Optional — the AI uses them as one-shot strikes if present.
+        objectManager.LoadAnimationFolder("Artifacts\\animations");
+
+        // Autonomous behaviour: each character is randomly aggressive or coward, walks
+        // /runs in random directions, chases / fights / flees based on what it sees,
+        // avoids others on collision, and stays clamped to the terrain.
+        objectManager.WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
+        objectManager.WanderRadius = 38f;
+        objectManager.InitWanderingAgents();   // after clips are loaded
 
         objectManager.DisableFrustumCull = true; // DEBUG: bypass frustum cull sementara
 

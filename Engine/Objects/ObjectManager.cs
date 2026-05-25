@@ -13,6 +13,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     {
         private readonly Dictionary<string, GltfModelGpuData> _modelCache = [];
         private readonly List<GltfObject>                     _objects    = [];
+        private readonly List<CharacterAgent>                 _agents     = [];
+        private readonly Random                               _agentRng   = new(777);
+
+        // Soft wander boundary for the autonomous agents.
+        public Vector3 WanderCenter = Vector3.Zero;
+        public float   WanderRadius = 30f;
+        private const float RespawnDelay = 10f;   // seconds a fallen character stays down
+        private const float FightSpacing = 0.7f;   // how close two fighters may stand (no body/leg clipping)
 
         private readonly uint _shaderProgram;
         private readonly int  _modelLoc;
@@ -115,11 +123,96 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // -----------------------------------------------------------------------
+        //  Create one wandering agent per spawned object. Call this AFTER animation
+        //  clips are loaded (so each agent's initial idle/walk/run actually plays).
+        public void InitWanderingAgents()
+        {
+            _agents.Clear();
+            foreach (var obj in _objects) _agents.Add(new CharacterAgent(obj, _agentRng));
+        }
+
+        // -----------------------------------------------------------------------
+        //  Drive the autonomous agents: decide + steer, integrate movement (clamped
+        //  to the terrain), resolve agent–agent collisions, then advance animation.
+        public void UpdateAgents(float dt, TerrainChunk terrain)
+        {
+            foreach (var a in _agents) a.UpdateBehavior(dt, _agents);
+            foreach (var a in _agents) a.Move(dt, terrain, WanderCenter, WanderRadius);
+
+            ResolveCollisions(terrain);
+
+            // Revive the fallen a few seconds later (at full health, random spot) so
+            // the brawl keeps going.
+            foreach (var a in _agents)
+            {
+                if (a.Dead && a.DeadElapsed >= RespawnDelay)
+                {
+                    float ang  = (float)(_agentRng.NextDouble() * MathF.PI * 2.0);
+                    float dist = (float)(_agentRng.NextDouble() * WanderRadius);
+                    float x = WanderCenter.X + MathF.Cos(ang) * dist;
+                    float z = WanderCenter.Z + MathF.Sin(ang) * dist;
+                    a.Respawn(new Vector3(x, terrain.GetHeightAt(x, z), z));
+                }
+            }
+
+            foreach (var obj in _objects) obj.Update(dt);
+        }
+
+        // Separate any overlapping agents and turn each away from the other.
+        private void ResolveCollisions(TerrainChunk terrain)
+        {
+            for (int i = 0; i < _agents.Count; i++)
+            {
+                for (int j = i + 1; j < _agents.Count; j++)
+                {
+                    var a = _agents[i];
+                    var b = _agents[j];
+                    if (a.Dead || b.Dead) continue;   // corpses don't collide
+                    var pa = a.Position;
+                    var pb = b.Position;
+
+                    float dx = pa.X - pb.X;
+                    float dz = pa.Z - pb.Z;
+                    float distSq = dx * dx + dz * dz;
+
+                    // Fighting partners stand much closer (toe-to-toe) so punches land;
+                    // everyone else keeps a full personal-space radius.
+                    bool engaged = ((a.Mode == CharacterAgent.Behavior.Fight || a.Mode == CharacterAgent.Behavior.Chase) && ReferenceEquals(a.Target, b))
+                                || ((b.Mode == CharacterAgent.Behavior.Fight || b.Mode == CharacterAgent.Behavior.Chase) && ReferenceEquals(b.Target, a));
+                    float minDist = engaged ? FightSpacing : (a.CollisionRadius + b.CollisionRadius);
+
+                    if (distSq >= minDist * minDist) continue;
+
+                    float dist = MathF.Sqrt(distSq);
+                    float nx, nz;
+                    if (dist > 1e-4f) { nx = dx / dist; nz = dz / dist; }
+                    else
+                    {
+                        // exactly coincident — pick an arbitrary separation axis
+                        float ang = (float)(_agentRng.NextDouble() * MathF.PI * 2.0);
+                        nx = MathF.Sin(ang); nz = MathF.Cos(ang); dist = 0f;
+                    }
+
+                    float push = (minDist - dist) * 0.5f;
+                    pa.X += nx * push; pa.Z += nz * push;
+                    pb.X -= nx * push; pb.Z -= nz * push;
+                    pa.Y = terrain.GetHeightAt(pa.X, pa.Z);
+                    pb.Y = terrain.GetHeightAt(pb.X, pb.Z);
+                    a.Position = pa;
+                    b.Position = pb;
+
+                    a.AvoidFrom(pb);
+                    b.AvoidFrom(pa);
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------------
         //  Load an animation-only glTF once and apply (retarget) its clips to every
         //  managed object. This is the "one model file + one animation file" workflow:
         //  the model is loaded normally, then animations from another file are layered
         //  on and become playable by name (idle/walk/run/…).
-        public void ApplyAnimationFileToAll(string animPath)
+        public void ApplyAnimationFileToAll(string animPath, string? clipNameOverride = null, bool retargetRoot = false)
         {
             if (string.IsNullOrEmpty(animPath) || !File.Exists(animPath))
             {
@@ -128,7 +221,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             var animData = LoadAnimationFile(animPath);
             if (animData == null || animData.Animations.Length == 0) return;
-            foreach (var obj in _objects) obj.ApplyExternalAnimation(animData);
+            foreach (var obj in _objects) obj.ApplyExternalAnimation(animData, clipNameOverride, retargetRoot);
+        }
+
+        // Load every .glb in a folder as an extra animation source, using each file's
+        // name (without extension) as the clip name. This is how fighting clips are
+        // added: drop "jab.glb", "hook.glb", "fighting_idle.glb", … and they become
+        // playable clips "jab", "hook", "fighting_idle", retargeted onto the model.
+        public void LoadAnimationFolder(string folder)
+        {
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder)) return;
+            foreach (var file in Directory.GetFiles(folder, "*.glb"))
+            {
+                string clip = Path.GetFileNameWithoutExtension(file);
+                Console.WriteLine($"[ObjectManager] Loading fighting clip '{clip}' from {file}");
+                ApplyAnimationFileToAll(file, clip);
+            }
         }
 
         // -----------------------------------------------------------------------
@@ -186,6 +294,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc);
                 DrawnObjects++;
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        //  Draw a small screen-space health bar above each living character.
+        public void DrawHealthBars(Camera camera, HUD hud)
+        {
+            const float headHeight = 2.1f;   // above the feet origin
+            var vp = Matrix4x4.Multiply(camera.GetViewMatrix(), camera.GetProjectionMatrix());
+
+            for (int i = 0; i < _objects.Count && i < _agents.Count; i++)
+            {
+                var ag = _agents[i];
+                if (ag.Dead) continue;
+
+                var head = _objects[i].Position + new Vector3(0f, headHeight, 0f);
+                if ((head - camera.Position).LengthSquared() > 90f * 90f) continue;   // too far to bother
+
+                var clip = Vector4.Transform(new Vector4(head, 1f), vp);
+                if (clip.W <= 0.05f) continue;                                        // behind the camera
+                float nx = clip.X / clip.W, ny = clip.Y / clip.W;
+                if (nx < -1.1f || nx > 1.1f || ny < -1.1f || ny > 1.1f) continue;     // off screen
+
+                float sx = (nx * 0.5f + 0.5f) * Glfw.WindowWidth;
+                float sy = (1f - (ny * 0.5f + 0.5f)) * Glfw.WindowHeight;
+
+                float bw = 46f, bh = 6f;
+                float x = sx - bw * 0.5f, y = sy - 6f;
+                float hp = Math.Clamp(ag.Health / CharacterAgent.MaxHealth, 0f, 1f);
+
+                hud.DrawBox(x - 1f, y - 1f, bw + 2f, bh + 2f, new Vector3(0f, 0f, 0f));      // border
+                hud.DrawBox(x, y, bw, bh, new Vector3(0.18f, 0.18f, 0.18f));                 // background
+                var col = hp > 0.5f  ? new Vector3(0.15f, 0.8f, 0.15f)
+                        : hp > 0.25f ? new Vector3(0.9f, 0.75f, 0.1f)
+                        :              new Vector3(0.9f, 0.15f, 0.15f);
+                hud.DrawBox(x, y, bw * hp, bh, col);                                         // fill
             }
         }
 

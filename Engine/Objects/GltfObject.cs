@@ -288,6 +288,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public Quaternion Rotation;
         public float      Scale = 1f;
 
+        // Animation playback rate (1 = normal). Raised while sprinting so the legs
+        // move faster to match the higher ground speed.
+        public float      PlaybackSpeed = 1f;
+
         public AABB LocalAABB => GpuData.LocalAABB;
         public AABB WorldAABB => LocalAABB.ToWorld(Position, Scale);
 
@@ -308,6 +312,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private float _blend     = 1f;   // weight of the current clip (1 = fully current)
         private float _blendRate = 0f;   // per-second growth of _blend during a transition
 
+        // one-shot playback (e.g. a punch): play once, then crossfade back to a clip
+        private bool  _curLoop      = true;
+        private int   _returnClip   = -1;
+        private float _returnBlend  = 0.2f;
+
         // ---- pose scratch buffers (sized to node count) ----
         private NodeTransform[] _basePose = [];
         private NodeTransform[] _poseCur  = [];
@@ -318,6 +327,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             (_curClip >= 0 && _curClip < _clips.Count) ? (_clips[_curClip].Name ?? $"#{_curClip}") : "(none)";
 
         public bool HasAnimations => _clips.Count > 0;
+
+        // True while a one-shot clip (e.g. a punch) is mid-play and hasn't recovered.
+        public bool IsPlayingOneShot => !_curLoop;
 
         public GltfObject(GltfModelGpuData gpuData, Vector3 position, Quaternion rotation, float scale = 1f)
         {
@@ -360,23 +372,49 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return names;
         }
 
-        // Crossfade to the named clip. Accepts an exact name or a case-insensitive
-        // substring (so "walk" matches "Armature|walk"). Returns false if not found.
-        public bool Play(string name, float blendTime = 0.25f)
+        public bool HasClip(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
-            if (!_clipByName.TryGetValue(name, out int idx))
-            {
-                idx = FindClip(name.ToLowerInvariant());
-                if (idx < 0) return false;
-            }
-            return PlayIndex(idx, blendTime);
+            return _clipByName.ContainsKey(name) || FindClip(name.ToLowerInvariant()) >= 0;
         }
 
-        public bool PlayIndex(int idx, float blendTime = 0.25f)
+        public float GetClipDuration(string name)
+        {
+            int idx = ResolveClip(name);
+            return idx >= 0 ? _clips[idx].Duration : 0f;
+        }
+
+        private int ResolveClip(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return -1;
+            return _clipByName.TryGetValue(name, out int idx) ? idx : FindClip(name.ToLowerInvariant());
+        }
+
+        // Crossfade to the named clip and loop it. Accepts an exact name or a
+        // case-insensitive substring (so "walk" matches "Armature|walk").
+        public bool Play(string name, float blendTime = 0.25f)
+        {
+            int idx = ResolveClip(name);
+            return idx >= 0 && PlayIndex(idx, blendTime, loop: true);
+        }
+
+        // Play the named clip ONCE, then crossfade back to returnTo (looping). Used
+        // for attacks (punch/jab/hook) that should fire and recover to a stance.
+        public bool PlayOnce(string name, string returnTo, float blendTime = 0.15f)
+        {
+            int idx = ResolveClip(name);
+            if (idx < 0) return false;
+            int ret = ResolveClip(returnTo);
+            if (!PlayIndex(idx, blendTime, loop: false)) return false;
+            _returnClip  = ret;
+            _returnBlend = blendTime;
+            return true;
+        }
+
+        public bool PlayIndex(int idx, float blendTime = 0.25f, bool loop = true)
         {
             if (idx < 0 || idx >= _clips.Count) return false;
-            if (idx == _curClip) return true;            // already the active clip
+            if (idx == _curClip && _curLoop && loop) return true;   // already looping this clip
 
             if (blendTime > 0f && _curClip >= 0)
             {
@@ -391,8 +429,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 _blend     = 1f;
                 _blendRate = 0f;
             }
-            _curClip = idx;
-            _curTime = 0f;
+            _curClip    = idx;
+            _curTime    = 0f;
+            _curLoop    = loop;
+            _returnClip = -1;
             return true;
         }
 
@@ -407,7 +447,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // reapplied on the target bone's bind, then converted back to the target's
         // local frame. Translation/scale stay at the target's bind values (the
         // character keeps its own proportions and animates in place).
-        public void ApplyExternalAnimation(GltfData animData)
+        // clipNameOverride: when set, the merged clip(s) are named after it (the file
+        // name) instead of the embedded animation name — so a converted Mixamo file
+        // like "jab.glb" becomes a clip called "jab" regardless of its internal name.
+        // retargetRoot: also transfer the Hips (root) WORLD translation, so e.g. a
+        // dying clip's fall actually lowers the body to the ground instead of the
+        // rotation-only pose floating at hip height.
+        public void ApplyExternalAnimation(GltfData animData, string? clipNameOverride = null, bool retargetRoot = false)
         {
             if (animData?.Animations == null || animData.Animations.Length == 0)
             {
@@ -442,7 +488,39 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var invSrcGlobalBind = new Quaternion[srcNodes.Length];
             for (int i = 0; i < srcNodes.Length; i++) invSrcGlobalBind[i] = Quaternion.Conjugate(srcGlobalBind[i]);
 
+            // Root-motion retarget setup (Hips world translation).
+            int srcHips = -1, dstHips = -1;
+            Matrix4x4 invHipsParentGlobal = Matrix4x4.Identity;
+            Vector3 srcHipsWorldBind = Vector3.Zero, dstHipsBindT = Vector3.Zero;
+            float rootScale = 1f;   // target/source hip-height ratio (scales the fall to the target's size)
+            if (retargetRoot)
+            {
+                for (int i = 0; i < srcNodes.Length; i++)
+                    if (NormalizeBoneName(srcNodes[i].Name).Equals("Hips", StringComparison.OrdinalIgnoreCase)) { srcHips = i; break; }
+                if (srcHips >= 0) dstHips = srcToDst[srcHips];
+                if (srcHips >= 0 && dstHips >= 0)
+                {
+                    var srcBindMat = new Matrix4x4[srcNodes.Length];
+                    for (int i = 0; i < srcNodes.Length; i++) srcBindMat[i] = srcNodes[i].LocalMatrix;
+                    var srcBindGlobal = ComputeGlobalMatrices(srcNodes, srcBindMat);
+                    srcHipsWorldBind = new Vector3(srcBindGlobal[srcHips].M41, srcBindGlobal[srcHips].M42, srcBindGlobal[srcHips].M43);
+
+                    var dstBindMat = new Matrix4x4[dstNodes.Length];
+                    for (int i = 0; i < dstNodes.Length; i++) dstBindMat[i] = dstNodes[i].LocalMatrix;
+                    var dstBindGlobal = ComputeGlobalMatrices(dstNodes, dstBindMat);
+                    int dp = dstNodes[dstHips].Parent;
+                    Matrix4x4 parentGlobal = (dp >= 0 && dp < dstBindGlobal.Length) ? dstBindGlobal[dp] : Matrix4x4.Identity;
+                    Matrix4x4.Invert(parentGlobal, out invHipsParentGlobal);
+                    dstHipsBindT = dstNodes[dstHips].BaseTranslation;
+
+                    var dstHipsWorldBind = new Vector3(dstBindGlobal[dstHips].M41, dstBindGlobal[dstHips].M42, dstBindGlobal[dstHips].M43);
+                    rootScale = MathF.Abs(srcHipsWorldBind.Y) > 1e-3f ? dstHipsWorldBind.Y / srcHipsWorldBind.Y : 1f;
+                }
+                else retargetRoot = false;
+            }
+
             int totalMatched = 0;
+            int clipOrdinal = 0;
             foreach (var src in animData.Animations)
             {
                 // Per source node: its rotation sampler in this clip (null if not animated).
@@ -472,6 +550,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var baked = new Dictionary<int, float[]>();
                 foreach (var di in matchedDst) baked[di] = new float[times.Length * 4];
 
+                // Optional Hips world-translation track for this clip.
+                GltfAnimationSampler? hipsTransSampler = null;
+                if (retargetRoot && srcHips >= 0)
+                    foreach (var ch in src.Channels)
+                        if (ch.Path == "translation" && ch.TargetNode == srcHips
+                            && ch.SamplerIndex >= 0 && ch.SamplerIndex < src.Samplers.Length)
+                        {
+                            var s = src.Samplers[ch.SamplerIndex];
+                            if (s?.Input != null && s.OutputStride == 3) { hipsTransSampler = s; break; }
+                        }
+                float[]? hipsOut    = (retargetRoot && srcHips >= 0 && dstHips >= 0) ? new float[times.Length * 3] : null;
+                var      srcLocalMat = hipsOut != null ? new Matrix4x4[srcNodes.Length] : null;
+
                 var srcLocal = new Quaternion[srcNodes.Length];
                 for (int f = 0; f < times.Length; f++)
                 {
@@ -481,6 +572,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     for (int si = 0; si < srcNodes.Length; si++)
                         srcLocal[si] = srcRot[si] != null ? SampleQuat(srcRot[si]!, t) : srcBindLocal[si];
                     var srcGlobal = ComputeGlobalRotations(srcNodes, srcLocal);
+
+                    // Track the Hips world position to retarget its fall onto the target.
+                    if (hipsOut != null)
+                    {
+                        for (int si = 0; si < srcNodes.Length; si++)
+                            srcLocalMat![si] = Matrix4x4.CreateScale(srcNodes[si].BaseScale)
+                                             * Matrix4x4.CreateFromQuaternion(srcLocal[si])
+                                             * Matrix4x4.CreateTranslation(si == srcHips && hipsTransSampler != null
+                                                   ? SampleVec3(hipsTransSampler, t) : srcNodes[si].BaseTranslation);
+                        var srcGM = ComputeGlobalMatrices(srcNodes, srcLocalMat!);
+                        var hw = new Vector3(srcGM[srcHips].M41, srcGM[srcHips].M42, srcGM[srcHips].M43);
+                        var worldDelta = (hw - srcHipsWorldBind) * rootScale;   // scale the fall to the target's size
+                        var localDelta = Vector3.TransformNormal(worldDelta, invHipsParentGlobal);
+                        var lt = dstHipsBindT + localDelta;
+                        hipsOut[f * 3] = lt.X; hipsOut[f * 3 + 1] = lt.Y; hipsOut[f * 3 + 2] = lt.Z;
+                    }
 
                     // Target globals: bind, with each matched bone driven by the source
                     // bone's world-space delta.
@@ -512,10 +619,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     newSamplers.Add(new GltfAnimationSampler { Input = times, Output = baked[di], OutputStride = 4, Interpolation = "LINEAR" });
                     newChannels.Add(new GltfAnimationChannel { SamplerIndex = si, TargetNode = di, Path = "rotation" });
                 }
+                if (hipsOut != null && dstHips >= 0)
+                {
+                    int si = newSamplers.Count;
+                    newSamplers.Add(new GltfAnimationSampler { Input = times, Output = hipsOut, OutputStride = 3, Interpolation = "LINEAR" });
+                    newChannels.Add(new GltfAnimationChannel { SamplerIndex = si, TargetNode = dstHips, Path = "translation" });
+                }
                 totalMatched += newChannels.Count;
+                string clipName = clipNameOverride == null
+                    ? (src.Name ?? "")
+                    : (animData.Animations.Length > 1 ? $"{clipNameOverride}{clipOrdinal}" : clipNameOverride);
+                clipOrdinal++;
                 RegisterClip(new GltfAnimation
                 {
-                    Name = src.Name, Duration = src.Duration,
+                    Name = clipName, Duration = src.Duration,
                     Samplers = newSamplers.ToArray(), Channels = newChannels.ToArray()
                 });
             }
@@ -555,6 +672,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return g;
         }
 
+        // Full-transform FK: global[i] = local[i] * parentGlobal (row-vector).
+        private static Matrix4x4[] ComputeGlobalMatrices(GltfNode[] nodes, Matrix4x4[] local)
+        {
+            var g = new Matrix4x4[nodes.Length];
+            for (int i = 0; i < g.Length; i++) g[i] = Matrix4x4.Identity;
+
+            void Rec(int idx, Matrix4x4 parent)
+            {
+                var gg = local[idx] * parent;
+                g[idx] = gg;
+                foreach (var c in nodes[idx].Children)
+                    if (c >= 0 && c < nodes.Length) Rec(c, gg);
+            }
+            for (int i = 0; i < nodes.Length; i++)
+                if (nodes[i].Parent == -1) Rec(i, Matrix4x4.Identity);
+            return g;
+        }
+
+        private static Vector3 SampleVec3(GltfAnimationSampler s, float time)
+        {
+            var inp = s.Input;
+            int idx = Array.BinarySearch(inp, time);
+            if (idx < 0) idx = ~idx;
+            int i0 = Math.Max(0, idx - 1), i1 = Math.Min(inp.Length - 1, idx);
+            float t0 = inp[i0], t1 = inp[i1];
+            float lt = (t1 - t0) <= 1e-6f ? 0f : Math.Clamp((time - t0) / (t1 - t0), 0f, 1f);
+            var a = new Vector3(s.Output[i0 * 3], s.Output[i0 * 3 + 1], s.Output[i0 * 3 + 2]);
+            var b = new Vector3(s.Output[i1 * 3], s.Output[i1 * 3 + 1], s.Output[i1 * 3 + 2]);
+            return Vector3.Lerp(a, b, lt);
+        }
+
         private static Quaternion SampleQuat(GltfAnimationSampler s, float time)
         {
             var inp = s.Input;
@@ -576,16 +724,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var nodes = GpuData.Data.Nodes ?? [];
             EnsureBuffers(nodes);
 
+            float adt = dt * MathF.Max(0f, PlaybackSpeed);   // playback-scaled time step
+
             if (_curClip >= 0 && _curClip < _clips.Count)
             {
                 var cur = _clips[_curClip];
-                _curTime = Advance(_curTime, dt, cur.Duration);
+                float dur = MathF.Max(0.0001f, cur.Duration);
+                if (_curLoop)
+                {
+                    _curTime = Advance(_curTime, adt, dur);
+                }
+                else
+                {
+                    // One-shot (e.g. a punch): advance without looping; on completion
+                    // crossfade back to the return clip (the fighting stance).
+                    _curTime += adt;
+                    if (_curTime >= dur)
+                    {
+                        _curTime = dur;
+                        if (_returnClip >= 0 && _returnClip != _curClip)
+                        {
+                            PlayIndex(_returnClip, _returnBlend, loop: true);
+                            cur = _clips[_curClip];
+                        }
+                        // else: no return clip → hold on the last frame (e.g. death).
+                    }
+                }
 
                 bool blending = _blend < 1f && _prevClip >= 0 && _prevClip < _clips.Count;
                 if (blending)
                 {
-                    _prevTime = Advance(_prevTime, dt, _clips[_prevClip].Duration);
-                    _blend += _blendRate * dt;
+                    _prevTime = Advance(_prevTime, adt, _clips[_prevClip].Duration);
+                    _blend += _blendRate * dt;   // crossfade stays real-time
                     if (_blend >= 1f) { _blend = 1f; _prevClip = -1; blending = false; }
                 }
 
