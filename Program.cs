@@ -32,7 +32,34 @@ public unsafe class Program
         // Init Shader
         Shader.Init();
         Shader.ActiveShader();
+        // Add this right after GltfShader.Init() and before spawning objects
+        {
+            Console.WriteLine("\n=== GLB INSPECTION ===");
+            var inspectData = GltfLoader.Load("Artifacts\\objects\\Stuntman.glb");
 
+            Console.WriteLine($"Meshes: {inspectData.Meshes.Length}");
+            for (int i = 0; i < inspectData.Meshes.Length; i++)
+            {
+                var m = inspectData.Meshes[i];
+                bool hasJoints = m.Vertices.Length > 0 && m.Vertices[0].BoneIds.X >= 0;
+                bool hasWeights = m.Vertices.Length > 0 && m.Vertices[0].BoneWeights.X > 0;
+                Console.WriteLine($"  [{i}] '{m.Name}': verts={m.Vertices.Length}, hasJoints={hasJoints}, hasWeights={hasWeights}");
+            }
+
+            Console.WriteLine($"Nodes: {inspectData.Nodes.Length}");
+            for (int i = 0; i < inspectData.Nodes.Length; i++)
+                Console.WriteLine($"  [{i}] '{inspectData.Nodes[i].Name}' mesh={inspectData.Nodes[i].Mesh}");
+
+            Console.WriteLine($"Skins: {inspectData.Skins.Length}");
+            for (int i = 0; i < inspectData.Skins.Length; i++)
+                Console.WriteLine($"  [{i}] joints={inspectData.Skins[i].Joints.Length}, invBindMat={inspectData.Skins[i].InverseBindMatrices.Length}");
+
+            Console.WriteLine($"Animations: {inspectData.Animations.Length}");
+            for (int i = 0; i < inspectData.Animations.Length; i++)
+                Console.WriteLine($"  [{i}] '{inspectData.Animations[i].Name}' duration={inspectData.Animations[i].Duration:F3}s, channels={inspectData.Animations[i].Channels.Length}");
+
+            Console.WriteLine("===================\n");
+        }
         // Init Camera
         Camera camera = new(0, 50, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 10000.0f);
         Glfw.SetMainCamera(camera);

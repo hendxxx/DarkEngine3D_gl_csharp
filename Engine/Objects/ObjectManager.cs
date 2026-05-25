@@ -27,6 +27,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int  _useAlbedoLoc;
         private readonly int  _albedoMapLoc;
         private readonly int  _jointLoc;
+        private readonly int  _jointsLoc;
 
         public int  DrawnObjects  { get; private set; }
         public int  CulledObjects { get; private set; }
@@ -48,6 +49,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _useAlbedoLoc       = GL.GetUniformLocation(_shaderProgram, "useAlbedo");
             _albedoMapLoc       = GL.GetUniformLocation(_shaderProgram, "albedoMap");
             _jointLoc           = GL.GetUniformLocation(_shaderProgram, "joints");
+            _jointsLoc          = GL.GetUniformLocation(_shaderProgram, "u_Joints");
 
             Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
         }
@@ -64,12 +66,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // -----------------------------------------------------------------------
-        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f)
+        public GltfData LoadAnimationFile(string path)
+        {
+            Console.WriteLine($"[ObjectManager] Loading animation file: {path}");
+            try
+            {
+                return GltfLoader.Load(path);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ObjectManager] Failed loading animation: {ex.Message}");
+                return new GltfData();
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null)
         {
             var gpuData = LoadModel(modelPath);
             var q       = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
             var obj     = new GltfObject(gpuData, position, q, scale);
             _objects.Add(obj);
+
+            if (!string.IsNullOrEmpty(animPath) && File.Exists(animPath))
+            {
+                var animData = LoadAnimationFile(animPath);
+                if (animData != null && animData.Animations.Length > 0)
+                {
+                    obj.ApplyExternalAnimation(animData);
+                    // update once so node globals are correct before snapping
+                    obj.Update(0f);
+                    if (terrainForSnap != null) obj.AlignToTerrain(terrainForSnap);
+                }
+            }
+            else
+            {
+                // if no external anim provided, still ensure internal anim is evaluated and object is snapped later by caller
+                obj.Update(0f);
+            }
+
             return obj;
         }
 
@@ -107,7 +142,50 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     CulledObjects++;
                     continue;
                 }
-                obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc, _jointLoc);
+
+                // ─── SEND JOINT MATRICES ───
+                var joints = obj.GetJointMatrices();
+                if (joints != null && joints.Length > 0 && _jointsLoc >= 0)
+                {
+                    // Debug: compute CPU-skinned position for first mesh vertex to compare
+                    try
+                    {
+                        var sk = obj.ComputeSkinnedVertexPosition(0, 0);
+                        if (sk != null)
+                        {
+                            Console.WriteLine($"[DebugSkin] Vert0 skinnedPos={sk.Value}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DebugSkin] failed compute skinned pos: {ex.Message}");
+                    }
+
+                    Console.WriteLine($"[ObjectManager.Draw] Uploading {joints.Length} joint matrices to uniform location {_jointsLoc}");
+
+                    // Upload joint matrices directly and ask GL to transpose from row-major -> column-major
+                    if (joints.Length > 0)
+                    {
+                        var j0 = joints[0];
+                        Console.WriteLine($"[ObjectManager.Draw] Joint0 pre.M11={j0.M11:F6} pre.M14={j0.M14:F6} pre.M41={j0.M41:F6}");
+                    }
+
+                    unsafe
+                    {
+                        fixed (Matrix4x4* p = &joints[0])
+                        {
+                            GL.UniformMatrix4fv(_jointsLoc, joints.Length, true, (float*)p);
+                            var err = GL.GetError();
+                            if (err != 0) Console.WriteLine($"[ObjectManager.Draw] GL error after UniformMatrix4fv: {err}");
+                        }
+                    }
+                }
+                else
+                {
+                    if (_jointsLoc < 0) Console.WriteLine("[ObjectManager.Draw] Joint uniform location invalid!");
+                    if (joints == null || joints.Length == 0) Console.WriteLine("[ObjectManager.Draw] No joint matrices available");
+                }
+                obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc);
                 DrawnObjects++;
             }
         }
