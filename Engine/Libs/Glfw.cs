@@ -59,7 +59,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private static Camera? MainCamera;
 
-        public static void Init(string title, bool fullscreen = true, int ratioNumerator = 16, int ratioDenominator = 9)
+        public static void Init(string title, bool fullscreen = true )
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
 
@@ -137,10 +137,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.Viewport(0, 0, width, height);
 
             // 2. Update aspek rasio kamera global jika sudah diinisialisasi
-            if (MainCamera != null)
-            {
-                MainCamera.UpdateAspectRatio((float)width, (float)height);
-            }
+            MainCamera?.UpdateAspectRatio((float)width, (float)height);
 
             // 3. Update variabel ukuran window global Anda (opsional)
             _windowWidth = width;
@@ -195,26 +192,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
 
+                // 4. Ensure terrain shader has current view/projection uniforms bound
+                GL.UseProgram(shaderProgram);
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
 
-                Keyboard.Update(window, camera, deltaTime, gameTerrainChunk);
-
-                Mouse.Update(window, camera);
-
-                // --- TIME SYSTEM ---
-                float baseSpeed = 0.0011f; // Slow day/night cycle (~4x slower than before)
-                float manualMultiplier = 60.0f; // Fast Forward: hold +/- to scrub time
-
-                // Always progress time slowly
-                light.WorldTime += deltaTime * baseSpeed;
-
-                // Manual Override / Fast Forward
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_EQUAL))
-                    light.WorldTime += deltaTime * baseSpeed * manualMultiplier;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_MINUS))
-                    light.WorldTime -= deltaTime * baseSpeed * manualMultiplier;
-
-                light.Update(camera.Position);
+                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
+                 
+                light.Update(deltaTime ,camera.Position);
                 // --------------------
 
                  

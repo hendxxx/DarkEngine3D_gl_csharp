@@ -6,264 +6,6 @@ using StbImageSharp;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
-    // ===========================================================================
-    //  AABB Collision Box
-    // ===========================================================================
-    public struct AABB
-    {
-        public Vector3 Min, Max;
-
-        public AABB(Vector3 min, Vector3 max) { Min = min; Max = max; }
-
-        public readonly bool Intersects(AABB other) =>
-            Min.X <= other.Max.X && Max.X >= other.Min.X &&
-            Min.Y <= other.Max.Y && Max.Y >= other.Min.Y &&
-            Min.Z <= other.Max.Z && Max.Z >= other.Min.Z;
-
-        public readonly AABB ToWorld(Vector3 worldPos, float scale = 1f)
-        {
-            var wMin = Min * scale + worldPos;
-            var wMax = Max * scale + worldPos;
-            return new AABB(wMin, wMax);
-        }
-
-        public static AABB FromVertices(SkinnedVertex[] verts)
-        {
-            if (verts.Length == 0) return new AABB(Vector3.Zero, Vector3.Zero);
-            var mn = verts[0].Position;
-            var mx = verts[0].Position;
-            foreach (var v in verts)
-            {
-                mn = Vector3.Min(mn, v.Position);
-                mx = Vector3.Max(mx, v.Position);
-            }
-            return new AABB(mn, mx);
-        }
-    }
-
-    // ===========================================================================
-    //  MeshMaterialGpu — material parameters on the GPU
-    // ===========================================================================
-    public struct MeshMaterialGpu
-    {
-        public Vector4 BaseColorFactor;
-        public uint TextureID;
-        public bool HasTexture;
-        public bool DoubleSided;
-    }
-
-    // ===========================================================================
-    //  MeshGpu — per-primitive GPU buffers
-    // ===========================================================================
-    public struct MeshGpu
-    {
-        public uint VAO, VBO, EBO;
-        public int  VertexCount;
-        public int  IndexCount;
-        public MeshMaterialGpu Material;
-    }
-
-    // ===========================================================================
-    //  NodeTransform — per-node TRS used while sampling/blending animations.
-    //  (System.Numerics row-vector convention: composed as Scale * Rotation * Translation)
-    // ===========================================================================
-    public struct NodeTransform
-    {
-        public Vector3    T;
-        public Quaternion R;
-        public Vector3    S;
-    }
-
-    // ===========================================================================
-    //  GltfModelGpuData — shared GPU data (Flyweight pattern)
-    //  Extended: map meshes to nodes (if nodes parsed)
-    // ===========================================================================
-    public unsafe class GltfModelGpuData
-    {
-        public readonly GltfData Data;
-        public readonly MeshGpu[] Meshes;
-        public readonly AABB LocalAABB;
-        public readonly uint[] TextureIDs;
-
-        // map mesh index -> node index (-1 if none)
-        public readonly int[] MeshToNode;
-
-        public GltfModelGpuData(GltfData data)
-        {
-            Data   = data;
-            TextureIDs = UploadTextures(data);
-            Meshes = new MeshGpu[data.Meshes.Length];
-            MeshToNode = new int[data.Meshes.Length];
-            for (int i = 0; i < MeshToNode.Length; i++) MeshToNode[i] = -1;
-
-            UploadToGpu(data);
-
-            // fill mesh->node mapping (best-effort)
-            if (data.Nodes != null)
-            {
-                for (int ni = 0; ni < data.Nodes.Length; ni++)
-                {
-                    var n = data.Nodes[ni];
-                    if (n.Mesh >= 0 && n.Mesh < MeshToNode.Length)
-                        MeshToNode[n.Mesh] = ni;
-                }
-            }
-
-            LocalAABB = data.Meshes.Length > 0
-                ? AABB.FromVertices(data.Meshes[0].Vertices)
-                : new AABB(Vector3.Zero, Vector3.One);
-        }
-
-        private uint[] UploadTextures(GltfData data)
-        {
-            if (data.Textures.Length == 0 || data.Images.Length == 0) return [];
-            var ids = new uint[data.Textures.Length];
-            for (int i = 0; i < data.Textures.Length; i++)
-            {
-                var tex = data.Textures[i];
-                if (tex.ImageIndex < 0 || tex.ImageIndex >= data.Images.Length) continue;
-                var img = data.Images[tex.ImageIndex];
-                if (img.Data == null || img.Data.Length == 0) continue;
-
-                ids[i] = CreateTextureFromBytes(img.Data);
-            }
-            return ids;
-        }
-
-        private uint CreateTextureFromBytes(byte[] bytes)
-        {
-            uint textureID;
-            GL.GenTextures(1, &textureID);
-            GL.BindTexture(Const.GL_TEXTURE_2D, textureID);
-
-            using var stream = new MemoryStream(bytes);
-            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
-
-            fixed (byte* ptr = image.Data)
-            {
-                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
-                              image.Width, image.Height, 0,
-                              Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, ptr);
-            }
-
-            GL.GenerateMipmap(Const.GL_TEXTURE_2D);
-            GL.TexParameterf(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAX_ANISOTROPY, 4.0f);
-
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
-
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-            return textureID;
-        }
-
-        private void UploadToGpu(GltfData data)
-        {
-            for (int m = 0; m < data.Meshes.Length; m++)
-            {
-                var mesh = data.Meshes[m];
-
-                uint vao, vbo, ebo = 0;
-                GL.GenVertexArrays(1, &vao);
-                GL.GenBuffers(1, &vbo);
-                GL.BindVertexArray(vao);
-
-                // Upload vertices
-                GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
-                fixed (SkinnedVertex* ptr = mesh.Vertices)
-                    GL.BufferData(Const.GL_ARRAY_BUFFER,
-                        (nuint)(mesh.Vertices.Length * sizeof(SkinnedVertex)),
-                        ptr, Const.GL_STATIC_DRAW);
-
-                // Upload indices
-                if (mesh.Indices.Length > 0)
-                {
-                    GL.GenBuffers(1, &ebo);
-                    GL.BindBuffer(Const.GL_ELEMENT_ARRAY_BUFFER, ebo);
-                    fixed (uint* iptr = mesh.Indices)
-                        GL.BufferData(Const.GL_ELEMENT_ARRAY_BUFFER,
-                            (nuint)(mesh.Indices.Length * sizeof(uint)),
-                            iptr, Const.GL_STATIC_DRAW);
-                }
-
-                // Vertex attributes
-                int stride = Marshal.SizeOf<SkinnedVertex>(); // 64 bytes: pos(12) + normal(12) + uv(8) + weights(16) + joints(16)
-
-                // loc 0: Position (vec3) offset 0
-                GL.EnableVertexAttribArray(0);
-                GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
-
-                // loc 1: Normal (vec3) offset 12
-                GL.EnableVertexAttribArray(1);
-                GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)12);
-
-                // loc 2: TexCoord (vec2) offset 24
-                GL.EnableVertexAttribArray(2);
-                GL.VertexAttribPointer(2, 2, Const.GL_FLOAT, false, stride, (void*)24);
-
-                // loc 3: Bone Weights (vec4 float) offset 32
-                GL.EnableVertexAttribArray(3);
-                GL.VertexAttribPointer(3, 4, Const.GL_FLOAT, false, stride, (void*)32);
-
-                // loc 4: Bone Indices (ivec4 int) offset 48
-                GL.EnableVertexAttribArray(4);
-                GL.VertexAttribIPointer(4, 4, Const.GL_INT, stride, (void*)48);
-
-                GL.BindVertexArray(0);
-
-                // Setup material values for this primitive
-                var matGpu = new MeshMaterialGpu
-                {
-                    BaseColorFactor = Vector4.One,
-                    TextureID = 0,
-                    HasTexture = false,
-                    DoubleSided = false
-                };
-
-                if (mesh.MaterialIndex >= 0 && mesh.MaterialIndex < data.Materials.Length)
-                {
-                    var mat = data.Materials[mesh.MaterialIndex];
-                    matGpu.BaseColorFactor = mat.BaseColorFactor;
-                    matGpu.DoubleSided = mat.DoubleSided;
-                    if (mat.TextureIndex >= 0 && mat.TextureIndex < TextureIDs.Length)
-                    {
-                        matGpu.TextureID = TextureIDs[mat.TextureIndex];
-                        matGpu.HasTexture = matGpu.TextureID != 0;
-                    }
-                }
-
-                Meshes[m] = new MeshGpu
-                {
-                    VAO = vao, VBO = vbo, EBO = ebo,
-                    VertexCount = mesh.Vertices.Length,
-                    IndexCount  = mesh.Indices.Length,
-                    Material = matGpu
-                };
-
-                Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} hasTex={matGpu.HasTexture}");
-            }
-        }
-
-        public void Dispose()
-        {
-            foreach (var m in Meshes)
-            {
-                uint vao = m.VAO, vbo = m.VBO, ebo = m.EBO;
-                GL.DeleteVertexArrays(1, &vao);
-                GL.DeleteBuffers(1, &vbo);
-                if (ebo != 0) GL.DeleteBuffers(1, &ebo);
-            }
-
-            if (TextureIDs.Length > 0)
-            {
-                fixed (uint* pTex = TextureIDs)
-                {
-                    GL.DeleteTextures(TextureIDs.Length, pTex);
-                }
-            }
-        }
-    }
 
     // ===========================================================================
     //  GltfObject — per-instance skeletal animation player.
@@ -282,18 +24,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     // ===========================================================================
     public unsafe class GltfObject
     {
-        public readonly GltfModelGpuData GpuData;
+        public readonly Helpers.ObjectHelpers.GltfModelGpuData GpuData;
 
         public Vector3    Position;
         public Quaternion Rotation;
         public float      Scale = 1f;
 
-        // Animation playback rate (1 = normal). Raised while sprinting so the legs
-        // move faster to match the higher ground speed.
-        public float      PlaybackSpeed = 1f;
-
-        public AABB LocalAABB => GpuData.LocalAABB;
-        public AABB WorldAABB => LocalAABB.ToWorld(Position, Scale);
+        public Helpers.ObjectHelpers.AABB LocalAABB => GpuData.LocalAABB;
+        public Helpers.ObjectHelpers.AABB WorldAABB => LocalAABB.ToWorld(Position, Scale);
 
         // ---- node hierarchy working buffers ----
         private Matrix4x4[] _nodeLocal     = [];
@@ -301,7 +39,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private Matrix4x4[] _jointMatrices = [];
 
         // ---- animation clips (channels remapped to THIS model's node indices) ----
-        private readonly List<GltfAnimation> _clips = new();
+        private readonly List<GltfAnimation> _clips = [];
         private readonly Dictionary<string, int> _clipByName = new(StringComparer.OrdinalIgnoreCase);
 
         // ---- playback state machine (with crossfade blending) ----
@@ -318,20 +56,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private float _returnBlend  = 0.2f;
 
         // ---- pose scratch buffers (sized to node count) ----
-        private NodeTransform[] _basePose = [];
-        private NodeTransform[] _poseCur  = [];
-        private NodeTransform[] _posePrev = [];
-        private NodeTransform[] _poseOut  = [];
+        private Helpers.ObjectHelpers.NodeTransform[] _basePose = [];
+        private Helpers.ObjectHelpers.NodeTransform[] _poseCur  = [];
+        private Helpers.ObjectHelpers.NodeTransform[] _posePrev = [];
+        private Helpers.ObjectHelpers.NodeTransform[] _poseOut  = [];
 
         public string CurrentClipName =>
             (_curClip >= 0 && _curClip < _clips.Count) ? (_clips[_curClip].Name ?? $"#{_curClip}") : "(none)";
 
         public bool HasAnimations => _clips.Count > 0;
 
-        // True while a one-shot clip (e.g. a punch) is mid-play and hasn't recovered.
-        public bool IsPlayingOneShot => !_curLoop;
-
-        public GltfObject(GltfModelGpuData gpuData, Vector3 position, Quaternion rotation, float scale = 1f)
+        public GltfObject(Helpers.ObjectHelpers.GltfModelGpuData gpuData, Vector3 position, Quaternion rotation, float scale = 1f)
         {
             GpuData  = gpuData;
             Position = position;
@@ -632,8 +367,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 clipOrdinal++;
                 RegisterClip(new GltfAnimation
                 {
-                    Name = clipName, Duration = src.Duration,
-                    Samplers = newSamplers.ToArray(), Channels = newChannels.ToArray()
+                    Name = src.Name, Duration = src.Duration,
+                    Samplers = [.. newSamplers], Channels = [.. newChannels]
                 });
             }
 
@@ -651,7 +386,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (string.IsNullOrEmpty(name)) return "";
             int c = name.IndexOf(':');
-            return c >= 0 ? name.Substring(c + 1) : name;
+            return c >= 0 ? name[(c + 1)..] : name;
         }
 
         // Forward-kinematics for rotations only: global[i] = parentGlobal * local[i].
@@ -828,22 +563,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return time;
         }
 
-        private static NodeTransform BlendTransform(in NodeTransform a, in NodeTransform b, float w)
-            => new NodeTransform
+        private static Helpers.ObjectHelpers.NodeTransform BlendTransform(in Helpers.ObjectHelpers.NodeTransform a, in Helpers.ObjectHelpers.NodeTransform b, float w)
+            => new()
             {
                 T = Vector3.Lerp(a.T, b.T, w),
                 R = Quaternion.Slerp(a.R, b.R, w),
                 S = Vector3.Lerp(a.S, b.S, w)
             };
 
-        private static Matrix4x4 ComposeTRS(in NodeTransform n)
+        private static Matrix4x4 ComposeTRS(in Helpers.ObjectHelpers.NodeTransform n)
             => Matrix4x4.CreateScale(n.S)
              * Matrix4x4.CreateFromQuaternion(n.R)
              * Matrix4x4.CreateTranslation(n.T);
 
         // Sample a clip at the given time into pose[], starting from the bind pose
         // and overriding only the channels the clip animates.
-        private void SamplePose(GltfAnimation clip, float time, NodeTransform[] pose)
+        private void SamplePose(GltfAnimation clip, float time, Helpers.ObjectHelpers.NodeTransform[] pose)
         {
             Array.Copy(_basePose, pose, _basePose.Length);
             if (clip?.Channels == null) return;
@@ -901,42 +636,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var skins = GpuData.Data.Skins ?? [];
             if (skins.Length == 0) { _jointMatrices = []; return; }
 
-            var skin = skins[0]; // most rigs have a single skin
-            int jointCount = skin.Joints?.Length ?? 0;
+            var skin = skins[0];
+            var joints = skin?.Joints ?? [];
+            int jointCount = joints.Length;
             if (jointCount == 0) { _jointMatrices = []; return; }
 
-            if (_jointMatrices.Length != jointCount)
+            if (_nodeGlobal == null) { _jointMatrices = [.. Enumerable.Repeat(Matrix4x4.Identity, jointCount)]; return; }
+
+            if (_jointMatrices == null || _jointMatrices.Length != jointCount)
                 _jointMatrices = new Matrix4x4[jointCount];
 
             for (int i = 0; i < jointCount; i++)
             {
-                int node = skin.Joints[i];
+                int node = joints[i];
                 if (node < 0 || node >= _nodeGlobal.Length) { _jointMatrices[i] = Matrix4x4.Identity; continue; }
 
-                var invBind = (skin.InverseBindMatrices != null && i < skin.InverseBindMatrices.Length)
+                var invBind = (skin?.InverseBindMatrices != null && i < skin.InverseBindMatrices.Length)
                     ? skin.InverseBindMatrices[i]
                     : Matrix4x4.Identity;
 
-                // Row-vector skinning matrix: v * (invBind * jointGlobal)
                 _jointMatrices[i] = invBind * _nodeGlobal[node];
             }
         }
+
 
         private void AllocateBuffers(GltfNode[] nodes)
         {
             int n = nodes.Length;
             _nodeLocal  = new Matrix4x4[n];
             _nodeGlobal = new Matrix4x4[n];
-            _basePose   = new NodeTransform[n];
-            _poseCur    = new NodeTransform[n];
-            _posePrev   = new NodeTransform[n];
-            _poseOut    = new NodeTransform[n];
+            _basePose   = new Helpers.ObjectHelpers.NodeTransform[n];
+            _poseCur    = new Helpers.ObjectHelpers.NodeTransform[n];
+            _posePrev   = new Helpers.ObjectHelpers.NodeTransform[n];
+            _poseOut    = new Helpers.ObjectHelpers.NodeTransform[n];
 
             for (int i = 0; i < n; i++)
             {
                 _nodeLocal[i]  = nodes[i].LocalMatrix;
                 _nodeGlobal[i] = nodes[i].LocalMatrix;
-                _basePose[i]   = new NodeTransform
+                _basePose[i]   = new Helpers.ObjectHelpers.NodeTransform
                 {
                     T = nodes[i].BaseTranslation,
                     R = nodes[i].BaseRotation,
@@ -958,13 +696,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void SetBasePosition(Vector3 pos) => Position = pos;
 
         // Conservative world AABB using the current node globals (used by snapping).
-        public AABB ComputeWorldAABB()
+        public Helpers.ObjectHelpers.AABB ComputeWorldAABB()
         {
             if (GpuData.Data.Meshes == null || GpuData.Data.Meshes.Length == 0)
                 return LocalAABB.ToWorld(Position, Scale);
 
-            Vector3 mn = new Vector3(float.PositiveInfinity);
-            Vector3 mx = new Vector3(float.NegativeInfinity);
+            Vector3 mn = new(float.PositiveInfinity);
+            Vector3 mx = new(float.NegativeInfinity);
 
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
@@ -996,7 +734,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (float.IsPositiveInfinity(mn.X))
                 return LocalAABB.ToWorld(Position, Scale);
 
-            return new AABB(mn, mx);
+            return new Helpers.ObjectHelpers.AABB(mn, mx);
         }
 
         public void AlignToTerrain(DarkEngine3D_gl_csharp.Engine.Terrains.TerrainChunk terrain)

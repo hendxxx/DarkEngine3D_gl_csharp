@@ -171,7 +171,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ========================= BUFFER VIEWS =================================
-        private (int off, int len, int stride)[] ParseBufferViews(JsonElement root)
+        private static (int off, int len, int stride)[] ParseBufferViews(JsonElement root)
         {
             if (!root.TryGetProperty("bufferViews", out var el)) return [];
             var arr = new (int, int, int)[el.GetArrayLength()];
@@ -189,7 +189,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // ========================= ACCESSORS ====================================
         private record Accessor(int BufView, int ByteOffset, int Count, int CompType, string Type);
 
-        private Accessor[] ParseAccessors(JsonElement root)
+        private static Accessor[] ParseAccessors(JsonElement root)
         {
             if (!root.TryGetProperty("accessors", out var el)) return [];
             var arr = new Accessor[el.GetArrayLength()];
@@ -231,7 +231,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         int commaIdx = uri.IndexOf(',');
                         if (commaIdx >= 0)
                         {
-                            string base64Data = uri.Substring(commaIdx + 1);
+                            string base64Data = uri[(commaIdx + 1)..];
                             image.Data = Convert.FromBase64String(base64Data);
                         }
                     }
@@ -250,7 +250,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ========================= TEXTURES =====================================
-        private GltfTexture[] ParseTextures(JsonElement root)
+        private static GltfTexture[] ParseTextures(JsonElement root)
         {
             if (!root.TryGetProperty("textures", out var el)) return [];
             var list = new List<GltfTexture>();
@@ -267,7 +267,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ========================= MATERIALS ====================================
-        private GltfMaterial[] ParseMaterials(JsonElement root)
+        private static GltfMaterial[] ParseMaterials(JsonElement root)
         {
             if (!root.TryGetProperty("materials", out var el)) return [];
             var list = new List<GltfMaterial>();
@@ -330,8 +330,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     var normals = attrs.TryGetProperty("NORMAL", out var nEl) ? RVec3(nEl.GetInt32()) : new Vector3[positions.Length];
                     var uvs = attrs.TryGetProperty("TEXCOORD_0", out var uEl) ? RVec2(uEl.GetInt32()) : new Vector2[positions.Length];
 
-                    SkinnedVertex.BoneIndex4[] joints = null;
-                    Vector4[] weights = null;
+                    SkinnedVertex.BoneIndex4[]? joints = null;
+                    Vector4[]? weights = null;
                     if (attrs.TryGetProperty("JOINTS_0", out var jEl))
                     {
                         joints = RJoints(jEl.GetInt32());
@@ -364,7 +364,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ========================= NODES ========================================
-        private GltfNode[] ParseNodes(JsonElement root)
+        private static GltfNode[] ParseNodes(JsonElement root)
         {
             if (!root.TryGetProperty("nodes", out var el)) return [];
             var list = new List<GltfNode>();
@@ -377,7 +377,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     var ids = new List<int>();
                     foreach (var c in ch.EnumerateArray()) ids.Add(c.GetInt32());
-                    node.Children = ids.ToArray();
+                    node.Children = [.. ids];
                 }
 
                 // Resolve base TRS (System.Numerics row-vector convention).
@@ -446,7 +446,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     var joints = new List<int>();
                     foreach (var ji in jarr.EnumerateArray()) joints.Add(ji.GetInt32());
-                    skin.Joints = joints.ToArray();
+                    skin.Joints = [.. joints];
                 }
                 if (s.TryGetProperty("inverseBindMatrices", out var ibm))
                 {
@@ -478,7 +478,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         int outputIdx = sEl.GetProperty("output").GetInt32();
                         string interp = sEl.TryGetProperty("interpolation", out var ip) ? ip.GetString() ?? "LINEAR" : "LINEAR";
 
-                        var aIn = _accs[inputIdx];
+                        //var aIn = _accs[inputIdx];
                         var aOut = _accs[outputIdx];
 
                         var sampler = new GltfAnimationSampler
@@ -543,8 +543,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     }
                 }
 
-                anim.Samplers = samplers.ToArray();
-                anim.Channels = channels.ToArray();
+                anim.Samplers = [.. samplers];
+                anim.Channels = [.. channels];
 
                 // compute duration
                 float maxT = 0f;
@@ -576,8 +576,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             var acc = _accs[i]; var sp = Span(i);
             var r = new Vector3[acc.Count];
-            var bv = _bvs[acc.BufView];
-            int step = bv.stride != 0 ? bv.stride : 12;
+            int step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 12;
             for (int j = 0; j < r.Length; j++)
             { int o = j * step; r[j] = new Vector3(ToF(sp, o), ToF(sp, o + 4), ToF(sp, o + 8)); }
             return r;
@@ -587,8 +586,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             var acc = _accs[i]; var sp = Span(i);
             var r = new Vector2[acc.Count];
-            var bv = _bvs[acc.BufView];
-            int step = bv.stride != 0 ? bv.stride : 8;
+            int step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 8;
             for (int j = 0; j < r.Length; j++)
             { int o = j * step; r[j] = new Vector2(ToF(sp, o), ToF(sp, o + 4)); }
             return r;
@@ -598,8 +596,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             var acc = _accs[i]; var sp = Span(i);
             var r = new Vector4[acc.Count];
-            var bv = _bvs[acc.BufView];
-            int step = bv.stride != 0 ? bv.stride : 16;
+            int step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 16;
             for (int j = 0; j < r.Length; j++)
             { int o = j * step; r[j] = new Vector4(ToF(sp, o), ToF(sp, o + 4), ToF(sp, o + 8), ToF(sp, o + 12)); }
             return r;
@@ -609,8 +606,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             var acc = _accs[i]; var sp = Span(i);
             var r = new float[acc.Count];
-            var bv = _bvs[acc.BufView];
-            int step = bv.stride != 0 ? bv.stride : 4;
+            int step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 4;
             for (int j = 0; j < acc.Count; j++)
             { int o = j * step; r[j] = ToF(sp, o); }
             return r;
@@ -633,8 +629,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var acc = _accs[accIdx];
             var sp = Span(accIdx);
             var r = new Matrix4x4[acc.Count];
-            var bv = _bvs[acc.BufView];
-            int step = bv.stride != 0 ? bv.stride : 16 * 4;
+            int step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 16 * 4;
             for (int j = 0; j < r.Length; j++)
             {
                 int o = j * step;
@@ -657,11 +652,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var sp = Span(accIdx);
             var r = new SkinnedVertex.BoneIndex4[acc.Count];
             int ct = acc.CompType;
-            var bv = _bvs[acc.BufView];
             int step;
-            if (ct == 5121) step = bv.stride != 0 ? bv.stride : 4; // UBYTE VEC4
-            else if (ct == 5123) step = bv.stride != 0 ? bv.stride : 8; // USHORT VEC4
-            else step = bv.stride != 0 ? bv.stride : 16; // UINT VEC4
+            if (ct == 5121) step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 4; // UBYTE VEC4
+            else if (ct == 5123) step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 8; // USHORT VEC4
+            else step = _bvs[acc.BufView].stride != 0 ? _bvs[acc.BufView].stride : 16; // UINT VEC4
 
             for (int i = 0; i < acc.Count; i++)
             {
