@@ -120,7 +120,7 @@ public unsafe class Program
 
         var spawnedPositions = new List<Vector2>();
 
-        for (int i = 0; i < 500; i++)
+        for (int i = 0; i < 10; i++)
         {
             float px, pz;
             int tries = 0;
