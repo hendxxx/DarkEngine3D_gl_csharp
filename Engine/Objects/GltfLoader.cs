@@ -187,7 +187,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ========================= ACCESSORS ====================================
-        private record Accessor(int BufView, int ByteOffset, int Count, int CompType, string Type);
+        private  record Accessor(int BufView, int ByteOffset, int Count, int CompType, string Type);
 
         private static Accessor[] ParseAccessors(JsonElement root)
         {

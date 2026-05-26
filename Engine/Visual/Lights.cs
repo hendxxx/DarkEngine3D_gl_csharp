@@ -16,7 +16,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float WorldTime = 0.0f;
 
         // --- TIME SYSTEM ---
-        public float baseSpeed = 0.0043f; // Normal: 1 real second = 1 game minute
+        public float baseSpeed = 0.0011f; // Normal: 1 real second = 1 game minute
         public float manualMultiplier = 60.0f; // Fast Forward: 1 real second = 1 game hour
 
         public Vector3 SunDir { get; private set; }

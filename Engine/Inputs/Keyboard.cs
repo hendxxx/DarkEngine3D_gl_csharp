@@ -88,7 +88,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             return glfwGetKey(window, key) == Const.GLFW_PRESS;
         }
 
-        public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime, TerrainChunk gameTerrainChunk,Objects.ObjectManager? objectManager)
+        public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime, TerrainChunk gameTerrainChunk)
         { 
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
@@ -228,18 +228,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 lights.WorldTime += deltaTime * lights.baseSpeed * lights.manualMultiplier;
             if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_MINUS))
                 lights.WorldTime -= deltaTime * lights.baseSpeed * lights.manualMultiplier;
-
-
-            // Animation state machine driven by the keyboard:
-            //   hold 9 = run, hold 8 = walk, otherwise idle.
-            // The crossfade in PlayAll makes the return to idle smooth and
-            // pause-free (TODO #4/#5/#6); idle/walk/run each loop while held.
-
-            string animTarget = "idle";
-            if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_9)) animTarget = "run";
-            else if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_8)) animTarget = "walk";
-            objectManager?.PlayAll(animTarget, 0.25f);
-
+             
         } 
 
         /// <summary>

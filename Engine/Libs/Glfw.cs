@@ -186,7 +186,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 // 1. Update inputs (mouse + keyboard) BEFORE any rendering so camera is stable
                 Mouse.Update(window, camera);
-                Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk, objectManager);
+                Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk);
 
                 // 2. Clamp camera height to terrain once per-frame (centralized)
                 try
@@ -211,13 +211,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                  
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
-                // ---- glTF Object Manager ----
+                // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)
                 {
 
-                    // Update (advance + skin) before drawing so there is no 1-frame lag.
-                    objectManager.Update(deltaTime);
+                    // Each character decides on its own whether to idle/walk/run, picks
+                    // a direction, moves at a gait-matched speed, avoids the others, and
+                    // stays on the terrain. Updated before drawing to avoid a 1-frame lag.
+                    objectManager.UpdateAgents(deltaTime, gameTerrainChunk);
                     objectManager.Draw(camera, light);
+                    objectManager.DrawHealthBars(camera, hud);   // health bars above heads
+               
                 }
 
                 // --- HUD SYSTEM ---
