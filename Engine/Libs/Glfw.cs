@@ -189,7 +189,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 // 1. Update inputs (mouse + keyboard) BEFORE any rendering so camera is stable
                 Mouse.Update(window, camera);
-                Keyboard.Update(window, camera, deltaTime, gameTerrainChunk);
+                Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk, objectManager);
 
                 // 2. Clamp camera height to terrain once per-frame (centralized)
                 try
@@ -207,22 +207,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
 
                 int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
-
-
-                // --- TIME SYSTEM ---
-                float baseSpeed = 0.0043f; // Normal: 1 real second = 1 game minute
-                float manualMultiplier = 60.0f; // Fast Forward: 1 real second = 1 game hour
-
-                // Always progress time slowly
-                light.WorldTime += deltaTime * baseSpeed;
-
-                // Manual Override / Fast Forward
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_EQUAL))
-                    light.WorldTime += deltaTime * baseSpeed * manualMultiplier;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_MINUS))
-                    light.WorldTime -= deltaTime * baseSpeed * manualMultiplier;
-
-                light.Update(camera.Position);
+                 
+                light.Update(deltaTime, window ,camera.Position);
                 // --------------------
 
                  
@@ -231,14 +217,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // ---- glTF Object Manager ----
                 if (objectManager != null)
                 {
-                    // Animation state machine driven by the keyboard:
-                    //   hold 9 = run, hold 8 = walk, otherwise idle.
-                    // The crossfade in PlayAll makes the return to idle smooth and
-                    // pause-free (TODO #4/#5/#6); idle/walk/run each loop while held.
-                    string animTarget = "idle";
-                    if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_9)) animTarget = "run";
-                    else if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_8)) animTarget = "walk";
-                    objectManager.PlayAll(animTarget, 0.25f);
 
                     // Update (advance + skin) before drawing so there is no 1-frame lag.
                     objectManager.Update(deltaTime);

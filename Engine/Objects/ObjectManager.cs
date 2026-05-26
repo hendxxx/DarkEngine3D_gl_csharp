@@ -3,6 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
@@ -53,7 +54,63 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             //Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
         }
+        public void Init(TerrainChunk gameTerrainChunk)
+        {
+            // Stuntman is the rendered model; its idle/walk/run animations are layered on
+            // afterwards from Xbot.glb (see ApplyAnimationFileToAll below).
+            string xbotPath = "Artifacts\\objects\\Stuntman.glb";
+            var rng = new Random(42);
 
+            float spawnCX = 0f;
+            float spawnCZ = 0f;
+            float minDist = 5f;   // jarak minimum antar object (meter)
+            float spawnRadius = 100f; // area spawn
+
+            var spawnedPositions = new List<Vector2>();
+
+            for (int i = 0; i < 10; i++)
+            {
+                float px, pz;
+                int tries = 0;
+                do
+                {
+                    float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                    float dist = (float)(rng.NextDouble() * spawnRadius);
+                    px = spawnCX + MathF.Cos(angle) * dist;
+                    pz = spawnCZ + MathF.Sin(angle) * dist;
+                    tries++;
+
+                    // Cek overlap dengan semua posisi yang sudah ada
+                    bool overlaps = spawnedPositions.Any(p =>
+                        MathF.Sqrt((p.X - px) * (p.X - px) + (p.Y - pz) * (p.Y - pz)) < minDist);
+                    if (!overlaps) break;
+
+                    // Jika terlalu banyak percobaan, paksa geser
+                    if (tries > 50)
+                    {
+                        px += minDist * MathF.Cos(i * 1.1f);
+                        pz += minDist * MathF.Sin(i * 1.1f);
+                        break;
+                    }
+                } while (true);
+
+                spawnedPositions.Add(new Vector2(px, pz));
+                float yaw = (float)(rng.NextDouble() * 360.0);
+
+                var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
+                SnapToTerrain(obj, gameTerrainChunk);
+                //Console.WriteLine($"[Spawn] Xbot #{i + 1} pos=({px:F1}, {obj.Position.Y:F1}, {pz:F1}) yaw={yaw:F0}° tries={tries}");
+            }
+
+            //Console.WriteLine($"[ObjectManager] {objectManager.GetObjects().Count} objects spawned.");
+
+            // Load animations from a SEPARATE file and apply them to the already-loaded
+            // model (TODO #2). Stuntman ships only one baked clip, so its idle/walk/run
+            // come from Xbot.glb — bones are matched by normalized name and rotations are
+            // retargeted across the two rigs. Controls: hold 8 = walk, hold 9 = run,
+            // release = idle (smooth crossfade between them).
+            ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
+        }
         // -----------------------------------------------------------------------
         public GltfModelGpuData LoadModel(string path)
         {

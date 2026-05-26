@@ -1,9 +1,11 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 using System.Xml.Linq;
 
 namespace DarkEngine3D_gl_csharp.Engine.Inputs
@@ -86,7 +88,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             return glfwGetKey(window, key) == Const.GLFW_PRESS;
         }
 
-        public static unsafe void Update(nint window, Camera camera, float deltaTime, TerrainChunk gameTerrainChunk)
+        public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime, TerrainChunk gameTerrainChunk,Objects.ObjectManager? objectManager)
         { 
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
@@ -219,6 +221,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
             // Batasi nilai agar tetap berada di range 0.0f sampai 1.0f murni
             CurrentWeather = System.Math.Clamp(CurrentWeather, 0.0f, 1.0f);
+
+
+            // Manual Override / Fast Forward
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_EQUAL))
+                lights.WorldTime += deltaTime * lights.baseSpeed * lights.manualMultiplier;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_MINUS))
+                lights.WorldTime -= deltaTime * lights.baseSpeed * lights.manualMultiplier;
+
+
+            // Animation state machine driven by the keyboard:
+            //   hold 9 = run, hold 8 = walk, otherwise idle.
+            // The crossfade in PlayAll makes the return to idle smooth and
+            // pause-free (TODO #4/#5/#6); idle/walk/run each loop while held.
+
+            string animTarget = "idle";
+            if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_9)) animTarget = "run";
+            else if (Inputs.Keyboard.IsKeyDown(window, Const.GLFW_KEY_8)) animTarget = "walk";
+            objectManager?.PlayAll(animTarget, 0.25f);
+
         } 
 
         /// <summary>

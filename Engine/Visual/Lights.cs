@@ -14,6 +14,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         Vector3 vviewPosLoc;
         Vector3 vlightColorLoc;
         public float WorldTime = 0.0f;
+
+        // --- TIME SYSTEM ---
+        public float baseSpeed = 0.0043f; // Normal: 1 real second = 1 game minute
+        public float manualMultiplier = 60.0f; // Fast Forward: 1 real second = 1 game hour
+
         public Vector3 SunDir { get; private set; }
         public Vector3 FogColor { get; private set; }
         public Vector3 LightColor { get; private set; }
@@ -53,8 +58,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             weatherModeLoc = GL.GetUniformLocation(Shader.GetSkyShaderProgram(), "weatherMode");
         }
 
-        public void Update(Vector3 currentViewPos)
+        public void Update(float deltaTime,nint window,Vector3 currentViewPos)
         {
+
+            // Always progress time slowly
+            WorldTime += deltaTime * baseSpeed;
+
 
             GL.UseProgram(shaderProgram);
             GL.BindVertexArray(0);
