@@ -104,13 +104,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         private void DrawTextBatched(string text, float startX, float startY, Vector3 textColor)
         {
+            GL.UseProgram(shaderProgram);
+            GL.BindVertexArray(0);
             GL.Disable(Const.GL_CULL_FACE);
 
             GL.Disable(Const.GL_DEPTH_TEST);
             GL.Enable(Const.GL_BLEND);
             GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
-
-            GL.UseProgram(shaderProgram);
+             
             GL.BindVertexArray(vao);
             GL.ActiveTexture(Const.GL_TEXTURE0);
             GL.BindTexture(Const.GL_TEXTURE_2D, fontTexture);

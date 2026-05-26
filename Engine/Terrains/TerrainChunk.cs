@@ -71,9 +71,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Dispose existing world map contents
             if (worldMap != null)
             {
-                for (int z = 0; z < worldMap.GetLength(1); z++)
+                for (int x = 0; x < worldMap.GetLength(0); x++)
                 {
-                    for (int x = 0; x < worldMap.GetLength(0); x++)
+                    for (int z = 0; z < worldMap.GetLength(1); z++)
                     {
                         var c = worldMap[x, z];
                         if (c != null)
@@ -116,9 +116,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             int totalChunks = ChunksPerSide * ChunksPerSide;
             int processedChunks = 0;
 
-            for (int z = 0; z < ChunksPerSide; z++)
+            for (int x = 0; x < ChunksPerSide; x++)
             {
-                for (int x = 0; x < ChunksPerSide; x++)
+                for (int z = 0; z < ChunksPerSide; z++)
                 {
                     worldMap[x, z] = new TerrainData();
 
@@ -144,9 +144,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             // Hitung total map triangles sekali untuk di-cache
             cachedTotalMapTriangles = 0;
-            for (int z = 0; z < ChunksPerSide; z++)
+            for (int x = 0; x < ChunksPerSide; x++)
             {
-                for (int x = 0; x < ChunksPerSide; x++)
+                for (int z = 0; z < ChunksPerSide; z++)
                 {
                     if (worldMap[x, z] != null) cachedTotalMapTriangles += worldMap[x, z].TriangleCount;
                 }
@@ -172,9 +172,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             if (worldMap != null)
             {
-                for (int z = 0; z < ChunksPerSide; z++)
+                for (int x = 0; x < ChunksPerSide; x++)
                 {
-                    for (int x = 0; x < ChunksPerSide; x++)
+                    for (int z = 0; z < ChunksPerSide; z++)
                     {
                         var chunk = worldMap[x, z];
                         if (chunk != null)
@@ -264,6 +264,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             frozenPlanes = null;
         }
 
+        // Expose MapLoader so external systems (main loop) can clamp camera before rendering
+        public MapLoader GetMapLoader()
+        {
+            return mapLoader;
+        }
+
         public static int GetMapSize()
         {
             return MapSize;
@@ -288,6 +294,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         {
             int totalTriangles = 0;
 
+            GL.UseProgram(shaderProgram);
+            GL.BindVertexArray(0);
             // 1. Hitung Matriks Gabungan (View * Projection)
             Matrix4x4 vp = camera.GetViewMatrix() * camera.GetProjectionMatrix();
 
@@ -295,9 +303,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             bool usingFrozen = frozenPlanes != null;
 
-            for (int z = 0; z < ChunksPerSide; z++)
+            for (int x = 0; x < ChunksPerSide; x++)
             {
-                for (int x = 0; x < ChunksPerSide; x++)
+                for (int z = 0; z < ChunksPerSide; z++)
                 {
                     // 2. Cek apakah chunk terlihat oleh kamera (tetap digunakan untuk mesh render)
                     bool inside = IsChunkInFrustum(x, z, planes);
@@ -379,7 +387,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             }
 
-            camera.ClampToTerrain(mapLoader, deltaTime);
             return totalTriangles;
         }
 
@@ -760,9 +767,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Dispose all chunk data and free debug GL buffers
             if (worldMap != null)
             {
-                for (int z = 0; z < worldMap.GetLength(1); z++)
+                for (int x = 0; x < worldMap.GetLength(0); x++)
                 {
-                    for (int x = 0; x < worldMap.GetLength(0); x++)
+                    for (int z = 0; z < worldMap.GetLength(1); z++)
                     {
                         var c = worldMap[x, z];
                         if (c != null)

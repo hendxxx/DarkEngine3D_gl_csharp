@@ -146,7 +146,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             DrawnObjects  = 0;
             CulledObjects = 0;
 
+
             GL.UseProgram(_shaderProgram);
+            GL.BindVertexArray(0);
 
             var view = camera.GetViewMatrix();
             var proj = camera.GetProjectionMatrix();

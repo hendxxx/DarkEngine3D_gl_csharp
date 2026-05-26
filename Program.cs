@@ -110,7 +110,7 @@ public unsafe class Program
 
         // Stuntman is the rendered model; its idle/walk/run animations are layered on
         // afterwards from Xbot.glb (see ApplyAnimationFileToAll below).
-        string xbotPath = "Artifacts\\objects\\Women.glb";
+        string xbotPath = "Artifacts\\objects\\Stuntman.glb";
         var rng = new Random(42);
 
         float spawnCX = 0f;
@@ -120,7 +120,7 @@ public unsafe class Program
 
         var spawnedPositions = new List<Vector2>();
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 500; i++)
         {
             float px, pz;
             int tries = 0;

@@ -187,18 +187,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 deltaTime = Glfw.GetDeltaTime();
 
-                // Draw Skybox first
+                // 1. Update inputs (mouse + keyboard) BEFORE any rendering so camera is stable
+                Mouse.Update(window, camera);
+                Keyboard.Update(window, camera, deltaTime, gameTerrainChunk);
+
+                //// 2. Clamp camera height to terrain once per-frame (centralized)
+                //try
+                //{
+                //    var ml = gameTerrainChunk.GetMapLoader();
+                //    if (ml != null) camera.ClampToTerrain(ml, deltaTime);
+                //}
+                //catch { }
+
+                // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures);
 
-                GL.UseProgram(shaderProgram);
-                GL.BindVertexArray(0);
-                Mouse.Update(window, camera);
-
-                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
-
+                // 4. Ensure terrain shader has current view/projection uniforms bound
+                GL.UseProgram(Shader.GetShaderProgram());
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
 
-                Keyboard.Update(window, camera, deltaTime, gameTerrainChunk);
+                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
 
 
                 // --- TIME SYSTEM ---

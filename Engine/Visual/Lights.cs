@@ -55,8 +55,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void Update(Vector3 currentViewPos)
         {
-            GL.UseProgram(shaderProgram);
 
+            GL.UseProgram(shaderProgram);
+            GL.BindVertexArray(0);
             // Hitung sudut (0 radian = Terbit, PI/2 = Siang, PI = Terbenam)
             float sunAngle = WorldTime - (MathF.PI * 0.5f);
 
