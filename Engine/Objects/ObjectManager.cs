@@ -3,6 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
@@ -115,7 +116,88 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             return obj;
         }
+        public void Init(TerrainChunk gameTerrainChunk)
+        {
+            // Stuntman is the rendered model; its idle/walk/run animations are layered on
+            // afterwards from Xbot.glb (see ApplyAnimationFileToAll below).
+            string xbotPath = "Artifacts\\objects\\Stuntman.glb";
+            var rng = new Random();   // time-seeded → different spawn layout each run
 
+            float spawnCX = 0f;
+            float spawnCZ = 0f;
+            float minDist = 1.6f;    // jarak minimum antar object (meter)
+            float spawnRadius = 100f; // area spawn (wider to fit twice as many)
+
+            var spawnedPositions = new List<Vector2>();
+
+            for (int i = 0; i < 500; i++)   // twice as many characters
+            {
+                float px, pz;
+                int tries = 0;
+                do
+                {
+                    float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                    float dist = (float)(rng.NextDouble() * spawnRadius);
+                    px = spawnCX + MathF.Cos(angle) * dist;
+                    pz = spawnCZ + MathF.Sin(angle) * dist;
+                    tries++;
+
+                    // Cek overlap dengan semua posisi yang sudah ada
+                    bool overlaps = spawnedPositions.Any(p =>
+                        MathF.Sqrt((p.X - px) * (p.X - px) + (p.Y - pz) * (p.Y - pz)) < minDist);
+                    if (!overlaps) break;
+
+                    // Jika terlalu banyak percobaan, paksa geser
+                    if (tries > 50)
+                    {
+                        px += minDist * MathF.Cos(i * 1.1f);
+                        pz += minDist * MathF.Sin(i * 1.1f);
+                        break;
+                    }
+                } while (true);
+
+                spawnedPositions.Add(new Vector2(px, pz));
+                float yaw = (float)(rng.NextDouble() * 360.0);
+
+                var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
+                SnapToTerrain(obj, gameTerrainChunk);
+                Console.WriteLine($"[Spawn] Xbot #{i + 1} pos=({px:F1}, {obj.Position.Y:F1}, {pz:F1}) yaw={yaw:F0}° tries={tries}");
+            }
+
+
+            Console.WriteLine($"[ObjectManager] {GetObjects().Count} objects spawned.");
+
+            // Load animations from a SEPARATE file and apply them to the already-loaded
+            // model (TODO #2). Stuntman ships only one baked clip, so its idle/walk/run
+            // come from Xbot.glb — bones are matched by normalized name and rotations are
+            // retargeted across the two rigs.
+            ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
+
+            // Fighting animations, retargeted onto Stuntman. Stance + attack variations
+            // (fist-fight / punching-bag / hook) plus block, hit-reaction and death clips
+            // that the combat AI uses for blocking, taking damage and dying.
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\Fighting-idle.glb", "fightstance");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\fist-fight.glb", "fistfight");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\punching-bag.glb", "punchbag");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\hook.glb", "hook");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\body-block.glb", "block");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\taking-punch.glb", "hurt");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\dying.glb", "dying", retargetRoot: true);
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\looking-around.glb", "lookaround");  // nervous coward idle
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\entry.glb", "entry");        // winner's celebration pose
+
+            // Extra fighting clips (jab / hook / cross / …): drop converted Mixamo GLBs
+            // into Artifacts\animations\ and they are auto-loaded + retargeted, each named
+            // after its file. Optional — the AI uses them as one-shot strikes if present.
+            LoadAnimationFolder("Artifacts\\animations");
+
+            // Autonomous behaviour: each character is randomly aggressive or coward, walks
+            // /runs in random directions, chases / fights / flees based on what it sees,
+            // avoids others on collision, and stays clamped to the terrain.
+            WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
+            WanderRadius = 38f;
+            InitWanderingAgents();   // after clips are loaded
+        }
         // -----------------------------------------------------------------------
         public void Update(float dt)
         {

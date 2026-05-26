@@ -163,37 +163,34 @@
     <None Update="Artifacts\maps\\test.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\body-block.glb">
+    <None Update="Artifacts\objects\anim\body-block.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\dying.glb">
+    <None Update="Artifacts\objects\anim\dying.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\entry.glb">
+    <None Update="Artifacts\objects\anim\entry.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\Fighting-idle.glb">
+    <None Update="Artifacts\objects\anim\Fighting-idle.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\fist-fight.glb">
+    <None Update="Artifacts\objects\anim\fist-fight.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\hook.glb">
+    <None Update="Artifacts\objects\anim\hook.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\LittlestTokyo.glb">
+    <None Update="Artifacts\objects\anim\looking-around.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\looking-around.glb">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\objects\punching-bag.glb">
+    <None Update="Artifacts\objects\anim\punching-bag.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\Stuntman.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\objects\taking-punch.glb">
+    <None Update="Artifacts\objects\anim\taking-punch.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\fragment_shader.glsl">
@@ -209,9 +206,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\lineVertex_shader.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\sky_fragment2.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\sky_fragment.glsl">
