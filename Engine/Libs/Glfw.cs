@@ -187,20 +187,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 deltaTime = Glfw.GetDeltaTime();
 
-                // Draw Skybox first
-                skybox.Draw(camera, light, deltaTime, skyTextures);
-
-                GL.UseProgram(shaderProgram);
-                GL.BindVertexArray(0);
-
-                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
-
-                camera.SetViewAndProjection(viewLocation, projectionLocation);
-
                 Keyboard.Update(window, camera, deltaTime, gameTerrainChunk);
 
                 Mouse.Update(window, camera);
 
+                // Draw Skybox first
+                skybox.Draw(camera, light, deltaTime, skyTextures);
+
+                GL.UseProgram(shaderProgram);
+                camera.SetViewAndProjection(viewLocation, projectionLocation);
+
+                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
+                 
                 // --- TIME SYSTEM ---
                 float baseSpeed = 0.0011f; // Slow day/night cycle (~4x slower than before)
                 float manualMultiplier = 60.0f; // Fast Forward: hold +/- to scrub time
@@ -217,7 +215,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 light.Update(camera.Position);
                 // --------------------
 
-                 
+
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
                 // ---- glTF Object Manager (autonomous wandering agents) ----

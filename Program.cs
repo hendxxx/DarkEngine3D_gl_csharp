@@ -147,7 +147,7 @@ public unsafe class Program
 
         var spawnedPositions = new List<Vector2>();
 
-        for (int i = 0; i < 100; i++)   // twice as many characters
+        for (int i = 0; i < 500; i++)   // twice as many characters
         {
             float px, pz;
             int tries = 0;
