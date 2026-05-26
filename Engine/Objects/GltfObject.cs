@@ -587,6 +587,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc)
         {
+            OpenGL.EnableFaceCulling(false);
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
                          * Matrix4x4.CreateTranslation(Position);
@@ -595,6 +596,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // transform, so the model matrix is just the object placement. For
             // non-skinned meshes we additionally apply the mesh node's global.
             bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
+            OpenGL.EnableFaceCulling(true);
 
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
@@ -628,8 +630,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 0);
                 }
 
-                if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
-                else GL.Enable(Const.GL_CULL_FACE);
+                
+                //if (mesh.Material.DoubleSided) OpenGL.EnableFaceCulling(true);
+                //else OpenGL.EnableFaceCulling(true);
 
                 GL.BindVertexArray(mesh.VAO);
                 if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
@@ -638,7 +641,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-            GL.Enable(Const.GL_CULL_FACE);
+             
+            OpenGL.EnableFaceCulling(false);
         }
     }
 }

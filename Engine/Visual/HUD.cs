@@ -106,7 +106,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             GL.UseProgram(shaderProgram);
             GL.BindVertexArray(0);
-            GL.Disable(Const.GL_CULL_FACE);
+            OpenGL.EnableFaceCulling(false);
 
             GL.Disable(Const.GL_DEPTH_TEST);
             GL.Enable(Const.GL_BLEND);
@@ -188,14 +188,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             DrawTextBatched(text, startX, startY, color);
         }
         public void DrawBox(float x, float y, float w, float h, Vector3 color)
-        {
-            GL.Disable(Const.GL_CULL_FACE);
+        { 
             GL.UseProgram(shaderProgram);
             GL.BindVertexArray(vao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo); // WAJIB: Ikat kembali buffer
 
             GL.Disable(Const.GL_DEPTH_TEST);
-            GL.Disable(Const.GL_CULL_FACE);
+            OpenGL.EnableFaceCulling(false);
             GL.Enable(Const.GL_BLEND);
 
             // 1. Konversi Koordinat

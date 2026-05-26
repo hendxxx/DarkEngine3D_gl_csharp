@@ -398,10 +398,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Culling disabled because skirt winding is not enforced.
             if (SkirtVAOs[actualLod] != 0 && _skirtVertexCounts[actualLod] > 0)
             {
-                GL.Disable(Const.GL_CULL_FACE);
+                OpenGL.EnableFaceCulling(false);
                 GL.BindVertexArray(SkirtVAOs[actualLod]);
                 GL.DrawArrays(Const.GL_TRIANGLES, 0, _skirtVertexCounts[actualLod]);
-                GL.Enable(Const.GL_CULL_FACE);
+                OpenGL.EnableFaceCulling(true);
             }
 
             GL.BindVertexArray(0);

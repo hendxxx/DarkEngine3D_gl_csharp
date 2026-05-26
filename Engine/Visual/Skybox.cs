@@ -62,7 +62,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             
             totalTime += deltaTime;
             GL.Disable(Const.GL_DEPTH_TEST); // Draw without depth testing
-            GL.Disable(Const.GL_CULL_FACE); 
+            OpenGL.EnableFaceCulling(false);
             GL.UseProgram(skyShader);
 
             Matrix4x4 view = camera.GetViewMatrix();
@@ -95,8 +95,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
              
             // Kirimkan nilai berjalan halus (CurrentWeather) dari kalkulasi input class C#
             GL.Uniform1f(weatherModeLoc, currentWeatherVal);
-             
-            GL.Enable(Const.GL_CULL_FACE);
+
+            OpenGL.EnableFaceCulling(true);
             GL.Enable(Const.GL_DEPTH_TEST); // Re-enable for terrain
 
         }
