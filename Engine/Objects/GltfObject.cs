@@ -596,7 +596,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // transform, so the model matrix is just the object placement. For
             // non-skinned meshes we additionally apply the mesh node's global.
             bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
-            OpenGL.EnableFaceCulling(true);
+           
 
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
@@ -642,7 +642,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
              
-            OpenGL.EnableFaceCulling(false);
+            OpenGL.EnableFaceCulling(true);
         }
     }
 }
