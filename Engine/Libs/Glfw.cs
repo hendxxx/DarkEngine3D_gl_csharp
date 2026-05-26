@@ -59,7 +59,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private static Camera? MainCamera;
 
-        public static void Init(string title, bool fullscreen = true, int ratioNumerator = 16, int ratioDenominator = 9)
+        public static void Init(string title, bool fullscreen = true )
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
 
@@ -137,10 +137,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.Viewport(0, 0, width, height);
 
             // 2. Update aspek rasio kamera global jika sudah diinisialisasi
-            if (MainCamera != null)
-            {
-                MainCamera.UpdateAspectRatio((float)width, (float)height);
-            }
+            MainCamera?.UpdateAspectRatio((float)width, (float)height);
 
             // 3. Update variabel ukuran window global Anda (opsional)
             _windowWidth = width;
@@ -203,12 +200,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 skybox.Draw(camera, light, deltaTime, skyTextures);
 
                 // 4. Ensure terrain shader has current view/projection uniforms bound
-                GL.UseProgram(Shader.GetShaderProgram());
+                GL.UseProgram(shaderProgram);
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
 
                 int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
                  
-                light.Update(deltaTime, window ,camera.Position);
+                light.Update(deltaTime ,camera.Position);
                 // --------------------
 
                  

@@ -12,7 +12,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     // ===========================================================================
     public unsafe class ObjectManager
     {
-        private readonly Dictionary<string, GltfModelGpuData> _modelCache = [];
+        private readonly Dictionary<string, Helpers.ObjectHelpers.GltfModelGpuData> _modelCache = [];
         private readonly List<GltfObject>                     _objects    = [];
 
         private readonly uint _shaderProgram;
@@ -112,18 +112,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
         }
         // -----------------------------------------------------------------------
-        public GltfModelGpuData LoadModel(string path)
+        public Helpers.ObjectHelpers.GltfModelGpuData LoadModel(string path)
         {
             if (_modelCache.TryGetValue(path, out var cached)) return cached;
             //Console.WriteLine($"[ObjectManager] Loading: {path}");
             var data    = GltfLoader.Load(path);
-            var gpuData = new GltfModelGpuData(data);
+            var gpuData = new Helpers.ObjectHelpers.GltfModelGpuData(data);
             _modelCache[path] = gpuData;
             return gpuData;
         }
 
         // -----------------------------------------------------------------------
-        public GltfData LoadAnimationFile(string path)
+        public static GltfData LoadAnimationFile(string path)
         {
             //Console.WriteLine($"[ObjectManager] Loading animation file: {path}");
             try
@@ -222,7 +222,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             foreach (var obj in _objects)
             {
-                if (!DisableFrustumCull && !IsAABBInFrustum(frustum, obj.WorldAABB))
+                if (!DisableFrustumCull && !IsAABBInFrustum(frustum, obj.WorldAABB ))
                 {
                     CulledObjects++;
                     continue;
@@ -249,7 +249,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // -----------------------------------------------------------------------
-        public void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
+        public static void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
         {
 
             float terrainY = terrain.GetHeightAt(obj.Position.X, obj.Position.Z);
@@ -288,7 +288,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return p;
         }
 
-        private static bool IsAABBInFrustum(Vector4[] planes, AABB aabb)
+        private static bool IsAABBInFrustum(Vector4[] planes, Helpers.ObjectHelpers.AABB aabb)
         {
             foreach (var pl in planes)
             {
