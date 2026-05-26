@@ -53,7 +53,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             weatherModeLoc = GL.GetUniformLocation(Shader.GetSkyShaderProgram(), "weatherMode");
         }
 
-        public void Update(float deltaTime,Vector3 currentViewPos)
+        public void Update(Vector3 currentViewPos)
         {
             GL.UseProgram(shaderProgram);
 
