@@ -188,13 +188,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 Mouse.Update(window, camera);
                 Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk);
 
-                // 2. Clamp camera height to terrain once per-frame (centralized)
-                try
-                {
-                    var ml = gameTerrainChunk.GetMapLoader();
-                    if (ml != null) camera.ClampToTerrain(ml, deltaTime);
-                }
-                catch { }
+                //// 2. Clamp camera height to terrain once per-frame (centralized)
+                //try
+                //{
+                //    var ml = gameTerrainChunk.GetMapLoader();
+                //    if (ml != null) camera.ClampToTerrain(ml, deltaTime);
+                //}
+                //catch { }
 
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures);

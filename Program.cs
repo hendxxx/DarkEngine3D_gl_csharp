@@ -49,7 +49,7 @@ public unsafe class Program
         Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "17:00");
 
         // Init Keyboard and Mouse
-        Keyboard.Init(glfwLib, 1.0f); // Increased speed for freefly mode
+        Keyboard.Init(glfwLib, 20.0f); // Increased speed for freefly mode
         Mouse.Init(glfwLib, window);
 
         // Init Terrain textures
@@ -72,7 +72,7 @@ public unsafe class Program
         ];
 
         // Init TerrainChunk
-        TerrainChunk.GlobalLODLevel = 3;
+        TerrainChunk.GlobalLODLevel = 1;
         TerrainChunk.HeightScale = 80.0f;
         TerrainChunk.TerrainScale = 1.0f;
         TerrainChunk.OnLoadProgress += (progress) =>
@@ -111,8 +111,7 @@ public unsafe class Program
 
         // Init Loop
         Glfw.Loop(SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud, objectManager);
-
-
+         
         // Shutdown
         Console.WriteLine("Engine Shutdown.");
     }

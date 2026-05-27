@@ -16,7 +16,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         // Vertical drop applied to skirt bottom vertices. Must be deeper than the worst
         // expected height difference at an LOD boundary so cracks stay hidden.
-        private const float SkirtDepth = 8.0f;
+        private const float SkirtDepth = 0.25f;
 
         public float MinY { get; private set; } = float.MaxValue;
         public float MaxY { get; private set; } = float.MinValue;
@@ -44,8 +44,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             MinY = float.MaxValue;
             MaxY = float.MinValue;
 
-            int lodToLoadFirst = 3;
-            int[] subdivsLOD = [ 7, 5, 3, 1 ];
+            int lodToLoadFirst = NUM_LODS-1;
+            int[] subdivsLOD = [ 4, 3, 2, 1  ];
 
             // Each cell at LOD 0 is split into subdivisions^2 quads = subdivisions^2 * 2 triangles.
             int subLOD0 = subdivsLOD[0];
@@ -89,7 +89,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
                     Vertex[] lodSkirt = BuildSkirtVertices(size, worldStartX, worldStartZ, mapLoader, sub);
 
-                    lock(pendingUploads)
+                    lock (pendingUploads)
                     {
                         pendingUploads[lod] = [.. lodVertices];
                         pendingSkirtUploads[lod] = lodSkirt;
@@ -356,7 +356,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             }
 
             int actualLod = lodIndex;
-            if (VAOs[actualLod] == 0) actualLod = 3;
+            if (VAOs[actualLod] == 0) actualLod = NUM_LODS - 1;
 
             actualLod = Math.Clamp(actualLod, 0, NUM_LODS - 1);
 
@@ -396,7 +396,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             // Draw Skirt to hide LOD seams between neighboring chunks.
             // Culling disabled because skirt winding is not enforced.
-            if (SkirtVAOs[actualLod] != 0 && _skirtVertexCounts[actualLod] > 0)
+            if (SkirtVAOs[actualLod] != 0 && _skirtVertexCounts[actualLod] > 0  )
             {
                 OpenGL.EnableFaceCulling(false);
                 GL.BindVertexArray(SkirtVAOs[actualLod]);

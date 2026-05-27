@@ -126,11 +126,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float spawnCX = 0f;
             float spawnCZ = 0f;
             float minDist = 1.6f;    // jarak minimum antar object (meter)
-            float spawnRadius = 100f; // area spawn (wider to fit twice as many)
+            float spawnRadius = 50f; // area spawn (wider to fit twice as many)
 
             var spawnedPositions = new List<Vector2>();
 
-            for (int i = 0; i < 500; i++)   // twice as many characters
+            for (int i = 0; i < 10; i++)   // twice as many characters
             {
                 float px, pz;
                 int tries = 0;

@@ -7,11 +7,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
     public class TerrainChunk : IDisposable
     {
 
-        // Global LOD level (1..5). Default 3 = medium. Ubah sebelum Init(...) untuk pengaruh saat Generate.
+        // Global LOD level (1..3). Higher = more subdivisions. 1 = 128x128, 2 = 256x256, 3 = 512x512 (per chunk).
         // LOD mapping implemented in GetSubdivisionsForLOD
         public static int GlobalLODLevel { get; set; } = 1;
         public static int MapSize { get; set; } = 256;
-        public static int ChunkSize { get; set; } = 64;
+        public static int ChunkSize { get; set; } = (int)Math.Sqrt(MapSize);
         public static int ChunksPerSide { get; set; } = MapSize / ChunkSize;
         public static float TerrainScale { get; set; } = 1.0f;  // Tambahkan ini
         public static float HeightScale { get; set; } = 80.0f;  // Tambahkan ini
@@ -59,6 +59,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         {
             return lod switch
             {
+                4 => 6, // super High detail (6x6 grid)
                 3 => 4, // High detail (4x4 grid)
                 2 => 2, // Medium detail (2x2 grid)
                 1 => 1, // Low detail (1x1 grid)
@@ -334,16 +335,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                             if (distance > scaledChunkSize * 4.5f) lodIndex = 3;
                             else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
                             else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
-                            else lodIndex = 0;
+                            else lodIndex = 0; 
 
-
-                            //GL.Enable(Const.GL_POLYGON_OFFSET_FILL);
-                            //GL.PolygonOffset(1.0f, -1.0f); // Mendorong kedalaman piksel agar melekat rapat
-
-
-                            worldMap[x, z].Draw(lodIndex);
-
-                            //GL.Disable(Const.GL_POLYGON_OFFSET_FILL);
+                            worldMap[x, z].Draw(lodIndex); 
 
                             // Estimate actual triangles rendered based on LOD
                             int chunkTriangles = worldMap[x, z].TriangleCount;
