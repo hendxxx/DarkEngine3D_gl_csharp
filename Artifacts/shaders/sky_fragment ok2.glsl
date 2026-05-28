@@ -45,70 +45,45 @@ float fbm(vec3 p)
 }
 
 // ===============================
-// STAR FIELD (tiny stars + independent twinkle)
-// ===============================
-float hash2D(vec2 p)
-{
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-} 
-
-float starNoise(vec2 uv)
-{
-    vec2 gv = fract(uv) - 0.5;
-    vec2 id = floor(uv);
-
-    float n = hash2D(id);
-
-    // density bintang
-    if (n > 0.994)
-    {
-        float d = length(gv);
-
-        // bintang SUPER kecil (radius 0.035)
-        float star = smoothstep(0.035, 0.0, d);
-
-        // twinkle sangat lambat
-        float twFreq  = 0.03 + n * 0.4;   // pelan banget
-        float twPhase = n * 200.0;
-
-        float tw = sin(time.x * twFreq + twPhase) * 0.3 + 0.2;
-
-        return star * tw * 1.1;
-    }
-    return 0.0;
-}
-
-// ===============================
-// Atmospheric scattering
+// Atmospheric scattering (simple Rayleigh + Mie single-scattering approx)
 // ===============================
 vec3 totalAtmosphereColor(vec3 viewDir, vec3 sunDirection, float sunIntensity)
 {
+    // Tunable constants (cheap approximation)
     const float PI = 3.14159265;
-    const float HR = 8.0;
-    const float HM = 1.2;
-    const vec3 betaR = vec3(5.8e-6, 13.5e-6, 33.1e-6);
-    const float betaM = 21e-6;
-    const float g = 0.76;
+    const float HR = 8.0;    // Rayleigh scale height (relative)
+    const float HM = 1.2;    // Mie scale height (relative)
+    const vec3 betaR = vec3(5.8e-6, 13.5e-6, 33.1e-6); // Rayleigh scattering coeff (R,G,B)
+    const float betaM = 21e-6; // Mie scattering coeff (monochrome approx)
+    const float g = 0.76;    // Mie asymmetry factor
 
+    // approximate view angle relative to up
     float cosViewUp = max(dot(normalize(viewDir), vec3(0.0, 1.0, 0.0)), 0.001);
+    // optical length approximations (cheap)
     float rayleighLength = exp(-1.0 / HR) / cosViewUp;
     float mieLength = exp(-1.0 / HM) / cosViewUp;
 
+    // phase functions
     float mu = clamp(dot(normalize(viewDir), normalize(sunDirection)), -1.0, 1.0);
     float phaseR = (3.0 / (16.0 * PI)) * (1.0 + mu * mu);
     float phaseM = (3.0 / (8.0 * PI)) * ((1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5));
 
+    // optical depth (per-channel for Rayleigh, scalar for Mie)
     vec3 tau = betaR * rayleighLength + vec3(betaM * mieLength);
 
+    // transmittance along view
     vec3 trans = exp(-tau);
 
+    // in-scattered radiance (single scattering)
     vec3 Lr = betaR * phaseR * sunIntensity * trans;
     vec3 Lm = vec3(betaM) * phaseM * sunIntensity * trans;
 
     vec3 sky = Lr + Lm;
 
+    // exposure and tone mapping tweak to match existing sky style
     sky *= 1.6;
     sky = sky / (sky + vec3(1.0));
+    // slight gamma to match rest of shader
     return pow(sky, vec3(1.0 / 1.1));
 }
 
@@ -118,6 +93,7 @@ void main()
     vec3 lightDir = normalize(sunDir);
     float sunY = lightDir.y;
 
+    // SKY GRADIENT (replaced by atmospheric scattering below)
     float tSunset = clamp((sunY - 0.0) / (0.65 - 0.0), 0.0, 1.0);
     float tNight  = smoothstep(-0.25, 0.05, sunY);
     float tMalam  = 1.0 - smoothstep(-0.3, 0.1, sunY);
@@ -127,22 +103,28 @@ void main()
     vec3 sunsetColor  = vec3(1.0, 0.48, 0.25);
     vec3 nightColor   = vec3(0.06, 0.06, 0.10);
 
+    // compute a sun intensity factor (higher when sun is high)
     float sunIntensity = clamp(sunY * 1.5 + 0.5, 0.0, 2.0);
 
+    // Use atmospheric scattering to produce a realistic sky base
     vec3 atmosphereSky = totalAtmosphereColor(viewDir, lightDir, sunIntensity);
 
+    // blend with a gentle artistic sunset tint to preserve original look near horizon
     vec3 sunsetBlend = mix(sunsetColor * 0.6, noonSky, tSunset);
     vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
 
     float up = max(viewDir.y, 0.0);
+    // combine atmosphere with original fog/horizon tint to keep compatibility
     vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
 
     vec3 dayToSunsetColor = mix(sunsetColor, noonCloud, tSunset);
     vec3 cloudBaseColor   = mix(nightColor, dayToSunsetColor, tNight);
 
+    // WEATHER THRESHOLD
     float cutMin = mix(configCerah.x, configMendungSekali.x, weatherMode);
     float cutMax = mix(configCerah.y, configMendungSekali.y, weatherMode);
 
+    // CLOUDS
     float cloudAlpha = 0.0;
     vec3 finalCloudColor = vec3(0.0);
 
@@ -172,6 +154,7 @@ void main()
         cloudColor1 *= mix(0.6, 1.0, shadow);
         cloudColor1 += vec3(1.0, 0.8, 0.5) * scatter * 0.4;
 
+        // Cirrus
         vec3 p2 = cloudPos * 0.25;
         p2.x += time.x * 0.02;
         p2.z += time.x * 0.015;
@@ -191,16 +174,19 @@ void main()
         cloudAlpha = max(cloudAlpha, 0.0001);
     }
 
+    // CLOUD THICKNESS
     cloudAlpha *= mix(0.15, 1.8, weatherMode);
 
+    // SUN PREP
     vec3 skyWithCelestial = skyBase;
-
     float sunDot = dot(viewDir, lightDir);
     float sunVisible = smoothstep(-0.1, 0.1, sunY);
 
+    // safer sunBlocker and stronger glow retention
     float sunBlocker = mix(0.05, 0.25, weatherMode);
     float sunGlowBoost = mix(2.0, 0.95, weatherMode);
 
+    // adjusted sun colors (less yellow)
     float sunHeightFactor = clamp(smoothstep(0.0, 0.35, sunY), 0.0, 1.0);
     vec3 sunColorLow  = vec3(1.12, 0.95, 0.85);
     vec3 sunColorHigh = vec3(1.03, 1.00, 0.98);
@@ -216,6 +202,7 @@ void main()
     float sunGlowMask = 0.0;
     float sunBloomMask = 0.0;
 
+    // prepare sunUV and distance for sun-hole calculations
     vec2 sunUV = vec2(0.0);
     float d = 1000.0;
 
@@ -235,24 +222,27 @@ void main()
         sunBloomMask = exp(-d * d * 500.0);
     }
 
-    float sunHoleMax = mix(0.0, 0.60, weatherMode);
+    // SUN HOLE (soft, partial) — avoid hard ring
+    float sunHoleMax = mix(0.0, 0.60, weatherMode); // max partial reduction
     float sunHoleRadius = 0.032;
     float sunHoleSoft = 0.014;
     float sunHoleMask = smoothstep(sunHoleRadius + sunHoleSoft, sunHoleRadius - sunHoleSoft, d);
 
+    // apply partial reduction to cloudAlpha but keep a floor
     cloudAlpha = max(cloudAlpha * (1.0 - sunHoleMask * sunHoleMax), 0.03);
 
+    // add sun core & glow into skyWithCelestial (core colored)
     skyWithCelestial += dynamicSunCore * sunCoreMask * 4.0 * sunVisible * sunBlocker;
     skyWithCelestial += dynamicSunGlow * sunGlowMask * 0.6 * sunVisible * sunGlowBoost;
     skyWithCelestial += dynamicBloomOuter * sunBloomMask * 1.2 * sunVisible * sunGlowBoost;
 
+    // additive sun pass AFTER cloudAlpha reduction to cover soft edges
+    // stronger additive at day, slightly reduced at heavy clouds
     float sunAddFactor = mix(1.0, 0.6, weatherMode);
     vec3 sunAdd = dynamicSunGlow * sunGlowMask * 0.6 * sunVisible * sunAddFactor;
     skyWithCelestial += sunAdd;
 
-    // ===============================
-    // MOON
-    // ===============================
+    // MOON (improved visibility)
     vec3 moonDir = normalize(-lightDir);
     float moonDot = dot(viewDir, moonDir);
 
@@ -265,8 +255,10 @@ void main()
         vec2 moonUV = vec2(dot(viewDir, moonRight), dot(viewDir, moonUpAxis)) / moonDot;
         float md = length(moonUV);
 
+        // moon glow independent of sunBlocker and cloudAlpha (so visible behind clouds)
         float moonGlowMask = exp(-md * md * 60.0);
         vec3 moonGlow = vec3(0.36, 0.46, 0.95) * moonGlowMask * 1.0 * tMalam;
+        // additive glow first
         skyWithCelestial += moonGlow;
 
         const float moonAngularRadius = 0.0283;
@@ -285,35 +277,19 @@ void main()
             vec3 litMoonColor = textureMoonColor * vec3(1.0, 0.98, 0.95) * 1.8 * tMalam;
             litMoonColor += moonGlow * 0.45;
 
+            // moon visibility factor: keep high even in heavy clouds
             float moonVisibilityFactor = mix(0.95, 0.7, weatherMode);
             float finalMoonAlpha = customAlpha * moonVisibilityFactor * softEdgeMask;
 
+            // blend moon into skyWithCelestial (mix so it overlays naturally)
             skyWithCelestial = mix(skyWithCelestial, litMoonColor, finalMoonAlpha);
         }
     }
 
-    // ===============================
-    // STARS (tiny + twinkle + only above horizon)
-    // ===============================
-    float nightFactor = tMalam;
-    float starMask = smoothstep(0.0, 0.25, nightFactor);
-
-    if (viewDir.y > 0.0)
-    {
-        vec2 starUV = viewDir.xz * 150.0;
-
-        float stars = starNoise(starUV);
-
-        vec3 starColor = vec3(1.0, 0.96, 0.88) * stars * starMask;
-
-        skyWithCelestial += starColor;
-    }
-
-    // ===============================
     // FINAL MIX
-    // ===============================
     vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
 
+    // small gamma/tonemap tweak to avoid oversaturation
     result = pow(result, vec3(1.0 / 1.1));
 
     FragColor = vec4(result, 1.0);

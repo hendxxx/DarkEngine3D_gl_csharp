@@ -191,25 +191,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 Mouse.Update(window, camera);
                 Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk);
 
-                // 2. Clamp camera height to terrain once per-frame (centralized)
-                try
-                {
-                    var ml = gameTerrainChunk.GetMapLoader();
-                    if (ml != null) camera.ClampToTerrain(ml, deltaTime);
-                }
-                catch { }
+                //// 2. Clamp camera height to terrain once per-frame (centralized)
+                //try
+                //{
+                //    var ml = gameTerrainChunk.GetMapLoader();
+                //    if (ml != null) camera.ClampToTerrain(ml, deltaTime);
+                //}
+                //catch { }
 
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures);
 
                 //// 4. Ensure terrain shader has current view/projection uniforms bound 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
-
-                int renderedTris = gameTerrainChunk.Render(camera, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
+                int renderedTris = 0;
+                if (gameTerrainChunk!=null)
+                    renderedTris = gameTerrainChunk.Render(camera, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
 
                 light.Update(deltaTime , camera.Position);
 
-                objTriangle.Draw(deltaTime, window, 5.0f);
+                if (objTriangle != null)
+                    objTriangle.Draw(deltaTime, window, 5.0f);
 
                 // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)
