@@ -32,7 +32,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // 1. Persiapan Vertices (Unit Quad)
             // DI KONSTRUKTOR HUD (Pastikan urutan V ini):
-            float[] vertices = {
+            float[] vertices = [
                 // x, y      u, v
                 0f, 1f,     0f, 0f,   // top-left
                 0f, 0f,     0f, 1f,   // bottom-left
@@ -41,7 +41,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 0f, 0f,     0f, 1f,   // bottom-left
                 1f, 0f,     1f, 1f,   // bottom-right
                 1f, 1f,     1f, 0f    // top-right
-            };
+            ];
 
 
             fixed (uint* pVao = &vao) GL.GenVertexArrays(1, pVao);
@@ -110,7 +110,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             GL.UseProgram(shaderProgram);
             GL.BindVertexArray(0);
-            OpenGL.EnableFaceCulling(false);
+            OpenGL.EnableFaceCulling(true);
 
             GL.Disable(Const.GL_DEPTH_TEST);
             GL.Enable(Const.GL_BLEND);
@@ -177,7 +177,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.DrawArrays(Const.GL_TRIANGLES, 0, allVertices.Count / 4);
             }
 
-            OpenGL.EnableFaceCulling(true);
+            OpenGL.EnableFaceCulling(false);
         } 
         public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor = null, float outlineSize = 0.0f)
         {
@@ -199,9 +199,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.BindVertexArray(vao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo); // WAJIB: Ikat kembali buffer
 
-            //GL.Disable(Const.GL_DEPTH_TEST);
+            GL.Disable(Const.GL_DEPTH_TEST);
             OpenGL.EnableFaceCulling(false);
-            //GL.Enable(Const.GL_BLEND);
+            GL.Enable(Const.GL_BLEND);
 
             // 1. Konversi Koordinat
             float x0 = (x / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
@@ -210,12 +210,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float y1 = 1.0f - ((y + h) / (float)Glfw.WindowHeight) * 2.0f;
 
             // 2. Data 6 titik (X, Y, U, V)
-            float[] boxVertices = {
+            float[] boxVertices = [
                 // Triangle 1 (CCW)
                 x0, y0, 0, 0,   x1, y1, 0, 0,   x0, y1, 0, 0,
                 // Triangle 2 (CCW)
                 x0, y0, 0, 0,   x1, y0, 0, 0,   x1, y1, 0, 0
-            };
+            ];
 
 
             // 3. Kirim data ke VBO

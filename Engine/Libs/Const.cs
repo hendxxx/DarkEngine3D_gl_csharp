@@ -138,5 +138,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_DEPTH24_STENCIL8 = 0x88F0;
         public const uint GL_UNSIGNED_INT_24_8 = 0x84FA;
         public const uint GL_RENDERBUFFER = 0x8D41;
+
+        public const uint GL_COMPILE_STATUS = 0x8B81;
+        public const uint GL_LINK_STATUS = 0x8B82;
+        public const uint GL_INFO_LOG_LENGTH = 0x8B84;
     }
 }

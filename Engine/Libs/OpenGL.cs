@@ -27,6 +27,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.DeleteShaderPtr = GetProcAddress(glLib, "glDeleteShader");
             GL.GetUniformLocationPtr = GetProcAddress(glLib, "glGetUniformLocation");
             GL.UniformMatrix4fvPtr = GetProcAddress(glLib, "glUniformMatrix4fv");
+            GL.UniformMatrix3fvPtr = GetProcAddress(glLib, "glUniformMatrix3fv");
 
             GL.VertexAttribPointerPtr = GetProcAddress(glLib, "glVertexAttribPointer");
             GL.VertexAttribIPointerPtr = GetProcAddress(glLib, "glVertexAttribIPointer");
@@ -81,6 +82,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.BindRenderbufferPtr = GetProcAddress(glLib, "glBindRenderbuffer");
             GL.RenderbufferStoragePtr = GetProcAddress(glLib, "glRenderbufferStorage");
             GL.FramebufferRenderbufferPtr = GetProcAddress(glLib, "glFramebufferRenderbuffer");
+            GL.GetShaderivPtr = GetProcAddress(glLib, "glGetShaderiv");
+            GL.GetProgramivPtr = GetProcAddress(glLib, "glGetProgramiv");
 
             return glLib;
         }
@@ -90,16 +93,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             if (active)
             {
                 GL.Enable(Const.GL_CULL_FACE);
-                GL.CullFace(Const.GL_BACK);
+                GL.CullFace(Const.GL_FRONT);
                 GL.FrontFace(CCW ? Const.GL_CW : Const.GL_CCW);
             }
             else
             {
+                GL.FrontFace(CCW ? Const.GL_CW : Const.GL_CCW);
                 GL.Disable(Const.GL_CULL_FACE);
             }
-        }
-
-
+        } 
 
         public static unsafe void EnableDepthTest(bool active)
         {

@@ -7,20 +7,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public class PostProcess
     {
         // Fullscreen quad
-        static uint _quadVAO = 0;
-        static uint _quadVBO = 0;
+        public static readonly uint _quadVAO = 0;
+        public static readonly uint _quadVBO = 0;
 
         // Scene FBO + textures (global fields)
-        static uint _framebufferTexture = 0;
-        static uint _sceneDepthTex = 0;
-        public static uint _sceneFBO = 0;
-        public static uint _sceneRBO = 0;
-
-        public static uint GetSceneFBO() => _sceneFBO;
-        public static uint GetSceneRBO() => _sceneRBO;
-        public static uint GetframebufferTexture() => _framebufferTexture; 
-
-        public static uint GetQuadVAO() => _quadVAO;
+        public static readonly uint _framebufferTexture = 0;
+        public static readonly uint _sceneDepthTex = 0;
+        public static readonly uint _sceneFBO = 0;
+        public static readonly uint _sceneRBO = 0;
+ 
 
         // Shader program handle (assume Shader.GetGodRayShaderProgram exists)
         // public static uint godRayProgram; // optional cache
@@ -29,6 +24,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public unsafe static void Init(int width, int height)
         {
+            int texLoc = GL.GetUniformLocation(Shader.GetPostProdShaderProgram(), "screenTexture");
+            GL.Uniform1i(texLoc, 0);
             // --- Fullscreen quad vertices in NDC (-1..1) with texcoords ---
             float[] vertices = new float[] {
                  // x, y,   u, v
@@ -132,7 +129,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public static void Draw(int windowWidth, int windowHeight)
         {
-            OpenGL.EnableFaceCulling(false);
+            OpenGL.EnableFaceCulling(true);
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
             GL.Viewport(0, 0, windowWidth, windowHeight);
@@ -155,13 +152,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             GL.Enable(Const.GL_DEPTH_TEST);
 
-            OpenGL.EnableFaceCulling(true);
-             
             // Unbind scene FBO and run postprocess to default framebuffer
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
             GL.Viewport(0, 0, windowWidth, windowHeight);
             GL.Disable(Const.GL_DEPTH_TEST);
 
+
+            OpenGL.EnableFaceCulling(false);
 
 
         }

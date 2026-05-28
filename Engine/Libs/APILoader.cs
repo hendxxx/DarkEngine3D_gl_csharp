@@ -15,6 +15,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr BufferDataPtr;
         internal static IntPtr GetUniformLocationPtr;
         internal static IntPtr UniformMatrix4fvPtr;
+        internal static IntPtr UniformMatrix3fvPtr;
         internal static IntPtr CreateShaderPtr, ShaderSourcePtr, CompileShaderPtr;
         internal static IntPtr CreateProgramPtr, AttachShaderPtr, LinkProgramPtr, UseProgramPtr, DeleteShaderPtr;
         internal static IntPtr VertexAttribPointerPtr;
@@ -72,6 +73,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr FramebufferRenderbufferPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void UniformMatrix3fv(int location, int count, bool transpose, float* value)
+            => ((delegate* unmanaged[Cdecl]<int, int, byte, float*, void>)UniformMatrix3fvPtr)(location, count, (byte)(transpose ? 1 : 0), value);
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void BindRenderbuffer(uint target, uint renderbuffer)
             => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BindRenderbufferPtr)(target, renderbuffer);
@@ -364,14 +370,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             ((delegate* unmanaged[Cdecl]<int, float, void>)Uniform1fPtr)(location, value);
         }
 
-        public static string GetShaderInfoLog(uint shader)
+        public unsafe static string GetShaderInfoLog(uint shader)
         {
             if (GetShaderInfoLogPtr == IntPtr.Zero) return "(GetShaderInfoLog not loaded)";
             int status = 0;
-            GetShaderiv(shader, 0x8B81u /*GL_COMPILE_STATUS*/, &status);
+            GetShaderiv(shader,Const.GL_COMPILE_STATUS  , &status);
             if (status == 1) return "";
             int len = 0;
-            GetShaderiv(shader, 0x8B84u /*GL_INFO_LOG_LENGTH*/, &len);
+            GetShaderiv(shader, Const.GL_INFO_LOG_LENGTH  , &len);
             if (len <= 0) return "(no log)";
             byte[] buf = new byte[len];
             fixed (byte* pb = buf)
@@ -379,14 +385,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return System.Text.Encoding.UTF8.GetString(buf, 0, len - 1);
         }
 
-        public static string GetProgramInfoLog(uint program)
+        public unsafe static string GetProgramInfoLog(uint program)
         {
             if (GetProgramInfoLogPtr == IntPtr.Zero) return "(GetProgramInfoLog not loaded)";
             int status = 0;
-            GetProgramiv(program, 0x8B82u /*GL_LINK_STATUS*/, &status);
+            GetProgramiv(program, Const.GL_LINK_STATUS, &status);
             if (status == 1) return "";
             int len = 0;
-            GetProgramiv(program, 0x8B84u /*GL_INFO_LOG_LENGTH*/, &len);
+            GetProgramiv(program, Const.GL_INFO_LOG_LENGTH, &len);
             if (len <= 0) return "(no log)";
             byte[] buf = new byte[len];
             fixed (byte* pb = buf)

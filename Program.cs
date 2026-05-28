@@ -27,7 +27,7 @@ public unsafe class Program
         OpenGL.CacheGlfwFunctions(glfwLib);
 
         //OpenGL.EnableDepthTest(true);
-        OpenGL.EnableFaceCulling(true);
+        OpenGL.EnableFaceCulling(false);
 
         // Init Shader
         Shader.Init();

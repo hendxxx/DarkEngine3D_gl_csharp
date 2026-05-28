@@ -1015,13 +1015,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                          * Matrix4x4.CreateTranslation(Position);
 
 
-            OpenGL.EnableFaceCulling(false);
+             
 
             // For skinned meshes the joint matrices already fold in every node
             // transform, so the model matrix is just the object placement. For
             // non-skinned meshes we additionally apply the mesh node's global.
             bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
-
+            OpenGL.EnableFaceCulling(true);
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
                 var mesh = GpuData.Meshes[mi];
@@ -1054,17 +1054,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 0);
                 }
 
-                //if (mesh.Material.DoubleSided)  OpenGL.EnableFaceCulling(false);
-                //else  OpenGL.EnableFaceCulling(true);
+                //if (mesh.Material.DoubleSided) OpenGL.EnableFaceCulling(false); 
 
-                    GL.BindVertexArray(mesh.VAO);
+                GL.BindVertexArray(mesh.VAO);
                 if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
                 else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
             }
-
+            OpenGL.EnableFaceCulling(false);
             GL.BindVertexArray(0);
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0); 
-            OpenGL.EnableFaceCulling(true);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);  
         }
     }
 }

@@ -45,7 +45,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public ObjectManager()
         {
-            _shaderProgram      = GltfShader.GetProgram();
+            _shaderProgram      = GltfShader.GetShaderProgram();
             _modelLoc           = GL.GetUniformLocation(_shaderProgram, "model");
             _viewLoc            = GL.GetUniformLocation(_shaderProgram, "view");
             _projLoc            = GL.GetUniformLocation(_shaderProgram, "projection");
@@ -75,7 +75,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // -----------------------------------------------------------------------
-        public GltfData LoadAnimationFile(string path)
+        public static GltfData LoadAnimationFile(string path)
         {
             Console.WriteLine($"[ObjectManager] Loading animation file: {path}");
             try
@@ -337,6 +337,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             CulledObjects = 0;
 
             GL.UseProgram(_shaderProgram);
+            //// --- MODEL MATRIX ---
+            //Matrix4x4 modelMatrix = Matrix4x4.Identity;
+            //int locModel = GL.GetUniformLocation(_shaderProgram, "model");
+            //GL.UniformMatrix4fv(locModel, 1, false, (float*)Unsafe.AsPointer(ref modelMatrix));
+
+            //// --- NORMAL MATRIX (3x3) ---
+            //Matrix4x4.Invert(modelMatrix, out Matrix4x4 inv);
+            //Matrix4x4 nm4 = Matrix4x4.Transpose(inv);
+            //Helpers.Matrix3x3 normalMatrix = new Helpers.Matrix3x3(
+            //    nm4.M11, nm4.M12, nm4.M13,
+            //    nm4.M21, nm4.M22, nm4.M23,
+            //    nm4.M31, nm4.M32, nm4.M33
+            //);
+
+            //int locNormal = GL.GetUniformLocation(_shaderProgram, "normalMatrix");
+            //GL.UniformMatrix3fv(locNormal, 1, false, (float*)Unsafe.AsPointer(ref normalMatrix));
+
 
             var view = camera.GetViewMatrix();
             var proj = camera.GetProjectionMatrix();
@@ -416,7 +433,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // -----------------------------------------------------------------------
-        public void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
+        public static void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
         {
 
             float terrainY = terrain.GetHeightAt(obj.Position.X, obj.Position.Z);

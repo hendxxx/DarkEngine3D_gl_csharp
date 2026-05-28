@@ -165,15 +165,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 timer = 0;
             }
         } 
+
         public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager? objectManager = null)
         {
             uint shaderProgram = Shader.GetShaderProgram();
+            int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
+            int viewLocation = GL.GetUniformLocation(shaderProgram, "view");
+             
 
-            // Pastikan nama string "view" dan "projection" sama persis dengan yang ada di kode GLSL Anda
-            int viewLocation = Shader.GetView();
-            int projectionLocation = Shader.GetProjection();
-
-            PostProcess.Init(_windowWidth, _windowHeight); // Default size, can be resized later
+            //PostProcess.Init(_windowWidth, _windowHeight); // Default size, can be resized later
              
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
@@ -203,7 +203,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 //// 4. Ensure terrain shader has current view/projection uniforms bound 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
 
-                int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
+                int renderedTris = gameTerrainChunk.Render(camera, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
 
                 light.Update(deltaTime , camera.Position);
 
@@ -221,7 +221,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
 
                 }
-                 
+
                 //PostProcess.Draw(_windowWidth, _windowHeight); // Draw the scene to the default framebuffer (screen) with post-processing effects
 
                 // --- HUD SYSTEM ---
@@ -231,7 +231,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
 
                 // 1. Gambar Background (Box)
-                hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
+                //hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
 
                 // 2. Gambar Tulisan di atasnya
                 //hud.DrawText("Halo Dunia", 20, 30, new Vector3(1, 1, 1)); // Teks Putih

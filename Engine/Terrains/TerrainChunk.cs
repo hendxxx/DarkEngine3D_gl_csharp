@@ -291,7 +291,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             return frozenPlanes;
         }
 
-        public int Render(Camera camera, float deltaTime, float aspect, Plane[]? frozenPlanes)
+        public int Render(Camera camera, float aspect, Plane[]? frozenPlanes)
         {
             int totalTriangles = 0;
 
@@ -518,34 +518,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             GL.BindVertexArray(0);
         }
-
         public unsafe void RenderFrustumDebug(Vector3[] c, uint shader, int vLoc, int pLoc, Camera camera)
         {
-            float r = 1.0f; float g = 0.0f; float b = 0.0f;
-            // Normal dummy (menghadap atas) agar lighting shader tidak menghasilkan warna hitam
-            float nx = 0.0f; float ny = 1.0f; float nz = 0.0f;
-
-            // Gunakan format 9 float per titik: Pos(3), Normal(3), Color(3)
             float[] lineData =
             [
-                // Near Plane
-                c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b, c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b,
-                c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b, c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b,
-                c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b, c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b,
-                c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b, c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b,
-                // Far Plane
-                c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b, c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b,
-                c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b, c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b,
-                c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b, c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b,
-                c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b, c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b,
+                // Near
+                c[0].X, c[0].Y, c[0].Z,  c[1].X, c[1].Y, c[1].Z,
+                c[1].X, c[1].Y, c[1].Z,  c[2].X, c[2].Y, c[2].Z,
+                c[2].X, c[2].Y, c[2].Z,  c[3].X, c[3].Y, c[3].Z,
+                c[3].X, c[3].Y, c[3].Z,  c[0].X, c[0].Y, c[0].Z,
+
+                // Far
+                c[4].X, c[4].Y, c[4].Z,  c[5].X, c[5].Y, c[5].Z,
+                c[5].X, c[5].Y, c[5].Z,  c[6].X, c[6].Y, c[6].Z,
+                c[6].X, c[6].Y, c[6].Z,  c[7].X, c[7].Y, c[7].Z,
+                c[7].X, c[7].Y, c[7].Z,  c[4].X, c[4].Y, c[4].Z,
+
                 // Bridge
-                c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b, c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b,
-                c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b, c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b,
-                c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b, c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b,
-                c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b, c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b
+                c[0].X, c[0].Y, c[0].Z,  c[4].X, c[4].Y, c[4].Z,
+                c[1].X, c[1].Y, c[1].Z,  c[5].X, c[5].Y, c[5].Z,
+                c[2].X, c[2].Y, c[2].Z,  c[6].X, c[6].Y, c[6].Z,
+                c[3].X, c[3].Y, c[3].Z,  c[7].X, c[7].Y, c[7].Z,
             ];
 
-            uint vao, vbo;
+            // Init VAO/VBO
             lock (debugBufferLock)
             {
                 if (debugVao == 0 || debugVbo == 0)
@@ -553,40 +549,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     fixed (uint* pVao = &debugVao) GL.GenVertexArrays(1, pVao);
                     fixed (uint* pVbo = &debugVbo) GL.GenBuffers(1, pVbo);
                 }
-                vao = debugVao;
-                vbo = debugVbo;
             }
-
-            GL.BindVertexArray(vao);
-            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
-
-            fixed (void* ptr = lineData)
-            {
-                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
-            }
-
-            int stride = 9 * sizeof(float); // 36 bytes
-
-            // Atribut 0: Posisi
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
-
-            // Atribut 1: Normal (Sangat penting agar shader tidak hitam)
-            GL.EnableVertexAttribArray(1);
-            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
-
-            // Atribut 2: Warna
-            GL.EnableVertexAttribArray(2);
-            GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, stride, (void*)(6 * sizeof(float)));
 
             GL.UseProgram(shader);
 
+            // Set warna frustum
+            int colorLoc = GL.GetUniformLocation(shader, "lineColor");
+            GL.Uniform3f(colorLoc, 1.0f, 0.0f, 0.0f); // merah
+
+            // Upload matrices
             Matrix4x4 v = camera.GetViewMatrix();
             Matrix4x4 p = camera.GetProjectionMatrix();
 
-            // Pastikan transpose = true untuk System.Numerics
-            GL.UniformMatrix4fv(vLoc, 1, true, (float*)&v);
-            GL.UniformMatrix4fv(pLoc, 1, true, (float*)&p);
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&p);
+
+            // Upload vertex data
+            GL.BindVertexArray(debugVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
+
+            fixed (void* ptr = lineData)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+
+            // Posisi saja
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
 
             GL.DrawArrays(Const.GL_LINES, 0, 24);
 
@@ -594,19 +581,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
 
-        // Menambahkan method untuk menggambar kotak wireframe per chunk
-        private unsafe void DrawChunkBoundingBox(int chunkIndexX, int chunkIndexZ, bool usingFrozen, bool insideFrozen, bool insideCamera, Camera camera, float aspect)
+
+        private unsafe void DrawChunkBoundingBox(
+     int chunkIndexX, int chunkIndexZ,
+     bool usingFrozen, bool insideFrozen, bool insideCamera,
+     Camera camera, float aspect)
         {
             float minX = (chunkIndexX * ChunkSize) - _halfMapSize;
             float maxX = minX + ChunkSize;
             float minZ = (chunkIndexZ * ChunkSize) - _halfMapSize;
             float maxZ = minZ + ChunkSize;
 
-            // Gunakan MinY/MaxY asli dari TerrainData agar kotak pas membungkus bukit
-            float minY = -5.0f;
-            float maxY = 5.0f;
+            float minY = -5f;
+            float maxY = 5f;
 
-            // try to use actual chunk values if available
             if (worldMap != null)
             {
                 var chunk = worldMap[chunkIndexX, chunkIndexZ];
@@ -617,47 +605,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
             }
 
-            // 8 Titik Sudut
             Vector3[] c =
             [
-                new(minX, minY, minZ), new(maxX, minY, minZ), new(maxX, maxY, minZ), new(minX, maxY, minZ),
-                new(minX, minY, maxZ), new(maxX, minY, maxZ), new(maxX, maxY, maxZ), new(minX, maxY, maxZ)
+                new(minX, minY, minZ), new(maxX, minY, minZ),
+                new(maxX, maxY, minZ), new(minX, maxY, minZ),
+
+                new(minX, minY, maxZ), new(maxX, minY, maxZ),
+                new(maxX, maxY, maxZ), new(minX, maxY, maxZ)
             ];
 
-            float r = 1.0f; float g = 0.0f; float b = 0.0f;
-            // --- LOGIKA WARNA VIA UNIFORM ---
-            Vector3 finalColor;
-            if (usingFrozen)
-                finalColor = insideFrozen ? new Vector3(0, 0, 1) : new Vector3(1, 1, 0); // Blue / Yellow
-            else
-                finalColor = insideCamera ? new Vector3(0, 0, 1) : new Vector3(1, 1, 0); // Blue / Yellow
+            // Warna via uniform
+            Vector3 finalColor =
+                usingFrozen
+                ? (insideFrozen ? new Vector3(0, 0, 1) : new Vector3(1, 1, 0))
+                : (insideCamera ? new Vector3(0, 0, 1) : new Vector3(1, 1, 0));
 
-            r = finalColor.X; g = finalColor.Y; b = finalColor.Z;
-
-
-            // Normal dummy (menghadap atas) agar lighting shader tidak menghasilkan warna hitam
-            float nx = 0.0f; float ny = 1.0f; float nz = 0.0f;
-
-            // Gunakan format 9 float per titik: Pos(3), Normal(3), Color(3)
+            // 24 titik garis (12 edges)
             float[] lineData =
             [
-                // Near Plane
-                c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b, c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b,
-                c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b, c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b,
-                c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b, c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b,
-                c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b, c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b,
-                // Far Plane
-                c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b, c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b,
-                c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b, c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b,
-                c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b, c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b,
-                c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b, c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b,
+                // Near
+                c[0].X, c[0].Y, c[0].Z,  c[1].X, c[1].Y, c[1].Z,
+                c[1].X, c[1].Y, c[1].Z,  c[2].X, c[2].Y, c[2].Z,
+                c[2].X, c[2].Y, c[2].Z,  c[3].X, c[3].Y, c[3].Z,
+                c[3].X, c[3].Y, c[3].Z,  c[0].X, c[0].Y, c[0].Z,
+
+                // Far
+                c[4].X, c[4].Y, c[4].Z,  c[5].X, c[5].Y, c[5].Z,
+                c[5].X, c[5].Y, c[5].Z,  c[6].X, c[6].Y, c[6].Z,
+                c[6].X, c[6].Y, c[6].Z,  c[7].X, c[7].Y, c[7].Z,
+                c[7].X, c[7].Y, c[7].Z,  c[4].X, c[4].Y, c[4].Z,
+
                 // Bridge
-                c[0].X, c[0].Y, c[0].Z, nx, ny, nz, r, g, b, c[4].X, c[4].Y, c[4].Z, nx, ny, nz, r, g, b,
-                c[1].X, c[1].Y, c[1].Z, nx, ny, nz, r, g, b, c[5].X, c[5].Y, c[5].Z, nx, ny, nz, r, g, b,
-                c[2].X, c[2].Y, c[2].Z, nx, ny, nz, r, g, b, c[6].X, c[6].Y, c[6].Z, nx, ny, nz, r, g, b,
-                c[3].X, c[3].Y, c[3].Z, nx, ny, nz, r, g, b, c[7].X, c[7].Y, c[7].Z, nx, ny, nz, r, g, b
+                c[0].X, c[0].Y, c[0].Z,  c[4].X, c[4].Y, c[4].Z,
+                c[1].X, c[1].Y, c[1].Z,  c[5].X, c[5].Y, c[5].Z,
+                c[2].X, c[2].Y, c[2].Z,  c[6].X, c[6].Y, c[6].Z,
+                c[3].X, c[3].Y, c[3].Z,  c[7].X, c[7].Y, c[7].Z,
             ];
 
+            // Init VAO/VBO
             lock (debugBufferLock)
             {
                 if (debugVao == 0 || debugVbo == 0)
@@ -667,47 +652,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
             }
 
+            GL.UseProgram(lineShaderProgram);
+
+            // Set warna
+            int colorLoc = GL.GetUniformLocation(lineShaderProgram, "lineColor");
+            GL.Uniform3f(colorLoc, finalColor.X, finalColor.Y, finalColor.Z);
+
+            // Upload matrices
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 p = camera.GetProjectionMatrix();
+
+            GL.UniformMatrix4fv(lineViewLocation, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(lineProjLocation, 1, false, (float*)&p);
+
+            // Upload vertex data
             GL.BindVertexArray(debugVao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
 
             fixed (void* ptr = lineData)
-            {
                 GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
-            }
 
-            int stride = 9 * sizeof(float); // 36 bytes
-
-            // Atribut 0: Posisi
+            // Posisi saja
             GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
-
-            // Atribut 1: Normal (Sangat penting agar shader tidak hitam)
-            GL.EnableVertexAttribArray(1);
-            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
-
-            // Atribut 2: Warna
-            GL.EnableVertexAttribArray(2);
-            GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, stride, (void*)(6 * sizeof(float)));
-
-            GL.UseProgram(lineShaderProgram);
-
-            int lineColorLocation = GL.GetUniformLocation(lineShaderProgram, "lineColor");
-
-            // Pastikan Anda memuat glUniform3f ke interop GL 
-            GL.Uniform3f(lineColorLocation, finalColor.X, finalColor.Y, finalColor.Z);
-
-            // Kirim Matriks
-            Matrix4x4 v = camera.GetViewMatrix();
-            Matrix4x4 p = camera.GetProjectionMatrix();
-            unsafe
-            {
-                GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
-                GL.UniformMatrix4fv(lineProjLocation, 1, true, (float*)&p);
-            }
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
 
             GL.DrawArrays(Const.GL_LINES, 0, 24);
 
             GL.BindVertexArray(0);
+
+            // Kembalikan shader terrain
+            GL.UseProgram(Shader.GetShaderProgram());
         }
 
 

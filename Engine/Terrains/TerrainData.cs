@@ -31,13 +31,56 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         public int TriangleCount => _vertexCounts[0] > 0 ? _vertexCounts[0] / 3 : MaxTriangleCount;
 
         private Texture[] TerrainTex = [];
- 
+
+        static int tex0Loc;
+        static int tex1Loc;
+        static int tex2Loc;
+        static int tex3Loc;
+        static int tex4Loc;
+        static int tex5Loc;
+        static int heightScaleLoc;
+        static int showLODColorLoc;
+        static int lodLevelLoc;
+
+        public static int GetTexLoc(int index)
+        {
+            return index switch
+            {
+                0 => tex0Loc,
+                1 => tex1Loc,
+                2 => tex2Loc,
+                3 => tex3Loc,
+                4 => tex4Loc,
+                5 => tex5Loc,
+                _ => tex0Loc
+            };
+        }
+        public static int GetHeightScaleLoc()
+        {
+            return heightScaleLoc;
+        }
+
+        public static int GetShowLODColorLoc() => showLODColorLoc;
+        public static int GetLodLevelLoc() => lodLevelLoc;
+
         // Kita gunakan List sementara saat Generate, lalu upload ke Native Memory
         // subdivisions: number of subdivisions per edge inside each unit quad.
         // subdivisions = 1 => original (one quad = 2 triangles)
         // subdivisions = 2 => each unit quad split into 2x2 small quads => 8 triangles per original quad
         public void Generate(int ChunkSize, int worldStartX, int worldStartZ, MapLoader mapLoader, Texture[] _terrainTextures)
         {
+            uint shaderProgram = Shader.GetShaderProgram();
+
+            tex0Loc = GL.GetUniformLocation(shaderProgram, "tex0");
+            tex1Loc = GL.GetUniformLocation(shaderProgram, "tex1");
+            tex2Loc = GL.GetUniformLocation(shaderProgram, "tex2");
+            tex3Loc = GL.GetUniformLocation(shaderProgram, "tex3");
+            tex4Loc = GL.GetUniformLocation(shaderProgram, "tex4");
+            tex5Loc = GL.GetUniformLocation(shaderProgram, "tex5");
+            heightScaleLoc = GL.GetUniformLocation(shaderProgram, "heightScale");
+            showLODColorLoc = GL.GetUniformLocation(shaderProgram, "showLODColor");
+            lodLevelLoc = GL.GetUniformLocation(shaderProgram, "lodLevel");
+
             TerrainTex = _terrainTextures;
             int size = ChunkSize;
 
@@ -360,18 +403,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             actualLod = Math.Clamp(actualLod, 0, NUM_LODS - 1);
 
-            int heightScaleLoc = Shader.GetHeightScaleLoc();
+            int heightScaleLoc = GetHeightScaleLoc();
             if (heightScaleLoc != -1)
             {
                 GL.Uniform3f(heightScaleLoc, MapLoader.HeightScale, 0f, 0f);
             }
 
-            int showLODColorLoc = Shader.GetShowLODColorLoc();
+            int showLODColorLoc = GetShowLODColorLoc();
             if (showLODColorLoc != -1)
             {
                 GL.Uniform1i(showLODColorLoc, Keyboard.GetShowLODColor() ? 1 : 0);
             }
-            int lodLevelLoc = Shader.GetLodLevelLoc();
+            int lodLevelLoc = GetLodLevelLoc();
             if (lodLevelLoc != -1)
             {
                 GL.Uniform1i(lodLevelLoc, actualLod);
@@ -382,10 +425,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             {
                 GL.ActiveTexture(textureUnits[i]);
                 GL.BindTexture(Const.GL_TEXTURE_2D, TerrainTex[i].ID);
-                GL.Uniform1i(Shader.GetTexLoc(i), i);
+                GL.Uniform1i(GetTexLoc(i), i);
             }
 
-            int useTextureLoc = Shader.GetUseTexture();
+            int useTextureLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "useTexture");
+             
             GL.Uniform1i(useTextureLoc, 1);
 
             // Draw Mesh
@@ -398,10 +442,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Culling disabled because skirt winding is not enforced.
             if (SkirtVAOs[actualLod] != 0 && _skirtVertexCounts[actualLod] > 0  )
             {
-                OpenGL.EnableFaceCulling(false);
+                OpenGL.EnableFaceCulling(false,true); 
                 GL.BindVertexArray(SkirtVAOs[actualLod]);
-                GL.DrawArrays(Const.GL_TRIANGLES, 0, _skirtVertexCounts[actualLod]);
-                OpenGL.EnableFaceCulling(true);
+                GL.DrawArrays(Const.GL_TRIANGLES, 0, _skirtVertexCounts[actualLod]); 
+                OpenGL.EnableFaceCulling(true,false);
+
             }
 
             GL.BindVertexArray(0);

@@ -7,6 +7,15 @@ using System.Runtime.InteropServices;
 
 namespace DarkEngine3D_gl_csharp.Engine.Helpers
 {
+    public struct Matrix3x3(
+        float m11, float m12, float m13,
+        float m21, float m22, float m23,
+        float m31, float m32, float m33)
+        {
+            public float M11 = m11, M12 = m12, M13 = m13;
+            public float M21 = m21, M22 = m22, M23 = m23;
+            public float M31 = m31, M32 = m32, M33 = m33;
+        }
     public class TerrainsHelpers
     {
         // Ini untuk Noice
@@ -28,7 +37,70 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         }
          
     }
+    public class ShadeerHelpers
+    {
+        public static uint LoadShader(string vertexPath, string fragmentPath)
+        {
+            string vSource = File.ReadAllText(vertexPath);
+            string fSource = File.ReadAllText(fragmentPath);
 
+            // Compile vertex shader
+            uint vs = GL.CreateShader(Const.GL_VERTEX_SHADER);
+            GL.ShaderSource(vs, vSource);
+            GL.CompileShader(vs);
+            CheckShader(vs, $"Vertex Shader ({vertexPath})");
+
+            // Compile fragment shader
+            uint fs = GL.CreateShader(Const.GL_FRAGMENT_SHADER);
+            GL.ShaderSource(fs, fSource);
+            GL.CompileShader(fs);
+            CheckShader(fs, $"Fragment Shader ({fragmentPath})");
+
+            // Link program
+            uint program = GL.CreateProgram();
+            GL.AttachShader(program, vs);
+            GL.AttachShader(program, fs);
+            GL.LinkProgram(program);
+            CheckProgram(program, $"Shader Program ({vertexPath} + {fragmentPath})");
+
+            // Optional: delete shader objects after linking
+            GL.DeleteShader(vs);
+            GL.DeleteShader(fs);
+
+            return program;
+        }
+        public static void CheckShader(uint shader, string name)
+        {
+            int status = 0;
+
+            unsafe
+            {
+                GL.GetShaderiv(shader, Const.GL_COMPILE_STATUS, &status);
+            }
+
+            if (status == 0)
+            {
+                string log = GL.GetShaderInfoLog(shader);
+                Console.WriteLine($"[SHADER COMPILE ERROR] {name}\n{log}");
+            }
+        }
+
+        public static void CheckProgram(uint program, string name)
+        {
+            int status = 0;
+
+            unsafe
+            {
+                GL.GetProgramiv(program, Const.GL_LINK_STATUS, &status);
+            }
+
+            if (status == 0)
+            {
+                string log = GL.GetProgramInfoLog(program);
+                Console.WriteLine($"[PROGRAM LINK ERROR] {name}\n{log}");
+            }
+        }
+    }
     public class ObjectHelpers
     {
         // ===========================================================================

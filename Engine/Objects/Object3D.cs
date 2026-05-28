@@ -44,7 +44,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             useTexture = GL.GetUniformLocation(shaderProgram, "useTexture");
              
-            Vertex[] vertices = new Vertex[] {
+            Vertex[] vertices = [
                 // 1) Kiri Bawah
                 new(-0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,  0, 0),
 
@@ -53,7 +53,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // 3) Atas (Puncak)
                 new( 0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, 1.0f,  0, 0)
-            };
+            ];
 
 
             // Buat VBO di GPU
@@ -100,8 +100,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         public void Draw(float deltaTime, nint window,float _moveSpeed)
-        { 
-             
+        {
+            OpenGL.EnableFaceCulling(false);
             // If Shift is held, boost the movement speed for the object as well
             bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
                                 || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
@@ -125,8 +125,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // GAMBAR!
             GL.BindVertexArray(VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount); 
-            GL.BindVertexArray(0);  
-             
+            GL.BindVertexArray(0);
+            OpenGL.EnableFaceCulling(true);
+
         }
     }
 }
