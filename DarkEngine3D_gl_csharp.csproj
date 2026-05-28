@@ -199,6 +199,12 @@
     <None Update="Artifacts\objects\Women.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\shaders\postPro_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\shaders\postPro_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\shaders\fragment_shader.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

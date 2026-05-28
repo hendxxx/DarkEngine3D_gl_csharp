@@ -93,6 +93,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void SetViewAndProjection(int viewLocation, int projectionLocation)
         {
+            GL.UseProgram(Shader.GetShaderProgram());
             Matrix4x4 view = GetViewMatrix();
             Matrix4x4 projection = GetProjectionMatrix();
 

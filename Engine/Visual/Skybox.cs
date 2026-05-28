@@ -59,7 +59,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float currentAspect = camera.GetAspect();
 
             float currentWeatherVal = Keyboard.GetCurrentWeather();
-            
+
+            GL.UseProgram(Shader.GetSkyShaderProgram());
+
             totalTime += deltaTime;
             GL.Disable(Const.GL_DEPTH_TEST); // Draw without depth testing
             OpenGL.EnableFaceCulling(false);

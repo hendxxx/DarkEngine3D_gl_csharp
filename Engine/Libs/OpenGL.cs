@@ -14,8 +14,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             // Mengisi secara manual satu per satu jauh lebih aman dari crash
             GL.ClearColorPtr = GetProcAddress(glLib, "glClearColor");
             GL.ClearPtr = GetProcAddress(glLib, "glClear");
-            GL.GenBuffersPtr = GetProcAddress(glLib, "glGenBuffers");
-            GL.GenBufferPtr = GetProcAddress(glLib, "glGenBuffer");
+            GL.GenBuffersPtr = GetProcAddress(glLib, "glGenBuffers"); 
             GL.BindBufferPtr = GetProcAddress(glLib, "glBindBuffer");
             GL.BufferDataPtr = GetProcAddress(glLib, "glBufferData");
             GL.CreateShaderPtr = GetProcAddress(glLib, "glCreateShader");
@@ -34,8 +33,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.EnableVertexAttribArrayPtr = GetProcAddress(glLib, "glEnableVertexAttribArray");
             GL.DisableVertexAttribArrayPtr = GetProcAddress(glLib, "glDisableVertexAttribArray");
 
-            GL.DrawArraysPtr = GetProcAddress(glLib, "glDrawArrays");
-
+            GL.DrawArraysPtr = GetProcAddress(glLib, "glDrawArrays"); 
             GL.GenVertexArraysPtr = GetProcAddress(glLib, "glGenVertexArrays");
             GL.BindVertexArrayPtr = GetProcAddress(glLib, "glBindVertexArray");
             GL.EnablePtr = GetProcAddress(glLib, "glEnable");
@@ -71,6 +69,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.PixelStorePtr = GetProcAddress(glLib, "glPixelStorei");
             GL.BufferSubDataPtr = GetProcAddress(glLib, "glBufferSubData");
             GL.PolygonOffsetPtr = GetProcAddress(glLib, "glPolygonOffset");
+             
+            GL.GenFramebuffersPtr = GetProcAddress(glLib, "glGenFramebuffers");
+            GL.BindFramebufferPtr = GetProcAddress(glLib, "glBindFramebuffer");
+            GL.FramebufferTexture2DPtr = GetProcAddress(glLib, "glFramebufferTexture2D");
+            GL.DrawBuffersPtr = GetProcAddress(glLib, "glDrawBuffers");
+            GL.CheckFramebufferStatusPtr = GetProcAddress(glLib, "glCheckFramebufferStatus");
+            GL.DepthMaskPtr = GetProcAddress(glLib, "glDepthMask");
+            GL.DeleteFramebuffersPtr = GetProcAddress(glLib, "glDeleteFramebuffers");
+            GL.GenRenderbuffersPtr = GetProcAddress(glLib, "glGenRenderbuffers");
+            GL.BindRenderbufferPtr = GetProcAddress(glLib, "glBindRenderbuffer");
+            GL.RenderbufferStoragePtr = GetProcAddress(glLib, "glRenderbufferStorage");
+            GL.FramebufferRenderbufferPtr = GetProcAddress(glLib, "glFramebufferRenderbuffer");
+
             return glLib;
         }
 

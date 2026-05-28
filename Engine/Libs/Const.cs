@@ -3,6 +3,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
     public static class Const
     {
         public const uint GL_FRONT_AND_BACK = 0x0408;
+        public const uint GL_FRONT = 0x0404;
+        public const uint GL_BACK = 0x0405;
+
         public const uint GL_LINE = 0x1B01;
         public const uint GL_FILL = 0x1B02;
         public const uint GL_DYNAMIC_DRAW = 0x88E4;
@@ -33,8 +36,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_DEPTH_CLAMP = 0x864F;
 
-        public const uint GL_CULL_FACE = 0x0B44;
-        public const uint GL_BACK = 0x0405;
+        public const uint GL_CULL_FACE = 0x0B44; 
         public const uint GL_CCW = 0x0901;
         public const uint GL_CW = 0x0900;
 
@@ -97,7 +99,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_LUMINANCE = 0x1909;
         public const uint GL_ALPHA = 0x1906;
         public const uint GL_NEAREST = 0x2600;
-        public const uint GL_UNPACK_ALIGNMENT = 0x0CF2;
+        public const uint GL_UNPACK_ALIGNMENT = 0x0CF5;
 
         public const uint MIN_FILTER = 0x2801;
         public const uint MAG_FILTER = 0x2800;
@@ -121,5 +123,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const int GL_POLYGON_OFFSET_FILL = 0x8037;
         public const int GL_ELEMENT_ARRAY_BUFFER = 0x8893;
 
+        public const uint GL_FRAMEBUFFER = 0x8D40;
+        public const uint GL_COLOR_ATTACHMENT0 = 0x8CE0;
+        public const uint GL_DEPTH_ATTACHMENT = 0x8D00;
+        public const uint GL_RGBA16F = 0x881A;
+        public const uint GL_DEPTH_COMPONENT24 = 0x81A6;
+        public const uint GL_DEPTH_COMPONENT = 0x1902;
+
+        public const uint GL_FRAMEBUFFER_COMPLETE = 0x8CD5;
+
+        public const uint GL_RGBA8 = 0x8058; 
+        public const uint GL_DEPTH_STENCIL_ATTACHMENT = 0x821A; 
+        public const uint GL_DEPTH_STENCIL = 0x84F9;
+        public const uint GL_DEPTH24_STENCIL8 = 0x88F0;
+        public const uint GL_UNSIGNED_INT_24_8 = 0x84FA;
+        public const uint GL_RENDERBUFFER = 0x8D41;
     }
 }

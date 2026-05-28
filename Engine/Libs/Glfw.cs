@@ -164,8 +164,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 frameCount = 0;
                 timer = 0;
             }
-        }
-
+        } 
         public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager? objectManager = null)
         {
             uint shaderProgram = Shader.GetShaderProgram();
@@ -174,16 +173,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             int viewLocation = Shader.GetView();
             int projectionLocation = Shader.GetProjection();
 
+            PostProcess.Init(_windowWidth, _windowHeight); // Default size, can be resized later
+             
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             while (glfwWindow(window) == 0)
             {
-
-                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
-                GL.ClearColor(1.0f, 0.0f, 0.0f, 1.0f); // Paksa seluruh layar jadi MERAH
-
                 deltaTime = Glfw.GetDeltaTime();
 
+                //PostProcess.BindSceneFBO(_windowWidth, _windowHeight); 
+                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f); // Paksa seluruh layar jadi MERAH
+                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+               
                 // 1. Update inputs (mouse + keyboard) BEFORE any rendering so camera is stable
                 Mouse.Update(window, camera);
                 Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk);
@@ -199,16 +200,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures);
 
-                // 4. Ensure terrain shader has current view/projection uniforms bound
-                GL.UseProgram(shaderProgram);
+                //// 4. Ensure terrain shader has current view/projection uniforms bound 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
 
                 int renderedTris = gameTerrainChunk.Render(camera, deltaTime, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
-                 
-                light.Update(deltaTime ,camera.Position);
-                // --------------------
 
-                 
+                light.Update(deltaTime , camera.Position);
+
                 objTriangle.Draw(deltaTime, window, 5.0f);
 
                 // ---- glTF Object Manager (autonomous wandering agents) ----
@@ -221,8 +219,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.UpdateAgents(deltaTime, gameTerrainChunk);
                     objectManager.Draw(camera, light);
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
-               
+
                 }
+                 
+                //PostProcess.Draw(_windowWidth, _windowHeight); // Draw the scene to the default framebuffer (screen) with post-processing effects
 
                 // --- HUD SYSTEM ---
                 int totalMapTris = TerrainChunk.GetTotalMapTriangles();
@@ -231,7 +231,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
 
                 // 1. Gambar Background (Box)
-                //hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
+                hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
 
                 // 2. Gambar Tulisan di atasnya
                 //hud.DrawText("Halo Dunia", 20, 30, new Vector3(1, 1, 1)); // Teks Putih
@@ -257,12 +257,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 //     Console.ResetColor();
                 // }
 
-
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();
             }
 
             Console.WriteLine("Engine Shutdown.");
         }
+
+
     }
 }

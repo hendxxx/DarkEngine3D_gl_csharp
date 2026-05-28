@@ -26,7 +26,7 @@ public unsafe class Program
         OpenGL.Init();
         OpenGL.CacheGlfwFunctions(glfwLib);
 
-        OpenGL.EnableDepthTest(true);
+        //OpenGL.EnableDepthTest(true);
         OpenGL.EnableFaceCulling(true);
 
         // Init Shader
@@ -34,7 +34,7 @@ public unsafe class Program
         Shader.ActiveShader();
         
         // Init Camera
-        Camera camera = new(0, 50, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 10000.0f);
+        Camera camera = new(0, 10, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 10000.0f);
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;
@@ -110,7 +110,7 @@ public unsafe class Program
         objectManager.Init(gameTerrainChunk);
 
         // Init Loop
-        Glfw.Loop(SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud, objectManager);
+        Glfw.Loop(SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud,objectManager);
          
         // Shutdown
         Console.WriteLine("Engine Shutdown.");

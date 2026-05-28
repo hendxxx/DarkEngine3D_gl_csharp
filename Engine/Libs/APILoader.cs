@@ -12,7 +12,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr ClearPtr;
         internal static IntPtr GenBuffersPtr;
         internal static IntPtr BindBufferPtr;
-        internal static IntPtr GenBufferPtr;
         internal static IntPtr BufferDataPtr;
         internal static IntPtr GetUniformLocationPtr;
         internal static IntPtr UniformMatrix4fvPtr;
@@ -24,7 +23,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr EnableVertexAttribArrayPtr;
         internal static IntPtr DisableVertexAttribArrayPtr;
         internal static IntPtr DrawArraysPtr;
-        internal static IntPtr GenVertexArraysPtr;
+        internal static IntPtr GenVertexArraysPtr; 
         internal static IntPtr BindVertexArrayPtr;
         internal static IntPtr EnablePtr;
         internal static IntPtr DisablePtr;
@@ -59,8 +58,64 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr GetProgramivPtr = IntPtr.Zero;
         internal static IntPtr GetProgramInfoLogPtr = IntPtr.Zero;
         internal static IntPtr GetErrorPtr = IntPtr.Zero;
+        
+        internal static IntPtr GenFramebuffersPtr = IntPtr.Zero;
+        internal static IntPtr BindFramebufferPtr = IntPtr.Zero;
+        internal static IntPtr FramebufferTexture2DPtr = IntPtr.Zero;
+        internal static IntPtr DrawBuffersPtr = IntPtr.Zero;
+        internal static IntPtr CheckFramebufferStatusPtr = IntPtr.Zero;
+        internal static IntPtr DepthMaskPtr = IntPtr.Zero;
+        internal static IntPtr DeleteFramebuffersPtr = IntPtr.Zero;
+        internal static IntPtr GenRenderbuffersPtr = IntPtr.Zero;
+        internal static IntPtr BindRenderbufferPtr = IntPtr.Zero;
+        internal static IntPtr RenderbufferStoragePtr = IntPtr.Zero;
+        internal static IntPtr FramebufferRenderbufferPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void BindRenderbuffer(uint target, uint renderbuffer)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BindRenderbufferPtr)(target, renderbuffer);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void RenderbufferStorage(uint target, uint internalformat, int width, int height)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, int, int, void>)RenderbufferStoragePtr)(target, internalformat, width, height);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void FramebufferRenderbuffer(uint target, uint attachment, uint renderbuffertarget, uint renderbuffer)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, uint, uint, void>)FramebufferRenderbufferPtr)(target, attachment, renderbuffertarget, renderbuffer);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GenRenderbuffers(int n, uint* renderbuffers)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenRenderbuffersPtr)(n, renderbuffers);   
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DeleteFramebuffers(int n, uint* framebuffers)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteFramebuffersPtr)(n, framebuffers);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DepthMask(bool flag)
+            => ((delegate* unmanaged[Cdecl]<byte, void>)DepthMaskPtr)((byte)(flag ? 1 : 0));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int CheckFramebufferStatus(uint target)
+            => ((delegate* unmanaged[Cdecl]<uint, int>)CheckFramebufferStatusPtr)(target);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GenFramebuffers(int n, uint* framebuffers)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenFramebuffersPtr)(n, framebuffers);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void BindFramebuffer(uint target, uint framebuffer)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BindFramebufferPtr)(target, framebuffer);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void FramebufferTexture2D(uint target, uint attachment, uint textarget, uint texture, int level)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, uint, uint, int, void>)FramebufferTexture2DPtr)(target, attachment, textarget, texture, level);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DrawBuffers(int n, uint* bufs)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DrawBuffersPtr)(n, bufs); 
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ClearColor(float r, float g, float b, float a)
             => ((delegate* unmanaged[Cdecl]<float, float, float, float, void>)ClearColorPtr)(r, g, b, a);
@@ -71,10 +126,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GenBuffers(int n, uint* buffers)
             => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenBuffersPtr)(n, buffers);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void GenBuffer(uint* buffer)
-            => ((delegate* unmanaged[Cdecl]<uint*, void>)GenBufferPtr)(buffer);
          
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void BindBuffer(uint target, uint buffer)
@@ -165,9 +216,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static void DisableVertexAttribArray(uint index)
             => ((delegate* unmanaged[Cdecl]<uint, void>)DisableVertexAttribArrayPtr)(index);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DrawArrays(uint mode, int first, int count)
-            => ((delegate* unmanaged[Cdecl]<uint, int, int, void>)DrawArraysPtr)(mode, first, count);
+       
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DrawElements(uint mode, int count, uint type, void* indices)
@@ -177,6 +226,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static void GenVertexArrays(int n, uint* arrays)
             => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenVertexArraysPtr)(n, arrays);
 
+       
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void BindVertexArray(uint array)
             => ((delegate* unmanaged[Cdecl]<uint, void>)BindVertexArrayPtr)(array);
@@ -213,10 +263,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static void Uniform3f(int location, float v0, float v1, float v2)
             => ((delegate* unmanaged[Cdecl]<int, float, float, float, void>)Uniform3fPtr)(location, v0, v1, v2);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Viewport(int x, int y, int width, int height)
-            => ((delegate* unmanaged<int, int, int, int, void>)ViewportPtr)(x, y, width, height);
-
+         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GenTextures(int n, uint* textures)
             => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenTexturesPtr)(n, textures);
@@ -240,19 +287,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GenerateMipmap(uint target)
             => ((delegate* unmanaged[Cdecl]<uint, void>)GenerateMipmapPtr)(target);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ActiveTexture(uint texture)
-            => ((delegate* unmanaged[Cdecl]<uint, void>)ActiveTexturePtr)(texture);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Uniform1i(int location, int value)
-            => ((delegate* unmanaged[Cdecl]<int, int, void>)Uniform1iPtr)(location, value);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Uniform1f(int location, float value)
-            => ((delegate* unmanaged[Cdecl]<int, float, void>)Uniform1fPtr)(location, value);
-
+         
+          
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Uniform2f(int location, float v0, float v1)
             => ((delegate* unmanaged[Cdecl]<int, float, float, void>)Uniform2fPtr)(location, v0, v1);
@@ -292,6 +328,41 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GetProgramiv(uint program, uint pname, int* param)
             => ((delegate* unmanaged[Cdecl]<uint, uint, int*, void>)GetProgramivPtr)(program, pname, param);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Viewport(int x, int y, int width, int height)
+        {
+            if (ViewportPtr == IntPtr.Zero) throw new InvalidOperationException("glViewport not loaded");
+            ((delegate* unmanaged[Cdecl]<int, int, int, int, void>)ViewportPtr)(x, y, width, height);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DrawArrays(uint mode, int first, int count)
+        {
+            if (DrawArraysPtr == IntPtr.Zero) throw new InvalidOperationException("glDrawArrays not loaded");
+            ((delegate* unmanaged[Cdecl]<uint, int, int, void>)DrawArraysPtr)(mode, first, count);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ActiveTexture(uint texture)
+        {
+            if (ActiveTexturePtr == IntPtr.Zero) throw new InvalidOperationException("glActiveTexture not loaded");
+            ((delegate* unmanaged[Cdecl]<uint, void>)ActiveTexturePtr)(texture);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Uniform1i(int location, int value)
+        {
+            if (Uniform1iPtr == IntPtr.Zero) throw new InvalidOperationException("glUniform1i not loaded");
+            ((delegate* unmanaged[Cdecl]<int, int, void>)Uniform1iPtr)(location, value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Uniform1f(int location, float value)
+        {
+            if (Uniform1fPtr == IntPtr.Zero) throw new InvalidOperationException("glUniform1f not loaded");
+            ((delegate* unmanaged[Cdecl]<int, float, void>)Uniform1fPtr)(location, value);
+        }
 
         public static string GetShaderInfoLog(uint shader)
         {
@@ -344,33 +415,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
             foreach (var field in fields)
             {
-                if (!field.Name.EndsWith("Ptr")) continue; // Abaikan field lain
+                string baseName = field.Name.Replace("Ptr", ""); // e.g. "GenFramebuffers"
+                string[] candidates = new string[] {
+                    "gl" + baseName,
+                    "gl" + baseName + "ARB",
+                    "gl" + baseName + "EXT"
+                };
 
-                Console.WriteLine($"Loading field: {field.Name}");
-
-                // BUG FIX: field.Name itu "ClearColorPtr", kita harus hapus kata "Ptr" agar jadi "glClearColor"
-                string funcName = "gl" + field.Name.Replace("Ptr", "");
-
-                // Pada Windows, fungsi modern harus di-load pakai wglGetProcAddress
-                nint address = wglAddr(funcName);
-
-                // Jika gagal (kembali 0, 1, 2, atau -1), fallback ke export standar dari opengl32.dll (untuk OpenGL 1.1)
-                if (address == nint.Zero || address == 1 || address == 2 || address == -1)
+                nint address = nint.Zero;
+                foreach (var name in candidates)
                 {
-                    NativeLibrary.TryGetExport(libraryHandle, funcName, out address);
+                    address = wglAddr(name);
+                    if (address == nint.Zero || address == 1 || address == 2 || address == -1)
+                    {
+                        NativeLibrary.TryGetExport(libraryHandle, name, out address);
+                    }
+                    if (address != nint.Zero) break;
                 }
 
                 if (address != nint.Zero)
-                {
                     field.SetValue(null, address);
-                }
                 else
-                {
-                    Console.WriteLine($"WARNING: Failed to load function pointer for {funcName}!");
+                    Console.WriteLine($"WARNING: Failed to load function pointer for {string.Join("/", candidates)}");
+                 
                 }
             }
         }
-    }
+     
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Ansi)]
     public delegate nint wglGetProcAddressDelegate(string name);

@@ -23,6 +23,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint hudFragmentShader;
 
         static uint skyShaderProgram;
+        static uint postProdShaderProgram;
 
         static int useTextureLoc;
         static int tex0Loc;
@@ -109,7 +110,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.AttachShader(skyShaderProgram, fs);
             GL.LinkProgram(skyShaderProgram);
 
+            // Compile God Rays Shader (reusing sky shader for simplicity)
+            string grayvSource = File.ReadAllText("Artifacts\\shaders\\postPro_vertex.glsl");
+            string grayfSource = File.ReadAllText("Artifacts\\shaders\\postPro_fragment.glsl");
 
+            uint grayVs = GL.CreateShader(Const.GL_VERTEX_SHADER);
+            GL.ShaderSource(grayVs, grayvSource);
+            GL.CompileShader(grayVs);
+
+            uint grayFs = GL.CreateShader(Const.GL_FRAGMENT_SHADER);
+            GL.ShaderSource(grayFs, grayfSource);
+            GL.CompileShader(grayFs);
+
+            postProdShaderProgram = GL.CreateProgram();
+            GL.AttachShader(postProdShaderProgram, grayVs);
+            GL.AttachShader(postProdShaderProgram, grayFs);
+            GL.LinkProgram(postProdShaderProgram);
 
 
             // Bersihkan shader individu setelah link (objects tidak lagi dibutuhkan)
@@ -119,6 +135,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.DeleteShader(lineFragmentShader); 
             GL.DeleteShader(hudVertexShader);
             GL.DeleteShader(hudFragmentShader);
+            GL.DeleteShader(skyShaderProgram);
+            GL.DeleteShader(postProdShaderProgram);
 
 
             GL.DeleteShader(vs);
@@ -135,14 +153,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             SetLineProjection();
 
             SetUseTexture();
-            SetTerrainTexture(); 
-
+            SetTerrainTexture();
+            SetGodRayTexture();
         }
         public static void Cleanup()
         {
 
         }
 
+        public static uint GetPostProdShaderProgram()
+        {
+
+            return postProdShaderProgram;
+        }
 
         public static uint GetSkyShaderProgram()
         {
@@ -203,7 +226,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static int GetUseTexture()
         {
             return useTextureLoc;
+        }
 
+        public static void SetGodRayTexture()
+        {
+            int texLoc = GL.GetUniformLocation(Shader.GetPostProdShaderProgram(), "screenTexture");
+            GL.Uniform1i(texLoc, 0);  
         }
         public static void SetLineView()
         {

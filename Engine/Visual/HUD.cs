@@ -32,13 +32,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // 1. Persiapan Vertices (Unit Quad)
             // DI KONSTRUKTOR HUD (Pastikan urutan V ini):
-            float[] vertices = [
+            float[] vertices = {
                 // x, y      u, v
-                0f, 1f,      0f, 0f, // Atas Kiri
-                0f, 0f,      0f, 1f, // Bawah Kiri
-                1f, 1f,      1f, 0f, // Atas Kanan
-                1f, 0f,      1f, 1f  // Bawah Kanan
-            ];
+                0f, 1f,     0f, 0f,   // top-left
+                0f, 0f,     0f, 1f,   // bottom-left
+                1f, 1f,     1f, 0f,   // top-right
+
+                0f, 0f,     0f, 1f,   // bottom-left
+                1f, 0f,     1f, 1f,   // bottom-right
+                1f, 1f,     1f, 0f    // top-right
+            };
+
 
             fixed (uint* pVao = &vao) GL.GenVertexArrays(1, pVao);
             fixed (uint* pVbo = &vbo) GL.GenBuffers(1, pVbo);
@@ -172,6 +176,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.Uniform3f(uvScaleLoc, 1.0f, 1.0f, 1.0f); // MODE TEKS
                 GL.DrawArrays(Const.GL_TRIANGLES, 0, allVertices.Count / 4);
             }
+
+            OpenGL.EnableFaceCulling(true);
         } 
         public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor = null, float outlineSize = 0.0f)
         {
@@ -193,9 +199,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.BindVertexArray(vao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo); // WAJIB: Ikat kembali buffer
 
-            GL.Disable(Const.GL_DEPTH_TEST);
+            //GL.Disable(Const.GL_DEPTH_TEST);
             OpenGL.EnableFaceCulling(false);
-            GL.Enable(Const.GL_BLEND);
+            //GL.Enable(Const.GL_BLEND);
 
             // 1. Konversi Koordinat
             float x0 = (x / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
@@ -205,9 +211,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // 2. Data 6 titik (X, Y, U, V)
             float[] boxVertices = {
-                x0, y0, 0, 0,  x0, y1, 0, 0,  x1, y1, 0, 0,
-                x0, y0, 0, 0,  x1, y1, 0, 0,  x1, y0, 0, 0
+                // Triangle 1 (CCW)
+                x0, y0, 0, 0,   x1, y1, 0, 0,   x0, y1, 0, 0,
+                // Triangle 2 (CCW)
+                x0, y0, 0, 0,   x1, y0, 0, 0,   x1, y1, 0, 0
             };
+
 
             // 3. Kirim data ke VBO
             fixed (float* p = boxVertices)
@@ -228,6 +237,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.BindTexture(Const.GL_TEXTURE_2D, 0); // Pastikan tidak ada tekstur
             GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+
+            OpenGL.EnableFaceCulling(true);
         }
          
     }

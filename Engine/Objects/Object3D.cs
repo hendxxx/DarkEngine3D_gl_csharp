@@ -20,7 +20,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public uint VAO, VBO;
         private int _vertexCount;
-        private int useTextureLocation;  
+        private int useTexture;  
 
         public Object3D(nint glfwLib ,  float x, float y, float z)
         {
@@ -42,19 +42,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void Generate(uint shaderProgram) {
 
-            useTextureLocation = GL.GetUniformLocation(shaderProgram, "useTexture");
+            useTexture = GL.GetUniformLocation(shaderProgram, "useTexture");
+             
+            Vertex[] vertices = new Vertex[] {
+                // 1) Kiri Bawah
+                new(-0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,  0, 0),
 
+                // 2) Kanan Bawah
+                new( 0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, 0.0f,  0, 0),
 
-            Vertex[] vertices = [
-                // 1. Kiri Bawah
-                new(-0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f, 0,0), 
-    
-                // 2. Atas (Puncak) - Ditukar ke posisi kedua
-                new( 0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, 1.0f, 0,0),
-    
-                // 3. Kanan Bawah - Ditukar ke posisi ketiga
-                new( 0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, 0.0f, 0,0)
-            ];
+                // 3) Atas (Puncak)
+                new( 0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, 1.0f,  0, 0)
+            };
+
 
             // Buat VBO di GPU
             uint vbo;
@@ -100,8 +100,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         public void Draw(float deltaTime, nint window,float _moveSpeed)
-        {
-            OpenGL.EnableFaceCulling(false);
+        { 
+             
             // If Shift is held, boost the movement speed for the object as well
             bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
                                 || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
@@ -120,14 +120,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Matrix4x4 modelMatrix = Matrix4x4.CreateTranslation(trianglePosition);
             GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&modelMatrix);
 
-            GL.Uniform1i(useTextureLocation, 0); // tidak pakai texture
+            GL.Uniform1i(useTexture, 0); // tidak pakai texture
 
             // GAMBAR!
             GL.BindVertexArray(VAO);
-            GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount); // 0x0004 = GL_TRIANGLES
-            GL.BindVertexArray(0); // <--- PENTING: Lepaskan VAO TerrainChunk
-
-            OpenGL.EnableFaceCulling(true);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount); 
+            GL.BindVertexArray(0);  
+             
         }
     }
 }
