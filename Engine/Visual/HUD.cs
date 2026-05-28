@@ -210,12 +210,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float y1 = 1.0f - ((y + h) / (float)Glfw.WindowHeight) * 2.0f;
 
             // 2. Data 6 titik (X, Y, U, V)
-            float[] boxVertices = [
+            float[] boxVertices = {
                 // Triangle 1 (CCW)
                 x0, y0, 0, 0,   x1, y1, 0, 0,   x0, y1, 0, 0,
                 // Triangle 2 (CCW)
                 x0, y0, 0, 0,   x1, y0, 0, 0,   x1, y1, 0, 0
-            ];
+            };
 
 
             // 3. Kirim data ke VBO
@@ -240,6 +240,119 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             OpenGL.EnableFaceCulling(true);
         }
-         
+        public uint CreateScratchTexture(int width, int height, Vector3 color)
+        {
+            byte r = (byte)(color.X * 255);
+            byte g = (byte)(color.Y * 255);
+            byte b = (byte)(color.Z * 255);
+
+            byte[] pixels = new byte[width * height * 4];
+
+            for (int i = 0; i < width * height; i++)
+            {
+                pixels[i * 4 + 0] = r;
+                pixels[i * 4 + 1] = g;
+                pixels[i * 4 + 2] = b;
+                pixels[i * 4 + 3] = 255;
+            }
+
+            uint tex;
+            GL.GenTextures(1, &tex);
+            GL.BindTexture(Const.GL_TEXTURE_2D, tex);
+
+            fixed (byte* p = pixels)
+            {
+                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA, width, height, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, p);
+            }
+
+
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+             
+
+            return tex;
+        }
+
+        public unsafe void DrawImage( float x, float y, float w, float h, uint textureId = 0, float rotation = 0f, Vector3? scratchColor = null)
+        {
+            GL.UseProgram(shaderProgram);
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+
+            GL.Disable(Const.GL_DEPTH_TEST);
+            OpenGL.EnableFaceCulling(false);
+            GL.Enable(Const.GL_BLEND);
+
+            // 1. Convert screen → NDC
+            float x0 = (x / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
+            float y0 = 1.0f - (y / (float)Glfw.WindowHeight) * 2.0f;
+            float x1 = ((x + w) / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
+            float y1 = 1.0f - ((y + h) / (float)Glfw.WindowHeight) * 2.0f;
+
+            // 2. Vertex (pos + uv)
+            float[] verts = {
+                x0, y0, 0, 0,
+                x1, y1, 1, 1,
+                x0, y1, 0, 1,
+
+                x0, y0, 0, 0,
+                x1, y0, 1, 0,
+                x1, y1, 1, 1
+            };
+
+            fixed (float* p = verts)
+                GL.BufferSubData(Const.GL_ARRAY_BUFFER, 0, (nuint)(verts.Length * sizeof(float)), p);
+
+            int stride = 4 * sizeof(float);
+            GL.VertexAttribPointer(0, 2, Const.GL_FLOAT, false, stride, (void*)0);
+            GL.EnableVertexAttribArray(0);
+
+            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, stride, (void*)(2 * sizeof(float)));
+            GL.EnableVertexAttribArray(1);
+
+            uint finalTex = textureId;
+
+            // 3. If scratchColor requested → generate scratch texture
+            if (textureId == 0 && scratchColor != null)
+            {
+                finalTex = CreateScratchTexture((int)w, (int)h, scratchColor.Value);
+            }
+
+            // 4. If still no texture → solid color mode
+            if (finalTex == 0)
+            {
+                GL.Uniform3f(colorLoc, 1, 1, 1);
+                GL.Uniform3f(uvScaleLoc, 0, 0, 0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+            else
+            {
+                GL.Uniform3f(uvScaleLoc, 2, 0, 0);   // MODE IMAGE
+                GL.Uniform3f(colorLoc, 1, 1, 1);     // tidak mempengaruhi gambar
+
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, finalTex);
+                GL.Uniform1i(GL.GetUniformLocation(shaderProgram, "hudTexture"), 0);
+
+            }
+            int rotLoc = GL.GetUniformLocation(shaderProgram, "rotation");
+            GL.Uniform1f(rotLoc, rotation);
+
+
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+
+            OpenGL.EnableFaceCulling(true);
+        }
+
+        private float spinnerAngle = 0f;
+        public void DrawSpinner(float x, float y, float size, uint tex, float deltaTime)
+        {
+            spinnerAngle += deltaTime * 4.0f;
+            if (spinnerAngle > MathF.Tau) spinnerAngle -= MathF.Tau;
+
+            DrawImage(x, y, size, size, tex, spinnerAngle, null);
+        }
+
+
     }
 }

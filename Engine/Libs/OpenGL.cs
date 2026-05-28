@@ -66,6 +66,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
             GL.DrawElementsPtr = GetProcAddress(glLib, "glDrawElements");
             GL.TexParameterfPtr = GetProcAddress(glLib, "glTexParameterf");
+            GL.TexParameterfvPtr = GetProcAddress(glLib, "glTexParameterfv");
             GL.BlendFuncPtr = GetProcAddress(glLib, "glBlendFunc");
             GL.PixelStorePtr = GetProcAddress(glLib, "glPixelStorei");
             GL.BufferSubDataPtr = GetProcAddress(glLib, "glBufferSubData");

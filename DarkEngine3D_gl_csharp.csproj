@@ -38,6 +38,15 @@
     <None Update="Artifacts\fonts\Worldstar.ttf">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\images\loading01_image.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\images\spinner01_image.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\images\spinner_image.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\maps\\moon.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

@@ -65,7 +65,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
 
             // Optional: delete shader objects after linking
             GL.DeleteShader(vs);
-            GL.DeleteShader(fs);
+            GL.DeleteShader(fs); 
 
             return program;
         }

@@ -154,7 +154,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             }
 
             // Print metrics
-            PrintTerrainMetrics();
+            //PrintTerrainMetrics();
 
             // Emit 100% progress
             OnLoadProgress?.Invoke(1.0f);

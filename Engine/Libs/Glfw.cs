@@ -182,20 +182,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 deltaTime = Glfw.GetDeltaTime();
 
                 //PostProcess.BindSceneFBO(_windowWidth, _windowHeight); 
-                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f); // Paksa seluruh layar jadi MERAH
+                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+
+
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
                
                 // 1. Update inputs (mouse + keyboard) BEFORE any rendering so camera is stable
                 Mouse.Update(window, camera);
                 Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk);
 
-                //// 2. Clamp camera height to terrain once per-frame (centralized)
-                //try
-                //{
-                //    var ml = gameTerrainChunk.GetMapLoader();
-                //    if (ml != null) camera.ClampToTerrain(ml, deltaTime);
-                //}
-                //catch { }
+                // 2. Clamp camera height to terrain once per-frame (centralized)
+                try
+                {
+                    var ml = gameTerrainChunk.GetMapLoader();
+                    if (ml != null) camera.ClampToTerrain(ml, deltaTime);
+                }
+                catch { }
 
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures);
@@ -223,39 +225,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 }
 
                 //PostProcess.Draw(_windowWidth, _windowHeight); // Draw the scene to the default framebuffer (screen) with post-processing effects
-
+                //hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
                 // --- HUD SYSTEM ---
                 int totalMapTris = TerrainChunk.GetTotalMapTriangles();
                 string gTime = light.GetFormattedTime();
                 Glfw.ShowFPS(deltaTime, renderedTris, totalMapTris, gTime);
-
-
-                // 1. Gambar Background (Box)
-                //hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
-
-                // 2. Gambar Tulisan di atasnya
-                //hud.DrawText("Halo Dunia", 20, 30, new Vector3(1, 1, 1)); // Teks Putih
+                 
                 string title = $"🕒 [ {gTime} ]    ⚡ FPS: {lastFPS}    📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
 
                 hud.DrawText(title + " POS: " + camera.Position, 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText("a brown fox quickly jump over the lazy dog", 10, 90, new Vector3(0, 0, 0), new Vector3(1, 1, 1));
                 hud.DrawText("`1234567890-=~!@#$%^&*()_+[]\\{}|;':\",./<>?", 10, 120, new Vector3(0, 0, 0), new Vector3(1, 0, 1));
 
-
-
-                // // Static Console HUD
-                // Console.Write("\x1b[H"); 
-                // Console.ForegroundColor = ConsoleColor.Cyan;
-                // Console.WriteLine("========================================================================");
-                // Console.WriteLine($"  [ DARK ENGINE 3D ]   TIME: {gTime}   FPS: {Glfw.GetLastFPS()}   TRIS: {renderedTris:N0}  ");
-                // Console.WriteLine("========================================================================");
-                // Console.ResetColor();
-                // if (objectManager != null)
-                // {
-                //     Console.ForegroundColor = ConsoleColor.Yellow;
-                //     Console.WriteLine($"  [OBJECTS] Drawn: {objectManager.DrawnObjects}  Culled: {objectManager.CulledObjects}  CullOff: {objectManager.DisableFrustumCull}");
-                //     Console.ResetColor();
-                // }
 
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();

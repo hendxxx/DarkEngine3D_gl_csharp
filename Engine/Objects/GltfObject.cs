@@ -239,7 +239,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     Material = matGpu
                 };
 
-                Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} hasTex={matGpu.HasTexture}");
+                //Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} hasTex={matGpu.HasTexture}");
             }
         }
 
@@ -352,7 +352,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (def >= 0)
             {
                 _curClip = def; _curTime = 0f; _blend = 1f; _prevClip = -1;
-                Console.WriteLine($"[GltfObject] Default clip '{_clips[def].Name}' dur={_clips[def].Duration:F2}s ({_clips.Count} clips total)");
+                //Console.WriteLine($"[GltfObject] Default clip '{_clips[def].Name}' dur={_clips[def].Duration:F2}s ({_clips.Count} clips total)");
             }
         }
 
@@ -640,7 +640,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (idle >= 0) PlayIndex(idle, 0f);
             else if (_curClip < 0 && _clips.Count > 0) PlayIndex(0, 0f);
 
-            Console.WriteLine($"[GltfObject] External animation applied: {_clips.Count} clips total, {totalMatched} bones retargeted, current='{CurrentClipName}'");
+            //Console.WriteLine($"[GltfObject] External animation applied: {_clips.Count} clips total, {totalMatched} bones retargeted, current='{CurrentClipName}'");
         }
 
         // Strip a Mixamo-style namespace prefix ("mixamorig:", "mixamorig8:", …) so
@@ -1013,10 +1013,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
                          * Matrix4x4.CreateTranslation(Position);
-
-
              
-
             // For skinned meshes the joint matrices already fold in every node
             // transform, so the model matrix is just the object placement. For
             // non-skinned meshes we additionally apply the mesh node's global.

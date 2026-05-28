@@ -60,14 +60,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _jointLoc           = GL.GetUniformLocation(_shaderProgram, "joints");
             _jointsLoc          = GL.GetUniformLocation(_shaderProgram, "u_Joints");
 
-            Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
+            //Console.WriteLine($"[ObjectManager] shader={_shaderProgram} model={_modelLoc} view={_viewLoc} proj={_projLoc}");
         }
 
         // -----------------------------------------------------------------------
         public GltfModelGpuData LoadModel(string path)
         {
             if (_modelCache.TryGetValue(path, out var cached)) return cached;
-            Console.WriteLine($"[ObjectManager] Loading: {path}");
+            //Console.WriteLine($"[ObjectManager] Loading: {path}");
             var data    = GltfLoader.Load(path);
             var gpuData = new GltfModelGpuData(data);
             _modelCache[path] = gpuData;
@@ -77,14 +77,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public static GltfData LoadAnimationFile(string path)
         {
-            Console.WriteLine($"[ObjectManager] Loading animation file: {path}");
+            //Console.WriteLine($"[ObjectManager] Loading animation file: {path}");
             try
             {
                 return GltfLoader.Load(path);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ObjectManager] Failed loading animation: {ex.Message}");
+                //Console.WriteLine($"[ObjectManager] Failed loading animation: {ex.Message}");
                 return new GltfData();
             }
         }
@@ -161,11 +161,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
                 SnapToTerrain(obj, gameTerrainChunk);
-                Console.WriteLine($"[Spawn] Xbot #{i + 1} pos=({px:F1}, {obj.Position.Y:F1}, {pz:F1}) yaw={yaw:F0}° tries={tries}");
+                //Console.WriteLine($"[Spawn] Xbot #{i + 1} pos=({px:F1}, {obj.Position.Y:F1}, {pz:F1}) yaw={yaw:F0}° tries={tries}");
             }
 
 
-            Console.WriteLine($"[ObjectManager] {GetObjects().Count} objects spawned.");
+            //Console.WriteLine($"[ObjectManager] {GetObjects().Count} objects spawned.");
 
             // Load animations from a SEPARATE file and apply them to the already-loaded
             // model (TODO #2). Stuntman ships only one baked clip, so its idle/walk/run
@@ -298,7 +298,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (string.IsNullOrEmpty(animPath) || !File.Exists(animPath))
             {
-                Console.WriteLine($"[ObjectManager] Animation file not found: {animPath}");
+                //Console.WriteLine($"[ObjectManager] Animation file not found: {animPath}");
                 return;
             }
             var animData = LoadAnimationFile(animPath);
@@ -316,7 +316,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var file in Directory.GetFiles(folder, "*.glb"))
             {
                 string clip = Path.GetFileNameWithoutExtension(file);
-                Console.WriteLine($"[ObjectManager] Loading fighting clip '{clip}' from {file}");
+                //Console.WriteLine($"[ObjectManager] Loading fighting clip '{clip}' from {file}");
                 ApplyAnimationFileToAll(file, clip);
             }
         }

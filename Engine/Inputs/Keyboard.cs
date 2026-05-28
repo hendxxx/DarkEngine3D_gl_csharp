@@ -275,7 +275,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                             float expectedSpeed = speedCam;
                             float speedRatio = actualSpeed / expectedSpeed;
 
-                            PrintTravelMetrics(travelStartPos.Value, travelTargetPos.Value, elapsedSeconds, distance, actualSpeed, speedRatio);
+                            //PrintTravelMetrics(travelStartPos.Value, travelTargetPos.Value, elapsedSeconds, distance, actualSpeed, speedRatio);
                         }
 
                         isMeasuringTravel = false;

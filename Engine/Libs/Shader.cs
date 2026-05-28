@@ -3,7 +3,7 @@ using System.Runtime.Intrinsics.X86;
 
 namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
-    public unsafe class Shader
+    public unsafe class Shader  
     {
         static uint shaderProgram;
         static uint lineShaderProgram; 
@@ -11,10 +11,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint skyShaderProgram;
         static uint postProdShaderProgram;
          
-       
-
-        public static void Init()
+        public Shader()
         {
+            Init();
+        }
+        public static void Init()
+        { 
             shaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/vertex_shader.glsl",
                                       "Artifacts/shaders/fragment_shader.glsl");
 
@@ -29,13 +31,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
             postProdShaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/postPro_vertex.glsl",
                                                "Artifacts/shaders/postPro_fragment.glsl");
-             
-        }
-         
-
-
-        public static void ActiveShader()
-        {
              
         } 
 
@@ -63,7 +58,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         {
             return hudShaderProgram;
         }
-          
-
+         
     }
 }

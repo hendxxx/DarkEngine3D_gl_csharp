@@ -84,6 +84,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_TEXTURE_MAG_FILTER = 0x2800;
         public const uint GL_REPEAT = 0x2901;
         public const uint GL_LINEAR = 0x2601;
+        public const uint GL_CLAMP_TO_BORDER = 0x812D;
+        public const uint GL_TEXTURE_BORDER_COLOR = 0x1004;
         public const uint GL_LINEAR_MIPMAP_LINEAR = 0x2703;
         public const uint GL_RGB = 0x1907;
         public const uint GL_RGBA = 0x1908;

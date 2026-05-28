@@ -49,6 +49,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr Uniform4fPtr = IntPtr.Zero;
 
         internal static IntPtr TexParameterfPtr = IntPtr.Zero;
+        internal static IntPtr TexParameterfvPtr = IntPtr.Zero;
         internal static IntPtr BlendFuncPtr = IntPtr.Zero;
         internal static IntPtr PixelStorePtr = IntPtr.Zero;
         internal static IntPtr BufferSubDataPtr = IntPtr.Zero;
@@ -73,6 +74,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr FramebufferRenderbufferPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void TexParameterfv(uint target, uint pname, float[] param)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, float[], void>)TexParameterfvPtr)(target, pname, param);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void UniformMatrix3fv(int location, int count, bool transpose, float* value)

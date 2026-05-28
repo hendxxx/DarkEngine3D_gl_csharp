@@ -4,21 +4,52 @@ in vec2 TexCoords;
 
 uniform sampler2D hudTexture;
 uniform vec3 textColor;
-uniform vec3 uvScale; // Sebagai flag: x=0 (Box), x=1 (Text)
+uniform vec3 uvScale; 
+// uvScale.x = 0 → BOX
+// uvScale.x = 1 → TEXT
+// uvScale.x = 2 → IMAGE
+uniform float rotation; // radian
 
 void main() {
+
     // MODE BOX
     if (uvScale.x == 0.0) {
-        // Gambar kotak dengan warna dari textColor dan alpha 0.5
-        FragColor = vec4(textColor, 0.6); 
-        return; // BERHENTI DI SINI agar tidak kena discard di bawah
+        FragColor = vec4(textColor, 0.6);
+        return;
     }
 
-    // MODE TEKS
-    float alpha = texture(hudTexture, TexCoords).a; // Gunakan .a karena kamu pakai RGBA
-    
-    // Gunakan discard hanya untuk teks agar background kotak tidak hilang
-    if (alpha < 0.1) discard;
+    // MODE TEXT (alpha mask)
+    if (uvScale.x == 1.0) {
+        float alpha = texture(hudTexture, TexCoords).a;
 
-    FragColor = vec4(textColor, alpha);
+        if (alpha < 0.1)
+            discard;
+
+        FragColor = vec4(textColor, alpha);
+        return;
+    }
+
+    // MODE IMAGE (RGBA penuh + rotasi)
+    if (uvScale.x == 2.0) {
+
+        vec2 center = vec2(0.5, 0.5);
+        vec2 uv = TexCoords - center;
+
+        // scale down biar tidak kena pinggir
+        if (rotation > 0)
+        uv *= 0.80;
+
+        float c = cos(rotation);
+        float s = sin(rotation);
+
+        vec2 rotatedUV = vec2(
+            uv.x * c - uv.y * s,
+            uv.x * s + uv.y * c
+        );
+
+        rotatedUV += center;
+
+        FragColor = texture(hudTexture, rotatedUV);
+        return;
+    }
 }
