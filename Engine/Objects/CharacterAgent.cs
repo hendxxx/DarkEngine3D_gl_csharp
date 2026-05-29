@@ -473,7 +473,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 p.X += f.X * _speed * dt;
                 p.Z += f.Z * _speed * dt;
             }
-            p.Y = terrain.GetHeightAt(p.X, p.Z);
+            p.Y = terrain.GetHeightAt(p.X, p.Z - 0.8f);
             _obj.Position = p;
         }
 
