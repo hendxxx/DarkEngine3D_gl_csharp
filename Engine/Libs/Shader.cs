@@ -17,19 +17,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         }
         public static void Init()
         { 
-            shaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/vertex_shader.glsl",
+            shaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/vertex_shader.glsl",
                                       "Artifacts/shaders/fragment_shader.glsl");
 
-            lineShaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/lineVertex_shader.glsl",
+            lineShaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/lineVertex_shader.glsl",
                                              "Artifacts/shaders/lineFragment_shader.glsl");
 
-            hudShaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/hudVertex_shader.glsl",
+            hudShaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/hudVertex_shader.glsl",
                                              "Artifacts/shaders/hudFragment_shader.glsl");
 
-            skyShaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/sky_vertex.glsl",
+            skyShaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/sky_vertex.glsl",
                                              "Artifacts/shaders/sky_fragment.glsl");
 
-            postProdShaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/postPro_vertex.glsl",
+            postProdShaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/postPro_vertex.glsl",
                                                "Artifacts/shaders/postPro_fragment.glsl");
              
         } 

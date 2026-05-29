@@ -375,8 +375,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             GL.EnableVertexAttribArray(3);
             GL.VertexAttribPointer(3, 2, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 3));
         }
-
-        public void Draw(int lodIndex = 0)
+        public void Draw( int lodIndex = 0)
         {
             // 1. CEK PENDING UPLOADS (Mesh + Skirt)
             if (pendingUploads.Count > 0 || pendingSkirtUploads.Count > 0)
@@ -429,11 +428,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             }
 
             int useTextureLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "useTexture");
-             
+          
             GL.Uniform1i(useTextureLoc, 1);
 
             // Draw Mesh
             if (VAOs[actualLod] != 0) {
+
+
                 GL.BindVertexArray(VAOs[actualLod]);
                 GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCounts[actualLod]);
             }
@@ -442,6 +443,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Culling disabled because skirt winding is not enforced.
             if (SkirtVAOs[actualLod] != 0 && _skirtVertexCounts[actualLod] > 0  )
             {
+                
                 OpenGL.EnableFaceCulling(false,true); 
                 GL.BindVertexArray(SkirtVAOs[actualLod]);
                 GL.DrawArrays(Const.GL_TRIANGLES, 0, _skirtVertexCounts[actualLod]); 

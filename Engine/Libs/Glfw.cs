@@ -206,7 +206,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
                 int renderedTris = 0;
                 if (gameTerrainChunk!=null)
-                    renderedTris = gameTerrainChunk.Render(camera, camera.GetAspect(), gameTerrainChunk.GetFrozenPlanes());
+                    renderedTris = gameTerrainChunk.Render(camera, gameTerrainChunk.GetFrozenPlanes());
 
                 light.Update(deltaTime , camera.Position);
 

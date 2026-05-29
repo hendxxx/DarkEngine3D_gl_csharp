@@ -8,7 +8,7 @@ in vec2 TexCoord;
 
 uniform vec3 sunDir, lightColor, viewPos, fogColor, heightScale;
 uniform sampler2D tex0, tex1, tex2, tex3, tex4; // 0:Dirt, 1:Rock, 2:Snow, 3:Cliff, 4:Moon
-uniform int useTexture;
+uniform int useTexture;  
 
 // --- LOD COLOR TOGGLE ---
 uniform int showLODColor;
@@ -182,6 +182,6 @@ void main() {
     
     // 5. Koreksi Gamma layar standar 2.2
     mapped = pow(mapped, vec3(1.0 / 2.2));
-    
+      
     FragColor = vec4(mapped, 1.0);
 }

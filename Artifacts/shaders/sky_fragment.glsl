@@ -339,13 +339,13 @@ void main()
     // ===============================
     vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
 
-    // smooth exposure 
-    float exposureFactor = 1.0 - sunBlocked;
-    result *= mix(1.0, exposureState, exposureFactor);
+    //// smooth exposure 
+    //float exposureFactor = 1.0 - sunBlocked;
+    //result *= mix(1.0, exposureState, exposureFactor);
 
-    // smooth gamma
-    float gamma = mix(1.0, 1.1, sunBlocked);
-    result = pow(result, vec3(1.0 / gamma));
+    //// smooth gamma
+    //float gamma = mix(1.0, 1.1, sunBlocked);
+    //result = pow(result, vec3(1.0 / gamma));
      
     FragColor = vec4(result, 1.0);
 }

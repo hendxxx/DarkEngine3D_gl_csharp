@@ -82,7 +82,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 return GltfLoader.Load(path);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 //Console.WriteLine($"[ObjectManager] Failed loading animation: {ex.Message}");
                 return new GltfData();

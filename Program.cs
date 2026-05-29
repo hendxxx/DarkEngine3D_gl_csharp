@@ -9,9 +9,7 @@ using static System.Net.Mime.MediaTypeNames;
 namespace DarkEngine3D_gl_csharp;
 
 public unsafe class Program
-{   
-    volatile static float loadingProgress = 0.0f;
-    volatile static bool loadingDone = false;
+{    
     private static float deltaTime =  0.0f;
     public static void Main()
     {

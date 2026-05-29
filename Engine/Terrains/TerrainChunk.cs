@@ -291,7 +291,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             return frozenPlanes;
         }
 
-        public int Render(Camera camera, float aspect, Plane[]? frozenPlanes)
+        //private float exposureState = 1.0f;
+        public int Render(Camera camera, Plane[]? frozenPlanes)
         {
             int totalTriangles = 0;
 
@@ -335,9 +336,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                             if (distance > scaledChunkSize * 4.5f) lodIndex = 3;
                             else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
                             else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
-                            else lodIndex = 0; 
-
-                            worldMap[x, z].Draw(lodIndex); 
+                            else lodIndex = 0;
+                              
+                            worldMap[x, z].Draw( lodIndex); 
 
                             // Estimate actual triangles rendered based on LOD
                             int chunkTriangles = worldMap[x, z].TriangleCount;
@@ -357,7 +358,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                         // Draw bounding box:
                         // - If frozen frustum exists: blue = insideFrozen, yellow = outsideFrozen
                         // - If no frozen frustum: yellow if outside camera frustum, blue if inside
-                        DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, aspect);
+                        DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, camera.GetAspect() );
                     }
 
                 }

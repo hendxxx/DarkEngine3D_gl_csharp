@@ -51,7 +51,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             //_initialized = true;
             //Console.WriteLine($"[GltfShader] Program ID={_program}. Ready.");
-            _shaderProgram = Helpers.ShadeerHelpers.LoadShader("Artifacts/shaders/gltf_vertex.glsl",
+            _shaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/gltf_vertex.glsl",
                                       "Artifacts/shaders/gltf_fragment.glsl");
 
         } 
