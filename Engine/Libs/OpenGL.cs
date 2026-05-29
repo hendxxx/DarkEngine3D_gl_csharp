@@ -26,6 +26,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.UseProgramPtr = GetProcAddress(glLib, "glUseProgram");
             GL.DeleteShaderPtr = GetProcAddress(glLib, "glDeleteShader");
             GL.GetUniformLocationPtr = GetProcAddress(glLib, "glGetUniformLocation");
+            GL.GetUniformfvPtr = GetProcAddress(glLib, "glGetUniformfv");
+            GL.ReadPixelsPtr = GetProcAddress(glLib, "glReadPixels");
             GL.UniformMatrix4fvPtr = GetProcAddress(glLib, "glUniformMatrix4fv");
             GL.UniformMatrix3fvPtr = GetProcAddress(glLib, "glUniformMatrix3fv");
 
@@ -85,6 +87,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.FramebufferRenderbufferPtr = GetProcAddress(glLib, "glFramebufferRenderbuffer");
             GL.GetShaderivPtr = GetProcAddress(glLib, "glGetShaderiv");
             GL.GetProgramivPtr = GetProcAddress(glLib, "glGetProgramiv");
+            GL.DepthFuncPtr = GetProcAddress(glLib, "glDepthFunc");
 
             return glLib;
         }
@@ -109,6 +112,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             if (active)
             {
                 GL.Enable(Const.GL_DEPTH_TEST);
+                GL.DepthFunc(Const.GL_LEQUAL);
+                GL.DepthMask( true );
             }
                 
         }

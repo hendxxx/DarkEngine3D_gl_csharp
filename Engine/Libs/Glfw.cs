@@ -200,7 +200,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 //catch { }
 
                 // 3. Draw Skybox
-                skybox.Draw(camera, light, deltaTime, skyTextures);
+                skybox.Draw(camera, light, deltaTime, skyTextures, gameTerrainChunk);
 
                 //// 4. Ensure terrain shader has current view/projection uniforms bound 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);

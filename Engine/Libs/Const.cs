@@ -144,5 +144,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_COMPILE_STATUS = 0x8B81;
         public const uint GL_LINK_STATUS = 0x8B82;
         public const uint GL_INFO_LOG_LENGTH = 0x8B84;
+
+        public const uint GL_NEVER = 0x0200;
+        public const uint GL_LESS = 0x0201;
+        public const uint GL_EQUAL = 0x0202;
+        public const uint GL_LEQUAL = 0x0203;
+        public const uint GL_GREATER = 0x0204;
+        public const uint GL_NOTEQUAL = 0x0205;
+        public const uint GL_GEQUAL = 0x0206;
+        public const uint GL_ALWAYS = 0x0207;
+
     }
 }

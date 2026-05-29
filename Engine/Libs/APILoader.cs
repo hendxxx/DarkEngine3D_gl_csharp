@@ -1,6 +1,7 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
@@ -14,12 +15,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr BindBufferPtr;
         internal static IntPtr BufferDataPtr;
         internal static IntPtr GetUniformLocationPtr;
+        internal static IntPtr GetUniformfvPtr;
         internal static IntPtr UniformMatrix4fvPtr;
         internal static IntPtr UniformMatrix3fvPtr;
         internal static IntPtr CreateShaderPtr, ShaderSourcePtr, CompileShaderPtr;
         internal static IntPtr CreateProgramPtr, AttachShaderPtr, LinkProgramPtr, UseProgramPtr, DeleteShaderPtr;
         internal static IntPtr VertexAttribPointerPtr;
         internal static IntPtr VertexAttribIPointerPtr;
+        internal static IntPtr ReadPixelsPtr;
 
         internal static IntPtr EnableVertexAttribArrayPtr;
         internal static IntPtr DisableVertexAttribArrayPtr;
@@ -72,8 +75,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr BindRenderbufferPtr = IntPtr.Zero;
         internal static IntPtr RenderbufferStoragePtr = IntPtr.Zero;
         internal static IntPtr FramebufferRenderbufferPtr = IntPtr.Zero;
+        internal static IntPtr DepthFuncPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static unsafe void ReadPixels(
+            int x, int y,
+            int width, int height,
+            uint format, uint type,
+            float*  data)
+        {
+            if (ReadPixelsPtr == 0)
+                throw new Exception("glReadPixels not loaded!");
+
+            ((delegate* unmanaged[Stdcall]<int, int, int, int, uint, uint, float*, void>)ReadPixelsPtr)
+                (x, y, width, height, format, type, data);
+        }
+
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static unsafe float GetUniformfv(uint program, int location)
+        {
+            if (GetUniformfvPtr == 0)
+                throw new Exception("glGetUniformfv not loaded!");
+
+            float value = 0f;
+
+            ((delegate* unmanaged[Stdcall]<uint, int, float*, void>)GetUniformfvPtr)
+                (program, location, &value);
+
+            return value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DepthFunc(uint function)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)DepthFuncPtr)(function);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void TexParameterfv(uint target, uint pname, float[] param)

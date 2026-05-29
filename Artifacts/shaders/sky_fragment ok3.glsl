@@ -1,8 +1,6 @@
 #version 400 core
 out vec4 FragColor;
 
-
-
 in vec3 TexCoords;
 
 uniform vec3 fogColor;
@@ -11,7 +9,8 @@ uniform vec3 time;
 uniform sampler2D moonTex;
 uniform float exposureState;
 uniform float sunBlocked; 
-uniform float weatherMode; 
+uniform float outHaloRadius;
+uniform float weatherMode;
 
 // ===============================
 // HASH + NOISE + FBM
@@ -259,10 +258,8 @@ void main()
         sunCoreMask = smoothstep(sunAngularRadius, sunAngularRadius * 0.75, d);
         sunGlowMask  = exp(-d * d * 250.0);
         sunBloomMask = exp(-d * d * 500.0);
-         
-    } 
-     
-     
+    }
+
     // ===============================
     // NEW: OVEREXPOSURE FOLLOWS SKY COLOR AT SUN POSITION
     // ===============================
@@ -273,10 +270,10 @@ void main()
     skyWithCelestial += dynamicSunCore * sunCoreMask * 4.0 * sunVisible * sunBlocker;
 
     // glow
-    skyWithCelestial += overColor * sunGlowMask * 1.4 * sunVisible * sunGlowBoost;
+    skyWithCelestial += overColor * sunGlowMask * 0.6 * sunVisible * sunGlowBoost;
 
     // bloom
-    skyWithCelestial += overColor * sunBloomMask * 2.8 * sunVisible * sunGlowBoost;
+    skyWithCelestial += overColor * sunBloomMask * 1.2 * sunVisible * sunGlowBoost;
 
     // ===============================
     // MOON
@@ -339,13 +336,14 @@ void main()
     // ===============================
     vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
 
-    // smooth exposure 
-    float exposureFactor = 1.0 - sunBlocked;
+    // smooth exposure
+    float sunBlockedSmooth = smoothstep(0.0, 0.6, sunBlocked);
+    float exposureFactor = 1.0 - sunBlockedSmooth;
     result *= mix(1.0, exposureState, exposureFactor);
 
     // smooth gamma
-    float gamma = mix(1.0, 1.1, sunBlocked);
+    float gamma = mix(1.0, 1.1, sunBlockedSmooth);
     result = pow(result, vec3(1.0 / gamma));
-     
+
     FragColor = vec4(result, 1.0);
 }
