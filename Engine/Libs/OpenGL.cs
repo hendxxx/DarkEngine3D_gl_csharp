@@ -88,7 +88,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.GetShaderivPtr = GetProcAddress(glLib, "glGetShaderiv");
             GL.GetProgramivPtr = GetProcAddress(glLib, "glGetProgramiv");
             GL.DepthFuncPtr = GetProcAddress(glLib, "glDepthFunc");
-
+            GL.GetStringPtr = GetProcAddress(glLib, "glGetString");
+             
             return glLib;
         }
 

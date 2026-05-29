@@ -23,6 +23,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr VertexAttribPointerPtr;
         internal static IntPtr VertexAttribIPointerPtr;
         internal static IntPtr ReadPixelsPtr;
+        internal static IntPtr GetStringPtr;
 
         internal static IntPtr EnableVertexAttribArrayPtr;
         internal static IntPtr DisableVertexAttribArrayPtr;
@@ -106,6 +107,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 (program, location, &value);
 
             return value;
+        }
+
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string GetString(uint name)
+        {
+            // Tanda tangan pointer fungsi: menerima uint, mengembalikan byte*
+            var ptr = (delegate* unmanaged[Cdecl]<uint, byte*>)GetStringPtr;
+
+            // Panggil fungsi native OpenGL langsung ke driver GPU
+            byte* nativeStringPtr = ptr(name);
+
+            // Validasi jika driver mengembalikan pointer kosong (null)
+            if (nativeStringPtr == null)
+            {
+                return string.Empty;
+            }
+
+            // Konversi pointer teks ANSI/UTF8 (Null-Terminated) menjadi string C#
+            return Marshal.PtrToStringAnsi((IntPtr)nativeStringPtr);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

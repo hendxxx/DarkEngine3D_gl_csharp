@@ -2,6 +2,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
     public static class Const
     {
+        public const uint VERSION = 0x1F02;
+        public const uint VENDOR = 0x1F00;
+        public const uint RENDERER = 0x1F01;
+        public const uint SHADING_LANGUAGE_VERSION = 0x8B8C;
+
         public const uint GL_FRONT_AND_BACK = 0x0408;
         public const uint GL_FRONT = 0x0404;
         public const uint GL_BACK = 0x0405;

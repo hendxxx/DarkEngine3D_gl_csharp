@@ -4,6 +4,7 @@ using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace DarkEngine3D_gl_csharp;
@@ -30,6 +31,9 @@ public unsafe class Program
         OpenGL.Init();
         OpenGL.CacheGlfwFunctions(glfwLib);
 
+        var glVersion = GL.GetString(Const.VERSION);
+        Console.WriteLine($"Versi OpenGL aktif: {glVersion}");
+
         OpenGL.EnableDepthTest(true);
         OpenGL.EnableFaceCulling(false);
 
@@ -49,7 +53,7 @@ public unsafe class Program
         // Opsional: Kalau siang hari terlalu putih, warnanya bisa dibuat agak kekuningan
         Vector3 sunColorLoc = new(1.0f, 0.95f, 0.8f);
         Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z); // Cahaya Putih
-        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "20:00");
+        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "13:00");
 
         // Init Keyboard and Mouse
         Keyboard.Init(glfwLib, 100.0f); // Increased speed for freefly mode
