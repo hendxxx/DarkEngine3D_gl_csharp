@@ -67,8 +67,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // === PAKAI SHADER LANGIT ===
             GL.UseProgram(skyShader);
 
-            int weatherModeLoc = GL.GetUniformLocation(skyShader, "weatherMode");
-            int exposureLoc = GL.GetUniformLocation(skyShader, "exposureState");
+            int weatherModeLoc = GL.GetUniformLocation(skyShader, "weatherMode"); 
             int totalTimeLoc = GL.GetUniformLocation(skyShader, "totalTime");
 
 
@@ -97,16 +96,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             totalTime += deltaTime; 
             GL.Uniform1f(totalTimeLoc, totalTime);
 
-            float sunY = lights.SunDir.Y;
-            float tMalam = 1.0f - Helpers.ShaderHelpers.SmoothStep(-0.3f, 0.1f, sunY);
+            //float sunY = lights.SunDir.Y;
+            //float tMalam = 1.0f - Helpers.ShaderHelpers.SmoothStep(-0.3f, 0.1f, sunY);
 
-            float targetExposure = Helpers.ShaderHelpers.ComputeTargetExposure(camera.Front, lights.SunDir, tMalam);
+            //float targetExposure = Helpers.ShaderHelpers.ComputeTargetExposure(camera.Front, lights.SunDir, tMalam);
 
-            float speed = 2.5f;
-            exposureState = Helpers.ShaderHelpers.Lerp(exposureState, targetExposure, deltaTime * speed);
-            exposureState = Math.Clamp(exposureState, 0.6f, 2.0f);
+            //float speed = 2.5f;
+            //exposureState = Helpers.ShaderHelpers.Lerp(exposureState, targetExposure, deltaTime * speed);
+            //exposureState = Math.Clamp(exposureState, 0.6f, 2.0f);
 
-            GL.Uniform1f(exposureLoc, exposureState);
+            //GL.Uniform1f(exposureLoc, exposureState);
 
             // === CAMERA ===
             Matrix4x4 view = camera.GetViewMatrix();

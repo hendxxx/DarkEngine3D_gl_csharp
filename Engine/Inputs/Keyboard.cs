@@ -202,11 +202,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             }
             else if (glfwGetKey(window, Const.GLFW_KEY_2) == Const.GLFW_PRESS || glfwGetKey(window, Const.GLFW_KEY_KP_2) == Const.GLFW_PRESS)
             {
-                TargetWeather = 0.4f; // Tekan 2 -> Sedikit Mendung (Estetik)
+                TargetWeather = 0.3f; // Tekan 2 -> Sedikit Mendung (Estetik)
             }
             else if (glfwGetKey(window, Const.GLFW_KEY_3) == Const.GLFW_PRESS || glfwGetKey(window, Const.GLFW_KEY_KP_3) == Const.GLFW_PRESS)
             {
-                TargetWeather = 0.8f; // Tekan 3 -> Mendung Tebal Sekali
+                TargetWeather = 0.6f; // Tekan 3 -> Mendung Tebal Sekali
             }
 
             // 2. Kalkulasi Pergerakan Lerp (Awan membesar/menyusut pelan, tidak kaku melompat)

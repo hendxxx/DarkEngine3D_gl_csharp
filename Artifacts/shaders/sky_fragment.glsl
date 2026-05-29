@@ -60,12 +60,9 @@ float starNoise(vec2 uv)
         float d = length(gv);
         float star = smoothstep(0.035, 0.0, d);
 
-        float twFreq  = 0.03 + n * 0.4;
-        float twPhase = n * 200.0;
+        float tw = sin(time.x * (0.5 + n * 2.0)) * 0.3 + 0.7;
 
-        float tw = sin(time.x * twFreq + twPhase) * 0.3 + 0.2;
-
-        return star * tw * 1.1;
+        return star * tw;
     }
     return 0.0;
 }
@@ -314,7 +311,9 @@ void main()
     skyWithCelestial += overColor * sunGlowMask * 1.4 * sunVisible * sunGlowBoost * sunFactor;
     skyWithCelestial += overColor * sunBloomMask * 2.8 * sunVisible * sunGlowBoost * sunFactor;
 
+    // ===============================
     // MOON
+    // ===============================
     vec3 moonDir = normalize(-lightDir);
     float moonDot = dot(viewDir, moonDir);
 
@@ -328,9 +327,9 @@ void main()
         float md = length(moonUV);
 
         float moonGlowMask = exp(-md * md * 60.0);
-        vec3 moonGlow = vec3(0.36, 0.46, 0.95) * moonGlowMask * 1.0 * tMalam;
+        vec3 moonGlow = vec3(0.36, 0.46, 0.95) * moonGlowMask * tMalam;
 
-        // moon glow tidak menerangi cirrus terlalu kuat
+        // moon glow tidak terlalu kuat saat mendung
         moonGlow *= mix(1.0, 0.35, weatherMode);
 
         skyWithCelestial += moonGlow;
@@ -358,7 +357,9 @@ void main()
         }
     }
 
+    // ===============================
     // STARS
+    // ===============================
     float nightFactor = tMalam;
     float starMask = smoothstep(0.0, 0.25, nightFactor);
 
