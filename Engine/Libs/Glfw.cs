@@ -59,7 +59,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private static Camera? MainCamera;
 
-        public static void Init(string title, bool fullscreen = true )
+        public static void Init(string title, bool fullscreen = true)
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
 
@@ -164,17 +164,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 frameCount = 0;
                 timer = 0;
             }
-        } 
+        }
 
         public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager? objectManager = null)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
             int viewLocation = GL.GetUniformLocation(shaderProgram, "view");
-             
+
 
             //PostProcess.Init(_windowWidth, _windowHeight); // Default size, can be resized later
-             
+
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             while (glfwWindow(window) == 0)
@@ -186,10 +186,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
 
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
-               
+
                 // 1. Update inputs (mouse + keyboard) BEFORE any rendering so camera is stable
                 Mouse.Update(window, camera);
-                Keyboard.Update(window, light,camera, deltaTime, gameTerrainChunk);
+                Keyboard.Update(window, light, camera, deltaTime, gameTerrainChunk);
 
                 //// 2. Clamp camera height to terrain once per-frame (centralized)
                 //try
@@ -205,10 +205,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 //// 4. Ensure terrain shader has current view/projection uniforms bound 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
                 int renderedTris = 0;
-                if (gameTerrainChunk!=null)
+                if (gameTerrainChunk != null)
                     renderedTris = gameTerrainChunk.Render(camera, gameTerrainChunk.GetFrozenPlanes());
 
-                light.Update(deltaTime , camera.Position);
+                light.Update(deltaTime, camera.Position);
 
                 if (objTriangle != null)
                     objTriangle.Draw(deltaTime, window, 5.0f);
@@ -232,7 +232,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 int totalMapTris = TerrainChunk.GetTotalMapTriangles();
                 string gTime = light.GetFormattedTime();
                 Glfw.ShowFPS(deltaTime, renderedTris, totalMapTris, gTime);
-                 
+
                 string title = $"🕒 [ {gTime} ]    ⚡ FPS: {lastFPS}    📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
 
                 hud.DrawText(title + " POS: " + camera.Position, 10, 60, new Vector3(1, 0, 0));

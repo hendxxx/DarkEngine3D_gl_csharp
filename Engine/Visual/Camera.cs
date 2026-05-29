@@ -106,7 +106,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void ClampToTerrain(MapLoader mapLoader, float deltaTime)
         {
-            return;
+            //return;
             float minHeight = 1.0f;
             float gravity = 25.0f;   // lebih besar → lebih stabil
             float damping = 6.0f;    // untuk menghilangkan jitter
