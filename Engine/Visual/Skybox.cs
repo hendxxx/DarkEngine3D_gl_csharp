@@ -59,7 +59,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         //private int outHaloRadiusLoc; 
         
         private float totalTime = 0.0f;
-       
+        private float exposureState = 0.0f;
 
 
         public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk terrain)
@@ -68,9 +68,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.UseProgram(skyShader);
 
             int weatherModeLoc = GL.GetUniformLocation(skyShader, "weatherMode");
-            //locExposureState = GL.GetUniformLocation(skyShader, "exposureState");
-            //sunBlockedLoc = GL.GetUniformLocation(skyShader, "sunBlocked");
-            //outHaloRadiusLoc = GL.GetUniformLocation(skyShader, "outHaloRadius");
+            int exposureLoc = GL.GetUniformLocation(skyShader, "exposureState");
+            int totalTimeLoc = GL.GetUniformLocation(skyShader, "totalTime");
+
 
             int aspectLoc = GL.GetUniformLocation(skyShader, "u_aspectRatio");
             float currentAspect = camera.GetAspect();
@@ -94,8 +94,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform1f(weatherModeLoc, currentWeatherVal);
 
             // === TIME ===
-            totalTime += deltaTime;
-            GL.Uniform3f(timeLoc, totalTime, 0, 0);
+            totalTime += deltaTime; 
+            GL.Uniform1f(totalTimeLoc, totalTime);
+
+            float sunY = lights.SunDir.Y;
+            float tMalam = 1.0f - Helpers.ShaderHelpers.SmoothStep(-0.3f, 0.1f, sunY);
+
+            float targetExposure = Helpers.ShaderHelpers.ComputeTargetExposure(camera.Front, lights.SunDir, tMalam);
+
+            float speed = 2.5f;
+            exposureState = Helpers.ShaderHelpers.Lerp(exposureState, targetExposure, deltaTime * speed);
+            exposureState = Math.Clamp(exposureState, 0.6f, 2.0f);
+
+            GL.Uniform1f(exposureLoc, exposureState);
 
             // === CAMERA ===
             Matrix4x4 view = camera.GetViewMatrix();
@@ -119,25 +130,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform1i(GL.GetUniformLocation(skyShader, "moonTex"), 4);
 
             // === ASPECT ===
-            GL.Uniform1f(aspectLoc, currentAspect); 
-            
+            GL.Uniform1f(aspectLoc, currentAspect);
+
             //Ever Exposure
             //bool sunBlocked = Helpers.ShaderHelpers.RaycastSun(0.0948683298f, camera, lights, terrain); 
             //GL.Uniform1f(sunBlockedLoc, sunBlocked ? 1.0f : 0.0f);
 
             //// Kirim exposureState
             //GL.Uniform1f(locExposureState, exposureState);
- 
+
 
             // === DRAW SKY ===
-            GL.Disable(Const.GL_DEPTH_TEST);
-            OpenGL.EnableFaceCulling(true);
+            // sebelum draw sky
+            GL.DepthMask(false);                    // jangan tulis depth
+            GL.Enable(Const.GL_DEPTH_TEST);
+            GL.DepthFunc(Const.GL_LEQUAL);          // sky di belakang semua
 
             GL.BindVertexArray(vao);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, 36);
 
-            OpenGL.EnableFaceCulling(false);
-            GL.Enable(Const.GL_DEPTH_TEST);
+            GL.DepthMask(true);
+            GL.DepthFunc(Const.GL_LESS);
         }
          
 

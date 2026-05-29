@@ -77,9 +77,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr RenderbufferStoragePtr = IntPtr.Zero;
         internal static IntPtr FramebufferRenderbufferPtr = IntPtr.Zero;
         internal static IntPtr DepthFuncPtr = IntPtr.Zero;
+        internal static IntPtr VertexAttribDivisorPtr = IntPtr.Zero;
+        internal static IntPtr DrawArraysInstancedPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static unsafe void ReadPixels(
             int x, int y,
@@ -128,6 +129,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             // Konversi pointer teks ANSI/UTF8 (Null-Terminated) menjadi string C#
             return Marshal.PtrToStringAnsi((IntPtr)nativeStringPtr);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void VertexAttribDivisor(uint index, uint divisor)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, void>)VertexAttribDivisorPtr)(index, divisor);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DrawArraysInstanced(uint mode, int first, int count, int instanceCount)
+            => ((delegate* unmanaged[Cdecl]<uint, int, int, int, void>)DrawArraysInstancedPtr)(mode, first, count, instanceCount);
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DepthFunc(uint function)

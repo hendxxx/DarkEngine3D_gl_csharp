@@ -53,7 +53,7 @@ public unsafe class Program
         // Opsional: Kalau siang hari terlalu putih, warnanya bisa dibuat agak kekuningan
         Vector3 sunColorLoc = new(1.0f, 0.95f, 0.8f);
         Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z); // Cahaya Putih
-        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "13:00");
+        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "17:00");
 
         // Init Keyboard and Mouse
         Keyboard.Init(glfwLib, 100.0f); // Increased speed for freefly mode
@@ -136,8 +136,10 @@ public unsafe class Program
 
         Mouse.ShowMouse(false);
 
+        RainManager rainManager = new(Shader.GetRainStreakShaderProgram(), Shader.GetRainOverlayShaderProgram(), 2000);
+          
         // Init Loop
-        Glfw.Loop( SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud,objectManager);
+        Glfw.Loop( SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud, rainManager, objectManager);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);
          
         // Shutdown

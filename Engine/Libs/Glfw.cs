@@ -2,9 +2,11 @@ using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
+using DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Timers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
@@ -166,22 +168,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
         }
 
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager? objectManager = null)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager? objectManager = null)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
             int viewLocation = GL.GetUniformLocation(shaderProgram, "view");
 
+            PostProcessStack ppStack = new PostProcessStack(_windowWidth, _windowHeight);
+            var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
+            var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram()); 
 
-            //PostProcess.Init(_windowWidth, _windowHeight); // Default size, can be resized later
+            //ppStack.AddPass(rainOverlayPass);
+            //ppStack.AddPass(invertPass);
 
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
+            float time = 0f;
             while (glfwWindow(window) == 0)
             {
                 deltaTime = Glfw.GetDeltaTime();
+                time += deltaTime;
 
-                //PostProcess.BindSceneFBO(_windowWidth, _windowHeight); 
+                ppStack.BindSceneFBO();
                 GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 
 
@@ -225,8 +233,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
 
                 }
+                //float currentweatherMode = 1;// Keyboard.GetCurrentWeather(); // 0 = cerah, 1 = badai
+                //rainOverlayPass.RainAmount = Helpers.ShaderHelpers.SmoothStep(0.7f, 1.0f, currentweatherMode);
+                //uint sceneTexture = ppStack.SceneColorTex;
+                //rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
+               
+                // 2. jalankan semua postprocess pass
+                ppStack.RunStack(_windowWidth, _windowHeight, time);
+                 
 
-                //PostProcess.Draw(_windowWidth, _windowHeight); // Draw the scene to the default framebuffer (screen) with post-processing effects
                 //hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
                 // --- HUD SYSTEM ---
                 int totalMapTris = TerrainChunk.GetTotalMapTriangles();
