@@ -1,8 +1,6 @@
 #version 400 core
 out vec4 FragColor;
 
-
-
 in vec3 TexCoords;
 
 uniform vec3 fogColor;
@@ -10,8 +8,8 @@ uniform vec3 sunDir;
 uniform vec3 time;
 uniform sampler2D moonTex;
 uniform float exposureState;
-uniform float sunBlocked; 
-uniform float weatherMode; 
+uniform float sunBlocked;
+uniform float weatherMode;
 
 // ===============================
 // HASH + NOISE + FBM
@@ -50,7 +48,7 @@ float fbm(vec3 p)
 float hash2D(vec2 p)
 {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-} 
+}
 
 float starNoise(vec2 uv)
 {
@@ -109,7 +107,7 @@ vec3 totalAtmosphereColor(vec3 viewDir, vec3 sunDirection, float sunIntensity)
 }
 
 // ===============================
-// NEW: SKY COLOR AT SUN DIRECTION
+// SKY COLOR AT SUN DIRECTION
 // ===============================
 vec3 GetSkyColorAtDirection(vec3 dir)
 {
@@ -129,7 +127,7 @@ vec3 GetSkyColorAtDirection(vec3 dir)
     vec3 sunsetBlend = mix(sunsetColor * 0.6, noonSky, tSunset);
     vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
 
-    float up = max(dir.y, 0.0);
+        float up = max(dir.y, 0.0);
     vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
 
     return skyBase;
@@ -148,8 +146,12 @@ void main()
     float tNight  = smoothstep(-0.25, 0.05, sunY);
     float tMalam  = 1.0 - smoothstep(-0.3, 0.1, sunY);
 
+    // ===============================
+    // SUN FACTOR — MATIKAN MATAHARI SAAT MALAM
+    // ===============================
+    float sunFactor = 1.0 - tMalam;   // 1 = siang, 0 = malam
+
     vec3 noonSky      = vec3(0.4, 0.6, 0.85);
-    vec3 noonCloud    = vec3(1.0);
     vec3 sunsetColor  = vec3(1.0, 0.48, 0.25);
     vec3 nightColor   = vec3(0.06, 0.06, 0.10);
 
@@ -163,70 +165,118 @@ void main()
     float up = max(viewDir.y, 0.0);
     vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
 
-    vec3 dayToSunsetColor = mix(sunsetColor, noonCloud, tSunset);
-    vec3 cloudBaseColor   = mix(nightColor, dayToSunsetColor, tNight);
+    // ===============================
+    // WEATHER PRESETS
+    // ===============================
+    float weather = weatherMode;
 
-    float cutMin = mix(0.18, 0.08, weatherMode);
-    float cutMax = mix(0.38, 0.25, weatherMode);
+    float densityBoost = mix(0.55, 1.65, weather);
+    float erosionBoost = mix(0.65, 0.15, weather);
 
+    float cutMin = mix(0.18, 0.05, weather);
+    float cutMax = mix(0.32, 0.20, weather);
+
+    float shadowStrength = mix(0.25, 1.25, weather);
+    float cirrusStrength = mix(1.0, 0.10, weather);
+
+    vec3 cloudTint = mix(
+        vec3(0.88, 0.92, 1.00),
+        vec3(0.95, 0.95, 0.95),
+        weather
+    );
+    cloudTint = mix(cloudTint, vec3(0.55, 0.58, 0.60), weather * 0.85);
+
+    // ===============================
+    // STRONG DARKEN FOR NIGHT + OVERCAST
+    // ===============================
+    float nightDark = tMalam * weather;
+
+    skyBase = mix(skyBase, skyBase * 0.18, nightDark);
+
+    float scatterReduce = mix(1.0, 0.05, nightDark);
+
+    float sunGlowBoost = mix(2.0, 0.95, weather);
+    sunGlowBoost = mix(sunGlowBoost, sunGlowBoost * 0.10, nightDark);
+
+    cloudTint = mix(cloudTint, cloudTint * 0.35, nightDark);
+
+    // ===============================
+    // CLOUDS (WARPED FBM + EROSION + MULTI-LAYER)
+    // ===============================
     float cloudAlpha = 0.0;
     vec3 finalCloudColor = vec3(0.0);
 
-    // CLOUDS
     if (viewDir.y > 0.0)
     {
         float cloudPlaneHeight = 2.5;
         float distToPlane = cloudPlaneHeight / max(viewDir.y, 0.25);
         vec3 cloudPos = viewDir * distToPlane;
 
-        vec3 p1 = cloudPos;
-        p1.xz *= 0.45;
-        p1.x += time.x * 0.04;
-        p1.z += time.x * 0.01;
+        vec3 p = cloudPos;
+        p.xz *= 0.42;
+        p.x += time.x * 0.035;
+        p.z += time.x * 0.012;
 
-        float n1 = fbm(p1 * 1.2);
-        float c1 = smoothstep(cutMin * 0.25, cutMax * 1.35, n1);
+        vec3 warp = vec3(
+            fbm(p * 0.9),
+            fbm(p * 1.3),
+            fbm(p * 0.7)
+        );
+        p += warp * 0.35;
+
+        float base = fbm(p * 1.25);
+        float detail = fbm(p * 3.5);
+        float density = mix(base, detail, 0.35) * densityBoost;
+
+        float erosion = fbm(p * 2.0) * erosionBoost;
+        density = smoothstep(cutMin * 0.55, cutMax * 1.45, density - erosion * 0.25);
 
         float horizonFade = smoothstep(0.0, 0.22, viewDir.y);
 
-        float shadow = fbm(p1 * 0.5);
-        shadow = smoothstep(0.2, 0.8, shadow);
+        float shadow = fbm(p * 0.55);
+        shadow = smoothstep(0.25, 0.85, shadow);
+        shadow = mix(1.0, shadow, shadowStrength);
 
         float scatter = max(dot(lightDir, viewDir), 0.0);
-        scatter = pow(scatter, 6.0);
+        scatter = pow(scatter, 6.0) * scatterReduce * sunFactor;
 
-        vec3 cloudColor1 = cloudBaseColor;
-        cloudColor1 *= mix(0.6, 1.0, shadow);
-        cloudColor1 += vec3(1.0, 0.8, 0.5) * scatter * 0.4;
+        vec3 lightTint = mix(sunsetColor, vec3(1.0), tSunset);
 
-        vec3 p2 = cloudPos * 0.25;
-        p2.x += time.x * 0.02;
-        p2.z += time.x * 0.015;
+        vec3 cloudLit = cloudTint;
+        cloudLit *= shadow;
+        cloudLit += lightTint * scatter * mix(0.25, 0.05, weather);
 
-        float n2 = fbm(p2 * 2.0);
-        float cirrusAlpha = smoothstep(0.6, 0.8, n2);
+        // CIRRUS — tetap ada, tapi highlight mati saat malam
+        vec3 pCirrus = cloudPos * 0.22;
+        pCirrus.x += time.x * 0.018;
+        pCirrus.z += time.x * 0.014;
 
-        vec3 cloudColor2 = mix(vec3(1.0), sunsetColor, 0.3);
+        float cir = fbm(pCirrus * 2.2);
+        float cirAlpha = smoothstep(0.62, 0.82, cir) * cirrusStrength;
 
-        cloudAlpha = c1 * horizonFade;
-        finalCloudColor = cloudColor1;
-        finalCloudColor = mix(finalCloudColor, cloudColor2, cirrusAlpha * 0.25);
+        vec3 cirColor = mix(vec3(1.0), sunsetColor, 0.25);
+        cirColor *= sunFactor;   // cirrus tidak dapat cahaya matahari saat malam
 
-        float depth = fbm(p1 * 0.8);
-        finalCloudColor *= 0.8 + depth * 0.2;
+        finalCloudColor = mix(cloudLit, cirColor, cirAlpha * 0.22 * sunFactor);
 
+        float depth = fbm(p * 0.8);
+        finalCloudColor *= 0.82 + depth * 0.18;
+
+        cloudAlpha = density * horizonFade;
         cloudAlpha = max(cloudAlpha, 0.0001);
     }
 
-    cloudAlpha *= mix(0.15, 1.8, weatherMode);
+    cloudAlpha *= mix(0.22, 1.75, weatherMode);
 
+    // ===============================
+    // SUN + MOON + STARS
+    // ===============================
     vec3 skyWithCelestial = skyBase;
 
     float sunDot = dot(viewDir, lightDir);
     float sunVisible = smoothstep(-0.1, 0.1, sunY);
 
     float sunBlocker = mix(0.05, 0.25, weatherMode);
-    float sunGlowBoost = mix(2.0, 0.95, weatherMode);
 
     float sunHeightFactor = clamp(smoothstep(0.0, 0.35, sunY), 0.0, 1.0);
     vec3 sunColorLow  = vec3(1.12, 0.95, 0.85);
@@ -236,8 +286,6 @@ void main()
     vec3 glowColorLow  = vec3(1.0, 0.88, 0.78);
     vec3 glowColorHigh = vec3(1.0, 0.96, 0.94);
     vec3 dynamicSunGlow = mix(glowColorLow, glowColorHigh, sunHeightFactor);
-
-    vec3 dynamicBloomOuter = mix(vec3(0.9,0.6,0.35), vec3(0.9,0.75,0.6), sunHeightFactor);
 
     float sunCoreMask = 0.0;
     float sunGlowMask = 0.0;
@@ -259,28 +307,16 @@ void main()
         sunCoreMask = smoothstep(sunAngularRadius, sunAngularRadius * 0.75, d);
         sunGlowMask  = exp(-d * d * 250.0);
         sunBloomMask = exp(-d * d * 500.0);
-         
-    } 
-     
-     
-    // ===============================
-    // NEW: OVEREXPOSURE FOLLOWS SKY COLOR AT SUN POSITION
-    // ===============================
+    }
+
     vec3 sunSkyColor = GetSkyColorAtDirection(lightDir);
-    vec3 overColor = sunSkyColor;
+    vec3 overColor = sunSkyColor * sunFactor;
 
-    // core
-    skyWithCelestial += dynamicSunCore * sunCoreMask * 4.0 * sunVisible * sunBlocker;
+    skyWithCelestial += dynamicSunCore * sunCoreMask * 4.0 * sunVisible * sunBlocker * sunFactor;
+    skyWithCelestial += overColor * sunGlowMask * 1.4 * sunVisible * sunGlowBoost * sunFactor;
+    skyWithCelestial += overColor * sunBloomMask * 2.8 * sunVisible * sunGlowBoost * sunFactor;
 
-    // glow
-    skyWithCelestial += overColor * sunGlowMask * 1.4 * sunVisible * sunGlowBoost;
-
-    // bloom
-    skyWithCelestial += overColor * sunBloomMask * 2.8 * sunVisible * sunGlowBoost;
-
-    // ===============================
     // MOON
-    // ===============================
     vec3 moonDir = normalize(-lightDir);
     float moonDot = dot(viewDir, moonDir);
 
@@ -295,6 +331,10 @@ void main()
 
         float moonGlowMask = exp(-md * md * 60.0);
         vec3 moonGlow = vec3(0.36, 0.46, 0.95) * moonGlowMask * 1.0 * tMalam;
+
+        // moon glow tidak menerangi cirrus terlalu kuat
+        moonGlow *= mix(1.0, 0.35, weatherMode);
+
         skyWithCelestial += moonGlow;
 
         const float moonAngularRadius = 0.0283;
@@ -320,9 +360,7 @@ void main()
         }
     }
 
-    // ===============================
     // STARS
-    // ===============================
     float nightFactor = tMalam;
     float starMask = smoothstep(0.0, 0.25, nightFactor);
 
@@ -334,18 +372,8 @@ void main()
         skyWithCelestial += starColor;
     }
 
-    // ===============================
     // FINAL MIX
-    // ===============================
     vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
 
-    //// smooth exposure 
-    //float exposureFactor = 1.0 - sunBlocked;
-    //result *= mix(1.0, exposureState, exposureFactor);
-
-    //// smooth gamma
-    //float gamma = mix(1.0, 1.1, sunBlocked);
-    //result = pow(result, vec3(1.0 / gamma));
-     
     FragColor = vec4(result, 1.0);
 }

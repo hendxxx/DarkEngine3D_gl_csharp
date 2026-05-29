@@ -49,10 +49,10 @@ public unsafe class Program
         // Opsional: Kalau siang hari terlalu putih, warnanya bisa dibuat agak kekuningan
         Vector3 sunColorLoc = new(1.0f, 0.95f, 0.8f);
         Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z); // Cahaya Putih
-        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "17:00");
+        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "20:00");
 
         // Init Keyboard and Mouse
-        Keyboard.Init(glfwLib, 1.0f); // Increased speed for freefly mode
+        Keyboard.Init(glfwLib, 100.0f); // Increased speed for freefly mode
         Mouse.Init(glfwLib, window);
 
         Texture[] images =
