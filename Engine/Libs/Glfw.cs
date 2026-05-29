@@ -178,7 +178,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram()); 
 
-            //ppStack.AddPass(rainOverlayPass);
+            ppStack.AddPass(rainOverlayPass);
             //ppStack.AddPass(invertPass);
 
             // Game Loop (Zero-GC)
@@ -233,10 +233,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
 
                 }
-                //float currentweatherMode = 1;// Keyboard.GetCurrentWeather(); // 0 = cerah, 1 = badai
-                //rainOverlayPass.RainAmount = Helpers.ShaderHelpers.SmoothStep(0.7f, 1.0f, currentweatherMode);
-                //uint sceneTexture = ppStack.SceneColorTex;
-                //rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
+                float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai
+                //rainOverlayPass.RainAmount = Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);// Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);
+                uint sceneTexture = ppStack.SceneColorTex;
+                rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
                
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);

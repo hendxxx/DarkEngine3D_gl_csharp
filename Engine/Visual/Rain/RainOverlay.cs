@@ -27,14 +27,15 @@ public unsafe class RainOverlay
     {
         float[] quad =
         {
-            // pos      // uv
-            -1f, -1f,   0f, 0f,
-             1f, -1f,   1f, 0f,
-             1f,  1f,   1f, 1f,
+            // pos        // uv
+            -1f, -1f,     0f, 0f,   // kiri bawah
+             1f, -1f,     1f, 0f,   // kanan bawah
+             1f,  1f,     1f, 1f,   // kanan atas
 
-            -1f, -1f,   0f, 0f,
-             1f,  1f,   1f, 1f,
-            -1f,  1f,   0f, 1f
+            -1f, -1f,     0f, 0f,   // kiri bawah
+             1f,  1f,     1f, 1f,   // kanan atas
+            -1f,  1f,     0f, 1f    // kiri atas
+
         };
 
         uint _VBO = 0;

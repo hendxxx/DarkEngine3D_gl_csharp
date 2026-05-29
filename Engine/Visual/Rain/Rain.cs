@@ -139,7 +139,7 @@ public unsafe class Rain
     {
         for (int i = 0; i < rainCount; i++)
         {
-            instancePositions[i] += windDir * 0.1f;
+            //instancePositions[i] += windDir * 0.1f;
             instancePositions[i].Y -= 0.8f;
 
             if (instancePositions[i].Y < camPos.Y - 5)

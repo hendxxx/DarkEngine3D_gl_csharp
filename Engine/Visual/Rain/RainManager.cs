@@ -22,6 +22,9 @@ public unsafe class RainManager
         return x * x * (3f - 2f * x);
     }
 
+    // 1. Hitung intensitas hujan dari weatherMode
+    float rainAmount = 0;
+
     // ============================
     // UPDATE + DRAW (1 CALL)
     // ============================
@@ -31,9 +34,7 @@ public unsafe class RainManager
         float time,
         uint sceneTexture)
     {
-        // 1. Hitung intensitas hujan dari weatherMode
-        float rainAmount = SmoothStep(0.7f, 1.0f, weatherMode);
-
+        rainAmount = SmoothStep(0.6f, 1.0f, weatherMode);
         // 2. Update world-space rain
         rain.Update(camera.Position, windDir);
 
