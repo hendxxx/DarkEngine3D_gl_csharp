@@ -145,7 +145,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (Dead) { _deadTime += dt; return; }
 
-            // Tentukan interval tick berdasarkan LOD
             float tickInterval = AiLOD switch
             {
                 AiLodLevel.Full => LODConfig.TickFull,
@@ -157,11 +156,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             _aiTickAccum += dt;
 
-            // LOD3 (Frozen): hanya regen ringan, tidak combat/perception
             if (AiLOD == AiLodLevel.Frozen)
             {
                 if (_aiTickAccum < tickInterval)
                     return;
+
                 float step = _aiTickAccum;
                 _aiTickAccum = 0f;
 
@@ -170,7 +169,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 return;
             }
 
-            // LOD1/2: hanya jalan kalau sudah lewat interval
             if (tickInterval > 0f && _aiTickAccum < tickInterval)
                 return;
 
@@ -497,8 +495,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _obj.SetFacing(_heading * 180f / MathF.PI + FacingOffsetDeg);
 
             // LOD2: gerak lebih lambat (coarse)
-            float speedMul = AiLOD == AiLodLevel.Simulated ? LODConfig.SimulatedSpeedMultiplier : 1f;
-
+            float speedMul = AiLOD == AiLodLevel.Simulated
+                ? LODConfig.SimulatedSpeedMultiplier
+                : 1f;
 
             if (_speed > 0f)
             {

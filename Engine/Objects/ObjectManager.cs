@@ -73,7 +73,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             var spawnedPositions = new List<Vector2>();
 
-            for (int i = 0; i < 1000; i++)
+            for (int i = 0; i < 100; i++)
             {
                 float px, pz;
                 int tries = 0;
@@ -184,45 +184,74 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (_agents.Count == 0) return;
 
-            // Set AI LOD per agent berdasarkan jarak & visibility
-            foreach (var a in _agents)
+            // 1) Tentukan LOD per agent (AI + Anim) berbasis frustum + jarak
+            for (int i = 0; i < _agents.Count && i < _objects.Count; i++)
             {
-                var obj = a.Position; // same as a.Position
-                float dist = Vector3.Distance(camera.Position, obj);
+                var a = _agents[i];
+                var go = _objects[i];
 
-                // Cari GltfObject yang sama index (spawn 1:1)
-                // Asumsi: _objects[i] ↔ _agents[i]
-                int idx = _agents.IndexOf(a);
-                if (idx >= 0 && idx < _objects.Count)
+                var pos = a.Position;
+                float dist = Vector3.Distance(camera.Position, pos);
+
+                // arah relatif ke kamera
+                var toObj = Vector3.Normalize(pos - camera.Position);
+                float dot = Vector3.Dot(camera.Front, toObj);
+
+                bool insideFrustum = go.IsVisible; // kamu sudah punya ini dari culling
+                bool nearFrustum = dot > LODConfig.FrustumOuterDot;
+
+                // ---------- AI LOD ----------
+                if (!insideFrustum)
                 {
-                    var go = _objects[idx];
-
-                    if (!go.IsVisible)
-                        a.AiLOD = CharacterAgent.AiLodLevel.Frozen;
-                    else if (dist > LODConfig.AiLOD2_Distance)
+                    if (!nearFrustum)
+                    {
+                        // jauh di luar frustum → AI jarang, tapi TIDAK frozen total
+                        a.AiLOD = CharacterAgent.AiLodLevel.Simulated;
+                    }
+                    else
+                    {
+                        // dekat frustum tapi tidak kelihatan → AI reduced
+                        a.AiLOD = CharacterAgent.AiLodLevel.Reduced;
+                    }
+                }
+                else
+                {
+                    // di dalam frustum → LOD normal berdasarkan jarak
+                    if (dist > LODConfig.AiLOD2_Distance)
                         a.AiLOD = CharacterAgent.AiLodLevel.Simulated;
                     else if (dist > LODConfig.AiLOD1_Distance)
                         a.AiLOD = CharacterAgent.AiLodLevel.Reduced;
                     else
                         a.AiLOD = CharacterAgent.AiLodLevel.Full;
+                }
 
-                }
-                else
+                // ---------- Anim LOD ----------
+                if (!insideFrustum)
                 {
-                    a.AiLOD = CharacterAgent.AiLodLevel.Simulated;
+                    // di luar frustum → animasi skip total
+                    go.AnimLOD = 3;
                 }
+                else if (dist < LODConfig.AnimLOD0_Distance)
+                    go.AnimLOD = 0;
+                else if (dist < LODConfig.AnimLOD1_Distance)
+                    go.AnimLOD = 1;
+                else if (dist < LODConfig.AnimLOD2_Distance)
+                    go.AnimLOD = 2;
+                else
+                    go.AnimLOD = 3;
             }
 
-            // AI tick + movement
+            // 2) AI tick + movement (menghormati AiLOD di dalam CharacterAgent)
             foreach (var a in _agents)
                 a.UpdateBehavior(dt, _agents);
 
             foreach (var a in _agents)
                 a.Move(dt, terrain, WanderCenter, WanderRadius);
 
+            // 3) Collision (LOD-aware)
             ResolveCollisions(terrain);
 
-            // Respawn
+            // 4) Respawn
             foreach (var a in _agents)
             {
                 if (a.Dead && a.DeadElapsed >= RespawnDelay)
@@ -234,9 +263,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     a.Respawn(new Vector3(x, terrain.GetHeightAt(x, z), z));
                 }
             }
-
-            // PENTING: jangan panggil obj.Update(dt) di sini lagi
         }
+
 
         // Collision LOD-aware
         private void ResolveCollisions(TerrainChunk terrain)
@@ -254,10 +282,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     var b = _agents[j];
                     if (b.Dead || b.AiLOD == CharacterAgent.AiLodLevel.Frozen) continue;
 
-                    // ⭐ PATCH A — skip collision untuk agent jauh (LOD2 & LOD3)
-                    if (a.AiLOD >= CharacterAgent.AiLodLevel.Simulated &&
-                        b.AiLOD >= CharacterAgent.AiLodLevel.Simulated)
-                        continue;
+                    if ((a.AiLOD == CharacterAgent.AiLodLevel.Simulated && LODConfig.SkipCollisionForLOD2) ||
+                        (a.AiLOD == CharacterAgent.AiLodLevel.Frozen && LODConfig.SkipCollisionForLOD3) ||
+                        (b.AiLOD == CharacterAgent.AiLodLevel.Simulated && LODConfig.SkipCollisionForLOD2) ||
+                        (b.AiLOD == CharacterAgent.AiLodLevel.Frozen && LODConfig.SkipCollisionForLOD3))
+                    continue;
+
 
                     var pa = a.Position;
                     var pb = b.Position;

@@ -103,40 +103,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
-
-        public void ClampToTerrain(MapLoader mapLoader, float deltaTime)
+        private float lastTerrainY = 0f;
+        public void ClampToTerrain(MapLoader mapLoader, float dt)
         {
-            return;
             float minHeight = 1.0f;
-            float gravity = 25.0f;   // lebih besar → lebih stabil
-            float damping = 6.0f;    // untuk menghilangkan jitter
 
-            float terrainHeight = mapLoader.GetHeightInterpolated(Position.X, Position.Z);
-            float targetY = terrainHeight + minHeight;
+            // 1. Ambil terrain height
+            float terrainY = mapLoader.GetHeightInterpolated(Position.X, Position.Z);
+            float targetY = terrainY + minHeight;
 
-            float diff = Position.Y - targetY;
+            // 2. Smooth terrain noise (hilangkan jitter)
+            // simpan lastTerrainY sebagai field di Camera
+            lastTerrainY = lastTerrainY * 0.9f + targetY * 0.1f;
 
-            // Jika kamera terlalu tinggi → jatuhkan
-            if (diff > 0.01f)
-            {
-                _currentVelocityY -= gravity * deltaTime;
-                Position.Y += _currentVelocityY * deltaTime;
-            }
-            // Jika kamera terlalu rendah → snap ke target
-            else if (diff < -0.01f)
-            {
-                Position.Y = targetY;
-                _currentVelocityY = 0f;
-            }
-            else
-            {
-                // Dalam dead-zone → stabilkan
-                Position.Y = targetY;
-                _currentVelocityY *= (1f - damping * deltaTime);
-                if (MathF.Abs(_currentVelocityY) < 0.01f)
-                    _currentVelocityY = 0f;
-            }
+            // 3. Smooth camera Y (tidak snap)
+            float smooth = 12f; // semakin besar semakin cepat
+            Position.Y = Helpers.ShaderHelpers.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
+
+
 
     }
 }

@@ -41,7 +41,7 @@ public unsafe class Program
         Shader.Init(); 
         
         // Init Camera
-        Camera camera = new(0, 10, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 10000.0f);
+        Camera camera = new(0, 10, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 2500.0f);
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;
@@ -56,7 +56,7 @@ public unsafe class Program
         Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "17:00");
 
         // Init Keyboard and Mouse
-        Keyboard.Init(glfwLib, 100.0f); // Increased speed for freefly mode
+        Keyboard.Init(glfwLib, 1.0f); // Increased speed for freefly mode
         Mouse.Init(glfwLib, window);
 
         Texture[] images =
