@@ -127,25 +127,65 @@ vec3 GetSkyColorAtDirection(vec3 dir)
     vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
     
     return skyBase;
-}
+} 
 
 // ===============================
 // LIGHTNING FLASH
 // ===============================
+float sdSegment(vec2 p, vec2 a, vec2 b)
+{
+    vec2 pa = p - a;
+    vec2 ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
+}
+
+float lightningBoltShape(vec2 uv, float seed)
+{
+    float d = 1e6;
+
+    float r1 = fract(sin(seed * 12.345) * 54321.123);
+    float r2 = fract(sin(seed * 45.678) * 98765.321);
+
+    vec2 p0 = vec2(0.0,  0.8);
+    vec2 p1 = vec2(0.1 * r1,  0.5);
+    vec2 p2 = vec2(-0.1 * r2, 0.2);
+    vec2 p3 = vec2(0.15 * r1, -0.1);
+    vec2 p4 = vec2(0.0, -0.4);
+
+    d = min(d, sdSegment(uv, p0, p1));
+    d = min(d, sdSegment(uv, p1, p2));
+    d = min(d, sdSegment(uv, p2, p3));
+    d = min(d, sdSegment(uv, p3, p4));
+
+    float bolt = exp(-d * 35.0);
+
+    float b1 = sdSegment(uv, p1, p1 + vec2(0.15, 0.25));
+    float b2 = sdSegment(uv, p2, p2 + vec2(-0.12, 0.18));
+
+    bolt += exp(-b1 * 60.0) * 0.5;
+    bolt += exp(-b2 * 60.0) * 0.4;
+
+    return bolt;
+}
+
+
 float lightningFlash(float t, float weather)
 {
+    float slowT = t * 0.00002;    // 20% speed
+
     // aktif mulai mendung 0.5 – 0.7
     float storm = smoothstep(0.5, 0.7, weather);
 
     if (storm <= 0.0) return 0.0;
 
     // random trigger — 1% chance
-    float r = fract(sin(t * 5.123) * 98765.4321);
+    float r = fract(sin(slowT * 5.123) * 98765.4321);
 
-    if (r > 0.99)
+    if (r > 0.90)
     {
         // jumlah strike 2–3
-        float strikeCount = 2.0 + floor(fract(sin(t * 3.77) * 24680.135) * 2.0);
+        float strikeCount = 2.0 + floor(fract(sin(slowT * 3.77) * 24680.135) * 2.0);
 
         float flashTotal = 0.0;
 
@@ -154,9 +194,9 @@ float lightningFlash(float t, float weather)
             if (i >= strikeCount) break;
 
             // delay acak antar strike (0.0 – 0.12 detik)
-            float delay = fract(sin((t + float(i)) * 1.91) * 13579.864) * 0.12;
+            float delay = fract(sin((slowT + float(i)) * 1.91) * 13579.864) * 0.12;
 
-            float f = fract((t - delay) * 4.0);
+            float f = fract((t - delay) * 2.0);
 
             // pre-flash
             float pre = smoothstep(0.0, 0.06, 0.06 - f);
@@ -191,13 +231,14 @@ float lightningFlash(float t, float weather)
 // MAIN
 // ===============================
 void main()
-{
+{  
+
     vec3 viewDir = normalize(TexCoords);
     vec3 lightDir = normalize(sunDir);
     float sunY = lightDir.y;
     
     //Init petir
-    float lightning = lightningFlash(time.x, weatherMode);
+    float lightning =  lightningFlash(time.x, weatherMode);
 
     float tSunset = clamp((sunY - 0.0) / (0.65 - 0.0), 0.0, 1.0);
     float tNight  = smoothstep(-0.25, 0.05, sunY);
@@ -220,8 +261,41 @@ void main()
     vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
 
     float up = max(viewDir.y, 0.0);
-    
-    
+     
+    // SCREEN-SPACE UV (selalu di depan kamera)
+    vec2 screenUV = TexCoords.xy / TexCoords.z;
+    screenUV = screenUV * 0.5 + 0.5;   // 0..1
+
+    // ubah ke -1..1
+    vec2 boltUV = (screenUV - 0.5) * 2.0;
+      
+    // random 0..1
+    float smoothRnd = fract(sin(time.x * 0.25) * 54321.123);
+
+    // random -1..1
+    float smoothRnd2 = smoothRnd * 2.0 - 1.0;
+      
+    // random horizontal offset (kiri-kanan)
+    float boltOffsetX = smoothRnd2 * 0.9;   // 0.6 = aman, tidak keluar layar
+
+    // random vertical offset (atas-bawah)
+    float boltOffsetY = smoothRnd2  * 0.3;   // 0.3 = tetap di awan
+
+    boltUV.x += boltOffsetX;
+
+    // geser bolt ke ATAS
+    boltUV.y += 0.4 * boltOffsetY ;   // 0.6 = pas di awan
+
+    float boltShape = lightningBoltShape(boltUV, 0);
+
+    //buat debug
+    //float bolt = boltShape;                 // bentuk petir SELALU ada
+    //float boltFlash = boltShape * lightning; // cahaya petir mengikuti flash
+     
+    float bolt = boltShape * lightning;   // bolt muncul hanya saat flash
+    float boltFlash = bolt * 1.0;         // bloom ikut flash
+
+
     vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
     
     //add petir di langit
@@ -451,11 +525,14 @@ void main()
         skyWithCelestial += starColor;
     }
 
-    // FINAL MIX
+    // FINAL MIX 
+    // lightning final pass — harus di atas awan
     vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
 
-    // lightning final pass — harus di atas awan
-    result += vec3(0.9, 0.95, 1.25) * lightning * 2.0;
+    result += vec3(0.9, 0.95, 1.3) * bolt * 2.5;
+    result += vec3(0.9, 0.95, 1.3) * bolt * 4.0 * lightning;
+
+
 
     FragColor = vec4(result, 1.0);
 }
