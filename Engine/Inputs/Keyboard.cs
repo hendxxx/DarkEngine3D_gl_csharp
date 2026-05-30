@@ -150,31 +150,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 lPressed = false;
             }
 
-            // Movement
-            bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
-                                || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
+            //// Movement
+            //bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
+            //                    || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
 
-            // ← UBAH: Scale camera speed dengan TerrainScale
+            //// ← UBAH: Scale camera speed dengan TerrainScale
             ////float scaledSpeed = speedCam * TerrainChunk.TerrainScale * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
-            float scaledSpeed = (speedCam / TerrainChunk.TerrainScale) * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
+            //float scaledSpeed = (speedCam / TerrainChunk.TerrainScale) * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
             
-            Vector3 flatForward = Vector3.Normalize(new Vector3(camera.Front.X, 0f, camera.Front.Z));
+            //Vector3 flatForward = Vector3.Normalize(new Vector3(camera.Front.X, 0f, camera.Front.Z));
 
-            if (glfwGetKey(window, Const.GLFW_KEY_W) == Const.GLFW_PRESS)
-                camera.Position += flatForward * scaledSpeed;
+            //if (glfwGetKey(window, Const.GLFW_KEY_W) == Const.GLFW_PRESS)
+            //    camera.Position += flatForward * scaledSpeed;
 
-            if (glfwGetKey(window, Const.GLFW_KEY_S) == Const.GLFW_PRESS)
-                camera.Position -= flatForward * scaledSpeed;
+            //if (glfwGetKey(window, Const.GLFW_KEY_S) == Const.GLFW_PRESS)
+            //    camera.Position -= flatForward * scaledSpeed;
 
-            Vector3 flatRight = Vector3.Normalize(Vector3.Cross(flatForward, Vector3.UnitY));
+            //Vector3 flatRight = Vector3.Normalize(Vector3.Cross(flatForward, Vector3.UnitY));
 
-            if (glfwGetKey(window, Const.GLFW_KEY_A) == Const.GLFW_PRESS)
-                camera.Position -= flatRight * scaledSpeed;
+            //if (glfwGetKey(window, Const.GLFW_KEY_A) == Const.GLFW_PRESS)
+            //    camera.Position -= flatRight * scaledSpeed;
 
-            if (glfwGetKey(window, Const.GLFW_KEY_D) == Const.GLFW_PRESS)
-                camera.Position += flatRight * scaledSpeed;
+            //if (glfwGetKey(window, Const.GLFW_KEY_D) == Const.GLFW_PRESS)
+            //    camera.Position += flatRight * scaledSpeed;
 
-            camera.Pitch = Math.Clamp(camera.Pitch, -85f, 85f);
+            //camera.Pitch = Math.Clamp(camera.Pitch, -85f, 85f);
 
 
             // ← TAMBAHKAN: Travel measurement (tekan T untuk start, atau lagi untuk stop)

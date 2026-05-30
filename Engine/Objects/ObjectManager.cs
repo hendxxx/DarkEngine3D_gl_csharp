@@ -43,6 +43,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int CulledObjects { get; private set; }
         public bool DisableFrustumCull = false;
 
+
+        public CharacterAgent PlayerAgent;
+        public GltfObject PlayerObject;
+
+
         public ObjectManager()
         {
             _shaderProgram = GltfShader.GetShaderProgram();
@@ -61,7 +66,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _jointsLoc = GL.GetUniformLocation(_shaderProgram, "u_Joints");
         }
 
-        public void Init(TerrainChunk gameTerrainChunk)
+        public void Init(Camera camera,TerrainChunk gameTerrainChunk)
         {
             string xbotPath = "Artifacts\\objects\\Stuntman.glb";
             var rng = new Random();
@@ -114,11 +119,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\dying.glb", "dying", retargetRoot: true);
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\looking-around.glb", "lookaround");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\entry.glb", "entry");
-            LoadAnimationFolder("Artifacts\\animations");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-left.glb", "strafeleft");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-right.glb", "straferight");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walking-backwards.glb", "backward");
+
+            LoadAnimationFolder("Artifacts\\anim");
 
             WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
             WanderRadius = 38f;
             InitWanderingAgents();
+
+            // === PLAYER SPAWN ===
+            string playerPath = "Artifacts\\objects\\Xbot.glb";
+
+            float playerX = 0f;
+            float playerZ = 0f;
+            float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
+
+            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
+            PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
+            {   
+                IsPlayer = true
+            };
+            // === INITIAL FACING ===
+            float initialHeading = Config.PlayerConfig.InitialHeading;
+
+            // Set heading player
+            PlayerAgent.Heading = initialHeading;
+            PlayerObject.SetFacing(initialHeading);
+
+            // Sinkronkan kamera
+            camera.Yaw = initialHeading;
+            camera.Pitch = 10f; // sedikit menunduk biar enak
+
+            // Masukkan player ke list agents paling depan
+            _agents.Insert(0, PlayerAgent);
+            _objects.Insert(0, PlayerObject);
+
+
         }
 
         public GltfModelGpuData LoadModel(string path)
@@ -180,7 +218,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // AAA-style: AI + movement + collisions, tanpa double-update animasi
-        public void UpdateAgents(float dt, TerrainChunk terrain, Camera camera)
+        public void UpdateAgents(nint window, float dt, TerrainChunk terrain, Camera camera)
         {
             if (_agents.Count == 0) return;
 
@@ -246,7 +284,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 a.UpdateBehavior(dt, _agents);
 
             foreach (var a in _agents)
-                a.Move(dt, terrain, WanderCenter, WanderRadius);
+                a.Move(window, camera, dt, terrain, WanderCenter, WanderRadius);
 
             // 3) Collision (LOD-aware)
             ResolveCollisions(terrain);

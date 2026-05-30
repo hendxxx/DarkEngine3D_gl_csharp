@@ -13,7 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Vector3 Right = Vector3.UnitX;
 
         // Euler (bisa nanti diganti quaternion kalau mau)
-        public float Yaw = -90.0f; // menghadap -Z
+        public float Yaw = 0.0f; 
         public float Pitch = 0.0f;
 
         // Projection params
@@ -43,15 +43,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             Position = new(x, y, z);
 
-            Yaw = -90.0f;
+            Yaw = 0.0f;
             Pitch = 0.0f;
 
             UpdateVectors();
             _projectionDirty = true;
         }
+        public void Follow(Vector3 targetPos, Vector3 offset) 
+        {
+            Position = targetPos + offset;
 
+            // Kamera selalu melihat ke player
+            Front = Vector3.Normalize(targetPos - Position);
+
+            // Hitung Right & Up
+            Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
+            Up = Vector3.Normalize(Vector3.Cross(Right, Front));
+        }
         public void UpdateVectors()
         {
+            // 1. Clamp pitch dulu
+            Pitch = Math.Clamp(Pitch, -30f, 30f);
+
             float yawRad = Helpers.TerrainsHelpers.OGLMath.ToRadians(Yaw);
             float pitchRad = Helpers.TerrainsHelpers.OGLMath.ToRadians(Pitch);
 
@@ -59,12 +72,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             front.X = MathF.Cos(yawRad) * MathF.Cos(pitchRad);
             front.Y = MathF.Sin(pitchRad);
             front.Z = MathF.Sin(yawRad) * MathF.Cos(pitchRad);
-            Front = Vector3.Normalize(front);
 
-            // Right & Up yang stabil
+            Front = Vector3.Normalize(front);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
+
         }
+
 
         public float GetAspect() => _aspect;
 

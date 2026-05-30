@@ -1,20 +1,24 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Inputs;
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
+using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
     public class CharacterAgent
     {
+        public bool IsPlayer = false;
         public enum Mentality { Aggressive, Coward }
         public enum Behavior { Wander, Chase, Fight, Flee }
         private enum Gait { Idle, Walk, Run }
         private enum CombatAct { None, Attack, Block, Hurt }
 
         // ---- movement tunables -------------------------------------------------
-        private const float WalkSpeed = 1.6f;
-        private const float RunSpeed = 4.6f;
-        private const float SprintSpeed = 7.4f;
+        private float WalkSpeed = Config.AIConfig.Walk ;
+        private float RunSpeed = Config.AIConfig.Run;
+        private float SprintSpeed = Config.AIConfig.Sprint;
         private const float SprintAnimScale = 1.5f;
         private const float TurnRate = 5.0f;
         private const float BlendTime = 0.22f;
@@ -55,7 +59,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool Dead { get; private set; }
         public float DeadElapsed => _deadTime;
         public Vector3 Position { get => _obj.Position; set => _obj.Position = value; }
-        public Vector3 Forward => new(MathF.Sin(_heading), 0f, MathF.Cos(_heading));
+        public Vector3 Forward
+        {
+            get
+            {
+                if (IsPlayer)
+                {
+                    // PLAYER: heading = derajat, sistem kamera (COS–SIN)
+                    float rad = _heading * (MathF.PI / 180f);
+                    return new Vector3(MathF.Cos(rad), 0f, MathF.Sin(rad));
+                }
+                else
+                {
+                    // AI: heading = radian, sistem Atan2 (SIN–COS)
+                    float rad = _heading;
+                    return new Vector3(MathF.Sin(rad), 0f, MathF.Cos(rad));
+                }
+            }
+        }
+
+
+
 
         private readonly GltfObject _obj;
         private readonly Random _rng;
@@ -95,6 +119,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private CharacterAgent? _struckBy;
         private float _struckTimer;
         private float _victoryTimer;
+
+        public float Heading
+        {
+            get => _heading;
+            set => _heading = value;
+        }
+
+
 
         // ============================
         // AAA-style AI LOD
@@ -143,6 +175,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public void UpdateBehavior(float dt, IReadOnlyList<CharacterAgent> all)
         {
+            if (IsPlayer)
+            {
+                // Player tidak pakai AI
+                return;
+            }
+
             if (Dead) { _deadTime += dt; return; }
 
             float tickInterval = AiLOD switch
@@ -460,8 +498,66 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         //  Movement with LOD
         // -----------------------------------------------------------------------
-        public void Move(float dt, TerrainChunk terrain, Vector3 center, float maxRadius)
+        public void Move(nint window, Camera camera, float dt, TerrainChunk terrain, Vector3 center, float maxRadius)
         {
+            // ============================
+            // PLAYER CONTROL
+            // ============================
+            if (IsPlayer)
+            {
+                // --- ROTASI PLAYER (YAW) ---
+                _heading = camera.Yaw;   // tubuh mengikuti arah kamera
+
+                // 2. Hitung forward/right dari heading
+                float rad = Helpers.TerrainsHelpers.OGLMath.ToRadians(_heading);
+
+                Vector3 forward = new(MathF.Sin(rad), 0, MathF.Cos(rad));
+                Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
+
+                float speedWalkVal = Config.PlayerConfig.Walk;
+                float speedRunVal = Config.PlayerConfig.Run;
+                float speed = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_SHIFT) ? speedRunVal * Const.SHIFT_SPEED_MULTIPLIER : speedWalkVal;
+
+                var pos = Position;
+
+                // Movement
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                    pos += forward * speed * dt;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+                    pos -= forward * speed * dt;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
+                    pos -= right * speed * dt;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                    pos += right * speed * dt;
+
+                pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
+
+                // Animasi
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                    _obj.Play("walk", 0.2f);
+                else if(Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+                    _obj.Play("walk", 0.2f);
+                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
+                    _obj.Play("walk", 0.2f);
+                else  if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                    _obj.Play("walk", 0.2f);
+                else
+                    _obj.Play("idle", 0.2f);
+
+                Position = pos;
+                _obj.Position = pos;
+
+                _obj.SetFacing(_heading); // player = derajat
+
+                return;
+            }
+
+
+
+            // ============================
+            // NPC AI (kode lama tetap)
+            // ============================
+
             if (Dead)
             {
                 var dp = _obj.Position;
@@ -470,7 +566,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 return;
             }
 
-            // LOD3: hanya clamp Y, tidak gerak horizontal
+            // LOD3: hanya clamp Y
             if (AiLOD == AiLodLevel.Frozen)
             {
                 var pF = _obj.Position;
@@ -494,7 +590,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _heading = WrapAngle(_heading);
             _obj.SetFacing(_heading * 180f / MathF.PI + FacingOffsetDeg);
 
-            // LOD2: gerak lebih lambat (coarse)
             float speedMul = AiLOD == AiLodLevel.Simulated
                 ? LODConfig.SimulatedSpeedMultiplier
                 : 1f;
@@ -505,9 +600,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 p.X += f.X * _speed * speedMul * dt;
                 p.Z += f.Z * _speed * speedMul * dt;
             }
+
             p.Y = terrain.GetHeightAt(p.X, p.Z - 0.8f);
             _obj.Position = p;
         }
+
 
         public void AvoidFrom(Vector3 other)
         {

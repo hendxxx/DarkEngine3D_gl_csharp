@@ -41,7 +41,7 @@ public unsafe class Program
         Shader.Init(); 
         
         // Init Camera
-        Camera camera = new(0, 10, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 2500.0f);
+        Camera camera = new(0, 0, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 2500.0f);
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;
@@ -130,7 +130,7 @@ public unsafe class Program
 
         UpdateLoading(window, deltaTime, hud, images, "Loading objects ... ");
         ObjectManager objectManager = new();
-        objectManager.Init(gameTerrainChunk);
+        objectManager.Init(camera,gameTerrainChunk);
 
         Thread.Sleep(500);
 

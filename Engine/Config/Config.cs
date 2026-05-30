@@ -42,4 +42,42 @@
         public static float FrustumInnerDot = 0.2f;   // > 0.2 = benar2 di depan
         public static float FrustumOuterDot = -0.2f;  // > -0.2 = masih dekat frustum
     }
+
+    // ============================
+    // Player Config
+    // ============================
+    public static class PlayerConfig
+    {
+
+        // ============================
+        // Initial Heading -> menghadap ke ?
+        // ============================
+        public static float InitialHeading = 45.0f;  // 45 derajat ke kanan
+
+        // ============================
+        // Speed
+        // ============================
+        public static float Walk = 1.0f;
+        public static float Run = 2.5f;
+        public static float Sprint = 4.0f;
+    }
+
+    // ============================
+    // AI Config
+    // ============================
+    public static class AIConfig
+    {
+ 
+        // ============================
+        // Speed
+        // ============================
+        //public static float Walk = 1.6f;  
+        //public static float Run = 4.6f;  
+        //public static float Sprint = 7.4f;
+
+        public static float Walk = 1.0f;
+        public static float Run = 2.5f;
+        public static float Sprint = 4.0f;
+
+    }
 }
