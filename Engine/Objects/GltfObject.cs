@@ -25,6 +25,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     public unsafe class GltfObject
     {
         public readonly GltfModelGpuData GpuData;
+        public bool IsVisible = true;
+        public int AnimLOD = 0; // 0=full, 1=mid, 2=freeze, 3=skip
+        private int _lodFrameCounter = 0;
 
         public Vector3    Position;
         public Quaternion Rotation;
@@ -463,23 +466,47 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public void Update(float dt)
         {
+            // ============================================
+            // 0. SKIP TOTAL JIKA TIDAK TERLIHAT (LOD3)
+            // ============================================
+            if (!IsVisible || AnimLOD == 3)
+                return;
+
+            // ============================================
+            // 1. LOD2 — FREEZE POSE (tidak update animasi)
+            // ============================================
+            if (AnimLOD == 2)
+                return;
+
+            // ============================================
+            // 2. LOD1 — UPDATE SETIAP 3 FRAME
+            // ============================================
+            if (AnimLOD == 1)
+            {
+                _lodFrameCounter++;
+                if (_lodFrameCounter % 3 != 0)
+                    return;
+            }
+
+            // ============================================
+            // 3. FULL ANIMATION (LOD0)
+            // ============================================
             var nodes = GpuData.Data.Nodes ?? [];
             EnsureBuffers(nodes);
 
-            float adt = dt * MathF.Max(0f, PlaybackSpeed);   // playback-scaled time step
+            float adt = dt * MathF.Max(0f, PlaybackSpeed);
 
             if (_curClip >= 0 && _curClip < _clips.Count)
             {
                 var cur = _clips[_curClip];
                 float dur = MathF.Max(0.0001f, cur.Duration);
+
                 if (_curLoop)
                 {
                     _curTime = Advance(_curTime, adt, dur);
                 }
                 else
                 {
-                    // One-shot (e.g. a punch): advance without looping; on completion
-                    // crossfade back to the return clip (the fighting stance).
                     _curTime += adt;
                     if (_curTime >= dur)
                     {
@@ -489,7 +516,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             PlayIndex(_returnClip, _returnBlend, loop: true);
                             cur = _clips[_curClip];
                         }
-                        // else: no return clip → hold on the last frame (e.g. death).
                     }
                 }
 
@@ -497,7 +523,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (blending)
                 {
                     _prevTime = Advance(_prevTime, adt, _clips[_prevClip].Duration);
-                    _blend += _blendRate * dt;   // crossfade stays real-time
+                    _blend += _blendRate * dt;
                     if (_blend >= 1f) { _blend = 1f; _prevClip = -1; blending = false; }
                 }
 
@@ -519,12 +545,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             else
             {
-                // No clip: rest in bind pose.
                 for (int i = 0; i < _nodeLocal.Length; i++)
                     _nodeLocal[i] = nodes[i].LocalMatrix;
             }
 
-            // global = local * parentGlobal  (row-vector convention)
+            // FK
             for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
             for (int i = 0; i < _nodeLocal.Length; i++)
                 if (nodes[i].Parent == -1)
@@ -532,6 +557,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             ComputeJointMatricesIfNeeded();
         }
+
 
         public Matrix4x4[] GetJointMatrices() => _jointMatrices;
 

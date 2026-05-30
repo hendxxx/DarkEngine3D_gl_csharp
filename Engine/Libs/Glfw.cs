@@ -231,7 +231,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     // Each character decides on its own whether to idle/walk/run, picks
                     // a direction, moves at a gait-matched speed, avoids the others, and
                     // stays on the terrain. Updated before drawing to avoid a 1-frame lag.
-                    objectManager.UpdateAgents(deltaTime, gameTerrainChunk);
+                    objectManager.Update(deltaTime);              // ANIMASI
+                    objectManager.UpdateAgents(deltaTime, gameTerrainChunk, camera); // AI + movement + collision
+
                     objectManager.Draw(camera, light);
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
 
@@ -252,11 +254,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 string gTime = light.GetFormattedTime();
                 Glfw.ShowFPS(deltaTime, renderedTris, totalMapTris, gTime);
 
-                string title = $"🕒 [ {gTime} ]    ⚡ FPS: {lastFPS}    📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
+                string title1 = $"🕒 [ {gTime} ]";
+                string title2 = $"⚡ FPS: {lastFPS}";
+                string title3 = $"📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
 
-                hud.DrawText(title + " POS: " + camera.Position, 10, 60, new Vector3(1, 0, 0));
-                hud.DrawText("a brown fox quickly jump over the lazy dog", 10, 90, new Vector3(0, 0, 0), new Vector3(1, 1, 1));
-                hud.DrawText("`1234567890-=~!@#$%^&*()_+[]\\{}|;':\",./<>?", 10, 120, new Vector3(0, 0, 0), new Vector3(1, 0, 1));
+                string title4 = $" POS: X ={camera.Position.Z:N2} Y{camera.Position.Y:N2}= Z{camera.Position.Z:N2}";
+
+                string title5 = $" Objects: { objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
+
+                hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
+                hud.DrawText(title2, 10, 90, new Vector3(1, 0, 0));
+                hud.DrawText(title3, 10, 120, new Vector3(1, 0, 0));
+                hud.DrawText(title4, 10, 150, new Vector3(1, 0, 0));
+                hud.DrawText(title5, 10, 180, new Vector3(1, 0, 0));
+                //hud.DrawText("a brown fox quickly jump over the lazy dog", 10, 90, new Vector3(0, 0, 0), new Vector3(1, 1, 1));
+                //hud.DrawText("`1234567890-=~!@#$%^&*()_+[]\\{}|;':\",./<>?", 10, 120, new Vector3(0, 0, 0), new Vector3(1, 0, 1));
 
 
                 OpenGL.SwapBuffer(window);

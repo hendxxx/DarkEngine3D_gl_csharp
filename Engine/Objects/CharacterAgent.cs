@@ -3,113 +3,110 @@ using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
-    // ===========================================================================
-    //  CharacterAgent — autonomous character with a mentality, gaits, and melee
-    //  combat (health, attacks, blocking, hit reactions, death).
-    //
-    //  Mentality (random): Aggressive chases and fights; Coward flees (sprints).
-    //  Behavior FSM: Wander, Chase, Fight, Flee.
-    //  Combat (during Fight): each fighter holds a stance, attacks on a cadence
-    //  (fist-fight / punching-bag / hook), reads the opponent and may block an
-    //  incoming attack (body-block), takes a hit reaction (taking-punch) and loses
-    //  health when struck, and dies (dying) at 0 HP — after which the winner finds
-    //  a new opponent. Health regenerates over time (faster while idle/resting).
-    // ===========================================================================
     public class CharacterAgent
     {
         public enum Mentality { Aggressive, Coward }
-        public enum Behavior  { Wander, Chase, Fight, Flee }
-        private enum Gait     { Idle, Walk, Run }
+        public enum Behavior { Wander, Chase, Fight, Flee }
+        private enum Gait { Idle, Walk, Run }
         private enum CombatAct { None, Attack, Block, Hurt }
 
         // ---- movement tunables -------------------------------------------------
-        private const float WalkSpeed       = 1.6f;
-        private const float RunSpeed        = 4.6f;    // normal run (wander, chasing)
-        private const float SprintSpeed     = 7.4f;    // terrified flee — outruns a chaser
+        private const float WalkSpeed = 1.6f;
+        private const float RunSpeed = 4.6f;
+        private const float SprintSpeed = 7.4f;
         private const float SprintAnimScale = 1.5f;
-        private const float TurnRate        = 5.0f;
-        private const float BlendTime       = 0.22f;
-        private const float Radius          = 0.45f;
+        private const float TurnRate = 5.0f;
+        private const float BlendTime = 0.22f;
+        private const float Radius = 0.45f;
 
         // ---- perception / engagement ------------------------------------------
         private const float VisionRange = 14f;
-        private const float VisionCos   = 0.50f;   // ~120° FOV
-        private const float FleeRange   = 9f;
-        private const float FightRange  = 1.05f;   // engage at striking distance
-        private const float StrikeDist  = 0.8f;    // lunge in to ~a fist's reach when punching (bodies don't clip)
-        private const float LungeSpeed  = 2.2f;    // closing speed during an attack
+        private const float VisionCos = 0.50f;
+        private const float FleeRange = 9f;
+        private const float FightRange = 1.05f;
+        private const float StrikeDist = 0.8f;
+        private const float LungeSpeed = 2.2f;
         private const float GiveUpRange = 12f;
-        private const float LoseRange   = 19f;
+        private const float LoseRange = 19f;
 
         // ---- combat tunables ---------------------------------------------------
-        public  const float MaxHealth    = 100f;
-        private const float RegenIdle    = 9f;     // HP/s while resting (idle)
-        private const float RegenActive  = 1.5f;   // HP/s otherwise
-        private const float HitFraction  = 0.38f;  // when in an attack clip the blow lands
-        private const float PunchDamage  = 12f;
-        private const float HookDamage   = 22f;
-        private const float BlockedMul   = 0.12f;  // damage that leaks through a block
-        private const float BlockChance  = 0.55f;  // chance to read & block an incoming hit
-        private const float BlockHold    = 0.6f;   // how long a block guards
-        private const float HurtHold     = 0.9f;   // stagger time after being hit
-        private const float ReactMax     = 0.5f;   // can block if the hit is within this
-        private const float ReactMin     = 0.05f;
-        private const float RetaliateTime = 4f;    // after being struck, fight the attacker for this long
+        public const float MaxHealth = 100f;
+        private const float RegenIdle = 9f;
+        private const float RegenActive = 1.5f;
+        private const float HitFraction = 0.38f;
+        private const float PunchDamage = 12f;
+        private const float HookDamage = 22f;
+        private const float BlockedMul = 0.12f;
+        private const float BlockChance = 0.55f;
+        private const float BlockHold = 0.6f;
+        private const float HurtHold = 0.9f;
+        private const float ReactMax = 0.5f;
+        private const float ReactMin = 0.05f;
+        private const float RetaliateTime = 4f;
 
-        // Model "front" yaw offset (deg). Flip 0<->180 if characters face backwards.
         private const float FacingOffsetDeg = 0f;
 
-        public static float      CollisionRadius => Radius;
-        public Mentality  Temper          { get; }
-        public Behavior   Mode            { get; private set; } = Behavior.Wander;
-        public CharacterAgent? Target     { get; private set; }
-        public float      Health          { get; private set; } = MaxHealth;
-        public bool       Dead            { get; private set; }
-        public float      DeadElapsed     => _deadTime;
-        public Vector3    Position { get => _obj.Position; set => _obj.Position = value; }
-        public Vector3    Forward  => new(MathF.Sin(_heading), 0f, MathF.Cos(_heading));
+        public static float CollisionRadius => Radius;
+        public Mentality Temper { get; }
+        public Behavior Mode { get; private set; } = Behavior.Wander;
+        public CharacterAgent? Target { get; private set; }
+        public float Health { get; private set; } = MaxHealth;
+        public bool Dead { get; private set; }
+        public float DeadElapsed => _deadTime;
+        public Vector3 Position { get => _obj.Position; set => _obj.Position = value; }
+        public Vector3 Forward => new(MathF.Sin(_heading), 0f, MathF.Cos(_heading));
 
         private readonly GltfObject _obj;
-        private readonly Random     _rng;
+        private readonly Random _rng;
 
-        // resolved clip names (some optional → null)
-        private readonly string        _idleClip;
-        private readonly string        _walkClip;
-        private readonly string        _runClip;
-        private readonly string        _stanceClip;
-        private readonly string?       _blockClip;
-        private readonly string?       _hurtClip;
-        private readonly string?       _dyingClip;
-        private readonly string?       _lookClip;
-        private readonly string?       _entryClip;
-        private readonly float         _victoryDur;
-        private readonly List<string>  _attackClips;
+        private readonly string _idleClip;
+        private readonly string _walkClip;
+        private readonly string _runClip;
+        private readonly string _stanceClip;
+        private readonly string? _blockClip;
+        private readonly string? _hurtClip;
+        private readonly string? _dyingClip;
+        private readonly string? _lookClip;
+        private readonly string? _entryClip;
+        private readonly float _victoryDur;
+        private readonly List<string> _attackClips;
 
-        private float    _heading;
-        private float    _targetHeading;
-        private float    _speed;
-        private float    _wanderTimer;
-        private Vector3  _fleeFrom;
+        private float _heading;
+        private float _targetHeading;
+        private float _speed;
+        private float _wanderTimer;
+        private Vector3 _fleeFrom;
         private Behavior _prevMode = Behavior.Wander;
 
         private CharacterAgent? _gaveUpOn;
-        private float           _giveUpTimer;
+        private float _giveUpTimer;
 
-        // combat action state
-        private CombatAct       _act;
-        private float           _actTime;
-        private float           _actDur;
-        private float           _hitAt;
-        private bool            _hitResolved;
-        private float           _pendingDamage;
+        private CombatAct _act;
+        private float _actTime;
+        private float _actDur;
+        private float _hitAt;
+        private bool _hitResolved;
+        private float _pendingDamage;
         private CharacterAgent? _atkTarget;
-        private float           _attackCooldown;
-        private float           _deadTime;
+        private float _attackCooldown;
+        private float _deadTime;
 
-        // retaliation (turn around and fight whoever struck you, even from behind)
         private CharacterAgent? _struckBy;
-        private float           _struckTimer;
-        private float           _victoryTimer;   // post-win celebration (entry pose)
+        private float _struckTimer;
+        private float _victoryTimer;
+
+        // ============================
+        // AAA-style AI LOD
+        // ============================
+        public enum AiLodLevel { Full = 0, Reduced = 1, Simulated = 2, Frozen = 3 }
+        public AiLodLevel AiLOD = AiLodLevel.Full;
+
+        // tick accumulator (AI tidak selalu jalan tiap frame)
+        private float _aiTickAccum = 0f;
+        private const float TickFull = 0f;    // tiap frame
+        private const float TickReduced = 1f / 15f; // ~15 Hz
+        private const float TickSimulated = 1f / 3f;  // ~3 Hz
+        private const float TickFrozen = 0.5f;     // hanya regen ringan
 
         public CharacterAgent(GltfObject obj, Random rng)
         {
@@ -117,69 +114,103 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _rng = rng;
             Temper = _rng.NextDouble() < 0.5 ? Mentality.Aggressive : Mentality.Coward;
 
-            var clips   = obj.GetClipNames();
-            _idleClip   = First(clips, "idle") ?? "idle";
-            _walkClip   = First(clips, "walk") ?? "walk";
-            _runClip    = First(clips, "run")  ?? _walkClip;
+            var clips = obj.GetClipNames();
+            _idleClip = First(clips, "idle") ?? "idle";
+            _walkClip = First(clips, "walk") ?? "walk";
+            _runClip = First(clips, "run") ?? _walkClip;
             _stanceClip = First(clips, "fightstance", "fightingidle", "fighting-idle", "fighting_idle", "guard", "stance")
                        ?? First(clips, "fistfight", "fighting", "fight", "boxing", "combat", "brawl")
                        ?? _idleClip;
-            _blockClip  = First(clips, "block", "bodyblock", "body-block", "defend");
-            _hurtClip   = First(clips, "hurt", "takepunch", "taking-punch", "takingpunch", "flinch", "impact");
-            _dyingClip  = First(clips, "dying", "death", "die", "dead");
-            _lookClip   = First(clips, "lookaround", "looking", "look");   // nervous coward idle
-            _entryClip  = First(clips, "entry", "victory", "taunt", "celebrat", "win");
+            _blockClip = First(clips, "block", "bodyblock", "body-block", "defend");
+            _hurtClip = First(clips, "hurt", "takepunch", "taking-punch", "takingpunch", "flinch", "impact");
+            _dyingClip = First(clips, "dying", "death", "die", "dead");
+            _lookClip = First(clips, "lookaround", "looking", "look");
+            _entryClip = First(clips, "entry", "victory", "taunt", "celebrat", "win");
             _victoryDur = _entryClip != null ? MathF.Min(obj.GetClipDuration(_entryClip), 3.5f) : 0f;
             _attackClips = All(clips, "fistfight", "punchbag", "hook", "jab", "cross", "uppercut", "kick", "strike");
             _attackClips.RemoveAll(c =>
                    string.Equals(c, _stanceClip, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c, _blockClip,  StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c, _hurtClip,   StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c, _dyingClip,  StringComparison.OrdinalIgnoreCase));
+                || string.Equals(c, _blockClip, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c, _hurtClip, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c, _dyingClip, StringComparison.OrdinalIgnoreCase));
 
             _heading = _targetHeading = RandomAngle();
             ChooseWanderAction();
         }
 
         // -----------------------------------------------------------------------
-        //  Per-frame think: regen, advance any combat action, perceive, decide, act.
+        //  Per-frame think with AAA-style LOD tick
         // -----------------------------------------------------------------------
         public void UpdateBehavior(float dt, IReadOnlyList<CharacterAgent> all)
         {
             if (Dead) { _deadTime += dt; return; }
 
+            // Tentukan interval tick berdasarkan LOD
+            float tickInterval = AiLOD switch
+            {
+                AiLodLevel.Full => TickFull,
+                AiLodLevel.Reduced => TickReduced,
+                AiLodLevel.Simulated => TickSimulated,
+                AiLodLevel.Frozen => TickFrozen,
+                _ => TickFull
+            };
+
+            _aiTickAccum += dt;
+
+            // LOD3 (Frozen): hanya regen ringan, tidak combat/perception
+            if (AiLOD == AiLodLevel.Frozen)
+            {
+                if (_aiTickAccum < tickInterval)
+                    return;
+                float step = _aiTickAccum;
+                _aiTickAccum = 0f;
+
+                bool restingF = Mode == Behavior.Wander && _speed <= 0.01f;
+                Health = MathF.Min(MaxHealth, Health + (restingF ? RegenIdle : RegenActive) * step);
+                return;
+            }
+
+            // LOD1/2: hanya jalan kalau sudah lewat interval
+            if (tickInterval > 0f && _aiTickAccum < tickInterval)
+                return;
+
+            float tickDt = tickInterval > 0f ? _aiTickAccum : dt;
+            _aiTickAccum = 0f;
+
             bool resting = Mode == Behavior.Wander && _speed <= 0.01f;
-            Health = MathF.Min(MaxHealth, Health + (resting ? RegenIdle : RegenActive) * dt);
+            Health = MathF.Min(MaxHealth, Health + (resting ? RegenIdle : RegenActive) * tickDt);
 
-            if (_giveUpTimer > 0f) _giveUpTimer -= dt;
-            if (_struckTimer > 0f) _struckTimer -= dt;
-            if (_victoryTimer > 0f) _victoryTimer -= dt;
+            if (_giveUpTimer > 0f) _giveUpTimer -= tickDt;
+            if (_struckTimer > 0f) _struckTimer -= tickDt;
+            if (_victoryTimer > 0f) _victoryTimer -= tickDt;
 
-            AdvanceAction(dt);
+            AdvanceAction(tickDt);
 
-            var p   = Position;
+            var p = Position;
             var fwd = Forward;
-            CharacterAgent? nearestSeen = null; float seenDist   = float.MaxValue;
-            CharacterAgent? threat      = null; float threatDist = float.MaxValue;
-            CharacterAgent? attacker    = null; float atkDist    = float.MaxValue;
+            CharacterAgent? nearestSeen = null; float seenDist = float.MaxValue;
+            CharacterAgent? threat = null; float threatDist = float.MaxValue;
+            CharacterAgent? attacker = null; float atkDist = float.MaxValue;
+
+            // Perception LOD: LOD2 pakai radius lebih kecil dan FOV lebih ketat
+            float visionRange = AiLOD == AiLodLevel.Simulated ? VisionRange * 0.6f : VisionRange;
+            float visionCos = AiLOD == AiLodLevel.Simulated ? 0.7f : VisionCos;
 
             foreach (var o in all)
             {
                 if (ReferenceEquals(o, this) || o.Dead) continue;
                 float dx = o.Position.X - p.X, dz = o.Position.Z - p.Z;
-                float d  = MathF.Sqrt(dx * dx + dz * dz);
+                float d = MathF.Sqrt(dx * dx + dz * dz);
 
                 if (o.Temper == Mentality.Aggressive && ReferenceEquals(o.Target, this) && d < LoseRange && d < atkDist)
                 { attacker = o; atkDist = d; }
 
-                if (d > VisionRange) continue;
+                if (d > visionRange) continue;
                 float inv = d > 1e-4f ? 1f / d : 0f;
-                if (fwd.X * dx * inv + fwd.Z * dz * inv < VisionCos) continue;
+                if (fwd.X * dx * inv + fwd.Z * dz * inv < visionCos) continue;
 
-                // Only acquire FREE opponents — never join someone else's fight or
-                // pile onto a char that is already fighting/chasing.
                 bool ignored = _giveUpTimer > 0f && ReferenceEquals(o, _gaveUpOn);
-                bool busy    = o.Mode == Behavior.Fight || o.Mode == Behavior.Chase;
+                bool busy = o.Mode == Behavior.Fight || o.Mode == Behavior.Chase;
                 if (d < seenDist && !ignored && !busy) { nearestSeen = o; seenDist = d; }
 
                 bool dangerous = o.Mode == Behavior.Fight || o.Mode == Behavior.Chase
@@ -189,19 +220,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             if (_struckTimer > 0f && _struckBy != null && !_struckBy.Dead)
             {
-                // Someone hit us (possibly from behind): turn around and fight back.
                 Target = _struckBy;
                 Mode = DistTo(_struckBy.Position) <= FightRange ? Behavior.Fight : Behavior.Chase;
             }
             else if (_victoryTimer > 0f)
             {
-                // Celebrating a win — hold position until the entry pose finishes.
                 Mode = Behavior.Wander; Target = null;
             }
             else if (Temper == Mentality.Aggressive) DecideAggressive(nearestSeen, attacker);
-            else                                     DecideCoward(threat, attacker);
+            else DecideCoward(threat, attacker);
 
-            Act(dt);
+            Act(tickDt);
             _prevMode = Mode;
         }
 
@@ -209,7 +238,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (Target != null && Target.Dead)
             {
-                // We won — celebrate with the entry pose before seeking another fight.
                 Target = null;
                 if (_entryClip != null && _victoryDur > 0f)
                 {
@@ -246,16 +274,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Target = null;
             var run = threat ?? attacker;
             if (run != null) { Mode = Behavior.Flee; _fleeFrom = run.Position; }
-            else             Mode = Behavior.Wander;
+            else Mode = Behavior.Wander;
         }
 
-        // -----------------------------------------------------------------------
-        //  Turn the decision into heading / speed / animation.
-        // -----------------------------------------------------------------------
         private void Act(float dt)
         {
             _obj.PlaybackSpeed = 1f;
-            if (_victoryTimer > 0f) { _speed = 0f; return; }   // hold the entry/victory pose
+            if (_victoryTimer > 0f) { _speed = 0f; return; }
 
             switch (Mode)
             {
@@ -276,14 +301,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (Target != null) _targetHeading = HeadingTo(Target.Position);
                     _speed = 0f;
                     CombatUpdate(dt);
-                    // Lunge forward while a punch is winding up so the fist actually
-                    // reaches the target, then hold once close.
                     if (_act == CombatAct.Attack && !_hitResolved && Target != null
                         && DistTo(Target.Position) > StrikeDist)
                         _speed = LungeSpeed;
                     break;
 
-                default: // Wander
+                default:
                     if (_act == CombatAct.None)
                     {
                         if (_prevMode != Behavior.Wander) ChooseWanderAction();
@@ -293,9 +316,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        // -----------------------------------------------------------------------
-        //  Melee combat while in Fight.
-        // -----------------------------------------------------------------------
         private void CombatUpdate(float dt)
         {
             if (_prevMode != Behavior.Fight && _act == CombatAct.None)
@@ -304,21 +324,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 _attackCooldown = 0.3f + (float)_rng.NextDouble() * 0.6f;
             }
 
-            if (_act != CombatAct.None) return;          // mid attack / block / hurt
+            if (_act != CombatAct.None) return;
             if (Target == null) return;
-            if (DistTo(Target.Position) > FightRange * 1.35f) return;   // drifted apart
+            if (DistTo(Target.Position) > FightRange * 1.35f) return;
 
-            _obj.Play(_stanceClip, BlendTime);     // hold the guard between actions
+            _obj.Play(_stanceClip, BlendTime);
             _attackCooldown -= dt;
 
-            // Read the opponent: if a hit is incoming, try to block it.
+            // Combat LOD: di Simulated, kurangi frekuensi serangan
+            float cooldownMul = AiLOD == AiLodLevel.Simulated ? 1.8f : 1f;
+
             if (_blockClip != null && Target.IsThreateningHit(this) && _rng.NextDouble() < BlockChance)
             {
                 StartBlock();
             }
             else if (_attackCooldown <= 0f)
             {
-                StartAttack(Target);            // ...otherwise throw a punch/hook back
+                _attackCooldown *= cooldownMul;
+                StartAttack(Target);
             }
         }
 
@@ -337,7 +360,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                 if (_actTime >= _actDur) _act = CombatAct.None;
             }
-            else if (_actTime >= _actDur) _act = CombatAct.None;   // Block / Hurt recovery
+            else if (_actTime >= _actDur) _act = CombatAct.None;
         }
 
         private void StartAttack(CharacterAgent target)
@@ -348,12 +371,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (dur <= 0f) dur = 2f;
 
             _obj.PlayOnce(clip, _stanceClip, 0.12f);
-            _act           = CombatAct.Attack;
-            _actTime       = 0f;
-            _actDur        = dur;
-            _hitAt         = dur * HitFraction;
-            _hitResolved   = false;
-            _atkTarget     = target;
+            _act = CombatAct.Attack;
+            _actTime = 0f;
+            _actDur = dur;
+            _hitAt = dur * HitFraction;
+            _hitResolved = false;
+            _atkTarget = target;
             _pendingDamage = clip.Contains("hook", StringComparison.InvariantCultureIgnoreCase) ? HookDamage : PunchDamage;
             _attackCooldown = 0.5f + (float)_rng.NextDouble() * 0.7f;
         }
@@ -362,13 +385,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (_blockClip == null) return;
             _obj.PlayOnce(_blockClip, _stanceClip, 0.1f);
-            _act     = CombatAct.Block;
+            _act = CombatAct.Block;
             _actTime = 0f;
-            _actDur  = BlockHold;
-            _attackCooldown = 0.15f + (float)_rng.NextDouble() * 0.2f;  // counter quickly
+            _actDur = BlockHold;
+            _attackCooldown = 0.15f + (float)_rng.NextDouble() * 0.2f;
         }
 
-        // True while this agent is mid-attack with a blow about to land on `victim`.
         public bool IsThreateningHit(CharacterAgent victim)
         {
             if (_act != CombatAct.Attack || _hitResolved || !ReferenceEquals(_atkTarget, victim)) return false;
@@ -379,18 +401,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void ReceiveHit(float damage, CharacterAgent from)
         {
             if (Dead) return;
-            _struckBy = from; _struckTimer = RetaliateTime;   // provoke retaliation
-            _victoryTimer = 0f;                               // hit mid-celebration → react
+            _struckBy = from; _struckTimer = RetaliateTime;
+            _victoryTimer = 0f;
             if (_act == CombatAct.Block)
             {
-                Health -= damage * BlockedMul;           // chip damage through the guard
+                Health -= damage * BlockedMul;
             }
             else
             {
                 Health -= damage;
                 if (_hurtClip != null)
                 {
-                    _obj.PlayOnce(_hurtClip, _stanceClip, 0.1f);   // stagger (cancels any attack)
+                    _obj.PlayOnce(_hurtClip, _stanceClip, 0.1f);
                     _act = CombatAct.Hurt; _actTime = 0f; _actDur = HurtHold;
                 }
             }
@@ -405,8 +427,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _deadTime = 0f;
             _act = CombatAct.None;
             _obj.PlaybackSpeed = 1f;
-            if (_dyingClip != null) _obj.PlayOnce(_dyingClip, "", 0.15f);  // play once, hold on the ground
-            else                    _obj.Play(_idleClip, 0.2f);
+            if (_dyingClip != null) _obj.PlayOnce(_dyingClip, "", 0.15f);
+            else _obj.Play(_idleClip, 0.2f);
         }
 
         public void Respawn(Vector3 pos)
@@ -421,6 +443,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _obj.Position = pos;
             _obj.PlaybackSpeed = 1f;
             _heading = _targetHeading = RandomAngle();
+            _aiTickAccum = 0f;
             ChooseWanderAction();
         }
 
@@ -432,23 +455,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _targetHeading = RandomAngle();
             _wanderTimer = 2.0f + (float)_rng.NextDouble() * 4.0f;
 
-            // A coward standing idle nervously looks around; otherwise the plain idle.
             string idle = (Temper == Mentality.Coward && _lookClip != null) ? _lookClip : _idleClip;
             _obj.Play(g switch { Gait.Walk => _walkClip, Gait.Run => _runClip, _ => idle }, BlendTime);
         }
 
         // -----------------------------------------------------------------------
-        //  Rotate toward the target heading, move, and clamp to the terrain.
+        //  Movement with LOD
         // -----------------------------------------------------------------------
         public void Move(float dt, TerrainChunk terrain, Vector3 center, float maxRadius)
         {
             if (Dead)
             {
-                // Stay where we fell; the dying clip's retargeted root motion lays the
-                // body down onto the ground (feet origin stays clamped to the terrain).
                 var dp = _obj.Position;
                 dp.Y = terrain.GetHeightAt(dp.X, dp.Z);
                 _obj.Position = dp;
+                return;
+            }
+
+            // LOD3: hanya clamp Y, tidak gerak horizontal
+            if (AiLOD == AiLodLevel.Frozen)
+            {
+                var pF = _obj.Position;
+                pF.Y = terrain.GetHeightAt(pF.X, pF.Z);
+                _obj.Position = pF;
                 return;
             }
 
@@ -463,15 +492,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             float diff = WrapAngle(_targetHeading - _heading);
             float step = TurnRate * dt;
-            _heading  += MathF.Abs(diff) <= step ? diff : MathF.Sign(diff) * step;
-            _heading   = WrapAngle(_heading);
+            _heading += MathF.Abs(diff) <= step ? diff : MathF.Sign(diff) * step;
+            _heading = WrapAngle(_heading);
             _obj.SetFacing(_heading * 180f / MathF.PI + FacingOffsetDeg);
+
+            // LOD2: gerak lebih lambat (coarse)
+            float speedMul = AiLOD == AiLodLevel.Simulated ? 0.7f : 1f;
 
             if (_speed > 0f)
             {
                 var f = Forward;
-                p.X += f.X * _speed * dt;
-                p.Z += f.Z * _speed * dt;
+                p.X += f.X * _speed * speedMul * dt;
+                p.Z += f.Z * _speed * speedMul * dt;
             }
             p.Y = terrain.GetHeightAt(p.X, p.Z - 0.8f);
             _obj.Position = p;
@@ -485,19 +517,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (_wanderTimer > 0.4f) _wanderTimer = 0.4f;
         }
 
-        // -----------------------------------------------------------------------
         private float DistTo(Vector3 t)
         {
             var p = _obj.Position; float dx = t.X - p.X, dz = t.Z - p.Z;
             return MathF.Sqrt(dx * dx + dz * dz);
         }
-        private float HeadingTo(Vector3 t)   { var p = _obj.Position; return MathF.Atan2(t.X - p.X, t.Z - p.Z); }
+        private float HeadingTo(Vector3 t) { var p = _obj.Position; return MathF.Atan2(t.X - p.X, t.Z - p.Z); }
         private float HeadingAway(Vector3 t) { var p = _obj.Position; return MathF.Atan2(p.X - t.X, p.Z - t.Z); }
-        private float RandomAngle()          => (float)(_rng.NextDouble() * MathF.PI * 2.0);
+        private float RandomAngle() => (float)(_rng.NextDouble() * MathF.PI * 2.0);
 
         private static float WrapAngle(float a)
         {
-            while (a >  MathF.PI) a -= MathF.PI * 2f;
+            while (a > MathF.PI) a -= MathF.PI * 2f;
             while (a < -MathF.PI) a += MathF.PI * 2f;
             return a;
         }
@@ -522,12 +553,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     if (l.Contains(k))
                     {
-                        res.Add(l); // <-- Changed from 'n' to 'l'
+                        res.Add(l);
                         break;
                     }
                 }
             }
-
             return res;
         }
     }
