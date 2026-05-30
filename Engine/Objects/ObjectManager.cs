@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
@@ -195,14 +196,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (idx >= 0 && idx < _objects.Count)
                 {
                     var go = _objects[idx];
+
                     if (!go.IsVisible)
                         a.AiLOD = CharacterAgent.AiLodLevel.Frozen;
-                    else if (dist > 80f)
+                    else if (dist > LODConfig.AiLOD2_Distance)
                         a.AiLOD = CharacterAgent.AiLodLevel.Simulated;
-                    else if (dist > 40f)
+                    else if (dist > LODConfig.AiLOD1_Distance)
                         a.AiLOD = CharacterAgent.AiLodLevel.Reduced;
                     else
                         a.AiLOD = CharacterAgent.AiLodLevel.Full;
+
                 }
                 else
                 {

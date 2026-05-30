@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
 
@@ -99,17 +100,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // AAA-style AI LOD
         // ============================
         public enum AiLodLevel { Full = 0, Reduced = 1, Simulated = 2, Frozen = 3 }
-        public AiLodLevel AiLOD = AiLodLevel.Full;
+        public  AiLodLevel AiLOD = AiLodLevel.Full;
 
         // tick accumulator (AI tidak selalu jalan tiap frame)
         private float _aiTickAccum = 0f;
-        private const float TickFull = 0f;    // tiap frame
-        private const float TickReduced = 1f / 15f; // ~15 Hz
-        private const float TickSimulated = 1f / 3f;  // ~3 Hz
-        private const float TickFrozen = 0.5f;     // hanya regen ringan
+         
+        private float tickInterval = 0f;
 
         public CharacterAgent(GltfObject obj, Random rng)
-        {
+        { 
+
             _obj = obj;
             _rng = rng;
             Temper = _rng.NextDouble() < 0.5 ? Mentality.Aggressive : Mentality.Coward;
@@ -148,11 +148,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Tentukan interval tick berdasarkan LOD
             float tickInterval = AiLOD switch
             {
-                AiLodLevel.Full => TickFull,
-                AiLodLevel.Reduced => TickReduced,
-                AiLodLevel.Simulated => TickSimulated,
-                AiLodLevel.Frozen => TickFrozen,
-                _ => TickFull
+                AiLodLevel.Full => LODConfig.TickFull,
+                AiLodLevel.Reduced => LODConfig.TickReduced,
+                AiLodLevel.Simulated => LODConfig.TickSimulated,
+                AiLodLevel.Frozen => LODConfig.TickFrozen,
+                _ => LODConfig.TickFull
             };
 
             _aiTickAccum += dt;
@@ -497,7 +497,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _obj.SetFacing(_heading * 180f / MathF.PI + FacingOffsetDeg);
 
             // LOD2: gerak lebih lambat (coarse)
-            float speedMul = AiLOD == AiLodLevel.Simulated ? 0.7f : 1f;
+            float speedMul = AiLOD == AiLodLevel.Simulated ? LODConfig.SimulatedSpeedMultiplier : 1f;
+
 
             if (_speed > 0f)
             {
