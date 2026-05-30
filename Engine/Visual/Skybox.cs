@@ -68,7 +68,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.UseProgram(skyShader);
 
             int weatherModeLoc = GL.GetUniformLocation(skyShader, "weatherMode"); 
-            int totalTimeLoc = GL.GetUniformLocation(skyShader, "totalTime");
+            int timeLoc = GL.GetUniformLocation(skyShader, "time");
 
 
             int aspectLoc = GL.GetUniformLocation(skyShader, "u_aspectRatio");
@@ -93,8 +93,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform1f(weatherModeLoc, currentWeatherVal);
 
             // === TIME ===
-            totalTime += deltaTime; 
-            GL.Uniform1f(totalTimeLoc, totalTime);
+            totalTime += deltaTime;
+            GL.Uniform3f(timeLoc, totalTime, 0, 0);
 
             //float sunY = lights.SunDir.Y;
             //float tMalam = 1.0f - Helpers.ShaderHelpers.SmoothStep(-0.3f, 0.1f, sunY);

@@ -122,11 +122,46 @@ vec3 GetSkyColorAtDirection(vec3 dir)
     vec3 sunsetBlend = mix(sunsetColor * 0.6, noonSky, tSunset);
     vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
 
-        float up = max(dir.y, 0.0);
-    vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
+    float up = max(dir.y, 0.0);
 
+    vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
+    
     return skyBase;
 }
+
+// ===============================
+// LIGHTNING FLASH
+// ===============================
+float lightningFlash(float t, float weather)
+{
+    // aktif mulai mendung 0.45 – 0.65
+    float storm = smoothstep(0.45, 0.65, weather);
+    if (storm <= 0.0) return 0.0;
+
+    // random trigger — 1.5% chance
+    float r = fract(sin(t * 7.123) * 45678.123);
+
+    if (r > 0.985)
+    {
+        float f = fract(t * 3.0);
+
+        // pre-flash (kilat jauh)
+        float pre = smoothstep(0.0, 0.10, 0.10 - f);
+
+        // main flash (kilat utama)
+        float main = smoothstep(0.0, 0.22, 0.22 - f);
+
+        // gabungkan — lebih cinematic
+        float flash = pre * 0.4 + main * 1.0;
+
+        // redupkan sedikit biar natural
+        return flash * storm * 1.4;
+    }
+
+    return 0.0;
+}
+
+
 
 // ===============================
 // MAIN
@@ -136,6 +171,9 @@ void main()
     vec3 viewDir = normalize(TexCoords);
     vec3 lightDir = normalize(sunDir);
     float sunY = lightDir.y;
+    
+    //Init petir
+    float lightning = lightningFlash(time.x, weatherMode);
 
     float tSunset = clamp((sunY - 0.0) / (0.65 - 0.0), 0.0, 1.0);
     float tNight  = smoothstep(-0.25, 0.05, sunY);
@@ -158,8 +196,14 @@ void main()
     vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
 
     float up = max(viewDir.y, 0.0);
+    
+    
     vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
+    
+    //add petir di langit
+    skyBase += vec3(1.0, 1.0, 1.2) * lightning * 3.0;
 
+    
     // ===============================
     // WEATHER PRESETS
     // ===============================
@@ -257,6 +301,9 @@ void main()
         float depth = fbm(p * 0.8);
         finalCloudColor *= 0.82 + depth * 0.18;
 
+        //Add petir di awan
+        finalCloudColor += vec3(1.0, 1.0, 1.2) * lightning * 1.6;
+
         cloudAlpha = density * horizonFade;
         cloudAlpha = max(cloudAlpha, 0.0001);
     }
@@ -299,12 +346,21 @@ void main()
         sunUV = vec2(dot(viewDir, sunRight), dot(viewDir, sunUpAxis)) / sunDot;
         d = length(sunUV);
 
-        sunCoreMask = smoothstep(sunAngularRadius, sunAngularRadius * 0.75, d);
+        float sunVisibility = 1.0 - smoothstep(0.45, 0.75, weatherMode);
+
+        sunCoreMask =  max(sunCoreMask, 0.0001);//smoothstep(sunAngularRadius, sunAngularRadius * 0.75, d);
         sunGlowMask  = exp(-d * d * 250.0);
         sunBloomMask = exp(-d * d * 500.0);
+
+        sunCoreMask *= sunVisibility;
+        sunGlowMask *= sunVisibility;
+        sunBloomMask *= sunVisibility;
+        skyWithCelestial += vec3(1.0, 0.9, 0.8) * sunGlowMask * 0.15 * sunVisibility;
+
     }
 
-    vec3 sunSkyColor = GetSkyColorAtDirection(lightDir);
+    vec3 sunSkyColor = GetSkyColorAtDirection(lightDir); 
+
     vec3 overColor = sunSkyColor * sunFactor;
 
     skyWithCelestial += dynamicSunCore * sunCoreMask * 4.0 * sunVisible * sunBlocker * sunFactor;
@@ -372,7 +428,10 @@ void main()
     }
 
     // FINAL MIX
-    vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
+   vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
+
+    // lightning final pass — harus di atas awan
+    result += vec3(1.0, 1.0, 1.15) * lightning * 1.8;
 
     FragColor = vec4(result, 1.0);
 }
