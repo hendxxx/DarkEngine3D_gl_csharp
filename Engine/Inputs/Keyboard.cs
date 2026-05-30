@@ -155,7 +155,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                                 || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
 
             // ← UBAH: Scale camera speed dengan TerrainScale
-            //float scaledSpeed = speedCam * TerrainChunk.TerrainScale * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
+            ////float scaledSpeed = speedCam * TerrainChunk.TerrainScale * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
             float scaledSpeed = (speedCam / TerrainChunk.TerrainScale) * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
             
             Vector3 flatForward = Vector3.Normalize(new Vector3(camera.Front.X, 0f, camera.Front.Z));
