@@ -182,7 +182,7 @@ float lightningFlash(float t, float weather)
     // random trigger — 1% chance
     float r = fract(sin(slowT * 5.123) * 98765.4321);
 
-    if (r > 0.90)
+    if (r > 0.98)
     {
         // jumlah strike 2–3
         float strikeCount = 2.0 + floor(fract(sin(slowT * 3.77) * 24680.135) * 2.0);
@@ -243,6 +243,7 @@ void main()
     float tSunset = clamp((sunY - 0.0) / (0.65 - 0.0), 0.0, 1.0);
     float tNight  = smoothstep(-0.25, 0.05, sunY);
     float tMalam  = 1.0 - smoothstep(-0.3, 0.1, sunY);
+    float nightOverride = smoothstep(0.1, 0.3, tMalam);
 
     // ===============================
     // SUN FACTOR — MATIKAN MATAHARI SAAT MALAM
@@ -313,7 +314,8 @@ void main()
     float cutMin = mix(0.18, 0.05, weather);
     float cutMax = mix(0.32, 0.20, weather);
 
-    float shadowStrength = mix(0.25, 1.25, weather);
+    float shadowStrength = mix(0.35, 0.65, weather);
+
     float cirrusStrength = mix(1.0, 0.10, weather);
 
     vec3 cloudTint = mix(
@@ -328,14 +330,15 @@ void main()
     // ===============================
     float nightDark = tMalam * weather;
 
-    skyBase = mix(skyBase, skyBase * 0.18, nightDark);
+    skyBase = mix(skyBase, skyBase * 0.45, nightDark);
 
     float scatterReduce = mix(1.0, 0.05, nightDark);
 
     float sunGlowBoost = mix(2.0, 0.95, weather);
     sunGlowBoost = mix(sunGlowBoost, sunGlowBoost * 0.10, nightDark);
 
-    cloudTint = mix(cloudTint, cloudTint * 0.35, nightDark);
+    cloudTint = mix(cloudTint, cloudTint * 0.1, nightDark);
+
 
     // ===============================
     // CLOUDS (WARPED FBM + EROSION + MULTI-LAYER)
@@ -373,11 +376,15 @@ void main()
         float shadow = fbm(p * 0.55);
         shadow = smoothstep(0.25, 0.85, shadow);
         shadow = mix(1.0, shadow, shadowStrength);
+        shadow = max(shadow, 0.35);
+
 
         float scatter = max(dot(lightDir, viewDir), 0.0);
         scatter = pow(scatter, 6.0) * scatterReduce * sunFactor;
 
         vec3 lightTint = mix(sunsetColor, vec3(1.0), tSunset);
+        lightTint = mix(lightTint, vec3(0.6, 0.7, 1.0), nightOverride);
+
 
         vec3 cloudLit = cloudTint;
         cloudLit *= shadow;
@@ -391,8 +398,8 @@ void main()
         float cir = fbm(pCirrus * 2.2);
         float cirAlpha = smoothstep(0.62, 0.82, cir) * cirrusStrength;
 
-        vec3 cirColor = mix(vec3(1.0), sunsetColor, 0.25);
-        cirColor *= sunFactor;   // cirrus tidak dapat cahaya matahari saat malam
+        vec3 cirColor = vec3(0.75, 0.80, 1.0) * tMalam;
+
 
         finalCloudColor = mix(cloudLit, cirColor, cirAlpha * 0.22 * sunFactor);
 
@@ -481,14 +488,19 @@ void main()
         float md = length(moonUV);
 
         float moonGlowMask = exp(-md * md * 60.0);
-        vec3 moonGlow = vec3(0.36, 0.46, 0.95) * moonGlowMask * tMalam;
+        vec3 moonGlow = vec3(0.78, 0.82, 0.95) * moonGlowMask * tMalam;
+        moonGlow *= mix(1.0, 0.65, weatherMode);
+
+
 
         // moon glow tidak terlalu kuat saat mendung
-        moonGlow *= mix(1.0, 0.35, weatherMode);
+        moonGlow *= mix(1.0, 0.75, weatherMode);
 
-        skyWithCelestial += moonGlow;
+        float moonOcclusion = exp(-cloudAlpha * 1.5);
 
-        const float moonAngularRadius = 0.0283;
+        skyWithCelestial += moonGlow ; 
+
+        const float moonAngularRadius = 0.0288;
         float localR = md / moonAngularRadius;
 
         if (localR <= 1.02)
@@ -501,13 +513,13 @@ void main()
 
             float softEdgeMask = smoothstep(1.0, 0.92, localR);
 
-            vec3 litMoonColor = textureMoonColor * vec3(1.0, 0.98, 0.95) * 1.8 * tMalam;
-            litMoonColor += moonGlow * 0.45;
+            vec3 litMoonColor = textureMoonColor * vec3(0.90, 0.95, 1.0) * 1.25 * tMalam;
+            litMoonColor += moonGlow * 0.25;
 
             float moonVisibilityFactor = mix(0.95, 0.7, weatherMode);
             float finalMoonAlpha = customAlpha * moonVisibilityFactor * softEdgeMask;
 
-            skyWithCelestial = mix(skyWithCelestial, litMoonColor, finalMoonAlpha);
+            skyWithCelestial = mix(skyWithCelestial, litMoonColor, finalMoonAlpha * moonOcclusion) ;
         }
     }
 
