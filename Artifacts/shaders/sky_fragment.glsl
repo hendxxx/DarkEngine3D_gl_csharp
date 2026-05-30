@@ -134,33 +134,57 @@ vec3 GetSkyColorAtDirection(vec3 dir)
 // ===============================
 float lightningFlash(float t, float weather)
 {
-    // aktif mulai mendung 0.45 – 0.65
-    float storm = smoothstep(0.45, 0.65, weather);
+    // aktif mulai mendung 0.5 – 0.7
+    float storm = smoothstep(0.5, 0.7, weather);
+
     if (storm <= 0.0) return 0.0;
 
-    // random trigger — 1.5% chance
-    float r = fract(sin(t * 7.123) * 45678.123);
+    // random trigger — 1% chance
+    float r = fract(sin(t * 5.123) * 98765.4321);
 
-    if (r > 0.985)
+    if (r > 0.99)
     {
-        float f = fract(t * 3.0);
+        // jumlah strike 2–3
+        float strikeCount = 2.0 + floor(fract(sin(t * 3.77) * 24680.135) * 2.0);
 
-        // pre-flash (kilat jauh)
-        float pre = smoothstep(0.0, 0.10, 0.10 - f);
+        float flashTotal = 0.0;
 
-        // main flash (kilat utama)
-        float main = smoothstep(0.0, 0.22, 0.22 - f);
+        for (int i = 0; i < 3; i++)
+        {
+            if (i >= strikeCount) break;
 
-        // gabungkan — lebih cinematic
-        float flash = pre * 0.4 + main * 1.0;
+            // delay acak antar strike (0.0 – 0.12 detik)
+            float delay = fract(sin((t + float(i)) * 1.91) * 13579.864) * 0.12;
 
-        // redupkan sedikit biar natural
-        return flash * storm * 1.4;
+            float f = fract((t - delay) * 4.0);
+
+            // pre-flash
+            float pre = smoothstep(0.0, 0.06, 0.06 - f);
+
+            // main flash
+            float main = smoothstep(0.0, 0.18, 0.18 - f);
+
+            // flicker cepat (kedip khas kilat)
+            float flicker = smoothstep(0.12, 0.16, 0.16 - f);
+
+            // afterglow biru keunguan
+            float after = smoothstep(0.20, 0.32, 0.32 - f);
+
+            float strikeFlash =
+                pre * 0.25 +
+                main * 1.0 +
+                flicker * 0.45 +
+                after * 0.30;
+
+            flashTotal += strikeFlash;
+        }
+
+        // adaptif sesuai badai
+        return flashTotal * storm * 1.25;
     }
 
     return 0.0;
 }
-
 
 
 // ===============================
@@ -302,7 +326,7 @@ void main()
         finalCloudColor *= 0.82 + depth * 0.18;
 
         //Add petir di awan
-        finalCloudColor += vec3(1.0, 1.0, 1.2) * lightning * 1.6;
+        finalCloudColor += vec3(0.85, 0.92, 1.25) * lightning * 1.8;
 
         cloudAlpha = density * horizonFade;
         cloudAlpha = max(cloudAlpha, 0.0001);
@@ -428,10 +452,10 @@ void main()
     }
 
     // FINAL MIX
-   vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
+    vec3 result = mix(skyWithCelestial, finalCloudColor, cloudAlpha);
 
     // lightning final pass — harus di atas awan
-    result += vec3(1.0, 1.0, 1.15) * lightning * 1.8;
+    result += vec3(0.9, 0.95, 1.25) * lightning * 2.0;
 
     FragColor = vec4(result, 1.0);
 }
