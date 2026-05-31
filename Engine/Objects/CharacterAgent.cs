@@ -533,7 +533,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         //  Movement with LOD
         // -----------------------------------------------------------------------
-        public void Move(nint window, Camera camera, float dt, TerrainChunk terrain, Vector3 center, float maxRadius)
+        public void Move(nint window, Camera camera, float dt, TerrainChunk? terrain, Vector3 center, float maxRadius)
         {
             // ============================
             // PLAYER CONTROL

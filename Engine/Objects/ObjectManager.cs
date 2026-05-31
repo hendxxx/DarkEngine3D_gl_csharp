@@ -82,7 +82,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _agents.Clear();
 
             // === PLAYER SPAWN ===
-            string playerPath = "Artifacts\\objects\\Xbot.glb";
+            string playerPath = "Artifacts\\objects\\Women.glb";
 
             float playerX = 0f;
             float playerZ = 0f;
@@ -97,9 +97,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 IsPlayer = true,
                 Heading = initialHeading
-            };  
-             
-         
+            };   
+
             // AI SPAWN
             for (int i = 0; i < 50; i++)
             {
@@ -132,7 +131,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 SnapToTerrain(obj, gameTerrainChunk);
             }
 
-
+            //load animation
             ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
 
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\Fighting-idle.glb", "fightstance");
@@ -159,12 +158,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _agents.Insert(0, PlayerAgent);
             _objects.Insert(0, PlayerObject);
 
+            //Init AI Wandering
             WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
             WanderRadius = 38f;
             InitWanderingAgents();
-             
-
-
+              
         }
 
         public GltfModelGpuData LoadModel(string path)
@@ -229,7 +227,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // AAA-style: AI + movement + collisions, tanpa double-update animasi
-        public void UpdateAgents(nint window, float dt, TerrainChunk terrain, Camera camera)
+        public void UpdateAgents(nint window, float dt, TerrainChunk? terrain, Camera camera)
         {
             if (_agents.Count == 0) return;
 

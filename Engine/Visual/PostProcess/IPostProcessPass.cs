@@ -1,8 +1,4 @@
-﻿using DarkEngine3D_gl_csharp.Engine.Libs;
-using System;
-using System.Numerics;
-
-namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
+﻿namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 {
     public interface IPostProcessPass
     {

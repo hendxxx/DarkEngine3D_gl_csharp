@@ -1,4 +1,5 @@
 ﻿using DarkEngine3D_gl_csharp.Engine.Libs; 
+
 namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 {
     public unsafe class InvertPass : IPostProcessPass

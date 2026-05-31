@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using System.Runtime.InteropServices; 
 
 namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
@@ -112,7 +111,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static string GetString(uint name)
+        public static string? GetString(uint name)
         {
             // Tanda tangan pointer fungsi: menerima uint, mengembalikan byte*
             var ptr = (delegate* unmanaged[Cdecl]<uint, byte*>)GetStringPtr;
@@ -127,7 +126,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
 
             // Konversi pointer teks ANSI/UTF8 (Null-Terminated) menjadi string C#
-            return Marshal.PtrToStringAnsi((IntPtr)nativeStringPtr);
+            string? r = Marshal.PtrToStringAnsi((IntPtr)nativeStringPtr);
+            return r;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -1,12 +1,9 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
-using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Runtime.Serialization;
-using System.Xml.Linq;
 
 namespace DarkEngine3D_gl_csharp.Engine.Inputs
 {
@@ -88,7 +85,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             return glfwGetKey(window, key) == Const.GLFW_PRESS;
         }
 
-        public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime, TerrainChunk gameTerrainChunk)
+        public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime, TerrainChunk? gameTerrainChunk)
         { 
             // Tombol ESC untuk Keluar
             if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
@@ -190,14 +187,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                     Matrix4x4 view = camera.GetViewMatrix();
                     Matrix4x4 proj = camera.GetProjectionMatrix();
                     frozenCorners = TerrainChunk.GetFrustumCorners(view, proj);
-                    gameTerrainChunk.SetFrozenFrustumCorners(frozenCorners);
-                    gameTerrainChunk.SetHighlightFrustumMatches(true);
+                    gameTerrainChunk?.SetFrozenFrustumCorners(frozenCorners);
+                    gameTerrainChunk?.SetHighlightFrustumMatches(true);
                 }
                 else
                 {
                     frozenCorners = null;
-                    gameTerrainChunk.ClearFrozenFrustumCorners();
-                    gameTerrainChunk.SetHighlightFrustumMatches(false);
+                    gameTerrainChunk?.ClearFrozenFrustumCorners();
+                    gameTerrainChunk?.SetHighlightFrustumMatches(false);
                 }
             }
             prevPState = pState;

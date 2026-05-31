@@ -1,5 +1,4 @@
 using DarkEngine3D_gl_csharp.Engine.Visual;
-using System;
 using System.Numerics;
 
 public unsafe class RainManager

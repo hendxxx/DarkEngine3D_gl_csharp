@@ -1,7 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
-using DarkEngine3D_gl_csharp.Engine.Visual;
-using System.Collections.ObjectModel;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Terrains

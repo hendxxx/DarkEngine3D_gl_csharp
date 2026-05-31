@@ -6,7 +6,6 @@ using DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Timers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
@@ -168,7 +167,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
         }
 
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager? objectManager = null)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager objectManager)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");

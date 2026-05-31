@@ -1,8 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using StbImageSharp;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects

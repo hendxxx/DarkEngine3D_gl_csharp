@@ -1,7 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
-using System.Collections.ObjectModel;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
@@ -62,7 +61,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private float exposureState = 0.0f;
 
 
-        public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk terrain)
+        public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk? terrain)
         {    
             // === PAKAI SHADER LANGIT ===
             GL.UseProgram(skyShader);

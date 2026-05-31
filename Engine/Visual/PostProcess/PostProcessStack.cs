@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using DarkEngine3D_gl_csharp.Engine.Libs;
+﻿using DarkEngine3D_gl_csharp.Engine.Libs;
 using System;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing

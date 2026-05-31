@@ -1,6 +1,3 @@
-using System.Net.NetworkInformation;
-using System.Runtime.Intrinsics.X86;
-
 namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
     public unsafe class Shader  

@@ -1,6 +1,3 @@
-using DarkEngine3D_gl_csharp.Engine.Libs;
-using System.Text;
-
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
     // ===========================================================================

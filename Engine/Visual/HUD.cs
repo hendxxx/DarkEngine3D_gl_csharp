@@ -1,8 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using StbTrueTypeSharp;
-using System;
-using System.Collections.ObjectModel;
-using System.Drawing;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
