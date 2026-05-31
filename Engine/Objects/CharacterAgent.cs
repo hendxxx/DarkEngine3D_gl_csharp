@@ -86,6 +86,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         private readonly string _idleClip;
         private readonly string _walkClip;
+        private readonly List<string> _walkClips;
+
+        private readonly List<string> _backwardClips;
+        private readonly string _strafeLeftClips;
+        private readonly string _strafeRightClips;
         private readonly string _runClip;
         private readonly string _stanceClip;
         private readonly string? _blockClip;
@@ -95,6 +100,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly string? _entryClip;
         private readonly float _victoryDur;
         private readonly List<string> _attackClips;
+
 
         private float _heading;
         private float _targetHeading;
@@ -149,6 +155,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var clips = obj.GetClipNames();
             _idleClip = First(clips, "idle") ?? "idle";
             _walkClip = First(clips, "walk") ?? "walk";
+
+            _walkClips = All(clips, "walk");
+            if (_walkClips.Count == 0)
+            {
+                _walkClips.Add("walk");
+                _walkClips.Add("walk-happy");
+                _walkClips.Add("walk-standard");
+            }
+            else
+            {
+
+                _walkClips.Add("walk-happy");
+                _walkClips.Add("walk-standard");
+            }
+            _backwardClips = All(clips, "backward", "backward2", "walking-backwards");
+            if (_backwardClips.Count == 0)
+            {
+                _backwardClips.Add("backward");
+                _backwardClips.Add("backward2");
+            }
+            _strafeLeftClips = First(clips, "strafeleft") ?? "strafeleft";
+            _strafeRightClips = First(clips, "straferight") ?? "straferight";
+
             _runClip = First(clips, "run") ?? _walkClip;
             _stanceClip = First(clips, "fightstance", "fightingidle", "fighting-idle", "fighting_idle", "guard", "stance")
                        ?? First(clips, "fistfight", "fighting", "fight", "boxing", "combat", "brawl")
@@ -495,6 +524,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _obj.Play(g switch { Gait.Walk => _walkClip, Gait.Run => _runClip, _ => idle }, BlendTime);
         }
 
+        private bool _isBackward = false;
+        private string _currentBackwardClip;
+
+
+        private bool _isWalking= false;
+        private string _currentWalkingClip;
         // -----------------------------------------------------------------------
         //  Movement with LOD
         // -----------------------------------------------------------------------
@@ -534,15 +569,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // Animasi
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                    _obj.Play("walk", 0.2f);
+                {
+                    if (!_isWalking)
+                    {
+                        // baru mulai mundur → random clip
+                        _currentWalkingClip = _walkClips[_rng.Next(_walkClips.Count)];
+                    }
+                    Console.WriteLine(_currentWalkingClip);
+                    _obj.Play(_currentWalkingClip, 0.2f);
+                    _isWalking = true;
+                }
+                    
                 else if(Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
-                    _obj.Play("walk", 0.2f);
+                {
+                    if (!_isBackward)
+                    {
+                        // baru mulai mundur → random clip
+                        _currentBackwardClip = _backwardClips[_rng.Next(_backwardClips.Count)];
+                    } 
+                    _obj.Play(_currentBackwardClip, 0.2f);
+                    _isBackward = true;
+                }
+                    
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                    _obj.Play("walk", 0.2f);
+                    _obj.Play("strafeleft", 0.2f);
                 else  if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                    _obj.Play("walk", 0.2f);
+                    _obj.Play("straferight", 0.2f);
                 else
+                {
                     _obj.Play("idle", 0.2f);
+                    _isWalking = false;
+                    _isBackward = false;
+                }
 
                 Position = pos;
                 _obj.Position = pos;

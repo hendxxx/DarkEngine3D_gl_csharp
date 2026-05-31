@@ -199,6 +199,12 @@
     <None Update="Artifacts\objects\anim\taking-punch.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\anim\walk-happy.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\anim\walk-standard.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\anim\walk-strafe-left.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -206,6 +212,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\anim\walking-backwards.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\anim\walking-backwards2.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\Paladin.glb">

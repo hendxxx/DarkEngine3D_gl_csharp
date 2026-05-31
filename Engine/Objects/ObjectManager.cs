@@ -109,22 +109,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 SnapToTerrain(obj, gameTerrainChunk);
             }
 
-            ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\Fighting-idle.glb", "fightstance");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\fist-fight.glb", "fistfight");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\punching-bag.glb", "punchbag");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\hook.glb", "hook");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\body-block.glb", "block");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\taking-punch.glb", "hurt");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\dying.glb", "dying", retargetRoot: true);
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\looking-around.glb", "lookaround");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\entry.glb", "entry");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-left.glb", "strafeleft");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-right.glb", "straferight");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walking-backwards.glb", "backward");
 
-            LoadAnimationFolder("Artifacts\\anim");
-
+            
             WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
             WanderRadius = 38f;
             InitWanderingAgents();
@@ -141,6 +127,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {   
                 IsPlayer = true
             };
+
+            ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\Fighting-idle.glb", "fightstance");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\fist-fight.glb", "fistfight");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\punching-bag.glb", "punchbag");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\hook.glb", "hook");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\body-block.glb", "block");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\taking-punch.glb", "hurt");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\dying.glb", "dying", retargetRoot: true);
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\looking-around.glb", "lookaround");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\entry.glb", "entry");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-left.glb", "strafeleft");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-right.glb", "straferight");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walking-backwards.glb", "backward");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walking-backwards2.glb", "backward2");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-happy.glb", "walk-happy");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-standard.glb", "walk-standard");
+            LoadAnimationFolder("Artifacts\\anim");
+
             // === INITIAL FACING ===
             float initialHeading = Config.PlayerConfig.InitialHeading;
 
