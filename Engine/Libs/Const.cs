@@ -68,7 +68,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const int GLFW_KEY_RIGHT_SHIFT = 344;
 
         // Speed multiplier while shift is held
-        public const float SHIFT_SPEED_MULTIPLIER = 1.0f;
+        public const float SHIFT_SPEED_MULTIPLIER = 1.5f;
 
         public const int GLFW_KEY_EQUAL = 61;
         public const int GLFW_KEY_MINUS = 45;

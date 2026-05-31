@@ -58,7 +58,7 @@
         // Speed
         // ============================
         public static float Walk = 1.0f;
-        public static float Run = 2.5f;
+        public static float Run = 1.25f;
         public static float Sprint = 4.0f;
     }
 

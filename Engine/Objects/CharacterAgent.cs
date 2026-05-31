@@ -561,9 +561,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
                     pos -= forward * speed * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                    pos -= right * speed * dt;
+                    pos -= right * speedWalkVal * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                    pos += right * speed * dt;
+                    pos += right * speedWalkVal * dt;
 
                 pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
 
@@ -575,7 +575,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         // baru mulai mundur → random clip
                         _currentWalkingClip = _walkClips[_rng.Next(_walkClips.Count)];
                     }
-                    Console.WriteLine(_currentWalkingClip);
                     _obj.Play(_currentWalkingClip, 0.2f);
                     _isWalking = true;
                 }

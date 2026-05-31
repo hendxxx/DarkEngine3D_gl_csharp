@@ -14,14 +14,14 @@ public unsafe class Program
     private static float deltaTime =  0.0f;
     public static void Main()
     {
-        //Glfw.WindowWidth = 2560;
-        //Glfw.WindowHeight = 1440;  
-        Glfw.WindowWidth = 1920;
-        Glfw.WindowHeight = 1080;
+        Glfw.WindowWidth = 2560;
+        Glfw.WindowHeight = 1440;
+        //Glfw.WindowWidth = 1920;
+        //Glfw.WindowHeight = 1080;
 
         // Init GLFW and Create Window
-        //Glfw.Init("My Native C# Engine", true);
-        Glfw.Init("My Native C# Engine", false);
+        Glfw.Init("My Native C# Engine", true);
+        //Glfw.Init("My Native C# Engine", false);
 
         // Load Library GLFW
         IntPtr glfwLib = Glfw.GetglfwLib();
