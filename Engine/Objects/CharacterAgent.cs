@@ -153,7 +153,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Temper = _rng.NextDouble() < 0.5 ? Mentality.Aggressive : Mentality.Coward;
 
             var clips = obj.GetClipNames();
-            _idleClip = First(clips, "idle") ?? "idle";
+            _idleClip = First(clips, "idle","natural-idle") ?? "idle";
             _walkClip = First(clips, "walk") ?? "walk";
 
             _walkClips = All(clips, "walk");

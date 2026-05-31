@@ -193,6 +193,9 @@
     <None Update="Artifacts\objects\anim\looking-around.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\anim\natural-idle.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\anim\punching-bag.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

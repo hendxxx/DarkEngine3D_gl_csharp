@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
@@ -14,14 +15,14 @@ public unsafe class Program
     private static float deltaTime =  0.0f;
     public static void Main()
     {
-        Glfw.WindowWidth = 2560;
-        Glfw.WindowHeight = 1440;
-        //Glfw.WindowWidth = 1920;
-        //Glfw.WindowHeight = 1080;
+        //Glfw.WindowWidth = 2560;
+        //Glfw.WindowHeight = 1440;
+        Glfw.WindowWidth = 1920;
+        Glfw.WindowHeight = 1080;
 
         // Init GLFW and Create Window
-        Glfw.Init("My Native C# Engine", true);
-        //Glfw.Init("My Native C# Engine", false);
+        //Glfw.Init("My Native C# Engine", true);
+        Glfw.Init("My Native C# Engine", false);
 
         // Load Library GLFW
         IntPtr glfwLib = Glfw.GetglfwLib();
@@ -41,7 +42,7 @@ public unsafe class Program
         Shader.Init(); 
         
         // Init Camera
-        Camera camera = new(0, 0, 0, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 2500.0f);
+        Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.01f, 2500.0f);
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;

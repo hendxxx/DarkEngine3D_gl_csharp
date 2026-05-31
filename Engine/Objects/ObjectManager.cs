@@ -78,7 +78,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             var spawnedPositions = new List<Vector2>();
 
-            for (int i = 0; i < 100; i++)
+            _objects.Clear();
+            _agents.Clear();
+
+            // === PLAYER SPAWN ===
+            string playerPath = "Artifacts\\objects\\Xbot.glb";
+
+            float playerX = 0f;
+            float playerZ = 0f;
+            float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
+            float initialHeading = Config.PlayerConfig.InitialHeading;
+
+            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
+            PlayerObject.IsPlayer = true;
+            PlayerObject.SetFacing(initialHeading);
+
+            PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
+            {
+                IsPlayer = true,
+                Heading = initialHeading
+            };  
+             
+         
+            // AI SPAWN
+            for (int i = 0; i < 50; i++)
             {
                 float px, pz;
                 int tries = 0;
@@ -121,25 +144,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\dying.glb", "dying", retargetRoot: true);
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\looking-around.glb", "lookaround");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\entry.glb", "entry");
-            LoadAnimationFolder("Artifacts\\anim");
-
-
-            WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
-            WanderRadius = 38f;
-            InitWanderingAgents();
-
-            // === PLAYER SPAWN ===
-            string playerPath = "Artifacts\\objects\\Xbot.glb";
-
-            float playerX = 0f;
-            float playerZ = 0f;
-            float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
-
-            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
-            PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
-            {   
-                IsPlayer = true
-            };
 
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-left.glb", "strafeleft");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-right.glb", "straferight");
@@ -147,22 +151,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walking-backwards2.glb", "backward2");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-happy.glb", "walk-happy");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-standard.glb", "walk-standard");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\natural-idle.glb", "idle");
 
+            //LoadAnimationFolder("Artifacts\\objects\\anim");
 
-            // === INITIAL FACING ===
-            float initialHeading = Config.PlayerConfig.InitialHeading;
-
-            // Set heading player
-            PlayerAgent.Heading = initialHeading;
-            PlayerObject.SetFacing(initialHeading);
-
-            // Sinkronkan kamera
-            camera.Yaw = initialHeading;
-            camera.Pitch = 10f; // sedikit menunduk biar enak
-
-            // Masukkan player ke list agents paling depan
+            //Masukkan player ke list agents paling depan
             _agents.Insert(0, PlayerAgent);
             _objects.Insert(0, PlayerObject);
+
+            WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
+            WanderRadius = 38f;
+            InitWanderingAgents();
+             
 
 
         }
@@ -221,8 +221,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void InitWanderingAgents()
         {
-            _agents.Clear();
-            foreach (var obj in _objects) _agents.Add(new CharacterAgent(obj, _agentRng));
+            foreach (var obj in _objects)
+            {
+                if (!obj.IsPlayer )
+                    _agents.Add(new CharacterAgent(obj, _agentRng));
+            }
         }
 
         // AAA-style: AI + movement + collisions, tanpa double-update animasi

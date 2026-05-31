@@ -26,6 +26,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     {
         public readonly GltfModelGpuData GpuData;
         public bool IsVisible = true;
+        public bool IsPlayer = false;
         public int AnimLOD = 0; // 0=full, 1=mid, 2=freeze, 3=skip
         private int _lodFrameCounter = 0;
 

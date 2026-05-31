@@ -29,22 +29,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // Terrain clamp
         private float _currentVelocityY = 0f;
 
-        public Camera(float x, float y, float z, float aspect, float fov, float nearDist, float farDist)
+        public Camera(float x, float y, float z, float yaw, float pitch, float aspect, float fov, float nearDist, float farDist)
         {
             _aspect = aspect;
             FoV = fov;
             NearDist = nearDist;
             FarDist = farDist;
+            Yaw = yaw;
+            Pitch = pitch;
 
-            Init(x, y, z);
+            Init(x, y, z, yaw, pitch);
         }
 
-        public void Init(float x, float y, float z)
+        public void Init(float x, float y, float z, float yaw, float pitch)
         {
             Position = new(x, y, z);
 
-            Yaw = 0.0f;
-            Pitch = 0.0f;
+            Yaw = yaw;
+            Pitch = pitch;
 
             UpdateVectors();
             _projectionDirty = true;
