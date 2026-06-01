@@ -87,6 +87,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly string _idleClip;
         private readonly string _walkClip;
         private readonly List<string> _walkClips;
+        private readonly List<string> _runClips;
+        private readonly List<string> _jumpClips;
 
         private readonly List<string> _backwardClips;
         private readonly string _strafeLeftClips;
@@ -155,29 +157,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var clips = obj.GetClipNames();
             _idleClip = First(clips, "idle","natural-idle") ?? "idle";
             _walkClip = First(clips, "walk") ?? "walk";
-
-            _walkClips = All(clips, "walk");
-            if (_walkClips.Count == 0)
-            {
-                _walkClips.Add("walk");
-                _walkClips.Add("walk-happy");
-                _walkClips.Add("walk-standard");
-            }
-            else
-            {
-
-                _walkClips.Add("walk-happy");
-                _walkClips.Add("walk-standard");
-            }
-            _backwardClips = All(clips, "backward", "backward2", "walking-backwards");
-            if (_backwardClips.Count == 0)
-            {
-                _backwardClips.Add("backward");
-                _backwardClips.Add("backward2");
-            }
-            _strafeLeftClips = First(clips, "strafeleft") ?? "strafeleft";
-            _strafeRightClips = First(clips, "straferight") ?? "straferight";
-
+             
             _runClip = First(clips, "run") ?? _walkClip;
             _stanceClip = First(clips, "fightstance", "fightingidle", "fighting-idle", "fighting_idle", "guard", "stance")
                        ?? First(clips, "fistfight", "fighting", "fight", "boxing", "combat", "brawl")
@@ -196,6 +176,40 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 || string.Equals(c, _dyingClip, StringComparison.OrdinalIgnoreCase));
 
             _heading = _targetHeading = RandomAngle();
+
+
+            //Player
+            _walkClips = All(clips, "walk");
+
+            if (_walkClips.Count == 0)
+            {
+                _walkClips.Add("walk");
+                _walkClips.Add("walk-happy");
+                _walkClips.Add("walk-standard");
+            }
+
+            _runClips = All(clips, "run");
+            if (_runClips.Count == 0)
+            {
+                _runClips.Add("run");
+            }
+
+            _jumpClips = All(clips, "jump");
+            if (_jumpClips.Count == 0)
+            {
+                _jumpClips.Add("jump");
+            }
+
+            _backwardClips = All(clips, "backward", "backward2", "walking-backwards");
+            if (_backwardClips.Count == 0)
+            {
+                _backwardClips.Add("backward");
+                _backwardClips.Add("backward2");
+            }
+            _strafeLeftClips = First(clips, "strafeleft") ?? "strafeleft";
+            _strafeRightClips = First(clips, "straferight") ?? "straferight";
+
+
             ChooseWanderAction();
         }
 
@@ -524,27 +538,54 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _obj.Play(g switch { Gait.Walk => _walkClip, Gait.Run => _runClip, _ => idle }, BlendTime);
         }
 
-        private bool _isBackward = false;
-        private string _currentBackwardClip;
+        private bool wasFreeLook = false;
+        private bool justReleasedFreeLook = false;
+        private float lastHeading = 0f;
+         
+        private float _verticalVelocity = 0f;
+        private const float gravity = -10.0f;
+        private const float jumpForce = 50f;
+        private bool _isJumping = false;      // untuk fisik 
 
-
-        private bool _isWalking= false;
-        private string _currentWalkingClip;
         // -----------------------------------------------------------------------
         //  Movement with LOD
         // -----------------------------------------------------------------------
         public void Move(nint window, Camera camera, float dt, TerrainChunk? terrain, Vector3 center, float maxRadius)
-        {
+        { 
             // ============================
             // PLAYER CONTROL
             // ============================
             if (IsPlayer)
             {
+
                 // --- ROTASI PLAYER (YAW) ---
-                if (!camera.freeLook)
+
+                // Deteksi ALT baru dilepas
+                justReleasedFreeLook = wasFreeLook && !camera.freeLook;
+
+                if (camera.freeLook)
                 {
-                    _heading = camera.Yaw;
+                    // ALT ditekan → player DIAM TOTAL
+                    // heading tidak berubah
+                    _heading= lastHeading; // tetap di nilai sebelumnya, tidak mengikuti kamera 
                 }
+                else
+                {
+                    // ALT tidak ditekan → player mengikuti kamera
+
+                    float turnSpeed;
+
+                    if (justReleasedFreeLook)
+                        turnSpeed = 0.8f;   // super lambat, cinematic
+                    else
+                        turnSpeed = 4f;     // normal turning
+
+                    _heading = Helpers.OGLMath.LerpAngle(lastHeading, camera.Yaw, turnSpeed * dt);
+                    lastHeading = _heading;
+                }
+
+                // Update state SETELAH rotasi
+                wasFreeLook = camera.freeLook;
 
 
                 // 2. Hitung forward/right dari heading
@@ -570,34 +611,134 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     pos += right * speedWalkVal * dt;
 
                 pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
+                // =====================
+                // ACTION INPUTS
+                // =====================
 
-                // Animasi
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                _isRunning = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_SHIFT);
+                 
+
+                // =======================================
+                // 1. TRIGGER ONE-SHOT (INTERRUPTIBLE)
+                // =======================================
+
+                // --- PUNCH ---
+                if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT) && !_oneShotPlaying)
                 {
-                    if (!_isWalking)
-                    {
-                        // baru mulai mundur → random clip
-                        _currentWalkingClip = _walkClips[_rng.Next(_walkClips.Count)];
-                    }
-                    _obj.Play(_currentWalkingClip, 0.2f);
-                    _isWalking = true;
+                    _oneShotPlaying = true;
+                    _oneShotName = "hook";
+                    _obj.PlayOnce("hook", "fightstance");
                 }
 
+                // --- BLOCK ---
+                else if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_RIGHT) && !_oneShotPlaying)
+                {
+                    _oneShotPlaying = true;
+                    _oneShotName = "block";
+                    _obj.PlayOnce("block", "fightstance");
+                }
+
+                // --- JUMP (hanya kalau tidak ada one-shot lain) ---
+                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && !_oneShotPlaying)
+                {
+                    // ANIMASI
+                    _oneShotPlaying = true;
+                    _oneShotName = "jump";
+                    _obj.PlayOnce("jump", "idle");
+
+                    // FISIK
+                    _isJumping = true;
+                    _verticalVelocity = jumpForce;
+                }
+                // =====================
+                // APPLY GRAVITY (FISIK)
+                // =====================
+
+                if (_isJumping)
+                {
+                    // Apex slow (opsional)
+                    if (_verticalVelocity > 0 && _verticalVelocity < 2f)
+                        _verticalVelocity *= 0.92f;
+
+                    // Gravity
+                    _verticalVelocity += gravity * dt;
+                    pos.Y += _verticalVelocity * dt;
+
+                    float groundY = terrain.GetHeightAt(pos.X, pos.Z);
+
+                    // Sudah menyentuh tanah
+                    if (pos.Y <= groundY)
+                    {
+                        pos.Y = groundY;
+                        _isJumping = false;
+                        _verticalVelocity = 0f;
+
+                        // Landing anim (opsional)
+                        if (!_oneShotPlaying)   // jangan override punch/block
+                        {
+                            _oneShotPlaying = true;
+                            _oneShotName = "land";
+                            _obj.PlayOnce("land", "idle");
+                        }
+                    }
+                }
+
+                // =======================================
+                // 2. CEK APAKAH ONE-SHOT MASIH JALAN
+                // =======================================
+                if (_oneShotPlaying)
+                {
+                    // kalau animasi one-shot sudah selesai → kembali ke normal
+                    if (!_obj.IsPlaying(_oneShotName))
+                    {
+                        _oneShotPlaying = false;
+                        _oneShotName = "";
+                    }
+                    else
+                    {
+                        // one-shot masih jalan:
+                        // - movement FISIK tetap jalan
+                        // - animasi movement JANGAN override
+                        goto APPLY_MOVEMENT_ONLY;
+                    }
+                }
+
+                // =======================================
+                // 3. MOVEMENT ANIMATION (hanya kalau
+                //    TIDAK ada one-shot aktif)
+                // =======================================
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                {
+                    if (_isRunning)
+                    {
+                        _currentRunClip = _runClips[_rng.Next(_runClips.Count)];
+                        _obj.Play(_currentRunClip, 0.15f);
+                    }
+                    else
+                    {
+                        if (!_isWalking)
+                            _currentWalkingClip = _walkClips[_rng.Next(_walkClips.Count)];
+
+                        _obj.Play(_currentWalkingClip, 0.2f);
+                        _isWalking = true;
+                    }
+                }
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
                 {
                     if (!_isBackward)
-                    {
-                        // baru mulai mundur → random clip
                         _currentBackwardClip = _backwardClips[_rng.Next(_backwardClips.Count)];
-                    }
+
                     _obj.Play(_currentBackwardClip, 0.2f);
                     _isBackward = true;
                 }
-
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
+                {
                     _obj.Play("strafeleft", 0.2f);
+                }
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                {
                     _obj.Play("straferight", 0.2f);
+                }
                 else
                 {
                     _obj.Play("idle", 0.2f);
@@ -605,24 +746,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _isBackward = false;
                 }
 
+                // =======================================
+                // 4. MOVEMENT FISIK SELALU JALAN
+                // =======================================
+                APPLY_MOVEMENT_ONLY:
+
+                // movement fisik tetap jalan di sini
+                // pos sudah kamu update di atas
+                // tinggal apply:
                 Position = pos;
                 _obj.Position = pos;
-
-                if (!camera.freeLook)
-                {
-                    _heading = Helpers.OGLMath.Lerp(_heading, camera.savedYaw, 0.05f);   // kembalikan arah player
-
-                    _obj.SetFacing(_heading); // player = derajat
-                }
-                else
-                {
-                    //_heading = Helpers.OGLMath.Lerp(camera.savedYaw, camera.Yaw, 0.15f);   // kembalikan arah player
-
-                    //_obj.SetFacing(_heading); // player = derajat
-                }
+                _obj.SetFacing(_heading); 
 
                 return;
             }
+
 
             // ============================
             // NPC AI (kode lama tetap)
@@ -674,7 +812,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             p.Y = terrain.GetHeightAt(p.X, p.Z - 0.8f);
             _obj.Position = p;
         }
+        private enum AnimState
+        {
+            Idle,
+            Move,
+            Punch,
+            Block,
+            Jump
+        }
+        private AnimState _animState = AnimState.Idle;
 
+        private bool _punchPlaying = false;
+        private bool _blockPlaying = false;
+        private bool _jumpPlaying = false;
+
+
+        private bool _isBackward = false;
+        private string _currentBackwardClip;
+        private string _currentJumpClip;
+
+
+        private bool _isWalking = false;
+        private bool _isRunning = false;
+        private string _currentWalkingClip;
+        private string _currentRunClip;
+
+        private bool _oneShotPlaying = false;
+        private string _oneShotName = "";
+        private void PlayerMovement(nint window, float dt)
+        {
+            
+        }
 
         public void AvoidFrom(Vector3 other)
         {
@@ -683,7 +851,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _targetHeading = MathF.Atan2(p.X - other.X, p.Z - other.Z);
             if (_wanderTimer > 0.4f) _wanderTimer = 0.4f;
         }
-
         private float DistTo(Vector3 t)
         {
             var p = _obj.Position; float dx = t.X - p.X, dz = t.Z - p.Z;

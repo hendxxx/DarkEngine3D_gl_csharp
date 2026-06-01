@@ -190,6 +190,9 @@
     <None Update="Artifacts\objects\anim\hook.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\anim\jump.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\anim\looking-around.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

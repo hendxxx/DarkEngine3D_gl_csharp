@@ -14,7 +14,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         private static delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, double, double, void>, void> SetScrollCallback;
         private static delegate* unmanaged[Cdecl]<IntPtr, double, double, void> scrollCallback;
         private static delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, double, double, void>, void> glfwSetScrollCallback;
-         
+        private static delegate* unmanaged[Cdecl]<IntPtr, int, int> glfwGetMouseButton;
+
 
         static double lastX, lastY;
         private static double scrollX, scrollY;
@@ -40,6 +41,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
             glfwSetInputMode = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetInputMode");
             glfwSetScrollCallback = (delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, double, double, void>, void>) NativeLibrary.GetExport(glfwLib, "glfwSetScrollCallback");
+            glfwGetMouseButton = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetMouseButton");
 
 
             window = _window;
@@ -90,6 +92,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             camera.UpdateVectors();
             
         }
+        public static bool IsButtonPressed(int button)
+        {
+            if (window == 0) return false;
+            return glfwGetMouseButton(window, button) == Const.GLFW_PRESS;
+        }
+
 
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         public static void OnScroll(IntPtr window, double xoffset, double yoffset)

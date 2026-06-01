@@ -8,14 +8,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
     public sealed class Camera
     {
+        public float GetAspect() => _aspect;
         // Transform
         public Vector3 Position = new(0, 0, 0);
         public Vector3 Front = new(0, 0, -1);
         public Vector3 Up = Vector3.UnitY;
         public Vector3 Right = Vector3.UnitX;
 
-        // Euler (bisa nanti diganti quaternion kalau mau)
-        public float Yaw = 0.0f; 
+        // Euler
+        public float Yaw = 0.0f;
         public float Pitch = 0.0f;
 
         // Projection params
@@ -24,12 +25,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float FarDist;
         private float _aspect;
 
-        // Cached projection
         private Matrix4x4 _projection;
         private bool _projectionDirty = true;
 
         // Terrain clamp
-        private float _currentVelocityY = 0f;
+        private float lastTerrainY = 0f;
+
+        // Shoulder swap
+        private float shoulderOffset = Config.PlayerConfig.ShoulderOffset;
+        private float targetShoulderOffset = Config.PlayerConfig.TargetShoulderOffset;
+
+        // Free look
+        public bool freeLook = false;
+
+        // Cinematic smoothing
+        private Vector3 smoothCamPos;
+        private float smoothYaw;
+        private float smoothPitch;
+        public float savedYaw;
+        public float zoomSpeed = Config.PlayerConfig.ZoomSpeed;
+
+        // Camera sway
+        private float swayTimer = 0f;
 
         public Camera(float x, float y, float z, float yaw, float pitch, float aspect, float fov, float nearDist, float farDist)
         {
@@ -37,36 +54,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             FoV = fov;
             NearDist = nearDist;
             FarDist = farDist;
-            Yaw = yaw;
-            Pitch = pitch;
 
             Init(x, y, z, yaw, pitch);
+
+            smoothCamPos = Position;
+            smoothYaw = Yaw;
+            smoothPitch = Pitch;
         }
 
         public void Init(float x, float y, float z, float yaw, float pitch)
         {
             Position = new(x, y, z);
-
             Yaw = yaw;
             Pitch = pitch;
 
             UpdateVectors();
             _projectionDirty = true;
         }
-        public void Follow(Vector3 targetPos, Vector3 offset) 
+        public void UpdateAspectRatio(float newWidth, float newHeight)
         {
-            Position = targetPos + offset;
-
-            // Kamera selalu melihat ke player
-            Front = Vector3.Normalize(targetPos - Position);
-
-            // Hitung Right & Up
-            Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
-            Up = Vector3.Normalize(Vector3.Cross(Right, Front));
+            if (newHeight <= 0) newHeight = 1;
+            _aspect = newWidth / newHeight;
+            _projectionDirty = true;
         }
+
         public void UpdateVectors()
         {
-            // 1. Clamp pitch dulu
             Pitch = Math.Clamp(Pitch, -60f, 60f);
 
             float yawRad = Helpers.OGLMath.ToRadians(Yaw);
@@ -80,23 +93,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Front = Vector3.Normalize(front);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
-
         }
-
-
-        public float GetAspect() => _aspect;
 
         public Matrix4x4 GetViewMatrix()
         {
-            // Pastikan UpdateVectors() sudah dipanggil sebelum render frame ini
             return Matrix4x4.CreateLookAt(Position, Position + Front, Up);
-        }
-
-        public void UpdateAspectRatio(float newWidth, float newHeight)
-        {
-            if (newHeight <= 0) newHeight = 1;
-            _aspect = newWidth / newHeight;
-            _projectionDirty = true;
         }
 
         public Matrix4x4 GetProjectionMatrix()
@@ -121,118 +122,115 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
-        private float lastTerrainY = 0f;
+
         public void ClampToTerrain(MapLoader mapLoader, float dt)
         {
             float minHeight = 1.0f;
 
-            // 1. Ambil terrain height
             float terrainY = mapLoader.GetHeightInterpolated(Position.X, Position.Z);
             float targetY = terrainY + minHeight;
 
-            // 2. Smooth terrain noise (hilangkan jitter)
-            // simpan lastTerrainY sebagai field di Camera
             lastTerrainY = lastTerrainY * 0.9f + targetY * 0.1f;
 
-            // 3. Smooth camera Y (tidak snap)
-            float smooth = 12f; // semakin besar semakin cepat
+            float smooth = 12f;
             Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
 
-        private float shoulderOffset = 0.6f;     // default kanan
-        private float targetShoulderOffset = 0.6f;
-
-        public bool freeLook = false;
-        public float savedYaw;                  // simpan yaw player saat ALT ditekan
-
-        public void SetCamera(nint window, Vector3 p, TerrainChunk gameTerrainChunk)
-        { 
-            // --- CONFIG ---
-            
-            float heightOffset = 1.8f;      // tinggi kamera dari player
-            float minDist = 1.5f;
-            float maxDist = PlayerConfig.MaxCameraDistance;
-            float collisionPush = 0.35f;     // seberapa jauh kamera dipush saat nabrak
-            float smoothFactor = 0.12f;     // smoothing kamera
-            float zoomSpeed = 0.5f;
+        public void SetCamera(nint window, Vector3 p, TerrainChunk gameTerrainChunk, float dt)
+        {
+            float heightOffset = Config.PlayerConfig.CameraOffsetHeight;
+            float minDist = Config.PlayerConfig.CameraMinDistance;
+            float collisionPush = 0.35f;
 
             // SHOULDER SWAP
             if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_Q))
-            {
-                targetShoulderOffset = -MathF.Abs(targetShoulderOffset); // kiri
-            }
+                targetShoulderOffset = -MathF.Abs(targetShoulderOffset);
 
             if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_E))
-            {
-                targetShoulderOffset = MathF.Abs(targetShoulderOffset);  // kanan
-            }
+                targetShoulderOffset = MathF.Abs(targetShoulderOffset);
 
-            // SMOOTH SHOULDER TRANSITION
-            shoulderOffset = Helpers.OGLMath.Lerp(shoulderOffset, targetShoulderOffset, 0.15f);
+            shoulderOffset = Helpers.OGLMath.Lerp(shoulderOffset, targetShoulderOffset, Config.PlayerConfig.CameraFollowSpeed);
 
-            // FREE LOOK (ALT)
-            bool altDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT);
+            // FREE LOOK
+            freeLook = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT);
 
-            if (altDown && !freeLook)
-            {
-                freeLook = true;
-                //savedYaw = Yaw;   // simpan yaw player
-            }
-            else if (!altDown && freeLook)
-            {
-                freeLook = false;
-                //Yaw = savedYaw;   // kembalikan arah player
-            }
+            // ZOOM
+            Config.PlayerConfig.CameraDistance =
+                Helpers.OGLMath.Lerp(Config.PlayerConfig.CameraDistance,
+                                     Config.PlayerConfig.TargetCameraDistance,
+                                     Config.PlayerConfig.CameraFollowSpeed);
 
-            // Smooth zoom
-            Config.PlayerConfig.CameraDistance = Helpers.OGLMath.Lerp(Config.PlayerConfig.CameraDistance, Config.PlayerConfig.targetCameraDistance, 0.15f);
-
-            // --- OFFSET KAMERA ---
+            // OFFSET
             Vector3 offset = new(shoulderOffset, heightOffset, -Config.PlayerConfig.CameraDistance);
 
-            // --- ROTASI ---
+            // CAMERA SWAY
+            bool isMoving =
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_W) ||
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_A) ||
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_S) ||
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+
+            if (isMoving)
+            {
+                swayTimer += dt * 6f;
+                float sway = MathF.Sin(swayTimer) * 0.05f;
+                offset.X += sway;
+            }
+            else
+            {
+                swayTimer = 0f;
+            }
+
+            // CINEMATIC ROTATION
+            float rotSmooth = 10f;
+            smoothYaw = Helpers.OGLMath.LerpAngle(smoothYaw, Yaw, rotSmooth * dt);
+            smoothPitch = Helpers.OGLMath.Lerp(smoothPitch, Pitch, rotSmooth * dt);
+
             Matrix4x4 rot = Matrix4x4.CreateFromYawPitchRoll(
-                Helpers.OGLMath.ToRadians(Yaw),
-                Helpers.OGLMath.ToRadians(Pitch),
+                Helpers.OGLMath.ToRadians(smoothYaw),
+                Helpers.OGLMath.ToRadians(smoothPitch),
                 0
             );
 
-            // --- POSISI IDEAL ---
+            // SCROLL ZOOM
+            if (Mouse.ScrollY != 0)
+            {
+                PlayerConfig.TargetCameraDistance -= Mouse.ScrollY * Config.PlayerConfig.ZoomSpeed; // speed zoom
+                PlayerConfig.TargetCameraDistance = Math.Clamp(PlayerConfig.TargetCameraDistance, Config.PlayerConfig.CameraMinDistance, Config.PlayerConfig.MaxCameraDistance);
+
+                Mouse.ResetScroll();
+            }
+
+
             Vector3 camOffset = Vector3.TransformNormal(offset, rot);
             Vector3 idealPos = p + camOffset;
 
-            // Simpan arah & jarak ideal
             Vector3 idealDir = Vector3.Normalize(idealPos - p);
             float idealDist = Vector3.Distance(p, idealPos);
 
-            // --- COLLISION ---
-            
+            float terrainY = gameTerrainChunk.GetHeightAt(idealPos.X, idealPos.Z);
             float minHeight = 0.1f;
 
             Vector3 finalPos = idealPos;
-            float terrainY = gameTerrainChunk.GetHeightAt(idealPos.X, idealPos.Z);
 
             if (idealPos.Y < terrainY + minHeight)
             {
-                // Push-in halus
                 float newDist = idealDist - collisionPush;
                 newDist = MathF.Max(minDist, newDist);
 
                 finalPos = p + idealDir * newDist;
-
-                // Angkat sedikit
                 finalPos.Y = terrainY + minHeight;
             }
 
-            // --- SMOOTH CAMERA POSITION ---
-            Position = Vector3.Lerp(Position, finalPos, smoothFactor);
+            // CINEMATIC CAMERA LAG
+            float lag = 6f;
+            smoothCamPos = Vector3.Lerp(smoothCamPos, finalPos, 1f - MathF.Exp(-lag * dt));
+            Position = smoothCamPos;
 
-            // --- LOOK AT PLAYER ---
+            // LOOK AT PLAYER
             Front = Vector3.Normalize(p - Position);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
-
         }
-
     }
 }

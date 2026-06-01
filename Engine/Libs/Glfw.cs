@@ -217,7 +217,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera);
 
                 // 5. Set Camera orbital
-                camera.SetCamera( window, objectManager.PlayerAgent.Position ,  gameTerrainChunk);
+                camera.SetCamera( window, objectManager.PlayerAgent.Position ,  gameTerrainChunk , deltaTime);
 
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures, gameTerrainChunk);

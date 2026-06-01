@@ -136,6 +136,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         // Crossfade to the named clip and loop it. Accepts an exact name or a
         // case-insensitive substring (so "walk" matches "Armature|walk").
+
+        public bool IsPlaying(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            return string.Equals(CurrentClipName, name, StringComparison.OrdinalIgnoreCase);
+        }
+
+
         public bool Play(string name, float blendTime = 0.25f)
         {
             int idx = ResolveClip(name);

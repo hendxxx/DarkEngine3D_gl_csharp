@@ -55,17 +55,31 @@
         public static float InitialHeading = 45.0f;  // 45 derajat ke kanan
 
         // ============================
-        // Speed
+        // Movement
         // ============================
         public static float Walk = 1.0f;
         public static float Run = 1.25f;
         public static float Sprint = 4.0f;
 
+        private static float _verticalVelocity = 0f;
+        private const float gravity = -25f;
+        private const float jumpForce = 10f;
+
+
         // ============================
         // Camera
         // ============================
         public static float CameraDistance = 10.0f;  
-        public static float targetCameraDistance = 10.0f;  
+        public static float CameraOffsetHeight = 1.8f;  
+
+        public static float CameraMinDistance = 1.5f;  
+        
+        public static float TargetCameraDistance = 10.0f;  
+        public static float ShoulderOffset = 10.0f;  
+
+        public static float TargetShoulderOffset = 0.6f;  
+        public static float ZoomSpeed = 1.5f;  
+        public static float CameraFollowSpeed = 0.15f;  
         
 
         public static float MaxCameraDistance = 15.0f; 

@@ -164,7 +164,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const int GLFW_KEY_LEFT_ALT = 342;
         public const int GLFW_KEY_RIGHT_ALT = 346;
+        public const int GLFW_KEY_SPACE = 32;
 
+
+        // ======================
+        // MOUSE BUTTONS
+        // ======================
+
+        public const int GLFW_MOUSE_BUTTON_LEFT = 0;
+        public const int GLFW_MOUSE_BUTTON_RIGHT = 1;
+        public const int GLFW_MOUSE_BUTTON_MIDDLE = 2;
 
     }
 }

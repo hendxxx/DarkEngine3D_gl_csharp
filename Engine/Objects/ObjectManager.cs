@@ -68,7 +68,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void Init(Camera camera,TerrainChunk gameTerrainChunk)
         {
-            string xbotPath = "Artifacts\\objects\\Stuntman.glb";
+            string xbotPath = "Artifacts\\objects\\Xbot.glb";
             var rng = new Random();
 
             float spawnCX = 0f;
@@ -151,6 +151,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-happy.glb", "walk-happy");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-standard.glb", "walk-standard");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\natural-idle.glb", "idle");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\jump.glb", "jump");
 
             //LoadAnimationFolder("Artifacts\\objects\\anim");
 
