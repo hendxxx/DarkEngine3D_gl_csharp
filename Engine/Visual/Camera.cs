@@ -139,17 +139,51 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
 
+        private float shoulderOffset = 0.6f;     // default kanan
+        private float targetShoulderOffset = 0.6f;
+
+        public bool freeLook = false;
+        public float savedYaw;                  // simpan yaw player saat ALT ditekan
+
         public void SetCamera(nint window, Vector3 p, TerrainChunk gameTerrainChunk)
         { 
             // --- CONFIG ---
-            float shoulderOffset = 1.0f;      // kamera sedikit ke kanan
+            
             float heightOffset = 1.8f;      // tinggi kamera dari player
             float minDist = 1.5f;
             float maxDist = PlayerConfig.MaxCameraDistance;
             float collisionPush = 0.35f;     // seberapa jauh kamera dipush saat nabrak
             float smoothFactor = 0.12f;     // smoothing kamera
             float zoomSpeed = 0.5f;
-             
+
+            // SHOULDER SWAP
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_Q))
+            {
+                targetShoulderOffset = -MathF.Abs(targetShoulderOffset); // kiri
+            }
+
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_E))
+            {
+                targetShoulderOffset = MathF.Abs(targetShoulderOffset);  // kanan
+            }
+
+            // SMOOTH SHOULDER TRANSITION
+            shoulderOffset = Helpers.OGLMath.Lerp(shoulderOffset, targetShoulderOffset, 0.15f);
+
+            // FREE LOOK (ALT)
+            bool altDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT);
+
+            if (altDown && !freeLook)
+            {
+                freeLook = true;
+                //savedYaw = Yaw;   // simpan yaw player
+            }
+            else if (!altDown && freeLook)
+            {
+                freeLook = false;
+                //Yaw = savedYaw;   // kembalikan arah player
+            }
+
             // Smooth zoom
             Config.PlayerConfig.CameraDistance = Helpers.OGLMath.Lerp(Config.PlayerConfig.CameraDistance, Config.PlayerConfig.targetCameraDistance, 0.15f);
 

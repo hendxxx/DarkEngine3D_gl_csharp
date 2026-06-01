@@ -77,25 +77,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 firstMouse = false;
             }
 
-            //float offsetX = (float)(mouseX - lastX);
-            //float offsetY = (float)(lastY - mouseY);
-            //inverted kayak di game2 AAA
             float offsetX = (float)(lastX - mouseX);
-            float offsetY = (float)(mouseY-lastY); 
-
+            float offsetY = (float)(mouseY - lastY);
 
             lastX = mouseX;
             lastY = mouseY;
-
+             
+          
             camera.Yaw += offsetX * sensitivity;
             camera.Pitch += offsetY * sensitivity;
 
-            //// Clamp pitch
-            //if (camera.Pitch > 89.0f) camera.Pitch = 89.0f;
-            //if (camera.Pitch < -89.0f) camera.Pitch = -89.0f;
-
-            // **WAJIB**: update arah kamera
             camera.UpdateVectors();
+            
         }
 
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]

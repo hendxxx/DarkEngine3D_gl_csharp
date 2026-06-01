@@ -26,6 +26,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             return a + (b - a) * t;
         }
         public static float ToRadians(float degrees) => degrees * (MathF.PI / 180.0f);
+
+        public static float LerpAngle(float a, float b, float t)
+        {
+            float diff = ((b - a + 540f) % 360f) - 180f;
+            return a + diff * t;
+        }
     }
 
 

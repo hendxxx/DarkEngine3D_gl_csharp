@@ -541,7 +541,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (IsPlayer)
             {
                 // --- ROTASI PLAYER (YAW) ---
-                _heading = camera.Yaw;   // tubuh mengikuti arah kamera
+                if (!camera.freeLook)
+                {
+                    _heading = camera.Yaw;
+                }
+
 
                 // 2. Hitung forward/right dari heading
                 float rad = Helpers.OGLMath.ToRadians(_heading);
@@ -578,21 +582,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _obj.Play(_currentWalkingClip, 0.2f);
                     _isWalking = true;
                 }
-                    
-                else if(Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+
+                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
                 {
                     if (!_isBackward)
                     {
                         // baru mulai mundur → random clip
                         _currentBackwardClip = _backwardClips[_rng.Next(_backwardClips.Count)];
-                    } 
+                    }
                     _obj.Play(_currentBackwardClip, 0.2f);
                     _isBackward = true;
                 }
-                    
+
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
                     _obj.Play("strafeleft", 0.2f);
-                else  if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
                     _obj.Play("straferight", 0.2f);
                 else
                 {
@@ -604,12 +608,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 Position = pos;
                 _obj.Position = pos;
 
-                _obj.SetFacing(_heading); // player = derajat
+                if (!camera.freeLook)
+                {
+                    _heading = Helpers.OGLMath.Lerp(_heading, camera.savedYaw, 0.05f);   // kembalikan arah player
+
+                    _obj.SetFacing(_heading); // player = derajat
+                }
+                else
+                {
+                    //_heading = Helpers.OGLMath.Lerp(camera.savedYaw, camera.Yaw, 0.15f);   // kembalikan arah player
+
+                    //_obj.SetFacing(_heading); // player = derajat
+                }
 
                 return;
             }
-
-
 
             // ============================
             // NPC AI (kode lama tetap)
