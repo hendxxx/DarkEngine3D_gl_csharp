@@ -544,7 +544,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 _heading = camera.Yaw;   // tubuh mengikuti arah kamera
 
                 // 2. Hitung forward/right dari heading
-                float rad = Helpers.TerrainsHelpers.OGLMath.ToRadians(_heading);
+                float rad = Helpers.OGLMath.ToRadians(_heading);
 
                 Vector3 forward = new(MathF.Sin(rad), 0, MathF.Cos(rad));
                 Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));

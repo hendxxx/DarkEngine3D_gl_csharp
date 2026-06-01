@@ -16,7 +16,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             public float M11 = m11, M12 = m12, M13 = m13;
             public float M21 = m21, M22 = m22, M23 = m23;
             public float M31 = m31, M32 = m32, M33 = m33;
+    }
+    public static class OGLMath
+    {
+        public static float Lerp(float a, float b, float t)
+        {
+            if (t < 0f) t = 0f;
+            if (t > 1f) t = 1f;
+            return a + (b - a) * t;
         }
+        public static float ToRadians(float degrees) => degrees * (MathF.PI / 180.0f);
+    }
+
+
     public class TerrainsHelpers
     {
         // Ini untuk Noice
@@ -32,23 +44,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             Vector3 normal = new(hL - hR, 2.0f * off, hD - hU);
             return Vector3.Normalize(normal);
         }
-        public static class OGLMath
-        {
-            public static float ToRadians(float degrees) => degrees * (MathF.PI / 180.0f);
-        }
-         
+      
     }
 
     
     public class ShaderHelpers
     {
 
-        public static float Lerp(float a, float b, float t)
-        {
-            if (t < 0f) t = 0f;
-            if (t > 1f) t = 1f;
-            return a + (b - a) * t;
-        }
         public static float SmoothStep(float edge0, float edge1, float x)
         {
             x = Math.Clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
@@ -59,8 +61,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         {
             float sunFacing = MathF.Max(Vector3.Dot(viewDir, sunDir), 0.0f);
 
-            float a = Lerp(1.6f, 0.55f, sunFacing);
-            float b = Lerp(1.0f, 1.8f, tMalam);
+            float a = OGLMath.Lerp(1.6f, 0.55f, sunFacing);
+            float b = OGLMath.Lerp(1.0f, 1.8f, tMalam);
             return a * b;
         }
 
@@ -123,7 +125,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
 
                 prevDiff = diff;
 
-                step = Lerp(5f, 50f, d / maxDistance);
+                step = OGLMath.Lerp(5f, 50f, d / maxDistance);
             }
 
             return false;

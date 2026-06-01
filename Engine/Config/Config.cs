@@ -60,6 +60,15 @@
         public static float Walk = 1.0f;
         public static float Run = 1.25f;
         public static float Sprint = 4.0f;
+
+        // ============================
+        // Camera
+        // ============================
+        public static float CameraDistance = 10.0f;  
+        public static float targetCameraDistance = 10.0f;  
+        
+
+        public static float MaxCameraDistance = 15.0f; 
     }
 
     // ============================

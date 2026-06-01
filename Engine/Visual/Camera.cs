@@ -1,3 +1,5 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
@@ -65,10 +67,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void UpdateVectors()
         {
             // 1. Clamp pitch dulu
-            Pitch = Math.Clamp(Pitch, -30f, 30f);
+            Pitch = Math.Clamp(Pitch, -60f, 60f);
 
-            float yawRad = Helpers.TerrainsHelpers.OGLMath.ToRadians(Yaw);
-            float pitchRad = Helpers.TerrainsHelpers.OGLMath.ToRadians(Pitch);
+            float yawRad = Helpers.OGLMath.ToRadians(Yaw);
+            float pitchRad = Helpers.OGLMath.ToRadians(Pitch);
 
             Vector3 front;
             front.X = MathF.Cos(yawRad) * MathF.Cos(pitchRad);
@@ -134,10 +136,69 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // 3. Smooth camera Y (tidak snap)
             float smooth = 12f; // semakin besar semakin cepat
-            Position.Y = Helpers.ShaderHelpers.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
+            Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
 
+        public void SetCamera(nint window, Vector3 p, TerrainChunk gameTerrainChunk)
+        { 
+            // --- CONFIG ---
+            float shoulderOffset = 1.0f;      // kamera sedikit ke kanan
+            float heightOffset = 1.8f;      // tinggi kamera dari player
+            float minDist = 1.5f;
+            float maxDist = PlayerConfig.MaxCameraDistance;
+            float collisionPush = 0.35f;     // seberapa jauh kamera dipush saat nabrak
+            float smoothFactor = 0.12f;     // smoothing kamera
+            float zoomSpeed = 0.5f;
+             
+            // Smooth zoom
+            Config.PlayerConfig.CameraDistance = Helpers.OGLMath.Lerp(Config.PlayerConfig.CameraDistance, Config.PlayerConfig.targetCameraDistance, 0.15f);
 
+            // --- OFFSET KAMERA ---
+            Vector3 offset = new(shoulderOffset, heightOffset, -Config.PlayerConfig.CameraDistance);
+
+            // --- ROTASI ---
+            Matrix4x4 rot = Matrix4x4.CreateFromYawPitchRoll(
+                Helpers.OGLMath.ToRadians(Yaw),
+                Helpers.OGLMath.ToRadians(Pitch),
+                0
+            );
+
+            // --- POSISI IDEAL ---
+            Vector3 camOffset = Vector3.TransformNormal(offset, rot);
+            Vector3 idealPos = p + camOffset;
+
+            // Simpan arah & jarak ideal
+            Vector3 idealDir = Vector3.Normalize(idealPos - p);
+            float idealDist = Vector3.Distance(p, idealPos);
+
+            // --- COLLISION ---
+            
+            float minHeight = 0.1f;
+
+            Vector3 finalPos = idealPos;
+            float terrainY = gameTerrainChunk.GetHeightAt(idealPos.X, idealPos.Z);
+
+            if (idealPos.Y < terrainY + minHeight)
+            {
+                // Push-in halus
+                float newDist = idealDist - collisionPush;
+                newDist = MathF.Max(minDist, newDist);
+
+                finalPos = p + idealDir * newDist;
+
+                // Angkat sedikit
+                finalPos.Y = terrainY + minHeight;
+            }
+
+            // --- SMOOTH CAMERA POSITION ---
+            Position = Vector3.Lerp(Position, finalPos, smoothFactor);
+
+            // --- LOOK AT PLAYER ---
+            Front = Vector3.Normalize(p - Position);
+            Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
+            Up = Vector3.Normalize(Vector3.Cross(Right, Front));
+
+        }
 
     }
 }

@@ -74,7 +74,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float spawnCX = 0f;
             float spawnCZ = 0f;
             float minDist = 1.6f;
-            float spawnRadius = 50f;
+            float spawnRadius = 10f;
 
             var spawnedPositions = new List<Vector2>();
 
@@ -82,7 +82,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _agents.Clear();
 
             // === PLAYER SPAWN ===
-            string playerPath = "Artifacts\\objects\\Women.glb";
+            string playerPath = "Artifacts\\objects\\Stuntman.glb";
 
             float playerX = 0f;
             float playerZ = 0f;
@@ -100,7 +100,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             };   
 
             // AI SPAWN
-            for (int i = 0; i < 50; i++)
+            for (int i = 0; i < 5; i++)
             {
                 float px, pz;
                 int tries = 0;

@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
@@ -215,63 +216,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 4C. Update NPC AI + movement
                 objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera);
 
-                // 5. Kamera follow posisi player (orbit)
-                var p = objectManager.PlayerAgent.Position;
-
-                Vector3 offset = new(0.0f, 1.0f, -8.0f);
-
-                Matrix4x4 rot = Matrix4x4.CreateFromYawPitchRoll(
-                    Helpers.TerrainsHelpers.OGLMath.ToRadians(camera.Yaw),
-                    Helpers.TerrainsHelpers.OGLMath.ToRadians(camera.Pitch),
-                    0
-                );
-
-                // 1. Hitung posisi kamera ideal
-                Vector3 camOffset = Vector3.TransformNormal(offset, rot);
-                Vector3 desiredCamPos = p + camOffset;
-
-                // 2. Camera collision (terrain only)
-                float terrainY = gameTerrainChunk.GetHeightAt(desiredCamPos.X, desiredCamPos.Z);
-                float minHeight = 0.2f;
-
-                if (desiredCamPos.Y < terrainY + minHeight)
-                {
-                    // Angkat kamera
-                    desiredCamPos.Y = terrainY + minHeight;
-
-                    // Tambahkan sedikit push-in
-                    Vector3 dir = Vector3.Normalize(desiredCamPos - p);
-                    float dist = Vector3.Distance(p, desiredCamPos);
-
-                    // Dorong kamera sedikit ke depan (0.25f)
-                    desiredCamPos = p + dir * (dist - 0.25f);
-                }
-
-                // 3. Set posisi kamera
-                camera.Position = desiredCamPos;
-
-                // Kamera lihat player
-                camera.Front = Vector3.Normalize(p - camera.Position);
-                camera.Right = Vector3.Normalize(Vector3.Cross(camera.Front, Vector3.UnitY));
-                camera.Up = Vector3.Normalize(Vector3.Cross(camera.Right, camera.Front)); 
-
-
-                //if (gameTerrainChunk != null)
-                //{
-                //    // 2. Clamp camera height to terrain once per-frame (centralized)
-                //    try
-                //    {
-                //        var ml = gameTerrainChunk.GetMapLoader();
-                //        if (ml != null) camera.ClampToTerrain(ml, deltaTime);
-                //    }
-                //    catch { }
-                //}
+                // 5. Set Camera orbital
+                camera.SetCamera( window, objectManager.PlayerAgent.Position ,  gameTerrainChunk);
 
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures, gameTerrainChunk);
 
                 //// 4. Ensure terrain shader has current view/projection uniforms bound 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
+
                 int renderedTris = 0;
                 if (gameTerrainChunk != null)
                     renderedTris = gameTerrainChunk.Render(camera, gameTerrainChunk.GetFrozenPlanes());
@@ -285,8 +238,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 if (objectManager != null)
                 {
  
-                    objectManager.Draw(camera, light);
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
+                    objectManager.Draw(camera, light);
 
                 }
                 

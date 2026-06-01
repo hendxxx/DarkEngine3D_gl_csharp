@@ -159,5 +159,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_GEQUAL = 0x0206;
         public const uint GL_ALWAYS = 0x0207;
 
+        public const int GLFW_KEY_Q = 0x51;  
+        public const int GLFW_KEY_E = 0x45; 
+
+        public const int GLFW_KEY_LEFT_ALT = 342;
+        public const int GLFW_KEY_RIGHT_ALT = 346;
+
+
     }
 }

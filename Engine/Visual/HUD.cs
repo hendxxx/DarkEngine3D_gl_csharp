@@ -236,6 +236,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
 
             OpenGL.EnableFaceCulling(true);
+
+            GL.Enable(Const.GL_DEPTH_TEST);
+            OpenGL.EnableFaceCulling(false);
+            GL.Disable(Const.GL_BLEND);
         }
         public uint CreateScratchTexture(int width, int height, Vector3 color)
         {
