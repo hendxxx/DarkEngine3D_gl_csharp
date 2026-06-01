@@ -10,8 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
     {
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int, void> glfwSetInputMode;
         private static delegate* unmanaged[Cdecl]<IntPtr, double*, double*, void> glfwGetCursorPos;
-        private static delegate* unmanaged[Cdecl]<IntPtr, double, double, void> glfwSetCursorPos;
-        private static delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, double, double, void>, void> SetScrollCallback;
+        private static delegate* unmanaged[Cdecl]<IntPtr, double, double, void> glfwSetCursorPos; 
         private static delegate* unmanaged[Cdecl]<IntPtr, double, double, void> scrollCallback;
         private static delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, double, double, void>, void> glfwSetScrollCallback;
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int> glfwGetMouseButton;

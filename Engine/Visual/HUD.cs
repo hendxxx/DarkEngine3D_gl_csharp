@@ -95,10 +95,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA, AtlasSize, AtlasSize, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, pB);
             }
             GL.GenerateMipmap(Const.GL_TEXTURE_2D);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR); // GL_LINEAR_MIPMAP_LINEAR
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR); // GL_LINEAR_MIPMAP_LINEAR
 
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.MIN_FILTER, (int)Const.GL_LINEAR); // MIN_FILTER
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.MAG_FILTER, (int)Const.GL_LINEAR); // MAG_FILTER
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR); // MAG_FILTER
 
 
         }
