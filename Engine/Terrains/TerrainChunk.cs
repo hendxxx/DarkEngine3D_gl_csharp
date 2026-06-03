@@ -416,7 +416,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     if (distance < maxDist)
                     {
                         int lodIndex;
-                        if (distance > scaledChunkSize * 4.5f) lodIndex = 3;
+                        if (distance > scaledChunkSize * 4.5) lodIndex = 3;
                         else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
                         else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
                         else lodIndex = 0;
@@ -425,6 +425,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     }
                 }
             }
+
+            OpenGL.EnableFaceCulling(true);
         }
 
         // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)

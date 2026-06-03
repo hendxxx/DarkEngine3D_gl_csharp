@@ -11,7 +11,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public uint[] FBOs = new uint[NumCascades];
         public uint[] ShadowTextures = new uint[NumCascades];
         public Matrix4x4[] LightSpaceMatrices = new Matrix4x4[NumCascades];
-
+        
         // Cascade split distances (near to far)
         public float[] CascadeEnds = [20.0f, 80.0f, 300.0f];
         public CSM(int shadowSize = 2048)
@@ -94,9 +94,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     up = Vector3.UnitZ;
                 }
                 // Place the light source 250 units away from center along lightDir
+                lightDir = Vector3.Normalize(lightDir);
                 Vector3 lightPos = center + lightDir * 250.0f;
-                Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
+                Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
                 // 4. Find min/max in light space to determine orthographic projection bounds
                 float minX = float.MaxValue, maxX = float.MinValue;
                 float minY = float.MaxValue, maxY = float.MinValue;
@@ -128,6 +129,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 prevSplit = nextSplit;
             }
         }
+
+
         public void BindFramebuffer(int index)
         {
             if (index < 0 || index >= NumCascades) return;
