@@ -178,8 +178,39 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram()); 
 
-            //ppStack.AddPass(rainOverlayPass);
-            //ppStack.AddPass(invertPass);
+            // --- CSM INITIALIZATION ---
+            CSM csm = new CSM(2048);
+
+            uint terrainShader = Shader.GetShaderProgram();
+            int terrainShadowMap0Loc = GL.GetUniformLocation(terrainShader, "shadowMap0");
+            int terrainShadowMap1Loc = GL.GetUniformLocation(terrainShader, "shadowMap1");
+            int terrainShadowMap2Loc = GL.GetUniformLocation(terrainShader, "shadowMap2");
+            int terrainLightSpaceLoc0 = GL.GetUniformLocation(terrainShader, "lightSpaceMatrices[0]");
+            int terrainLightSpaceLoc1 = GL.GetUniformLocation(terrainShader, "lightSpaceMatrices[1]");
+            int terrainLightSpaceLoc2 = GL.GetUniformLocation(terrainShader, "lightSpaceMatrices[2]");
+            int terrainCascadeEndsLoc0 = GL.GetUniformLocation(terrainShader, "cascadeEnds[0]");
+            int terrainCascadeEndsLoc1 = GL.GetUniformLocation(terrainShader, "cascadeEnds[1]");
+            int terrainCascadeEndsLoc2 = GL.GetUniformLocation(terrainShader, "cascadeEnds[2]");
+
+            uint gltfShader = GltfShader.GetShaderProgram();
+            int gltfShadowMap0Loc = GL.GetUniformLocation(gltfShader, "shadowMap0");
+            int gltfShadowMap1Loc = GL.GetUniformLocation(gltfShader, "shadowMap1");
+            int gltfShadowMap2Loc = GL.GetUniformLocation(gltfShader, "shadowMap2");
+            int gltfLightSpaceLoc0 = GL.GetUniformLocation(gltfShader, "lightSpaceMatrices[0]");
+            int gltfLightSpaceLoc1 = GL.GetUniformLocation(gltfShader, "lightSpaceMatrices[1]");
+            int gltfLightSpaceLoc2 = GL.GetUniformLocation(gltfShader, "lightSpaceMatrices[2]");
+            int gltfCascadeEndsLoc0 = GL.GetUniformLocation(gltfShader, "cascadeEnds[0]");
+            int gltfCascadeEndsLoc1 = GL.GetUniformLocation(gltfShader, "cascadeEnds[1]");
+            int gltfCascadeEndsLoc2 = GL.GetUniformLocation(gltfShader, "cascadeEnds[2]");
+
+            uint shadowShader = Shader.GetShadowShaderProgram();
+            int shadowModelLoc = GL.GetUniformLocation(shadowShader, "model");
+            int shadowLightSpaceLoc = GL.GetUniformLocation(shadowShader, "lightSpaceMatrix");
+
+            uint shadowSkinnedShader = Shader.GetShadowSkinnedShaderProgram();
+            int shadowSkinnedModelLoc = GL.GetUniformLocation(shadowSkinnedShader, "model");
+            int shadowSkinnedLightSpaceLoc = GL.GetUniformLocation(shadowSkinnedShader, "lightSpaceMatrix");
+            int shadowSkinnedJointsLoc = GL.GetUniformLocation(shadowSkinnedShader, "u_Joints");
 
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
@@ -188,11 +219,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             {
                 deltaTime = Glfw.GetDeltaTime();
                 time += deltaTime;
-
-                ppStack.BindSceneFBO();
-                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
-                 
-                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
 
                 // 1. Mouse → yaw/pitch → vectors
                 Mouse.Update(window, camera);
@@ -217,10 +243,98 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera);
 
                 // 5. Set Camera orbital
-                camera.SetCamera( window, objectManager.PlayerAgent.Position ,  gameTerrainChunk , deltaTime);
+                camera.SetCamera(window, objectManager.PlayerAgent.Position, gameTerrainChunk, deltaTime);
+
+                // 6. Update Light (moved up for CSM lightDir calculations)
+                light.Update(deltaTime, camera.Position);
+
+                // --- CSM SHADOW PASS ---
+                csm.UpdateMatrices(camera, light.SunDir);
+
+                for (int i = 0; i < CSM.NumCascades; i++)
+                {
+                    csm.BindFramebuffer(i);
+
+                    Matrix4x4 lightSpace = csm.LightSpaceMatrices[i];
+                    
+                    GL.UseProgram(shadowShader);
+                    unsafe {
+                        GL.UniformMatrix4fv(shadowLightSpaceLoc, 1, false, (float*)&lightSpace);
+                    }
+
+                    GL.UseProgram(shadowSkinnedShader);
+                    unsafe {
+                        GL.UniformMatrix4fv(shadowSkinnedLightSpaceLoc, 1, false, (float*)&lightSpace);
+                    }
+
+                    if (gameTerrainChunk != null)
+                    {
+                        gameTerrainChunk.RenderShadow(camera, csm.CascadeEnds[i], shadowShader, shadowModelLoc);
+                    }
+
+                    if (objectManager != null)
+                    {
+                        objectManager.RenderShadow(camera, csm.CascadeEnds[i], shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
+                    }
+                }
+
+                // Restore default viewport and framebuffer
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                GL.Viewport(0, 0, _windowWidth, _windowHeight);
+
+                // --- MAIN RENDER PASS ---
+                ppStack.BindSceneFBO();
+                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
 
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures, gameTerrainChunk);
+
+                // --- BIND CSM SHADOW MAPS ---
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
+
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[1]);
+
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
+
+                // Upload shadow uniforms for Terrain
+                GL.UseProgram(terrainShader);
+                GL.Uniform1i(terrainShadowMap0Loc, 6);
+                GL.Uniform1i(terrainShadowMap1Loc, 7);
+                GL.Uniform1i(terrainShadowMap2Loc, 8);
+                
+                unsafe {
+                    fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                        GL.UniformMatrix4fv(terrainLightSpaceLoc0, 1, false, p0);
+                    fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                        GL.UniformMatrix4fv(terrainLightSpaceLoc1, 1, false, p1);
+                    fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                        GL.UniformMatrix4fv(terrainLightSpaceLoc2, 1, false, p2);
+                }
+                GL.Uniform1f(terrainCascadeEndsLoc0, csm.CascadeEnds[0]);
+                GL.Uniform1f(terrainCascadeEndsLoc1, csm.CascadeEnds[1]);
+                GL.Uniform1f(terrainCascadeEndsLoc2, csm.CascadeEnds[2]);
+
+                // Upload shadow uniforms for glTF
+                GL.UseProgram(gltfShader);
+                GL.Uniform1i(gltfShadowMap0Loc, 6);
+                GL.Uniform1i(gltfShadowMap1Loc, 7);
+                GL.Uniform1i(gltfShadowMap2Loc, 8);
+                
+                unsafe {
+                    fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                        GL.UniformMatrix4fv(gltfLightSpaceLoc0, 1, false, p0);
+                    fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                        GL.UniformMatrix4fv(gltfLightSpaceLoc1, 1, false, p1);
+                    fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                        GL.UniformMatrix4fv(gltfLightSpaceLoc2, 1, false, p2);
+                }
+                GL.Uniform1f(gltfCascadeEndsLoc0, csm.CascadeEnds[0]);
+                GL.Uniform1f(gltfCascadeEndsLoc1, csm.CascadeEnds[1]);
+                GL.Uniform1f(gltfCascadeEndsLoc2, csm.CascadeEnds[2]);
 
                 //// 4. Ensure terrain shader has current view/projection uniforms bound 
                 camera.SetViewAndProjection(viewLocation, projectionLocation);
@@ -229,30 +343,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 if (gameTerrainChunk != null)
                     renderedTris = gameTerrainChunk.Render(camera, gameTerrainChunk.GetFrozenPlanes());
 
-                light.Update(deltaTime, camera.Position);
-
                 if (objTriangle != null)
                     objTriangle.Draw(deltaTime, window, 5.0f);
 
                 // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)
                 {
- 
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                     objectManager.Draw(camera, light);
-
                 }
                 
-                //float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai
-                ////rainOverlayPass.RainAmount = Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);// Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);
-                //uint sceneTexture = ppStack.SceneColorTex;
-                //rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
-               
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
-                 
 
-                //hud.DrawBox(0, 0, WindowWidth, 200, new Vector3(0, 0, 0)); // Kotak Hitam
                 // --- HUD SYSTEM ---
                 int totalMapTris = TerrainChunk.GetTotalMapTriangles();
                 string gTime = light.GetFormattedTime();
@@ -261,24 +364,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 string title1 = $"🕒 [ {gTime} ]";
                 string title2 = $"⚡ FPS: {lastFPS}";
                 string title3 = $"📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
-
                 string title4 = $" POS: X ={camera.Position.Z:N2} Y{camera.Position.Y:N2}= Z{camera.Position.Z:N2}";
-
-                string title5 = $" Objects: { objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
+                string title5 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
 
                 hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText(title2, 10, 90, new Vector3(1, 0, 0));
                 hud.DrawText(title3, 10, 120, new Vector3(1, 0, 0));
                 hud.DrawText(title4, 10, 150, new Vector3(1, 0, 0));
                 hud.DrawText(title5, 10, 180, new Vector3(1, 0, 0));
-                //hud.DrawText("a brown fox quickly jump over the lazy dog", 10, 90, new Vector3(0, 0, 0), new Vector3(1, 1, 1));
-                //hud.DrawText("`1234567890-=~!@#$%^&*()_+[]\\{}|;':\",./<>?", 10, 120, new Vector3(0, 0, 0), new Vector3(1, 0, 1));
-
 
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();
             }
 
+            csm.Dispose();
             Console.WriteLine("Engine Shutdown.");
         }
          

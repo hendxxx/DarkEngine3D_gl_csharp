@@ -385,6 +385,48 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             return totalTriangles;
         }
 
+        public void RenderShadow(Camera camera, float cascadeEndDistance, uint shadowShader, int modelLoc)
+        {
+            GL.UseProgram(shadowShader);
+            OpenGL.EnableFaceCulling(false);
+            
+            Matrix4x4 model = Matrix4x4.Identity;
+            unsafe
+            {
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
+            }
+
+            float scaledChunkSize = ChunkSize * TerrainScale;
+            float chunkExtent = scaledChunkSize * 0.707f;
+            float maxDist = cascadeEndDistance + chunkExtent + 40.0f;
+
+            for (int x = 0; x < ChunksPerSide; x++)
+            {
+                for (int z = 0; z < ChunksPerSide; z++)
+                {
+                    if (worldMap?[x, z] == null) continue;
+
+                    float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
+                    float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
+                    float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
+
+                    Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
+                    float distance = Vector3.Distance(camera.Position, chunkCenter);
+
+                    if (distance < maxDist)
+                    {
+                        int lodIndex;
+                        if (distance > scaledChunkSize * 4.5f) lodIndex = 3;
+                        else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
+                        else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
+                        else lodIndex = 0;
+
+                        worldMap[x, z].Draw(lodIndex, false);
+                    }
+                }
+            }
+        }
+
         // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)
         private static Plane[]? BuildPlanesFromCorners(Vector3[] c)
         {

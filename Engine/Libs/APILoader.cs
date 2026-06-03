@@ -144,8 +144,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             => ((delegate* unmanaged[Cdecl]<uint, void>)DepthFuncPtr)(function);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void TexParameterfv(uint target, uint pname, float[] param)
-            => ((delegate* unmanaged[Cdecl]<uint, uint, float[], void>)TexParameterfvPtr)(target, pname, param);
+        public static void TexParameterfv(uint target, uint pname, float* param)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, float*, void>)TexParameterfvPtr)(target, pname, param);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void UniformMatrix3fv(int location, int count, bool transpose, float* value)

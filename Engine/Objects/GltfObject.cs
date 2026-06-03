@@ -840,5 +840,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);  
         }
+
+        public void DrawShadow(int modelLoc, int jointsLoc)
+        {
+            if (!IsVisible || AnimLOD == 3)
+                return;
+
+            var objMat = Matrix4x4.CreateScale(Scale)
+                         * Matrix4x4.CreateFromQuaternion(Rotation)
+                         * Matrix4x4.CreateTranslation(Position);
+
+            bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
+
+            if (isSkinned && jointsLoc >= 0)
+            {
+                fixed (Matrix4x4* p = &_jointMatrices[0])
+                    GL.UniformMatrix4fv(jointsLoc, _jointMatrices.Length, false, (float*)p);
+            }
+
+            OpenGL.EnableFaceCulling(true);
+            for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
+            {
+                var mesh = GpuData.Meshes[mi];
+
+                Matrix4x4 modelMat = objMat;
+                if (!isSkinned)
+                {
+                    int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length) ? GpuData.MeshToNode[mi] : -1;
+                    if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
+                        modelMat = _nodeGlobal[nodeIdx] * objMat;
+                }
+
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
+
+                GL.BindVertexArray(mesh.VAO);
+                if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+            }
+            OpenGL.EnableFaceCulling(false);
+            GL.BindVertexArray(0);
+        }
     }
 }

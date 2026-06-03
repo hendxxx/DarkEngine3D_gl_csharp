@@ -454,6 +454,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             TotalObjects = _objects.Count;
         }
 
+        public void RenderShadow(Camera camera, float cascadeEndDistance, uint shadowSkinnedShader, int modelLoc, int jointsLoc)
+        {
+            GL.UseProgram(shadowSkinnedShader);
+            float maxDist = cascadeEndDistance + 20.0f;
+
+            for (int i = 0; i < _objects.Count; i++)
+            {
+                var obj = _objects[i];
+                float dist = Vector3.Distance(camera.Position, obj.Position);
+                if (dist > maxDist) continue;
+
+                obj.DrawShadow(modelLoc, jointsLoc);
+            }
+        }
+
         public void DrawHealthBars(Camera camera, HUD hud)
         {
             const float headHeight = 2.1f;

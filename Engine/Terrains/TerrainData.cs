@@ -373,7 +373,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             GL.EnableVertexAttribArray(3);
             GL.VertexAttribPointer(3, 2, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 3));
         }
-        public void Draw( int lodIndex = 0)
+        public void Draw( int lodIndex = 0, bool drawSkirt = true)
         {
             // 1. CEK PENDING UPLOADS (Mesh + Skirt)
             if (pendingUploads.Count > 0 || pendingSkirtUploads.Count > 0)
@@ -439,7 +439,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             // Draw Skirt to hide LOD seams between neighboring chunks.
             // Culling disabled because skirt winding is not enforced.
-            if (SkirtVAOs[actualLod] != 0 && _skirtVertexCounts[actualLod] > 0  )
+            if (drawSkirt && SkirtVAOs[actualLod] != 0 && _skirtVertexCounts[actualLod] > 0  )
             {
                 
                 OpenGL.EnableFaceCulling(false,true); 

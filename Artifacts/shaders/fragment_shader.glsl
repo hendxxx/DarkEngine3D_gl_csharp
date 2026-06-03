@@ -10,12 +10,39 @@ uniform vec3 sunDir, lightColor, viewPos, fogColor, heightScale;
 uniform sampler2D tex0, tex1, tex2, tex3, tex4; // 0:Dirt, 1:Rock, 2:Snow, 3:Cliff, 4:Moon
 uniform int useTexture;  
 
+// --- CSM UNIFORMS ---
+uniform sampler2D shadowMap0;
+uniform sampler2D shadowMap1;
+uniform sampler2D shadowMap2;
+uniform mat4 lightSpaceMatrices[3];
+uniform float cascadeEnds[3];
+
 // --- LOD COLOR TOGGLE ---
 uniform int showLODColor;
 uniform int lodLevel;
 
 // --- SAKELAR TOGGLE UNTUK MENGAKTIFKAN/MEMATIKAN KABUT ---
 uniform int useFog; 
+
+// --- CSM SHADOW CALCULATION ---
+float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias) {
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    
+    if(projCoords.z > 1.0)
+        return 1.0;
+        
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    for(int x = -1; x <= 1; ++x) {
+        for(int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r; 
+            shadow += projCoords.z - bias > pcfDepth ? 0.0 : 1.0;        
+        }    
+    }
+    shadow /= 9.0;
+    return shadow;
+}
 
 // --- FUNGSI NOISE & STOCHASTIC (TETAP STANDAR) ---
 vec2 hash2(vec2 p) {
@@ -137,8 +164,30 @@ void main() {
     float slopeShadow = pow(1.0 - slope, 0.5); 
     float finalDiff = diff * mix(0.7, 1.0, slopeShadow);
     
+    // --- CALCULATE SHADOW MULTIPLIER (CSM) ---
+    float depth = length(viewPos - FragPos);
+    int cascadeIndex = 2;
+    if (depth < cascadeEnds[0]) {
+        cascadeIndex = 0;
+    } else if (depth < cascadeEnds[1]) {
+        cascadeIndex = 1;
+    }
+
+    float bias = max(0.005 * (1.0 - dot(norm, activeLightDir)), 0.0005);
+    if (cascadeIndex == 0) bias *= 0.1;
+    else if (cascadeIndex == 1) bias *= 0.5;
+
+    float shadow = 1.0;
+    if (cascadeIndex == 0) {
+        shadow = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias);
+    } else if (cascadeIndex == 1) {
+        shadow = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias);
+    } else {
+        shadow = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias);
+    }
+
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, activeLightDir));
-    vec3 diffuse = finalDiff * activeLightColor * shadowMask;
+    vec3 diffuse = finalDiff * activeLightColor * shadowMask * shadow;
     
     vec3 result = (ambient + diffuse) * texColor;
 
