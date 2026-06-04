@@ -75,99 +75,60 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
         public void UpdateMatrices(Camera camera, Vector3 lightDir)
         {
+            lightDir = Vector3.Normalize(lightDir);
+
             float prevSplit = camera.NearDist;
 
             for (int i = 0; i < NumCascades; i++)
             {
                 float nextSplit = CascadeEnds[i];
 
+                // 1. Ambil frustum split
                 Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(
                     camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
 
                 Vector3[] corners = TerrainChunk.GetFrustumCorners(
                     camera.GetViewMatrix(), splitProj);
 
-                // 1. center
+                // 2. Center
                 Vector3 center = Vector3.Zero;
-                foreach (var c in corners)
-                    center += c;
-
+                for (int j = 0; j < 8; j++)
+                    center += corners[j];
                 center /= 8.0f;
-                // === radius ===
+
+                // 3. Radius (stabil)
                 float radius = 0f;
                 for (int j = 0; j < 8; j++)
-                {
-                    float dist = (corners[j] - center).Length();
-                    radius = MathF.Max(radius, dist);
-                }
+                    radius = MathF.Max(radius, (corners[j] - center).Length());
 
                 radius = MathF.Ceiling(radius * 16.0f) / 16.0f;
 
-                // 🔥 scale per cascade
-                float radiusScale = 1.25f;
-                if (i == 1)
-                    radiusScale = 1.7f;
+                // 4. Light view
+                Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
+                    ? Vector3.UnitZ : Vector3.UnitY;
 
-                radius *= radiusScale;
+                Vector3 lightPos = center + lightDir * radius * 2.0f;
+                Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
-
-                // ✅ WAJIB (ini tadi missing)
+                // 5. Ortho bounds
                 float minX = -radius;
                 float maxX = radius;
                 float minY = -radius;
                 float maxY = radius;
 
-
-                // === light ===
-                Vector3 lightPos = center + lightDir * radius;
-                Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
-
-
-                // === Z range ===
-                float minZ = float.MaxValue;
-                float maxZ = float.MinValue;
-
-                for (int j = 0; j < 8; j++)
-                {
-                    Vector3 lp = Vector3.Transform(corners[j], lightView);
-                    minZ = MathF.Min(minZ, lp.Z);
-                    maxZ = MathF.Max(maxZ, lp.Z);
-                }
-
-                // cascade tuning
-                float forwardFactor = 3.5f;
-                float backwardFactor = 0.7f;
-
-                if (i == 1)
-                {
-                    forwardFactor = 4.5f;
-                    backwardFactor = 1.2f;
-                }
-
-                // depth
-                float zNear = minZ - (radius * backwardFactor + 80.0f);
-                float zFar = maxZ + (radius * forwardFactor + 150.0f);
-
-                // extra safety umum
-                zFar += radius * 0.7f;
-                zNear -= radius * 0.5f;
-
-                // 🔥 tambahan khusus cascade 1
-                if (i == 1)
-                {
-                    zFar += radius * 1.0f;
-                    zNear -= radius * 0.7f;
-                }
-
+                float zNear = -radius * 4.0f;
+                float zFar = radius * 4.0f;
 
                 Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
                     minX, maxX, minY, maxY, zNear, zFar);
 
-                LightSpaceMatrices[i] = lightView * lightProj ;
+                // 6. FINAL (benar)
+                LightSpaceMatrices[i] = lightView * lightProj;
 
                 prevSplit = nextSplit;
             }
         }
+
 
 
         public void BindFramebuffer(int index)

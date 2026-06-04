@@ -355,8 +355,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
 
-                int boxW = 380;
-                int boxH = 380;
+                int boxW = 250;
+                int boxH = 250;
                 int margin = 10;
                 int spacing = 10;
 
@@ -370,7 +370,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     _windowWidth,
                     _windowHeight,
                     x,
-                    y2,
+                    y0,
                     boxW,
                     boxH,
                     0.1f,
@@ -396,7 +396,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     _windowWidth,
                     _windowHeight,
                     x,
-                    y0,
+                    y2,
                     boxW,
                     boxH,
                     0.1f,
