@@ -56,8 +56,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 {
                     Console.WriteLine($"[CSM] FBO {i} incomplete: 0x{status:X}");
                 }
+                GL.DrawBuffer(Const.GL_NONE);
+                GL.ReadBuffer(Const.GL_NONE);
             }
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+
         }
         private static Matrix4x4 CreateOrthographicOffCenterOpenGL(float left, float right, float bottom, float top, float zNear, float zFar)
         {
@@ -72,60 +75,96 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
         public void UpdateMatrices(Camera camera, Vector3 lightDir)
         {
-            // We calculate view-projection matrix for each cascade
             float prevSplit = camera.NearDist;
+
             for (int i = 0; i < NumCascades; i++)
             {
                 float nextSplit = CascadeEnds[i];
-                // 1. Get frustum corners of this split in world space
-                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
-                Vector3[] corners = TerrainChunk.GetFrustumCorners(camera.GetViewMatrix(), splitProj);
-                // 2. Calculate center of split frustum
+
+                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(
+                    camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
+
+                Vector3[] corners = TerrainChunk.GetFrustumCorners(
+                    camera.GetViewMatrix(), splitProj);
+
+                // 1. center
                 Vector3 center = Vector3.Zero;
                 foreach (var c in corners)
-                {
                     center += c;
-                }
-                center /= 8.0f;
-                // 3. Create light view matrix
-                Vector3 up = Vector3.UnitY;
-                if (MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f)
-                {
-                    up = Vector3.UnitZ;
-                }
-                // Place the light source 250 units away from center along lightDir
-                lightDir = Vector3.Normalize(lightDir);
-                Vector3 lightPos = center + lightDir * 250.0f;
 
+                center /= 8.0f;
+                // === radius ===
+                float radius = 0f;
+                for (int j = 0; j < 8; j++)
+                {
+                    float dist = (corners[j] - center).Length();
+                    radius = MathF.Max(radius, dist);
+                }
+
+                radius = MathF.Ceiling(radius * 16.0f) / 16.0f;
+
+                // 🔥 scale per cascade
+                float radiusScale = 1.25f;
+                if (i == 1)
+                    radiusScale = 1.7f;
+
+                radius *= radiusScale;
+
+
+                // ✅ WAJIB (ini tadi missing)
+                float minX = -radius;
+                float maxX = radius;
+                float minY = -radius;
+                float maxY = radius;
+
+
+                // === light ===
+                Vector3 lightPos = center + lightDir * radius;
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
-                // 4. Find min/max in light space to determine orthographic projection bounds
-                float minX = float.MaxValue, maxX = float.MinValue;
-                float minY = float.MaxValue, maxY = float.MinValue;
-                float minZ = float.MaxValue, maxZ = float.MinValue;
+
+
+                // === Z range ===
+                float minZ = float.MaxValue;
+                float maxZ = float.MinValue;
+
                 for (int j = 0; j < 8; j++)
                 {
                     Vector3 lp = Vector3.Transform(corners[j], lightView);
-                    if (lp.X < minX) minX = lp.X;
-                    if (lp.X > maxX) maxX = lp.X;
-                    if (lp.Y < minY) minY = lp.Y;
-                    if (lp.Y > maxY) maxY = lp.Y;
-                    if (lp.Z < minZ) minZ = lp.Z;
-                    if (lp.Z > maxZ) maxZ = lp.Z;
+                    minZ = MathF.Min(minZ, lp.Z);
+                    maxZ = MathF.Max(maxZ, lp.Z);
                 }
-                // Add padding to prevent culling issues at boundaries
-                float padX = (maxX - minX) * 0.1f;
-                float padY = (maxY - minY) * 0.1f;
-                minX -= padX; maxX += padX;
-                minY -= padY; maxY += padY;
-                // Dynamically calculate zNear and zFar to tightly enclose the split frustum
-                // And extend near plane to catch casters in front of the frustum
-                float zNear = -maxZ - 150.0f;
-                float zFar = -minZ + 50.0f;
-                if (zNear < 0.01f) zNear = 0.01f;
-                // Create OpenGL compliant orthographic projection matrix
-                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(minX, maxX, minY, maxY, zNear, zFar);
-                // Light space matrix = view * projection
-                LightSpaceMatrices[i] = lightView * lightProj;
+
+                // cascade tuning
+                float forwardFactor = 3.5f;
+                float backwardFactor = 0.7f;
+
+                if (i == 1)
+                {
+                    forwardFactor = 4.5f;
+                    backwardFactor = 1.2f;
+                }
+
+                // depth
+                float zNear = minZ - (radius * backwardFactor + 80.0f);
+                float zFar = maxZ + (radius * forwardFactor + 150.0f);
+
+                // extra safety umum
+                zFar += radius * 0.7f;
+                zNear -= radius * 0.5f;
+
+                // 🔥 tambahan khusus cascade 1
+                if (i == 1)
+                {
+                    zFar += radius * 1.0f;
+                    zNear -= radius * 0.7f;
+                }
+
+
+                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
+                    minX, maxX, minY, maxY, zNear, zFar);
+
+                LightSpaceMatrices[i] = lightView * lightProj ;
+
                 prevSplit = nextSplit;
             }
         }

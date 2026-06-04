@@ -13,6 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // ======================
         // OPENGL STATES
         // ======================
+        public const uint GL_NONE = 0;
         public const uint GL_FLOAT = 0x1406;
         public const uint GL_INT = 0x1404;
 

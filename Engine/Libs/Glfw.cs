@@ -212,6 +212,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             int shadowSkinnedLightSpaceLoc = GL.GetUniformLocation(shadowSkinnedShader, "lightSpaceMatrix");
             int shadowSkinnedJointsLoc = GL.GetUniformLocation(shadowSkinnedShader, "u_Joints");
 
+            FramebufferViewer framebufferViewer = new();
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             float time = 0f;
@@ -235,11 +236,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 
                 // 4A. Update player movement dulu
                 objectManager.PlayerAgent.Move(window, camera, deltaTime, gameTerrainChunk, Vector3.Zero, 0f);
-
-                // 4B. Player movement (pakai heading kamera)
-                objectManager.PlayerAgent.Move(window, camera, deltaTime, gameTerrainChunk, Vector3.Zero, 0f);
-
-                // 4C. Update NPC AI + movement
+                 
+                // 4B. Update NPC AI + movement
                 objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera);
 
                 // 5. Set Camera orbital
@@ -283,9 +281,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 GL.Viewport(0, 0, _windowWidth, _windowHeight);
 
                 // --- MAIN RENDER PASS ---
-                ppStack.BindSceneFBO();
+                ppStack.BindSceneFBO(); 
                 GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+                 
 
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures, gameTerrainChunk);
@@ -355,6 +354,56 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
+
+                int boxW = 380;
+                int boxH = 380;
+                int margin = 10;
+                int spacing = 10;
+
+                int x = _windowWidth - boxW - margin;
+                int y0 = margin;                          // paling bawah
+                int y1 = y0 + boxH + spacing;             // tengah
+                int y2 = y1 + boxH + spacing;             // paling atas
+
+                framebufferViewer.RenderDepthTexture(
+                    csm.ShadowTextures[0],
+                    _windowWidth,
+                    _windowHeight,
+                    x,
+                    y2,
+                    boxW,
+                    boxH,
+                    0.1f,
+                    csm.CascadeEnds[0],
+                    false
+                );
+
+                framebufferViewer.RenderDepthTexture(
+                    csm.ShadowTextures[1],
+                    _windowWidth,
+                    _windowHeight,
+                    x,
+                    y1,
+                    boxW,
+                    boxH,
+                    0.1f,
+                    csm.CascadeEnds[1],
+                    false
+                );
+
+                framebufferViewer.RenderDepthTexture(
+                    csm.ShadowTextures[2],
+                    _windowWidth,
+                    _windowHeight,
+                    x,
+                    y0,
+                    boxW,
+                    boxH,
+                    0.1f,
+                    csm.CascadeEnds[2],
+                    false
+                );
+
 
                 // --- HUD SYSTEM ---
                 int totalMapTris = TerrainChunk.GetTotalMapTriangles();

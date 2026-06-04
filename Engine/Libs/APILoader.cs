@@ -8,6 +8,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
     public static unsafe class GL
     {
         // Simpan alamat mentahnya
+        internal static IntPtr DeleteProgramPtr;
+        internal static IntPtr DrawBufferPtr;
+        internal static IntPtr ReadBufferPtr;
         internal static IntPtr ClearColorPtr;
         internal static IntPtr ClearPtr;
         internal static IntPtr GenBuffersPtr;
@@ -131,6 +134,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DeleteProgram(uint program)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)DeleteProgramPtr)(program);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void VertexAttribDivisor(uint index, uint divisor)
             => ((delegate* unmanaged[Cdecl]<uint, uint, void>)VertexAttribDivisorPtr)(index, divisor);
 
@@ -138,6 +145,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static void DrawArraysInstanced(uint mode, int first, int count, int instanceCount)
             => ((delegate* unmanaged[Cdecl]<uint, int, int, int, void>)DrawArraysInstancedPtr)(mode, first, count, instanceCount);
 
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DrawBuffer(uint buf)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)DrawBufferPtr)(buf);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ReadBuffer(uint src)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)ReadBufferPtr)(src);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DepthFunc(uint function)

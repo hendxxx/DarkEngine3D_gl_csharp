@@ -12,6 +12,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             nint glLib = NativeLibrary.Load("opengl32.dll");
 
             // Mengisi secara manual satu per satu jauh lebih aman dari crash
+            GL.DeleteProgramPtr = GetProcAddress(glLib, "glDeleteProgram");
+            GL.DrawBufferPtr = GetProcAddress(glLib, "glDrawBuffer");
+            GL.ReadBufferPtr = GetProcAddress(glLib, "glReadBuffer");
             GL.ClearColorPtr = GetProcAddress(glLib, "glClearColor");
             GL.ClearPtr = GetProcAddress(glLib, "glClear");
             GL.GenBuffersPtr = GetProcAddress(glLib, "glGenBuffers"); 

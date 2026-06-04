@@ -168,6 +168,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
 
             return program;
         }
+        public static uint LoadShaderFromString(string vertexString, string fragmentString)
+        { 
+
+            // Compile vertex shader
+            uint vs = GL.CreateShader(Const.GL_VERTEX_SHADER);
+            GL.ShaderSource(vs, vertexString);
+            GL.CompileShader(vs);
+            CheckShader(vs, $"Vertex Shader from string");
+
+            // Compile fragment shader
+            uint fs = GL.CreateShader(Const.GL_FRAGMENT_SHADER);
+            GL.ShaderSource(fs, fragmentString);
+            GL.CompileShader(fs);
+            CheckShader(fs, $"Fragment Shader from string");
+
+            // Link program
+            uint program = GL.CreateProgram();
+            GL.AttachShader(program, vs);
+            GL.AttachShader(program, fs);
+            GL.LinkProgram(program);
+            CheckProgram(program, $"Shader Program (from srting)");
+
+            // Optional: delete shader objects after linking
+            GL.DeleteShader(vs);
+            GL.DeleteShader(fs);
+
+            return program;
+        }
+
         public static void CheckShader(uint shader, string name)
         {
             int status = 0;
