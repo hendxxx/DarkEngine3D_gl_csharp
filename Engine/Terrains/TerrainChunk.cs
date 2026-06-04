@@ -385,20 +385,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             return totalTriangles;
         }
 
-        public void RenderShadow(Camera camera, float cascadeEndDistance, uint shadowShader, int modelLoc)
+        public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
             GL.UseProgram(shadowShader);
             OpenGL.EnableFaceCulling(false);
-            
+
             Matrix4x4 model = Matrix4x4.Identity;
             unsafe
             {
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
             }
 
+            // Build ortho frustum planes
+            Plane[]? orthoPlanes = BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
+
             float scaledChunkSize = ChunkSize * TerrainScale;
-            float chunkExtent = scaledChunkSize * 0.707f;
-            float maxDist = cascadeEndDistance + chunkExtent + 40.0f;
 
             for (int x = 0; x < ChunksPerSide; x++)
             {
@@ -406,6 +407,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 {
                     if (worldMap?[x, z] == null) continue;
 
+                    // Culling pakai frustum ortho
+                    if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
+                        continue;
+
+                    // LOD masih pakai jarak kamera
                     float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
@@ -413,21 +419,67 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
                     float distance = Vector3.Distance(camera.Position, chunkCenter);
 
-                    if (distance < maxDist)
-                    {
-                        int lodIndex;
-                        if (distance > scaledChunkSize * 4.5) lodIndex = 3;
-                        else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
-                        else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
-                        else lodIndex = 0;
+                    int lodIndex;
+                    if (distance > scaledChunkSize * 4.5f) lodIndex = 3;
+                    else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
+                    else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
+                    else lodIndex = 0;
 
-                        worldMap[x, z].Draw(lodIndex, false);
-                    }
+                    worldMap[x, z].Draw(lodIndex, false);
                 }
             }
 
             OpenGL.EnableFaceCulling(true);
         }
+
+        private static bool IsAABBInsideFrustumWorld(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)
+        {
+            if (frustumPlanes == null) return true;
+
+            float minX = ((chunkIndexX * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxX = minX + ChunkSize * TerrainScale;
+            float minZ = ((chunkIndexZ * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxZ = minZ + ChunkSize * TerrainScale;
+
+            float minY = -5f;
+            float maxY = 5f;
+
+            if (worldMap != null)
+            {
+                var chunk = worldMap[chunkIndexX, chunkIndexZ];
+                if (chunk != null)
+                {
+                    minY = MathF.Min(minY, chunk.MinY);
+                    maxY = MathF.Max(maxY, chunk.MaxY);
+                }
+            }
+
+            Span<Vector3> corners =
+            [
+                new(minX, minY, minZ),
+        new(maxX, minY, minZ),
+        new(maxX, maxY, minZ),
+        new(minX, maxY, minZ),
+        new(minX, minY, maxZ),
+        new(maxX, minY, maxZ),
+        new(maxX, maxY, maxZ),
+        new(minX, maxY, maxZ),
+    ];
+
+            foreach (var pl in frustumPlanes)
+            {
+                float maxDist = float.NegativeInfinity;
+                for (int i = 0; i < 8; i++)
+                {
+                    float d = Vector3.Dot(pl.Normal, corners[i]) + pl.D;
+                    if (d > maxDist) maxDist = d;
+                }
+                if (maxDist < 0.0f) return false;
+            }
+
+            return true;
+        }
+
 
         // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)
         private static Plane[]? BuildPlanesFromCorners(Vector3[] c)

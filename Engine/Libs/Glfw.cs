@@ -264,10 +264,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     unsafe {
                         GL.UniformMatrix4fv(shadowSkinnedLightSpaceLoc, 1, false, (float*)&lightSpace);
                     }
-
-                    if (gameTerrainChunk != null)
                     {
-                        gameTerrainChunk.RenderShadow(camera, csm.CascadeEnds[i], shadowShader, shadowModelLoc);
+                        gameTerrainChunk.RenderShadow(camera, csm, (int)csm.CascadeEnds[i], shadowShader, shadowModelLoc);
                     }
 
                     if (objectManager != null)

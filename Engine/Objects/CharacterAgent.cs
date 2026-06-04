@@ -586,8 +586,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // Update state SETELAH rotasi
                 wasFreeLook = camera.freeLook;
-
-
+                 
                 // 2. Hitung forward/right dari heading
                 float rad = Helpers.OGLMath.ToRadians(_heading);
 
@@ -610,7 +609,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
                     pos += right * speedWalkVal * dt;
 
-                pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
+                //pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
                 // =====================
                 // ACTION INPUTS
                 // =====================
