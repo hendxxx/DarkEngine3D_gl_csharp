@@ -256,7 +256,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         public void SetFrozenFrustumCorners(Vector3[] corners)
         {
             frozenCorners = corners;
-            frozenPlanes = BuildPlanesFromCorners(corners);
+            frozenPlanes = CSM.BuildPlanesFromCorners(corners);
         }
 
         public void ClearFrozenFrustumCorners()
@@ -390,11 +390,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             GL.UseProgram(shadowShader);
             OpenGL.EnableFaceCulling(false);
 
+            // Model matrix (identity)
             Matrix4x4 model = Matrix4x4.Identity;
             unsafe
             {
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
             }
+
+            // Ambil frustum ortho cascade ini
+            Plane[]? orthoPlanes = CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
 
             float scaledChunkSize = ChunkSize * TerrainScale;
 
@@ -404,34 +408,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 {
                     if (worldMap?[x, z] == null)
                         continue;
-                    
-                    Plane[]? orthoPlanes = BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
+
+                    // CULLING PAKAI ORTHO FRUSTUM (bukan kamera)
                     if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
                         continue;
 
+                    // LOD pakai jarak horizontal (lebih stabil untuk shadow)
                     float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
 
-                    Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
- 
                     Vector2 camXZ = new(camera.Position.X, camera.Position.Z);
-                    Vector2 chunkXZ = new(chunkCenter.X, chunkCenter.Z);
+                    Vector2 chunkXZ = new(chunkCenterX, chunkCenterZ);
 
                     float distance = Vector2.Distance(camXZ, chunkXZ);
                     float d = distance / scaledChunkSize;
 
                     int lodIndex;
-
-                    if (d > 16.0f)
-                        lodIndex = 3;
-                    else if (d > 11.0f)
-                        lodIndex = 2;
-                    else if (d > 5.0f)
-                        lodIndex = 1;
-                    else
-                        lodIndex = 0;
- 
+                    if (d > 16.0f) lodIndex = 3;
+                    else if (d > 11.0f) lodIndex = 2;
+                    else if (d > 5.0f) lodIndex = 1;
+                    else lodIndex = 0;
 
                     worldMap[x, z].Draw(lodIndex, false);
                 }
@@ -439,7 +436,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             OpenGL.EnableFaceCulling(true);
         }
-
 
         private static bool IsAABBInsideFrustumWorld(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)
         {
@@ -463,18 +459,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
             }
 
-            // ✅ Y padding (vertical)
-            float yPadding = 20.0f;
-            minY -= yPadding;
-            maxY += yPadding;
-
-            // ✅ XZ padding (VERY IMPORTANT untuk shadow)
-            float xzPadding = ChunkSize * TerrainScale * 0.2f;
-            minX -= xzPadding;
-            maxX += xzPadding;
-            minZ -= xzPadding;
-            maxZ += xzPadding;
-
             Span<Vector3> corners =
             [
                 new(minX, minY, minZ),
@@ -488,21 +472,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 new(minX, maxY, maxZ),
             ];
 
-            // ✅ lebih longgar untuk CSM
-            const float bias = 15.0f;
-
             foreach (var pl in frustumPlanes)
             {
                 float maxDist = float.NegativeInfinity;
-
                 for (int i = 0; i < 8; i++)
                 {
                     float d = Vector3.Dot(pl.Normal, corners[i]) + pl.D;
-                    if (d > maxDist)
-                        maxDist = d;
+                    if (d > maxDist) maxDist = d;
                 }
 
-                if (maxDist < -bias)
+                if (maxDist < 0.0f)
                     return false;
             }
 
@@ -510,45 +489,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
 
-        // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)
-        private static Plane[]? BuildPlanesFromCorners(Vector3[] c)
-        {
-            if (c == null || c.Length < 8) return null;
 
-            var planes = new Plane[6];
-
-            // Create helper to make a plane from three points
-            static Plane MakePlane(Vector3 a, Vector3 b, Vector3 d, Vector3 insidePoint)
-            {
-                var n = Vector3.Normalize(Vector3.Cross(b - a, d - a));
-                float D = -Vector3.Dot(n, a);
-
-                Plane p = new Plane(n, D);
-
-                // ✅ pastikan normal mengarah ke dalam
-                float dist = Vector3.Dot(p.Normal, insidePoint) + p.D;
-
-                if (dist < 0)
-                {
-                    p.Normal = -p.Normal;
-                    p.D = -p.D;
-                }
-
-                return Plane.Normalize(p);
-            }
-
-            Vector3 center = (c[0] + c[6]) * 0.5f; // approx center
-
-            // Use triangles that define each face (orientation doesn't matter for our inside-test)
-            planes[0] = MakePlane(c[1], c[2], c[6], center); // Right
-            planes[1] = MakePlane(c[3], c[0], c[4], center); // Left
-            planes[2] = MakePlane(c[0], c[1], c[5], center); // Bottom
-            planes[3] = MakePlane(c[2], c[3], c[7], center); // Top
-            planes[4] = MakePlane(c[0], c[3], c[2], center); // Near
-            planes[5] = MakePlane(c[5], c[6], c[7], center); // Far
-
-            return planes;
-        }
+        
         public static Plane[] ExtractFrustumPlanes(Matrix4x4 m)
         {
             Plane[] planes = new Plane[6];

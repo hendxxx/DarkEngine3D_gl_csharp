@@ -85,46 +85,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             {
                 float nextSplit = CascadeEnds[i];
 
-                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(
-                    camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
+                // 1. Frustum split
+                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView( camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
 
-                Vector3[] corners = TerrainChunk.GetFrustumCorners(
-                    camera.GetViewMatrix(), splitProj);
+                Vector3[] corners = TerrainChunk.GetFrustumCorners( camera.GetViewMatrix(), splitProj);
 
-                // === CENTER ===
+                // 2. Center
                 Vector3 center = Vector3.Zero;
                 for (int j = 0; j < 8; j++)
                     center += corners[j];
                 center /= 8f;
 
-                // === RADIUS ===
+                // 3. Radius (buat posisi light)
                 float radius = 0f;
                 for (int j = 0; j < 8; j++)
                     radius = MathF.Max(radius, (corners[j] - center).Length());
 
                 radius = MathF.Ceiling(radius * 16f) / 16f;
 
-                // ✅ extra scale supaya tidak kepotong
-                float radiusScale = 1.25f;
-                if (i == 1) radiusScale = 1.4f;
-                if (i == 2) radiusScale = 1.6f; // 🔥 cascade jauh lebih besar
-
-                radius *= radiusScale;
-
-                // === LIGHT VIEW ===
                 Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
                     ? Vector3.UnitZ : Vector3.UnitY;
 
-                // ✅ lebih jauh supaya coverage cukup
-                Vector3 lightPos = center + lightDir * radius * 4.0f;
+                Vector3 lightPos = center + lightDir * radius * 2.0f;
 
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
-                // === XY BOUNDS (LIGHT SPACE AABB) ===
-                float minX = float.MaxValue;
-                float maxX = float.MinValue;
-                float minY = float.MaxValue;
-                float maxY = float.MinValue;
+                // 4. Bounds di light space
+                float minX = float.MaxValue, maxX = float.MinValue;
+                float minY = float.MaxValue, maxY = float.MinValue;
+                float minZ = float.MaxValue, maxZ = float.MinValue;
 
                 for (int j = 0; j < 8; j++)
                 {
@@ -133,50 +122,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     maxX = MathF.Max(maxX, lp.X);
                     minY = MathF.Min(minY, lp.Y);
                     maxY = MathF.Max(maxY, lp.Y);
-                }
-
-                // ✅ padding XY (hilangkan ring / circle artifact)
-                float padding = radius * 0.25f;
-                minX -= padding;
-                maxX += padding;
-                minY -= padding;
-                maxY += padding;
-
-                // === Z RANGE (REAL SCENE BASED) ===
-                float minZ = float.MaxValue;
-                float maxZ = float.MinValue;
-
-                for (int j = 0; j < 8; j++)
-                {
-                    Vector3 lp = Vector3.Transform(corners[j], lightView);
                     minZ = MathF.Min(minZ, lp.Z);
                     maxZ = MathF.Max(maxZ, lp.Z);
                 }
 
-                // ✅ asymmetric depth (shadow jatuh ke depan)
-                float forwardFactor = 3.0f;
-                float backwardFactor = 1.0f;
+                // 5. Sedikit padding biar nggak kepotong
+                float padXY = radius * 0.25f;
+                minX -= padXY;
+                maxX += padXY;
+                minY -= padXY;
+                maxY += padXY;
 
-                if (i == 1)
-                {
-                    forwardFactor = 4.0f;
-                    backwardFactor = 1.3f;
-                }
+                float padZ = radius * 8.0f;
+                float zNear = minZ - padZ;
+                float zFar = maxZ + padZ;
 
-                if (i == 2) // 🔥 cascade jauh
-                {
-                    forwardFactor = 6.0f;
-                    backwardFactor = 2.5f;
-                }
-
-                float zNear = minZ - (radius * backwardFactor + 0.0f);
-                float zFar = maxZ + (radius * forwardFactor + 2500.0f);
-
-                // ✅ extra safety supaya tidak kepotong
-                zFar += radius * 1.0f;
-                zNear -= radius * 0.7f;
-
-                // === BUILD ORTHO CORNERS (WORLD SPACE for debug & culling) ===
+                // 6. Ortho corners (world space) buat culling
                 Vector3[] ls =
                 {
                     new(minX, minY, zNear),
@@ -190,25 +151,63 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     new(minX, maxY, zFar),
                 };
 
-                Matrix4x4 invView = Matrix4x4.Invert(lightView, out var inv)
-                    ? inv : Matrix4x4.Identity;
-
+                Matrix4x4.Invert(lightView, out Matrix4x4 invView);
                 for (int k = 0; k < 8; k++)
                     ls[k] = Vector3.Transform(ls[k], invView);
 
                 OrthoCorners[i] = ls;
 
-                // === FINAL PROJECTION ===
-                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
-                    minX, maxX, minY, maxY, zNear, zFar);
+                // 7. Ortho projection (OpenGL)
+                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(minX, maxX, minY, maxY, zNear, zFar);
 
-                // ✅ sesuai engine kamu (ROW MAJOR)
+                // 8. Light space matrix — sesuai yang kamu pakai
                 LightSpaceMatrices[i] = lightView * lightProj;
 
                 prevSplit = nextSplit;
             }
         }
 
+
+
+        // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)
+        public static Plane[]? BuildPlanesFromCorners(Vector3[] c)
+        {
+            if (c == null || c.Length < 8) return null;
+
+            var planes = new Plane[6];
+
+            // Create helper to make a plane from three points
+            static Plane MakePlane(Vector3 a, Vector3 b, Vector3 d, Vector3 insidePoint)
+            {
+                var n = Vector3.Normalize(Vector3.Cross(b - a, d - a));
+                float D = -Vector3.Dot(n, a);
+
+                Plane p = new Plane(n, D);
+
+                // ✅ pastikan normal mengarah ke dalam
+                float dist = Vector3.Dot(p.Normal, insidePoint) + p.D;
+
+                if (dist < 0)
+                {
+                    p.Normal = -p.Normal;
+                    p.D = -p.D;
+                }
+
+                return Plane.Normalize(p);
+            }
+
+            Vector3 center = (c[0] + c[6]) * 0.5f; // approx center
+
+            // Use triangles that define each face (orientation doesn't matter for our inside-test)
+            planes[0] = MakePlane(c[1], c[2], c[6], center); // Right
+            planes[1] = MakePlane(c[3], c[0], c[4], center); // Left
+            planes[2] = MakePlane(c[0], c[1], c[5], center); // Bottom
+            planes[3] = MakePlane(c[2], c[3], c[7], center); // Top
+            planes[4] = MakePlane(c[0], c[3], c[2], center); // Near
+            planes[5] = MakePlane(c[5], c[6], c[7], center); // Far
+
+            return planes;
+        }
 
         public void BindFramebuffer(int index)
         {

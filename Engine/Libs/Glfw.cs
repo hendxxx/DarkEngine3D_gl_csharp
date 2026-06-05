@@ -168,7 +168,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
         }
 
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D objTriangle, TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager objectManager)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, Object3D[] object3Ds, TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager objectManager)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
@@ -179,7 +179,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram()); 
 
             // --- CSM INITIALIZATION ---
-            CSM csm = new CSM(2048);
+            CSM csm = new CSM(4096);
 
             uint terrainShader = Shader.GetShaderProgram();
             int terrainShadowMap0Loc = GL.GetUniformLocation(terrainShader, "shadowMap0");
@@ -274,6 +274,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     {
                         objectManager.RenderShadow(camera, csm.CascadeEnds[i], shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
                     }
+
+                    if (object3Ds != null)
+                    {
+                        foreach (var obj in object3Ds)
+                        {
+                            obj.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
+                        }
+                    }
                 }
 
                 // Restore default viewport and framebuffer
@@ -342,8 +350,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 if (gameTerrainChunk != null)
                     renderedTris = gameTerrainChunk.Render(camera, gameTerrainChunk.GetFrozenPlanes());
 
-                if (objTriangle != null)
-                    objTriangle.Draw(deltaTime, window, 5.0f);
+                if (object3Ds != null)
+                {
+                    foreach (var obj in object3Ds)
+                    {
+                        obj.Draw(deltaTime, window, 5.0f);
+                    }
+                }
 
                 // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)

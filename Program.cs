@@ -124,7 +124,8 @@ public unsafe class Program
         Skybox skybox = new();
 
         // Init Object3D
-        Object3D objTriangle = new(glfwLib, 0.0f, 5.0f, 0.0f);
+        var boxes = Object3D.SpawnFourRandomBigBoxes( gameTerrainChunk, seed: Environment.TickCount, areaRadius: 60f);
+         
 
         // Init ObjectManager & spawn 10 Xbot di area ~5×5 meter
         GltfShader.Init(); // Compile gltf shader setelah OpenGL siap
@@ -140,7 +141,7 @@ public unsafe class Program
         RainManager rainManager = new(Shader.GetRainStreakShaderProgram(), Shader.GetRainOverlayShaderProgram(), 100000);
           
         // Init Loop
-        Glfw.Loop( SkyTextures, camera, light, objTriangle, gameTerrainChunk, skybox, hud, rainManager, objectManager);
+        Glfw.Loop( SkyTextures, camera, light, boxes, gameTerrainChunk, skybox, hud, rainManager, objectManager);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);
          
         // Shutdown
