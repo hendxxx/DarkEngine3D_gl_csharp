@@ -396,22 +396,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
             }
 
-            // Build ortho frustum planes
-            Plane[]? orthoPlanes = BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
-
             float scaledChunkSize = ChunkSize * TerrainScale;
 
             for (int x = 0; x < ChunksPerSide; x++)
             {
                 for (int z = 0; z < ChunksPerSide; z++)
                 {
-                    if (worldMap?[x, z] == null) continue;
+                    if (worldMap?[x, z] == null)
+                        continue;
+                    
+                    Plane[]? orthoPlanes = BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
+                    if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
+                        continue;
 
-                    // Culling pakai frustum ortho
-                    //if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
-                    //    continue;
-
-                    // LOD masih pakai jarak kamera
                     float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
@@ -419,11 +416,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
                     float distance = Vector3.Distance(camera.Position, chunkCenter);
 
+                    float d = distance / scaledChunkSize;
+
                     int lodIndex;
-                    if (distance > scaledChunkSize * 4.5f) lodIndex = 3;
-                    else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
-                    else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
-                    else lodIndex = 0;
+
+                    if (d > 12.0f)
+                        lodIndex = 3;
+                    else if (d > 9.0f)
+                        lodIndex = 2;
+                    else if (d > 3.0f)
+                        lodIndex = 1;
+                    else
+                        lodIndex = 0;
 
                     worldMap[x, z].Draw(lodIndex, false);
                 }
@@ -431,6 +435,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             OpenGL.EnableFaceCulling(true);
         }
+
 
         private static bool IsAABBInsideFrustumWorld(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)
         {
@@ -454,24 +459,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
             }
 
-            // ✅ IMPORTANT padding (fix shadow cut)
+            // ✅ Y padding (vertical)
             float yPadding = 20.0f;
             minY -= yPadding;
             maxY += yPadding;
 
+            // ✅ XZ padding (VERY IMPORTANT untuk shadow)
+            float xzPadding = ChunkSize * TerrainScale * 0.2f;
+            minX -= xzPadding;
+            maxX += xzPadding;
+            minZ -= xzPadding;
+            maxZ += xzPadding;
+
             Span<Vector3> corners =
             [
                 new(minX, minY, minZ),
-        new(maxX, minY, minZ),
-        new(maxX, maxY, minZ),
-        new(minX, maxY, minZ),
-        new(minX, minY, maxZ),
-        new(maxX, minY, maxZ),
-        new(maxX, maxY, maxZ),
-        new(minX, maxY, maxZ),
-    ];
+                new(maxX, minY, minZ),
+                new(maxX, maxY, minZ),
+                new(minX, maxY, minZ),
 
-            const float bias = 5.0f; // 🔥 penting
+                new(minX, minY, maxZ),
+                new(maxX, minY, maxZ),
+                new(maxX, maxY, maxZ),
+                new(minX, maxY, maxZ),
+            ];
+
+            // ✅ lebih longgar untuk CSM
+            const float bias = 15.0f;
 
             foreach (var pl in frustumPlanes)
             {
@@ -480,7 +494,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 for (int i = 0; i < 8; i++)
                 {
                     float d = Vector3.Dot(pl.Normal, corners[i]) + pl.D;
-                    if (d > maxDist) maxDist = d;
+                    if (d > maxDist)
+                        maxDist = d;
                 }
 
                 if (maxDist < -bias)
@@ -757,10 +772,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
 
 
-        private unsafe void DrawChunkBoundingBox(
-     int chunkIndexX, int chunkIndexZ,
-     bool usingFrozen, bool insideFrozen, bool insideCamera,
-     Camera camera, float aspect)
+        private unsafe void DrawChunkBoundingBox( int chunkIndexX, int chunkIndexZ,  bool usingFrozen, bool insideFrozen, bool insideCamera,  Camera camera, float aspect)
         {
             // Samakan dengan world-space AABB yang dipakai di culling
             float minX = ((chunkIndexX * ChunkSize) - _halfMapSize) * TerrainScale;

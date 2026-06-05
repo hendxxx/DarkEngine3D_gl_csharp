@@ -91,29 +91,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 Vector3[] corners = TerrainChunk.GetFrustumCorners(
                     camera.GetViewMatrix(), splitProj);
 
-                // === center ===
+                // === CENTER ===
                 Vector3 center = Vector3.Zero;
                 for (int j = 0; j < 8; j++)
                     center += corners[j];
                 center /= 8f;
 
-                // === radius ===
+                // === RADIUS ===
                 float radius = 0f;
                 for (int j = 0; j < 8; j++)
                     radius = MathF.Max(radius, (corners[j] - center).Length());
 
-                // stabilize
                 radius = MathF.Ceiling(radius * 16f) / 16f;
-                radius *= 1.25f; // ✅ penting biar tidak kepotong
 
-                // === light ===
+                // ✅ extra scale supaya tidak kepotong
+                float radiusScale = 1.25f;
+                if (i == 1) radiusScale = 1.4f;
+                if (i == 2) radiusScale = 1.6f; // 🔥 cascade jauh lebih besar
+
+                radius *= radiusScale;
+
+                // === LIGHT VIEW ===
                 Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
                     ? Vector3.UnitZ : Vector3.UnitY;
 
-                Vector3 lightPos = center + lightDir * radius * 3.0f; // ✅ lebih jauh
+                // ✅ lebih jauh supaya coverage cukup
+                Vector3 lightPos = center + lightDir * radius * 4.0f;
+
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
-                // === XY bounds (tight AABB) ===
+                // === XY BOUNDS (LIGHT SPACE AABB) ===
                 float minX = float.MaxValue;
                 float maxX = float.MinValue;
                 float minY = float.MaxValue;
@@ -128,14 +135,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     maxY = MathF.Max(maxY, lp.Y);
                 }
 
-                // ✅ padding XY (hilangkan “lingkaran”)
-                float padding = radius * 0.2f;
+                // ✅ padding XY (hilangkan ring / circle artifact)
+                float padding = radius * 0.25f;
                 minX -= padding;
                 maxX += padding;
                 minY -= padding;
                 maxY += padding;
 
-                // === REAL Z RANGE ===
+                // === Z RANGE (REAL SCENE BASED) ===
                 float minZ = float.MaxValue;
                 float maxZ = float.MinValue;
 
@@ -146,24 +153,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     maxZ = MathF.Max(maxZ, lp.Z);
                 }
 
-                // ✅ asymmetric shadow depth
+                // ✅ asymmetric depth (shadow jatuh ke depan)
                 float forwardFactor = 3.0f;
                 float backwardFactor = 1.0f;
 
-                if (i == 1) // ✅ cascade tengah lebih besar
+                if (i == 1)
                 {
                     forwardFactor = 4.0f;
-                    backwardFactor = 1.2f;
+                    backwardFactor = 1.3f;
                 }
 
-                float zNear = minZ - (radius * backwardFactor + 50.0f);
-                float zFar = maxZ + (radius * forwardFactor + 120.0f);
+                if (i == 2) // 🔥 cascade jauh
+                {
+                    forwardFactor = 6.0f;
+                    backwardFactor = 2.5f;
+                }
 
-                // extra safety
-                zFar += radius * 0.5f;
-                zNear -= radius * 0.5f;
+                float zNear = minZ - (radius * backwardFactor - 0.1f);
+                float zFar = maxZ + (radius * forwardFactor + 2500.0f);
 
-                // === build ortho corners ===
+                // ✅ extra safety supaya tidak kepotong
+                zFar += radius * 1.0f;
+                zNear -= radius * 0.7f;
+
+                // === BUILD ORTHO CORNERS (WORLD SPACE for debug & culling) ===
                 Vector3[] ls =
                 {
                     new(minX, minY, zNear),
@@ -185,16 +198,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 OrthoCorners[i] = ls;
 
-                // === projection ===
+                // === FINAL PROJECTION ===
                 Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
                     minX, maxX, minY, maxY, zNear, zFar);
 
-                // ✅ sesuai engine kamu
+                // ✅ sesuai engine kamu (ROW MAJOR)
                 LightSpaceMatrices[i] = lightView * lightProj;
 
                 prevSplit = nextSplit;
             }
         }
+
 
         public void BindFramebuffer(int index)
         {
