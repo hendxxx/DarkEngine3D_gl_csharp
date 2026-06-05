@@ -408,8 +408,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     if (worldMap?[x, z] == null) continue;
 
                     // Culling pakai frustum ortho
-                    if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
-                        continue;
+                    //if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
+                    //    continue;
 
                     // LOD masih pakai jarak kamera
                     float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
@@ -454,6 +454,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
             }
 
+            // ✅ IMPORTANT padding (fix shadow cut)
+            float yPadding = 20.0f;
+            minY -= yPadding;
+            maxY += yPadding;
+
             Span<Vector3> corners =
             [
                 new(minX, minY, minZ),
@@ -466,15 +471,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         new(minX, maxY, maxZ),
     ];
 
+            const float bias = 5.0f; // 🔥 penting
+
             foreach (var pl in frustumPlanes)
             {
                 float maxDist = float.NegativeInfinity;
+
                 for (int i = 0; i < 8; i++)
                 {
                     float d = Vector3.Dot(pl.Normal, corners[i]) + pl.D;
                     if (d > maxDist) maxDist = d;
                 }
-                if (maxDist < 0.0f) return false;
+
+                if (maxDist < -bias)
+                    return false;
             }
 
             return true;
@@ -489,24 +499,89 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             var planes = new Plane[6];
 
             // Create helper to make a plane from three points
-            static Plane MakePlane(Vector3 a, Vector3 b, Vector3 d)
+            static Plane MakePlane(Vector3 a, Vector3 b, Vector3 d, Vector3 insidePoint)
             {
                 var n = Vector3.Normalize(Vector3.Cross(b - a, d - a));
                 float D = -Vector3.Dot(n, a);
-                return Plane.Normalize(new Plane(n, D));
+
+                Plane p = new Plane(n, D);
+
+                // ✅ pastikan normal mengarah ke dalam
+                float dist = Vector3.Dot(p.Normal, insidePoint) + p.D;
+
+                if (dist < 0)
+                {
+                    p.Normal = -p.Normal;
+                    p.D = -p.D;
+                }
+
+                return Plane.Normalize(p);
             }
 
+            Vector3 center = (c[0] + c[6]) * 0.5f; // approx center
+
             // Use triangles that define each face (orientation doesn't matter for our inside-test)
-            planes[0] = MakePlane(c[1], c[2], c[6]); // Right
-            planes[1] = MakePlane(c[3], c[0], c[4]); // Left
-            planes[2] = MakePlane(c[0], c[1], c[5]); // Bottom
-            planes[3] = MakePlane(c[2], c[3], c[7]); // Top
-            planes[4] = MakePlane(c[0], c[3], c[2]); // Near
-            planes[5] = MakePlane(c[5], c[6], c[7]); // Far
+            planes[0] = MakePlane(c[1], c[2], c[6], center); // Right
+            planes[1] = MakePlane(c[3], c[0], c[4], center); // Left
+            planes[2] = MakePlane(c[0], c[1], c[5], center); // Bottom
+            planes[3] = MakePlane(c[2], c[3], c[7], center); // Top
+            planes[4] = MakePlane(c[0], c[3], c[2], center); // Near
+            planes[5] = MakePlane(c[5], c[6], c[7], center); // Far
 
             return planes;
         }
+        public static Plane[] ExtractFrustumPlanes(Matrix4x4 m)
+        {
+            Plane[] planes = new Plane[6];
 
+            // Left
+            planes[0] = new Plane(
+                m.M14 + m.M11,
+                m.M24 + m.M21,
+                m.M34 + m.M31,
+                m.M44 + m.M41);
+
+            // Right
+            planes[1] = new Plane(
+                m.M14 - m.M11,
+                m.M24 - m.M21,
+                m.M34 - m.M31,
+                m.M44 - m.M41);
+
+            // Bottom
+            planes[2] = new Plane(
+                m.M14 + m.M12,
+                m.M24 + m.M22,
+                m.M34 + m.M32,
+                m.M44 + m.M42);
+
+            // Top
+            planes[3] = new Plane(
+                m.M14 - m.M12,
+                m.M24 - m.M22,
+                m.M34 - m.M32,
+                m.M44 - m.M42);
+
+            // Near
+            planes[4] = new Plane(
+                m.M13,
+                m.M23,
+                m.M33,
+                m.M43);
+
+            // Far
+            planes[5] = new Plane(
+                m.M14 - m.M13,
+                m.M24 - m.M23,
+                m.M34 - m.M33,
+                m.M44 - m.M43);
+
+            // normalize
+            for (int i = 0; i < 6; i++)
+                planes[i] = Plane.Normalize(planes[i]);
+
+            return planes;
+        }
         // Test AABB (chunk) against frustum planes.
         // Return true if AABB is at least partially inside (i.e. NOT completely outside any plane).
         private static bool IsAABBInsideFrustum(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)
@@ -543,7 +618,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
 
                 // if the maximum distance is < 0 => all corners are on 'negative' side => completely outside
-                if (maxDist < 0.0f) return false;
+                const float bias = 5.0f; // coba 2 – 10
+
+                if (maxDist < -bias)
+                    return false;
             }
 
             return true;
@@ -684,10 +762,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
      bool usingFrozen, bool insideFrozen, bool insideCamera,
      Camera camera, float aspect)
         {
-            float minX = (chunkIndexX * ChunkSize) - _halfMapSize;
-            float maxX = minX + ChunkSize;
-            float minZ = (chunkIndexZ * ChunkSize) - _halfMapSize;
-            float maxZ = minZ + ChunkSize;
+            // Samakan dengan world-space AABB yang dipakai di culling
+            float minX = ((chunkIndexX * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxX = minX + ChunkSize * TerrainScale;
+            float minZ = ((chunkIndexZ * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxZ = minZ + ChunkSize * TerrainScale;
 
             float minY = -5f;
             float maxY = 5f;
@@ -702,6 +781,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
             }
 
+            // Optional padding biar box debug lebih gampang dilihat
+            float yPadding = 2.0f;
+            minY -= yPadding;
+            maxY += yPadding;
+
             Vector3[] c =
             [
                 new(minX, minY, minZ), new(maxX, minY, minZ),
@@ -711,13 +795,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 new(maxX, maxY, maxZ), new(minX, maxY, maxZ)
             ];
 
-            // Warna via uniform
             Vector3 finalColor =
                 usingFrozen
                 ? (insideFrozen ? new Vector3(0, 0, 1) : new Vector3(1, 1, 0))
                 : (insideCamera ? new Vector3(0, 0, 1) : new Vector3(1, 1, 0));
 
-            // 24 titik garis (12 edges)
             float[] lineData =
             [
                 // Near
@@ -739,7 +821,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 c[3].X, c[3].Y, c[3].Z,  c[7].X, c[7].Y, c[7].Z,
             ];
 
-            // Init VAO/VBO
             lock (debugBufferLock)
             {
                 if (debugVao == 0 || debugVbo == 0)
@@ -751,25 +832,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             GL.UseProgram(lineShaderProgram);
 
-            // Set warna
             int colorLoc = GL.GetUniformLocation(lineShaderProgram, "lineColor");
             GL.Uniform3f(colorLoc, finalColor.X, finalColor.Y, finalColor.Z);
 
-            // Upload matrices
             Matrix4x4 v = camera.GetViewMatrix();
             Matrix4x4 p = camera.GetProjectionMatrix();
 
             GL.UniformMatrix4fv(lineViewLocation, 1, false, (float*)&v);
             GL.UniformMatrix4fv(lineProjLocation, 1, false, (float*)&p);
 
-            // Upload vertex data
             GL.BindVertexArray(debugVao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
 
             fixed (void* ptr = lineData)
-                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+            {
+                GL.BufferData(
+                    Const.GL_ARRAY_BUFFER,
+                    (nuint)(lineData.Length * sizeof(float)),
+                    ptr,
+                    Const.GL_DYNAMIC_DRAW
+                );
+            }
 
-            // Posisi saja
             GL.EnableVertexAttribArray(0);
             GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
 

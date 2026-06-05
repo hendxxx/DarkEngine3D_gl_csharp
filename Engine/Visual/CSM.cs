@@ -91,32 +91,79 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 Vector3[] corners = TerrainChunk.GetFrustumCorners(
                     camera.GetViewMatrix(), splitProj);
 
+                // === center ===
                 Vector3 center = Vector3.Zero;
                 for (int j = 0; j < 8; j++)
                     center += corners[j];
                 center /= 8f;
 
+                // === radius ===
                 float radius = 0f;
                 for (int j = 0; j < 8; j++)
                     radius = MathF.Max(radius, (corners[j] - center).Length());
 
+                // stabilize
                 radius = MathF.Ceiling(radius * 16f) / 16f;
+                radius *= 1.25f; // ✅ penting biar tidak kepotong
 
+                // === light ===
                 Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
                     ? Vector3.UnitZ : Vector3.UnitY;
 
-                Vector3 lightPos = center + lightDir * radius * 2f;
+                Vector3 lightPos = center + lightDir * radius * 3.0f; // ✅ lebih jauh
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
-                float minX = -radius;
-                float maxX = radius;
-                float minY = -radius;
-                float maxY = radius;
+                // === XY bounds (tight AABB) ===
+                float minX = float.MaxValue;
+                float maxX = float.MinValue;
+                float minY = float.MaxValue;
+                float maxY = float.MinValue;
 
-                float zNear = -radius * 4f;
-                float zFar = radius * 4f;
+                for (int j = 0; j < 8; j++)
+                {
+                    Vector3 lp = Vector3.Transform(corners[j], lightView);
+                    minX = MathF.Min(minX, lp.X);
+                    maxX = MathF.Max(maxX, lp.X);
+                    minY = MathF.Min(minY, lp.Y);
+                    maxY = MathF.Max(maxY, lp.Y);
+                }
 
-                // Build ortho corners in light-space
+                // ✅ padding XY (hilangkan “lingkaran”)
+                float padding = radius * 0.2f;
+                minX -= padding;
+                maxX += padding;
+                minY -= padding;
+                maxY += padding;
+
+                // === REAL Z RANGE ===
+                float minZ = float.MaxValue;
+                float maxZ = float.MinValue;
+
+                for (int j = 0; j < 8; j++)
+                {
+                    Vector3 lp = Vector3.Transform(corners[j], lightView);
+                    minZ = MathF.Min(minZ, lp.Z);
+                    maxZ = MathF.Max(maxZ, lp.Z);
+                }
+
+                // ✅ asymmetric shadow depth
+                float forwardFactor = 3.0f;
+                float backwardFactor = 1.0f;
+
+                if (i == 1) // ✅ cascade tengah lebih besar
+                {
+                    forwardFactor = 4.0f;
+                    backwardFactor = 1.2f;
+                }
+
+                float zNear = minZ - (radius * backwardFactor + 50.0f);
+                float zFar = maxZ + (radius * forwardFactor + 120.0f);
+
+                // extra safety
+                zFar += radius * 0.5f;
+                zNear -= radius * 0.5f;
+
+                // === build ortho corners ===
                 Vector3[] ls =
                 {
                     new(minX, minY, zNear),
@@ -130,17 +177,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     new(minX, maxY, zFar),
                 };
 
-                // Transform to world space
-                Matrix4x4 invView = Matrix4x4.Invert(lightView, out var inv) ? inv : Matrix4x4.Identity;
+                Matrix4x4 invView = Matrix4x4.Invert(lightView, out var inv)
+                    ? inv : Matrix4x4.Identity;
+
                 for (int k = 0; k < 8; k++)
                     ls[k] = Vector3.Transform(ls[k], invView);
 
                 OrthoCorners[i] = ls;
 
+                // === projection ===
                 Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
                     minX, maxX, minY, maxY, zNear, zFar);
 
-                // MODE A: row-major, transpose=false
+                // ✅ sesuai engine kamu
                 LightSpaceMatrices[i] = lightView * lightProj;
 
                 prevSplit = nextSplit;
