@@ -94,7 +94,7 @@ public unsafe class Program
         ];
         // Init TerrainChunk
         TerrainChunk.GlobalLODLevel = 1;
-        TerrainChunk.HeightScale = 80.0f;
+        TerrainChunk.HeightScale = 10.0f;
         TerrainChunk.TerrainScale = 1.0f;
         TerrainChunk.OnLoadProgress += (progress) =>
         {
@@ -122,11 +122,7 @@ public unsafe class Program
 
         // Init Skybox
         Skybox skybox = new();
-
-        // Init Object3D
-        var boxes = Object3D.SpawnFourRandomBigBoxes( gameTerrainChunk, seed: Environment.TickCount, areaRadius: 60f);
          
-
         // Init ObjectManager & spawn 10 Xbot di area ~5×5 meter
         GltfShader.Init(); // Compile gltf shader setelah OpenGL siap
 
@@ -141,7 +137,7 @@ public unsafe class Program
         RainManager rainManager = new(Shader.GetRainStreakShaderProgram(), Shader.GetRainOverlayShaderProgram(), 100000);
           
         // Init Loop
-        Glfw.Loop( SkyTextures, camera, light, boxes, gameTerrainChunk, skybox, hud, rainManager, objectManager);
+        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, rainManager, objectManager);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);
          
         // Shutdown

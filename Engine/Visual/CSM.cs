@@ -42,8 +42,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     ShadowSize, ShadowSize, 0,
                     Const.GL_DEPTH_COMPONENT, Const.GL_FLOAT, (void*)0);
 
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_BORDER);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_BORDER);
 
@@ -86,9 +86,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 float nextSplit = CascadeEnds[i];
 
                 // 1. Frustum split
-                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView( camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
+                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
 
-                Vector3[] corners = TerrainChunk.GetFrustumCorners( camera.GetViewMatrix(), splitProj);
+                Vector3[] corners = TerrainChunk.GetFrustumCorners(camera.GetViewMatrix(), splitProj);
 
                 // 2. Center
                 Vector3 center = Vector3.Zero;

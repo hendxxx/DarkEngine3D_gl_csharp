@@ -156,8 +156,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             //LoadAnimationFolder("Artifacts\\objects\\anim");
 
             //Masukkan player ke list agents paling depan
-            _agents.Insert(0, PlayerAgent);
-            _objects.Insert(0, PlayerObject);
+            _agents.Add(PlayerAgent);
+            _objects.Add(PlayerObject);
 
             //Init AI Wandering
             WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
@@ -199,6 +199,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var animData = LoadAnimationFile(animPath);
                 if (animData != null && animData.Animations.Length > 0)
                 {
+                    obj.IsPlayer = false;
                     obj.ApplyExternalAnimation(animData);
                     obj.Update(0f);
                     if (terrainForSnap != null) obj.AlignToTerrain(terrainForSnap);
@@ -477,6 +478,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             for (int i = 0; i < _objects.Count && i < _agents.Count; i++)
             {
                 var obj = _objects[i];
+
+                if (obj.IsPlayer) continue;
+                
                 if (!obj.IsVisible) continue;
 
                 var ag = _agents[i];
