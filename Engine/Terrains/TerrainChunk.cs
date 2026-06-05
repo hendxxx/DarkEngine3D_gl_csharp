@@ -414,20 +414,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
 
                     Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
-                    float distance = Vector3.Distance(camera.Position, chunkCenter);
+ 
+                    Vector2 camXZ = new(camera.Position.X, camera.Position.Z);
+                    Vector2 chunkXZ = new(chunkCenter.X, chunkCenter.Z);
 
+                    float distance = Vector2.Distance(camXZ, chunkXZ);
                     float d = distance / scaledChunkSize;
 
                     int lodIndex;
 
-                    if (d > 12.0f)
+                    if (d > 16.0f)
                         lodIndex = 3;
-                    else if (d > 9.0f)
+                    else if (d > 11.0f)
                         lodIndex = 2;
-                    else if (d > 3.0f)
+                    else if (d > 5.0f)
                         lodIndex = 1;
                     else
                         lodIndex = 0;
+ 
 
                     worldMap[x, z].Draw(lodIndex, false);
                 }

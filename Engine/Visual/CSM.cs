@@ -169,7 +169,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     backwardFactor = 2.5f;
                 }
 
-                float zNear = minZ - (radius * backwardFactor - 0.1f);
+                float zNear = minZ - (radius * backwardFactor + 0.0f);
                 float zFar = maxZ + (radius * forwardFactor + 2500.0f);
 
                 // ✅ extra safety supaya tidak kepotong
