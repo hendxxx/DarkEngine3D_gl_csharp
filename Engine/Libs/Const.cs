@@ -113,11 +113,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_DEPTH_COMPONENT = 0x1902;
         public const uint GL_DEPTH_COMPONENT24 = 0x81A6;
+        public const uint GL_DEPTH_COMPONENT32F = 0x8CAC;
 
         public const uint GL_DEPTH_STENCIL_ATTACHMENT = 0x821A;
         public const uint GL_DEPTH_STENCIL = 0x84F9;
         public const uint GL_DEPTH24_STENCIL8 = 0x88F0;
         public const uint GL_UNSIGNED_INT_24_8 = 0x84FA;
+
+        // Shadow mapping
+        public const uint GL_TEXTURE_COMPARE_MODE = 0x884C;
+        public const uint GL_TEXTURE_COMPARE_FUNC = 0x884D;
+        public const uint GL_COMPARE_REF_TO_TEXTURE = 0x900E;
 
         public const uint GL_RENDERBUFFER = 0x8D41;
         public const uint GL_FRAMEBUFFER_COMPLETE = 0x8CD5;
@@ -192,6 +198,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         // Fog toggle
         public const int GLFW_KEY_F = 70;
+
+        // Camera toggle
+        public const int GLFW_KEY_V = 86;
 
         // ======================
         // MOUSE BUTTONS

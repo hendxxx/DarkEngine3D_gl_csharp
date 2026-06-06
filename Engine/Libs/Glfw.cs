@@ -168,6 +168,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
         }
 
+        private static Camera.CameraMode _lastCameraMode = Camera.CameraMode.ThirdPerson;
+
         public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager objectManager)
         {
             uint shaderProgram = Shader.GetShaderProgram();
@@ -179,7 +181,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram()); 
 
             // --- CSM INITIALIZATION ---
-            CSM csm = new CSM(2048);
+            CSM csm = new CSM(4096);
 
             uint terrainShader = Shader.GetShaderProgram();
             int terrainShadowMap0Loc = GL.GetUniformLocation(terrainShader, "shadowMap0");
@@ -230,6 +232,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 // 3. Update keyboard
                 Keyboard.Update(window, light, camera, deltaTime, gameTerrainChunk);
+
+                // 3A. Check if camera mode changed and notify player
+                if (camera.CurrentMode != _lastCameraMode)
+                {
+                    _lastCameraMode = camera.CurrentMode;
+                    objectManager.PlayerAgent.OnCameraModeChanged(camera.CurrentMode);
+                }
 
                 // 4. Update agents
                 objectManager.Update(deltaTime);

@@ -8,7 +8,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
     public sealed class Camera
     {
+        public enum CameraMode { ThirdPerson, FirstPerson }
+
         public float GetAspect() => _aspect;
+        
         // Transform
         public Vector3 Position = new(0, 0, 0);
         public Vector3 Front = new(0, 0, -1);
@@ -31,6 +34,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // Terrain clamp
         private float lastTerrainY = 0f;
 
+        // Camera mode
+        private CameraMode _cameraMode = CameraMode.ThirdPerson;
+        public CameraMode CurrentMode => _cameraMode;
+
         // Shoulder swap
         private float shoulderOffset = Config.PlayerConfig.ShoulderOffset;
         private float targetShoulderOffset = Config.PlayerConfig.TargetShoulderOffset;
@@ -47,6 +54,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         // Camera sway
         private float swayTimer = 0f;
+
+        // Collision parameters
+        private const float CameraCollisionRadius = 0.5f;
+        private const float CollisionResponseSpeed = 8.0f;
+        private const float CollisionDistance = 0.3f;
+
+        // First person head bobbing
+        private float headBobTimer = 0f;
+        private const float HeadBobFrequency = 5.0f;
+        private const float HeadBobAmount = 0.05f;
+        private const float FirstPersonHeadHeight = 1.7f;
 
         public Camera(float x, float y, float z, float yaw, float pitch, float aspect, float fov, float nearDist, float farDist)
         {
@@ -95,6 +113,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }
 
+        public void ToggleCameraMode()
+        {
+            _cameraMode = _cameraMode == CameraMode.ThirdPerson ? CameraMode.FirstPerson : CameraMode.ThirdPerson;
+            _projectionDirty = true;
+            Console.WriteLine($"Camera Mode: {_cameraMode}");
+        }
+
         public Matrix4x4 GetViewMatrix()
         {
             return Matrix4x4.CreateLookAt(Position, Position + Front, Up);
@@ -104,7 +129,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             if (_projectionDirty)
             {
-                _projection = Matrix4x4.CreatePerspectiveFieldOfView(FoV, _aspect, NearDist, FarDist);
+                // Use smaller near plane in 1st person to avoid body clipping
+                float nearDist = _cameraMode == CameraMode.FirstPerson ? 0.01f : NearDist;
+                _projection = Matrix4x4.CreatePerspectiveFieldOfView(FoV, _aspect, nearDist, FarDist);
                 _projectionDirty = false;
             }
             return _projection;
@@ -138,6 +165,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void SetCamera(nint window, Vector3 p, TerrainChunk gameTerrainChunk, float dt)
         {
+            if (_cameraMode == CameraMode.ThirdPerson)
+                SetCameraThirdPerson(window, p, gameTerrainChunk, dt);
+            else
+                SetCameraFirstPerson(window, p, gameTerrainChunk, dt);
+        }
+
+        private void SetCameraThirdPerson(nint window, Vector3 p, TerrainChunk gameTerrainChunk, float dt)
+        {
             float heightOffset = Config.PlayerConfig.CameraOffsetHeight;
             float minDist = Config.PlayerConfig.CameraMinDistance;
             float collisionPush = 0.35f;
@@ -150,9 +185,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 targetShoulderOffset = MathF.Abs(targetShoulderOffset);
 
             shoulderOffset = Helpers.OGLMath.Lerp(shoulderOffset, targetShoulderOffset, Config.PlayerConfig.CameraFollowSpeed);
-
-            // FREE LOOK
-            freeLook = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT);
 
             // ZOOM
             Config.PlayerConfig.CameraDistance =
@@ -195,12 +227,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // SCROLL ZOOM
             if (Mouse.ScrollY != 0)
             {
-                PlayerConfig.TargetCameraDistance -= Mouse.ScrollY * Config.PlayerConfig.ZoomSpeed; // speed zoom
+                PlayerConfig.TargetCameraDistance -= Mouse.ScrollY * Config.PlayerConfig.ZoomSpeed;
                 PlayerConfig.TargetCameraDistance = Math.Clamp(PlayerConfig.TargetCameraDistance, Config.PlayerConfig.CameraMinDistance, Config.PlayerConfig.MaxCameraDistance);
 
                 Mouse.ResetScroll();
             }
-
 
             Vector3 camOffset = Vector3.TransformNormal(offset, rot);
             Vector3 idealPos = p + camOffset;
@@ -213,6 +244,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             Vector3 finalPos = idealPos;
 
+            // Collision detection: raycast from player to ideal position
             if (idealPos.Y < terrainY + minHeight)
             {
                 float newDist = idealDist - collisionPush;
@@ -222,7 +254,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 finalPos.Y = terrainY + minHeight;
             }
 
-            // CINEMATIC CAMERA LAG
+            // Smooth camera movement
             float lag = 6f;
             smoothCamPos = Vector3.Lerp(smoothCamPos, finalPos, 1f - MathF.Exp(-lag * dt));
             Position = smoothCamPos;
@@ -231,6 +263,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Front = Vector3.Normalize(p - Position);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
+        }
+
+        private void SetCameraFirstPerson(nint window, Vector3 p, TerrainChunk gameTerrainChunk, float dt)
+        {
+            // First person: camera at head height above player center
+            Vector3 headPos = p + new Vector3(0, FirstPersonHeadHeight, 0);
+
+            // Head bobbing when moving
+            bool isMoving =
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_W) ||
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_A) ||
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_S) ||
+                Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+
+            if (isMoving)
+            {
+                headBobTimer += dt * HeadBobFrequency;
+                float bobY = MathF.Sin(headBobTimer) * HeadBobAmount;
+                headPos.Y += bobY;
+            }
+            else
+            {
+                headBobTimer = 0f;
+            }
+
+            // Smooth camera position
+            float lag = 3f;
+            smoothCamPos = Vector3.Lerp(smoothCamPos, headPos, 1f - MathF.Exp(-lag * dt));
+            Position = smoothCamPos;
+
+            // Update vectors from mouse yaw/pitch (UpdateVectors already does this)
+            UpdateVectors();
         }
     }
 }

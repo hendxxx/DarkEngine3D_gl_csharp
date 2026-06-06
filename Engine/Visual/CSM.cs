@@ -17,9 +17,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // NEW: Ortho corners per cascade (world space)
         public Vector3[][] OrthoCorners = new Vector3[NumCascades][];
 
-        public float[] CascadeEnds = { 20.0f, 80.0f, 300.0f };
+        // Better cascade splits for stable shadow rendering
+        public float[] CascadeEnds = { 25.0f, 100.0f, 400.0f };
 
-        public CSM(int shadowSize = 2048)
+        public CSM(int shadowSize = 4096)
         {
             ShadowSize = shadowSize;
             CreateShadowMaps();
@@ -38,18 +39,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, FBOs[i]);
                 GL.BindTexture(Const.GL_TEXTURE_2D, ShadowTextures[i]);
 
-                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_DEPTH_COMPONENT24,
+                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_DEPTH_COMPONENT32F,
                     ShadowSize, ShadowSize, 0,
                     Const.GL_DEPTH_COMPONENT, Const.GL_FLOAT, (void*)0);
 
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_BORDER);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_BORDER);
+                // Use LINEAR filtering for smoother shadows instead of NEAREST
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
 
-                float[] borderColor = { 1, 1, 1, 1 };
-                fixed (float* pBorder = borderColor)
-                    GL.TexParameterfv(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_BORDER_COLOR, pBorder);
+                // Disable hardware comparison mode - let shader handle it
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_COMPARE_MODE, (int)Const.GL_NONE);
 
                 GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_ATTACHMENT,
                     Const.GL_TEXTURE_2D, ShadowTextures[i], 0);
@@ -101,12 +102,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 for (int j = 0; j < 8; j++)
                     radius = MathF.Max(radius, (corners[j] - center).Length());
 
-                radius = MathF.Ceiling(radius * 16f) / 16f;
+                // More aggressive rounding to ensure consistent shadow bounds
+                radius = MathF.Ceiling(radius * 32f) / 32f;
 
                 Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
                     ? Vector3.UnitZ : Vector3.UnitY;
 
-                Vector3 lightPos = center + lightDir * radius * 2.0f;
+                Vector3 lightPos = center + lightDir * radius * 2.5f;
 
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
@@ -126,14 +128,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     maxZ = MathF.Max(maxZ, lp.Z);
                 }
 
-                // 5. Sedikit padding biar nggak kepotong
-                float padXY = radius * 0.25f;
+                // 5. Better padding to prevent clipping at LOD transitions
+                float padXY = radius * 0.2f;
                 minX -= padXY;
                 maxX += padXY;
                 minY -= padXY;
                 maxY += padXY;
 
-                float padZ = radius * 8.0f;
+                float padZ = radius * 5.0f;
                 float zNear = minZ - padZ;
                 float zFar = maxZ + padZ;
 
@@ -160,7 +162,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // 7. Ortho projection (OpenGL)
                 Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(minX, maxX, minY, maxY, zNear, zFar);
 
-                // 8. Light space matrix — sesuai yang kamu pakai
+                // 8. Light space matrix
                 LightSpaceMatrices[i] = lightView * lightProj;
 
                 prevSplit = nextSplit;

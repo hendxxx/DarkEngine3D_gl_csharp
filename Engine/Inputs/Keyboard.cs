@@ -42,6 +42,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool showLODColor = false;
         static bool lPressed = false;
 
+        // Variabel kontrol untuk toggle camera mode
+        static bool vPressed = false;
+
         // Properti public jika Anda ingin membaca status ini saat pengiriman uniform di render loop
         public static bool IsFogActive
         { 
@@ -145,6 +148,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             else
             {
                 lPressed = false;
+            }
+
+            // =========================================================================
+            // V TOGGLE CAMERA MODE (RISING EDGE)
+            // =========================================================================
+            int vState = glfwGetKey(window, Const.GLFW_KEY_V);
+            if (vState == Const.GLFW_PRESS)
+            {
+                if (!vPressed)
+                {
+                    camera.ToggleCameraMode();
+                    vPressed = true;
+                }
+            }
+            else
+            {
+                vPressed = false;
             }
 
             //// Movement

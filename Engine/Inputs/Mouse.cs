@@ -78,13 +78,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 firstMouse = false;
             }
 
-            float offsetX = (float)(lastX - mouseX);
+            float offsetX = (float)(mouseX - lastX);
             float offsetY = (float)(mouseY - lastY);
 
             lastX = mouseX;
             lastY = mouseY;
-             
-          
+            
+            // Invert pitch only in 1st person mode
+            if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+            {
+                offsetY = -offsetY;
+            }
+            // Invert yaw only in 3rd person mode
+            else if (camera.CurrentMode == Camera.CameraMode.ThirdPerson)
+            {
+                offsetX = -offsetX;
+            }
+
             camera.Yaw += offsetX * sensitivity;
             camera.Pitch += offsetY * sensitivity;
 

@@ -213,6 +213,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ChooseWanderAction();
         }
 
+        public void OnCameraModeChanged(Camera.CameraMode mode)
+        {
+            if (!IsPlayer) return;
+
+            if (mode == Camera.CameraMode.FirstPerson)
+            {
+                // Hide head mesh in 1st person
+                _obj.HideMeshByNodeName("Head");
+                // Show hand meshes in 1st person if available
+                _obj.ShowMeshByNodeName("Hand");
+                _obj.ShowMeshByNodeName("Arm");
+            }
+            else
+            {
+                // Show everything in 3rd person
+                _obj.ShowAllMeshes();
+            }
+        }
+
         // -----------------------------------------------------------------------
         //  Per-frame think with AAA-style LOD tick
         // -----------------------------------------------------------------------

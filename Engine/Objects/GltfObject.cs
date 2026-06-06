@@ -32,12 +32,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public Quaternion Rotation;
         public float      Scale = 1f;
 
-        // Animation playback rate (1 = normal). Raised while sprinting so the legs
-        // move faster to match the higher ground speed.
         public float      PlaybackSpeed = 1f;
 
         public AABB LocalAABB => GpuData.LocalAABB;
         public AABB WorldAABB => LocalAABB.ToWorld(Position, Scale);
+
+        // Mesh visibility control (for 1st person camera mode)
+        private readonly HashSet<int> _hiddenMeshIndices = [];
 
         // ---- node hierarchy working buffers ----
         private Matrix4x4[] _nodeLocal     = [];
@@ -53,15 +54,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private float _curTime   = 0f;
         private int   _prevClip  = -1;
         private float _prevTime  = 0f;
-        private float _blend     = 1f;   // weight of the current clip (1 = fully current)
-        private float _blendRate = 0f;   // per-second growth of _blend during a transition
+        private float _blend     = 1f;
+        private float _blendRate = 0f;
 
-        // one-shot playback (e.g. a punch): play once, then crossfade back to a clip
+        // one-shot playback
         private bool  _curLoop      = true;
         private int   _returnClip   = -1;
         private float _returnBlend  = 0.2f;
 
-        // ---- pose scratch buffers (sized to node count) ----
+        // ---- pose scratch buffers ----
         private NodeTransform[] _basePose = [];
         private NodeTransform[] _poseCur  = [];
         private NodeTransform[] _posePrev = [];
@@ -108,6 +109,62 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void SetFacing(float yawDegrees)
             => Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
+
+        public void HideMeshByNodeName(string nodeName)
+        {
+            // Find meshes associated with this node and hide them
+            if (GpuData.Data.Nodes == null) return;
+            for (int i = 0; i < GpuData.Data.Nodes.Length; i++)
+            {
+                var node = GpuData.Data.Nodes[i];
+                if (node.Name != null && node.Name.Contains(nodeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Find meshes for this node
+                    if (GpuData.MeshToNode != null)
+                    {
+                        for (int mi = 0; mi < GpuData.MeshToNode.Length; mi++)
+                        {
+                            if (GpuData.MeshToNode[mi] == i)
+                                _hiddenMeshIndices.Add(mi);
+                        }
+                    }
+                }
+            }
+        }
+
+        public void ShowMeshByNodeName(string nodeName)
+        {
+            // Show meshes associated with this node
+            if (GpuData.Data.Nodes == null) return;
+            for (int i = 0; i < GpuData.Data.Nodes.Length; i++)
+            {
+                var node = GpuData.Data.Nodes[i];
+                if (node.Name != null && node.Name.Contains(nodeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Find meshes for this node
+                    if (GpuData.MeshToNode != null)
+                    {
+                        for (int mi = 0; mi < GpuData.MeshToNode.Length; mi++)
+                        {
+                            if (GpuData.MeshToNode[mi] == i)
+                                _hiddenMeshIndices.Remove(mi);
+                        }
+                    }
+                }
+            }
+        }
+
+        public void HideAllMeshes()
+        {
+            _hiddenMeshIndices.Clear();
+            for (int i = 0; i < GpuData.Meshes.Length; i++)
+                _hiddenMeshIndices.Add(i);
+        }
+
+        public void ShowAllMeshes()
+        {
+            _hiddenMeshIndices.Clear();
+        }
 
         public IReadOnlyList<string> GetClipNames()
         {
@@ -793,13 +850,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                          * Matrix4x4.CreateFromQuaternion(Rotation)
                          * Matrix4x4.CreateTranslation(Position);
              
-            // For skinned meshes the joint matrices already fold in every node
-            // transform, so the model matrix is just the object placement. For
-            // non-skinned meshes we additionally apply the mesh node's global.
             bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
             OpenGL.EnableFaceCulling(true);
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
+                // Skip hidden meshes (for 1st person camera mode)
+                if (_hiddenMeshIndices.Contains(mi))
+                    continue;
+
                 var mesh = GpuData.Meshes[mi];
 
                 Matrix4x4 modelMat = objMat;
@@ -829,8 +887,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 0);
                 }
-
-                //if (mesh.Material.DoubleSided) OpenGL.EnableFaceCulling(false); 
 
                 GL.BindVertexArray(mesh.VAO);
                 if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
