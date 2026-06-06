@@ -131,7 +131,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public float Heading
         {
             get => _heading;
-            set => _heading = value;
+            set
+            {
+                _heading = value;
+                lastHeading = value;
+            }
         }
 
 
@@ -582,7 +586,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // Deteksi ALT baru dilepas
                 justReleasedFreeLook = wasFreeLook && !camera.freeLook;
 
-                if (camera.freeLook)
+                if (camera.freeLook ) 
                 {
                     // ALT ditekan → player DIAM TOTAL
                     // heading tidak berubah
@@ -610,6 +614,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float rad = Helpers.OGLMath.ToRadians(_heading);
 
                 Vector3 forward = new(MathF.Sin(rad), 0, MathF.Cos(rad));
+                if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                {
+                    wasFreeLook = false;
+
+                    forward = new Vector3(camera.Front.X, 0, camera.Front.Z);
+                    if (forward.LengthSquared() < 0.0001f)
+                        forward = Forward;
+                    else
+                        forward = Vector3.Normalize(forward);
+                }
                 Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
 
                 float speedWalkVal = Config.PlayerConfig.Walk;

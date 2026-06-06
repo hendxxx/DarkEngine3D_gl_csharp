@@ -80,6 +80,8 @@
         public static float TargetShoulderOffset = 0.6f;  
         public static float ZoomSpeed = 1.5f;  
         public static float CameraFollowSpeed = 0.15f;  
+        public static float FirstPersonHeadYawLimit = 85.0f;
+        public static float FirstPersonCameraForwardOffset = -10.25f;
         
 
         public static float MaxCameraDistance = 15.0f; 

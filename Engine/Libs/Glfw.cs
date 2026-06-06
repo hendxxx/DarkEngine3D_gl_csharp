@@ -169,7 +169,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         }
 
         private static Camera.CameraMode _lastCameraMode = Camera.CameraMode.ThirdPerson;
-
+        private static float lastTargetShoulderOffset;
         public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager objectManager)
         {
             uint shaderProgram = Shader.GetShaderProgram();
@@ -223,12 +223,41 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 deltaTime = Glfw.GetDeltaTime();
                 time += deltaTime;
 
+                if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                {
+                    // First Person selalu free look
+                    camera.freeLook = true;
+                }
+                else
+                {
+                    // Third Person tetap pakai ALT
+                    camera.freeLook =
+                        (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
+                         Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
+                }
+
+
                 // 1. Mouse → yaw/pitch → vectors
                 Mouse.Update(window, camera);
                 camera.UpdateVectors();
 
-                // 2. Player heading mengikuti kamera
-                objectManager.PlayerAgent.Heading = camera.Yaw;
+                if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                {
+                    lastTargetShoulderOffset = Config.PlayerConfig.TargetShoulderOffset;
+                    Config.PlayerConfig.TargetShoulderOffset = 0;
+                    camera.ClampFirstPersonHeadYaw(objectManager.PlayerAgent.Heading);
+
+                }
+                else
+                {
+                    Config.PlayerConfig.TargetShoulderOffset = lastTargetShoulderOffset;
+                }
+
+               
+
+                // 2. Third-person keeps ALT free-look.
+                if (!camera.freeLook)
+                    objectManager.PlayerAgent.Heading = camera.Yaw;
 
                 // 3. Update keyboard
                 Keyboard.Update(window, light, camera, deltaTime, gameTerrainChunk);
@@ -274,15 +303,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         GL.UniformMatrix4fv(shadowSkinnedLightSpaceLoc, 1, false, (float*)&lightSpace);
                     }
 
+                    if (objectManager != null)
+                    {
+                        objectManager.RenderShadow(camera, csm.CascadeEnds[i], shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
+                    }
+
                     if (gameTerrainChunk != null)
                     {
                         gameTerrainChunk.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
                     }
 
-                    if (objectManager != null)
-                    {
-                        objectManager.RenderShadow(camera, csm.CascadeEnds[i], shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
-                    } 
                 }
 
                 // Restore default viewport and framebuffer

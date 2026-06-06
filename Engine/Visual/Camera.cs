@@ -98,7 +98,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void UpdateVectors()
         {
-            Pitch = Math.Clamp(Pitch, -60f, 60f);
+            // Clamp berbeda untuk First Person
+            if (_cameraMode == CameraMode.FirstPerson)
+                Pitch = Math.Clamp(Pitch, -85f, 85f);
+            else
+                Pitch = Math.Clamp(Pitch, -60f, 60f);
 
             float yawRad = Helpers.OGLMath.ToRadians(Yaw);
             float pitchRad = Helpers.OGLMath.ToRadians(Pitch);
@@ -111,6 +115,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Front = Vector3.Normalize(front);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
+        }
+
+
+        public void ClampFirstPersonHeadYaw(float bodyYaw)
+        {
+            if (_cameraMode != CameraMode.FirstPerson) return;
+
+            // Hitung selisih yaw antara badan dan kamera
+            float yawOffset = GetAngleDelta(bodyYaw, Yaw);
+
+            // Batasi rotasi kepala ±85 derajat
+            yawOffset = Math.Clamp(yawOffset, -85f, 85f);
+
+            // Terapkan kembali ke kamera
+            Yaw = bodyYaw + yawOffset;
+
+            UpdateVectors();
+        }
+
+        private static float GetAngleDelta(float from, float to)
+        {
+            return ((to - from + 540f) % 360f) - 180f;
         }
 
         public void ToggleCameraMode()
@@ -163,15 +189,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
 
-        public void SetCamera(nint window, Vector3 p, TerrainChunk gameTerrainChunk, float dt)
+        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
             if (_cameraMode == CameraMode.ThirdPerson)
-                SetCameraThirdPerson(window, p, gameTerrainChunk, dt);
+                SetCameraThirdPerson(window, position, gameTerrainChunk, dt);
             else
-                SetCameraFirstPerson(window, p, gameTerrainChunk, dt);
+                SetCameraFirstPerson(window, position, gameTerrainChunk, dt);
         }
 
-        private void SetCameraThirdPerson(nint window, Vector3 p, TerrainChunk gameTerrainChunk, float dt)
+        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
             float heightOffset = Config.PlayerConfig.CameraOffsetHeight;
             float minDist = Config.PlayerConfig.CameraMinDistance;
@@ -234,10 +260,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
 
             Vector3 camOffset = Vector3.TransformNormal(offset, rot);
-            Vector3 idealPos = p + camOffset;
+            Vector3 idealPos = position + camOffset;
 
-            Vector3 idealDir = Vector3.Normalize(idealPos - p);
-            float idealDist = Vector3.Distance(p, idealPos);
+            Vector3 idealDir = Vector3.Normalize(idealPos - position);
+            float idealDist = Vector3.Distance(position, idealPos);
 
             float terrainY = gameTerrainChunk.GetHeightAt(idealPos.X, idealPos.Z);
             float minHeight = 0.1f;
@@ -250,7 +276,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 float newDist = idealDist - collisionPush;
                 newDist = MathF.Max(minDist, newDist);
 
-                finalPos = p + idealDir * newDist;
+                finalPos = position + idealDir * newDist;
                 finalPos.Y = terrainY + minHeight;
             }
 
@@ -260,15 +286,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Position = smoothCamPos;
 
             // LOOK AT PLAYER
-            Front = Vector3.Normalize(p - Position);
+            Front = Vector3.Normalize(position - Position);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }
-
-        private void SetCameraFirstPerson(nint window, Vector3 p, TerrainChunk gameTerrainChunk, float dt)
+         
+        private void SetCameraFirstPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
             // First person: camera at head height above player center
-            Vector3 headPos = p + new Vector3(0, FirstPersonHeadHeight, 0);
+            Vector3 headPos = position + new Vector3(0, FirstPersonHeadHeight, 0);
 
             // Head bobbing when moving
             bool isMoving =
@@ -288,10 +314,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 headBobTimer = 0f;
             }
 
+            Vector3 flatFront = new(Front.X, 0, Front.Z);
+            if (flatFront.LengthSquared() > 0.0001f)
+                headPos += Vector3.Normalize(flatFront) * Config.PlayerConfig.FirstPersonCameraForwardOffset;
+
             // Smooth camera position
-            float lag = 3f;
-            smoothCamPos = Vector3.Lerp(smoothCamPos, headPos, 1f - MathF.Exp(-lag * dt));
-            Position = smoothCamPos;
+            //float lag = 3f;
+            //smoothCamPos = Vector3.Lerp(smoothCamPos, headPos, 1f - MathF.Exp(-lag * dt));
+            Position = headPos;
 
             // Update vectors from mouse yaw/pitch (UpdateVectors already does this)
             UpdateVectors();
