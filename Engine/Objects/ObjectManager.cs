@@ -81,23 +81,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _objects.Clear();
             _agents.Clear();
 
-            // === PLAYER SPAWN ===
-            string playerPath = "Artifacts\\objects\\Stuntman.glb";
-
-            float playerX = 0f;
-            float playerZ = 0f;
-            float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
-            float initialHeading = Config.PlayerConfig.InitialHeading;
-
-            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
-            PlayerObject.IsPlayer = true;
-            PlayerObject.SetFacing(initialHeading);
-
-            PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
-            {
-                IsPlayer = true,
-                Heading = initialHeading
-            };   
 
             // AI SPAWN
             for (int i = 0; i < 5; i++)
@@ -131,6 +114,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 SnapToTerrain(obj, gameTerrainChunk);
             }
 
+
+            // === PLAYER SPAWN ===
+            string playerPath = "Artifacts\\objects\\Stuntman.glb";
+
+            float playerX = 0f;
+            float playerZ = 0f;
+            float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
+            float initialHeading = Config.PlayerConfig.InitialHeading;
+
+            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
+            PlayerObject.IsPlayer = true;
+            PlayerObject.SetFacing(initialHeading);
+
+            PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
+            {
+                IsPlayer = true,
+                Heading = initialHeading
+            };
+
             //load animation
             ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
 
@@ -154,10 +156,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\jump.glb", "jump");
 
             //LoadAnimationFolder("Artifacts\\objects\\anim");
-
-            //Masukkan player ke list agents paling depan
-            _agents.Add(PlayerAgent);
-            _objects.Add(PlayerObject);
 
             //Init AI Wandering
             WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);

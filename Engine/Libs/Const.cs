@@ -100,7 +100,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_UNSIGNED_INT = 0x1405;
 
         public const uint GL_TEXTURE_MAX_ANISOTROPY = 0x84FE;
-
+        public const int GL_POLYGON_OFFSET_FILL = 0x8037;
         // ======================
         // FRAMEBUFFER
         // ======================

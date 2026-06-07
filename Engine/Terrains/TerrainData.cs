@@ -428,7 +428,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             int useTextureLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "useTexture");
           
             GL.Uniform1i(useTextureLoc, 1);
-
+            GL.Enable(Const.GL_POLYGON_OFFSET_FILL);
+            GL.PolygonOffset(2.0f, 4.0f);
             // Draw Mesh
             if (VAOs[actualLod] != 0) {
 
@@ -448,7 +449,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 OpenGL.EnableFaceCulling(true,false);
 
             }
-
+            GL.PolygonOffset(0.0f, 0.0f);
+            GL.Disable(Const.GL_POLYGON_OFFSET_FILL);
             GL.BindVertexArray(0);
         }
 

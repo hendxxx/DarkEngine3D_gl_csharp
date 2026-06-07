@@ -18,9 +18,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Vector3[][] OrthoCorners = new Vector3[NumCascades][];
 
         // Better cascade splits for stable shadow rendering
-        public float[] CascadeEnds = { 25.0f, 100.0f, 400.0f };
+        public float[] CascadeEnds = { 20.0f, 60.0f, 150.0f };
 
-        public CSM(int shadowSize = 4096)
+        public CSM(int shadowSize = 2046)
         {
             ShadowSize = shadowSize;
             CreateShadowMaps();
@@ -108,7 +108,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
                     ? Vector3.UnitZ : Vector3.UnitY;
 
-                Vector3 lightPos = center + lightDir * radius * 2.5f;
+                Vector3 lightPos = center + lightDir * radius * 1.0f;
 
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
@@ -129,13 +129,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
 
                 // 5. Better padding to prevent clipping at LOD transitions
-                float padXY = radius * 0.2f;
+                float padXY = radius * 0.05f;
                 minX -= padXY;
                 maxX += padXY;
                 minY -= padXY;
                 maxY += padXY;
 
-                float padZ = radius * 5.0f;
+                float padZ = radius * 4.0f;
                 float zNear = minZ - padZ;
                 float zFar = maxZ + padZ;
 

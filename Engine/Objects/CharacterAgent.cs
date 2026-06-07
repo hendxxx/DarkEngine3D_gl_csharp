@@ -842,7 +842,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 p.Z += f.Z * _speed * speedMul * dt;
             }
 
-            p.Y = terrain.GetHeightAt(p.X, p.Z - 0.8f);
+            p.Y = terrain.GetHeightAt(p.X, p.Z);
             _obj.Position = p;
         }
         private enum AnimState

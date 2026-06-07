@@ -446,8 +446,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             float minZ = ((chunkIndexZ * ChunkSize) - _halfMapSize) * TerrainScale;
             float maxZ = minZ + ChunkSize * TerrainScale;
 
-            float minY = -5f;
-            float maxY = 5f;
+            float minY = -MapSize*2;
+            float maxY = MapSize*2;
 
             if (worldMap != null)
             {
