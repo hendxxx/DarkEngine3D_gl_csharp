@@ -1,4 +1,4 @@
-﻿using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -84,16 +84,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             lastX = mouseX;
             lastY = mouseY;
             
-            // Invert pitch only in 1st person mode
-            if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
-            {
-                offsetY = -offsetY;
-            }
-            // Invert yaw only in 3rd person mode
-            else if (camera.CurrentMode == Camera.CameraMode.ThirdPerson)
-            {
-                offsetX = -offsetX;
-            }
+            // Invert pitch for all modes so that moving mouse up looks up
+            offsetY = -offsetY;
+
+            // Invert yaw for all modes so that moving mouse right looks right
+            offsetX = -offsetX;
 
             camera.Yaw += offsetX * sensitivity;
             camera.Pitch += offsetY * sensitivity;

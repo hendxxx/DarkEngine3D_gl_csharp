@@ -225,6 +225,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 // Hide head mesh in 1st person
                 _obj.HideMeshByNodeName("Head");
+                _obj.HideMeshByNodeName("Neck");
                 // Show hand meshes in 1st person if available
                 _obj.ShowMeshByNodeName("Hand");
                 _obj.ShowMeshByNodeName("Arm");
@@ -603,7 +604,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     else
                         turnSpeed = 4f;     // normal turning
 
-                    _heading = Helpers.OGLMath.LerpAngle(lastHeading, camera.Yaw, turnSpeed * dt);
+                    if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                        _heading = camera.Yaw;
+                    else
+                        _heading = Helpers.OGLMath.LerpAngle(lastHeading, camera.Yaw, turnSpeed * dt);
+                        
                     lastHeading = _heading;
                 }
 

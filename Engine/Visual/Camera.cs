@@ -98,19 +98,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void UpdateVectors()
         {
-            // Clamp berbeda untuk First Person
-            if (_cameraMode == CameraMode.FirstPerson)
-                Pitch = Math.Clamp(Pitch, -85f, 85f);
-            else
-                Pitch = Math.Clamp(Pitch, -60f, 60f);
+            // Clamp Pitch to prevent gimbal lock, allowing almost 180 degrees up/down
+            Pitch = Math.Clamp(Pitch, -85f, 85f);
 
             float yawRad = Helpers.OGLMath.ToRadians(Yaw);
             float pitchRad = Helpers.OGLMath.ToRadians(Pitch);
 
             Vector3 front;
-            front.X = MathF.Cos(yawRad) * MathF.Cos(pitchRad);
+            front.X = MathF.Sin(yawRad) * MathF.Cos(pitchRad);
             front.Y = MathF.Sin(pitchRad);
-            front.Z = MathF.Sin(yawRad) * MathF.Cos(pitchRad);
+            front.Z = MathF.Cos(yawRad) * MathF.Cos(pitchRad);
 
             Front = Vector3.Normalize(front);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
@@ -156,7 +153,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (_projectionDirty)
             {
                 // Use smaller near plane in 1st person to avoid body clipping
-                float nearDist = _cameraMode == CameraMode.FirstPerson ? 0.01f : NearDist;
+                float nearDist = _cameraMode == CameraMode.FirstPerson ? 0.1f : NearDist;
                 _projection = Matrix4x4.CreatePerspectiveFieldOfView(FoV, _aspect, nearDist, FarDist);
                 _projectionDirty = false;
             }
@@ -203,6 +200,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float minDist = Config.PlayerConfig.CameraMinDistance;
             float collisionPush = 0.35f;
 
+            // Pivot is at the character's upper body / head
+            Vector3 pivotPos = position + new Vector3(0, heightOffset, 0);
+
             // SHOULDER SWAP
             if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_Q))
                 targetShoulderOffset = -MathF.Abs(targetShoulderOffset);
@@ -218,8 +218,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                                      Config.PlayerConfig.TargetCameraDistance,
                                      Config.PlayerConfig.CameraFollowSpeed);
 
-            // OFFSET
-            Vector3 offset = new(shoulderOffset, heightOffset, -Config.PlayerConfig.CameraDistance);
+            // OFFSET (relative to pivot)
+            Vector3 offset = new(shoulderOffset, 0, -Config.PlayerConfig.CameraDistance);
 
             // CAMERA SWAY
             bool isMoving =
@@ -260,24 +260,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
 
             Vector3 camOffset = Vector3.TransformNormal(offset, rot);
-            Vector3 idealPos = position + camOffset;
+            Vector3 idealPos = pivotPos + camOffset;
 
-            Vector3 idealDir = Vector3.Normalize(idealPos - position);
-            float idealDist = Vector3.Distance(position, idealPos);
+            Vector3 idealDir = Vector3.Normalize(idealPos - pivotPos);
+            float idealDist = Vector3.Distance(pivotPos, idealPos);
 
             float terrainY = gameTerrainChunk.GetHeightAt(idealPos.X, idealPos.Z);
             float minHeight = 0.1f;
 
             Vector3 finalPos = idealPos;
 
-            // Collision detection: raycast from player to ideal position
+            // Collision detection: raycast from pivot to ideal position
             if (idealPos.Y < terrainY + minHeight)
             {
-                float newDist = idealDist - collisionPush;
-                newDist = MathF.Max(minDist, newDist);
+                if (idealDir.Y < -0.05f) // Camera is below the pivot
+                {
+                    // Calculate distance along idealDir where it intersects the terrain plane
+                    float t = (terrainY + minHeight - pivotPos.Y) / idealDir.Y;
+                    if (t < 0) t = minDist; // If terrain is above pivot, zoom fully in
 
-                finalPos = position + idealDir * newDist;
-                finalPos.Y = terrainY + minHeight;
+                    float newDist = MathF.Max(minDist, t - collisionPush);
+                    newDist = MathF.Min(newDist, idealDist);
+
+                    finalPos = pivotPos + idealDir * newDist;
+                    
+                    // Fallback safety
+                    if (finalPos.Y < terrainY + minHeight)
+                        finalPos.Y = terrainY + minHeight;
+                }
+                else
+                {
+                    // Camera is above the pivot but hitting a slope/cliff
+                    float newDist = idealDist - collisionPush;
+                    newDist = MathF.Max(minDist, newDist);
+
+                    finalPos = pivotPos + idealDir * newDist;
+                    finalPos.Y = terrainY + minHeight;
+                }
             }
 
             // Smooth camera movement
@@ -285,8 +304,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             smoothCamPos = Vector3.Lerp(smoothCamPos, finalPos, 1f - MathF.Exp(-lag * dt));
             Position = smoothCamPos;
 
-            // LOOK AT PLAYER
-            Front = Vector3.Normalize(position - Position);
+            // TRUE OTS LOOK PARALLEL TO ROTATION
+            Front.X = MathF.Sin(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
+            Front.Y = MathF.Sin(Helpers.OGLMath.ToRadians(smoothPitch));
+            Front.Z = MathF.Cos(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
+            Front = Vector3.Normalize(Front);
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }
