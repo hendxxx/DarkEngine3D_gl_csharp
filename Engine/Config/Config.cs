@@ -60,6 +60,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float ShoulderOffset { get; set; }
         public float HeightOffset { get; set; }
         public bool TrueOTS { get; set; }
+        // If true, negate pitch when building the orbit rotation matrix.
+        // Needed when camera orbits around the player from any direction (Orbit/Follow/Chase).
+        // Not needed for Tactical where pitch is already forced positive (top-down).
+        public bool InvertOrbitPitch { get; set; }
     }
 
     public static class CameraConfig
@@ -69,26 +73,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             { CameraMode.OTS, new CameraPreset {
                 Mode = CameraMode.OTS,
                 MinPitch = -85f, MaxPitch = 85f,
-                AllowFreeLook = false, // Locked behind player
+                AllowFreeLook = false,
                 DefaultDistance = 2.5f, MinDistance = 1.5f, MaxDistance = 4.0f, AllowZoom = true,
                 ShoulderOffset = 0.6f, HeightOffset = 1.5f,
-                TrueOTS = true // Looks parallel
+                TrueOTS = true, InvertOrbitPitch = false
             }},
             { CameraMode.Orbit, new CameraPreset {
                 Mode = CameraMode.Orbit,
                 MinPitch = -85f, MaxPitch = 85f,
-                AllowFreeLook = true, // Free orbit around player
+                AllowFreeLook = true,
                 DefaultDistance = 4.0f, MinDistance = 2.0f, MaxDistance = 8.0f, AllowZoom = true,
                 ShoulderOffset = 0.0f, HeightOffset = 1.5f,
-                TrueOTS = false // Looks at player center
+                TrueOTS = false, InvertOrbitPitch = true  // Orbit can go above/below
             }},
             { CameraMode.Tactical, new CameraPreset {
                 Mode = CameraMode.Tactical,
-                MinPitch = 40f, MaxPitch = 85f, // Top-down perspective
+                MinPitch = 40f, MaxPitch = 85f,
                 AllowFreeLook = true,
                 DefaultDistance = 12.0f, MinDistance = 8.0f, MaxDistance = 20.0f, AllowZoom = true,
                 ShoulderOffset = 0.0f, HeightOffset = 2.0f,
-                TrueOTS = false
+                TrueOTS = false, InvertOrbitPitch = false  // Already forced top-down, no inversion needed
             }},
             { CameraMode.Follow, new CameraPreset {
                 Mode = CameraMode.Follow,
@@ -96,7 +100,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 AllowFreeLook = false,
                 DefaultDistance = 5.0f, MinDistance = 3.0f, MaxDistance = 10.0f, AllowZoom = true,
                 ShoulderOffset = 0.0f, HeightOffset = 1.7f,
-                TrueOTS = false // Looks at player center
+                TrueOTS = false, InvertOrbitPitch = true
             }},
             { CameraMode.Chase, new CameraPreset {
                 Mode = CameraMode.Chase,
@@ -104,7 +108,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 AllowFreeLook = false,
                 DefaultDistance = 6.0f, MinDistance = 4.0f, MaxDistance = 12.0f, AllowZoom = false,
                 ShoulderOffset = 0.0f, HeightOffset = 1.5f,
-                TrueOTS = false
+                TrueOTS = false, InvertOrbitPitch = true
             }}
         };
     }

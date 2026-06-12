@@ -305,7 +305,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                     if (objectManager != null)
                     {
-                        objectManager.RenderShadow(camera, csm.CascadeEnds[i], shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
+                        objectManager.RenderShadow(camera, csm, i, shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
                     }
 
                     if (gameTerrainChunk != null)

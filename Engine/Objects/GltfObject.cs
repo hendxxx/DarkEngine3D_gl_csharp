@@ -899,6 +899,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void DrawShadow(int modelLoc, int jointsLoc)
         {
+            // LOD3 = fully skipped, no shadow either
             if (!IsVisible || AnimLOD == 3)
                 return;
 
@@ -910,11 +911,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             if (isSkinned && jointsLoc >= 0)
             {
+                // For LOD2 (frozen animation), _jointMatrices may be stale/default.
+                // We still upload whatever we have — it produces a valid (possibly
+                // T-pose) shadow silhouette that is never cut off at the feet.
                 fixed (Matrix4x4* p = &_jointMatrices[0])
                     GL.UniformMatrix4fv(jointsLoc, _jointMatrices.Length, false, (float*)p);
             }
 
-            OpenGL.EnableFaceCulling(true);
+            // Disable face-culling for shadow pass so we don't lose back faces
+            // on low-poly LOD silhouettes (avoids cut-off feet artefact).
+             
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
                 var mesh = GpuData.Meshes[mi];
@@ -930,10 +936,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
 
                 GL.BindVertexArray(mesh.VAO);
-                if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
-                else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
-            }
-            OpenGL.EnableFaceCulling(false);
+                if (mesh.IndexCount > 0) 
+                    GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                else 
+                    GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+            } 
             GL.BindVertexArray(0);
         }
     }

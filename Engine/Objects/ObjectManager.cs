@@ -453,16 +453,41 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             TotalObjects = _objects.Count;
         }
 
-        public void RenderShadow(Camera camera, float cascadeEndDistance, uint shadowSkinnedShader, int modelLoc, int jointsLoc)
+        public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowSkinnedShader, int modelLoc, int jointsLoc)
         {
             GL.UseProgram(shadowSkinnedShader);
-            float maxDist = cascadeEndDistance + 20.0f;
+
+            // Build light-space frustum planes for this cascade to cull objects.
+            // Objects outside the light frustum cannot cast shadows into this cascade.
+            var planes = csm.OrthoCorners[cascadeIndex] != null
+                ? CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex])
+                : null;
+
+            // Also keep a generous camera-distance cap so we don't shadow objects
+            // that are way beyond the last cascade (saves shadow draw calls).
+            float maxShadowDist = csm.CascadeEnds[CSM.NumCascades - 1] + 30.0f;
 
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
+
+                // Skip objects too far from the camera (beyond last cascade)
                 float dist = Vector3.Distance(camera.Position, obj.Position);
-                if (dist > maxDist) continue;
+                if (dist > maxShadowDist) continue;
+
+                // Optional light-frustum cull (skip if planes not available)
+                if (planes != null)
+                {
+                    // Approximate bounding radius for a character (~1.5 units)
+                    const float boundRadius = 1.5f;
+                    bool outside = false;
+                    foreach (var plane in planes)
+                    {
+                        float d = Vector3.Dot(plane.Normal, obj.Position) + plane.D;
+                        if (d < -boundRadius) { outside = true; break; }
+                    }
+                    if (outside) continue;
+                }
 
                 obj.DrawShadow(modelLoc, jointsLoc);
             }

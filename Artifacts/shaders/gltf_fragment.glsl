@@ -43,7 +43,7 @@ float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias) {
             shadow += projCoords.z - bias > pcfDepth ? 0.0 : 1.0;        
         }    
     }
-    shadow /= 9.0;
+    shadow /= 3.0;
     return shadow;
 }
 
@@ -77,26 +77,33 @@ void main()
 
     float diff      = max(dot(norm, lightDir), 0.0);
     
-    // ── CALCULATE SHADOW MULTIPLIER (CSM) ──
+    // ── CALCULATE SHADOW MULTIPLIER (CSM) with smooth cascade blending ──
     float depth = length(viewPos - FragPos);
-    int cascadeIndex = 2;
-    if (depth < cascadeEnds[0]) {
-        cascadeIndex = 0;
+
+    float blendRange0 = cascadeEnds[0] * 0.1;
+    float blendRange1 = cascadeEnds[1] * 0.1;
+
+    float bias0 = max(0.002 * (1.0 - dot(norm, lightDir)), 0.0001);
+    float bias1 = bias0 * 3.0;
+    float bias2 = bias0 * 6.0;
+
+    float shadow;
+    if (depth < cascadeEnds[0] - blendRange0) {
+        shadow = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
+    } else if (depth < cascadeEnds[0]) {
+        float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
+        float s0 = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
+        shadow = mix(s0, s1, t);
+    } else if (depth < cascadeEnds[1] - blendRange1) {
+        shadow = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
     } else if (depth < cascadeEnds[1]) {
-        cascadeIndex = 1;
-    }
-
-    float bias = max(0.003 * (1.0 - dot(norm, lightDir)), 0.0003);
-    if (cascadeIndex == 0) bias *= 0.1;
-    else if (cascadeIndex == 1) bias *= 0.5;
-
-    float shadow = 1.0;
-    if (cascadeIndex == 0) {
-        shadow = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias);
-    } else if (cascadeIndex == 1) {
-        shadow = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias);
+        float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
+        float s2 = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
+        shadow = mix(s1, s2, t);
     } else {
-        shadow = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias);
+        shadow = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
     }
 
     vec3  ambComp   = ambient * activeColor;

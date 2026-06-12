@@ -33,7 +33,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private float lastTerrainY = 0f;
 
         // Camera mode
-        private CameraMode _cameraMode = CameraMode.OTS;
+        private CameraMode _cameraMode = CameraMode.Orbit;
         public CameraMode CurrentMode => _cameraMode;
         public CameraPreset CurrentPreset => CameraConfig.Presets.TryGetValue(_cameraMode, out var p) ? p : null;
 
@@ -266,9 +266,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             smoothYaw = Helpers.OGLMath.LerpAngle(smoothYaw, Yaw, rotSmooth * dt);
             smoothPitch = Helpers.OGLMath.Lerp(smoothPitch, Pitch, rotSmooth * dt);
 
+            // In TrueOTS mode the camera looks forward parallel to pitch.
+            // In orbit/look-at modes the camera position orbits around the pivot.
+            // Whether to negate pitch is controlled per-preset via InvertOrbitPitch:
+            //   - Orbit/Follow/Chase: true  (negate, so mouse-up = camera rises above player)
+            //   - Tactical:          false (no negate, pitch is already forced positive/top-down)
+            float orbitPitch = (!preset.TrueOTS && preset.InvertOrbitPitch) ? -smoothPitch : smoothPitch;
+
             Matrix4x4 rot = Matrix4x4.CreateFromYawPitchRoll(
                 Helpers.OGLMath.ToRadians(smoothYaw),
-                Helpers.OGLMath.ToRadians(smoothPitch),
+                Helpers.OGLMath.ToRadians(orbitPitch),
                 0
             );
 

@@ -17,8 +17,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // NEW: Ortho corners per cascade (world space)
         public Vector3[][] OrthoCorners = new Vector3[NumCascades][];
 
-        // Better cascade splits for stable shadow rendering
-        public float[] CascadeEnds = { 20.0f, 60.0f, 150.0f };
+        // Cascade splits: near/close/far. Third cascade covers the full visible shadow horizon.
+        public float[] CascadeEnds = { 15.0f, 50.0f, 300.0f };
 
         public CSM(int shadowSize = 2046)
         {
@@ -128,16 +128,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     maxZ = MathF.Max(maxZ, lp.Z);
                 }
 
-                // 5. Better padding to prevent clipping at LOD transitions
-                float padXY = radius * 0.05f;
+                // 5. Padding XY: wide enough so objects at cascade edge don't pop.
+                //    Use a minimum floor so small cascades don't under-pad.
+                float padXY = MathF.Max(radius * 0.15f, 2.0f);
                 minX -= padXY;
                 maxX += padXY;
                 minY -= padXY;
                 maxY += padXY;
 
-                float padZ = radius * 4.0f;
-                float zNear = minZ - padZ;
-                float zFar = maxZ + padZ;
+                // 6. Padding Z: pull the near plane back far enough to catch tall objects
+                //    (characters, trees) that may stand above the frustum slice.
+                //    Scale with cascade index so the far cascade gets more pull-back.
+                //    zNear is pulled back VERY far to capture distant mountain casters
+                //    that cast long shadows onto near terrain (avoids bright holes in shadow).
+                float padZFront = radius * 3.0f;                    // push zFar forward a little
+                float padZBack  = radius * 8.0f + (i * 40.0f);     // pull zNear back A LOT
+                float zNear = minZ - padZBack;
+                float zFar  = maxZ + padZFront;
 
                 // 6. Ortho corners (world space) buat culling
                 Vector3[] ls =
