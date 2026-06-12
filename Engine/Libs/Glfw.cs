@@ -168,7 +168,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
         }
 
-        private static Camera.CameraMode _lastCameraMode = Camera.CameraMode.ThirdPerson;
+        private static CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private static float lastTargetShoulderOffset;
         public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager objectManager)
         {
@@ -223,7 +223,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 deltaTime = Glfw.GetDeltaTime();
                 time += deltaTime;
 
-                if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                if (camera.CurrentMode == CameraMode.FirstPerson)
                 {
                     // First Person selalu free look
                     camera.freeLook = true;
@@ -241,7 +241,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 Mouse.Update(window, camera);
                 camera.UpdateVectors();
 
-                if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                if (camera.CurrentMode == CameraMode.FirstPerson)
                 {
                     lastTargetShoulderOffset = Config.PlayerConfig.TargetShoulderOffset;
                     Config.PlayerConfig.TargetShoulderOffset = 0;
@@ -449,15 +449,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 string title1 = $"🕒 [ {gTime} ]";
                 string title2 = $"⚡ FPS: {lastFPS}";
-                string title3 = $"📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
-                string title4 = $" POS: X ={camera.Position.Z:N2} Y{camera.Position.Y:N2}= Z{camera.Position.Z:N2}";
-                string title5 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
+                string title3 = $"🎥 MODE: {camera.CurrentMode}";
+                string title4 = $"📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
+                string title5 = $" POS: X ={camera.Position.X:N2} Y={camera.Position.Y:N2} Z={camera.Position.Z:N2}";
+                string title6 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
 
                 hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText(title2, 10, 90, new Vector3(1, 0, 0));
-                hud.DrawText(title3, 10, 120, new Vector3(1, 0, 0));
+                hud.DrawText(title3, 10, 120, new Vector3(1, 1, 0)); // Yellow to stand out
                 hud.DrawText(title4, 10, 150, new Vector3(1, 0, 0));
                 hud.DrawText(title5, 10, 180, new Vector3(1, 0, 0));
+                hud.DrawText(title6, 10, 210, new Vector3(1, 0, 0));
 
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();

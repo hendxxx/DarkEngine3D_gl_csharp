@@ -5,11 +5,9 @@ using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
-{
+{ 
     public sealed class Camera
     {
-        public enum CameraMode { ThirdPerson, FirstPerson }
-
         public float GetAspect() => _aspect;
         
         // Transform
@@ -35,12 +33,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private float lastTerrainY = 0f;
 
         // Camera mode
-        private CameraMode _cameraMode = CameraMode.ThirdPerson;
+        private CameraMode _cameraMode = CameraMode.OTS;
         public CameraMode CurrentMode => _cameraMode;
+        public CameraPreset CurrentPreset => CameraConfig.Presets.TryGetValue(_cameraMode, out var p) ? p : null;
 
         // Shoulder swap
-        private float shoulderOffset = Config.PlayerConfig.ShoulderOffset;
-        private float targetShoulderOffset = Config.PlayerConfig.TargetShoulderOffset;
+        private float shoulderOffset = 0.6f;
+        private float targetShoulderOffset = 0.6f;
 
         // Free look
         public bool freeLook = false;
@@ -86,6 +85,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Yaw = yaw;
             Pitch = pitch;
 
+            ApplyPreset();
             UpdateVectors();
             _projectionDirty = true;
         }
@@ -98,8 +98,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void UpdateVectors()
         {
+            float minPitch = CurrentPreset?.MinPitch ?? -85f;
+            float maxPitch = CurrentPreset?.MaxPitch ?? 85f;
+
             // Clamp Pitch to prevent gimbal lock, allowing almost 180 degrees up/down
-            Pitch = Math.Clamp(Pitch, -85f, 85f);
+            Pitch = Math.Clamp(Pitch, minPitch, maxPitch);
 
             float yawRad = Helpers.OGLMath.ToRadians(Yaw);
             float pitchRad = Helpers.OGLMath.ToRadians(Pitch);
@@ -136,11 +139,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return ((to - from + 540f) % 360f) - 180f;
         }
 
-        public void ToggleCameraMode()
+        public void ToggleCameraMode(int direction = 1)
         {
-            _cameraMode = _cameraMode == CameraMode.ThirdPerson ? CameraMode.FirstPerson : CameraMode.ThirdPerson;
+            var modes = (CameraMode[])Enum.GetValues(typeof(CameraMode));
+            int nextIndex = (((int)_cameraMode + direction) % modes.Length + modes.Length) % modes.Length;
+            _cameraMode = modes[nextIndex];
             _projectionDirty = true;
+            ApplyPreset();
             Console.WriteLine($"Camera Mode: {_cameraMode}");
+        }
+
+        public void ApplyPreset()
+        {
+            var preset = CurrentPreset;
+            if (preset != null)
+            {
+                Config.PlayerConfig.TargetCameraDistance = preset.DefaultDistance;
+                Config.PlayerConfig.CameraMinDistance = preset.MinDistance;
+                Config.PlayerConfig.MaxCameraDistance = preset.MaxDistance;
+                targetShoulderOffset = preset.ShoulderOffset;
+                Config.PlayerConfig.CameraOffsetHeight = preset.HeightOffset;
+            }
         }
 
         public Matrix4x4 GetViewMatrix()
@@ -188,16 +207,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
-            if (_cameraMode == CameraMode.ThirdPerson)
-                SetCameraThirdPerson(window, position, gameTerrainChunk, dt);
-            else
+            if (_cameraMode == CameraMode.FirstPerson)
                 SetCameraFirstPerson(window, position, gameTerrainChunk, dt);
+            else
+                SetCameraThirdPerson(window, position, gameTerrainChunk, dt);
         }
 
         private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
-            float heightOffset = Config.PlayerConfig.CameraOffsetHeight;
-            float minDist = Config.PlayerConfig.CameraMinDistance;
+            var preset = CurrentPreset;
+            if (preset == null) return;
+
+            float heightOffset = preset.HeightOffset;
+            float minDist = preset.MinDistance;
             float collisionPush = 0.35f;
 
             // Pivot is at the character's upper body / head
@@ -251,10 +273,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             );
 
             // SCROLL ZOOM
-            if (Mouse.ScrollY != 0)
+            if (preset.AllowZoom && Mouse.ScrollY != 0)
             {
                 PlayerConfig.TargetCameraDistance -= Mouse.ScrollY * Config.PlayerConfig.ZoomSpeed;
-                PlayerConfig.TargetCameraDistance = Math.Clamp(PlayerConfig.TargetCameraDistance, Config.PlayerConfig.CameraMinDistance, Config.PlayerConfig.MaxCameraDistance);
+                PlayerConfig.TargetCameraDistance = Math.Clamp(PlayerConfig.TargetCameraDistance, preset.MinDistance, preset.MaxDistance);
 
                 Mouse.ResetScroll();
             }
@@ -304,11 +326,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             smoothCamPos = Vector3.Lerp(smoothCamPos, finalPos, 1f - MathF.Exp(-lag * dt));
             Position = smoothCamPos;
 
-            // TRUE OTS LOOK PARALLEL TO ROTATION
-            Front.X = MathF.Sin(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
-            Front.Y = MathF.Sin(Helpers.OGLMath.ToRadians(smoothPitch));
-            Front.Z = MathF.Cos(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
-            Front = Vector3.Normalize(Front);
+            // TRUE OTS LOOK PARALLEL TO ROTATION OR LOOK AT PIVOT
+            if (preset.TrueOTS)
+            {
+                Front.X = MathF.Sin(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
+                Front.Y = MathF.Sin(Helpers.OGLMath.ToRadians(smoothPitch));
+                Front.Z = MathF.Cos(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
+                Front = Vector3.Normalize(Front);
+            }
+            else
+            {
+                Front = Vector3.Normalize(pivotPos - Position);
+            }
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }

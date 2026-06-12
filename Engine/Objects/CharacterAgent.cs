@@ -217,11 +217,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ChooseWanderAction();
         }
 
-        public void OnCameraModeChanged(Camera.CameraMode mode)
+        public void OnCameraModeChanged(CameraMode mode)
         {
             if (!IsPlayer) return;
 
-            if (mode == Camera.CameraMode.FirstPerson)
+            if (mode == CameraMode.FirstPerson)
             {
                 // Hide head mesh in 1st person
                 _obj.HideMeshByNodeName("Head");
@@ -582,20 +582,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (IsPlayer)
             {
 
-                // --- ROTASI PLAYER (YAW) ---
-
+                // =======================================
+                // 3. FREE LOOK / ORBIT LOGIC
+                // =======================================
                 // Deteksi ALT baru dilepas
                 justReleasedFreeLook = wasFreeLook && !camera.freeLook;
+                
+                bool allowOrbit = camera.CurrentPreset?.AllowFreeLook ?? false;
 
-                if (camera.freeLook ) 
+                if (camera.freeLook || allowOrbit) 
                 {
-                    // ALT ditekan → player DIAM TOTAL
-                    // heading tidak berubah
-                    _heading= lastHeading; // tetap di nilai sebelumnya, tidak mengikuti kamera 
+                    // Kamera bebas mengitari karakter tanpa memaksa badan berputar.
+                    // Badan hanya berputar kalau ada input gerakan (sudah di-handle di atas).
+                    lastHeading = _heading; 
                 }
                 else
                 {
-                    // ALT tidak ditekan → player mengikuti kamera
+                    // Player mengikuti arah kamera (Shooter / OTS mode)
 
                     float turnSpeed;
 
@@ -604,7 +607,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     else
                         turnSpeed = 4f;     // normal turning
 
-                    if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                    if (camera.CurrentMode == CameraMode.FirstPerson)
                         _heading = camera.Yaw;
                     else
                         _heading = Helpers.OGLMath.LerpAngle(lastHeading, camera.Yaw, turnSpeed * dt);
@@ -619,7 +622,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float rad = Helpers.OGLMath.ToRadians(_heading);
 
                 Vector3 forward = new(MathF.Sin(rad), 0, MathF.Cos(rad));
-                if (camera.CurrentMode == Camera.CameraMode.FirstPerson)
+                if (camera.CurrentMode == CameraMode.FirstPerson)
                 {
                     wasFreeLook = false;
 

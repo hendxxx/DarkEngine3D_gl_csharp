@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace DarkEngine3D_gl_csharp.Engine.Config
 {
     public static class LODConfig
@@ -41,6 +43,70 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // seberapa jauh dari forward camera masih dianggap "near frustum"
         public static float FrustumInnerDot = 0.2f;   // > 0.2 = benar2 di depan
         public static float FrustumOuterDot = -0.2f;  // > -0.2 = masih dekat frustum
+    }
+
+    public enum CameraMode { FirstPerson, OTS, Orbit, Tactical, Follow, Chase }
+
+    public class CameraPreset
+    {
+        public CameraMode Mode { get; set; }
+        public float MinPitch { get; set; }
+        public float MaxPitch { get; set; }
+        public bool AllowFreeLook { get; set; }
+        public float DefaultDistance { get; set; }
+        public float MinDistance { get; set; }
+        public float MaxDistance { get; set; }
+        public bool AllowZoom { get; set; }
+        public float ShoulderOffset { get; set; }
+        public float HeightOffset { get; set; }
+        public bool TrueOTS { get; set; }
+    }
+
+    public static class CameraConfig
+    {
+        public static Dictionary<CameraMode, CameraPreset> Presets = new()
+        {
+            { CameraMode.OTS, new CameraPreset {
+                Mode = CameraMode.OTS,
+                MinPitch = -85f, MaxPitch = 85f,
+                AllowFreeLook = false, // Locked behind player
+                DefaultDistance = 2.5f, MinDistance = 1.5f, MaxDistance = 4.0f, AllowZoom = true,
+                ShoulderOffset = 0.6f, HeightOffset = 1.5f,
+                TrueOTS = true // Looks parallel
+            }},
+            { CameraMode.Orbit, new CameraPreset {
+                Mode = CameraMode.Orbit,
+                MinPitch = -85f, MaxPitch = 85f,
+                AllowFreeLook = true, // Free orbit around player
+                DefaultDistance = 4.0f, MinDistance = 2.0f, MaxDistance = 8.0f, AllowZoom = true,
+                ShoulderOffset = 0.0f, HeightOffset = 1.5f,
+                TrueOTS = false // Looks at player center
+            }},
+            { CameraMode.Tactical, new CameraPreset {
+                Mode = CameraMode.Tactical,
+                MinPitch = 40f, MaxPitch = 85f, // Top-down perspective
+                AllowFreeLook = true,
+                DefaultDistance = 12.0f, MinDistance = 8.0f, MaxDistance = 20.0f, AllowZoom = true,
+                ShoulderOffset = 0.0f, HeightOffset = 2.0f,
+                TrueOTS = false
+            }},
+            { CameraMode.Follow, new CameraPreset {
+                Mode = CameraMode.Follow,
+                MinPitch = -60f, MaxPitch = 60f,
+                AllowFreeLook = false,
+                DefaultDistance = 5.0f, MinDistance = 3.0f, MaxDistance = 10.0f, AllowZoom = true,
+                ShoulderOffset = 0.0f, HeightOffset = 1.7f,
+                TrueOTS = false // Looks at player center
+            }},
+            { CameraMode.Chase, new CameraPreset {
+                Mode = CameraMode.Chase,
+                MinPitch = -30f, MaxPitch = 50f,
+                AllowFreeLook = false,
+                DefaultDistance = 6.0f, MinDistance = 4.0f, MaxDistance = 12.0f, AllowZoom = false,
+                ShoulderOffset = 0.0f, HeightOffset = 1.5f,
+                TrueOTS = false
+            }}
+        };
     }
 
     // ============================

@@ -44,6 +44,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
         // Variabel kontrol untuk toggle camera mode
         static bool vPressed = false;
+        static bool commaPressed = false;
+        static bool periodPressed = false;
 
         // Properti public jika Anda ingin membaca status ini saat pengiriman uniform di render loop
         public static bool IsFogActive
@@ -151,21 +153,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             }
 
             // =========================================================================
-            // V TOGGLE CAMERA MODE (RISING EDGE)
+            // < AND > TOGGLE CAMERA MODE
             // =========================================================================
-            int vState = glfwGetKey(window, Const.GLFW_KEY_V);
-            if (vState == Const.GLFW_PRESS)
+            int commaState = glfwGetKey(window, 44); // COMMA <
+            if (commaState == Const.GLFW_PRESS)
             {
-                if (!vPressed)
+                if (!commaPressed)
                 {
-                    camera.ToggleCameraMode();
-                    vPressed = true;
+                    camera.ToggleCameraMode(-1);
+                    commaPressed = true;
                 }
             }
-            else
+            else commaPressed = false;
+
+            int periodState = glfwGetKey(window, 46); // PERIOD >
+            if (periodState == Const.GLFW_PRESS)
             {
-                vPressed = false;
+                if (!periodPressed)
+                {
+                    camera.ToggleCameraMode(1);
+                    periodPressed = true;
+                }
             }
+            else periodPressed = false;
 
             //// Movement
             //bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
