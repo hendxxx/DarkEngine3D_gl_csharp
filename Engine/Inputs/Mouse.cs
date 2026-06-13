@@ -29,6 +29,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             scrollX = 0;
             scrollY = 0;
         }
+        public static float DeltaX { get; private set; }
+        public static float DeltaY { get; private set; }
+         
 
 
         public static unsafe void Init(nint glfwLib, nint _window ,float _sensitivity = 0.1f)
@@ -80,6 +83,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
             float offsetX = (float)(mouseX - lastX);
             float offsetY = (float)(mouseY - lastY);
+
+            DeltaX = (float)(mouseX - lastX);
+            DeltaY = (float)(mouseY - lastY);
 
             lastX = mouseX;
             lastY = mouseY;

@@ -64,7 +64,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private const float HeadBobFrequency = 5.0f;
         private const float HeadBobAmount = 0.05f;
         private const float FirstPersonHeadHeight = 1.7f;
+
         public bool IsADS = false;
+        
+        public bool FlyMode = false;
+        public float FlySpeed = 50f; // sesuai permintaan
+
+        public bool IsFlyMode=false;
+         
 
         public Camera(float x, float y, float z, float yaw, float pitch, float aspect, float fov, float nearDist, float farDist)
         {
@@ -146,7 +153,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             int nextIndex = (((int)_cameraMode + direction) % modes.Length + modes.Length) % modes.Length;
             _cameraMode = modes[nextIndex];
             _projectionDirty = true;
-            ApplyPreset();
+            ApplyPreset(); 
             Console.WriteLine($"Camera Mode: {_cameraMode}");
         }
 
@@ -202,6 +209,50 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
+        private void SetCameraFlyMode(nint window, float dt)
+        {
+            // Mouse look (FPS style)
+            smoothYaw += Mouse.DeltaX * 0.1f;
+            smoothPitch -= Mouse.DeltaY * 0.1f;
+
+            smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
+
+            Yaw = smoothYaw;
+            Pitch = smoothPitch;
+
+            // Update camera vectors (FPS)
+            Front.X = MathF.Cos(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
+            Front.Y = MathF.Sin(Helpers.OGLMath.ToRadians(Pitch));
+            Front.Z = MathF.Sin(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
+            Front = Vector3.Normalize(Front);
+
+            Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
+            Up = Vector3.Normalize(Vector3.Cross(Right, Front));
+
+            // Movement
+            Vector3 move = Vector3.Zero;
+
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                move += Front;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+                move -= Front;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
+                move -= Right;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                move += Right;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
+                move += Vector3.UnitY;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL))
+                move -= Vector3.UnitY;
+
+            if (move.LengthSquared() > 0)
+                move = Vector3.Normalize(move);
+
+            Position += move * FlySpeed * dt;
+
+            // No gravity, no terrain clamp, no collision
+        }
+
 
         public void ClampToTerrain(MapLoader mapLoader, float dt)
         {
@@ -218,6 +269,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
+            // Toggle FlyMode
+            if (Keyboard.IsKeyPressed(window, Const.GLFW_KEY_G))
+                FlyMode = !FlyMode;
+            
+            IsFlyMode = FlyMode;
+            Console.WriteLine("Is FLy Mode = " + IsFlyMode );
+
+            if (FlyMode)
+            {
+                IsFlyMode = true; 
+                SetCameraFlyMode(window, dt);
+                return;
+            } 
+
             if (_cameraMode == CameraMode.FirstPerson)
                 SetCameraFirstPerson(window, position, gameTerrainChunk, dt);
             else
@@ -228,6 +293,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             var preset = CurrentPreset;
             if (preset == null) return;
+
 
             // LIMIT PITCH KHUSUS OTS (agar player tetap on-cam)
             if (preset.TrueOTS)
@@ -403,6 +469,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
          
         private void SetCameraFirstPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
+
             // First person: camera at head height above player center
             Vector3 headPos = position + new Vector3(0, FirstPersonHeadHeight, 0);
 

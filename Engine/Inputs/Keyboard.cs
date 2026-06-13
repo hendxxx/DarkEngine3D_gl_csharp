@@ -42,10 +42,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool showLODColor = false;
         static bool lPressed = false;
 
-        // Variabel kontrol untuk toggle camera mode
-        static bool vPressed = false;
+        // Variabel kontrol untuk toggle camera mode 
         static bool commaPressed = false;
         static bool periodPressed = false;
+
+        private static Dictionary<int, bool> lastKeyState = new Dictionary<int, bool>();
 
         // Properti public jika Anda ingin membaca status ini saat pengiriman uniform di render loop
         public static bool IsFogActive
@@ -83,6 +84,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
             lineVLoc = GL.GetUniformLocation(lineShaderProgram, "view");
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
+        }
+        public static bool IsKeyPressed(nint window, int key)
+        {
+            bool isDown = IsKeyDown(window, key);
+
+            if (!lastKeyState.ContainsKey(key))
+                lastKeyState[key] = false;
+
+            bool wasDown = lastKeyState[key];
+
+            lastKeyState[key] = isDown;
+
+            return isDown && !wasDown; // true hanya 1 frame
         }
 
         public static bool IsKeyDown(nint window, int key)
@@ -155,7 +169,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             // =========================================================================
             // < AND > TOGGLE CAMERA MODE
             // =========================================================================
-            int commaState = glfwGetKey(window, 44); // COMMA <
+            int commaState = glfwGetKey(window, Const.GLFW_KEY_COMMA); // COMMA <
             if (commaState == Const.GLFW_PRESS)
             {
                 if (!commaPressed)
@@ -166,7 +180,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             }
             else commaPressed = false;
 
-            int periodState = glfwGetKey(window, 46); // PERIOD >
+            int periodState = glfwGetKey(window, Const.GLFW_KEY_PERIOD); // PERIOD >
             if (periodState == Const.GLFW_PRESS)
             {
                 if (!periodPressed)

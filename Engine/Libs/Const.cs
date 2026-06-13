@@ -160,6 +160,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const int GLFW_KEY_K = 75;
         public const int GLFW_KEY_L = 76;
         public const int GLFW_KEY_O = 79;
+        public const int GLFW_KEY_G = 71;
 
         public const int GLFW_KEY_ESCAPE = 256;
         public const int GLFW_KEY_F1 = 290;
@@ -185,9 +186,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const float SHIFT_SPEED_MULTIPLIER = 1.5f;
 
-        // Alt
+        // Alt + Ctrl
+        public const int GLFW_KEY_LEFT_CONTROL= 341;
         public const int GLFW_KEY_LEFT_ALT = 342;
+
+        public const int GLFW_KEY_RIGHT_CONTROL = 345;
         public const int GLFW_KEY_RIGHT_ALT = 346;
+        
+        // Special
+        public const int GLFW_KEY_COMMA = 44;
+        public const int GLFW_KEY_PERIOD = 46;
+
 
         // Space
         public const int GLFW_KEY_SPACE = 32;

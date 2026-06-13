@@ -581,7 +581,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ============================
             if (IsPlayer)
             {
-
+                if (camera.IsFlyMode) return;
                 // =======================================
                 // 3. FREE LOOK / ORBIT LOGIC
                 // =======================================

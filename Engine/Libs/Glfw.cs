@@ -177,10 +177,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             int viewLocation = GL.GetUniformLocation(shaderProgram, "view");
 
             PostProcessStack ppStack = new PostProcessStack(_windowWidth, _windowHeight);
-            var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
+            //var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram());
 
-            ppStack.AddPass(rainOverlayPass);
+            //ppStack.AddPass(rainOverlayPass);
             //ppStack.AddPass(invertPass);
 
             // --- CSM INITIALIZATION ---
@@ -392,10 +392,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.Draw(camera, light);
                 }
 
-                float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai
-                //rainOverlayPass.RainAmount = Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);// Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);
-                uint sceneTexture = ppStack.SceneColorTex;
-                rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
+                //float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai
+                ////rainOverlayPass.RainAmount = Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);// Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);
+                //uint sceneTexture = ppStack.SceneColorTex;
+                //rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
 
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
