@@ -83,7 +83,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
 
             // AI SPAWN
-            for (int i = 0; i < 500; i++)
+            for (int i = 0; i < 5; i++)
             {
                 float px, pz;
                 int tries = 0;

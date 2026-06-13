@@ -172,7 +172,7 @@ float lightningBoltShape(vec2 uv, float seed)
 
 float lightningFlash(float t, float weather)
 {
-    float slowT = t * 0.00002;    // 20% speed
+    float slowT = t * 0.000005;    // 20% speed
 
     // aktif mulai mendung 0.5 – 0.7
     float storm = smoothstep(0.5, 0.7, weather);
@@ -182,7 +182,7 @@ float lightningFlash(float t, float weather)
     // random trigger — 1% chance
     float r = fract(sin(slowT * 5.123) * 98765.4321);
 
-    if (r > 0.98)
+    if (r > 0.998)
     {
         // jumlah strike 2–3
         float strikeCount = 2.0 + floor(fract(sin(slowT * 3.77) * 24680.135) * 2.0);

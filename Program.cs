@@ -94,7 +94,7 @@ public unsafe class Program
         ];
         // Init TerrainChunk
         TerrainChunk.GlobalLODLevel = 1;
-        TerrainChunk.HeightScale = 50.0f;
+        TerrainChunk.HeightScale = 25.0f;
         TerrainChunk.TerrainScale = 1.0f;
         TerrainChunk.OnLoadProgress += (progress) =>
         {

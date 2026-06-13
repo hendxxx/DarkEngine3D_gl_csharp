@@ -1,13 +1,13 @@
 #version 400 core
 
-in vec3 vWorldPos;   // from vertex shader
+in vec3 vWorldPos;
 in vec2 vUV;
 
 out vec4 FragColor;
 
 uniform vec3 uCameraPos;
-uniform vec3 uWindDir;      // normalized, ex: vec3(0.3, 0.0, 0.2)
-uniform float uRainAmount;  // 0..1, biasanya dari smoothstep(0.7,1.0, weatherMode)
+uniform vec3 uWindDir;
+uniform float uRainAmount;
 uniform float uTime;
 
 // simple hash
@@ -19,30 +19,43 @@ float hash(vec2 p)
 // world-space streak
 float rainStreakWS(vec3 pos)
 {
-    // posisi relatif kamera (camera-stable)
-    vec3 localPos = pos - uCameraPos;
+    // Jarak ke kamera
+    float d = length(pos - uCameraPos);
 
-    float d = length(localPos);
+    // Fade by distance (lebih natural)
+    float fade = clamp(1.0 - d * 0.0035, 0.0, 1.0);
 
-    // fade radius besar
-    float fade = clamp(1.0 - d * 0.005, 0.0, 1.0);
+    // Variasi kecepatan tiap streak
+    float speedRand = hash(pos.xz * 0.77);
+    float speed = mix(0.8, 1.4, speedRand);
 
-    // pattern stabil
-    float n = hash(localPos.xz * 0.35 + uTime * 0.7);
-    float streak = smoothstep(0.94, 1.0, n);
+    // World-locked pattern (tidak ikut kamera)
+    float n = hash(pos.xz * 0.25 + uTime * speed);
+
+    // Variasi intensitas
+    float streak = smoothstep(0.92, 1.0, n);
 
     return streak * fade;
 }
 
 void main()
 {
+    // Arah jatuh
     vec3 fallDir = normalize(vec3(uWindDir.x * 0.5, -1.0, uWindDir.z * 0.5));
 
     float streak = rainStreakWS(vWorldPos);
 
-    float motion = clamp(dot(fallDir, vec3(0.0, -1.0, 0.0)), 0.2, 1.0);
+    // Parallax: hujan dekat lebih cepat & lebih terang
+    float depthFactor = clamp(1.0 - length(vWorldPos - uCameraPos) * 0.02, 0.1, 1.0);
 
-    vec3 rainColor = vec3(0.45, 0.55, 0.75);
+    // Motion factor
+    float motion = clamp(dot(fallDir, vec3(0.0, -1.0, 0.0)), 0.2, 1.0);
+    motion *= depthFactor;
+
+    // Warna hujan adaptif
+    vec3 rainColor = mix(vec3(0.35, 0.45, 0.65),
+                         vec3(0.55, 0.65, 0.85),
+                         depthFactor);
 
     float alpha = streak * uRainAmount * motion * 2.0;
     alpha = clamp(alpha, 0.0, 1.0);
@@ -52,4 +65,3 @@ void main()
 
     FragColor = vec4(rainColor, alpha);
 }
-

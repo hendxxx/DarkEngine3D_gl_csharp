@@ -178,7 +178,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
             PostProcessStack ppStack = new PostProcessStack(_windowWidth, _windowHeight);
             var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
-            var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram()); 
+            var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram());
+
+            ppStack.AddPass(rainOverlayPass);
+            //ppStack.AddPass(invertPass);
 
             // --- CSM INITIALIZATION ---
             CSM csm = new CSM(4096);
@@ -388,58 +391,63 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                     objectManager.Draw(camera, light);
                 }
-                
+
+                float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai
+                //rainOverlayPass.RainAmount = Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);// Helpers.ShaderHelpers.SmoothStep(0.6f, 1.0f, currentweatherMode);
+                uint sceneTexture = ppStack.SceneColorTex;
+                rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
+
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
 
-                int boxW = 250;
-                int boxH = 250;
-                int margin = 10;
-                int spacing = 10;
+                //int boxW = 250;
+                //int boxH = 250;
+                //int margin = 10;
+                //int spacing = 10;
 
-                int x = _windowWidth - boxW - margin;
-                int y0 = margin;                          // paling bawah
-                int y1 = y0 + boxH + spacing;             // tengah
-                int y2 = y1 + boxH + spacing;             // paling atas
+                //int x = _windowWidth - boxW - margin;
+                //int y0 = margin;                          // paling bawah
+                //int y1 = y0 + boxH + spacing;             // tengah
+                //int y2 = y1 + boxH + spacing;             // paling atas
 
-                framebufferViewer.RenderDepthTexture(
-                    csm.ShadowTextures[0],
-                    _windowWidth,
-                    _windowHeight,
-                    x,
-                    y0,
-                    boxW,
-                    boxH,
-                    0.1f,
-                    csm.CascadeEnds[0],
-                    false
-                );
+                //framebufferViewer.RenderDepthTexture(
+                //    csm.ShadowTextures[0],
+                //    _windowWidth,
+                //    _windowHeight,
+                //    x,
+                //    y0,
+                //    boxW,
+                //    boxH,
+                //    0.1f,
+                //    csm.CascadeEnds[0],
+                //    false
+                //);
 
-                framebufferViewer.RenderDepthTexture(
-                    csm.ShadowTextures[1],
-                    _windowWidth,
-                    _windowHeight,
-                    x,
-                    y1,
-                    boxW,
-                    boxH,
-                    0.1f,
-                    csm.CascadeEnds[1],
-                    false
-                );
+                //framebufferViewer.RenderDepthTexture(
+                //    csm.ShadowTextures[1],
+                //    _windowWidth,
+                //    _windowHeight,
+                //    x,
+                //    y1,
+                //    boxW,
+                //    boxH,
+                //    0.1f,
+                //    csm.CascadeEnds[1],
+                //    false
+                //);
 
-                framebufferViewer.RenderDepthTexture(
-                    csm.ShadowTextures[2],
-                    _windowWidth,
-                    _windowHeight,
-                    x,
-                    y2,
-                    boxW,
-                    boxH,
-                    0.1f,
-                    csm.CascadeEnds[2],
-                    false
-                );
+                //framebufferViewer.RenderDepthTexture(
+                //    csm.ShadowTextures[2],
+                //    _windowWidth,
+                //    _windowHeight,
+                //    x,
+                //    y2,
+                //    boxW,
+                //    boxH,
+                //    0.1f,
+                //    csm.CascadeEnds[2],
+                //    false
+                //);
 
 
                 // --- HUD SYSTEM ---
