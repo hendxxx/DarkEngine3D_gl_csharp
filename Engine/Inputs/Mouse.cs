@@ -101,6 +101,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             if (window == 0) return false;
             return glfwGetMouseButton(window, button) == Const.GLFW_PRESS;
         }
+        public static bool IsButtonDowm(int button)
+        {
+            if (window == 0) return false;
+            return glfwGetMouseButton(window, button) == Const.GLFW_MOUSE_BUTTON_RIGHT;
+        }
 
 
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]

@@ -154,6 +154,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-standard.glb", "walk-standard");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\natural-idle.glb", "idle");
             ApplyAnimationFileToAll("Artifacts\\objects\\anim\\jump.glb", "jump");
+            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\land.glb", "land");
 
             //LoadAnimationFolder("Artifacts\\objects\\anim");
 

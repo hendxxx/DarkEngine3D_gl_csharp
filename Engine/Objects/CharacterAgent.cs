@@ -567,8 +567,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private float lastHeading = 0f;
          
         private float _verticalVelocity = 0f;
-        private const float gravity = -10.0f;
-        private const float jumpForce = 50f;
+        private const float gravity = -9.81f;
+        private const float jumpForce = 4.85f;
         private bool _isJumping = false;      // untuk fisik 
         private float headingVelocity = 0f;
         // -----------------------------------------------------------------------
@@ -681,7 +681,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 // --- BLOCK ---
-                else if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_RIGHT) && !_oneShotPlaying)
+                else if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_MIDDLE) && !_oneShotPlaying)
                 {
                     _oneShotPlaying = true;
                     _oneShotName = "block";
@@ -694,7 +694,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     // ANIMASI
                     _oneShotPlaying = true;
                     _oneShotName = "jump";
-                    _obj.PlayOnce("jump", "idle");
+                    _obj.PlayOnce("jump","idle");
 
                     // FISIK
                     _isJumping = true;

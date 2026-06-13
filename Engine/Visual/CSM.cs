@@ -85,9 +85,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             for (int i = 0; i < NumCascades; i++)
             {
                 float nextSplit = CascadeEnds[i];
+                float fovRad = Helpers.OGLMath.ToRadians(camera.FoV);
 
                 // 1. Frustum split
-                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(camera.FoV, camera.GetAspect(), prevSplit, nextSplit);
+                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(fovRad, camera.GetAspect(), prevSplit, nextSplit);
 
                 Vector3[] corners = TerrainChunk.GetFrustumCorners(camera.GetViewMatrix(), splitProj);
 

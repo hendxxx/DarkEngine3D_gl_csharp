@@ -33,7 +33,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private float lastTerrainY = 0f;
 
         // Camera mode
-        private CameraMode _cameraMode = CameraMode.Orbit;
+        private CameraMode _cameraMode = CameraMode.OTS;
         public CameraMode CurrentMode => _cameraMode;
         public CameraPreset CurrentPreset => CameraConfig.Presets.TryGetValue(_cameraMode, out var p) ? p : null;
 
@@ -64,6 +64,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private const float HeadBobFrequency = 5.0f;
         private const float HeadBobAmount = 0.05f;
         private const float FirstPersonHeadHeight = 1.7f;
+        public bool IsADS = false;
 
         public Camera(float x, float y, float z, float yaw, float pitch, float aspect, float fov, float nearDist, float farDist)
         {
@@ -167,17 +168,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return Matrix4x4.CreateLookAt(Position, Position + Front, Up);
         }
 
-        public Matrix4x4 GetProjectionMatrix()
-        {
-            if (_projectionDirty)
-            {
-                // Use smaller near plane in 1st person to avoid body clipping
-                float nearDist = _cameraMode == CameraMode.FirstPerson ? 0.1f : NearDist;
-                _projection = Matrix4x4.CreatePerspectiveFieldOfView(FoV, _aspect, nearDist, FarDist);
-                _projectionDirty = false;
-            }
-            return _projection;
-        }
+    public Matrix4x4 GetProjectionMatrix()
+{
+    if (_projectionDirty)
+    {
+        float nearDist = _cameraMode == CameraMode.FirstPerson ? 0.1f : NearDist;
+
+        // Convert FoV (degrees) → radians
+        float fovRad = Helpers.OGLMath.ToRadians(FoV);
+
+        _projection = Matrix4x4.CreatePerspectiveFieldOfView(
+            fovRad,
+            _aspect,
+            nearDist,
+            FarDist
+        );
+
+        _projectionDirty = false;
+    }
+    return _projection;
+}
+
 
         public void SetViewAndProjection(int viewLocation, int projectionLocation)
         {
@@ -218,12 +229,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             var preset = CurrentPreset;
             if (preset == null) return;
 
+            // LIMIT PITCH KHUSUS OTS (agar player tetap on-cam)
+            if (preset.TrueOTS)
+            {
+                float minPitchOTS = -20f;
+                float maxPitchOTS = 10f;
+                Pitch = Math.Clamp(Pitch, minPitchOTS, maxPitchOTS);
+            }
+
             float heightOffset = preset.HeightOffset;
             float minDist = preset.MinDistance;
             float collisionPush = 0.35f;
 
             // Pivot is at the character's upper body / head
             Vector3 pivotPos = position + new Vector3(0, heightOffset, 0);
+
+            // AIM MODE (ADS)
+            if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_RIGHT))
+                IsADS = true;
+            else
+                IsADS = false;
+
+            float targetFov = IsADS ? 45.0f : 60.0f;
+            FoV = Helpers.OGLMath.Lerp(FoV, targetFov, 8f * dt);
+            _projectionDirty = true;
 
             // SHOULDER SWAP
             if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_Q))
@@ -241,7 +270,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                                      Config.PlayerConfig.CameraFollowSpeed);
 
             // OFFSET (relative to pivot)
-            Vector3 offset = new(shoulderOffset, 0, -Config.PlayerConfig.CameraDistance);
+            //Vector3 offset = new(shoulderOffset, 0, -Config.PlayerConfig.CameraDistance);
+            float shoulder = shoulderOffset;
+            float camDist = Config.PlayerConfig.CameraDistance;
+
+            if (IsADS)
+            {
+                shoulder = Helpers.OGLMath.Lerp(shoulder, 0.25f, 10f * dt);
+                camDist = Helpers.OGLMath.Lerp(camDist, 1.2f, 10f * dt);
+            }
+            else
+            {
+                shoulder = Helpers.OGLMath.Lerp(shoulder, targetShoulderOffset, 6f * dt);
+                camDist = Helpers.OGLMath.Lerp(camDist, Config.PlayerConfig.TargetCameraDistance, 6f * dt);
+            }
+
+            Vector3 offset = new Vector3(shoulder, 0, -camDist);
 
             // CAMERA SWAY
             bool isMoving =
@@ -332,10 +376,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float lag = 6f;
             smoothCamPos = Vector3.Lerp(smoothCamPos, finalPos, 1f - MathF.Exp(-lag * dt));
             Position = smoothCamPos;
+            if (preset.TrueOTS)
+            {
+                float minCamHeight = pivotPos.Y - 0.2f; // sedikit di bawah bahu
+                float maxCamHeight = pivotPos.Y + 1.2f; // sedikit di atas kepala
+
+                Position.Y = Math.Clamp(Position.Y, minCamHeight, maxCamHeight);
+            }
 
             // TRUE OTS LOOK PARALLEL TO ROTATION OR LOOK AT PIVOT
             if (preset.TrueOTS)
-            {
+            { 
                 Front.X = MathF.Sin(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
                 Front.Y = MathF.Sin(Helpers.OGLMath.ToRadians(smoothPitch));
                 Front.Z = MathF.Cos(Helpers.OGLMath.ToRadians(smoothYaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(smoothPitch));
@@ -345,6 +396,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             {
                 Front = Vector3.Normalize(pivotPos - Position);
             }
+
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }

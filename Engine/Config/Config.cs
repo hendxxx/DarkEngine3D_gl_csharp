@@ -72,11 +72,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         {
             { CameraMode.OTS, new CameraPreset {
                 Mode = CameraMode.OTS,
-                MinPitch = -85f, MaxPitch = 85f,
+                MinPitch = -75f, MaxPitch = 75f,
                 AllowFreeLook = false,
                 DefaultDistance = 2.5f, MinDistance = 1.5f, MaxDistance = 4.0f, AllowZoom = true,
-                ShoulderOffset = 0.6f, HeightOffset = 1.5f,
-                TrueOTS = true, InvertOrbitPitch = false
+                ShoulderOffset = -0.6f, HeightOffset = 1.5f,
+                TrueOTS = true, InvertOrbitPitch = true
             }},
             { CameraMode.Orbit, new CameraPreset {
                 Mode = CameraMode.Orbit,
