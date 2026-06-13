@@ -570,7 +570,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float gravity = -10.0f;
         private const float jumpForce = 50f;
         private bool _isJumping = false;      // untuk fisik 
-
+        private float headingVelocity = 0f;
         // -----------------------------------------------------------------------
         //  Movement with LOD
         // -----------------------------------------------------------------------
@@ -587,7 +587,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // =======================================
                 // Deteksi ALT baru dilepas
                 justReleasedFreeLook = wasFreeLook && !camera.freeLook;
-                
+
                 bool allowOrbit = camera.CurrentPreset?.AllowFreeLook ?? false;
 
                 if (camera.freeLook || allowOrbit) 
@@ -610,8 +610,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (camera.CurrentMode == CameraMode.FirstPerson)
                         _heading = camera.Yaw;
                     else
-                        _heading = Helpers.OGLMath.LerpAngle(lastHeading, camera.Yaw, turnSpeed * dt);
-                        
+                    {
+                        float smoothTime = justReleasedFreeLook ? 0.35f : 0.12f;
+
+                        _heading = Helpers.OGLMath.SmoothDampAngle(
+                            lastHeading,
+                            camera.Yaw,
+                            ref headingVelocity,
+                            smoothTime,
+                            dt
+                        ); 
+                    } 
                     lastHeading = _heading;
                 }
 
@@ -853,6 +862,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             p.Y = terrain.GetHeightAt(p.X, p.Z);
             _obj.Position = p;
         }
+        
+
         private enum AnimState
         {
             Idle,

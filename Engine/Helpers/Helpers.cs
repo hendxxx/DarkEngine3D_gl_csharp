@@ -31,7 +31,40 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         {
             float diff = ((b - a + 540f) % 360f) - 180f;
             return a + diff * t;
+        } 
+        public static float Repeat(float t, float length)
+        {
+            return t - MathF.Floor(t / length) * length;
         }
+
+        public static float DeltaAngle(float current, float target)
+        {
+            float delta = Repeat((target - current + 180f), 360f) - 180f;
+            return delta;
+        }
+
+        public static float SmoothDampAngle(
+            float current,
+            float target,
+            ref float velocity,
+            float smoothTime,
+            float deltaTime)
+        {
+            float num = DeltaAngle(current, target);
+            target = current + num;
+
+            float omega = 2f / smoothTime;
+            float x = omega * deltaTime;
+            float exp = 1f / (1f + x + 0.48f * x * x + 0.235f * x * x * x);
+
+            float change = current - target;
+            float temp = (velocity + omega * change) * deltaTime;
+            velocity = (velocity - omega * temp) * exp;
+
+            float result = target + (change + temp) * exp;
+            return result;
+        }
+
     }
 
 
