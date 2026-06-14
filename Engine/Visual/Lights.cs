@@ -20,6 +20,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float manualMultiplier = 60.0f; // Fast Forward: 1 real second = 1 game hour
 
         public Vector3 SunDir { get; private set; }
+        public Vector3 RealSunDir { get; private set; }
         public Vector3 FogColor { get; private set; }
         public Vector3 LightColor { get; private set; }
 
@@ -54,11 +55,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             sunDirLoc = GL.GetUniformLocation(shaderProgram, "sunDir");
             viewPosLoc = GL.GetUniformLocation(shaderProgram, "viewPos");
             lightColorLoc = GL.GetUniformLocation(shaderProgram, "lightColor");
-            fogColorLoc = GL.GetUniformLocation(shaderProgram, "fogColor"); 
+            fogColorLoc = GL.GetUniformLocation(shaderProgram, "fogColor");
             weatherModeLoc = GL.GetUniformLocation(Shader.GetSkyShaderProgram(), "weatherMode");
         }
 
-        public void Update(float deltaTime,Vector3 currentViewPos)
+        public void Update(float deltaTime, Vector3 currentViewPos)
         {
 
             // Always progress time slowly
@@ -76,45 +77,72 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // Normalize agar shader tidak bingung dengan panjang vektor
             Vector3 sunDir = Vector3.Normalize(new Vector3(sunX, sunY, sunZ));
+            // 1. Hitung arah bulan (kebalikan matahari)
+            Vector3 moonDir = -sunDir;
+
+            // 2. Blend day–night (pakai sunY yang sudah ada)
+            float nightBlend = Math.Clamp((0.15f - sunDir.Y) / 0.15f, 0.0f, 1.0f);
+
+            // 3. Pilih arah shadow: siang = matahari, malam = bulan
+            Vector3 shadowDir = sunDir;
+            if (nightBlend > 0.5f)
+                shadowDir = moonDir;
+
+
+            // 4. WAJIB: normalisasi
+            shadowDir = Vector3.Normalize(shadowDir);
 
             // Continuous day / dusk / night weights based on sun height (sunY).
             // tDay   ramps from 0 → 1 as sun rises from horizon to high in sky.
             // tNight ramps from 0 → 1 as sun dips below the horizon.
             // tDusk  fills the gap so the three weights always sum to 1 → no jumps.
-            float tDay   = Smoothstep01(0.05f, 0.30f, sunY);
+            float tDay = Smoothstep01(0.05f, 0.30f, sunY);
             float tNight = Smoothstep01(0.05f, -0.20f, sunY);
-            float tDusk  = MathF.Max(0.0f, 1.0f - tDay - tNight);
+            float tDusk = MathF.Max(0.0f, 1.0f - tDay - tNight);
 
             // Palette: bright neutral sunlight / warm dusk / dim moonlight blue.
-            Vector3 dayLight    = new(0.95f, 0.93f, 0.88f);
-            Vector3 duskLight   = new(1.00f, 0.55f, 0.25f);
-            Vector3 nightLight  = new(0.05f, 0.07f, 0.14f);
+            Vector3 dayLight = new(0.95f, 0.93f, 0.88f);
+            Vector3 duskLight = new(1.00f, 0.55f, 0.25f);
+            Vector3 nightLight = new(0.05f, 0.07f, 0.14f);
 
-            Vector3 dayFog      = new(0.70f, 0.80f, 1.00f);
-            Vector3 duskFog     = new(0.55f, 0.30f, 0.18f);
-            Vector3 nightFog    = new(0.02f, 0.03f, 0.06f);
+            Vector3 dayFog = new(0.70f, 0.80f, 1.00f);
+            Vector3 duskFog = new(0.55f, 0.30f, 0.18f);
+            Vector3 nightFog = new(0.02f, 0.03f, 0.06f);
 
             // Brightness multipliers per regime — also blended smoothly.
-            const float dayBrightness   = 0.85f;
-            const float duskBrightness  = 0.65f;
+            const float dayBrightness = 0.85f;
+            const float duskBrightness = 0.65f;
             const float nightBrightness = 0.55f; // applied to a dim color so net result stays dark
 
             Vector3 lightColor =
-                dayLight   * (dayBrightness   * tDay)  +
-                duskLight  * (duskBrightness  * tDusk) +
+                dayLight * (dayBrightness * tDay) +
+                duskLight * (duskBrightness * tDusk) +
                 nightLight * (nightBrightness * tNight);
 
             Vector3 fogColor =
-                dayFog   * tDay  +
-                duskFog  * tDusk +
+                dayFog * tDay +
+                duskFog * tDusk +
                 nightFog * tNight;
 
             // Kirim ke shader
-            SunDir = sunDir;
+            RealSunDir = sunDir;  
+            SunDir = shadowDir;
             FogColor = fogColor;
             LightColor = lightColor;
 
-            GL.Uniform3f(sunDirLoc, sunDir.X, sunDir.Y, sunDir.Z);
+            //GL.Uniform3f(sunDirLoc, sunDir.X, sunDir.Y, sunDir.Z);
+            // arah matahari asli
+            int realSunDirLoc = GL.GetUniformLocation(shaderProgram, "realSunDir");
+            GL.Uniform3f(realSunDirLoc, sunDir.X, sunDir.Y, sunDir.Z);
+
+            int skySunDirLoc = GL.GetUniformLocation(Shader.GetSkyShaderProgram(), "sunDir");
+            GL.Uniform3f(skySunDirLoc, sunDir.X, sunDir.Y, sunDir.Z);
+
+            // arah shadow (sun/moon blend)
+            int shadowDirLoc = GL.GetUniformLocation(shaderProgram, "shadowDir");
+            GL.Uniform3f(shadowDirLoc, shadowDir.X, shadowDir.Y, shadowDir.Z);
+
+
             GL.Uniform3f(lightColorLoc, lightColor.X, lightColor.Y, lightColor.Z);
             GL.Uniform3f(viewPosLoc, currentViewPos.X, currentViewPos.Y, currentViewPos.Z);
             GL.Uniform3f(fogColorLoc, fogColor.X, fogColor.Y, fogColor.Z);
@@ -122,10 +150,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // Pastikan nama uniform "useFog" sesuai dengan yang ada di fragment shader Anda
             int useFogLocation = GL.GetUniformLocation(shaderProgram, "useFog");
             GL.Uniform1i(useFogLocation, Keyboard.GetIsFogActive() ? 1 : 0);
-             
+
 
             int shadowFilterMode = GL.GetUniformLocation(shaderProgram, "shadowFilterMode");
-            GL.Uniform1i(shadowFilterMode, Keyboard.GetIsHardShadow() );
+            GL.Uniform1i(shadowFilterMode, Keyboard.GetIsHardShadow());
 
             float currentWeatherVal = Keyboard.GetCurrentWeather();
             float terrainLightIntensity = 1.0f - (currentWeatherVal * 0.80f);
@@ -134,7 +162,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             int terrainLightColorLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "lightColor");
             // Kirim dynamicTerrainLight yang sudah redup, BUKAN lightColor mentah yang terang
             GL.Uniform3f(terrainLightColorLoc, dynamicTerrainLight.X, dynamicTerrainLight.Y, dynamicTerrainLight.Z);
-             
+
             GL.ClearColor(fogColor.X, fogColor.Y, fogColor.Z, 1.0f);
         }
 

@@ -118,7 +118,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // === LIGHTS ===
             GL.Uniform3f(fogColorLoc, lights.FogColor.X, lights.FogColor.Y, lights.FogColor.Z);
-            GL.Uniform3f(sunDirLoc, lights.SunDir.X, lights.SunDir.Y, lights.SunDir.Z);
+            GL.Uniform3f(sunDirLoc, lights.RealSunDir.X, lights.RealSunDir.Y, lights.RealSunDir.Z);
+
 
             // === MOON TEXTURE ===
             GL.ActiveTexture(Const.GL_TEXTURE4);

@@ -1,4 +1,4 @@
-#version 400 core
+﻿#version 400 core
 out vec4 FragColor;
 
 in vec3 FragPos;
@@ -8,8 +8,7 @@ in vec2 TexCoord;
 in float viewDepth;
 
 // CONFIG
-uniform int shadowFilterMode;     // 0 = grid 5x5, 1 = poisson16, 2 = poisson32
-
+uniform int shadowFilterMode;
 uniform vec3 sunDir, lightColor, viewPos, fogColor, heightScale;
 uniform sampler2D tex0, tex1, tex2, tex3, tex4;
 uniform int useTexture;
@@ -23,9 +22,14 @@ uniform float cascadeEnds[3];
 
 // DEBUG
 uniform int showLODColor;
+
 uniform int lodLevel;
 uniform int showCSMCascadeColor;
 uniform int useFog;
+
+uniform vec3 realSunDir;   // arah matahari asli dari CPU
+uniform vec3 shadowDir;    // arah shadow (sun/moon blend)
+
 
 // BLUE NOISE
 uniform sampler2D blueNoiseTex;
@@ -130,13 +134,7 @@ mat2 rotate(float a) {
     return mat2(c, -s, s, c);
 }
 
-float rand(vec2 co){
-    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-}
-
-float blueNoise(vec2 uv)
-{
-    // asumsi blueNoiseTex 256x256, di-tile pelan
+float blueNoise(vec2 uv) {
     return texture(blueNoiseTex, uv * 0.25).r;
 }
 
@@ -187,29 +185,17 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     penumbra *= 5.0;
 
     float lightSize = 0.012;
-    float distanceFactor = 1.0;
+    float filterRadius = penumbra * lightSize * 600.0;
 
-    float filterRadius = penumbra * lightSize * 600.0 * distanceFactor;
-
-    // Minimum radius untuk setiap mode
-    if (shadowFilterMode == 0)       // Grid
-        filterRadius = max(filterRadius, 1.0);
-
-    if (shadowFilterMode == 1)       // Poisson 16
-        filterRadius = max(filterRadius, 2.0);
-
-    if (shadowFilterMode == 2)       // Poisson 32
-        filterRadius = max(filterRadius, 4.0);
+    if (shadowFilterMode == 0) filterRadius = max(filterRadius, 1.0);
+    if (shadowFilterMode == 1) filterRadius = max(filterRadius, 2.0);
+    if (shadowFilterMode == 2) filterRadius = max(filterRadius, 4.0);
 
     float shadow = 0.0;
     vec2 texel = 1.0 / textureSize(shadowMap, 0);
 
-    // ======================================================
-    // FILTER MODE
-    // ======================================================
     if (shadowFilterMode == 0)
     {
-        // GRID 5x5
         for (int x = -2; x <= 2; x++)
         for (int y = -2; y <= 2; y++)
         {
@@ -220,7 +206,6 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     }
     else if (shadowFilterMode == 1)
     {
-        // LV4: Poisson 16 + Rotated + Blue Noise
         float angle = blueNoise(uv) * 6.2831853;
         mat2 rot = rotate(angle);
 
@@ -239,7 +224,6 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     }
     else if (shadowFilterMode == 2)
     {
-        // LV4: Poisson 32 + Rotated + Blue Noise
         float angle = blueNoise(uv * 1.37) * 6.2831853;
         mat2 rot = rotate(angle);
 
@@ -251,7 +235,6 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
             vec2 baseOffset = rot * poisson32[i] * filterRadius * texel;
             vec2 noiseOffset = rot * bnOffset * filterRadius * texel;
 
-            // smoothing 70% base, 30% noise
             vec2 offset = mix(baseOffset, baseOffset + noiseOffset, 0.30);
             offset = clamp(offset, -3.0 * texel, 3.0 * texel);
 
@@ -300,15 +283,21 @@ void main() {
     }
     else texColor = ObjColor;
 
-    // LIGHTING
-    float nightBlendFactor = smoothstep(0.15, 0.0, sunDir.y);
+     // LIGHTING
+    float nightBlendFactor = smoothstep(0.15, 0.0, realSunDir.y);
 
-    vec3 moonDir = normalize(vec3(-sunDir.x, 0.7, -sunDir.z));
+    // arah bulan asli
+    vec3 moonDir = normalize(-realSunDir);
+
+    // arah cahaya untuk shading (sun → moon)
+    vec3 activeLightDir = normalize(mix(realSunDir, moonDir, nightBlendFactor));
+
+    // arah cahaya untuk SHADOW (sudah diputuskan di CPU)
+    vec3 shadowLightDir = normalize(shadowDir);
+    
     vec3 moonColor = vec3(0.08, 0.12, 0.25);
-
     vec3 targetNightColor = (length(lightColor) < 0.1) ? moonColor : lightColor;
 
-    vec3 activeLightDir = normalize(mix(normalize(sunDir), moonDir, nightBlendFactor));
     vec3 activeLightColor = mix(lightColor, targetNightColor, nightBlendFactor);
     float ambientStrength = mix(0.15, 0.04, nightBlendFactor);
 
@@ -324,10 +313,14 @@ void main() {
     float blendRange0 = cascadeEnds[0] * 0.1;
     float blendRange1 = cascadeEnds[1] * 0.1;
 
-    float ndotl = max(dot(norm, activeLightDir), 0.0);
-    float baseBias = max(0.0005 * (1.0 - ndotl), 0.0005);
+    // FIX: gunakan arah bulan saat malam
+    //vec3 shadowLightDir = (nightBlendFactor > 0.5) ? moonDir : sunDir; 
 
-    float bias0 = baseBias; 
+    // FIX: bias harus pakai shadowLightDir 
+    float ndotl = max(dot(norm, shadowLightDir), 0.0);
+    float baseBias = max(0.0005 * (1.0 - ndotl), 0.0005);
+    float bias0 = baseBias;
+
 
     float shadow;
     int cascadeIndex = 0;
@@ -364,7 +357,9 @@ void main() {
         cascadeIndex = 2;
     }
 
-    float shadowMask = smoothstep(0.0, 0.20, dot(norm, activeLightDir));
+    // FIX: shadowMask harus pakai shadowLightDir
+    float shadowMask = smoothstep(0.0, 0.20, dot(norm, shadowLightDir));
+
     vec3 diffuse = finalDiff * activeLightColor * shadowMask * shadow;
 
     vec3 result = (ambient + diffuse) * texColor;
@@ -417,7 +412,8 @@ void main() {
         fogFactor = clamp(fogFactor, 0.0, 1.0);
 
         terrainWithFog = mix(fogColor, result, fogFactor);
-    } else {
+    } 
+    else {
         terrainWithFog = result;
     }
 

@@ -490,9 +490,7 @@ void main()
         float moonGlowMask = exp(-md * md * 60.0);
         vec3 moonGlow = vec3(0.78, 0.82, 0.95) * moonGlowMask * tMalam;
         moonGlow *= mix(1.0, 0.65, weatherMode);
-
-
-
+         
         // moon glow tidak terlalu kuat saat mendung
         moonGlow *= mix(1.0, 0.75, weatherMode);
 
