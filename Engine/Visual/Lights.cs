@@ -122,7 +122,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // Pastikan nama uniform "useFog" sesuai dengan yang ada di fragment shader Anda
             int useFogLocation = GL.GetUniformLocation(shaderProgram, "useFog");
             GL.Uniform1i(useFogLocation, Keyboard.GetIsFogActive() ? 1 : 0);
+             
 
+            int shadowFilterMode = GL.GetUniformLocation(shaderProgram, "shadowFilterMode");
+            GL.Uniform1i(shadowFilterMode, Keyboard.GetIsHardShadow() );
 
             float currentWeatherVal = Keyboard.GetCurrentWeather();
             float terrainLightIntensity = 1.0f - (currentWeatherVal * 0.80f);

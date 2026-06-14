@@ -5,58 +5,34 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec3 ObjColor;
 in vec2 TexCoord;
-
-// NEW: view-space depth from vertex shader
 in float viewDepth;
 
+// CONFIG
+uniform int shadowFilterMode;     // 0 = grid 5x5, 1 = poisson16, 2 = poisson32
+
 uniform vec3 sunDir, lightColor, viewPos, fogColor, heightScale;
-uniform sampler2D tex0, tex1, tex2, tex3, tex4; // 0:Dirt, 1:Rock, 2:Snow, 3:Cliff, 4:Moon
+uniform sampler2D tex0, tex1, tex2, tex3, tex4;
 uniform int useTexture;
 
-// --- CSM UNIFORMS ---
+// CSM
 uniform sampler2D shadowMap0;
 uniform sampler2D shadowMap1;
 uniform sampler2D shadowMap2;
 uniform mat4 lightSpaceMatrices[3];
 uniform float cascadeEnds[3];
 
-// --- LOD COLOR TOGGLE ---
+// DEBUG
 uniform int showLODColor;
 uniform int lodLevel;
 uniform int showCSMCascadeColor;
-
-// --- SAKELAR TOGGLE UNTUK MENGAKTIFKAN/MEMATIKAN KABUT ---
 uniform int useFog;
 
-// --- CSM SHADOW CALCULATION ---
-float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias) {
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5;
-
-    if (projCoords.z > 1.0)
-        return 1.0;
-
-    projCoords.xy = clamp(projCoords.xy, 0.001, 0.999);
-
-    float shadow = 0.0;
-    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-
-    for (int x = -1; x <= 1; ++x) {
-        for (int y = -1; y <= 1; ++y) {
-            vec2 uv = projCoords.xy + vec2(x, y) * texelSize;
-            uv = clamp(uv, 0.001, 0.999);
-
-            float pcfDepth = texture(shadowMap, uv).r;
-            shadow += (projCoords.z - bias > pcfDepth) ? 0.0 : 1.0;
-        }
-    }
-    shadow /= 9.0;
-    return shadow;
-}
-
-// --- FUNGSI NOISE & STOCHASTIC (TETAP STANDAR) ---
+// ======================================================
+// NOISE & STOCHASTIC
+// ======================================================
 vec2 hash2(vec2 p) {
-    return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
+    return fract(sin(vec2(dot(p, vec2(127.1, 311.7)),
+                          dot(p, vec2(269.5, 183.3)))) * 43758.5453);
 }
 
 float smoothNoise(vec2 p) {
@@ -89,7 +65,6 @@ vec3 stochasticSample(sampler2D tex, vec2 uv) {
     return res / weightSum;
 }
 
-// --- FUNGSI BARU: STOCHASTIC + TRIPLANAR KHUSUS TEBING (TEX3) ---
 vec3 stochasticTriplanarCliff(sampler2D tex, vec3 worldPos, vec3 normal, float tiling) {
     vec3 blending = abs(normalize(normal));
     blending = pow(blending, vec3(10.0));
@@ -102,10 +77,162 @@ vec3 stochasticTriplanarCliff(sampler2D tex, vec3 worldPos, vec3 normal, float t
     return xTex * blending.x + yTex * blending.y + zTex * blending.z;
 }
 
+// ======================================================
+// POISSON DISK KERNELS
+// ======================================================
+vec2 poisson16[16] = vec2[](
+    vec2(-0.94201624, -0.39906216),
+    vec2(0.94558609, -0.76890725),
+    vec2(-0.09418410, -0.92938870),
+    vec2(0.34495938, 0.29387760),
+    vec2(-0.91588581, 0.45771432),
+    vec2(-0.81544232, -0.87912464),
+    vec2(-0.38277543, 0.27676845),
+    vec2(0.97484398, 0.75648379),
+    vec2(0.44323325, -0.97511554),
+    vec2(0.53742981, -0.47373420),
+    vec2(-0.26496911, -0.41893023),
+    vec2(0.79197514, 0.19090188),
+    vec2(-0.24188840, 0.99706507),
+    vec2(-0.81409955, 0.91437590),
+    vec2(0.19984126, 0.78641367),
+    vec2(0.14383161, -0.14100790)
+);
+
+vec2 poisson32[32] = vec2[](
+    vec2(-0.613392, 0.617481), vec2(0.170019, -0.040254),
+    vec2(-0.299417, 0.791925), vec2(0.645680, 0.493210),
+    vec2(-0.651784, 0.717887), vec2(0.421003, 0.027070),
+    vec2(-0.817194, -0.271096), vec2(-0.705374, -0.668203),
+    vec2(0.977050, -0.108615), vec2(0.063326, 0.142369),
+    vec2(0.203528, 0.214331), vec2(-0.667531, 0.326090),
+    vec2(-0.098422, -0.295755), vec2(-0.885922, 0.215369),
+    vec2(0.566637, 0.605213), vec2(0.039766, -0.396100),
+    vec2(0.751946, 0.453352), vec2(0.078707, -0.715323),
+    vec2(-0.075838, -0.529344), vec2(0.724479, -0.580798),
+    vec2(0.222999, -0.215125), vec2(-0.467574, -0.405438),
+    vec2(-0.248268, -0.814753), vec2(0.354411, -0.887570),
+    vec2(0.175817, 0.382366), vec2(0.487472, -0.063082),
+    vec2(-0.084078, 0.898312), vec2(-0.667531, -0.326090),
+    vec2(-0.270690, -0.235939), vec2(-0.704948, 0.403686),
+    vec2(0.440840, -0.639999), vec2(-0.280480, 0.293709)
+);
+
+// ======================================================
+// PCSS
+// ======================================================
+float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchRadius)
+{
+    float blockers = 0.0;
+    float count = 0.0;
+
+    vec2 texel = 1.0 / textureSize(shadowMap, 0);
+
+    for (int x = -2; x <= 2; x++)
+    for (int y = -2; y <= 2; y++)
+    {
+        float shadowDepth = texture(shadowMap, uv + vec2(x, y) * texel * searchRadius).r;
+        if (shadowDepth < zReceiver) {
+            blockers += shadowDepth;
+            count += 1.0;
+        }
+    }
+
+    if (count < 1.0)
+        return -1.0;
+
+    return blockers / count;
+}
+
+float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.z > 1.0)
+        return 1.0;
+
+    vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
+    float zReceiver = projCoords.z - bias;
+
+    float searchRadius = 25.0;
+
+    float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, searchRadius);
+    if (avgBlocker < 0.0)
+        return 1.0;
+
+    float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
+    penumbra *= 5.0;
+
+    float lightSize = 0.012;
+
+    float distanceFactor = 1.0;
+
+    float filterRadius = penumbra * lightSize * 600.0 * distanceFactor;
+
+    // Minimum radius untuk setiap mode
+    if (shadowFilterMode == 0)       // Grid
+        filterRadius = max(filterRadius, 1.0);
+
+    if (shadowFilterMode == 1)       // Poisson 16
+        filterRadius = max(filterRadius, 3.5);
+
+    if (shadowFilterMode == 2)       // Poisson 32
+        filterRadius = max(filterRadius, 6.0);
+
+
+
+    float shadow = 0.0;
+    vec2 texel = 1.0 / textureSize(shadowMap, 0);
+
+    // ======================================================
+    // FILTER MODE
+    // ======================================================
+    if (shadowFilterMode == 0)
+    {
+        // GRID 5x5
+        for (int x = -2; x <= 2; x++)
+        for (int y = -2; y <= 2; y++)
+        {
+            float pcfDepth = texture(shadowMap, uv + vec2(x, y) * texel * filterRadius).r;
+            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
+        }
+        shadow /= 25.0;
+    }
+    else if (shadowFilterMode == 1)
+    {
+        // POISSON 16
+        for (int i = 0; i < 16; i++)
+        {
+            vec2 offset = poisson16[i] * filterRadius * texel;
+            float pcfDepth = texture(shadowMap, uv + offset).r;
+            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
+        }
+        shadow /= 16.0;
+    }
+    else if (shadowFilterMode == 2)
+    {
+        // POISSON 32
+        for (int i = 0; i < 32; i++)
+        {
+            vec2 offset = poisson32[i] * filterRadius * texel;
+            float pcfDepth = texture(shadowMap, uv + offset).r;
+            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
+        }
+        shadow /= 32.0;
+    }
+
+    return shadow;
+}
+
+// ======================================================
+// MAIN
+// ======================================================
 void main() {
     vec3 norm = normalize(Normal);
     float slope = 1.0 - norm.y;
 
+    // TEXTURING
     vec3 texColor;
     if (useTexture == 1) {
         float tilingDatar = 0.5;
@@ -123,29 +250,18 @@ void main() {
         float hn = h + noise;
 
         vec3 base;
-        if(hn < 0.25) {
-            base = mix(t0, t1, smoothstep(0.1, 0.25, hn));
-        } else if(hn < 0.90) {
-            base = t1;
-        } else {
-            base = mix(t1, t2, smoothstep(0.90, 0.99, hn));
-        }
+        if(hn < 0.25) base = mix(t0, t1, smoothstep(0.1, 0.25, hn));
+        else if(hn < 0.90) base = t1;
+        else base = mix(t1, t2, smoothstep(0.90, 0.99, hn));
 
         float sn = slope + (noise * 0.1);
         float cliffMask = smoothstep(0.35, 0.45, sn);
 
-        vec3 boldCliff = t3 * 0.8;
-
-        texColor = mix(base, boldCliff, cliffMask);
-
-    } else {
-        texColor = ObjColor;
+        texColor = mix(base, t3 * 0.8, cliffMask);
     }
+    else texColor = ObjColor;
 
-    // =========================================================================
-    // LIGHTING INTERPOLASI HALUS (TRANSISI PERLAHAN SIANG -> MALAM)
-    // =========================================================================
-
+    // LIGHTING
     float nightBlendFactor = smoothstep(0.15, 0.0, sunDir.y);
 
     vec3 moonDir = normalize(vec3(-sunDir.x, 0.7, -sunDir.z));
@@ -159,15 +275,11 @@ void main() {
 
     vec3 ambient = ambientStrength * activeLightColor;
 
-    vec3 shadowAmbientColor = mix(ambient, fogColor * 0.2, nightBlendFactor * pow(1.0 - slope, 0.3));
-    ambient = mix(ambient, shadowAmbientColor, nightBlendFactor);
-
     float diff = max(dot(norm, activeLightDir), 0.0);
     float slopeShadow = pow(1.0 - slope, 0.5);
     float finalDiff = diff * mix(0.7, 1.0, slopeShadow);
 
-    // --- CALCULATE SHADOW MULTIPLIER (CSM) ---
-    // FIX: gunakan view-space depth, bukan jarak Euclidean dunia
+    // CSM + PCSS
     float depth = viewDepth;
 
     float blendRange0 = cascadeEnds[0] * 0.1;
@@ -176,40 +288,43 @@ void main() {
     float ndotl = max(dot(norm, activeLightDir), 0.0);
     float baseBias = max(0.0005 * (1.0 - ndotl), 0.00005);
 
-    float bias0 = baseBias;          // cascade 0
-    float bias1 = baseBias * 0.5;    // cascade 1 → LEBIH KECIL
-    float bias2 = baseBias * 0.25;   // cascade 2 → PALING KECIL
-     
+    float bias0 = baseBias;
+    float bias1 = baseBias * 0.5;
+    float bias2 = baseBias * 0.25;
+
     float shadow;
     int cascadeIndex = 0;
     float cascadeBlendT = 0.0;
 
+    vec4 worldPos4 = vec4(FragPos, 1.0);
+
     if (depth < cascadeEnds[0] - blendRange0) {
-        shadow = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
+        shadow = PCSS(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
         cascadeIndex = 0;
-        cascadeBlendT = 0.0;
-    } else if (depth < cascadeEnds[0]) {
+    }
+    else if (depth < cascadeEnds[0]) {
         float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
-        float s0 = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
+        float s0 = PCSS(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
+        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias1);
         shadow = mix(s0, s1, t);
         cascadeIndex = 1;
         cascadeBlendT = t;
-    } else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
+    }
+    else if (depth < cascadeEnds[1] - blendRange1) {
+        shadow = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias1);
         cascadeIndex = 1;
-        cascadeBlendT = 0.0;
-    } else if (depth < cascadeEnds[1]) {
+    }
+    else if (depth < cascadeEnds[1]) {
         float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
-        float s2 = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
+        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias1);
+        float s2 = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias2);
         shadow = mix(s1, s2, t);
         cascadeIndex = 2;
         cascadeBlendT = t;
-    } else {
-        shadow = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
+    }
+    else {
+        shadow = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias2);
         cascadeIndex = 2;
-        cascadeBlendT = 0.0;
     }
 
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, activeLightDir));
@@ -217,6 +332,7 @@ void main() {
 
     vec3 result = (ambient + diffuse) * texColor;
 
+    // DEBUG CSM COLOR
     if (showCSMCascadeColor == 1) {
         vec3 cascadeColors[3] = vec3[](
             vec3(1.0, 0.0, 0.0),
@@ -234,6 +350,7 @@ void main() {
         result = mix(result, cColor, 0.35);
     }
 
+    // DEBUG LOD COLOR
     if (showLODColor == 1) {
         vec3 lodColors[4] = vec3[](
             vec3(1.0, 0.0, 0.0),
@@ -244,6 +361,9 @@ void main() {
         result = mix(result, lodColors[clamp(lodLevel, 0, 3)], 0.1);
     }
 
+    // ======================================================
+    // FOG
+    // ======================================================
     vec3 terrainWithFog;
 
     if (useFog == 1) {
@@ -264,6 +384,9 @@ void main() {
         terrainWithFog = result;
     }
 
+    // ======================================================
+    // TONEMAP + GAMMA
+    // ======================================================
     vec3 mapped = terrainWithFog / (terrainWithFog + vec3(1.0));
     mapped = pow(mapped, vec3(1.0 / 2.2));
 

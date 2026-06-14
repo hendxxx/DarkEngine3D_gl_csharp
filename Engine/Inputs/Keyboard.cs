@@ -36,6 +36,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
         // Variabel kontrol untuk toggle kabut
         static bool isFogActive = true;
+        static int shadowFilterMode = 0;
         static bool fPressed = false;
 
         // Variabel kontrol untuk toggle LOD color
@@ -74,6 +75,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         public static float GetCurrentWeather()
         {
             return CurrentWeather;
+        }
+
+        public static int GetIsHardShadow()
+        {
+            return shadowFilterMode;
         }
 
         public static unsafe void Init(nint glfwLib, float _speedCam)
@@ -151,6 +157,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             else
             {
                 fPressed = false;
+            }
+
+             
+            // H = toggle shadow filter mode (0 → 1 → 2 → 0 ...)
+            if (IsKeyPressed(window, Const.GLFW_KEY_H))
+            {
+                shadowFilterMode++;
+                if (shadowFilterMode > 2)
+                    shadowFilterMode = 0;
+
+                string modeName = shadowFilterMode switch
+                {
+                    0 => "PCF Grid 5x5",
+                    1 => "Poisson 16",
+                    2 => "Poisson 32",
+                    _ => "Unknown"
+                };
+
+                Console.WriteLine($"Shadow Filter Mode: {shadowFilterMode} ({modeName})");
             }
 
             // =========================================================================
