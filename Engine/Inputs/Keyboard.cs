@@ -40,7 +40,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
         // Variabel kontrol untuk toggle LOD color
         static bool showLODColor = false;
+        static bool showCSMCascadeColor = false;
         static bool lPressed = false;
+        static bool oPressed = false;
 
         // Variabel kontrol untuk toggle camera mode 
         static bool commaPressed = false;
@@ -53,11 +55,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         { 
             get { return isFogActive; }
             set { isFogActive = value; }
-        } 
-        
-            
+        }
+        public static bool GetshowCSMCascadeColor()
+        {
+            return showCSMCascadeColor;
+        }
 
-    public static bool GetShowLODColor()
+
+        public static bool GetShowLODColor()
         {
             return showLODColor;
         }
@@ -149,16 +154,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             }
 
             // =========================================================================
+            // O TOGGLE LOD COLOR (RISING EDGE)
+            // =========================================================================
+            int oState = glfwGetKey(window, Const.GLFW_KEY_O);
+            if (oState == Const.GLFW_PRESS)
+            {
+                if (!oPressed)
+                {
+                    showLODColor = !showLODColor;
+                    oPressed = true;
+                    Console.WriteLine(showLODColor ? "LOD Color: ON" : "LOD Color: OFF");
+                }
+            }
+            else
+            {
+                oPressed = false;
+            }
+
+            // =========================================================================
             // L TOGGLE LOD COLOR (RISING EDGE)
             // =========================================================================
-            int lState = glfwGetKey(window, Const.GLFW_KEY_O);
+            int lState = glfwGetKey(window, Const.GLFW_KEY_L);
             if (lState == Const.GLFW_PRESS)
             {
                 if (!lPressed)
                 {
-                    showLODColor = !showLODColor;
+                    showCSMCascadeColor = !showCSMCascadeColor;
                     lPressed = true;
-                    Console.WriteLine(showLODColor ? "LOD Color: ON" : "LOD Color: OFF");
+                    Console.WriteLine(showCSMCascadeColor ? "CSM LOD Color: ON" : "CSM LOD Color: OFF");
                 }
             }
             else

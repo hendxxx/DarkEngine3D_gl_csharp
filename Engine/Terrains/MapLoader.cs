@@ -305,7 +305,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         public static void GeneratePhotorealHeightmap(string path, int size)
         {
-            Console.WriteLine("\r\nGenerating High-Alpine: Minimizing Plains, Maximizing Peaks...");
+            Console.WriteLine("\r\nGenerating High-Alpine Terrain (No Edge Mountains)...");
             byte[] data = new byte[size * size];
             Random rand = new();
             float seedX = (float)rand.NextDouble() * 50000f;
@@ -318,7 +318,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     float nx = (float)x / size;
                     float ny = (float)y / size;
 
-                    // 1. Domain Warping (Tetap versi artistik)
+                    // ---------------------------------------------------------
+                    // 1. DOMAIN WARPING (High-Alpine Style)
+                    // ---------------------------------------------------------
                     float warp = MathF.Sin(nx * 5.0f + seedX) * MathF.Cos(ny * 5.0f + seedY) * 0.2f;
                     float wx = nx + warp;
                     float wy = ny + warp;
@@ -339,19 +341,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                         amp *= 0.46f;
                     }
 
-                    // 2. KUNCI: Kurangi pemotongan dataran (Bias)
-                    // Kita turunkan dari 0.5f ke 0.15f agar dataran rendah menciut drastis
+                    // ---------------------------------------------------------
+                    // 2. EDGE FALLOFF (Gunung tidak boleh muncul di pinggir)
+                    // ---------------------------------------------------------
+                    float cx = nx - 0.5f;
+                    float cy = ny - 0.5f;
+
+                    // 0 di tengah, 1 di pinggir (lingkaran)
+                    float dist = MathF.Sqrt(cx * cx + cy * cy) * 2.0f;
+                    dist = Math.Clamp(dist, 0f, 1f);
+
+                    // Falloff halus
+                    float falloff = 1.0f - MathF.Pow(dist, 2.0f);
+
+                    // Terapkan falloff
+                    h *= falloff;
+
+                    // ---------------------------------------------------------
+                    // 3. Kurangi dataran rendah (biar alpine)
+                    // ---------------------------------------------------------
                     h = MathF.Max(0, h - 0.15f);
 
-                    // 3. SHARPENING: Tetap silet biar puncaknya kuncup salju
+                    // ---------------------------------------------------------
+                    // 4. SHARPENING (puncak lebih tajam)
+                    // ---------------------------------------------------------
                     h = MathF.Pow(h, 2.0f);
 
-                    // 4. Multiplier Aman (Anti-Clipping)
+                    // ---------------------------------------------------------
+                    // 5. Konversi ke byte
+                    // ---------------------------------------------------------
                     data[y * size + x] = (byte)(Math.Clamp(h * 150f, 0, 255));
                 }
             }
+
             File.WriteAllBytes(path, data);
         }
+
 
 
     }

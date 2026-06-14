@@ -148,9 +148,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         // tick accumulator (AI tidak selalu jalan tiap frame)
         private float _aiTickAccum = 0f;
-         
-        private float tickInterval = 0f;
-
+           
         public CharacterAgent(GltfObject obj, Random rng)
         { 
 

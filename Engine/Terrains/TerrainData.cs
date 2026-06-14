@@ -38,6 +38,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         static int tex5Loc;
         static int heightScaleLoc;
         static int showLODColorLoc;
+        static int showCSMCascadeColorLoc;
         static int lodLevelLoc;
 
         public static int GetTexLoc(int index)
@@ -59,6 +60,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         public static int GetShowLODColorLoc() => showLODColorLoc;
+        public static int GetshowCSMCascadeColorLoc() => showCSMCascadeColorLoc;
         public static int GetLodLevelLoc() => lodLevelLoc;
 
         // Kita gunakan List sementara saat Generate, lalu upload ke Native Memory
@@ -77,6 +79,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             tex5Loc = GL.GetUniformLocation(shaderProgram, "tex5");
             heightScaleLoc = GL.GetUniformLocation(shaderProgram, "heightScale");
             showLODColorLoc = GL.GetUniformLocation(shaderProgram, "showLODColor");
+            showCSMCascadeColorLoc = GL.GetUniformLocation(shaderProgram, "showCSMCascadeColor");
             lodLevelLoc = GL.GetUniformLocation(shaderProgram, "lodLevel");
 
             TerrainTex = _terrainTextures;
@@ -411,6 +414,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             {
                 GL.Uniform1i(showLODColorLoc, Keyboard.GetShowLODColor() ? 1 : 0);
             }
+
+            int showCSMCascadeColorLoc = GetshowCSMCascadeColorLoc();
+            if (showCSMCascadeColorLoc != -1)
+            {
+                GL.Uniform1i(showCSMCascadeColorLoc, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+            }
+
+
+
             int lodLevelLoc = GetLodLevelLoc();
             if (lodLevelLoc != -1)
             {

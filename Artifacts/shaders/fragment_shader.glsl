@@ -20,6 +20,7 @@ uniform float cascadeEnds[3];
 // --- LOD COLOR TOGGLE ---
 uniform int showLODColor;
 uniform int lodLevel;
+uniform int showCSMCascadeColor;
 
 // --- SAKELAR TOGGLE UNTUK MENGAKTIFKAN/MEMATIKAN KABUT ---
 uniform int useFog; 
@@ -27,18 +28,24 @@ uniform int useFog;
 // --- CSM SHADOW CALCULATION ---
 float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias) {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5;
-    
-    if(projCoords.z > 1.0)
+   projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.z > 1.0)
         return 1.0;
-        
+
+    projCoords.xy = clamp(projCoords.xy, 0.001, 0.999);
+
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for(int x = -1; x <= 1; ++x) {
-        for(int y = -1; y <= 1; ++y) {
-            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r; 
-            shadow += projCoords.z - bias > pcfDepth ? 0.0 : 1.0;        
-        }    
+
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            vec2 uv = projCoords.xy + vec2(x, y) * texelSize;
+            uv = clamp(uv, 0.001, 0.999);
+
+            float pcfDepth = texture(shadowMap, uv).r;
+            shadow += (projCoords.z - bias > pcfDepth) ? 0.0 : 1.0;
+        }
     }
     shadow /= 9.0;
     return shadow;
@@ -176,33 +183,66 @@ void main() {
     float bias2 = bias0 * 6.0;
 
     float shadow;
+    int cascadeIndex = 0;
+    float cascadeBlendT = 0.0;
+
     if (depth < cascadeEnds[0] - blendRange0) {
         // Fully inside cascade 0
         shadow = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
+        cascadeIndex = 0;
+        cascadeBlendT = 0.0;
     } else if (depth < cascadeEnds[0]) {
         // Blend zone between cascade 0 and 1
         float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
         float s0 = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
         float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
         shadow = mix(s0, s1, t);
+        cascadeIndex = 1;      // anggap “utama” ke 1
+        cascadeBlendT = t;     // 0..1 antara 0 dan 1
     } else if (depth < cascadeEnds[1] - blendRange1) {
         // Fully inside cascade 1
         shadow = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
+        cascadeIndex = 1;
+        cascadeBlendT = 0.0;
     } else if (depth < cascadeEnds[1]) {
         // Blend zone between cascade 1 and 2
         float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
         float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
         float s2 = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
         shadow = mix(s1, s2, t);
+        cascadeIndex = 2;
+        cascadeBlendT = t;
     } else {
         // Fully inside cascade 2
         shadow = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
+        cascadeIndex = 2;
+        cascadeBlendT = 0.0;
     }
 
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, activeLightDir));
     vec3 diffuse = finalDiff * activeLightColor * shadowMask * shadow;
     
     vec3 result = (ambient + diffuse) * texColor;
+    
+    // --- DEBUG: WARNA CSM LOD ---
+    if (showCSMCascadeColor == 1) {
+        vec3 cascadeColors[3] = vec3[](
+            vec3(1.0, 0.0, 0.0), // Cascade 0: Merah
+            vec3(0.0, 1.0, 0.0), // Cascade 1: Hijau
+            vec3(0.0, 0.0, 1.0)  // Cascade 2: Biru
+        );
+
+        vec3 cColor = cascadeColors[cascadeIndex];
+
+        // Kalau di zona blend, bikin sedikit gradasi ke cascade sebelumnya
+        if (cascadeBlendT > 0.0 && cascadeIndex > 0) {
+            vec3 prevColor = cascadeColors[cascadeIndex - 1];
+            cColor = mix(prevColor, cColor, cascadeBlendT);
+        }
+
+        // Overlay tipis supaya masih kelihatan lighting
+        result = mix(result, cColor, 0.35);
+    }
 
     // --- APPLY LOD COLOR IF ENABLED ---
     if (showLODColor == 1) {

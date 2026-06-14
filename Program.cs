@@ -94,7 +94,7 @@ public unsafe class Program
         ];
         // Init TerrainChunk
         TerrainChunk.GlobalLODLevel = 1;
-        TerrainChunk.HeightScale = 25.0f;
+        TerrainChunk.HeightScale = 10.0f;
         TerrainChunk.TerrainScale = 1.0f;
         TerrainChunk.OnLoadProgress += (progress) =>
         {
@@ -112,7 +112,7 @@ public unsafe class Program
 
 
         // Generate a high-quality procedural heightmap if it doesn't exist
-        string mapPath = "Artifacts\\maps\\photoreal_v1.raw";
+        string mapPath = "Artifacts\\maps\\photoreal_v0.raw";
         if (!File.Exists(mapPath))
         {
             MapLoader.GeneratePhotorealHeightmap(mapPath, 513); // 513x513 standard size

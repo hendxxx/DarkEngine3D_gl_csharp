@@ -18,7 +18,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Vector3[][] OrthoCorners = new Vector3[NumCascades][];
 
         // Cascade splits: near/close/far. Third cascade covers the full visible shadow horizon.
-        public float[] CascadeEnds = { 15.0f, 50.0f, 300.0f };
+        public float[] CascadeEnds = { 30.0f, 120.0f, 600.0f };
 
         public CSM(int shadowSize = 2046)
         {
