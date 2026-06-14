@@ -33,5 +33,6 @@ void main()
         skinnedPos = skinMat * vec4(aPos, 1.0);
     }
 
-    gl_Position = lightSpaceMatrix * model * skinnedPos;
+    vec4 worldPos = model * skinnedPos;
+    gl_Position   = lightSpaceMatrix * worldPos;
 }

@@ -273,8 +273,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (Keyboard.IsKeyPressed(window, Const.GLFW_KEY_G))
                 FlyMode = !FlyMode;
             
-            IsFlyMode = FlyMode;
-            Console.WriteLine("Is FLy Mode = " + IsFlyMode );
+            IsFlyMode = FlyMode; 
 
             if (FlyMode)
             {

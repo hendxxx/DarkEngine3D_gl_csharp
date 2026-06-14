@@ -14,10 +14,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public uint[] ShadowTextures = new uint[NumCascades];
         public Matrix4x4[] LightSpaceMatrices = new Matrix4x4[NumCascades];
 
-        // NEW: Ortho corners per cascade (world space)
         public Vector3[][] OrthoCorners = new Vector3[NumCascades][];
 
-        // Cascade splits: near/close/far. Third cascade covers the full visible shadow horizon.
         public float[] CascadeEnds = { 30.0f, 120.0f, 600.0f };
 
         public CSM(int shadowSize = 2046)
@@ -43,13 +41,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     ShadowSize, ShadowSize, 0,
                     Const.GL_DEPTH_COMPONENT, Const.GL_FLOAT, (void*)0);
 
-                // Use LINEAR filtering for smoother shadows instead of NEAREST
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
 
-                // Disable hardware comparison mode - let shader handle it
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_COMPARE_MODE, (int)Const.GL_NONE);
 
                 GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_ATTACHMENT,
@@ -80,6 +76,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             lightDir = Vector3.Normalize(lightDir);
 
+            // Cascade terakhir harus sama dengan far plane kamera
+            CascadeEnds[NumCascades - 1] = camera.FarDist;
+
             float prevSplit = camera.NearDist;
 
             for (int i = 0; i < NumCascades; i++)
@@ -87,33 +86,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 float nextSplit = CascadeEnds[i];
                 float fovRad = Helpers.OGLMath.ToRadians(camera.FoV);
 
-                // 1. Frustum split
-                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(fovRad, camera.GetAspect(), prevSplit, nextSplit);
+                Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(
+                    fovRad, camera.GetAspect(), prevSplit, nextSplit);
 
                 Vector3[] corners = TerrainChunk.GetFrustumCorners(camera.GetViewMatrix(), splitProj);
 
-                // 2. Center
                 Vector3 center = Vector3.Zero;
                 for (int j = 0; j < 8; j++)
                     center += corners[j];
                 center /= 8f;
 
-                // 3. Radius (buat posisi light)
                 float radius = 0f;
                 for (int j = 0; j < 8; j++)
                     radius = MathF.Max(radius, (corners[j] - center).Length());
 
-                // More aggressive rounding to ensure consistent shadow bounds
                 radius = MathF.Ceiling(radius * 32f) / 32f;
 
                 Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
                     ? Vector3.UnitZ : Vector3.UnitY;
 
-                Vector3 lightPos = center + lightDir * radius * 1.0f;
+                Vector3 lightPos = center + lightDir * radius;
 
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
-                // 4. Bounds di light space
                 float minX = float.MaxValue, maxX = float.MinValue;
                 float minY = float.MaxValue, maxY = float.MinValue;
                 float minZ = float.MaxValue, maxZ = float.MinValue;
@@ -128,26 +123,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     minZ = MathF.Min(minZ, lp.Z);
                     maxZ = MathF.Max(maxZ, lp.Z);
                 }
+                // FIX: padding XY besar supaya tubuh tidak terpotong
+                float padXY = radius * 0.75f;
+                if (padXY < 15.0f) padXY = 15.0f;
 
-                // 5. Padding XY: wide enough so objects at cascade edge don't pop.
-                //    Use a minimum floor so small cascades don't under-pad.
-                float padXY = MathF.Max(radius * 0.15f, 2.0f);
-                minX -= padXY;
-                maxX += padXY;
-                minY -= padXY;
-                maxY += padXY;
+                // FIX: padding Z belakang lebih besar untuk objek tinggi
+                float padZFront = radius * 3.0f;
+                float padZBack = radius * 6.0f + (i * 50.0f);
 
-                // 6. Padding Z: pull the near plane back far enough to catch tall objects
-                //    (characters, trees) that may stand above the frustum slice.
-                //    Scale with cascade index so the far cascade gets more pull-back.
-                //    zNear is pulled back VERY far to capture distant mountain casters
-                //    that cast long shadows onto near terrain (avoids bright holes in shadow).
-                float padZFront = radius * 3.0f;                    // push zFar forward a little
-                float padZBack  = radius * 8.0f + (i * 40.0f);     // pull zNear back A LOT
+
                 float zNear = minZ - padZBack;
-                float zFar  = maxZ + padZFront;
+                float zFar = maxZ + padZFront;
 
-                // 6. Ortho corners (world space) buat culling
+                // FIX: clamp Z-range supaya precision cascade jauh tidak hancur
+                float maxRange = radius * 10.0f;
+                float centerZ = 0.5f * (zNear + zFar);
+                float half = 0.5f * maxRange;
+
+                zNear = centerZ - half;
+                zFar = centerZ + half;
+
                 Vector3[] ls =
                 {
                     new(minX, minY, zNear),
@@ -167,26 +162,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 OrthoCorners[i] = ls;
 
-                // 7. Ortho projection (OpenGL)
-                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(minX, maxX, minY, maxY, zNear, zFar);
+                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
+                    minX, maxX, minY, maxY, zNear, zFar);
 
-                // 8. Light space matrix
+                // Pipeline kamu: row-major → view * proj
                 LightSpaceMatrices[i] = lightView * lightProj;
 
                 prevSplit = nextSplit;
             }
         }
 
-
-
-        // Build planes from 8 frustum corners (order: 0..3 near, 4..7 far)
         public static Plane[]? BuildPlanesFromCorners(Vector3[] c)
         {
             if (c == null || c.Length < 8) return null;
 
             var planes = new Plane[6];
 
-            // Create helper to make a plane from three points
             static Plane MakePlane(Vector3 a, Vector3 b, Vector3 d, Vector3 insidePoint)
             {
                 var n = Vector3.Normalize(Vector3.Cross(b - a, d - a));
@@ -194,9 +185,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 Plane p = new Plane(n, D);
 
-                // ✅ pastikan normal mengarah ke dalam
                 float dist = Vector3.Dot(p.Normal, insidePoint) + p.D;
-
                 if (dist < 0)
                 {
                     p.Normal = -p.Normal;
@@ -206,15 +195,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 return Plane.Normalize(p);
             }
 
-            Vector3 center = (c[0] + c[6]) * 0.5f; // approx center
+            Vector3 center = (c[0] + c[6]) * 0.5f;
 
-            // Use triangles that define each face (orientation doesn't matter for our inside-test)
-            planes[0] = MakePlane(c[1], c[2], c[6], center); // Right
-            planes[1] = MakePlane(c[3], c[0], c[4], center); // Left
-            planes[2] = MakePlane(c[0], c[1], c[5], center); // Bottom
-            planes[3] = MakePlane(c[2], c[3], c[7], center); // Top
-            planes[4] = MakePlane(c[0], c[3], c[2], center); // Near
-            planes[5] = MakePlane(c[5], c[6], c[7], center); // Far
+            planes[0] = MakePlane(c[1], c[2], c[6], center);
+            planes[1] = MakePlane(c[3], c[0], c[4], center);
+            planes[2] = MakePlane(c[0], c[1], c[5], center);
+            planes[3] = MakePlane(c[2], c[3], c[7], center);
+            planes[4] = MakePlane(c[0], c[3], c[2], center);
+            planes[5] = MakePlane(c[5], c[6], c[7], center);
 
             return planes;
         }
