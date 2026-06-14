@@ -47,6 +47,9 @@
     <None Update="Artifacts\images\spinner_image.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\maps\photoreal_v0.raw">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\maps\\moon.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

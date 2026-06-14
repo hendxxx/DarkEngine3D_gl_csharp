@@ -27,6 +27,9 @@ uniform int lodLevel;
 uniform int showCSMCascadeColor;
 uniform int useFog;
 
+// BLUE NOISE
+uniform sampler2D blueNoiseTex;
+
 // ======================================================
 // NOISE & STOCHASTIC
 // ======================================================
@@ -119,6 +122,25 @@ vec2 poisson32[32] = vec2[](
 );
 
 // ======================================================
+// ROTATION + BLUE NOISE
+// ======================================================
+mat2 rotate(float a) {
+    float s = sin(a);
+    float c = cos(a);
+    return mat2(c, -s, s, c);
+}
+
+float rand(vec2 co){
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+float blueNoise(vec2 uv)
+{
+    // asumsi blueNoiseTex 256x256, di-tile pelan
+    return texture(blueNoiseTex, uv * 0.25).r;
+}
+
+// ======================================================
 // PCSS
 // ======================================================
 float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchRadius)
@@ -165,7 +187,6 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     penumbra *= 5.0;
 
     float lightSize = 0.012;
-
     float distanceFactor = 1.0;
 
     float filterRadius = penumbra * lightSize * 600.0 * distanceFactor;
@@ -175,12 +196,10 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
         filterRadius = max(filterRadius, 1.0);
 
     if (shadowFilterMode == 1)       // Poisson 16
-        filterRadius = max(filterRadius, 3.5);
+        filterRadius = max(filterRadius, 2.0);
 
     if (shadowFilterMode == 2)       // Poisson 32
-        filterRadius = max(filterRadius, 6.0);
-
-
+        filterRadius = max(filterRadius, 4.0);
 
     float shadow = 0.0;
     vec2 texel = 1.0 / textureSize(shadowMap, 0);
@@ -201,10 +220,18 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     }
     else if (shadowFilterMode == 1)
     {
-        // POISSON 16
+        // LV4: Poisson 16 + Rotated + Blue Noise
+        float angle = blueNoise(uv) * 6.2831853;
+        mat2 rot = rotate(angle);
+
         for (int i = 0; i < 16; i++)
         {
-            vec2 offset = poisson16[i] * filterRadius * texel;
+            float bn = blueNoise(uv + float(i));
+            vec2 bnOffset = vec2(cos(bn * 6.2831853), sin(bn * 6.2831853)) * 0.15;
+
+            vec2 offset = rot * (poisson16[i] + bnOffset) * filterRadius * texel;
+            offset = clamp(offset, -4.0 * texel, 4.0 * texel);
+
             float pcfDepth = texture(shadowMap, uv + offset).r;
             shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
         }
@@ -212,10 +239,22 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     }
     else if (shadowFilterMode == 2)
     {
-        // POISSON 32
+        // LV4: Poisson 32 + Rotated + Blue Noise
+        float angle = blueNoise(uv * 1.37) * 6.2831853;
+        mat2 rot = rotate(angle);
+
         for (int i = 0; i < 32; i++)
         {
-            vec2 offset = poisson32[i] * filterRadius * texel;
+            float bn = blueNoise(uv + float(i) * 0.73);
+            vec2 bnOffset = vec2(cos(bn * 6.2831853), sin(bn * 6.2831853)) * 0.10;
+
+            vec2 baseOffset = rot * poisson32[i] * filterRadius * texel;
+            vec2 noiseOffset = rot * bnOffset * filterRadius * texel;
+
+            // smoothing 70% base, 30% noise
+            vec2 offset = mix(baseOffset, baseOffset + noiseOffset, 0.30);
+            offset = clamp(offset, -3.0 * texel, 3.0 * texel);
+
             float pcfDepth = texture(shadowMap, uv + offset).r;
             shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
         }
