@@ -325,11 +325,9 @@ void main() {
     float blendRange1 = cascadeEnds[1] * 0.1;
 
     float ndotl = max(dot(norm, activeLightDir), 0.0);
-    float baseBias = max(0.0005 * (1.0 - ndotl), 0.00005);
+    float baseBias = max(0.0005 * (1.0 - ndotl), 0.0005);
 
-    float bias0 = baseBias;
-    float bias1 = baseBias * 0.5;
-    float bias2 = baseBias * 0.25;
+    float bias0 = baseBias; 
 
     float shadow;
     int cascadeIndex = 0;
@@ -344,25 +342,25 @@ void main() {
     else if (depth < cascadeEnds[0]) {
         float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
         float s0 = PCSS(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
-        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias1);
+        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
         shadow = mix(s0, s1, t);
         cascadeIndex = 1;
         cascadeBlendT = t;
     }
     else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias1);
+        shadow = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
         cascadeIndex = 1;
     }
     else if (depth < cascadeEnds[1]) {
         float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias1);
-        float s2 = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias2);
+        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
+        float s2 = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
         shadow = mix(s1, s2, t);
         cascadeIndex = 2;
         cascadeBlendT = t;
     }
     else {
-        shadow = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias2);
+        shadow = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
         cascadeIndex = 2;
     }
 

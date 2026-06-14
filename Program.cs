@@ -112,7 +112,7 @@ public unsafe class Program
 
 
         // Generate a high-quality procedural heightmap if it doesn't exist
-        string mapPath = "Artifacts\\maps\\map.png";
+        string mapPath = "Artifacts\\maps\\photoreal_v0.raw";
         if (!File.Exists(mapPath))
         {
             MapLoader.GeneratePhotorealHeightmap(mapPath, 513); // 513x513 standard size
