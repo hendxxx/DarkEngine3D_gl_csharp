@@ -388,6 +388,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
             GL.UseProgram(shadowShader); 
+
             // Model matrix (identity)
             Matrix4x4 model = Matrix4x4.Identity;
             unsafe
