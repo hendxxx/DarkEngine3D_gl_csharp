@@ -297,7 +297,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             int totalTriangles = 0;
 
             GL.UseProgram(shaderProgram);
-            GL.BindVertexArray(0);
+            
             // 1. Hitung Matriks Gabungan (View * Projection)
             Matrix4x4 vp = camera.GetViewMatrix() * camera.GetProjectionMatrix();
 
@@ -387,9 +387,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
-            GL.UseProgram(shadowShader);
-            OpenGL.EnableFaceCulling(false);
-
+            GL.UseProgram(shadowShader); 
             // Model matrix (identity)
             Matrix4x4 model = Matrix4x4.Identity;
             unsafe
@@ -432,9 +430,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
                     worldMap[x, z].Draw(lodIndex, false);
                 }
-            }
-
-            OpenGL.EnableFaceCulling(true);
+            } 
         }
 
         private static bool IsAABBInsideFrustumWorld(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)
