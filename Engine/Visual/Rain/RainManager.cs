@@ -41,7 +41,13 @@ public unsafe class RainManager
         rain.Draw(camera.GetViewMatrix(), camera.GetProjectionMatrix(), camera.Position, windDir, rainAmount, time);
 
         // 4. Draw overlay (kamera basah)
-        overlay.Draw(sceneTexture, rainAmount, time);
+        if (weatherMode == 1)
+        {
+
+            overlay.Draw(sceneTexture, rainAmount, time);
+        } 
+
+
     }
 
     // ============================

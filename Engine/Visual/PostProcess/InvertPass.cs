@@ -6,6 +6,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
     {
         private uint _shader;
         private uint _vao, _vbo;
+         
 
         public InvertPass(uint shader)
         {

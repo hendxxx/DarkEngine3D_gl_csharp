@@ -102,4 +102,21 @@ public unsafe class RainOverlay
         GL.BindVertexArray(VAO);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
     }
+
+    public void Clear()
+    {
+        // Unbind VAO
+        GL.BindVertexArray(0);
+
+        // Unbind VBO
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, 0);
+
+        // Unbind texture
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+        // Unuse shader
+        GL.UseProgram(0);
+    }
+
 }

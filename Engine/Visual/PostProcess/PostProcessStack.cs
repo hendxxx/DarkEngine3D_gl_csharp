@@ -88,7 +88,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             {
                 // untuk sekarang: semua pass langsung render ke default framebuffer
                 // kalau mau bener2 multi-buffer, nanti kita tambahin ping-pong FBO
+                
                 pass.Execute(currentTex, windowWidth, windowHeight, time);
+ 
             }
 
             GL.Enable(Const.GL_DEPTH_TEST); 

@@ -134,8 +134,8 @@ public unsafe class Program
 
         Mouse.ShowMouse(false);
 
-        RainManager rainManager = new(Shader.GetRainStreakShaderProgram(), Shader.GetRainOverlayShaderProgram(), 100000);
-          
+        RainManager rainManager = new(Shader.GetRainStreakShaderProgram(), Shader.GetRainOverlayShaderProgram(), 10000);
+
         // Init Loop
         Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, rainManager, objectManager);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);

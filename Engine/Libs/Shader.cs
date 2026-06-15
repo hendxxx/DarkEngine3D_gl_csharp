@@ -7,11 +7,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint hudShaderProgram;
         static uint skyShaderProgram;
         static uint invertPassShaderProgram;
-        static uint rainStreakShaderProgram;
-        static uint rainOverlayShaderProgram;
+        
         static uint shadowShaderProgram;
         static uint shadowSkinnedShaderProgram;
 
+        static uint rainStreakShaderProgram;
+        static uint rainOverlayShaderProgram;
+        static uint rainGlassShaderProgram; 
+        
+        
         public uint ProgramId { get; private set; }
 
         static bool _initialized = false;
@@ -53,13 +57,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 "Artifacts/shaders/invertPass_fragment.glsl");
 
             rainStreakShaderProgram = Helpers.ShaderHelpers.LoadShader(
-                "Artifacts/shaders/RainStreaks_vertex.glsl",
-                "Artifacts/shaders/RainStreaks_fragment.glsl");
+             "Artifacts/shaders/RainStreaks_vertex.glsl",
+             "Artifacts/shaders/RainStreaks_fragment.glsl");
 
             rainOverlayShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/RainOverlay_vertex.glsl",
-                "Artifacts/shaders/RainOverlay_fragment.glsl");
-
+                "Artifacts/shaders/RainOverlay_fragment.glsl"); 
+             
             shadowShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/shadow_vertex.glsl",
                 "Artifacts/shaders/shadow_fragment.glsl");
@@ -93,6 +97,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         {
             return rainOverlayShaderProgram;
         }
+        public static uint GetRainGlassShaderProgram()
+        {
+            return rainGlassShaderProgram;
+        } 
 
         public static uint GetInvertPassShaderProgram()
         {
