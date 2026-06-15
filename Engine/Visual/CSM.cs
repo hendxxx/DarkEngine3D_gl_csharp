@@ -43,8 +43,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_BORDER);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_BORDER);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
 
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_COMPARE_MODE, (int)Const.GL_NONE);
 
@@ -162,8 +162,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 OrthoCorners[i] = ls;
 
-                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
-                    minX, maxX, minY, maxY, zNear, zFar);
+                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL( minX, maxX, minY, maxY, zNear, zFar);
 
                 // Pipeline kamu: row-major → view * proj
                 LightSpaceMatrices[i] = lightView * lightProj;
