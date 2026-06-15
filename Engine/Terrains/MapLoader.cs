@@ -170,7 +170,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             float lowSide = h00 + fracX * (h10 - h00);
             float highSide = h01 + fracX * (h11 - h01);
 
-            return lowSide + fracZ * (highSide - lowSide);
+            return (lowSide + fracZ * (highSide - lowSide));
         }
 
 

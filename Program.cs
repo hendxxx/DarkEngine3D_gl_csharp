@@ -57,7 +57,7 @@ public unsafe class Program
         Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "17:00");
 
         // Init Keyboard and Mouse
-        Keyboard.Init(glfwLib, 100.0f); // Increased speed for freefly mode
+        Keyboard.Init(glfwLib, 1.0f); // Increased speed for freefly mode
         Mouse.Init(glfwLib, window);
 
         Texture[] images =
@@ -112,7 +112,7 @@ public unsafe class Program
 
 
         // Generate a high-quality procedural heightmap if it doesn't exist
-        string mapPath = "Artifacts\\maps\\map.png";
+        string mapPath = "Artifacts\\maps\\test.png";
         if (!File.Exists(mapPath))
         {
             MapLoader.GeneratePhotorealHeightmap(mapPath, 513); // 513x513 standard size
