@@ -382,6 +382,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             }
 
+<<<<<<< Updated upstream
+=======
+            //camera.ClampToTerrain(mapLoader, deltaTime);
+>>>>>>> Stashed changes
             return totalTriangles;
         }
 
