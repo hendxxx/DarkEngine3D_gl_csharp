@@ -381,8 +381,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 GL.Enable(Const.GL_DEPTH_TEST);
 
             }
-
-            camera.ClampToTerrain(mapLoader, deltaTime);
+             
             return totalTriangles;
         }
 
