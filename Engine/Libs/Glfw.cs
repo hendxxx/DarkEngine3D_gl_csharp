@@ -170,18 +170,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private static CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private static float lastTargetShoulderOffset;
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, RainManager rainManager, ObjectManager objectManager)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager objectManager)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
             int viewLocation = GL.GetUniformLocation(shaderProgram, "view");
 
             PostProcessStack ppStack = new PostProcessStack(_windowWidth, _windowHeight);
-            var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
+            //var rainOverlayPass = new RainOverlayPass(Shader.GetRainOverlayShaderProgram());
 
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram());
 
-            ppStack.AddPass(rainOverlayPass);
+            //ppStack.AddPass(rainOverlayPass);
             //ppStack.AddPass(invertPass);
 
             // --- CSM INITIALIZATION ---
@@ -229,8 +229,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 if (camera.CurrentMode == CameraMode.FirstPerson)
                 {
-                    // First Person selalu free look
-                    camera.freeLook = true;
+                    camera.freeLook = false;
                 }
                 else
                 {
@@ -244,19 +243,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 1. Mouse → yaw/pitch → vectors
                 Mouse.Update(window, camera);
                 camera.UpdateVectors();
-
-                if (camera.CurrentMode == CameraMode.FirstPerson)
-                {
-                    lastTargetShoulderOffset = Config.PlayerConfig.TargetShoulderOffset;
-                    Config.PlayerConfig.TargetShoulderOffset = 0;
-                    camera.ClampFirstPersonHeadYaw(objectManager.PlayerAgent.Heading);
-
-                }
-                else
-                {
-                    Config.PlayerConfig.TargetShoulderOffset = lastTargetShoulderOffset;
-                }
-
+                 
+                Config.PlayerConfig.TargetShoulderOffset = lastTargetShoulderOffset;
+ 
                
 
                 // 2. Third-person keeps ALT free-look.
@@ -393,9 +382,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.Draw(camera, light);
                 }
 
-                float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai
-                uint sceneTexture = ppStack.SceneColorTex;
-                rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
+                //float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai
+                //uint sceneTexture = ppStack.SceneColorTex;
+                //rainManager.UpdateAndDraw(camera, currentweatherMode, time, sceneTexture);
 
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);

@@ -124,23 +124,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }
-
-
-        public void ClampFirstPersonHeadYaw(float bodyYaw)
-        {
-            if (_cameraMode != CameraMode.FirstPerson) return;
-
-            // Hitung selisih yaw antara badan dan kamera
-            float yawOffset = GetAngleDelta(bodyYaw, Yaw);
-
-            // Batasi rotasi kepala ±85 derajat
-            yawOffset = Math.Clamp(yawOffset, -85f, 85f);
-
-            // Terapkan kembali ke kamera
-            Yaw = bodyYaw + yawOffset;
-
-            UpdateVectors();
-        }
+         
 
         private static float GetAngleDelta(float from, float to)
         {

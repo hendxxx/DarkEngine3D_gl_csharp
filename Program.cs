@@ -132,12 +132,10 @@ public unsafe class Program
 
         Thread.Sleep(500);
 
-        Mouse.ShowMouse(false);
-
-        RainManager rainManager = new(Shader.GetRainStreakShaderProgram(), Shader.GetRainOverlayShaderProgram(), 10000);
+        Mouse.ShowMouse(false); 
 
         // Init Loop
-        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, rainManager, objectManager);
+        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, objectManager);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);
          
         // Shutdown

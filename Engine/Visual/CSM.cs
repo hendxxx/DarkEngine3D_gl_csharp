@@ -129,7 +129,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 // FIX: padding Z belakang lebih besar untuk objek tinggi
                 float padZFront = radius * 3.0f;
-                float padZBack = radius * 6.0f + (i * 50.0f);
+                float padZBack = radius * 6.0f + (i * 40.0f);
 
 
                 float zNear = minZ - padZBack;
