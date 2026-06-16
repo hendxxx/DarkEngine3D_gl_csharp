@@ -235,6 +235,9 @@
     <None Update="Artifacts\objects\anim\walking-backwards2.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\biomes\daises.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\biomes\maple_tree.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

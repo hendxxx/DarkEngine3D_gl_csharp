@@ -218,6 +218,39 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var obj in _objects) obj.Update(dt);
         }
 
+        public GltfObject AddStaticObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f)
+        {
+            var obj = AddObject(modelPath, position, yawDegrees, scale);
+            obj.IsStatic = true;
+            return obj;
+        }
+
+        public void AddRandomStaticObjects(string modelPath, int count, Vector3 center, float radius, TerrainChunk terrain)
+        {
+            var rng = new Random();
+            var spawned = new List<Vector3>();
+            float minDistance = 2.0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                for (int attempts = 0; attempts < 50; attempts++)
+                {
+                    float ang = (float)(rng.NextDouble() * MathF.PI * 2.0);
+                    float dist = (float)(rng.NextDouble() * radius);
+                    Vector3 pos = center + new Vector3(MathF.Cos(ang) * dist, 0, MathF.Sin(ang) * dist);
+                    
+                    bool overlap = spawned.Any(s => Vector3.Distance(s, pos) < minDistance);
+                    if (!overlap)
+                    {
+                        var obj = AddStaticObject(modelPath, pos);
+                        SnapToTerrain(obj, terrain);
+                        spawned.Add(pos);
+                        break;
+                    }
+                }
+            }
+        }
+
         public void InitWanderingAgents()
         {
             foreach (var obj in _objects)

@@ -170,7 +170,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private static CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private static float lastTargetShoulderOffset;
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager objectManager, StaticObjectManager staticObjectManager)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager objectManager, params StaticObjectManager[] staticObjectManagers)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
@@ -307,9 +307,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         gameTerrainChunk.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
                     }
 
-                    if (staticObjectManager != null)
+                    foreach (var manager in staticObjectManagers)
                     {
-                        staticObjectManager.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
+                        if (manager != null)
+                        {
+                            manager.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
+                        }
                     }
 
                 }
@@ -389,9 +392,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 }
 
                 // --- Static Objects (Trees/Rocks) ---
-                if (staticObjectManager != null)
+                foreach (var manager in staticObjectManagers)
                 {
-                    staticObjectManager.Draw(camera, light);
+                    if (manager != null)
+                    {
+                        manager.Draw(camera, light);
+                    }
                 }
 
                 //float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai

@@ -112,7 +112,7 @@ public unsafe class Program
 
 
         // Generate a high-quality procedural heightmap if it doesn't exist
-        string mapPath = "Artifacts\\maps\\test.png";
+        string mapPath = "Artifacts\\maps\\map.png";
         if (!File.Exists(mapPath))
         {
             MapLoader.GeneratePhotorealHeightmap(mapPath, 513); // 513x513 standard size
@@ -131,21 +131,22 @@ public unsafe class Program
         ObjectManager objectManager = new();
         objectManager.Init(camera,gameTerrainChunk);
 
-        // 1. Deklarasi di awal (sejajar dengan objectManager)
-        StaticObjectManager staticManager = new();
-        // 2. Tambahkan objek (bebas di mana saja, sebelum atau sesudah Init objectManager lama)
-        staticManager.RotationCorrection = new Vector3(180, 0, 0);
+         
+        StaticObjectManager[] staticManagers = new[]
+        {
+            new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
+            new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
+        };
 
-        staticManager.AddRandomObjects( "Artifacts/objects/biomes/trees.glb",  20,  new Vector3(0, 0, 0),     100f,  gameTerrainChunk
-        );
-
+        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 20, new Vector3(0, 0, 0), 100f, gameTerrainChunk);
+        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50, new Vector3(0, 0, 0), 100f, gameTerrainChunk);
 
         Thread.Sleep(500);
 
         Mouse.ShowMouse(false); 
 
         // Init Loop
-        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, objectManager, staticManager);
+        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, objectManager, staticManagers);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);
          
         // Shutdown
