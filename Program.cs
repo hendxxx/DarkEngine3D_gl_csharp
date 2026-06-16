@@ -131,12 +131,21 @@ public unsafe class Program
         ObjectManager objectManager = new();
         objectManager.Init(camera,gameTerrainChunk);
 
+        // 1. Deklarasi di awal (sejajar dengan objectManager)
+        StaticObjectManager staticManager = new();
+        // 2. Tambahkan objek (bebas di mana saja, sebelum atau sesudah Init objectManager lama)
+        staticManager.RotationCorrection = new Vector3(180, 0, 0);
+
+        staticManager.AddRandomObjects( "Artifacts/objects/biomes/trees.glb",  20,  new Vector3(0, 0, 0),     100f,  gameTerrainChunk
+        );
+
+
         Thread.Sleep(500);
 
         Mouse.ShowMouse(false); 
 
         // Init Loop
-        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, objectManager);
+        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, objectManager, staticManager);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);
          
         // Shutdown

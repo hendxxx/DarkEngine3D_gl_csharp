@@ -55,8 +55,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
         public void Execute(uint inputTexture, int width, int height, float time)
         {
-            GL.UseProgram(_shader);
-            OpenGL.EnableFaceCulling(false);
+            GL.UseProgram(_shader); 
             GL.ActiveTexture(Const.GL_TEXTURE0);
             GL.BindTexture(Const.GL_TEXTURE_2D, inputTexture);
 
@@ -67,8 +66,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
             GL.BindVertexArray(0);
 
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-            OpenGL.EnableFaceCulling(true);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0); 
         }
     }
 

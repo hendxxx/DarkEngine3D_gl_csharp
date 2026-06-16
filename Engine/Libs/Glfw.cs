@@ -170,7 +170,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private static CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private static float lastTargetShoulderOffset;
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager objectManager)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light,  TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager objectManager, StaticObjectManager staticObjectManager)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
@@ -271,6 +271,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 4B. Update NPC AI + movement
                 objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera);
 
+
                 // 5. Set Camera orbital
                 camera.SetCamera(window, objectManager.PlayerAgent.Position, gameTerrainChunk, deltaTime);
 
@@ -304,6 +305,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     if (gameTerrainChunk != null)
                     {
                         gameTerrainChunk.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
+                    }
+
+                    if (staticObjectManager != null)
+                    {
+                        staticObjectManager.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
                     }
 
                 }
@@ -380,6 +386,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 {
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                     objectManager.Draw(camera, light);
+                }
+
+                // --- Static Objects (Trees/Rocks) ---
+                if (staticObjectManager != null)
+                {
+                    staticObjectManager.Draw(camera, light);
                 }
 
                 //float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai

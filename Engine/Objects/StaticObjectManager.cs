@@ -1,0 +1,312 @@
+using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Terrains;
+using DarkEngine3D_gl_csharp.Engine.Visual;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
+
+namespace DarkEngine3D_gl_csharp.Engine.Objects
+{
+    public class StaticObjectGroup
+    {
+        public string BaseName = "";
+        // Map LOD Level -> Daftar Mesh Index (agar bisa render Batang + Daun sekaligus)
+        public Dictionary<int, List<int>> Lods = new();
+    }
+
+    public class StaticObject
+    {
+        public GltfModelGpuData GpuData;
+        public StaticObjectGroup Group; // Referensi langsung ke data grup/LOD
+        public Vector3 Position;
+        public Quaternion Rotation;
+        public float Scale = 1f;
+        public AABB WorldAABB => GpuData.LocalAABB.ToWorld(Position, Scale);
+
+        public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
+        {
+            GpuData = gpuData;
+            Group = group;
+            Position = pos;
+            Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw * MathF.PI / 180f);
+            Scale = scale;
+        }
+    }
+
+    public unsafe class StaticObjectManager
+    {
+        private readonly Dictionary<string, GltfModelGpuData> _modelCache = [];
+        private readonly Dictionary<string, List<StaticObjectGroup>> _modelGroups = [];
+        private readonly List<StaticObject> _objects = [];
+        private readonly uint _shaderProgram;
+        
+        // Global normalization for all objects (e.g. set X to -90 if all trees are laying down)
+        public Vector3 RotationCorrection = Vector3.Zero;
+        
+        private readonly int _modelLoc, _viewLoc, _projLoc;
+        private readonly int _sunDirLoc, _lightColorLoc, _viewPosLoc;
+        private readonly int _baseColorLoc, _useAlbedoLoc, _albedoMapLoc;
+
+        public StaticObjectManager()
+        {
+            _shaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/static_vertex.glsl",
+                "Artifacts/shaders/gltf_fragment.glsl"
+            );
+
+            _modelLoc = GL.GetUniformLocation(_shaderProgram, "model");
+            _viewLoc = GL.GetUniformLocation(_shaderProgram, "view");
+            _projLoc = GL.GetUniformLocation(_shaderProgram, "projection");
+            _sunDirLoc = GL.GetUniformLocation(_shaderProgram, "sunDir");
+            _lightColorLoc = GL.GetUniformLocation(_shaderProgram, "lightColor");
+            _viewPosLoc = GL.GetUniformLocation(_shaderProgram, "viewPos");
+            _baseColorLoc = GL.GetUniformLocation(_shaderProgram, "baseColorFactor");
+            _useAlbedoLoc = GL.GetUniformLocation(_shaderProgram, "useAlbedo");
+            _albedoMapLoc = GL.GetUniformLocation(_shaderProgram, "albedoMap");
+        }
+
+        private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData)
+        {
+            if (_modelGroups.ContainsKey(path)) return;
+
+            var groups = new Dictionary<string, StaticObjectGroup>();
+
+            for (int i = 0; i < gpuData.Data.Meshes.Length; i++)
+            {
+                string meshName = gpuData.Data.Meshes[i].Name ?? $"mesh_{i}";
+                string baseName = meshName;
+                int lodLevel = 1;
+
+                // Pattern Matching Robust:
+                // 1. Cek format _LODn (misal: Christmas tree_LOD0, _LOD1, diikuti suffix optional)
+                var lodMatch = System.Text.RegularExpressions.Regex.Match(meshName, @"^(.*)_LOD(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (lodMatch.Success)
+                {
+                    baseName = lodMatch.Groups[1].Value.Trim();
+                    int.TryParse(lodMatch.Groups[2].Value, out lodLevel);
+                }
+                else
+                {
+                    // 2. Cek format _n (misal: Christmas tree_0, _1, diikuti suffix optional)
+                    var numericMatch = System.Text.RegularExpressions.Regex.Match(meshName, @"^(.*)_(\d+)");
+                    if (numericMatch.Success)
+                    {
+                        baseName = numericMatch.Groups[1].Value.Trim();
+                        int.TryParse(numericMatch.Groups[2].Value, out lodLevel);
+                    }
+                }
+
+                if (!groups.TryGetValue(baseName, out var group))
+                {
+                    group = new StaticObjectGroup { BaseName = baseName };
+                    groups[baseName] = group;
+                }
+
+                if (!group.Lods.ContainsKey(lodLevel)) group.Lods[lodLevel] = new List<int>();
+                group.Lods[lodLevel].Add(i);
+            }
+            _modelGroups[path] = groups.Values.ToList();
+        }
+
+        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "")
+        {
+            if (!_modelCache.TryGetValue(path, out var gpuData))
+            {
+                var data = GltfLoader.Load(path);
+                gpuData = new GltfModelGpuData(data);
+                _modelCache[path] = gpuData;
+                AnalyzeGltfGroups(path, gpuData);
+            }
+
+            var availableGroups = _modelGroups[path];
+            if (availableGroups.Count == 0) return;
+
+            StaticObjectGroup selectedGroup;
+            if (string.IsNullOrEmpty(groupName))
+            {
+                var rng = new Random();
+                selectedGroup = availableGroups[rng.Next(availableGroups.Count)];
+            }
+            else
+            {
+                selectedGroup = availableGroups.FirstOrDefault(g => g.BaseName.Equals(groupName, StringComparison.OrdinalIgnoreCase)) 
+                                ?? availableGroups[0];
+            }
+
+            _objects.Add(new StaticObject(gpuData, selectedGroup, pos, yaw, scale));
+        }
+
+        public void AddRandomObjects(string path, int count, Vector3 center, float radius, TerrainChunk terrain)
+        {
+            var rng = new Random();
+            for (int i = 0; i < count; i++)
+            {
+                float a = (float)(rng.NextDouble() * Math.PI * 2);
+                float d = (float)(rng.NextDouble() * radius);
+                float x = center.X + MathF.Cos(a) * d;
+                float z = center.Z + MathF.Sin(a) * d;
+                float y = terrain.GetHeightAt(x, z);
+                // Tambahkan objek (otomatis pilih group pohon acak dari file)
+                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360));
+            }
+        }
+
+        public void Draw(Camera camera, Lights light)
+        {
+            if (_objects.Count == 0) return;
+
+            GL.UseProgram(_shaderProgram);
+            GL.Enable(Const.GL_DEPTH_TEST);
+            GL.Enable(Const.GL_CULL_FACE);
+            GL.CullFace(Const.GL_BACK);
+            GL.FrontFace(Const.GL_CCW);
+
+            var view = camera.GetViewMatrix();
+            var proj = camera.GetProjectionMatrix();
+            GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)Unsafe.AsPointer(ref view));
+            GL.UniformMatrix4fv(_projLoc, 1, false, (float*)Unsafe.AsPointer(ref proj));
+            GL.Uniform3f(_sunDirLoc, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
+            GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
+            GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
+
+            int fogColLoc = GL.GetUniformLocation(_shaderProgram, "fogColor");
+            if (fogColLoc != -1) GL.Uniform3f(fogColLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+            int useFogLoc = GL.GetUniformLocation(_shaderProgram, "useFog");
+            if (useFogLoc != -1) GL.Uniform1i(useFogLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+
+            // Pre-calculate correction quat
+            float rx = RotationCorrection.X * MathF.PI / 180f;
+            float ry = RotationCorrection.Y * MathF.PI / 180f;
+            float rz = RotationCorrection.Z * MathF.PI / 180f;
+            var correctionQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
+
+            foreach (var obj in _objects)
+            {
+                float dist = Vector3.Distance(camera.Position, obj.Position);
+                var group = obj.Group;
+                if (group == null || group.Lods.Count == 0) continue;
+
+                // 1. Tentukan target LOD berdasarkan jarak
+                // LOD0: < 30m, LOD1: 30-70m, LOD2: 70-160m, LOD3: > 160m
+                int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
+                
+                // 2. Fallback cerdas: Cari LOD terdekat yang tersedia (prioritas kualitas tertinggi)
+                int actualLOD = targetLOD;
+                if (!group.Lods.ContainsKey(actualLOD))
+                {
+                    // Cari semua LOD yang ada, urutkan dari yang paling detail (terkecil)
+                    var available = group.Lods.Keys.OrderBy(k => k).ToList();
+                    actualLOD = available.FirstOrDefault(k => k >= targetLOD, available.Last());
+                }
+
+                var meshIndices = group.Lods[actualLOD];
+                foreach (int meshIdx in meshIndices)
+                {
+                    var mesh = obj.GpuData.Meshes[meshIdx];
+
+                    var objWorldMat = Matrix4x4.CreateScale(obj.Scale) * 
+                                     Matrix4x4.CreateFromQuaternion(correctionQuat) *
+                                     Matrix4x4.CreateFromQuaternion(obj.Rotation) * 
+                                     Matrix4x4.CreateTranslation(obj.Position);
+
+                    Matrix4x4 modelMat = objWorldMat;
+                    int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length) 
+                                  ? obj.GpuData.MeshToNode[meshIdx] : -1;
+                    
+                    if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
+                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * objWorldMat;
+
+                    GL.UniformMatrix4fv(_modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
+
+                    if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
+                    else GL.Enable(Const.GL_CULL_FACE);
+
+                    GL.Uniform4f(_baseColorLoc, mesh.Material.BaseColorFactor.X, mesh.Material.BaseColorFactor.Y, mesh.Material.BaseColorFactor.Z, mesh.Material.BaseColorFactor.W);
+
+                    if (mesh.Material.HasTexture)
+                    {
+                        GL.ActiveTexture(Const.GL_TEXTURE0);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.TextureID);
+                        GL.Uniform1i(_useAlbedoLoc, 1);
+                        GL.Uniform1i(_albedoMapLoc, 0);
+                    }
+                    else GL.Uniform1i(_useAlbedoLoc, 0);
+
+                    GL.BindVertexArray(mesh.VAO);
+                    if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                    else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+                }
+            }
+            GL.BindVertexArray(0);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            GL.Enable(Const.GL_CULL_FACE);
+        }
+
+        public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
+        {
+            if (_objects.Count == 0) return;
+
+            GL.UseProgram(shadowShader);
+            
+            var planes = csm.OrthoCorners[cascadeIndex] != null
+                ? CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex])
+                : null;
+
+            float rx = RotationCorrection.X * MathF.PI / 180f;
+            float ry = RotationCorrection.Y * MathF.PI / 180f;
+            float rz = RotationCorrection.Z * MathF.PI / 180f;
+            var correctionQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
+
+            foreach (var obj in _objects)
+            {
+                if (planes != null)
+                {
+                    bool outside = false;
+                    foreach (var plane in planes)
+                    {
+                        if (Vector3.Dot(plane.Normal, obj.Position) + plane.D < -5.0f) { outside = true; break; }
+                    }
+                    if (outside) continue;
+                }
+
+                float dist = Vector3.Distance(camera.Position, obj.Position);
+                var group = obj.Group;
+                if (group == null || group.Lods.Count == 0) continue;
+
+                // Shadow LOD: Use the same thresholds as Draw pass for visual consistency
+                int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
+                int actualLOD = targetLOD;
+                if (!group.Lods.ContainsKey(actualLOD))
+                {
+                    var available = group.Lods.Keys.OrderBy(k => k).ToList();
+                    actualLOD = available.FirstOrDefault(k => k >= targetLOD, available.Last());
+                }
+
+                var meshIndices = group.Lods[actualLOD];
+                foreach (int meshIdx in meshIndices)
+                {
+                    var mesh = obj.GpuData.Meshes[meshIdx];
+
+                    var objWorldMat = Matrix4x4.CreateScale(obj.Scale) * 
+                                     Matrix4x4.CreateFromQuaternion(correctionQuat) *
+                                     Matrix4x4.CreateFromQuaternion(obj.Rotation) * 
+                                     Matrix4x4.CreateTranslation(obj.Position);
+
+                    Matrix4x4 modelMat = objWorldMat;
+                    int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length) 
+                                  ? obj.GpuData.MeshToNode[meshIdx] : -1;
+                    
+                    if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
+                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * objWorldMat;
+
+                    GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
+
+                    GL.BindVertexArray(mesh.VAO);
+                    if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                    else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+                }
+            }
+            GL.BindVertexArray(0);
+        }
+    }
+}
