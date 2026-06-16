@@ -127,6 +127,7 @@ public unsafe class Program
         GltfShader.Init(); // Compile gltf shader setelah OpenGL siap
 
         UpdateLoading(window, deltaTime, hud, images, "Loading objects ... ");
+
         ObjectManager objectManager = new();
         objectManager.Init(camera,gameTerrainChunk);
 

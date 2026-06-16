@@ -47,9 +47,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public CharacterAgent PlayerAgent;
         public GltfObject PlayerObject;
-
-        private readonly List<StaticObject> _staticObjects = new();
-
+         
         public ObjectManager()
         {
             _shaderProgram = GltfShader.GetShaderProgram();
@@ -82,10 +80,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             _objects.Clear();
             _agents.Clear();
-
-
-            AddStatic("Artifacts\\objects\\biomes\\tree01.glb", new Vector3(5, 0, 8), 45f, 1.2f);
-
+              
             // AI SPAWN
             for (int i = 0; i < 5; i++)
             {
@@ -168,14 +163,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             InitWanderingAgents();
 
 
-        }
-        public StaticObject AddStatic(string modelPath, Vector3 pos, float yawDeg = 0f, float scale = 1f)
-        {
-            var gpu = LoadModel(modelPath);
-            var obj = new StaticObject(gpu, pos, yawDeg, scale);
-            _staticObjects.Add(obj);
-            return obj;
-        }
+        } 
 
         public GltfModelGpuData LoadModel(string path)
         {
@@ -429,26 +417,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
             
             var frustum = ExtractFrustumPlanes(Matrix4x4.Multiply(view, proj));
-
-            // ===============================
-            // DRAW STATIC OBJECTS (NO ANIM)
-            // ===============================
-            foreach (var so in _staticObjects)
-            {
-                if (!so.IsVisible) continue;
-
-                if (!DisableFrustumCull && !IsAABBInFrustum(frustum, so.WorldAABB))
-                {
-                    CulledObjects++;
-                    continue;
-                }
-
-                // STATIC → NO SKINNING
-                GL.Uniform1i(_useSkinningLoc, 0);
-
-                so.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc);
-                DrawnObjects++;
-            }
+              
 
             for (int i = 0; i < _objects.Count; i++)
             {
