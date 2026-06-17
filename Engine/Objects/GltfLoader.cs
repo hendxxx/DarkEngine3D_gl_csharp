@@ -10,8 +10,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     public class GltfMaterial
     {
         public string Name = "";
+        
+        // Base color
         public Vector4 BaseColorFactor = Vector4.One;
-        public int TextureIndex = -1;
+        public int BaseColorTextureIndex = -1;
+        
+        // Metallic & Roughness
+        public float MetallicFactor = 1.0f;
+        public float RoughnessFactor = 1.0f;
+        public int MetallicRoughnessTextureIndex = -1;  // Combined R=Metallic, G=Roughness
+        
+        // Normal mapping
+        public int NormalTextureIndex = -1;
+        public float NormalScale = 1.0f;
+        
+        // Ambient Occlusion
+        public int OcclusionTextureIndex = -1;
+        public float OcclusionStrength = 1.0f;
+        
+        // Emissive
+        public Vector3 EmissiveFactor = Vector3.Zero;
+        public int EmissiveTextureIndex = -1;
+        
+        // Other
         public bool DoubleSided = false;
     }
 
@@ -275,6 +296,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 if (mat.TryGetProperty("pbrMetallicRoughness", out var pbr))
                 {
+                    // Base color factor
                     if (pbr.TryGetProperty("baseColorFactor", out var factorProp) && factorProp.ValueKind == JsonValueKind.Array)
                     {
                         float r = 1f, g = 1f, b = 1f, a = 1f;
@@ -290,12 +312,84 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         material.BaseColorFactor = new Vector4(r, g, b, a);
                     }
 
+                    // Base color texture
                     if (pbr.TryGetProperty("baseColorTexture", out var texProp))
                     {
                         if (texProp.TryGetProperty("index", out var indexProp))
                         {
-                            material.TextureIndex = indexProp.GetInt32();
+                            material.BaseColorTextureIndex = indexProp.GetInt32();
                         }
+                    }
+
+                    // Metallic factor
+                    if (pbr.TryGetProperty("metallicFactor", out var mfProp))
+                    {
+                        material.MetallicFactor = mfProp.GetSingle();
+                    }
+
+                    // Roughness factor
+                    if (pbr.TryGetProperty("roughnessFactor", out var rfProp))
+                    {
+                        material.RoughnessFactor = rfProp.GetSingle();
+                    }
+
+                    // Metallic-Roughness texture (combined R=Metallic, G=Roughness)
+                    if (pbr.TryGetProperty("metallicRoughnessTexture", out var mrTexProp))
+                    {
+                        if (mrTexProp.TryGetProperty("index", out var mrIndexProp))
+                        {
+                            material.MetallicRoughnessTextureIndex = mrIndexProp.GetInt32();
+                        }
+                    }
+                }
+
+                // Normal map texture
+                if (mat.TryGetProperty("normalTexture", out var normTexProp))
+                {
+                    if (normTexProp.TryGetProperty("index", out var normIndexProp))
+                    {
+                        material.NormalTextureIndex = normIndexProp.GetInt32();
+                    }
+                    if (normTexProp.TryGetProperty("scale", out var normScaleProp))
+                    {
+                        material.NormalScale = normScaleProp.GetSingle();
+                    }
+                }
+
+                // Occlusion texture
+                if (mat.TryGetProperty("occlusionTexture", out var occTexProp))
+                {
+                    if (occTexProp.TryGetProperty("index", out var occIndexProp))
+                    {
+                        material.OcclusionTextureIndex = occIndexProp.GetInt32();
+                    }
+                    if (occTexProp.TryGetProperty("strength", out var occStrengthProp))
+                    {
+                        material.OcclusionStrength = occStrengthProp.GetSingle();
+                    }
+                }
+
+                // Emissive factor
+                if (mat.TryGetProperty("emissiveFactor", out var emFactorProp) && emFactorProp.ValueKind == JsonValueKind.Array)
+                {
+                    float er = 0f, eg = 0f, eb = 0f;
+                    int eidx = 0;
+                    foreach (var val in emFactorProp.EnumerateArray())
+                    {
+                        if (eidx == 0) er = val.GetSingle();
+                        else if (eidx == 1) eg = val.GetSingle();
+                        else if (eidx == 2) eb = val.GetSingle();
+                        eidx++;
+                    }
+                    material.EmissiveFactor = new Vector3(er, eg, eb);
+                }
+
+                // Emissive texture
+                if (mat.TryGetProperty("emissiveTexture", out var emTexProp))
+                {
+                    if (emTexProp.TryGetProperty("index", out var emIndexProp))
+                    {
+                        material.EmissiveTextureIndex = emIndexProp.GetInt32();
                     }
                 }
 

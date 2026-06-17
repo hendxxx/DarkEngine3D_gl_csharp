@@ -57,6 +57,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _lightColorLoc, _viewPosLoc;
         private readonly int _baseColorLoc, _useAlbedoLoc, _albedoMapLoc;
+        
+        // PBR uniforms
+        private readonly int _normalMapLoc;
+        private readonly int _metallicRoughnessMapLoc;
+        private readonly int _occlusionMapLoc;
+        private readonly int _emissiveMapLoc;
+        private readonly int _metallicFactorLoc;
+        private readonly int _roughnessFactorLoc;
+        private readonly int _emissiveFactorLoc;
+        private readonly int _normalScaleLoc;
+        private readonly int _occlusionStrengthLoc;
+        private readonly int _hasNormalTextureLoc;
+        private readonly int _hasMetallicRoughnessTextureLoc;
+        private readonly int _hasOcclusionTextureLoc;
+        private readonly int _hasEmissiveTextureLoc;
 
         public StaticObjectManager()
         {
@@ -85,6 +100,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _cascadeEndsLoc0 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[0]");
             _cascadeEndsLoc1 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[1]");
             _cascadeEndsLoc2 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[2]");
+            
+            // Cache PBR uniform locations
+            _normalMapLoc = GL.GetUniformLocation(_shaderProgram, "normalMap");
+            _metallicRoughnessMapLoc = GL.GetUniformLocation(_shaderProgram, "metallicRoughnessMap");
+            _occlusionMapLoc = GL.GetUniformLocation(_shaderProgram, "occlusionMap");
+            _emissiveMapLoc = GL.GetUniformLocation(_shaderProgram, "emissiveMap");
+            _metallicFactorLoc = GL.GetUniformLocation(_shaderProgram, "metallicFactor");
+            _roughnessFactorLoc = GL.GetUniformLocation(_shaderProgram, "roughnessFactor");
+            _emissiveFactorLoc = GL.GetUniformLocation(_shaderProgram, "emissiveFactor");
+            _normalScaleLoc = GL.GetUniformLocation(_shaderProgram, "normalScale");
+            _occlusionStrengthLoc = GL.GetUniformLocation(_shaderProgram, "occlusionStrength");
+            _hasNormalTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasNormalTexture");
+            _hasMetallicRoughnessTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasMetallicRoughnessTexture");
+            _hasOcclusionTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasOcclusionTexture");
+            _hasEmissiveTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasEmissiveTexture");
         }
 
         private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData)
@@ -215,6 +245,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.Uniform1f(_cascadeEndsLoc1, csm.CascadeEnds[1]);
                 GL.Uniform1f(_cascadeEndsLoc2, csm.CascadeEnds[2]);
             }
+            
+            // Set default PBR factor values (will be overridden per-mesh)
+            if (_metallicFactorLoc != -1) GL.Uniform1f(_metallicFactorLoc, 1.0f);
+            if (_roughnessFactorLoc != -1) GL.Uniform1f(_roughnessFactorLoc, 0.3f);  // Lower for shiny metallic
+            if (_normalScaleLoc != -1) GL.Uniform1f(_normalScaleLoc, 1.0f);
+            if (_occlusionStrengthLoc != -1) GL.Uniform1f(_occlusionStrengthLoc, 1.0f);
+            if (_emissiveFactorLoc != -1) GL.Uniform3f(_emissiveFactorLoc, 0.0f, 0.0f, 0.0f);
+            if (_hasNormalTextureLoc != -1) GL.Uniform1i(_hasNormalTextureLoc, 0);
+            if (_hasMetallicRoughnessTextureLoc != -1) GL.Uniform1i(_hasMetallicRoughnessTextureLoc, 0);
+            if (_hasOcclusionTextureLoc != -1) GL.Uniform1i(_hasOcclusionTextureLoc, 0);
+            if (_hasEmissiveTextureLoc != -1) GL.Uniform1i(_hasEmissiveTextureLoc, 0);
+
 
             // Pre-calculate correction quat
             float rx = RotationCorrection.X * MathF.PI / 180f;
@@ -265,14 +307,75 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     GL.Uniform4f(_baseColorLoc, mesh.Material.BaseColorFactor.X, mesh.Material.BaseColorFactor.Y, mesh.Material.BaseColorFactor.Z, mesh.Material.BaseColorFactor.W);
 
-                    if (mesh.Material.HasTexture)
+                    if (mesh.Material.HasBaseColorTexture)
                     {
                         GL.ActiveTexture(Const.GL_TEXTURE0);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.TextureID);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
                         GL.Uniform1i(_useAlbedoLoc, 1);
                         GL.Uniform1i(_albedoMapLoc, 0);
                     }
                     else GL.Uniform1i(_useAlbedoLoc, 0);
+                    
+                    // ── PBR Uniform Factors ────────────────────────────────────────
+                    if (_metallicFactorLoc != -1)
+                        GL.Uniform1f(_metallicFactorLoc, mesh.Material.MetallicFactor);
+                    
+                    if (_roughnessFactorLoc != -1)
+                        GL.Uniform1f(_roughnessFactorLoc, mesh.Material.RoughnessFactor);
+                    
+                    if (_normalScaleLoc != -1)
+                        GL.Uniform1f(_normalScaleLoc, mesh.Material.NormalScale);
+                    
+                    if (_occlusionStrengthLoc != -1)
+                        GL.Uniform1f(_occlusionStrengthLoc, mesh.Material.OcclusionStrength);
+                    
+                    if (_emissiveFactorLoc != -1)
+                    {
+                        var emis = mesh.Material.EmissiveFactor;
+                        GL.Uniform3f(_emissiveFactorLoc, emis.X, emis.Y, emis.Z);
+                    }
+                    
+                    // ── PBR Texture Flags ──────────────────────────────────────────
+                    if (_hasNormalTextureLoc != -1)
+                        GL.Uniform1i(_hasNormalTextureLoc, mesh.Material.HasNormalTexture ? 1 : 0);
+                    
+                    if (_hasMetallicRoughnessTextureLoc != -1)
+                        GL.Uniform1i(_hasMetallicRoughnessTextureLoc, mesh.Material.HasMetallicRoughnessTexture ? 1 : 0);
+                    
+                    if (_hasOcclusionTextureLoc != -1)
+                        GL.Uniform1i(_hasOcclusionTextureLoc, mesh.Material.HasOcclusionTexture ? 1 : 0);
+                    
+                    if (_hasEmissiveTextureLoc != -1)
+                        GL.Uniform1i(_hasEmissiveTextureLoc, mesh.Material.HasEmissiveTexture ? 1 : 0);
+                    
+                    // ── PBR Texture Binding ────────────────────────────────────────
+                    // Texture Unit 3: Normal Map
+                    if (mesh.Material.HasNormalTexture && mesh.Material.NormalTextureID != 0)
+                    {
+                        GL.ActiveTexture(Const.GL_TEXTURE0 + 3);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.NormalTextureID);
+                    }
+                    
+                    // Texture Unit 4: Metallic-Roughness Map
+                    if (mesh.Material.HasMetallicRoughnessTexture && mesh.Material.MetallicRoughnessTextureID != 0)
+                    {
+                        GL.ActiveTexture(Const.GL_TEXTURE0 + 4);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.MetallicRoughnessTextureID);
+                    }
+                    
+                    // Texture Unit 5: Occlusion Map
+                    if (mesh.Material.HasOcclusionTexture && mesh.Material.OcclusionTextureID != 0)
+                    {
+                        GL.ActiveTexture(Const.GL_TEXTURE0 + 5);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.OcclusionTextureID);
+                    }
+                    
+                    // Texture Unit 6: Emissive Map
+                    if (mesh.Material.HasEmissiveTexture && mesh.Material.EmissiveTextureID != 0)
+                    {
+                        GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.EmissiveTextureID);
+                    }
 
                     GL.BindVertexArray(mesh.VAO);
                     if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
@@ -357,10 +460,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     else GL.Enable(Const.GL_CULL_FACE);
 
                     // Bind texture if available for alpha testing in shadow pass
-                    if (mesh.Material.HasTexture)
+                    if (mesh.Material.HasBaseColorTexture)
                     {
                         GL.ActiveTexture(Const.GL_TEXTURE0);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.TextureID);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
                         GL.Uniform1i(useAlbedoLoc, 1);
                         GL.Uniform1i(albedoMapLoc, 0);
                         // Set alpha threshold - adjust based on material needs

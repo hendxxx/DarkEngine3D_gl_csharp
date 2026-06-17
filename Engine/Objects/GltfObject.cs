@@ -845,7 +845,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         //  Draw
         // -----------------------------------------------------------------------
-        public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc)
+        public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc,
+                         int metallicFactorLoc = -1, int roughnessFactorLoc = -1, int normalScaleLoc = -1,
+                         int occlusionStrengthLoc = -1, int emissiveFactorLoc = -1,
+                         int hasNormalTextureLoc = -1, int hasMetallicRoughnessTextureLoc = -1,
+                         int hasOcclusionTextureLoc = -1, int hasEmissiveTextureLoc = -1)
         {
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
@@ -877,16 +881,77 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.Uniform4f(baseColorFactorLoc, factor.X, factor.Y, factor.Z, factor.W);
                 }
 
-                if (mesh.Material.HasTexture && mesh.Material.TextureID != 0)
+                if (mesh.Material.HasBaseColorTexture && mesh.Material.BaseColorTextureID != 0)
                 {
                     GL.ActiveTexture(Const.GL_TEXTURE0);
-                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.TextureID);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
                     if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 1);
                     if (albedoMapLoc != -1) GL.Uniform1i(albedoMapLoc, 0);
                 }
                 else
                 {
                     if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 0);
+                }
+                
+                // ── PBR Uniform Factors ────────────────────────────────────────
+                if (metallicFactorLoc != -1)
+                    GL.Uniform1f(metallicFactorLoc, mesh.Material.MetallicFactor);
+                
+                if (roughnessFactorLoc != -1)
+                    GL.Uniform1f(roughnessFactorLoc, mesh.Material.RoughnessFactor);
+                
+                if (normalScaleLoc != -1)
+                    GL.Uniform1f(normalScaleLoc, mesh.Material.NormalScale);
+                
+                if (occlusionStrengthLoc != -1)
+                    GL.Uniform1f(occlusionStrengthLoc, mesh.Material.OcclusionStrength);
+                
+                if (emissiveFactorLoc != -1)
+                {
+                    var emis = mesh.Material.EmissiveFactor;
+                    GL.Uniform3f(emissiveFactorLoc, emis.X, emis.Y, emis.Z);
+                }
+                
+                // ── PBR Texture Flags ──────────────────────────────────────────
+                if (hasNormalTextureLoc != -1)
+                    GL.Uniform1i(hasNormalTextureLoc, mesh.Material.HasNormalTexture ? 1 : 0);
+                
+                if (hasMetallicRoughnessTextureLoc != -1)
+                    GL.Uniform1i(hasMetallicRoughnessTextureLoc, mesh.Material.HasMetallicRoughnessTexture ? 1 : 0);
+                
+                if (hasOcclusionTextureLoc != -1)
+                    GL.Uniform1i(hasOcclusionTextureLoc, mesh.Material.HasOcclusionTexture ? 1 : 0);
+                
+                if (hasEmissiveTextureLoc != -1)
+                    GL.Uniform1i(hasEmissiveTextureLoc, mesh.Material.HasEmissiveTexture ? 1 : 0);
+                
+                // ── PBR Texture Binding ────────────────────────────────────────
+                // Texture Unit 3: Normal Map
+                if (mesh.Material.HasNormalTexture && mesh.Material.NormalTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 3);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.NormalTextureID);
+                }
+                
+                // Texture Unit 4: Metallic-Roughness Map
+                if (mesh.Material.HasMetallicRoughnessTexture && mesh.Material.MetallicRoughnessTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 4);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.MetallicRoughnessTextureID);
+                }
+                
+                // Texture Unit 5: Occlusion Map
+                if (mesh.Material.HasOcclusionTexture && mesh.Material.OcclusionTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 5);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.OcclusionTextureID);
+                }
+                
+                // Texture Unit 6: Emissive Map
+                if (mesh.Material.HasEmissiveTexture && mesh.Material.EmissiveTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.EmissiveTextureID);
                 }
 
                 GL.BindVertexArray(mesh.VAO);

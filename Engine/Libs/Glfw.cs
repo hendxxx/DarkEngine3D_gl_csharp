@@ -281,7 +281,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 light.Update(deltaTime, camera.Position);
 
                 // --- CSM SHADOW PASS ---
-                csm.UpdateMatrices(camera, light.SunDir);
+                // Use moon direction for shadows when sun is below horizon (night time)
+                Vector3 shadowLightDir = light.SunDir;
+                if (light.SunDir.Y < 0.0f)  // Sun below horizon = night time
+                {
+                    // Calculate moon direction (opposite of sun, elevated)
+                    shadowLightDir = new Vector3(-light.SunDir.X, 0.7f, -light.SunDir.Z);
+                }
+                csm.UpdateMatrices(camera, shadowLightDir);
 
                 for (int i = 0; i < CSM.NumCascades; i++)
                 {

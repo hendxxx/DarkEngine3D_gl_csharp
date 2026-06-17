@@ -315,9 +315,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         // ===========================================================================
         public struct MeshMaterialGpu
         {
+            // Base color
             public Vector4 BaseColorFactor;
-            public uint TextureID;
-            public bool HasTexture;
+            public uint BaseColorTextureID;
+            public bool HasBaseColorTexture;
+            
+            // PBR values
+            public float MetallicFactor;
+            public float RoughnessFactor;
+            public uint MetallicRoughnessTextureID;
+            public bool HasMetallicRoughnessTexture;
+            
+            // Normal mapping
+            public uint NormalTextureID;
+            public bool HasNormalTexture;
+            public float NormalScale;
+            
+            // AO
+            public uint OcclusionTextureID;
+            public bool HasOcclusionTexture;
+            public float OcclusionStrength;
+            
+            // Emissive
+            public Vector3 EmissiveFactor;
+            public uint EmissiveTextureID;
+            public bool HasEmissiveTexture;
+            
+            // Other
             public bool DoubleSided;
         }
 
@@ -484,22 +508,83 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                     // Setup material values for this primitive
                     var matGpu = new MeshMaterialGpu
                     {
+                        // Base color
                         BaseColorFactor = Vector4.One,
-                        TextureID = 0,
-                        HasTexture = false,
+                        BaseColorTextureID = 0,
+                        HasBaseColorTexture = false,
+                        
+                        // PBR defaults
+                        MetallicFactor = 1.0f,
+                        RoughnessFactor = 1.0f,
+                        MetallicRoughnessTextureID = 0,
+                        HasMetallicRoughnessTexture = false,
+                        
+                        // Normal mapping defaults
+                        NormalTextureID = 0,
+                        HasNormalTexture = false,
+                        NormalScale = 1.0f,
+                        
+                        // Occlusion defaults
+                        OcclusionTextureID = 0,
+                        HasOcclusionTexture = false,
+                        OcclusionStrength = 1.0f,
+                        
+                        // Emissive defaults
+                        EmissiveFactor = Vector3.Zero,
+                        EmissiveTextureID = 0,
+                        HasEmissiveTexture = false,
+                        
+                        // Other
                         DoubleSided = false
                     };
 
                     if (mesh.MaterialIndex >= 0 && mesh.MaterialIndex < data.Materials.Length)
                     {
                         var mat = data.Materials[mesh.MaterialIndex];
+                        
+                        // Base color
                         matGpu.BaseColorFactor = mat.BaseColorFactor;
-                        matGpu.DoubleSided = mat.DoubleSided;
-                        if (mat.TextureIndex >= 0 && mat.TextureIndex < TextureIDs.Length)
+                        if (mat.BaseColorTextureIndex >= 0 && mat.BaseColorTextureIndex < TextureIDs.Length)
                         {
-                            matGpu.TextureID = TextureIDs[mat.TextureIndex];
-                            matGpu.HasTexture = matGpu.TextureID != 0;
+                            matGpu.BaseColorTextureID = TextureIDs[mat.BaseColorTextureIndex];
+                            matGpu.HasBaseColorTexture = matGpu.BaseColorTextureID != 0;
                         }
+                        
+                        // PBR metallic & roughness
+                        matGpu.MetallicFactor = mat.MetallicFactor;
+                        matGpu.RoughnessFactor = mat.RoughnessFactor;
+                        if (mat.MetallicRoughnessTextureIndex >= 0 && mat.MetallicRoughnessTextureIndex < TextureIDs.Length)
+                        {
+                            matGpu.MetallicRoughnessTextureID = TextureIDs[mat.MetallicRoughnessTextureIndex];
+                            matGpu.HasMetallicRoughnessTexture = matGpu.MetallicRoughnessTextureID != 0;
+                        }
+                        
+                        // Normal mapping
+                        matGpu.NormalScale = mat.NormalScale;
+                        if (mat.NormalTextureIndex >= 0 && mat.NormalTextureIndex < TextureIDs.Length)
+                        {
+                            matGpu.NormalTextureID = TextureIDs[mat.NormalTextureIndex];
+                            matGpu.HasNormalTexture = matGpu.NormalTextureID != 0;
+                        }
+                        
+                        // Occlusion
+                        matGpu.OcclusionStrength = mat.OcclusionStrength;
+                        if (mat.OcclusionTextureIndex >= 0 && mat.OcclusionTextureIndex < TextureIDs.Length)
+                        {
+                            matGpu.OcclusionTextureID = TextureIDs[mat.OcclusionTextureIndex];
+                            matGpu.HasOcclusionTexture = matGpu.OcclusionTextureID != 0;
+                        }
+                        
+                        // Emissive
+                        matGpu.EmissiveFactor = mat.EmissiveFactor;
+                        if (mat.EmissiveTextureIndex >= 0 && mat.EmissiveTextureIndex < TextureIDs.Length)
+                        {
+                            matGpu.EmissiveTextureID = TextureIDs[mat.EmissiveTextureIndex];
+                            matGpu.HasEmissiveTexture = matGpu.EmissiveTextureID != 0;
+                        }
+                        
+                        // Other
+                        matGpu.DoubleSided = mat.DoubleSided;
                     }
 
                     Meshes[m] = new MeshGpu

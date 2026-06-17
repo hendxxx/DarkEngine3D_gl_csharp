@@ -49,6 +49,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _cascadeEndsLoc0;
         private readonly int _cascadeEndsLoc1;
         private readonly int _cascadeEndsLoc2;
+        
+        // PBR uniforms
+        private readonly int _normalMapLoc;
+        private readonly int _metallicRoughnessMapLoc;
+        private readonly int _occlusionMapLoc;
+        private readonly int _emissiveMapLoc;
+        private readonly int _metallicFactorLoc;
+        private readonly int _roughnessFactorLoc;
+        private readonly int _emissiveFactorLoc;
+        private readonly int _normalScaleLoc;
+        private readonly int _occlusionStrengthLoc;
+        private readonly int _hasNormalTextureLoc;
+        private readonly int _hasMetallicRoughnessTextureLoc;
+        private readonly int _hasOcclusionTextureLoc;
+        private readonly int _hasEmissiveTextureLoc;
 
         public int DrawnObjects { get; private set; }
         public int TotalObjects { get; private set; }
@@ -86,6 +101,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _cascadeEndsLoc0 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[0]");
             _cascadeEndsLoc1 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[1]");
             _cascadeEndsLoc2 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[2]");
+            
+            // Cache PBR uniform locations
+            _normalMapLoc = GL.GetUniformLocation(_shaderProgram, "normalMap");
+            _metallicRoughnessMapLoc = GL.GetUniformLocation(_shaderProgram, "metallicRoughnessMap");
+            _occlusionMapLoc = GL.GetUniformLocation(_shaderProgram, "occlusionMap");
+            _emissiveMapLoc = GL.GetUniformLocation(_shaderProgram, "emissiveMap");
+            _metallicFactorLoc = GL.GetUniformLocation(_shaderProgram, "metallicFactor");
+            _roughnessFactorLoc = GL.GetUniformLocation(_shaderProgram, "roughnessFactor");
+            _emissiveFactorLoc = GL.GetUniformLocation(_shaderProgram, "emissiveFactor");
+            _normalScaleLoc = GL.GetUniformLocation(_shaderProgram, "normalScale");
+            _occlusionStrengthLoc = GL.GetUniformLocation(_shaderProgram, "occlusionStrength");
+            _hasNormalTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasNormalTexture");
+            _hasMetallicRoughnessTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasMetallicRoughnessTexture");
+            _hasOcclusionTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasOcclusionTexture");
+            _hasEmissiveTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasEmissiveTexture");
         }
 
         public void Init(Camera camera,TerrainChunk gameTerrainChunk)
@@ -137,7 +167,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
 
             // === PLAYER SPAWN ===
-            string playerPath = "Artifacts\\objects\\Stuntman.glb";
+            string playerPath = "Artifacts\\objects\\Women.glb";
 
             float playerX = 0f;
             float playerZ = 0f;
@@ -491,6 +521,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.Uniform1f(_cascadeEndsLoc2, csm.CascadeEnds[2]);
             }
             
+            // Set default PBR uniforms
+            if (_normalMapLoc != -1) GL.Uniform1i(_normalMapLoc, 3);
+            if (_metallicRoughnessMapLoc != -1) GL.Uniform1i(_metallicRoughnessMapLoc, 4);
+            if (_occlusionMapLoc != -1) GL.Uniform1i(_occlusionMapLoc, 5);
+            if (_emissiveMapLoc != -1) GL.Uniform1i(_emissiveMapLoc, 6);
+            
+            // Set default PBR factor values (will be overridden per-mesh)
+            if (_metallicFactorLoc != -1) GL.Uniform1f(_metallicFactorLoc, 1.0f);
+            if (_roughnessFactorLoc != -1) GL.Uniform1f(_roughnessFactorLoc, 0.3f);  // Lower for shiny metallic
+            if (_normalScaleLoc != -1) GL.Uniform1f(_normalScaleLoc, 1.0f);
+            if (_occlusionStrengthLoc != -1) GL.Uniform1f(_occlusionStrengthLoc, 1.0f);
+            if (_emissiveFactorLoc != -1) GL.Uniform3f(_emissiveFactorLoc, 0.0f, 0.0f, 0.0f);
+            if (_hasNormalTextureLoc != -1) GL.Uniform1i(_hasNormalTextureLoc, 0);
+            if (_hasMetallicRoughnessTextureLoc != -1) GL.Uniform1i(_hasMetallicRoughnessTextureLoc, 0);
+            if (_hasOcclusionTextureLoc != -1) GL.Uniform1i(_hasOcclusionTextureLoc, 0);
+            if (_hasEmissiveTextureLoc != -1) GL.Uniform1i(_hasEmissiveTextureLoc, 0);
+            
             var frustum = ExtractFrustumPlanes(Matrix4x4.Multiply(view, proj));
               
 
@@ -527,7 +574,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                
 
-                obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc);
+                obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc,
+                         _metallicFactorLoc, _roughnessFactorLoc, _normalScaleLoc,
+                         _occlusionStrengthLoc, _emissiveFactorLoc,
+                         _hasNormalTextureLoc, _hasMetallicRoughnessTextureLoc,
+                         _hasOcclusionTextureLoc, _hasEmissiveTextureLoc);
                 DrawnObjects++;
             }
 
