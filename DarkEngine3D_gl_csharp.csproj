@@ -241,6 +241,9 @@
     <None Update="Artifacts\objects\biomes\maple_tree.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\biomes\pine_trees.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\biomes\tree00.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -293,6 +296,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\Women.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\Ybot.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\invertPass_fragment.glsl">

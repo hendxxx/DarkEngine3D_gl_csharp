@@ -188,7 +188,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _objects.Add(new StaticObject(gpuData, selectedGroup, pos, yaw, scale));
         }
 
-        public void AddRandomObjects(string path, int count, Vector3 center, float radius, TerrainChunk terrain)
+        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain)
         {
             var rng = new Random();
             for (int i = 0; i < count; i++)
@@ -199,7 +199,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float z = center.Z + MathF.Sin(a) * d;
                 float y = terrain.GetHeightAt(x, z);
                 // Tambahkan objek (otomatis pilih group pohon acak dari file)
-                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360));
+                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale);
             }
         }
 
@@ -266,6 +266,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             foreach (var obj in _objects)
             {
+                Matrix4x4 vp = view * proj;
+                Plane[] cameraFrustum = ExtractCameraFrustum(vp);
+
+                if (!IsAABBInFrustum(cameraFrustum, obj.WorldAABB, 5f))
+                    continue;
+
                 float dist = Vector3.Distance(camera.Position, obj.Position);
                 var group = obj.Group;
                 if (group == null || group.Lods.Count == 0) continue;
@@ -483,5 +489,130 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
         }
+
+
+        public static Plane[] ExtractPlanes(Matrix4x4 vp)
+        {
+            Plane[] planes = new Plane[6];
+
+            // Left
+            planes[0] = Plane.Normalize(new Plane(
+                vp.M14 + vp.M11,
+                vp.M24 + vp.M21,
+                vp.M34 + vp.M31,
+                vp.M44 + vp.M41));
+
+            // Right
+            planes[1] = Plane.Normalize(new Plane(
+                vp.M14 - vp.M11,
+                vp.M24 - vp.M21,
+                vp.M34 - vp.M31,
+                vp.M44 - vp.M41));
+
+            // Bottom
+            planes[2] = Plane.Normalize(new Plane(
+                vp.M14 + vp.M12,
+                vp.M24 + vp.M22,
+                vp.M34 + vp.M32,
+                vp.M44 + vp.M42));
+
+            // Top
+            planes[3] = Plane.Normalize(new Plane(
+                vp.M14 - vp.M12,
+                vp.M24 - vp.M22,
+                vp.M34 - vp.M32,
+                vp.M44 - vp.M42));
+
+            // Near
+            planes[4] = Plane.Normalize(new Plane(
+                vp.M13,
+                vp.M23,
+                vp.M33,
+                vp.M43));
+
+            // Far
+            planes[5] = Plane.Normalize(new Plane(
+                vp.M14 - vp.M13,
+                vp.M24 - vp.M23,
+                vp.M34 - vp.M33,
+                vp.M44 - vp.M43));
+
+            return planes;
+        }
+        public static Plane[] ExtractCameraFrustum(Matrix4x4 vp)
+        {
+            Plane[] planes = new Plane[6];
+
+            // Left
+            planes[0] = Plane.Normalize(new Plane(
+                vp.M14 + vp.M11,
+                vp.M24 + vp.M21,
+                vp.M34 + vp.M31,
+                vp.M44 + vp.M41));
+
+            // Right
+            planes[1] = Plane.Normalize(new Plane(
+                vp.M14 - vp.M11,
+                vp.M24 - vp.M21,
+                vp.M34 - vp.M31,
+                vp.M44 - vp.M41));
+
+            // Bottom
+            planes[2] = Plane.Normalize(new Plane(
+                vp.M14 + vp.M12,
+                vp.M24 + vp.M22,
+                vp.M34 + vp.M32,
+                vp.M44 + vp.M42));
+
+            // Top
+            planes[3] = Plane.Normalize(new Plane(
+                vp.M14 - vp.M12,
+                vp.M24 - vp.M22,
+                vp.M34 - vp.M32,
+                vp.M44 - vp.M42));
+
+            // Near
+            planes[4] = Plane.Normalize(new Plane(
+                vp.M13,
+                vp.M23,
+                vp.M33,
+                vp.M43));
+
+            // Far
+            planes[5] = Plane.Normalize(new Plane(
+                vp.M14 - vp.M13,
+                vp.M24 - vp.M23,
+                vp.M34 - vp.M33,
+                vp.M44 - vp.M43));
+
+            return planes;
+        }
+
+        /// <summary>
+        /// AABB vs Camera Frustum
+        /// </summary>
+        private static bool IsAABBInFrustum(Plane[] planes, AABB aabb, float margin = 3.0f)
+        {
+            // Tambahkan margin ke bounding box
+            Vector3 min = aabb.Min - new Vector3(margin);
+            Vector3 max = aabb.Max + new Vector3(margin);
+
+            foreach (var pl in planes)
+            {
+                // Pilih vertex paling jauh dari arah normal plane
+                Vector3 p = new Vector3(
+                    pl.Normal.X >= 0 ? max.X : min.X,
+                    pl.Normal.Y >= 0 ? max.Y : min.Y,
+                    pl.Normal.Z >= 0 ? max.Z : min.Z
+                );
+
+                // Jika vertex itu masih di belakang plane → AABB di luar frustum
+                if (Vector3.Dot(pl.Normal, p) + pl.D < 0f)
+                    return false;
+            }
+
+            return true;
+        }
+
     }
 }

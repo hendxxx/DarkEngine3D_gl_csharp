@@ -134,12 +134,14 @@ public unsafe class Program
          
         StaticObjectManager[] staticManagers = new[]
         {
+            //new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
             new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
             new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
         };
 
-        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 20, new Vector3(0, 0, 0), 100f, gameTerrainChunk);
-        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50, new Vector3(0, 0, 0), 100f, gameTerrainChunk);
+        //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
+        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
+        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 1000, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
 
         Thread.Sleep(500);
 

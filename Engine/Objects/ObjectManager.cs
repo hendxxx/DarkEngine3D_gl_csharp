@@ -167,7 +167,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
 
             // === PLAYER SPAWN ===
-            string playerPath = "Artifacts\\objects\\Women.glb";
+            string playerPath = "Artifacts\\objects\\Ybot.glb";
 
             float playerX = 0f;
             float playerZ = 0f;
