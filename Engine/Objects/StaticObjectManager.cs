@@ -247,6 +247,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (_objects.Count == 0) return;
 
             GL.UseProgram(shadowShader);
+            GL.Enable(Const.GL_DEPTH_TEST);
+            GL.Enable(Const.GL_CULL_FACE);
+            GL.CullFace(Const.GL_BACK);
+            GL.FrontFace(Const.GL_CCW);
+            
+            // Get uniform locations for alpha support
+            int useAlbedoLoc = GL.GetUniformLocation(shadowShader, "useAlbedo");
+            int albedoMapLoc = GL.GetUniformLocation(shadowShader, "albedoMap");
+            int alphaThresholdLoc = GL.GetUniformLocation(shadowShader, "alphaThreshold");
             
             var planes = csm.OrthoCorners[cascadeIndex] != null
                 ? CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex])
@@ -301,12 +310,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
 
+                    // Handle double-sided materials in shadow pass
+                    if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
+                    else GL.Enable(Const.GL_CULL_FACE);
+
+                    // Bind texture if available for alpha testing in shadow pass
+                    if (mesh.Material.HasTexture)
+                    {
+                        GL.ActiveTexture(Const.GL_TEXTURE0);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.TextureID);
+                        GL.Uniform1i(useAlbedoLoc, 1);
+                        GL.Uniform1i(albedoMapLoc, 0);
+                        // Set alpha threshold - adjust based on material needs
+                        if (alphaThresholdLoc != -1)
+                            GL.Uniform1f(alphaThresholdLoc, 0.3f);
+                    }
+                    else
+                    {
+                        GL.Uniform1i(useAlbedoLoc, 0);
+                    }
+
                     GL.BindVertexArray(mesh.VAO);
                     if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
                     else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
                 }
             }
             GL.BindVertexArray(0);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
         }
     }
 }

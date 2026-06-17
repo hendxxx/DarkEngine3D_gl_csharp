@@ -10,6 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         
         static uint shadowShaderProgram;
         static uint shadowSkinnedShaderProgram;
+        static uint shadowStaticAlphaShaderProgram;
 
         static uint rainStreakShaderProgram;
         static uint rainOverlayShaderProgram;
@@ -63,6 +64,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             shadowSkinnedShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/shadow_skinned_vertex.glsl",
                 "Artifacts/shaders/shadow_fragment.glsl");
+
+            shadowStaticAlphaShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/shadow_static_vertex.glsl",
+                "Artifacts/shaders/shadow_static_alpha_fragment.glsl");
         }
 
         public void Use()
@@ -78,6 +83,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetShadowSkinnedShaderProgram()
         {
             return shadowSkinnedShaderProgram;
+        }
+
+        public static uint GetShadowStaticAlphaShaderProgram()
+        {
+            return shadowStaticAlphaShaderProgram;
         }
 
         public static uint GetRainStreakShaderProgram()

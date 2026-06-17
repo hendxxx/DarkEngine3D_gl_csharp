@@ -218,6 +218,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             int shadowSkinnedLightSpaceLoc = GL.GetUniformLocation(shadowSkinnedShader, "lightSpaceMatrix");
             int shadowSkinnedJointsLoc = GL.GetUniformLocation(shadowSkinnedShader, "u_Joints");
 
+            uint shadowStaticAlphaShader = Shader.GetShadowStaticAlphaShaderProgram();
+            int shadowStaticAlphaModelLoc = GL.GetUniformLocation(shadowStaticAlphaShader, "model");
+            int shadowStaticAlphaLightSpaceLoc = GL.GetUniformLocation(shadowStaticAlphaShader, "lightSpaceMatrix");
+
             FramebufferViewer framebufferViewer = new();
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
@@ -297,6 +301,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         GL.UniformMatrix4fv(shadowSkinnedLightSpaceLoc, 1, false, (float*)&lightSpace);
                     }
 
+                    GL.UseProgram(shadowStaticAlphaShader);
+                    unsafe {
+                        GL.UniformMatrix4fv(shadowStaticAlphaLightSpaceLoc, 1, false, (float*)&lightSpace);
+                    }
+
                     if (objectManager != null)
                     {
                         objectManager.RenderShadow(camera, csm, i, shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
@@ -311,7 +320,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     {
                         if (manager != null)
                         {
-                            manager.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
+                            manager.RenderShadow(camera, csm, i, shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
                         }
                     }
 

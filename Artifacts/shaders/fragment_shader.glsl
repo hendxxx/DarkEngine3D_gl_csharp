@@ -1,4 +1,4 @@
-﻿#version 400 core
+#version 400 core
 out vec4 FragColor;
 
 in vec3 FragPos;
@@ -175,7 +175,7 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
     float zReceiver = projCoords.z - bias;
 
-    float searchRadius = 25.0;
+    float searchRadius = 18.0;  // Reduced from 25.0 for sharper boundaries
 
     float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, searchRadius);
     if (avgBlocker < 0.0)
@@ -184,8 +184,8 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
     penumbra *= 5.0;
 
-    float lightSize = 0.012;
-    float filterRadius = penumbra * lightSize * 600.0;
+    float lightSize = 0.009;  // Reduced from 0.012 for tighter penumbra
+    float filterRadius = penumbra * lightSize * 450.0;  // Reduced from 600.0 for sharpness
 
     if (shadowFilterMode == 0) filterRadius = max(filterRadius, 1.0);
     if (shadowFilterMode == 1) filterRadius = max(filterRadius, 2.0);
