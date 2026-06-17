@@ -187,9 +187,9 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     float lightSize = 0.009;  // Reduced from 0.012 for tighter penumbra
     float filterRadius = penumbra * lightSize * 450.0;  // Reduced from 600.0 for sharpness
 
-    if (shadowFilterMode == 0) filterRadius = max(filterRadius, 1.0);
-    if (shadowFilterMode == 1) filterRadius = max(filterRadius, 2.0);
-    if (shadowFilterMode == 2) filterRadius = max(filterRadius, 4.0);
+    if (shadowFilterMode == 0) filterRadius = max(filterRadius, 0.5);  // Reduced from 1.0
+    if (shadowFilterMode == 1) filterRadius = max(filterRadius, 1.0);  // Reduced from 2.0
+    if (shadowFilterMode == 2) filterRadius = max(filterRadius, 1.5);  // Reduced from 4.0
 
     float shadow = 0.0;
     vec2 texel = 1.0 / textureSize(shadowMap, 0);

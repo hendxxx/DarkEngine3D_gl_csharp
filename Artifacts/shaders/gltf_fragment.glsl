@@ -84,8 +84,8 @@ void main()
     float blendRange1 = cascadeEnds[1] * 0.1;
 
     float bias0 = max(0.002 * (1.0 - dot(norm, lightDir)), 0.0001);
-    float bias1 = bias0 * 3.0;
-    float bias2 = bias0 * 6.0;
+    float bias1 = bias0 * 1.5;  // Reduced from 3.0 - allows shadows on nearby objects
+    float bias2 = bias0 * 3.0;  // Reduced from 6.0 - better shadow casting
 
     float shadow;
     if (depth < cascadeEnds[0] - blendRange0) {
