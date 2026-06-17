@@ -1,4 +1,4 @@
-﻿using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
@@ -260,6 +260,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 string log = GL.GetProgramInfoLog(program);
                 Console.WriteLine($"[PROGRAM LINK ERROR] {name}\n{log}");
             }
+        }
+
+        private static uint _shadowStaticAlphaShaderProgram = 0;
+        public static uint GetShadowStaticAlphaShaderProgram()
+        {
+            if (_shadowStaticAlphaShaderProgram == 0)
+            {
+                _shadowStaticAlphaShaderProgram = LoadShader(
+                    @"DarkEngine3D\Shaders\shadow_static_vertex.glsl",
+                    @"DarkEngine3D\Shaders\shadow_static_alpha_fragment.glsl"
+                );
+            }
+            return _shadowStaticAlphaShaderProgram;
         }
     }
     public class ObjectHelpers

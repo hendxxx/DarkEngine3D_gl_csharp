@@ -249,9 +249,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 camera.UpdateVectors();
                  
                 Config.PlayerConfig.TargetShoulderOffset = lastTargetShoulderOffset;
- 
-               
-
+  
                 // 2. Third-person keeps ALT free-look.
                 if (!camera.freeLook)
                     objectManager.PlayerAgent.Heading = camera.Yaw;
@@ -306,6 +304,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         GL.UniformMatrix4fv(shadowStaticAlphaLightSpaceLoc, 1, false, (float*)&lightSpace);
                     }
 
+                    foreach (var manager in staticObjectManagers)
+                    {
+                        if (manager != null)
+                        {
+                            manager.RenderShadow(camera, csm, i, shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
+                        }
+                    }
+
                     if (objectManager != null)
                     {
                         objectManager.RenderShadow(camera, csm, i, shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
@@ -315,14 +321,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     {
                         gameTerrainChunk.RenderShadow(camera, csm, i, shadowShader, shadowModelLoc);
                     }
-
-                    foreach (var manager in staticObjectManagers)
-                    {
-                        if (manager != null)
-                        {
-                            manager.RenderShadow(camera, csm, i, shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
-                        }
-                    }
+                     
 
                 }
 
@@ -397,7 +396,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 if (objectManager != null)
                 {
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
-                    objectManager.Draw(camera, light);
+                    objectManager.Draw(camera, light, csm);
                 }
 
                 // --- Static Objects (Trees/Rocks) ---
@@ -405,7 +404,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 {
                     if (manager != null)
                     {
-                        manager.Draw(camera, light);
+                        manager.Draw(camera, light, csm);
                     }
                 }
 
@@ -416,54 +415,54 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
 
-                //int boxW = 350;
-                //int boxH = 350;
-                //int margin = 10;
-                //int spacing = 10;
+                int boxW = 350;
+                int boxH = 350;
+                int margin = 10;
+                int spacing = 10;
 
-                //int x = _windowWidth - boxW - margin;
-                //int y0 = margin;                          // paling bawah
-                //int y1 = y0 + boxH + spacing;             // tengah
-                //int y2 = y1 + boxH + spacing;             // paling atas
+                int x = _windowWidth - boxW - margin;
+                int y0 = margin;                          // paling bawah
+                int y1 = y0 + boxH + spacing;             // tengah
+                int y2 = y1 + boxH + spacing;             // paling atas
 
-                //framebufferViewer.RenderDepthTexture(
-                //    csm.ShadowTextures[0],
-                //    _windowWidth,
-                //    _windowHeight,
-                //    x,
-                //    y0,
-                //    boxW,
-                //    boxH,
-                //    0.1f,
-                //    csm.CascadeEnds[0],
-                //    false
-                //);
+                framebufferViewer.RenderDepthTexture(
+                    csm.ShadowTextures[0],
+                    _windowWidth,
+                    _windowHeight,
+                    x,
+                    y0,
+                    boxW,
+                    boxH,
+                    0.1f,
+                    csm.CascadeEnds[0],
+                    false
+                );
 
-                //framebufferViewer.RenderDepthTexture(
-                //    csm.ShadowTextures[1],
-                //    _windowWidth,
-                //    _windowHeight,
-                //    x,
-                //    y1,
-                //    boxW,
-                //    boxH,
-                //    0.1f,
-                //    csm.CascadeEnds[1],
-                //    false
-                //);
+                framebufferViewer.RenderDepthTexture(
+                    csm.ShadowTextures[1],
+                    _windowWidth,
+                    _windowHeight,
+                    x,
+                    y1,
+                    boxW,
+                    boxH,
+                    0.1f,
+                    csm.CascadeEnds[1],
+                    false
+                );
 
-                //framebufferViewer.RenderDepthTexture(
-                //    csm.ShadowTextures[2],
-                //    _windowWidth,
-                //    _windowHeight,
-                //    x,
-                //    y2,
-                //    boxW,
-                //    boxH,
-                //    0.1f,
-                //    csm.CascadeEnds[2],
-                //    false
-                //);
+                framebufferViewer.RenderDepthTexture(
+                    csm.ShadowTextures[2],
+                    _windowWidth,
+                    _windowHeight,
+                    x,
+                    y2,
+                    boxW,
+                    boxH,
+                    0.1f,
+                    csm.CascadeEnds[2],
+                    false
+                );
 
 
                 // --- HUD SYSTEM ---

@@ -919,9 +919,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.UniformMatrix4fv(jointsLoc, _jointMatrices.Length, false, (float*)p);
             }
 
-            // Disable face-culling for shadow pass so we don't lose back faces
-            // on low-poly LOD silhouettes (avoids cut-off feet artefact).
-             
+            // Cull state already set by CSM.BindFramebuffer()
+            
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
                 var mesh = GpuData.Meshes[mi];
@@ -943,6 +942,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
             } 
             GL.BindVertexArray(0);
+            // Culling state already managed by CSM.BindFramebuffer()
         }
     }
 }

@@ -40,6 +40,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly List<StaticObject> _objects = [];
         private readonly uint _shaderProgram;
         
+        // Shadow map uniforms
+        private readonly int _shadowMap0Loc;
+        private readonly int _shadowMap1Loc;
+        private readonly int _shadowMap2Loc;
+        private readonly int _lightSpaceLoc0;
+        private readonly int _lightSpaceLoc1;
+        private readonly int _lightSpaceLoc2;
+        private readonly int _cascadeEndsLoc0;
+        private readonly int _cascadeEndsLoc1;
+        private readonly int _cascadeEndsLoc2;
+        
         // Global normalization for all objects (e.g. set X to -90 if all trees are laying down)
         public Vector3 RotationCorrection = Vector3.Zero;
         
@@ -63,6 +74,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _baseColorLoc = GL.GetUniformLocation(_shaderProgram, "baseColorFactor");
             _useAlbedoLoc = GL.GetUniformLocation(_shaderProgram, "useAlbedo");
             _albedoMapLoc = GL.GetUniformLocation(_shaderProgram, "albedoMap");
+            
+            // Cache shadow map uniform locations
+            _shadowMap0Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap0");
+            _shadowMap1Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap1");
+            _shadowMap2Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap2");
+            _lightSpaceLoc0 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[0]");
+            _lightSpaceLoc1 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[1]");
+            _lightSpaceLoc2 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[2]");
+            _cascadeEndsLoc0 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[0]");
+            _cascadeEndsLoc1 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[1]");
+            _cascadeEndsLoc2 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[2]");
         }
 
         private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData)
@@ -151,7 +173,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public void Draw(Camera camera, Lights light)
+        public void Draw(Camera camera, Lights light, CSM csm = null)
         {
             if (_objects.Count == 0) return;
 
@@ -173,6 +195,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (fogColLoc != -1) GL.Uniform3f(fogColLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
             int useFogLoc = GL.GetUniformLocation(_shaderProgram, "useFog");
             if (useFogLoc != -1) GL.Uniform1i(useFogLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+            
+            // Set shadow uniforms if CSM is provided
+            if (csm != null)
+            {
+                GL.Uniform1i(_shadowMap0Loc, 6);
+                GL.Uniform1i(_shadowMap1Loc, 7);
+                GL.Uniform1i(_shadowMap2Loc, 8);
+                
+                unsafe {
+                    fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                        GL.UniformMatrix4fv(_lightSpaceLoc0, 1, false, p0);
+                    fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                        GL.UniformMatrix4fv(_lightSpaceLoc1, 1, false, p1);
+                    fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                        GL.UniformMatrix4fv(_lightSpaceLoc2, 1, false, p2);
+                }
+                GL.Uniform1f(_cascadeEndsLoc0, csm.CascadeEnds[0]);
+                GL.Uniform1f(_cascadeEndsLoc1, csm.CascadeEnds[1]);
+                GL.Uniform1f(_cascadeEndsLoc2, csm.CascadeEnds[2]);
+            }
 
             // Pre-calculate correction quat
             float rx = RotationCorrection.X * MathF.PI / 180f;

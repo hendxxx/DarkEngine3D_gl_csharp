@@ -38,6 +38,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _jointLoc;
         private readonly int _jointsLoc;
         private readonly int _useSkinningLoc;
+        
+        // Shadow map uniforms
+        private readonly int _shadowMap0Loc;
+        private readonly int _shadowMap1Loc;
+        private readonly int _shadowMap2Loc;
+        private readonly int _lightSpaceLoc0;
+        private readonly int _lightSpaceLoc1;
+        private readonly int _lightSpaceLoc2;
+        private readonly int _cascadeEndsLoc0;
+        private readonly int _cascadeEndsLoc1;
+        private readonly int _cascadeEndsLoc2;
 
         public int DrawnObjects { get; private set; }
         public int TotalObjects { get; private set; }
@@ -64,6 +75,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _albedoMapLoc = GL.GetUniformLocation(_shaderProgram, "albedoMap");
             _jointLoc = GL.GetUniformLocation(_shaderProgram, "joints");
             _jointsLoc = GL.GetUniformLocation(_shaderProgram, "u_Joints");
+            
+            // Cache shadow map uniform locations
+            _shadowMap0Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap0");
+            _shadowMap1Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap1");
+            _shadowMap2Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap2");
+            _lightSpaceLoc0 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[0]");
+            _lightSpaceLoc1 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[1]");
+            _lightSpaceLoc2 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[2]");
+            _cascadeEndsLoc0 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[0]");
+            _cascadeEndsLoc1 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[1]");
+            _cascadeEndsLoc2 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[2]");
         }
 
         public void Init(Camera camera,TerrainChunk gameTerrainChunk)
@@ -431,7 +453,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var obj in _objects) obj.Play(clipName, blendTime);
         }
 
-        public void Draw(Camera camera, Lights light)
+        public void Draw(Camera camera, Lights light, CSM csm = null)
         {
             DrawnObjects = 0;
             CulledObjects = 0;
@@ -448,6 +470,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.Uniform3f(_fogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
             GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
             GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+            
+            // Set shadow uniforms if CSM is provided
+            if (csm != null)
+            {
+                GL.Uniform1i(_shadowMap0Loc, 6);
+                GL.Uniform1i(_shadowMap1Loc, 7);
+                GL.Uniform1i(_shadowMap2Loc, 8);
+                
+                unsafe {
+                    fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                        GL.UniformMatrix4fv(_lightSpaceLoc0, 1, false, p0);
+                    fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                        GL.UniformMatrix4fv(_lightSpaceLoc1, 1, false, p1);
+                    fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                        GL.UniformMatrix4fv(_lightSpaceLoc2, 1, false, p2);
+                }
+                GL.Uniform1f(_cascadeEndsLoc0, csm.CascadeEnds[0]);
+                GL.Uniform1f(_cascadeEndsLoc1, csm.CascadeEnds[1]);
+                GL.Uniform1f(_cascadeEndsLoc2, csm.CascadeEnds[2]);
+            }
             
             var frustum = ExtractFrustumPlanes(Matrix4x4.Multiply(view, proj));
               

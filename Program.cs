@@ -36,7 +36,7 @@ public unsafe class Program
         Console.WriteLine($"Versi OpenGL aktif: {glVersion}");
 
         OpenGL.EnableDepthTest(true);
-        OpenGL.EnableFaceCulling(false);
+        OpenGL.EnableFaceCulling(true);  // Enable culling from start - default state
 
         // Init Shader
         Shader.Init(); 

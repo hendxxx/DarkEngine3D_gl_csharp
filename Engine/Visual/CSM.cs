@@ -210,8 +210,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, FBOs[index]);
             GL.Viewport(0, 0, ShadowSize, ShadowSize);
+            
+            // Disable culling for shadow pass to render back faces
+            // This ensures complete shadow silhouettes for all objects
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.DepthMask(true);
+            GL.Disable(Const.GL_CULL_FACE);  // Render both front and back faces
+            GL.FrontFace(Const.GL_CCW);
+            
             GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
         }
 
