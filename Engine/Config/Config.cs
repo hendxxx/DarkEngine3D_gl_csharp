@@ -2,6 +2,38 @@ using System.Collections.Generic;
 
 namespace DarkEngine3D_gl_csharp.Engine.Config
 {
+    // ============================
+    // Scale Config (global, configurable)
+    // ============================
+    public static class ScaleConfig
+    {
+        public static float ObjScale = 0.5f;
+
+        // Movement
+        public static bool ScaleMovement = true;
+        public static float MovementBaseScale = 1.0f* ObjScale;
+        public static float MovementMinMul = 0.50f * ObjScale;   // karakter kecil = 50%
+        public static float MovementMaxMul = 1.00f * ObjScale;   // karakter besar = 100%
+
+        // Camera
+        public static bool ScaleCamera = true;
+        public static float CameraBaseScale = 1.0f * ObjScale;
+        public static float CameraMinMul = 0.75f * ObjScale;
+        public static float CameraMaxMul = 1.35f * ObjScale;
+
+        // Combat
+        public static bool ScaleCombat = true;
+        public static float CombatBaseScale = 1.0f * ObjScale;
+
+        // Animation
+        public static bool ScaleAnimationSpeed = true;
+        public static float AnimMinMul = 0.9f * ObjScale;
+        public static float AnimMaxMul = 1.2f * ObjScale;
+
+        // AI Perception
+        public static bool ScaleAI = true;
+        public static float AIBaseScale = 1.0f * ObjScale;
+    }
     public static class LODConfig
     {
         // ============================

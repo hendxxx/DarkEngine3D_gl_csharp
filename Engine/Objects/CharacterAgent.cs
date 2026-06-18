@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
@@ -647,15 +648,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 var pos = Position;
 
+                // Movement scale (configurable)
+                float moveScaleMul = 1.0f;
+                if (ScaleConfig.ScaleMovement)
+                {
+                    moveScaleMul = ScaleHelpers.Normalize(
+                        _obj.Scale,
+                        ScaleConfig.MovementBaseScale,
+                        ScaleConfig.MovementMinMul,
+                        ScaleConfig.MovementMaxMul
+                    );
+                }
+
                 // Movement
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                    pos += forward * speed  * dt;
+                    pos += forward * speed * moveScaleMul * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
-                    pos -= forward * speed  * dt;
+                    pos -= forward * speed * moveScaleMul * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                    pos -= right * speedWalkVal  * dt;
+                    pos -= right * speedWalkVal * moveScaleMul * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                    pos += right * speedWalkVal  * dt;
+                    pos += right * speedWalkVal * moveScaleMul * dt;
 
                 pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
 
@@ -853,8 +866,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (_speed > 0f)
             {
                 var f = Forward;
-                p.X += f.X * _speed  * speedMul * dt;
-                p.Z += f.Z * _speed  * speedMul * dt;
+                float moveScaleMul = 1.0f;
+                if (ScaleConfig.ScaleMovement)
+                {
+                    moveScaleMul = ScaleHelpers.Normalize(
+                        _obj.Scale,
+                        ScaleConfig.MovementBaseScale,
+                        ScaleConfig.MovementMinMul,
+                        ScaleConfig.MovementMaxMul
+                    );
+                }
+
+                p.X += f.X * _speed  * speedMul * moveScaleMul * dt;
+                p.Z += f.Z * _speed  * speedMul * moveScaleMul * dt;
             }
 
             p.Y = terrain.GetHeightAt(p.X, p.Z);

@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
@@ -277,6 +278,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             var preset = CurrentPreset;
             if (preset == null) return;
 
+            float camScale = 1.0f;
+            if (ScaleConfig.ScaleCamera)
+            {
+                camScale = ScaleHelpers.Normalize(
+                    1.0f, // kalau mau nanti diganti dengan scale player dari luar
+                    ScaleConfig.CameraBaseScale,
+                    ScaleConfig.CameraMinMul,
+                    ScaleConfig.CameraMaxMul
+                );
+            }
 
             // LIMIT PITCH KHUSUS OTS (agar player tetap on-cam)
             if (preset.TrueOTS)
@@ -286,8 +297,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 Pitch = Math.Clamp(Pitch, minPitchOTS, maxPitchOTS);
             }
 
-            float heightOffset = preset.HeightOffset;
-            float minDist = preset.MinDistance;
+            float heightOffset = preset.HeightOffset * camScale;
+            float minDist = preset.MinDistance * camScale;
             float collisionPush = 0.35f;
 
             // Pivot is at the character's upper body / head
@@ -310,7 +321,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_E))
                 targetShoulderOffset = MathF.Abs(targetShoulderOffset);
 
-            shoulderOffset = Helpers.OGLMath.Lerp(shoulderOffset, targetShoulderOffset, Config.PlayerConfig.CameraFollowSpeed);
+            shoulderOffset = Helpers.OGLMath.Lerp(
+                shoulderOffset,
+                targetShoulderOffset * camScale,
+                Config.PlayerConfig.CameraFollowSpeed
+            );
+
+            float shoulder = shoulderOffset;
+            float camDist = Config.PlayerConfig.CameraDistance * camScale;
 
             // ZOOM
             Config.PlayerConfig.CameraDistance =
@@ -318,15 +336,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                                      Config.PlayerConfig.TargetCameraDistance,
                                      Config.PlayerConfig.CameraFollowSpeed);
 
-            // OFFSET (relative to pivot)
-            //Vector3 offset = new(shoulderOffset, 0, -Config.PlayerConfig.CameraDistance);
-            float shoulder = shoulderOffset;
-            float camDist = Config.PlayerConfig.CameraDistance;
 
             if (IsADS)
             {
-                shoulder = Helpers.OGLMath.Lerp(shoulder, 0.25f, 10f * dt);
-                camDist = Helpers.OGLMath.Lerp(camDist, 1.2f, 10f * dt);
+                shoulder = Helpers.OGLMath.Lerp(shoulder, 0.25f * camScale, 10f * dt);
+                camDist = Helpers.OGLMath.Lerp(camDist, 1.2f * camScale, 10f * dt);
             }
             else
             {
@@ -375,8 +389,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // SCROLL ZOOM
             if (preset.AllowZoom && Mouse.ScrollY != 0)
             {
-                PlayerConfig.TargetCameraDistance -= Mouse.ScrollY * Config.PlayerConfig.ZoomSpeed;
-                PlayerConfig.TargetCameraDistance = Math.Clamp(PlayerConfig.TargetCameraDistance, preset.MinDistance, preset.MaxDistance);
+                PlayerConfig.TargetCameraDistance -= Mouse.ScrollY * (Config.PlayerConfig.ZoomSpeed * camScale);
+                PlayerConfig.TargetCameraDistance = Math.Clamp(
+                    PlayerConfig.TargetCameraDistance,
+                    preset.MinDistance * camScale,
+                    preset.MaxDistance * camScale
+                );
 
                 Mouse.ResetScroll();
             }
@@ -452,9 +470,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
          
         private void SetCameraFirstPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
         {
+            float camScale = 1.0f;
+            if (ScaleConfig.ScaleCamera)
+            {
+                camScale = ScaleHelpers.Normalize(
+                    1.0f,
+                    ScaleConfig.CameraBaseScale,
+                    ScaleConfig.CameraMinMul,
+                    ScaleConfig.CameraMaxMul
+                );
+            }
 
             // First person: camera at head height above player center
-            Vector3 headPos = position + new Vector3(0, FirstPersonHeadHeight, 0);
+            Vector3 headPos = position + new Vector3(0, FirstPersonHeadHeight * camScale, 0);
 
             // Head bobbing when moving
             bool isMoving =
@@ -476,7 +504,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             Vector3 flatFront = new(Front.X, 0, Front.Z);
             if (flatFront.LengthSquared() > 0.0001f)
-                headPos += Vector3.Normalize(flatFront) * Config.PlayerConfig.FirstPersonCameraForwardOffset;
+                headPos += Vector3.Normalize(flatFront) * Config.PlayerConfig.FirstPersonCameraForwardOffset * camScale;
 
             // Smooth camera position
             //float lag = 3f;

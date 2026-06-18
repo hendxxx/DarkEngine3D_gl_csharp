@@ -8,6 +8,18 @@ using System.Runtime.InteropServices;
 
 namespace DarkEngine3D_gl_csharp.Engine.Helpers
 {
+    public static class ScaleHelpers
+    {
+        public static float Normalize(float scale, float baseScale, float minMul, float maxMul)
+        {
+            float normalized = scale / baseScale;
+
+            if (normalized < 1.0f)
+                return OGLMath.Lerp(minMul, 1.0f, normalized);
+
+            return OGLMath.Lerp(1.0f, maxMul, normalized - 1.0f);
+        }
+    }
     public struct Matrix3x3(
         float m11, float m12, float m13,
         float m21, float m22, float m23,
