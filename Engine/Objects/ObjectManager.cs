@@ -161,7 +161,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 spawnedPositions.Add(new Vector2(px, pz));
                 float yaw = (float)(rng.NextDouble() * 360.0);
 
-                var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
+                var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 0.5f);
                 SnapToTerrain(obj, gameTerrainChunk);
             }
 
@@ -174,7 +174,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
             float initialHeading = Config.PlayerConfig.InitialHeading;
 
-            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
+            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 0.05f);
             PlayerObject.IsPlayer = true;
             PlayerObject.SetFacing(initialHeading);
 

@@ -649,13 +649,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // Movement
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                    pos += forward * speed * _obj.Scale * dt;
+                    pos += forward * speed  * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
-                    pos -= forward * speed * _obj.Scale * dt;
+                    pos -= forward * speed  * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                    pos -= right * speedWalkVal * _obj.Scale * dt;
+                    pos -= right * speedWalkVal  * dt;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                    pos += right * speedWalkVal * _obj.Scale * dt;
+                    pos += right * speedWalkVal  * dt;
 
                 pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
 
@@ -853,8 +853,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (_speed > 0f)
             {
                 var f = Forward;
-                p.X += f.X * _speed * _obj.Scale * speedMul * dt;
-                p.Z += f.Z * _speed * _obj.Scale * speedMul * dt;
+                p.X += f.X * _speed  * speedMul * dt;
+                p.Z += f.Z * _speed  * speedMul * dt;
             }
 
             p.Y = terrain.GetHeightAt(p.X, p.Z);

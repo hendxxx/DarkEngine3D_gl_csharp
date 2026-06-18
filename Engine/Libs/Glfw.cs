@@ -247,36 +247,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 1. Mouse → yaw/pitch → vectors
                 Mouse.Update(window, camera);
                 camera.UpdateVectors();
-                 
-                Config.PlayerConfig.TargetShoulderOffset = lastTargetShoulderOffset;
-  
+
+                PlayerConfig.TargetShoulderOffset = lastTargetShoulderOffset;
+
                 // 2. Third-person keeps ALT free-look.
-                if (!camera.freeLook)
+                if (!camera.freeLook && objectManager != null)
                     objectManager.PlayerAgent.Heading = camera.Yaw;
 
                 // 3. Update keyboard
                 Keyboard.Update(window, light, camera, deltaTime, gameTerrainChunk);
 
                 // 3A. Check if camera mode changed and notify player
-                if (camera.CurrentMode != _lastCameraMode)
+                if (camera.CurrentMode != _lastCameraMode && objectManager != null)
                 {
                     _lastCameraMode = camera.CurrentMode;
                     objectManager.PlayerAgent.OnCameraModeChanged(camera.CurrentMode);
                 }
 
-                // 4. Update agents
-                objectManager.Update(deltaTime);
-                
-                // 4A. Update player movement dulu
-                objectManager.PlayerAgent.Move(window, camera, deltaTime, gameTerrainChunk, Vector3.Zero, 0f);
-                 
-                // 4B. Update NPC AI + movement
-                objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera);
+                if (objectManager != null) { 
+                    // 4. Update agents
+                    objectManager.Update(deltaTime);
 
+                    // 4A. Update player movement dulu
+                    objectManager.PlayerAgent.Move(window, camera, deltaTime, gameTerrainChunk, Vector3.Zero, 0f);
 
-                // 5. Set Camera orbital
-                camera.SetCamera(window, objectManager.PlayerAgent.Position, gameTerrainChunk, deltaTime);
+                    // 4B. Update NPC AI + movement
+                    objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera); 
 
+                    // 5. Set Camera orbital
+                    camera.SetCamera(window, objectManager.PlayerAgent.Position, gameTerrainChunk, deltaTime);
+
+                }
                 // 6. Update Light (moved up for CSM lightDir calculations)
                 light.Update(deltaTime, camera.Position);
 
@@ -482,7 +483,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 string title3 = $"🎥 MODE: {camera.CurrentMode}";
                 string title4 = $"📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
                 string title5 = $" POS: X ={camera.Position.X:N2} Y={camera.Position.Y:N2} Z={camera.Position.Z:N2}";
-                string title6 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
+                string title6 = "";
+                if (objectManager!= null)
+                {
+                    title6 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
+                }
 
                 hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText(title2, 10, 90, new Vector3(1, 0, 0));

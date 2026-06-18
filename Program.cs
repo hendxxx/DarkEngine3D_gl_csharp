@@ -70,8 +70,7 @@ public unsafe class Program
         // Init HUD (On-Screen Display)
         HUD hud = new("Artifacts\\fonts\\Ngaco.ttf", 32.0f);
 
-        deltaTime = Glfw.GetDeltaTime();
-        UpdateLoading(window, deltaTime, hud, images, "Loading engine ...");
+        UpdateLoading(window, hud, images, "Loading engine ...");
         Thread.Sleep(500);
 
         // Init Terrain textures
@@ -103,7 +102,7 @@ public unsafe class Program
             Console.Write($"\rTerrain Loading: [{bar}] {progress * 100:F1}%");
 
 
-            UpdateLoading(window, deltaTime, hud, images, $"Loading Terrain {progress * 100:F1}%");
+            UpdateLoading(window, hud, images, $"Loading Terrain {progress * 100:F1}%");
 
 
             if (progress >= 1.0f)
@@ -126,22 +125,22 @@ public unsafe class Program
         // Init ObjectManager & spawn 10 Xbot di area ~5×5 meter
         GltfShader.Init(); // Compile gltf shader setelah OpenGL siap
 
-        UpdateLoading(window, deltaTime, hud, images, "Loading objects ... ");
+        UpdateLoading(window, hud, images, "Loading objects ... ");
 
         ObjectManager objectManager = new();
         objectManager.Init(camera,gameTerrainChunk);
 
          
-        StaticObjectManager[] staticManagers = new[]
-        {
+        StaticObjectManager[] staticManagers =
+        [
             //new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
             new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
             new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
-        };
+        ];
 
         //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
-        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
-        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 1000, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
+        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 100f, 0.5f, gameTerrainChunk);
+        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 1000, new Vector3(0, 0, 0), 100f, 0.5f, gameTerrainChunk);
 
         Thread.Sleep(500);
 
@@ -155,7 +154,7 @@ public unsafe class Program
         Console.WriteLine("Engine Shutdown.");
     }
 
-    private static void UpdateLoading(nint window, float deltaTime, HUD hud, Texture[] images, string text )
+    private static void UpdateLoading(nint window,  HUD hud, Texture[] images, string text )
     {
         GL.ClearColor(0, 0, 0, 1);
         GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
