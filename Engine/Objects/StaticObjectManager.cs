@@ -35,6 +35,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
     public unsafe class StaticObjectManager
     {
+        public int GetObjectDrawn => ObjectDrawn;
+        public int GetTotalObject => TotalObject;
+        private int ObjectDrawn = 0;
+        private int TotalObject = 0;
         private readonly Dictionary<string, GltfModelGpuData> _modelCache = [];
         private readonly Dictionary<string, List<StaticObjectGroup>> _modelGroups = [];
         private readonly List<StaticObject> _objects = [];
@@ -186,6 +190,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             _objects.Add(new StaticObject(gpuData, selectedGroup, pos, yaw, scale));
+            TotalObject++;
         }
 
         public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain)
@@ -263,7 +268,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float ry = RotationCorrection.Y * MathF.PI / 180f;
             float rz = RotationCorrection.Z * MathF.PI / 180f;
             var correctionQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
-
+            ObjectDrawn = 0;
             foreach (var obj in _objects)
             {
                 Matrix4x4 vp = view * proj;
@@ -386,6 +391,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.BindVertexArray(mesh.VAO);
                     if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
                     else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+
+                    ObjectDrawn++;
                 }
             }
             GL.BindVertexArray(0);

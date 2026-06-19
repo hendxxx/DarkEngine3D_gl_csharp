@@ -15,14 +15,14 @@ public unsafe class Program
     private static float deltaTime =  0.0f;
     public static void Main()
     {
-        Glfw.WindowWidth = 2560;
-        Glfw.WindowHeight = 1440;
-        //Glfw.WindowWidth = 1920;
-        //Glfw.WindowHeight = 1080;
+        //Glfw.WindowWidth = 2560;
+        //Glfw.WindowHeight = 1440;
+        Glfw.WindowWidth = 1920;
+        Glfw.WindowHeight = 1080;
 
         // Init GLFW and Create Window
-        Glfw.Init("My Native C# Engine", true);
-        //Glfw.Init("My Native C# Engine", false);
+        //Glfw.Init("My Native C# Engine", true);
+        Glfw.Init("My Native C# Engine", false);
 
         // Load Library GLFW
         IntPtr glfwLib = Glfw.GetglfwLib();
@@ -55,7 +55,7 @@ public unsafe class Program
         // Opsional: Kalau siang hari terlalu putih, warnanya bisa dibuat agak kekuningan
         Vector3 sunColorLoc = new(1.0f, 0.95f, 0.8f);
         Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z); // Cahaya Putih
-        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "12:00");
+        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "16:00");
 
         // Init Keyboard and Mouse
         Keyboard.Init(glfwLib, 1.0f); // Increased speed for freefly mode
@@ -94,6 +94,7 @@ public unsafe class Program
         ];
         // Init TerrainChunk
         TerrainChunk.GlobalLODLevel = 1;
+        TerrainChunk.ChunksPerSide = 16;
         TerrainChunk.HeightScale = 50.0f;
         TerrainChunk.TerrainScale = 1.0f;
         TerrainChunk.OnLoadProgress += (progress) =>
@@ -131,24 +132,12 @@ public unsafe class Program
         ObjectManager objectManager = new();
         objectManager.Init(camera,gameTerrainChunk);
 
-         
-        StaticObjectManager[] staticManagers =
-        [
-            //new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
-            new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
-            new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
-        ];
-
-        //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
-        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
-        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
-
         Thread.Sleep(500);
 
         Mouse.ShowMouse(false); 
 
         // Init Loop
-        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, objectManager, staticManagers);
+        Glfw.Loop( SkyTextures, camera, light, gameTerrainChunk, skybox, hud, objectManager);
         //Glfw.Loop( SkyTextures, camera, light, null, null, skybox, hud,null);
          
         // Shutdown

@@ -170,7 +170,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private static CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private static float lastTargetShoulderOffset;
-        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager objectManager, params StaticObjectManager[] staticObjectManagers)
+        public static void Loop(Texture[] skyTextures, Camera camera, Lights light, TerrainChunk? gameTerrainChunk, Skybox skybox, HUD hud, ObjectManager objectManager)
         {
             uint shaderProgram = Shader.GetShaderProgram();
             int projectionLocation = GL.GetUniformLocation(shaderProgram, "projection");
@@ -185,7 +185,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             //ppStack.AddPass(invertPass);
 
             // --- CSM INITIALIZATION ---
-            CSM csm = new(Config.ShadowConfig.ShadowSize);
+            CSM csm = new(Config.ShadowConfig.CascadeSizes[0]);
 
             uint terrainShader = Shader.GetShaderProgram();
             int terrainShadowMap0Loc = GL.GetUniformLocation(terrainShader, "shadowMap0");
@@ -280,16 +280,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 }
                 // 6. Update Light (moved up for CSM lightDir calculations)
                 light.Update(deltaTime, camera.Position);
-
-                // --- CSM SHADOW PASS ---
-                // Use moon direction for shadows when sun is below horizon (night time)
-                Vector3 shadowLightDir = light.SunDir;
-                if (light.SunDir.Y < 0.0f)  // Sun below horizon = night time
-                {
-                    // Calculate moon direction (opposite of sun, elevated)
-                    shadowLightDir = new Vector3(-light.SunDir.X, 0.7f, -light.SunDir.Z);
-                }
-                csm.UpdateMatrices(camera, shadowLightDir);
+                 
+                csm.UpdateMatrices(camera, light.ShadowDirStable);
 
                 for (int i = 0; i < CSM.NumCascades; i++)
                 {
@@ -312,17 +304,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         GL.UniformMatrix4fv(shadowStaticAlphaLightSpaceLoc, 1, false, (float*)&lightSpace);
                     }
 
-                    foreach (var manager in staticObjectManagers)
-                    {
-                        if (manager != null)
-                        {
-                            manager.RenderShadow(camera, csm, i, shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
-                        }
-                    }
-
                     if (objectManager != null)
                     {
-                        objectManager.RenderShadow(camera, csm, i, shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc);
+                        objectManager.RenderShadow(camera, csm, i, shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc, shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
+
                     }
 
                     if (gameTerrainChunk != null)
@@ -405,15 +390,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 {
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                     objectManager.Draw(camera, light, csm);
-                }
-
-                // --- Static Objects (Trees/Rocks) ---
-                foreach (var manager in staticObjectManagers)
-                {
-                    if (manager != null)
-                    {
-                        manager.Draw(camera, light, csm);
-                    }
                 }
 
                 //float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai

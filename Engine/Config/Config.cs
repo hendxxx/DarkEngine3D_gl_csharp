@@ -5,8 +5,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     public static class ShadowConfig
     {
 
-        public static float[] CascadeLayer = { 30.0f, 60.0f, 120.0f };
-        public static int ShadowSize = 4096;
+        public static float[] CascadeLayer = [ 30.0f, 70.0f, 140.0f ];
+        public static int[] CascadeSizes = [16384, 8192, 4096]; 
 
     }
     // ============================

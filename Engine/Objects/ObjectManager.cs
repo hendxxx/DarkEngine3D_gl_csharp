@@ -73,7 +73,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public CharacterAgent PlayerAgent;
         public GltfObject PlayerObject;
-         
+
+        public StaticObjectManager[] staticObjectManagers;
+
         public ObjectManager()
         {
             _shaderProgram = GltfShader.GetShaderProgram();
@@ -214,8 +216,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             WanderRadius = 38f;
             InitWanderingAgents();
 
+            staticObjectManagers =
+            [
+                //new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
+                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
+            ];
 
-        } 
+            //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
+            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 200, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+
+        }
 
         public GltfModelGpuData LoadModel(string path)
         {
@@ -582,10 +594,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 DrawnObjects++;
             }
 
-            TotalObjects = _objects.Count;
+
+            // --- Static Objects (Trees/Rocks) ---
+            foreach (var manager in staticObjectManagers)
+            {
+                if (manager != null)
+                {
+                    manager.Draw(camera, light, csm);
+                    DrawnObjects = DrawnObjects + manager.GetObjectDrawn;
+                }
+            }
+
+
+            TotalObjects = _objects.Count + staticObjectManagers.Sum(s=>s.GetTotalObject);
         }
 
-        public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowSkinnedShader, int modelLoc, int jointsLoc)
+        public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowSkinnedShader, int modelLoc, int jointsLoc, uint shadowStaticAlphaShader, int shadowStaticAlphaModelLoc)
         {
             GL.UseProgram(shadowSkinnedShader);
 
@@ -646,6 +670,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 obj.DrawShadow(modelLoc, jointsLoc);
             }
+
+
+            foreach (var manager in staticObjectManagers)
+            {
+                if (manager != null)
+                {
+                    manager.RenderShadow(camera, csm, cascadeIndex, shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
+                }
+            }
+
         }
 
         public void DrawHealthBars(Camera camera, HUD hud)

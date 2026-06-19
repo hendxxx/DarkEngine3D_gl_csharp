@@ -8,6 +8,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public class CSM : IDisposable
     {
         public const int NumCascades = 3;
+        private readonly int[] CascadeSizes = Config.ShadowConfig.CascadeSizes;
 
         public int ShadowSize { get; private set; }
 
@@ -42,8 +43,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     Const.GL_TEXTURE_2D,
                     0,
                     (int)Const.GL_DEPTH_COMPONENT32F,
-                    ShadowSize,
-                    ShadowSize,
+                    CascadeSizes[i],
+                    CascadeSizes[i],
                     0,
                     Const.GL_DEPTH_COMPONENT,
                     Const.GL_FLOAT,
@@ -269,7 +270,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void BindFramebuffer(int index)
         {
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, FBOs[index]);
-            GL.Viewport(0, 0, ShadowSize, ShadowSize);
+            GL.Viewport(0, 0, CascadeSizes[index], CascadeSizes[index]);
 
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.DepthMask(true);
