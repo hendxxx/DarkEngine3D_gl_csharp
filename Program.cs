@@ -15,14 +15,14 @@ public unsafe class Program
     private static float deltaTime =  0.0f;
     public static void Main()
     {
-        //Glfw.WindowWidth = 2560;
-        //Glfw.WindowHeight = 1440;
-        Glfw.WindowWidth = 1920;
-        Glfw.WindowHeight = 1080;
+        Glfw.WindowWidth = 2560;
+        Glfw.WindowHeight = 1440;
+        //Glfw.WindowWidth = 1920;
+        //Glfw.WindowHeight = 1080;
 
         // Init GLFW and Create Window
-        //Glfw.Init("My Native C# Engine", true);
-        Glfw.Init("My Native C# Engine", false);
+        Glfw.Init("My Native C# Engine", true);
+        //Glfw.Init("My Native C# Engine", false);
 
         // Load Library GLFW
         IntPtr glfwLib = Glfw.GetglfwLib();
@@ -43,6 +43,7 @@ public unsafe class Program
         
         // Init Camera
         Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 2500.0f);
+        camera.CurrentMode = CameraMode.OTS;
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;
@@ -54,7 +55,7 @@ public unsafe class Program
         // Opsional: Kalau siang hari terlalu putih, warnanya bisa dibuat agak kekuningan
         Vector3 sunColorLoc = new(1.0f, 0.95f, 0.8f);
         Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z); // Cahaya Putih
-        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "17:00");
+        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "12:00");
 
         // Init Keyboard and Mouse
         Keyboard.Init(glfwLib, 1.0f); // Increased speed for freefly mode
@@ -139,8 +140,8 @@ public unsafe class Program
         ];
 
         //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
-        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 100f, 1.0f, gameTerrainChunk);
-        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100, new Vector3(0, 0, 0), 100f, 1.0f, gameTerrainChunk);
+        staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+        staticManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
 
         Thread.Sleep(500);
 
