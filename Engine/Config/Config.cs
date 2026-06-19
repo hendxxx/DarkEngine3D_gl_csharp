@@ -2,12 +2,19 @@ using System.Collections.Generic;
 
 namespace DarkEngine3D_gl_csharp.Engine.Config
 {
+    public static class ShadowConfig
+    {
+
+        public static float[] CascadeLayer = { 30.0f, 120.0f, 600.0f };
+        public static int ShadowSize = 4096;
+
+    }
     // ============================
     // Scale Config (global, configurable)
     // ============================
     public static class ScaleConfig
     {
-        public static float ObjScale = 0.5f;
+        public static float ObjScale = 1.0f;
 
         // Movement
         public static bool ScaleMovement = true;

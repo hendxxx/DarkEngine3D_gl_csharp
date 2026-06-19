@@ -146,7 +146,7 @@ float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchR
     float blockers = 0.0;
     float count = 0.0;
 
-    vec2 texel = 1.0 / textureSize(shadowMap, 0);
+    vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
 
     for (int x = -2; x <= 2; x++)
     for (int y = -2; y <= 2; y++)
@@ -192,7 +192,7 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     if (shadowFilterMode == 2) filterRadius = max(filterRadius, 1.5);  // Reduced from 4.0
 
     float shadow = 0.0;
-    vec2 texel = 1.0 / textureSize(shadowMap, 0);
+    vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
 
     if (shadowFilterMode == 0)
     {

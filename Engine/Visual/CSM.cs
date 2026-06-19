@@ -8,17 +8,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public class CSM : IDisposable
     {
         public const int NumCascades = 3;
+
         public int ShadowSize { get; private set; }
 
         public uint[] FBOs = new uint[NumCascades];
         public uint[] ShadowTextures = new uint[NumCascades];
         public Matrix4x4[] LightSpaceMatrices = new Matrix4x4[NumCascades];
-
         public Vector3[][] OrthoCorners = new Vector3[NumCascades][];
 
-        public float[] CascadeEnds = { 30.0f, 120.0f, 600.0f };
+        // Pastikan Config.ShadowConfig.CascadeLayer minimal punya NumCascades elemen.
+        public float[] CascadeEnds = Config.ShadowConfig.CascadeLayer;
 
-        public CSM(int shadowSize = 2046)
+        public CSM(int shadowSize = 1024)
         {
             ShadowSize = shadowSize;
             CreateShadowMaps();
@@ -37,25 +38,54 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, FBOs[i]);
                 GL.BindTexture(Const.GL_TEXTURE_2D, ShadowTextures[i]);
 
-                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_DEPTH_COMPONENT32F,
-                    ShadowSize, ShadowSize, 0,
-                    Const.GL_DEPTH_COMPONENT, Const.GL_FLOAT, (void*)0);
+                GL.TexImage2D(
+                    Const.GL_TEXTURE_2D,
+                    0,
+                    (int)Const.GL_DEPTH_COMPONENT32F,
+                    ShadowSize,
+                    ShadowSize,
+                    0,
+                    Const.GL_DEPTH_COMPONENT,
+                    Const.GL_FLOAT,
+                    (void*)0);
 
+                // Filtering depth map. LINEAR cocok kalau shadow di-sample manual (PCF/PCSS di shader).
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
 
+                // Depth map sebaiknya border = 1.0 (fully lit) saat sample keluar area.
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_BORDER);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_BORDER);
+
+                float[] borderColor = { 1f, 1f, 1f, 1f };
+                fixed (float* pBorder = borderColor)
+                {
+                    GL.TexParameterfv(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_BORDER_COLOR, pBorder);
+                }
+
+                // Manual compare di shader.
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_COMPARE_MODE, (int)Const.GL_NONE);
 
-                GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_ATTACHMENT,
-                    Const.GL_TEXTURE_2D, ShadowTextures[i], 0);
+                GL.FramebufferTexture2D(
+                    Const.GL_FRAMEBUFFER,
+                    Const.GL_DEPTH_ATTACHMENT,
+                    Const.GL_TEXTURE_2D,
+                    ShadowTextures[i],
+                    0);
 
-                uint none = 0;
+                // FBO depth-only.
+                uint none = Const.GL_NONE;
                 GL.DrawBuffers(0, &none);
                 GL.ReadBuffer(Const.GL_NONE);
+
+                //uint status = GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
+                //if (status != Const.GL_FRAMEBUFFER_COMPLETE)
+                //{
+                //    Console.WriteLine($"[CSM] Shadow FBO {i} incomplete: 0x{status:X}");
+                //}
             }
 
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
         }
 
@@ -76,37 +106,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             lightDir = Vector3.Normalize(lightDir);
 
-            // Cascade terakhir harus sama dengan far plane kamera
+            // Cascade terakhir menutup sampai far plane kamera.
             CascadeEnds[NumCascades - 1] = camera.FarDist;
 
             float prevSplit = camera.NearDist;
+            Matrix4x4 cameraView = camera.GetViewMatrix();
+            float fovRad = Helpers.OGLMath.ToRadians(camera.FoV);
 
             for (int i = 0; i < NumCascades; i++)
             {
                 float nextSplit = CascadeEnds[i];
-                float fovRad = Helpers.OGLMath.ToRadians(camera.FoV);
 
                 Matrix4x4 splitProj = Matrix4x4.CreatePerspectiveFieldOfView(
-                    fovRad, camera.GetAspect(), prevSplit, nextSplit);
+                    fovRad,
+                    camera.GetAspect(),
+                    prevSplit,
+                    nextSplit);
 
-                Vector3[] corners = TerrainChunk.GetFrustumCorners(camera.GetViewMatrix(), splitProj);
+                Vector3[] corners = TerrainChunk.GetFrustumCorners(cameraView, splitProj);
 
+                // Center frustum split.
                 Vector3 center = Vector3.Zero;
                 for (int j = 0; j < 8; j++)
                     center += corners[j];
                 center /= 8f;
 
+                // Sphere bound kasar agar orientasi - stabil saat kamera rotasi.
                 float radius = 0f;
                 for (int j = 0; j < 8; j++)
-                    radius = MathF.Max(radius, (corners[j] - center).Length());
+                    radius = MathF.Max(radius, Vector3.Distance(corners[j], center));
 
+                // Sedikit quantize radius agar makin stabil.
                 radius = MathF.Ceiling(radius * 32f) / 32f;
 
                 Vector3 up = MathF.Abs(Vector3.Dot(lightDir, Vector3.UnitY)) > 0.99f
-                    ? Vector3.UnitZ : Vector3.UnitY;
+                    ? Vector3.UnitZ
+                    : Vector3.UnitY;
 
+                // Jika arah shadow terasa kebalik, ganti '+' menjadi '-'.
                 Vector3 lightPos = center + lightDir * radius;
-
                 Matrix4x4 lightView = Matrix4x4.CreateLookAt(lightPos, center, up);
 
                 float minX = float.MaxValue, maxX = float.MinValue;
@@ -123,25 +161,46 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     minZ = MathF.Min(minZ, lp.Z);
                     maxZ = MathF.Max(maxZ, lp.Z);
                 }
-                // FIX: padding XY besar supaya tubuh tidak terpotong
-                float padXY = radius * 0.75f;
-                if (padXY < 15.0f) padXY = 15.0f;
 
-                // FIX: padding Z belakang lebih besar untuk objek tinggi
+                // Padding XY agar receiver / caster di tepi tidak kepotong.
+                float padXY = MathF.Max(radius * 0.75f, 15.0f);
+                minX -= padXY;
+                maxX += padXY;
+                minY -= padXY;
+                maxY += padXY;
+
+                // Padding Z agar caster di luar split masih bisa nge-cast shadow ke area terlihat.
                 float padZFront = radius * 3.0f;
                 float padZBack = radius * 6.0f + (i * 40.0f);
-
 
                 float zNear = minZ - padZBack;
                 float zFar = maxZ + padZFront;
 
-                // FIX: clamp Z-range supaya precision cascade jauh tidak hancur
-                float maxRange = radius * 10.0f;
+                // Clamp range Z supaya precision cascade jauh tidak hancur.
+                float maxRange = radius * 10.0f; // tweakable bila caster jauh masih terpotong
                 float centerZ = 0.5f * (zNear + zFar);
-                float half = 0.5f * maxRange;
+                float halfZ = 0.5f * maxRange;
+                zNear = centerZ - halfZ;
+                zFar = centerZ + halfZ;
 
-                zNear = centerZ - half;
-                zFar = centerZ + half;
+                // Stable CSM: snap CENTER ortho ke texel grid, lebih stabil dari snap min/max terpisah.
+                float extentX = 0.5f * (maxX - minX);
+                float extentY = 0.5f * (maxY - minY);
+                float centerX = 0.5f * (minX + maxX);
+                float centerY = 0.5f * (minY + maxY);
+
+                float texelSizeX = (extentX * 2.0f) / ShadowSize;
+                float texelSizeY = (extentY * 2.0f) / ShadowSize;
+
+                if (texelSizeX > 0.0f)
+                    centerX = MathF.Floor(centerX / texelSizeX) * texelSizeX;
+                if (texelSizeY > 0.0f)
+                    centerY = MathF.Floor(centerY / texelSizeY) * texelSizeY;
+
+                minX = centerX - extentX;
+                maxX = centerX + extentX;
+                minY = centerY - extentY;
+                maxY = centerY + extentY;
 
                 Vector3[] ls =
                 {
@@ -162,9 +221,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 OrthoCorners[i] = ls;
 
-                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL( minX, maxX, minY, maxY, zNear, zFar);
+                Matrix4x4 lightProj = CreateOrthographicOffCenterOpenGL(
+                    minX, maxX, minY, maxY, zNear, zFar);
 
-                // Pipeline kamu: row-major → view * proj
+                // Pipeline ini pakai row-major dan di shader dikalikan terhadap worldPos.
                 LightSpaceMatrices[i] = lightView * lightProj;
 
                 prevSplit = nextSplit;
@@ -210,15 +270,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, FBOs[index]);
             GL.Viewport(0, 0, ShadowSize, ShadowSize);
-            
-            // Disable culling for shadow pass to render back faces
-            // This ensures complete shadow silhouettes for all objects
+
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.DepthMask(true);
-            GL.Disable(Const.GL_CULL_FACE);  // Render both front and back faces
+
+            // Best practice umum untuk shadow pass directional light:
+            // render front faces agar mengurangi shadow acne.
+            GL.Enable(Const.GL_CULL_FACE);
+            GL.CullFace(Const.GL_FRONT);
             GL.FrontFace(Const.GL_CCW);
-            
+
             GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
+        }
+
+        public void UnbindFramebuffer(int viewportWidth, int viewportHeight)
+        {
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            GL.Viewport(0, 0, viewportWidth, viewportHeight);
+
+            // Kembalikan state default umum.
+            GL.CullFace(Const.GL_BACK);
         }
 
         public unsafe void Dispose()

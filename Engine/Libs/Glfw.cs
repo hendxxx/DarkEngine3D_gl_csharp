@@ -185,7 +185,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             //ppStack.AddPass(invertPass);
 
             // --- CSM INITIALIZATION ---
-            CSM csm = new CSM(4096);
+            CSM csm = new(Config.ShadowConfig.ShadowSize);
 
             uint terrainShader = Shader.GetShaderProgram();
             int terrainShadowMap0Loc = GL.GetUniformLocation(terrainShader, "shadowMap0");
