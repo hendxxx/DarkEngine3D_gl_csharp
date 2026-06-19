@@ -8,6 +8,7 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec3 ObjColor;
 out vec2 TexCoord;  
+out float viewDepth;
 
 uniform mat4 model;
 uniform mat4 view;
