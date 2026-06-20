@@ -171,18 +171,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 maxY += padXY;
 
                 // Padding Z agar caster di luar split masih bisa nge-cast shadow ke area terlihat.
-                float padZFront = radius * 3.0f;
-                float padZBack = radius * 6.0f + (i * 40.0f);
+                // padZBack lebih besar: tangkap caster di balik bukit / jauh dari frustum
+                float padZFront = radius * 2.0f;
+                float padZBack  = radius * 8.0f + (i * 60.0f);
 
                 float zNear = minZ - padZBack;
-                float zFar = maxZ + padZFront;
+                float zFar  = maxZ + padZFront;
 
-                // Clamp range Z supaya precision cascade jauh tidak hancur.
-                float maxRange = radius * 10.0f; // tweakable bila caster jauh masih terpotong
-                float centerZ = 0.5f * (zNear + zFar);
-                float halfZ = 0.5f * maxRange;
-                zNear = centerZ - halfZ;
-                zFar = centerZ + halfZ;
+                // Jangan clamp maxRange terlalu ketat agar caster tidak terpotong.
+                // Biarkan range Z penuh sesuai frustum + padding.
+                // (Tidak ada clamping disini – precision tetap OK karena GL_DEPTH_COMPONENT32F)
+                // Pastikan zNear tidak terlalu positif (bisa balik sign):
+                if (zNear > zFar - 1.0f) zNear = zFar - 1.0f;
 
                 // Stable CSM: snap CENTER ortho ke texel grid, lebih stabil dari snap min/max terpisah.
                 float extentX = 0.5f * (maxX - minX);
@@ -190,8 +190,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 float centerX = 0.5f * (minX + maxX);
                 float centerY = 0.5f * (minY + maxY);
 
-                float texelSizeX = (extentX * 2.0f) / ShadowSize;
-                float texelSizeY = (extentY * 2.0f) / ShadowSize;
+                // BUG FIX: gunakan CascadeSizes[i] bukan ShadowSize (default 1024)
+                // supaya texel snap akurat → shadow tidak flicker saat kamera bergerak
+                float texelSizeX = (extentX * 2.0f) / CascadeSizes[i];
+                float texelSizeY = (extentY * 2.0f) / CascadeSizes[i];
 
                 if (texelSizeX > 0.0f)
                     centerX = MathF.Floor(centerX / texelSizeX) * texelSizeX;

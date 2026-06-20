@@ -35,7 +35,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Vector3 LightColor { get; private set; }
 
         // smoothing shadowDir: makin besar, makin cepat ngejar matahari
-        private const float ShadowSmoothSpeed = 5.0f; // 0.5 = cukup halus
+        // Dengan sun speed 30x, nilai 5.0 terlalu agresif → shadow flicker.
+        // 0.8 = smooth tapi tetap update cepat saat matahari bergerak
+        private const float ShadowSmoothSpeed = 0.8f;
 
         public Lights(Vector3 _sundir, Vector3 _lightColor, Vector3 _viewpos, string? startTime = null)
         {

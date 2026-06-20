@@ -148,11 +148,13 @@ float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchR
 
     vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
 
+    // Gunakan 4x4 grid untuk pencarian blocker lebih akurat
     for (int x = -2; x <= 2; x++)
     for (int y = -2; y <= 2; y++)
     {
-        float shadowDepth = texture(shadowMap, uv + vec2(x, y) * texel * searchRadius).r;
-        if (shadowDepth < zReceiver) {
+        vec2 offset = vec2(x, y) * texel * searchRadius;
+        float shadowDepth = texture(shadowMap, uv + offset).r;
+        if (shadowDepth < zReceiver - 0.0002) {
             blockers += shadowDepth;
             count += 1.0;
         }
@@ -169,54 +171,57 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
-    if (projCoords.z > 1.0)
+    // Anti-artifact: jangan sample di luar NDC
+    if (projCoords.z > 1.0 || projCoords.z < 0.0)
         return 1.0;
 
     vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
     float zReceiver = projCoords.z - bias;
 
-    float searchRadius = 18.0;  // Reduced from 25.0 for sharper boundaries
+    // searchRadius dalam texel - cukup untuk tangkap blocker dekat
+    float searchRadius = 8.0;
 
     float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, searchRadius);
     if (avgBlocker < 0.0)
         return 1.0;
 
     float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
-    penumbra *= 5.0;
+    penumbra = clamp(penumbra * 4.0, 0.0, 8.0);
 
-    float lightSize = 0.009;  // Reduced from 0.012 for tighter penumbra
-    float filterRadius = penumbra * lightSize * 450.0;  // Reduced from 600.0 for sharpness
+    // lightSize kecil = shadow tepi lebih tajam
+    float lightSize = 0.006;
+    float filterRadius = penumbra * lightSize * 350.0;
 
-    if (shadowFilterMode == 0) filterRadius = max(filterRadius, 0.5);  // Reduced from 1.0
-    if (shadowFilterMode == 1) filterRadius = max(filterRadius, 1.0);  // Reduced from 2.0
-    if (shadowFilterMode == 2) filterRadius = max(filterRadius, 1.5);  // Reduced from 4.0
+    // Minimum filter radius per mode:
+    // Mode 0 (hard/PCF biasa): tidak pakai PCSS, ditangani sendiri di bawah
+    // Mode 1 (soft 16-sample): min 1.5 texel spread
+    // Mode 2 (ultra 32-sample): min 2.0 texel spread
+    if (shadowFilterMode == 1) filterRadius = clamp(filterRadius, 1.5, 6.0);
+    if (shadowFilterMode == 2) filterRadius = clamp(filterRadius, 2.0, 8.0);
 
     float shadow = 0.0;
     vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
 
     if (shadowFilterMode == 0)
     {
-        for (int x = -2; x <= 2; x++)
-        for (int y = -2; y <= 2; y++)
+        // Hard shadow: simple 3x3 PCF tanpa penumbra, krisp dan tidak kotak
+        for (int x = -1; x <= 1; x++)
+        for (int y = -1; y <= 1; y++)
         {
-            float pcfDepth = texture(shadowMap, uv + vec2(x, y) * texel * filterRadius).r;
+            float pcfDepth = texture(shadowMap, uv + vec2(x, y) * texel).r;
             shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
         }
-        shadow /= 25.0;
+        shadow /= 9.0;
     }
     else if (shadowFilterMode == 1)
     {
+        // 16-sample Poisson + rotated blue noise, tanpa clamp offset
         float angle = blueNoise(uv) * 6.2831853;
         mat2 rot = rotate(angle);
 
         for (int i = 0; i < 16; i++)
         {
-            float bn = blueNoise(uv + float(i));
-            vec2 bnOffset = vec2(cos(bn * 6.2831853), sin(bn * 6.2831853)) * 0.15;
-
-            vec2 offset = rot * (poisson16[i] + bnOffset) * filterRadius * texel;
-            offset = clamp(offset, -4.0 * texel, 4.0 * texel);
-
+            vec2 offset = rot * poisson16[i] * filterRadius * texel;
             float pcfDepth = texture(shadowMap, uv + offset).r;
             shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
         }
@@ -224,20 +229,13 @@ float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
     }
     else if (shadowFilterMode == 2)
     {
+        // 32-sample Poisson + rotated blue noise, tanpa clamp offset
         float angle = blueNoise(uv * 1.37) * 6.2831853;
         mat2 rot = rotate(angle);
 
         for (int i = 0; i < 32; i++)
         {
-            float bn = blueNoise(uv + float(i) * 0.73);
-            vec2 bnOffset = vec2(cos(bn * 6.2831853), sin(bn * 6.2831853)) * 0.10;
-
-            vec2 baseOffset = rot * poisson32[i] * filterRadius * texel;
-            vec2 noiseOffset = rot * bnOffset * filterRadius * texel;
-
-            vec2 offset = mix(baseOffset, baseOffset + noiseOffset, 0.30);
-            offset = clamp(offset, -3.0 * texel, 3.0 * texel);
-
+            vec2 offset = rot * poisson32[i] * filterRadius * texel;
             float pcfDepth = texture(shadowMap, uv + offset).r;
             shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
         }
