@@ -7,9 +7,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint hudShaderProgram;
         static uint skyShaderProgram;
         static uint invertPassShaderProgram;
+        static uint ssaoShaderProgram;
+        static uint ssaoBlurShaderProgram;
+        static uint ssaoBlurHShaderProgram;
+        static uint ssaoBlurVShaderProgram;
+        static uint ssaoCompositeShaderProgram;
         
         static uint shadowShaderProgram;
         static uint shadowSkinnedShaderProgram;
+        static uint shadowSkinnedAlphaShaderProgram;
         static uint shadowStaticAlphaShaderProgram;
 
         static uint rainStreakShaderProgram;
@@ -56,6 +62,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             invertPassShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/invertPass_vertex.glsl",
                 "Artifacts/shaders/invertPass_fragment.glsl");
+
+            ssaoShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/ssao_vertex.glsl",
+                "Artifacts/shaders/ssao_fragment.glsl");
+
+            ssaoBlurShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/ssao_vertex.glsl",
+                "Artifacts/shaders/ssao_blur_fragment.glsl");
+
+            ssaoBlurHShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/ssao_vertex.glsl",
+                "Artifacts/shaders/ssao_blur_h_fragment.glsl");
+
+            ssaoBlurVShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/ssao_vertex.glsl",
+                "Artifacts/shaders/ssao_blur_v_fragment.glsl");
+
+            ssaoCompositeShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/ssao_vertex.glsl",
+                "Artifacts/shaders/ssao_composite_fragment.glsl");
              
             shadowShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/shadow_vertex.glsl",
@@ -65,8 +91,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 "Artifacts/shaders/shadow_skinned_vertex.glsl",
                 "Artifacts/shaders/shadow_fragment.glsl");
 
+            shadowSkinnedAlphaShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/shadow_skinned_alpha_vertex.glsl",
+                "Artifacts/shaders/shadow_skinned_alpha_fragment.glsl");
+
             shadowStaticAlphaShaderProgram = Helpers.ShaderHelpers.LoadShader(
-                "Artifacts/shaders/shadow_static_vertex.glsl",
+                "Artifacts/shaders/shadow_static_instanced_vertex.glsl",
                 "Artifacts/shaders/shadow_static_alpha_fragment.glsl");
         }
 
@@ -83,6 +113,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetShadowSkinnedShaderProgram()
         {
             return shadowSkinnedShaderProgram;
+        }
+
+        public static uint GetShadowSkinnedAlphaShaderProgram()
+        {
+            return shadowSkinnedAlphaShaderProgram;
         }
 
         public static uint GetShadowStaticAlphaShaderProgram()
@@ -107,6 +142,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetInvertPassShaderProgram()
         {
             return invertPassShaderProgram;
+        }
+
+        public static uint GetSSAOShaderProgram()
+        {
+            return ssaoShaderProgram;
+        }
+
+        public static uint GetSSAOBlurShaderProgram()
+        {
+            return ssaoBlurShaderProgram;
+        }
+
+        public static uint GetSSAOBlurHShaderProgram()
+        {
+            return ssaoBlurHShaderProgram;
+        }
+
+        public static uint GetSSAOBlurVShaderProgram()
+        {
+            return ssaoBlurVShaderProgram;
+        }
+
+        public static uint GetSSAOCompositeShaderProgram()
+        {
+            return ssaoCompositeShaderProgram;
         }
 
         public static uint GetSkyShaderProgram()

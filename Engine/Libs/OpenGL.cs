@@ -88,13 +88,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.BindRenderbufferPtr = GetProcAddress(glLib, "glBindRenderbuffer");
             GL.RenderbufferStoragePtr = GetProcAddress(glLib, "glRenderbufferStorage");
             GL.FramebufferRenderbufferPtr = GetProcAddress(glLib, "glFramebufferRenderbuffer");
+            GL.DeleteRenderbuffersPtr = GetProcAddress(glLib, "glDeleteRenderbuffers");
             GL.GetShaderivPtr = GetProcAddress(glLib, "glGetShaderiv");
             GL.GetProgramivPtr = GetProcAddress(glLib, "glGetProgramiv");
             GL.DepthFuncPtr = GetProcAddress(glLib, "glDepthFunc");
             GL.GetStringPtr = GetProcAddress(glLib, "glGetString");
             GL.VertexAttribDivisorPtr = GetProcAddress(glLib, "glVertexAttribDivisor");
             GL.DrawArraysInstancedPtr = GetProcAddress(glLib, "glDrawArraysInstanced");
-             
+            GL.DrawElementsInstancedPtr = GetProcAddress(glLib, "glDrawElementsInstanced");             
             return glLib;
         }
 

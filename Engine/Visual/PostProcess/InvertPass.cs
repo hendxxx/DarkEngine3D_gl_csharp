@@ -24,7 +24,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
                 -1f,  1f,  0f, 0f,   // top-left
                  1f, -1f,  1f, 1f,   // bottom-right
                  1f,  1f,  1f, 0f    // top-right
-        ];
+            ];
 
             uint vao = 0, vbo = 0;
             GL.GenVertexArrays(1, &vao);

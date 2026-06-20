@@ -164,6 +164,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float yaw = (float)(rng.NextDouble() * 360.0);
 
                 var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
+                obj.CastShadows = true;
+                obj.UseAlphaTest = true;
+
                 SnapToTerrain(obj, gameTerrainChunk);
             }
 
@@ -178,6 +181,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
             PlayerObject.IsPlayer = true;
+            PlayerObject.CastShadows = true;
+            PlayerObject.UseAlphaTest = true;
+
             PlayerObject.SetFacing(initialHeading);
 
             PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
@@ -224,8 +230,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ];
 
             //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
-            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 200, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 512f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[0].CastShadows = true;  
+            staticObjectManagers[0].UseAlphaTest = true;
+                                                          
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100, new Vector3(0, 0, 0), 512f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[1].CastShadows = false;  
+            staticObjectManagers[1].UseAlphaTest = false;
 
         }
 
@@ -609,7 +620,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             TotalObjects = _objects.Count + staticObjectManagers.Sum(s=>s.GetTotalObject);
         }
 
-        public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowSkinnedShader, int modelLoc, int jointsLoc, uint shadowStaticAlphaShader, int shadowStaticAlphaModelLoc)
+        public void RenderShadow(Camera camera, CSM csm, int cascadeIndex,
+            uint shadowSkinnedShader, int modelLoc, int jointsLoc,
+            uint shadowSkinnedAlphaShader, int shadowSkinnedAlphaModelLoc, int shadowSkinnedAlphaJointsLoc,
+            int shadowSkinnedAlphaAlbedoLoc, int shadowSkinnedAlphaUseAlbedoLoc,
+            int shadowSkinnedAlphaAlphaThresholdLoc, int shadowSkinnedAlphaUseAlphaTestLoc,
+            uint shadowStaticAlphaShader, int shadowStaticAlphaModelLoc)
         {
             GL.UseProgram(shadowSkinnedShader);
 
@@ -627,6 +643,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 var obj = _objects[i];
 
+                // Skip objects that don't cast shadows
+                if (!obj.CastShadows) continue;
+
                 float dist = Vector3.Distance(camera.Position, obj.Position);
                 if (dist > maxShadowDist) continue;
 
@@ -642,13 +661,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (outside) continue;
                 }
 
-                obj.DrawShadow(modelLoc, jointsLoc);
+                // Use alpha-test shader if object requires it
+                bool globalAlphaTest = DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsAlphaTestActive();
+                bool effectiveAlphaTest = globalAlphaTest && obj.UseAlphaTest;
+
+                if (effectiveAlphaTest)
+                {
+                    GL.UseProgram(shadowSkinnedAlphaShader);
+                    obj.DrawShadow(shadowSkinnedAlphaModelLoc, shadowSkinnedAlphaJointsLoc,
+                        useAlphaTest: true,
+                        useAlbedoLoc: shadowSkinnedAlphaUseAlbedoLoc,
+                        albedoMapLoc: shadowSkinnedAlphaAlbedoLoc,
+                        alphaThresholdLoc: shadowSkinnedAlphaAlphaThresholdLoc,
+                        useAlphaTestLoc: shadowSkinnedAlphaUseAlphaTestLoc);
+                    GL.UseProgram(shadowSkinnedShader);
+                }
+                else
+                {
+                    obj.DrawShadow(modelLoc, jointsLoc);
+                }
             }
 
 
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
+
+                // Skip objects that don't cast shadows
+                if (!obj.CastShadows) continue;
 
                 // Skip objects too far from the camera (beyond last cascade)
                 float dist = Vector3.Distance(camera.Position, obj.Position);
@@ -668,7 +708,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (outside) continue;
                 }
 
-                obj.DrawShadow(modelLoc, jointsLoc);
+                // Use alpha-test shader if object requires it
+                bool globalAlphaTest2 = DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsAlphaTestActive();
+                bool effectiveAlphaTest2 = globalAlphaTest2 && obj.UseAlphaTest;
+
+                if (effectiveAlphaTest2)
+                {
+                    GL.UseProgram(shadowSkinnedAlphaShader);
+                    obj.DrawShadow(shadowSkinnedAlphaModelLoc, shadowSkinnedAlphaJointsLoc,
+                        useAlphaTest: true,
+                        useAlbedoLoc: shadowSkinnedAlphaUseAlbedoLoc,
+                        albedoMapLoc: shadowSkinnedAlphaAlbedoLoc,
+                        alphaThresholdLoc: shadowSkinnedAlphaAlphaThresholdLoc,
+                        useAlphaTestLoc: shadowSkinnedAlphaUseAlphaTestLoc);
+                    GL.UseProgram(shadowSkinnedShader);
+                }
+                else
+                {
+                    obj.DrawShadow(modelLoc, jointsLoc);
+                }
             }
 
 

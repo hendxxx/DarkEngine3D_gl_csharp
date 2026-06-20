@@ -188,7 +188,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 int glY = screenHeight - y - boxHeight;
 
                 RenderDepthTexture(
-                    csm.ShadowTextures[drawIndex],
+                    csm.EVSMTextures[drawIndex],
                     screenWidth,
                     screenHeight,
                     x,

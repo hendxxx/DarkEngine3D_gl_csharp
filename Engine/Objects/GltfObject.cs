@@ -26,6 +26,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool IsVisible = true;
         public bool IsPlayer = false;
         public bool IsStatic = false;
+        public bool CastShadows = true;
+        public bool UseAlphaTest = true;
         public int AnimLOD = 0; // 0=full, 1=mid, 2=freeze, 3=skip
         private int _lodFrameCounter = 0;
 
@@ -963,7 +965,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);  
         }
 
-        public void DrawShadow(int modelLoc, int jointsLoc)
+        public void DrawShadow(int modelLoc, int jointsLoc,
+            bool useAlphaTest = false, int useAlbedoLoc = -1, int albedoMapLoc = -1,
+            int alphaThresholdLoc = -1, int useAlphaTestLoc = -1)
         {
             // LOD3 = fully skipped, no shadow either
             if (!IsVisible || AnimLOD == 3)
@@ -999,6 +1003,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
+
+                // Bind albedo texture for alpha test if enabled
+                if (useAlphaTest && useAlphaTestLoc >= 0)
+                {
+                    if (mesh.Material.HasBaseColorTexture && mesh.Material.BaseColorTextureID != 0)
+                    {
+                        GL.ActiveTexture(Const.GL_TEXTURE0);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
+                        if (useAlbedoLoc >= 0) GL.Uniform1i(useAlbedoLoc, 1);
+                        if (albedoMapLoc >= 0) GL.Uniform1i(albedoMapLoc, 0);
+                    }
+                    else
+                    {
+                        if (useAlbedoLoc >= 0) GL.Uniform1i(useAlbedoLoc, 0);
+                    }
+                    if (alphaThresholdLoc >= 0) GL.Uniform1f(alphaThresholdLoc, 0.5f);
+                    GL.Uniform1i(useAlphaTestLoc, 1);
+                }
 
                 GL.BindVertexArray(mesh.VAO);
                 if (mesh.IndexCount > 0) 

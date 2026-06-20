@@ -338,7 +338,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                             else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
                             else lodIndex = 0;
                               
-                            worldMap[x, z].Draw( lodIndex); 
+                            worldMap[x, z].Draw(lodIndex);
 
                             // Estimate actual triangles rendered based on LOD
                             int chunkTriangles = worldMap[x, z].TriangleCount;

@@ -108,7 +108,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_COLOR_ATTACHMENT0 = 0x8CE0;
         public const uint GL_DEPTH_ATTACHMENT = 0x8D00;
 
+        public const uint GL_R8 = 0x8229;
+        public const uint GL_RGB8 = 0x8051;
         public const uint GL_RGBA16F = 0x881A;
+        public const uint GL_RGBA32F = 0x8814;
         public const uint GL_RGBA8 = 0x8058;
 
         public const uint GL_DEPTH_COMPONENT = 0x1902;
@@ -167,6 +170,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const int GLFW_KEY_F1 = 290;
         public const int GLFW_KEY_P = 80;
         public const int GLFW_KEY_T = 84;
+        public const int GLFW_KEY_U = 85;
 
         // Number keys
         public const int GLFW_KEY_1 = 49;

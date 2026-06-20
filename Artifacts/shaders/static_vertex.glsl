@@ -3,7 +3,8 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoord;
 
-uniform mat4 model;
+layout(location = 3) in mat4 instanceMatrix;
+
 uniform mat4 view;
 uniform mat4 projection;
 
@@ -13,9 +14,11 @@ out vec2 TexCoord;
 
 void main()
 {
-    vec4 worldPos = model * vec4(aPos, 1.0);
+    vec4 worldPos = instanceMatrix * vec4(aPos, 1.0);
     FragPos = worldPos.xyz;
-    Normal = mat3(transpose(inverse(model))) * aNormal;
+    // Normal = mat3(transpose(inverse(instanceMatrix))) * aNormal;
+    // optimization since we only use uniform scaling:
+    Normal = normalize(mat3(instanceMatrix) * aNormal);
     TexCoord = aTexCoord;
     gl_Position = projection * view * worldPos;
 }
