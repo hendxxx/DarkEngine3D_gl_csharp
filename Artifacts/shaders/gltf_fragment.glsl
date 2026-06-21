@@ -385,8 +385,8 @@ void main()
     vec3 kSpecular = F * D * G / max(4.0 * NdotV * NdotL, 0.001);
     vec3 Lo = (kd * albedo.rgb / PI + kSpecular) * activeColor * NdotL * shadow;
     
-    // Add ambient lighting
-    vec3 ambient = ambientStrength * albedo.rgb;
+    // Add ambient lighting (weather-dimmed via activeColor)
+    vec3 ambient = ambientStrength * albedo.rgb * activeColor;
     
     // Apply occlusion if available
     float occlusion = 1.0;

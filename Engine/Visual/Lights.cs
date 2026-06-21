@@ -131,10 +131,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 duskFog * tDusk +
                 nightFog * tNight;
 
+            // ── Weather dimming — pow curve for more dramatic overcast effect ──
+            float w = Keyboard.GetCurrentWeather();
+            float weatherDim = 1.0f / (1.0f + w * 4.0f);
+
             RealSunDir = sunDir;
             SunDir = ShadowDirStable;
-            FogColor = fogColor;
-            LightColor = lightColor;
+            FogColor = fogColor * weatherDim;
+            LightColor = lightColor * weatherDim;
 
             // kirim arah matahari asli (realSunDir) ke terrain shader
             int realSunDirLoc = GL.GetUniformLocation(shaderProgram, "realSunDir");
@@ -148,9 +152,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             int shadowDirLoc = GL.GetUniformLocation(shaderProgram, "shadowDir");
             GL.Uniform3f(shadowDirLoc, ShadowDirStable.X, ShadowDirStable.Y, ShadowDirStable.Z);
 
-            GL.Uniform3f(lightColorLoc, lightColor.X, lightColor.Y, lightColor.Z);
+            GL.Uniform3f(lightColorLoc, LightColor.X, LightColor.Y, LightColor.Z);
             GL.Uniform3f(viewPosLoc, currentViewPos.X, currentViewPos.Y, currentViewPos.Z);
-            GL.Uniform3f(fogColorLoc, fogColor.X, fogColor.Y, fogColor.Z);
+            GL.Uniform3f(fogColorLoc, FogColor.X, FogColor.Y, FogColor.Z);
 
             int useFogLocation = GL.GetUniformLocation(shaderProgram, "useFog");
             GL.Uniform1i(useFogLocation, Keyboard.GetIsFogActive() ? 1 : 0);
@@ -158,14 +162,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             int shadowFilterMode = GL.GetUniformLocation(shaderProgram, "shadowFilterMode");
             GL.Uniform1i(shadowFilterMode, Keyboard.GetIsHardShadow());
 
-            float currentWeatherVal = Keyboard.GetCurrentWeather();
-            float terrainLightIntensity = 1.0f - (currentWeatherVal * 0.80f);
-            Vector3 dynamicTerrainLight = lightColor * terrainLightIntensity;
-
-            int terrainLightColorLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "lightColor");
-            GL.Uniform3f(terrainLightColorLoc, dynamicTerrainLight.X, dynamicTerrainLight.Y, dynamicTerrainLight.Z);
-
-            GL.ClearColor(fogColor.X, fogColor.Y, fogColor.Z, 1.0f);
+            GL.ClearColor(FogColor.X, FogColor.Y, FogColor.Z, 1.0f);
         }
 
         private static float Smoothstep01(float edge0, float edge1, float x)

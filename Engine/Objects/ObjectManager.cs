@@ -234,7 +234,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             staticObjectManagers[0].UseAlpha = true;
 
 
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
 
