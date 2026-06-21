@@ -752,6 +752,52 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public List<GltfObject> GetObjects() => _objects;
 
+        /// <summary>
+        /// Draw wireframe AABBs for all glTF objects and static objects.
+        /// Uses the frozen frustum if provided (same as chunk box), otherwise falls
+        /// back to the current camera frustum.
+        /// Inside frustum → blue; outside frustum → yellow.
+        /// </summary>
+        public void DrawDebugAABBs(Camera camera, Plane[]? frozenPlanes = null)
+        {
+            Vector4[] frustum;
+            if (frozenPlanes != null)
+            {
+                // Convert Plane[] to Vector4[] — same format as ExtractFrustumPlanes
+                frustum = new Vector4[6];
+                for (int i = 0; i < 6; i++)
+                    frustum[i] = new Vector4(frozenPlanes[i].Normal.X, frozenPlanes[i].Normal.Y,
+                                             frozenPlanes[i].Normal.Z, frozenPlanes[i].D);
+            }
+            else
+            {
+                var view = camera.GetViewMatrix();
+                var proj = camera.GetProjectionMatrix();
+                frustum = ExtractFrustumPlanes(Matrix4x4.Multiply(view, proj));
+            }
+
+            var insideColor = new Vector3(0f, 0.5f, 1f);   // blue = inside frustum
+            var outsideColor = new Vector3(1f, 1f, 0f);    // yellow = outside frustum
+
+            foreach (var obj in _objects)
+            {
+                var color = IsAABBInFrustum(frustum, obj.WorldAABB) ? insideColor : outsideColor;
+                TerrainChunk.DrawAABBWireframe(obj.WorldAABB, color, camera);
+            }
+
+            foreach (var manager in staticObjectManagers)
+            {
+                if (manager != null)
+                {
+                    foreach (var sobj in manager.GetObjects())
+                    {
+                        var color = IsAABBInFrustum(frustum, sobj.WorldAABB) ? insideColor : outsideColor;
+                        TerrainChunk.DrawAABBWireframe(sobj.WorldAABB, color, camera);
+                    }
+                }
+            }
+        }
+
         public void Dispose()
         {
             foreach (var (_, gpu) in _modelCache) gpu.Dispose();

@@ -308,6 +308,39 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 return new AABB(wMin, wMax);
             }
 
+            /// <summary>
+            /// Transform all 8 corners through scale → rotation → translation,
+            /// then compute the new axis-aligned min/max.
+            /// </summary>
+            public readonly AABB ToWorld(Vector3 worldPos, float scale, Quaternion rotation)
+            {
+                var rotMat = Matrix4x4.CreateFromQuaternion(rotation);
+                Vector3 mn = new(float.PositiveInfinity);
+                Vector3 mx = new(float.NegativeInfinity);
+
+                // 8 corners of the local AABB
+                Span<Vector3> corners =
+                [
+                    new(Min.X, Min.Y, Min.Z),
+                    new(Max.X, Min.Y, Min.Z),
+                    new(Max.X, Max.Y, Min.Z),
+                    new(Min.X, Max.Y, Min.Z),
+                    new(Min.X, Min.Y, Max.Z),
+                    new(Max.X, Min.Y, Max.Z),
+                    new(Max.X, Max.Y, Max.Z),
+                    new(Min.X, Max.Y, Max.Z),
+                ];
+
+                for (int i = 0; i < 8; i++)
+                {
+                    var wp = Vector3.Transform(corners[i] * scale, rotMat) + worldPos;
+                    mn = Vector3.Min(mn, wp);
+                    mx = Vector3.Max(mx, wp);
+                }
+
+                return new AABB(mn, mx);
+            }
+
             public static AABB FromVertices(SkinnedVertex[] verts)
             {
                 if (verts.Length == 0) return new AABB(Vector3.Zero, Vector3.Zero);

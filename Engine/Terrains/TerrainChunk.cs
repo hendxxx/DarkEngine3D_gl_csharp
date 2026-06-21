@@ -2,6 +2,7 @@ using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 using System.Text;
+using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 namespace DarkEngine3D_gl_csharp.Engine.Terrains
 {
     public class TerrainChunk : IDisposable
@@ -651,6 +652,77 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             GL.BindVertexArray(0);
         }
+        /// <summary>
+        /// Draw a wireframe AABB box using the shared line shader + debug VAO/VBO.
+        /// Color is a Vector3 (r,g,b) in 0..1 range.
+        /// </summary>
+        public static unsafe void DrawAABBWireframe(AABB aabb, Vector3 color, Camera camera)
+        {
+            var c = new Vector3[8]
+            {
+                new(aabb.Min.X, aabb.Min.Y, aabb.Min.Z),
+                new(aabb.Max.X, aabb.Min.Y, aabb.Min.Z),
+                new(aabb.Max.X, aabb.Max.Y, aabb.Min.Z),
+                new(aabb.Min.X, aabb.Max.Y, aabb.Min.Z),
+                new(aabb.Min.X, aabb.Min.Y, aabb.Max.Z),
+                new(aabb.Max.X, aabb.Min.Y, aabb.Max.Z),
+                new(aabb.Max.X, aabb.Max.Y, aabb.Max.Z),
+                new(aabb.Min.X, aabb.Max.Y, aabb.Max.Z)
+            };
+
+            float[] lineData =
+            [
+                c[0].X, c[0].Y, c[0].Z,  c[1].X, c[1].Y, c[1].Z,
+                c[1].X, c[1].Y, c[1].Z,  c[2].X, c[2].Y, c[2].Z,
+                c[2].X, c[2].Y, c[2].Z,  c[3].X, c[3].Y, c[3].Z,
+                c[3].X, c[3].Y, c[3].Z,  c[0].X, c[0].Y, c[0].Z,
+
+                c[4].X, c[4].Y, c[4].Z,  c[5].X, c[5].Y, c[5].Z,
+                c[5].X, c[5].Y, c[5].Z,  c[6].X, c[6].Y, c[6].Z,
+                c[6].X, c[6].Y, c[6].Z,  c[7].X, c[7].Y, c[7].Z,
+                c[7].X, c[7].Y, c[7].Z,  c[4].X, c[4].Y, c[4].Z,
+
+                c[0].X, c[0].Y, c[0].Z,  c[4].X, c[4].Y, c[4].Z,
+                c[1].X, c[1].Y, c[1].Z,  c[5].X, c[5].Y, c[5].Z,
+                c[2].X, c[2].Y, c[2].Z,  c[6].X, c[6].Y, c[6].Z,
+                c[3].X, c[3].Y, c[3].Z,  c[7].X, c[7].Y, c[7].Z,
+            ];
+
+            lock (debugBufferLock)
+            {
+                if (debugVao == 0 || debugVbo == 0)
+                {
+                    fixed (uint* pVao = &debugVao) GL.GenVertexArrays(1, pVao);
+                    fixed (uint* pVbo = &debugVbo) GL.GenBuffers(1, pVbo);
+                }
+            }
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+
+            GL.BindVertexArray(debugVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
+            fixed (void* ptr = lineData)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+            }
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, 24);
+            GL.BindVertexArray(0);
+        }
+
         public unsafe void RenderFrustumDebug(Vector3[] c, uint shader, int vLoc, int pLoc, Camera camera)
         {
             float[] lineData =

@@ -37,7 +37,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public float      PlaybackSpeed = 1f;
 
         public AABB LocalAABB => GpuData.LocalAABB;
-        public AABB WorldAABB => LocalAABB.ToWorld(Position, Scale);
+        public AABB WorldAABB => LocalAABB.ToWorld(Position, Scale, Rotation);
 
         // Mesh visibility control (for 1st person camera mode)
         private readonly HashSet<int> _hiddenMeshIndices = [];

@@ -399,6 +399,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
 
+                // Debug bounding boxes (toggled with P key)
+                // Uses frozen frustum (same as chunk box coloring)
+                if (Keyboard.GetShowDebug() && objectManager != null)
+                {
+                    GL.Disable(Const.GL_DEPTH_TEST);
+                    objectManager.DrawDebugAABBs(camera, gameTerrainChunk?.GetFrozenPlanes());
+                    GL.Enable(Const.GL_DEPTH_TEST);
+                }
+
                 //int boxW = 350;
                 //int boxH = 350;
                 //int margin = 10;

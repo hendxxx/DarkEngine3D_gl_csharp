@@ -20,8 +20,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public StaticObjectGroup Group;
         public Vector3 Position;
         public Quaternion Rotation;
+        public Quaternion CorrectionQuat = Quaternion.Identity;
         public float Scale = 1f;
-        public AABB WorldAABB => GpuData.LocalAABB.ToWorld(Position, Scale);
+        public AABB WorldAABB => GpuData.LocalAABB.ToWorld(Position, Scale, Rotation * CorrectionQuat);
 
         // Per-instance flags
         public bool CastShadow = true;
@@ -61,6 +62,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public bool CastShadow = true;
         public bool UseAlpha = true;
+
+        public IReadOnlyList<StaticObject> GetObjects() => _objects;
 
         public Vector3 RotationCorrection = Vector3.Zero;
 
@@ -194,7 +197,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                 ?? availableGroups[0];
             }
 
-            _objects.Add(new StaticObject(gpuData, selectedGroup, pos, yaw, scale));
+            // Pre-compute correction quaternion for this manager
+            float rx = RotationCorrection.X * MathF.PI / 180f;
+            float ry = RotationCorrection.Y * MathF.PI / 180f;
+            float rz = RotationCorrection.Z * MathF.PI / 180f;
+            var corrQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
+
+            var sobj = new StaticObject(gpuData, selectedGroup, pos, yaw, scale);
+            sobj.CorrectionQuat = corrQuat;
+            _objects.Add(sobj);
             TotalObject++;
         }
 

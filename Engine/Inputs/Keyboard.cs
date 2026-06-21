@@ -22,6 +22,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         // state untuk tombol P (edge detection)
         static int prevPState = 0;
         static bool frozenMode = false;
+        public static bool GetShowDebug() => frozenMode;
 
         // ← TAMBAHKAN: Travel time measurement system
         static Stopwatch? travelStopwatch = null;

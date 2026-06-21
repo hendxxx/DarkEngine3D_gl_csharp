@@ -115,6 +115,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_DEPTH_COMPONENT24 = 0x81A6;
         public const uint GL_DEPTH_COMPONENT32F = 0x8CAC;
 
+        public const uint GL_READ_FRAMEBUFFER = 0x8CA8;
+        public const uint GL_DRAW_FRAMEBUFFER = 0x8CA9;
+
         public const uint GL_DEPTH_STENCIL_ATTACHMENT = 0x821A;
         public const uint GL_DEPTH_STENCIL = 0x84F9;
         public const uint GL_DEPTH24_STENCIL8 = 0x88F0;
