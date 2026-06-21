@@ -49,12 +49,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool commaPressed = false;
         static bool periodPressed = false;
 
-        // Variabel kontrol untuk toggle SSAO & Alpha Test
-        static bool isSSAOActive = true;
-        static bool jPressed = false;
-        static bool isAlphaTestActive = true;
-        static bool uPressed = false;
-
         private static Dictionary<int, bool> lastKeyState = new Dictionary<int, bool>();
 
         // Properti public jika Anda ingin membaca status ini saat pengiriman uniform di render loop
@@ -86,21 +80,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         public static int GetIsHardShadow()
         {
             return shadowFilterMode;
-        }
-
-        public static bool GetIsSSAOActive()
-        {
-            return isSSAOActive;
-        }
-
-        public static bool GetIsAlphaTestActive()
-        {
-            return isAlphaTestActive;
-        }
-
-        public static void SetAlphaTestActive(bool value)
-        {
-            isAlphaTestActive = value;
         }
 
         public static unsafe void Init(nint glfwLib, float _speedCam)
@@ -234,36 +213,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             {
                 lPressed = false;
             }
-
-            // =========================================================================
-            // J TOGGLE SSAO (RISING EDGE)
-            // =========================================================================
-            int jState = glfwGetKey(window, Const.GLFW_KEY_J);
-            if (jState == Const.GLFW_PRESS)
-            {
-                if (!jPressed)
-                {
-                    isSSAOActive = !isSSAOActive;
-                    jPressed = true;
-                    Console.WriteLine(isSSAOActive ? "SSAO: ON" : "SSAO: OFF");
-                }
-            }
-            else jPressed = false;
-
-            // =========================================================================
-            // U TOGGLE ALPHA TEST (RISING EDGE)
-            // =========================================================================
-            int uState = glfwGetKey(window, Const.GLFW_KEY_U);
-            if (uState == Const.GLFW_PRESS)
-            {
-                if (!uPressed)
-                {
-                    isAlphaTestActive = !isAlphaTestActive;
-                    uPressed = true;
-                    Console.WriteLine(isAlphaTestActive ? "Alpha Test: ON" : "Alpha Test: OFF");
-                }
-            }
-            else uPressed = false;
 
             // =========================================================================
             // < AND > TOGGLE CAMERA MODE

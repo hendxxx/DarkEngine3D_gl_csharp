@@ -9,10 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="nul" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="StbImageSharp" Version="2.30.15" />
     <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
   </ItemGroup>
@@ -305,15 +301,6 @@
     <None Update="Artifacts\objects\Ybot.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\shaders\evsm_blur_h_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\evsm_blur_v_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\evsm_blur_vertex.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="Artifacts\shaders\invertPass_fragment.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -338,19 +325,10 @@
     <None Update="Artifacts\shaders\shadow_fragment.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Artifacts\shaders\shadow_skinned_alpha_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\shadow_skinned_alpha_vertex.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="Artifacts\shaders\shadow_skinned_vertex.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\shadow_static_alpha_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\shadow_static_instanced_vertex.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\shadow_static_vertex.glsl">
@@ -363,24 +341,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\sky_vertex.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\ssao_blur_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\ssao_blur_h_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\ssao_blur_v_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\ssao_composite_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\ssao_fragment.glsl">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Artifacts\shaders\ssao_vertex.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\static_vertex.glsl">

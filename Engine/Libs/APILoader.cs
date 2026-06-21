@@ -78,11 +78,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr BindRenderbufferPtr = IntPtr.Zero;
         internal static IntPtr RenderbufferStoragePtr = IntPtr.Zero;
         internal static IntPtr FramebufferRenderbufferPtr = IntPtr.Zero;
-        internal static IntPtr DeleteRenderbuffersPtr = IntPtr.Zero;
         internal static IntPtr DepthFuncPtr = IntPtr.Zero;
         internal static IntPtr VertexAttribDivisorPtr = IntPtr.Zero;
         internal static IntPtr DrawArraysInstancedPtr = IntPtr.Zero;
-        internal static IntPtr DrawElementsInstancedPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -179,10 +177,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void FramebufferRenderbuffer(uint target, uint attachment, uint renderbuffertarget, uint renderbuffer)
             => ((delegate* unmanaged[Cdecl]<uint, uint, uint, uint, void>)FramebufferRenderbufferPtr)(target, attachment, renderbuffertarget, renderbuffer);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DeleteRenderbuffers(int n, uint* renderbuffers)
-            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteRenderbuffersPtr)(n, renderbuffers);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GenRenderbuffers(int n, uint* renderbuffers)
@@ -321,10 +315,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DrawElements(uint mode, int count, uint type, void* indices)
             => ((delegate* unmanaged[Cdecl]<uint, int, uint, void*, void>)DrawElementsPtr)(mode, count, type, indices);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DrawElementsInstanced(uint mode, int count, uint type, void* indices, int instancecount)
-            => ((delegate* unmanaged[Cdecl]<uint, int, uint, void*, int, void>)DrawElementsInstancedPtr)(mode, count, type, indices, instancecount);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GenVertexArrays(int n, uint* arrays)

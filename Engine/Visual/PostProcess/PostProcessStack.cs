@@ -1,4 +1,4 @@
-using DarkEngine3D_gl_csharp.Engine.Libs;
+﻿using DarkEngine3D_gl_csharp.Engine.Libs;
 using System;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
@@ -8,7 +8,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
     {
         public uint SceneFBO;
         public uint SceneColorTex;
-        public uint SceneDepthTex;  // Texture instead of RBO so SSAO can sample it
+        public uint SceneDepthRBO;
 
         private int _width, _height;
 
@@ -23,12 +23,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
         void CreateSceneFBO()
         {
-            uint fbo = 0, color = 0, depthTex = 0;
+            uint fbo = 0, color = 0, rbo = 0;
 
             GL.GenFramebuffers(1, &fbo);
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, fbo);
 
-            // Color attachment
             GL.GenTextures(1, &color);
             GL.BindTexture(Const.GL_TEXTURE_2D, color);
             GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA8,
@@ -39,29 +38,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
                                     Const.GL_TEXTURE_2D, color, 0);
 
-            // Depth texture (instead of RBO) — for SSAO sampling
-            GL.GenTextures(1, &depthTex);
-            GL.BindTexture(Const.GL_TEXTURE_2D, depthTex);
-            GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_DEPTH24_STENCIL8,
-                          _width, _height, 0,
-                          Const.GL_DEPTH_STENCIL, Const.GL_UNSIGNED_INT_24_8, (void*)0);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_STENCIL_ATTACHMENT,
-                                    Const.GL_TEXTURE_2D, depthTex, 0);
+            GL.GenRenderbuffers(1, &rbo);
+            GL.BindRenderbuffer(Const.GL_RENDERBUFFER, rbo);
+            GL.RenderbufferStorage(Const.GL_RENDERBUFFER, Const.GL_DEPTH24_STENCIL8, _width, _height);
+            GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_STENCIL_ATTACHMENT,
+                                       Const.GL_RENDERBUFFER, rbo);
 
             uint status = (uint)GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
             if (status != Const.GL_FRAMEBUFFER_COMPLETE)
-                Console.WriteLine($"[PostProcessStack] FBO incomplete: 0x{status:X}");
+                Console.WriteLine($"PostProcessStack FBO incomplete: 0x{status:X}");
 
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
 
             SceneFBO = fbo;
             SceneColorTex = color;
-            SceneDepthTex = depthTex;
+            SceneDepthRBO = rbo;
         }
 
         public void AddPass(IPostProcessPass pass)
@@ -95,25 +86,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
             foreach (var pass in _passes)
             {
+                // untuk sekarang: semua pass langsung render ke default framebuffer
+                // kalau mau bener2 multi-buffer, nanti kita tambahin ping-pong FBO
+                
                 pass.Execute(currentTex, windowWidth, windowHeight, time);
+ 
             }
 
             GL.Enable(Const.GL_DEPTH_TEST); 
-        }
-
-        public void Resize(int width, int height)
-        {
-            if (width == _width && height == _height) return;
-            _width = width;
-            _height = height;
-
-            // Delete old resources
-            uint fbo = SceneFBO, color = SceneColorTex, depth = SceneDepthTex;
-            GL.DeleteFramebuffers(1, &fbo);
-            GL.DeleteTextures(1, &color);
-            GL.DeleteTextures(1, &depth);
-
-            CreateSceneFBO();
         }
     }
 

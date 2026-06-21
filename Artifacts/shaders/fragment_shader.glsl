@@ -8,6 +8,7 @@ in vec2 TexCoord;
 in float viewDepth;
 
 // CONFIG
+uniform int shadowFilterMode;
 uniform vec3 sunDir, lightColor, viewPos, fogColor, heightScale;
 uniform sampler2D tex0, tex1, tex2, tex3, tex4;
 uniform int useTexture;
@@ -28,6 +29,10 @@ uniform int useFog;
 
 uniform vec3 realSunDir;   // arah matahari asli dari CPU
 uniform vec3 shadowDir;    // arah shadow (sun/moon blend)
+
+
+// BLUE NOISE
+uniform sampler2D blueNoiseTex;
 
 // ======================================================
 // NOISE & STOCHASTIC
@@ -80,104 +85,164 @@ vec3 stochasticTriplanarCliff(sampler2D tex, vec3 worldPos, vec3 normal, float t
 }
 
 // ======================================================
-// HYBRID PCSS + EVSM
+// POISSON DISK KERNELS
 // ======================================================
-const float EVSM_C = 30.0;
+vec2 poisson16[16] = vec2[](
+    vec2(-0.94201624, -0.39906216),
+    vec2(0.94558609, -0.76890725),
+    vec2(-0.09418410, -0.92938870),
+    vec2(0.34495938, 0.29387760),
+    vec2(-0.91588581, 0.45771432),
+    vec2(-0.81544232, -0.87912464),
+    vec2(-0.38277543, 0.27676845),
+    vec2(0.97484398, 0.75648379),
+    vec2(0.44323325, -0.97511554),
+    vec2(0.53742981, -0.47373420),
+    vec2(-0.26496911, -0.41893023),
+    vec2(0.79197514, 0.19090188),
+    vec2(-0.24188840, 0.99706507),
+    vec2(-0.81409955, 0.91437590),
+    vec2(0.19984126, 0.78641367),
+    vec2(0.14383161, -0.14100790)
+);
 
-// Reconstruct raw depth from EVSM R channel: z = ln(R) / c
-float ReadEVSMDepth(sampler2D evsmMap, vec2 uv)
-{
-    float r = texture(evsmMap, uv).r;
-    return log(max(r, 0.000001)) / EVSM_C;
+vec2 poisson32[32] = vec2[](
+    vec2(-0.613392, 0.617481), vec2(0.170019, -0.040254),
+    vec2(-0.299417, 0.791925), vec2(0.645680, 0.493210),
+    vec2(-0.651784, 0.717887), vec2(0.421003, 0.027070),
+    vec2(-0.817194, -0.271096), vec2(-0.705374, -0.668203),
+    vec2(0.977050, -0.108615), vec2(0.063326, 0.142369),
+    vec2(0.203528, 0.214331), vec2(-0.667531, 0.326090),
+    vec2(-0.098422, -0.295755), vec2(-0.885922, 0.215369),
+    vec2(0.566637, 0.605213), vec2(0.039766, -0.396100),
+    vec2(0.751946, 0.453352), vec2(0.078707, -0.715323),
+    vec2(-0.075838, -0.529344), vec2(0.724479, -0.580798),
+    vec2(0.222999, -0.215125), vec2(-0.467574, -0.405438),
+    vec2(-0.248268, -0.814753), vec2(0.354411, -0.887570),
+    vec2(0.175817, 0.382366), vec2(0.487472, -0.063082),
+    vec2(-0.084078, 0.898312), vec2(-0.667531, -0.326090),
+    vec2(-0.270690, -0.235939), vec2(-0.704948, 0.403686),
+    vec2(0.440840, -0.639999), vec2(-0.280480, 0.293709)
+);
+
+// ======================================================
+// ROTATION + BLUE NOISE
+// ======================================================
+mat2 rotate(float a) {
+    float s = sin(a);
+    float c = cos(a);
+    return mat2(c, -s, s, c);
 }
 
-// Standard EVSM Chebyshev inequality with the max(p, p_max) pattern.
-// When receiver <= mean (shallower): fully lit (p=1).
-// When receiver > mean (deeper): Chebyshev upper-bound shadow probability.
-float Chebyshev_Positive(float mu, float mu2, float md)
-{
-    float p = (md <= mu) ? 1.0 : 0.0;
-    float variance = max(mu2 - mu * mu, 0.00001);
-    float d = md - mu;
-    float p_max = variance / (variance + d * d);
-    return max(p, p_max);
+float blueNoise(vec2 uv) {
+    return texture(blueNoiseTex, uv * 0.25).r;
 }
 
-// Dual EVSM Chebyshev test using both positive and negative warps.
-// Takes min of both tests to reduce light bleeding.
-float EVSM_Chebyshev(sampler2D evsmMap, vec2 uv, float zReceiver)
-{
-    vec4 evsm = texture(evsmMap, uv);
-
-    // Positive EVSM: moments = (exp(c*z), exp(2c*z))
-    float mu_pos  = evsm.r;
-    float mu2_pos = evsm.g;
-    float md_pos  = exp(EVSM_C * zReceiver);
-    float p_pos   = Chebyshev_Positive(mu_pos, mu2_pos, md_pos);
-
-    // Negative EVSM: moments = (exp(-c*z), exp(-2c*z))
-    // Handles near occluders where positive EVSM can over-darken
-    float mu_neg  = evsm.b;
-    float mu2_neg = evsm.a;
-    float md_neg  = exp(-EVSM_C * zReceiver);
-    float p_neg   = Chebyshev_Positive(mu_neg, mu2_neg, md_neg);
-
-    return clamp(min(p_pos, p_neg), 0.0, 1.0);
-}
-
-float SearchBlocker_EVSM(sampler2D evsmMap, vec2 uv, float zReceiver, float searchRadius)
+// ======================================================
+// PCSS
+// ======================================================
+float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchRadius)
 {
     float blockers = 0.0;
     float count = 0.0;
-    vec2 texel = 1.0 / vec2(textureSize(evsmMap, 0));
 
+    vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
+
+    // Gunakan 4x4 grid untuk pencarian blocker lebih akurat
     for (int x = -2; x <= 2; x++)
     for (int y = -2; y <= 2; y++)
     {
         vec2 offset = vec2(x, y) * texel * searchRadius;
-        float sampleZ = ReadEVSMDepth(evsmMap, uv + offset);
-        if (sampleZ < zReceiver - 0.0002) {
-            blockers += sampleZ;
+        float shadowDepth = texture(shadowMap, uv + offset).r;
+        if (shadowDepth < zReceiver - 0.0002) {
+            blockers += shadowDepth;
             count += 1.0;
         }
     }
 
-    if (count < 1.0) return -1.0;
+    if (count < 1.0)
+        return -1.0;
+
     return blockers / count;
 }
 
-float PCSS_EVSM(sampler2D evsmMap, vec4 fragPosLightSpace, float bias)
+float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
 {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
+    // Anti-artifact: jangan sample di luar NDC
     if (projCoords.z > 1.0 || projCoords.z < 0.0)
         return 1.0;
 
     vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
     float zReceiver = projCoords.z - bias;
 
-    // PCSS Step 1: Blocker search via EVSM depth reconstruction
-    float avgBlocker = SearchBlocker_EVSM(evsmMap, uv, zReceiver, 12.0);
+    // searchRadius dalam texel - cukup untuk tangkap blocker dekat
+    float searchRadius = 8.0;
+
+    float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, searchRadius);
     if (avgBlocker < 0.0)
         return 1.0;
 
-    // PCSS Step 2: Penumbra estimation
-    // Small penumbra = contact region (hard shadows)
-    // Large penumbra = soft region (lighter transition)
     float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
-    penumbra = clamp(penumbra * 4.0, 0.0, 6.0);
+    penumbra = clamp(penumbra * 4.0, 0.0, 8.0);
 
-    // PCSS Step 3: Dual EVSM Chebyshev test (positive + negative)
-    float shadow = EVSM_Chebyshev(evsmMap, uv, zReceiver);
+    // lightSize kecil = shadow tepi lebih tajam
+    float lightSize = 0.006;
+    float filterRadius = penumbra * lightSize * 350.0;
 
-    // PCSS Step 4: Contact-hardening modulation
-    // Small penumbra → fully dark shadow (hard contact edge)
-    // Large penumbra → slight brightening (soft, diffuse transition)
-    float contactFactor = 1.0 - penumbra * 0.06;
-    shadow = 1.0 - (1.0 - shadow) * contactFactor;
+    // Minimum filter radius per mode:
+    // Mode 0 (hard/PCF biasa): tidak pakai PCSS, ditangani sendiri di bawah
+    // Mode 1 (soft 16-sample): min 1.5 texel spread
+    // Mode 2 (ultra 32-sample): min 2.0 texel spread
+    if (shadowFilterMode == 1) filterRadius = clamp(filterRadius, 1.5, 6.0);
+    if (shadowFilterMode == 2) filterRadius = clamp(filterRadius, 2.0, 8.0);
 
-    return clamp(shadow, 0.0, 1.0);
+    float shadow = 0.0;
+    vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
+
+    if (shadowFilterMode == 0)
+    {
+        // Hard shadow: simple 3x3 PCF tanpa penumbra, krisp dan tidak kotak
+        for (int x = -1; x <= 1; x++)
+        for (int y = -1; y <= 1; y++)
+        {
+            float pcfDepth = texture(shadowMap, uv + vec2(x, y) * texel).r;
+            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
+        }
+        shadow /= 9.0;
+    }
+    else if (shadowFilterMode == 1)
+    {
+        // 16-sample Poisson + rotated blue noise, tanpa clamp offset
+        float angle = blueNoise(uv) * 6.2831853;
+        mat2 rot = rotate(angle);
+
+        for (int i = 0; i < 16; i++)
+        {
+            vec2 offset = rot * poisson16[i] * filterRadius * texel;
+            float pcfDepth = texture(shadowMap, uv + offset).r;
+            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
+        }
+        shadow /= 16.0;
+    }
+    else if (shadowFilterMode == 2)
+    {
+        // 32-sample Poisson + rotated blue noise, tanpa clamp offset
+        float angle = blueNoise(uv * 1.37) * 6.2831853;
+        mat2 rot = rotate(angle);
+
+        for (int i = 0; i < 32; i++)
+        {
+            vec2 offset = rot * poisson32[i] * filterRadius * texel;
+            float pcfDepth = texture(shadowMap, uv + offset).r;
+            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
+        }
+        shadow /= 32.0;
+    }
+
+    return shadow;
 }
 
 // ======================================================
@@ -255,38 +320,38 @@ void main() {
     float bias0 = baseBias;
 
 
-        float shadow;
+    float shadow;
     int cascadeIndex = 0;
     float cascadeBlendT = 0.0;
 
     vec4 worldPos4 = vec4(FragPos, 1.0);
 
     if (depth < cascadeEnds[0] - blendRange0) {
-        shadow = PCSS_EVSM(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
+        shadow = PCSS(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
         cascadeIndex = 0;
     }
     else if (depth < cascadeEnds[0]) {
         float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
-        float s0 = PCSS_EVSM(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
-        float s1 = PCSS_EVSM(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
+        float s0 = PCSS(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
+        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
         shadow = mix(s0, s1, t);
         cascadeIndex = 1;
         cascadeBlendT = t;
     }
     else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = PCSS_EVSM(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
+        shadow = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
         cascadeIndex = 1;
     }
     else if (depth < cascadeEnds[1]) {
         float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = PCSS_EVSM(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
-        float s2 = PCSS_EVSM(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
+        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
+        float s2 = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
         shadow = mix(s1, s2, t);
         cascadeIndex = 2;
         cascadeBlendT = t;
     }
     else {
-        shadow = PCSS_EVSM(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
+        shadow = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
         cascadeIndex = 2;
     }
 

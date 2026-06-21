@@ -43,7 +43,7 @@ public unsafe class Program
         
         // Init Camera
         Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 2500.0f);
-       
+        camera.CurrentMode = CameraMode.OTS;
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;
@@ -113,7 +113,7 @@ public unsafe class Program
 
 
         // Generate a high-quality procedural heightmap if it doesn't exist
-        string mapPath = "Artifacts\\maps\\test.png";
+        string mapPath = "Artifacts\\maps\\map.png";
         if (!File.Exists(mapPath))
         {
             MapLoader.GeneratePhotorealHeightmap(mapPath, 513); // 513x513 standard size

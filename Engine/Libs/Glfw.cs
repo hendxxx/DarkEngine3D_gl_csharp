@@ -181,22 +181,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram());
 
-            // SSAO — compute projection matrix for view-space reconstruction
-            Matrix4x4 baseProjection = camera.GetProjectionMatrix();
-            var ssaoPass = new SSAOPass(
-                Shader.GetSSAOShaderProgram(),
-                Shader.GetSSAOBlurHShaderProgram(),
-                Shader.GetSSAOBlurVShaderProgram(),
-                Shader.GetSSAOCompositeShaderProgram(),
-                ppStack.SceneDepthTex,
-                ref baseProjection
-            );
-
             //ppStack.AddPass(rainOverlayPass);
             //ppStack.AddPass(invertPass);
-            ppStack.AddPass(ssaoPass);
 
-            // --- CSM INITIALIZATION (EVSM mode) ---
+            // --- CSM INITIALIZATION ---
             CSM csm = new(Config.ShadowConfig.CascadeSizes[0]);
 
             uint terrainShader = Shader.GetShaderProgram();
@@ -230,31 +218,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             int shadowSkinnedLightSpaceLoc = GL.GetUniformLocation(shadowSkinnedShader, "lightSpaceMatrix");
             int shadowSkinnedJointsLoc = GL.GetUniformLocation(shadowSkinnedShader, "u_Joints");
 
-            uint shadowSkinnedAlphaShader = Shader.GetShadowSkinnedAlphaShaderProgram();
-            int shadowSkinnedAlphaModelLoc = GL.GetUniformLocation(shadowSkinnedAlphaShader, "model");
-            int shadowSkinnedAlphaLightSpaceLoc = GL.GetUniformLocation(shadowSkinnedAlphaShader, "lightSpaceMatrix");
-            int shadowSkinnedAlphaJointsLoc = GL.GetUniformLocation(shadowSkinnedAlphaShader, "u_Joints");
-            int shadowSkinnedAlphaAlbedoLoc = GL.GetUniformLocation(shadowSkinnedAlphaShader, "albedoMap");
-            int shadowSkinnedAlphaUseAlbedoLoc = GL.GetUniformLocation(shadowSkinnedAlphaShader, "useAlbedo");
-            int shadowSkinnedAlphaAlphaThresholdLoc = GL.GetUniformLocation(shadowSkinnedAlphaShader, "alphaThreshold");
-            int shadowSkinnedAlphaUseAlphaTestLoc = GL.GetUniformLocation(shadowSkinnedAlphaShader, "useAlphaTest");
-
             uint shadowStaticAlphaShader = Shader.GetShadowStaticAlphaShaderProgram();
             int shadowStaticAlphaModelLoc = GL.GetUniformLocation(shadowStaticAlphaShader, "model");
             int shadowStaticAlphaLightSpaceLoc = GL.GetUniformLocation(shadowStaticAlphaShader, "lightSpaceMatrix");
 
             FramebufferViewer framebufferViewer = new();
-
-            // Set EVSM warp uniform for shadow fragment shaders (must be after shader program declarations)
-            GL.UseProgram(shadowShader);
-            GL.Uniform1f(GL.GetUniformLocation(shadowShader, "evsmWarp"), CSM.EVSM_Warp);
-            GL.UseProgram(shadowSkinnedShader);
-            GL.Uniform1f(GL.GetUniformLocation(shadowSkinnedShader, "evsmWarp"), CSM.EVSM_Warp);
-            GL.UseProgram(shadowSkinnedAlphaShader);
-            GL.Uniform1f(GL.GetUniformLocation(shadowSkinnedAlphaShader, "evsmWarp"), CSM.EVSM_Warp);
-            GL.UseProgram(shadowStaticAlphaShader);
-            GL.Uniform1f(GL.GetUniformLocation(shadowStaticAlphaShader, "evsmWarp"), CSM.EVSM_Warp);
-
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             float time = 0f;
@@ -312,12 +280,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 }
                 // 6. Update Light (moved up for CSM lightDir calculations)
                 light.Update(deltaTime, camera.Position);
-
-                // Update SSAO projection matrix & depth texture each frame
-                Matrix4x4 currentProj = camera.GetProjectionMatrix();
-                ssaoPass.UpdateProjection(ref currentProj);
-                ssaoPass.UpdateDepthTexture(ppStack.SceneDepthTex);
-
+                 
                 csm.UpdateMatrices(camera, light.ShadowDirStable);
 
                 for (int i = 0; i < CSM.NumCascades; i++)
@@ -336,11 +299,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         GL.UniformMatrix4fv(shadowSkinnedLightSpaceLoc, 1, false, (float*)&lightSpace);
                     }
 
-                    GL.UseProgram(shadowSkinnedAlphaShader);
-                    unsafe {
-                        GL.UniformMatrix4fv(shadowSkinnedAlphaLightSpaceLoc, 1, false, (float*)&lightSpace);
-                    }
-
                     GL.UseProgram(shadowStaticAlphaShader);
                     unsafe {
                         GL.UniformMatrix4fv(shadowStaticAlphaLightSpaceLoc, 1, false, (float*)&lightSpace);
@@ -348,12 +306,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                     if (objectManager != null)
                     {
-                        objectManager.RenderShadow(camera, csm, i,
-                            shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc,
-                            shadowSkinnedAlphaShader, shadowSkinnedAlphaModelLoc, shadowSkinnedAlphaJointsLoc,
-                            shadowSkinnedAlphaAlbedoLoc, shadowSkinnedAlphaUseAlbedoLoc,
-                            shadowSkinnedAlphaAlphaThresholdLoc, shadowSkinnedAlphaUseAlphaTestLoc,
-                            shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
+                        objectManager.RenderShadow(camera, csm, i, shadowSkinnedShader, shadowSkinnedModelLoc, shadowSkinnedJointsLoc, shadowStaticAlphaShader, shadowStaticAlphaModelLoc);
 
                     }
 
@@ -365,12 +318,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 }
 
-                // ── EVSM BLUR: blur all cascades for smooth shadows ──
-                // Blur must happen AFTER shadow rendering and BEFORE scene rendering
-                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
-                csm.BlurEVSM();
-
                 // Restore default viewport and framebuffer
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
                 GL.Viewport(0, 0, _windowWidth, _windowHeight);
 
                 // --- MAIN RENDER PASS ---
@@ -382,15 +331,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 3. Draw Skybox
                 skybox.Draw(camera, light, deltaTime, skyTextures, gameTerrainChunk);
 
-                // --- BIND CSM EVSM TEXTURES ---
+                // --- BIND CSM SHADOW MAPS ---
                 GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
-                GL.BindTexture(Const.GL_TEXTURE_2D, csm.EVSMTextures[0]);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
 
                 GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
-                GL.BindTexture(Const.GL_TEXTURE_2D, csm.EVSMTextures[1]);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[1]);
 
                 GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
-                GL.BindTexture(Const.GL_TEXTURE_2D, csm.EVSMTextures[2]);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
 
                 // Upload shadow uniforms for Terrain
                 GL.UseProgram(terrainShader);
@@ -515,24 +464,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 {
                     title6 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
                 }
-                string title7 = $" SSAO: {(Keyboard.GetIsSSAOActive() ? "ON" : "OFF")} [J]";
-                
-                // Show effective alpha test state (per-manager)
-                string title8;
-                if (!Keyboard.GetIsAlphaTestActive())
-                {
-                    title8 = " AlphaTest: OFF [U]";
-                }
-                else if (objectManager != null && objectManager.staticObjectManagers.Length >= 2)
-                {
-                    bool treesAT = objectManager.staticObjectManagers[0]?.UseAlphaTest ?? true;
-                    bool grassAT = objectManager.staticObjectManagers[1]?.UseAlphaTest ?? true;
-                    title8 = $" AlphaTest: Trees={(treesAT ? "ON" : "OFF")} Grass={(grassAT ? "ON" : "OFF")} [U]";
-                }
-                else
-                {
-                    title8 = " AlphaTest: ON [U]";
-                }
 
                 hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText(title2, 10, 90, new Vector3(1, 0, 0));
@@ -540,8 +471,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 hud.DrawText(title4, 10, 150, new Vector3(1, 0, 0));
                 hud.DrawText(title5, 10, 180, new Vector3(1, 0, 0));
                 hud.DrawText(title6, 10, 210, new Vector3(1, 0, 0));
-                hud.DrawText(title7, 10, 240, new Vector3(0, 1, 1)); // Cyan
-                hud.DrawText(title8, 10, 270, new Vector3(0, 1, 1)); // Cyan
 
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();

@@ -48,99 +48,6 @@ uniform int useFog;
 
 const float PI = 3.14159265359;
 
-// ── HYBRID PCSS + EVSM ──────────────────────────────────────
-const float EVSM_C = 30.0;
-
-// Reconstruct raw depth from EVSM R channel: z = ln(R) / c
-float ReadEVSMDepth(sampler2D evsmMap, vec2 uv)
-{
-    float r = texture(evsmMap, uv).r;
-    return log(max(r, 0.000001)) / EVSM_C;
-}
-
-// Standard EVSM Chebyshev inequality with the max(p, p_max) pattern.
-// When receiver <= mean (shallower): fully lit (p=1).
-// When receiver > mean (deeper): Chebyshev upper-bound shadow probability.
-float Chebyshev_Positive(float mu, float mu2, float md)
-{
-    float p = (md <= mu) ? 1.0 : 0.0;
-    float variance = max(mu2 - mu * mu, 0.00001);
-    float d = md - mu;
-    float p_max = variance / (variance + d * d);
-    return max(p, p_max);
-}
-
-// Dual EVSM Chebyshev test using both positive and negative warps.
-// Takes min of both tests to reduce light bleeding.
-float EVSM_Chebyshev(sampler2D evsmMap, vec2 uv, float zReceiver)
-{
-    vec4 evsm = texture(evsmMap, uv);
-
-    // Positive EVSM: moments = (exp(c*z), exp(2c*z))
-    float mu_pos  = evsm.r;
-    float mu2_pos = evsm.g;
-    float md_pos  = exp(EVSM_C * zReceiver);
-    float p_pos   = Chebyshev_Positive(mu_pos, mu2_pos, md_pos);
-
-    // Negative EVSM: moments = (exp(-c*z), exp(-2c*z))
-    float mu_neg  = evsm.b;
-    float mu2_neg = evsm.a;
-    float md_neg  = exp(-EVSM_C * zReceiver);
-    float p_neg   = Chebyshev_Positive(mu_neg, mu2_neg, md_neg);
-
-    return clamp(min(p_pos, p_neg), 0.0, 1.0);
-}
-
-// PCSS blocker search using EVSM depth reconstruction
-float SearchBlocker_EVSM(sampler2D evsmMap, vec2 uv, float zReceiver, float searchRadius)
-{
-    float blockers = 0.0;
-    float count = 0.0;
-    vec2 texel = 1.0 / vec2(textureSize(evsmMap, 0));
-    for (int x = -2; x <= 2; x++)
-    for (int y = -2; y <= 2; y++)
-    {
-        vec2 offset = vec2(x, y) * texel * searchRadius;
-        float sampleZ = ReadEVSMDepth(evsmMap, uv + offset);
-        if (sampleZ < zReceiver - 0.0002) {
-            blockers += sampleZ;
-            count += 1.0;
-        }
-    }
-    if (count < 1.0) return -1.0;
-    return blockers / count;
-}
-
-// PCSS blocker search → penumbra → dual EVSM Chebyshev test → contact-hardening
-float PCSS_EVSM(sampler2D evsmMap, vec4 fragPosLightSpace, float bias)
-{
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5;
-    if(projCoords.z > 1.0) return 1.0;
-    
-    vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
-    float zReceiver = projCoords.z - bias;
-    
-    // PCSS Step 1: Blocker search via EVSM depth reconstruction
-    float avgBlocker = SearchBlocker_EVSM(evsmMap, uv, zReceiver, 12.0);
-    if (avgBlocker < 0.0) return 1.0;
-    
-    // PCSS Step 2: Penumbra estimation
-    float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
-    penumbra = clamp(penumbra * 4.0, 0.0, 6.0);
-    
-    // PCSS Step 3: Dual EVSM Chebyshev test (positive + negative)
-    float shadow = EVSM_Chebyshev(evsmMap, uv, zReceiver);
-    
-    // PCSS Step 4: Contact-hardening modulation
-    // Small penumbra → fully dark shadow (hard contact edge)
-    // Large penumbra → slight brightening (soft, diffuse transition)
-    float contactFactor = 1.0 - penumbra * 0.06;
-    shadow = 1.0 - (1.0 - shadow) * contactFactor;
-    
-    return clamp(shadow, 0.0, 1.0);
-}
-
 // ── PBR FUNCTIONS ──────────────────────────────────────────────────────────
 
 vec3 getNormalFromMap()
@@ -200,8 +107,20 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     return ggx1 * ggx2;
 }
 
-float CalculateShadow(vec4 fragPosLightSpace, sampler2D evsmMap, float bias) {
-    return PCSS_EVSM(evsmMap, fragPosLightSpace, bias);
+float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias) {
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    if(projCoords.z > 1.0) return 1.0;
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    for(int x = -1; x <= 1; ++x) {
+        for(int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += projCoords.z - bias > pcfDepth ? 0.0 : 1.0;
+        }
+    }
+    shadow /= 9.0;
+    return shadow;
 }
 
 void main()
