@@ -6,6 +6,8 @@ uniform sampler2D albedoMap;
 uniform int useAlbedo;
 uniform float alphaThreshold;
 
+out vec4 FragColor;
+
 void main()
 {
     // Perform alpha testing if texture is used
@@ -16,5 +18,7 @@ void main()
             discard;
         }
     }
-    // If no texture, render normally (opaque depth)
+    // Always write raw depth for PCSS sampling
+    float depth = gl_FragCoord.z;
+    FragColor = vec4(depth, 0.0, 0.0, 0.0);
 }

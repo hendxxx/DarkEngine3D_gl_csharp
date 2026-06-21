@@ -94,6 +94,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.GetStringPtr = GetProcAddress(glLib, "glGetString");
             GL.VertexAttribDivisorPtr = GetProcAddress(glLib, "glVertexAttribDivisor");
             GL.DrawArraysInstancedPtr = GetProcAddress(glLib, "glDrawArraysInstanced");
+            GL.DrawElementsInstancedPtr = GetProcAddress(glLib, "glDrawElementsInstanced");
              
             return glLib;
         }

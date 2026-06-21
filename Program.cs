@@ -42,7 +42,7 @@ public unsafe class Program
         Shader.Init(); 
         
         // Init Camera
-        Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 2500.0f);
+        Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 500.0f);
         camera.CurrentMode = CameraMode.OTS;
         Glfw.SetMainCamera(camera);
 

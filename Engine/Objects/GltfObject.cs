@@ -26,6 +26,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool IsVisible = true;
         public bool IsPlayer = false;
         public bool IsStatic = false;
+        public bool CastShadow = true;
         public int AnimLOD = 0; // 0=full, 1=mid, 2=freeze, 3=skip
         private int _lodFrameCounter = 0;
 
@@ -966,7 +967,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void DrawShadow(int modelLoc, int jointsLoc)
         {
             // LOD3 = fully skipped, no shadow either
-            if (!IsVisible || AnimLOD == 3)
+            if (!IsVisible || AnimLOD == 3 || !CastShadow)
                 return;
 
             var objMat = Matrix4x4.CreateScale(Scale)

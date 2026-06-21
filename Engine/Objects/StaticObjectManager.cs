@@ -3,6 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
@@ -10,18 +11,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     public class StaticObjectGroup
     {
         public string BaseName = "";
-        // Map LOD Level -> Daftar Mesh Index (agar bisa render Batang + Daun sekaligus)
         public Dictionary<int, List<int>> Lods = new();
     }
 
     public class StaticObject
     {
         public GltfModelGpuData GpuData;
-        public StaticObjectGroup Group; // Referensi langsung ke data grup/LOD
+        public StaticObjectGroup Group;
         public Vector3 Position;
         public Quaternion Rotation;
         public float Scale = 1f;
         public AABB WorldAABB => GpuData.LocalAABB.ToWorld(Position, Scale);
+
+        // Per-instance flags
+        public bool CastShadow = true;
+        public bool UseAlphaTest = true;
 
         public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
         {
@@ -43,7 +47,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly Dictionary<string, List<StaticObjectGroup>> _modelGroups = [];
         private readonly List<StaticObject> _objects = [];
         private readonly uint _shaderProgram;
-        
+
         // Shadow map uniforms
         private readonly int _shadowMap0Loc;
         private readonly int _shadowMap1Loc;
@@ -54,14 +58,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _cascadeEndsLoc0;
         private readonly int _cascadeEndsLoc1;
         private readonly int _cascadeEndsLoc2;
-        
-        // Global normalization for all objects (e.g. set X to -90 if all trees are laying down)
+
+        public bool CastShadow = true;
+        public bool UseAlpha = true;
+
         public Vector3 RotationCorrection = Vector3.Zero;
-        
+
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _lightColorLoc, _viewPosLoc;
         private readonly int _baseColorLoc, _useAlbedoLoc, _albedoMapLoc;
-        
+
         // PBR uniforms
         private readonly int _normalMapLoc;
         private readonly int _metallicRoughnessMapLoc;
@@ -76,6 +82,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _hasMetallicRoughnessTextureLoc;
         private readonly int _hasOcclusionTextureLoc;
         private readonly int _hasEmissiveTextureLoc;
+
+        // Instance batching cache: (gpuDataHash, meshIdx) -> instance VBO handle
+        private readonly Dictionary<(int, int), uint> _instanceVBOs = [];
 
         public StaticObjectManager()
         {
@@ -93,8 +102,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _baseColorLoc = GL.GetUniformLocation(_shaderProgram, "baseColorFactor");
             _useAlbedoLoc = GL.GetUniformLocation(_shaderProgram, "useAlbedo");
             _albedoMapLoc = GL.GetUniformLocation(_shaderProgram, "albedoMap");
-            
-            // Cache shadow map uniform locations
+
             _shadowMap0Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap0");
             _shadowMap1Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap1");
             _shadowMap2Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap2");
@@ -104,8 +112,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _cascadeEndsLoc0 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[0]");
             _cascadeEndsLoc1 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[1]");
             _cascadeEndsLoc2 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[2]");
-            
-            // Cache PBR uniform locations
+
             _normalMapLoc = GL.GetUniformLocation(_shaderProgram, "normalMap");
             _metallicRoughnessMapLoc = GL.GetUniformLocation(_shaderProgram, "metallicRoughnessMap");
             _occlusionMapLoc = GL.GetUniformLocation(_shaderProgram, "occlusionMap");
@@ -133,8 +140,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 string baseName = meshName;
                 int lodLevel = 1;
 
-                // Pattern Matching Robust:
-                // 1. Cek format _LODn (misal: Christmas tree_LOD0, _LOD1, diikuti suffix optional)
                 var lodMatch = System.Text.RegularExpressions.Regex.Match(meshName, @"^(.*)_LOD(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (lodMatch.Success)
                 {
@@ -143,7 +148,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                 else
                 {
-                    // 2. Cek format _n (misal: Christmas tree_0, _1, diikuti suffix optional)
                     var numericMatch = System.Text.RegularExpressions.Regex.Match(meshName, @"^(.*)_(\d+)");
                     if (numericMatch.Success)
                     {
@@ -185,7 +189,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             else
             {
-                selectedGroup = availableGroups.FirstOrDefault(g => g.BaseName.Equals(groupName, StringComparison.OrdinalIgnoreCase)) 
+                selectedGroup = availableGroups.FirstOrDefault(g => g.BaseName.Equals(groupName, StringComparison.OrdinalIgnoreCase))
                                 ?? availableGroups[0];
             }
 
@@ -203,10 +207,67 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float x = center.X + MathF.Cos(a) * d;
                 float z = center.Z + MathF.Sin(a) * d;
                 float y = terrain.GetHeightAt(x, z);
-                // Tambahkan objek (otomatis pilih group pohon acak dari file)
                 AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale);
             }
         }
+
+        // ────────────────────────────────────────────────────────────────
+        //  GPU Instancing: group by (gpuData, meshIdx), draw all at once
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>Set up instanced vertex attributes for the model matrix on the given VAO.</summary>
+        private static void SetupInstanceAttribs(uint vao, uint instanceVBO, int stride)
+        {
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, instanceVBO);
+
+            // 4 consecutive vec4 attributes for the 4 rows of the model matrix
+            for (int i = 0; i < 4; i++)
+            {
+                uint attr = (uint)(5 + i);
+                GL.EnableVertexAttribArray(attr);
+                GL.VertexAttribPointer(attr, 4, Const.GL_FLOAT, false, stride, (void*)(i * 16));
+                GL.VertexAttribDivisor(attr, 1u); // advance per instance
+            }
+
+            GL.BindVertexArray(0);
+        }
+
+        /// <summary>Get or create an instance VBO for a given (gpuDataHash, meshIdx) pair.</summary>
+        private uint GetInstanceVBO(int gpuDataHash, int meshIdx)
+        {
+            var key = (gpuDataHash, meshIdx);
+            if (_instanceVBOs.TryGetValue(key, out uint vbo))
+                return vbo;
+
+            GL.GenBuffers(1, &vbo);
+            _instanceVBOs[key] = vbo;
+            return vbo;
+        }
+
+        /// <summary>Upload model matrices to an instance VBO and set up attributes on the mesh VAO.</summary>
+        private void UploadInstances(uint vao, uint instanceVBO, Matrix4x4[] modelMatrices)
+        {
+            int stride = sizeof(float) * 16; // 16 floats per mat4
+            int byteSize = modelMatrices.Length * stride;
+
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, instanceVBO);
+            GCHandle handle = GCHandle.Alloc(modelMatrices, GCHandleType.Pinned);
+            try
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)byteSize, (void*)handle.AddrOfPinnedObject(), Const.GL_DYNAMIC_DRAW);
+            }
+            finally
+            {
+                handle.Free();
+            }
+
+            SetupInstanceAttribs(vao, instanceVBO, stride);
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  DRAW — main color pass with GPU instancing
+        // ────────────────────────────────────────────────────────────────
 
         public void Draw(Camera camera, Lights light, CSM csm = null)
         {
@@ -230,15 +291,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (fogColLoc != -1) GL.Uniform3f(fogColLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
             int useFogLoc = GL.GetUniformLocation(_shaderProgram, "useFog");
             if (useFogLoc != -1) GL.Uniform1i(useFogLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
-            
-            // Set shadow uniforms if CSM is provided
+
+            // Shadow uniforms
             if (csm != null)
             {
                 GL.Uniform1i(_shadowMap0Loc, 6);
                 GL.Uniform1i(_shadowMap1Loc, 7);
                 GL.Uniform1i(_shadowMap2Loc, 8);
-                
-                unsafe {
+                unsafe
+                {
                     fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
                         GL.UniformMatrix4fv(_lightSpaceLoc0, 1, false, p0);
                     fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
@@ -250,30 +311,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.Uniform1f(_cascadeEndsLoc1, csm.CascadeEnds[1]);
                 GL.Uniform1f(_cascadeEndsLoc2, csm.CascadeEnds[2]);
             }
-            
-            // Set default PBR factor values (will be overridden per-mesh)
-            if (_metallicFactorLoc != -1) GL.Uniform1f(_metallicFactorLoc, 1.0f);
-            if (_roughnessFactorLoc != -1) GL.Uniform1f(_roughnessFactorLoc, 0.3f);  // Lower for shiny metallic
-            if (_normalScaleLoc != -1) GL.Uniform1f(_normalScaleLoc, 1.0f);
-            if (_occlusionStrengthLoc != -1) GL.Uniform1f(_occlusionStrengthLoc, 1.0f);
-            if (_emissiveFactorLoc != -1) GL.Uniform3f(_emissiveFactorLoc, 0.0f, 0.0f, 0.0f);
-            if (_hasNormalTextureLoc != -1) GL.Uniform1i(_hasNormalTextureLoc, 0);
-            if (_hasMetallicRoughnessTextureLoc != -1) GL.Uniform1i(_hasMetallicRoughnessTextureLoc, 0);
-            if (_hasOcclusionTextureLoc != -1) GL.Uniform1i(_hasOcclusionTextureLoc, 0);
-            if (_hasEmissiveTextureLoc != -1) GL.Uniform1i(_hasEmissiveTextureLoc, 0);
 
-
-            // Pre-calculate correction quat
+            // Pre-calculate correction quaternion
             float rx = RotationCorrection.X * MathF.PI / 180f;
             float ry = RotationCorrection.Y * MathF.PI / 180f;
             float rz = RotationCorrection.Z * MathF.PI / 180f;
             var correctionQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
+
             ObjectDrawn = 0;
+
+            // ── Step 1: compute visible objects, determine LOD, build instance lists ──
+            //   instanceLists: key = (gpuDataHash, meshIdx), value = list of model matrices
+            var instanceLists = new Dictionary<(int gpuHash, int meshIdx, int nodeIdx), (List<Matrix4x4> mats, MeshGpu mesh, GltfModelGpuData gpu)>();
+            var viewProj = view * proj;
+            Plane[] cameraFrustum = ExtractCameraFrustum(viewProj);
+
             foreach (var obj in _objects)
             {
-                Matrix4x4 vp = view * proj;
-                Plane[] cameraFrustum = ExtractCameraFrustum(vp);
-
                 if (!IsAABBInFrustum(cameraFrustum, obj.WorldAABB, 5f))
                     continue;
 
@@ -281,140 +335,133 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var group = obj.Group;
                 if (group == null || group.Lods.Count == 0) continue;
 
-                // 1. Tentukan target LOD berdasarkan jarak
-                // LOD0: < 30m, LOD1: 30-70m, LOD2: 70-160m, LOD3: > 160m
+                // LOD selection
                 int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
-                
-                // 2. Fallback cerdas: Cari LOD terdekat yang tersedia (prioritas kualitas tertinggi)
                 int actualLOD = targetLOD;
                 if (!group.Lods.ContainsKey(actualLOD))
                 {
-                    // Cari semua LOD yang ada, urutkan dari yang paling detail (terkecil)
                     var available = group.Lods.Keys.OrderBy(k => k).ToList();
                     actualLOD = available.FirstOrDefault(k => k >= targetLOD, available.Last());
                 }
 
                 var meshIndices = group.Lods[actualLOD];
+                var baseWorldMat = Matrix4x4.CreateScale(obj.Scale) *
+                                   Matrix4x4.CreateFromQuaternion(correctionQuat) *
+                                   Matrix4x4.CreateFromQuaternion(obj.Rotation) *
+                                   Matrix4x4.CreateTranslation(obj.Position);
+
                 foreach (int meshIdx in meshIndices)
                 {
-                    var mesh = obj.GpuData.Meshes[meshIdx];
-
-                    var objWorldMat = Matrix4x4.CreateScale(obj.Scale) * 
-                                     Matrix4x4.CreateFromQuaternion(correctionQuat) *
-                                     Matrix4x4.CreateFromQuaternion(obj.Rotation) * 
-                                     Matrix4x4.CreateTranslation(obj.Position);
-
-                    Matrix4x4 modelMat = objWorldMat;
-                    int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length) 
+                    int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length)
                                   ? obj.GpuData.MeshToNode[meshIdx] : -1;
-                    
+
+                    var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx);
+                    if (!instanceLists.TryGetValue(key, out var entry))
+                    {
+                        entry = (new List<Matrix4x4>(), obj.GpuData.Meshes[meshIdx], obj.GpuData);
+                        instanceLists[key] = entry;
+                    }
+
+                    Matrix4x4 modelMat = baseWorldMat;
                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
-                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * objWorldMat;
+                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
 
-                    GL.UniformMatrix4fv(_modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
-
-                    if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
-                    else GL.Enable(Const.GL_CULL_FACE);
-
-                    GL.Uniform4f(_baseColorLoc, mesh.Material.BaseColorFactor.X, mesh.Material.BaseColorFactor.Y, mesh.Material.BaseColorFactor.Z, mesh.Material.BaseColorFactor.W);
-
-                    if (mesh.Material.HasBaseColorTexture)
-                    {
-                        GL.ActiveTexture(Const.GL_TEXTURE0);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
-                        GL.Uniform1i(_useAlbedoLoc, 1);
-                        GL.Uniform1i(_albedoMapLoc, 0);
-                    }
-                    else GL.Uniform1i(_useAlbedoLoc, 0);
-                    
-                    // ── PBR Uniform Factors ────────────────────────────────────────
-                    if (_metallicFactorLoc != -1)
-                        GL.Uniform1f(_metallicFactorLoc, mesh.Material.MetallicFactor);
-                    
-                    if (_roughnessFactorLoc != -1)
-                        GL.Uniform1f(_roughnessFactorLoc, mesh.Material.RoughnessFactor);
-                    
-                    if (_normalScaleLoc != -1)
-                        GL.Uniform1f(_normalScaleLoc, mesh.Material.NormalScale);
-                    
-                    if (_occlusionStrengthLoc != -1)
-                        GL.Uniform1f(_occlusionStrengthLoc, mesh.Material.OcclusionStrength);
-                    
-                    if (_emissiveFactorLoc != -1)
-                    {
-                        var emis = mesh.Material.EmissiveFactor;
-                        GL.Uniform3f(_emissiveFactorLoc, emis.X, emis.Y, emis.Z);
-                    }
-                    
-                    // ── PBR Texture Flags ──────────────────────────────────────────
-                    if (_hasNormalTextureLoc != -1)
-                        GL.Uniform1i(_hasNormalTextureLoc, mesh.Material.HasNormalTexture ? 1 : 0);
-                    
-                    if (_hasMetallicRoughnessTextureLoc != -1)
-                        GL.Uniform1i(_hasMetallicRoughnessTextureLoc, mesh.Material.HasMetallicRoughnessTexture ? 1 : 0);
-                    
-                    if (_hasOcclusionTextureLoc != -1)
-                        GL.Uniform1i(_hasOcclusionTextureLoc, mesh.Material.HasOcclusionTexture ? 1 : 0);
-                    
-                    if (_hasEmissiveTextureLoc != -1)
-                        GL.Uniform1i(_hasEmissiveTextureLoc, mesh.Material.HasEmissiveTexture ? 1 : 0);
-                    
-                    // ── PBR Texture Binding ────────────────────────────────────────
-                    // Texture Unit 3: Normal Map
-                    if (mesh.Material.HasNormalTexture && mesh.Material.NormalTextureID != 0)
-                    {
-                        GL.ActiveTexture(Const.GL_TEXTURE0 + 3);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.NormalTextureID);
-                    }
-                    
-                    // Texture Unit 4: Metallic-Roughness Map
-                    if (mesh.Material.HasMetallicRoughnessTexture && mesh.Material.MetallicRoughnessTextureID != 0)
-                    {
-                        GL.ActiveTexture(Const.GL_TEXTURE0 + 4);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.MetallicRoughnessTextureID);
-                    }
-                    
-                    // Texture Unit 5: Occlusion Map
-                    if (mesh.Material.HasOcclusionTexture && mesh.Material.OcclusionTextureID != 0)
-                    {
-                        GL.ActiveTexture(Const.GL_TEXTURE0 + 5);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.OcclusionTextureID);
-                    }
-                    
-                    // Texture Unit 6: Emissive Map
-                    if (mesh.Material.HasEmissiveTexture && mesh.Material.EmissiveTextureID != 0)
-                    {
-                        GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.EmissiveTextureID);
-                    }
-
-                    GL.BindVertexArray(mesh.VAO);
-                    if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
-                    else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
-
-                    ObjectDrawn++;
+                    entry.mats.Add(modelMat);
                 }
             }
+
+            // ── Step 2: draw each instance group with a single instanced draw call ──
+            foreach (var kv in instanceLists)
+            {
+                var (mats, mesh, gpu) = kv.Value;
+                if (mats.Count == 0) continue;
+
+                uint instanceVBO = GetInstanceVBO(kv.Key.gpuHash, kv.Key.meshIdx);
+                UploadInstances(mesh.VAO, instanceVBO, [.. mats]);
+
+                // Set material uniforms once per group (all instances share the same mesh)
+                if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
+                else GL.Enable(Const.GL_CULL_FACE);
+
+                GL.Uniform4f(_baseColorLoc, mesh.Material.BaseColorFactor.X, mesh.Material.BaseColorFactor.Y,
+                             mesh.Material.BaseColorFactor.Z, mesh.Material.BaseColorFactor.W);
+
+                if (mesh.Material.HasBaseColorTexture)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
+                    GL.Uniform1i(_useAlbedoLoc, 1);
+                    GL.Uniform1i(_albedoMapLoc, 0);
+                }
+                else GL.Uniform1i(_useAlbedoLoc, 0);
+
+                // PBR uniforms
+                if (_metallicFactorLoc != -1) GL.Uniform1f(_metallicFactorLoc, mesh.Material.MetallicFactor);
+                if (_roughnessFactorLoc != -1) GL.Uniform1f(_roughnessFactorLoc, mesh.Material.RoughnessFactor);
+                if (_normalScaleLoc != -1) GL.Uniform1f(_normalScaleLoc, mesh.Material.NormalScale);
+                if (_occlusionStrengthLoc != -1) GL.Uniform1f(_occlusionStrengthLoc, mesh.Material.OcclusionStrength);
+                if (_emissiveFactorLoc != -1) GL.Uniform3f(_emissiveFactorLoc, mesh.Material.EmissiveFactor.X, mesh.Material.EmissiveFactor.Y, mesh.Material.EmissiveFactor.Z);
+                if (_hasNormalTextureLoc != -1) GL.Uniform1i(_hasNormalTextureLoc, mesh.Material.HasNormalTexture ? 1 : 0);
+                if (_hasMetallicRoughnessTextureLoc != -1) GL.Uniform1i(_hasMetallicRoughnessTextureLoc, mesh.Material.HasMetallicRoughnessTexture ? 1 : 0);
+                if (_hasOcclusionTextureLoc != -1) GL.Uniform1i(_hasOcclusionTextureLoc, mesh.Material.HasOcclusionTexture ? 1 : 0);
+                if (_hasEmissiveTextureLoc != -1) GL.Uniform1i(_hasEmissiveTextureLoc, mesh.Material.HasEmissiveTexture ? 1 : 0);
+
+                // Bind PBR textures
+                if (mesh.Material.HasNormalTexture && mesh.Material.NormalTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 3);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.NormalTextureID);
+                }
+                if (mesh.Material.HasMetallicRoughnessTexture && mesh.Material.MetallicRoughnessTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 4);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.MetallicRoughnessTextureID);
+                }
+                if (mesh.Material.HasOcclusionTexture && mesh.Material.OcclusionTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 5);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.OcclusionTextureID);
+                }
+                if (mesh.Material.HasEmissiveTexture && mesh.Material.EmissiveTextureID != 0)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.EmissiveTextureID);
+                }
+
+                GL.BindVertexArray(mesh.VAO);
+                if (mesh.IndexCount > 0)
+                    GL.DrawElementsInstanced(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null, mats.Count);
+                else
+                    GL.DrawArraysInstanced(Const.GL_TRIANGLES, 0, mesh.VertexCount, mats.Count);
+
+                ObjectDrawn += mats.Count;
+            }
+
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             GL.Enable(Const.GL_CULL_FACE);
         }
 
+        // ────────────────────────────────────────────────────────────────
+        //  RENDER SHADOW — shadow pass with GPU instancing
+        // ────────────────────────────────────────────────────────────────
+
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
-            if (_objects.Count == 0) return;
+            if (_objects.Count == 0 || !CastShadow) return;
 
             GL.UseProgram(shadowShader);
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.Enable(Const.GL_CULL_FACE);
             GL.CullFace(Const.GL_BACK);
             GL.FrontFace(Const.GL_CCW);
-            
-            // Get uniform locations for alpha support
+
+            // Get alpha-uniform locations for the alpha shadow shader
             int useAlbedoLoc = GL.GetUniformLocation(shadowShader, "useAlbedo");
             int albedoMapLoc = GL.GetUniformLocation(shadowShader, "albedoMap");
             int alphaThresholdLoc = GL.GetUniformLocation(shadowShader, "alphaThreshold");
-            
+            int useAlphaTestLoc = GL.GetUniformLocation(shadowShader, "useAlphaTest");
+
             var planes = csm.OrthoCorners[cascadeIndex] != null
                 ? CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex])
                 : null;
@@ -424,8 +471,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float rz = RotationCorrection.Z * MathF.PI / 180f;
             var correctionQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
 
+            // ── Step 1: filter by CastShadow + frustum, group by (gpuData, meshIdx) ──
+            var instanceLists = new Dictionary<(int gpuHash, int meshIdx, int nodeIdx, bool hasAlpha), (List<Matrix4x4> mats, MeshGpu mesh, GltfModelGpuData gpu)>();
+
             foreach (var obj in _objects)
             {
+                if (!obj.CastShadow) continue;
+
                 if (planes != null)
                 {
                     bool outside = false;
@@ -440,7 +492,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var group = obj.Group;
                 if (group == null || group.Lods.Count == 0) continue;
 
-                // Shadow LOD: Use the same thresholds as Draw pass for visual consistency
+                // Shadow LOD
                 int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
                 int actualLOD = targetLOD;
                 if (!group.Lods.ContainsKey(actualLOD))
@@ -449,177 +501,118 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     actualLOD = available.FirstOrDefault(k => k >= targetLOD, available.Last());
                 }
 
+                // Auto-disable alpha test when shadow LOD > 1 (far away objects)
+                bool useAlpha = obj.UseAlphaTest && UseAlpha && (targetLOD <= 1);
+
                 var meshIndices = group.Lods[actualLOD];
+                var baseWorldMat = Matrix4x4.CreateScale(obj.Scale) *
+                                   Matrix4x4.CreateFromQuaternion(correctionQuat) *
+                                   Matrix4x4.CreateFromQuaternion(obj.Rotation) *
+                                   Matrix4x4.CreateTranslation(obj.Position);
+
                 foreach (int meshIdx in meshIndices)
                 {
-                    var mesh = obj.GpuData.Meshes[meshIdx];
-
-                    var objWorldMat = Matrix4x4.CreateScale(obj.Scale) * 
-                                     Matrix4x4.CreateFromQuaternion(correctionQuat) *
-                                     Matrix4x4.CreateFromQuaternion(obj.Rotation) * 
-                                     Matrix4x4.CreateTranslation(obj.Position);
-
-                    Matrix4x4 modelMat = objWorldMat;
-                    int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length) 
+                    int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length)
                                   ? obj.GpuData.MeshToNode[meshIdx] : -1;
-                    
+
+                    var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx, useAlpha);
+                    if (!instanceLists.TryGetValue(key, out var entry))
+                    {
+                        entry = (new List<Matrix4x4>(), obj.GpuData.Meshes[meshIdx], obj.GpuData);
+                        instanceLists[key] = entry;
+                    }
+
+                    Matrix4x4 modelMat = baseWorldMat;
                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
-                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * objWorldMat;
+                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
 
-                    GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
-
-                    // Handle double-sided materials in shadow pass
-                    if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
-                    else GL.Enable(Const.GL_CULL_FACE);
-
-                    // Bind texture if available for alpha testing in shadow pass
-                    if (mesh.Material.HasBaseColorTexture)
-                    {
-                        GL.ActiveTexture(Const.GL_TEXTURE0);
-                        GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
-                        GL.Uniform1i(useAlbedoLoc, 1);
-                        GL.Uniform1i(albedoMapLoc, 0);
-                        // Set alpha threshold - adjust based on material needs
-                        if (alphaThresholdLoc != -1)
-                            GL.Uniform1f(alphaThresholdLoc, 0.3f);
-                    }
-                    else
-                    {
-                        GL.Uniform1i(useAlbedoLoc, 0);
-                    }
-
-                    GL.BindVertexArray(mesh.VAO);
-                    if (mesh.IndexCount > 0) GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
-                    else GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+                    entry.mats.Add(modelMat);
                 }
             }
+
+            // ── Step 2: draw each group ──
+            foreach (var kv in instanceLists)
+            {
+                var (mats, mesh, gpu) = kv.Value;
+                bool hasAlpha = kv.Key.hasAlpha;
+                if (mats.Count == 0) continue;
+
+                uint instanceVBO = GetInstanceVBO(kv.Key.gpuHash, kv.Key.meshIdx);
+                UploadInstances(mesh.VAO, instanceVBO, [.. mats]);
+
+                if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
+                else GL.Enable(Const.GL_CULL_FACE);
+
+                // Bind base color texture for alpha testing if needed
+                if (hasAlpha && mesh.Material.HasBaseColorTexture)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
+                    if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 1);
+                    if (albedoMapLoc != -1) GL.Uniform1i(albedoMapLoc, 0);
+                    if (alphaThresholdLoc != -1) GL.Uniform1f(alphaThresholdLoc, 0.3f);
+                    if (useAlphaTestLoc != -1) GL.Uniform1i(useAlphaTestLoc, 1);
+                }
+                else
+                {
+                    if (useAlbedoLoc != -1) GL.Uniform1i(useAlbedoLoc, 0);
+                    if (useAlphaTestLoc != -1) GL.Uniform1i(useAlphaTestLoc, 0);
+                }
+
+                GL.BindVertexArray(mesh.VAO);
+                if (mesh.IndexCount > 0)
+                    GL.DrawElementsInstanced(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null, mats.Count);
+                else
+                    GL.DrawArraysInstanced(Const.GL_TRIANGLES, 0, mesh.VertexCount, mats.Count);
+            }
+
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
         }
 
+        // ────────────────────────────────────────────────────────────────
+        //  STATIC HELPERS (unchanged)
+        // ────────────────────────────────────────────────────────────────
 
         public static Plane[] ExtractPlanes(Matrix4x4 vp)
         {
             Plane[] planes = new Plane[6];
-
-            // Left
-            planes[0] = Plane.Normalize(new Plane(
-                vp.M14 + vp.M11,
-                vp.M24 + vp.M21,
-                vp.M34 + vp.M31,
-                vp.M44 + vp.M41));
-
-            // Right
-            planes[1] = Plane.Normalize(new Plane(
-                vp.M14 - vp.M11,
-                vp.M24 - vp.M21,
-                vp.M34 - vp.M31,
-                vp.M44 - vp.M41));
-
-            // Bottom
-            planes[2] = Plane.Normalize(new Plane(
-                vp.M14 + vp.M12,
-                vp.M24 + vp.M22,
-                vp.M34 + vp.M32,
-                vp.M44 + vp.M42));
-
-            // Top
-            planes[3] = Plane.Normalize(new Plane(
-                vp.M14 - vp.M12,
-                vp.M24 - vp.M22,
-                vp.M34 - vp.M32,
-                vp.M44 - vp.M42));
-
-            // Near
-            planes[4] = Plane.Normalize(new Plane(
-                vp.M13,
-                vp.M23,
-                vp.M33,
-                vp.M43));
-
-            // Far
-            planes[5] = Plane.Normalize(new Plane(
-                vp.M14 - vp.M13,
-                vp.M24 - vp.M23,
-                vp.M34 - vp.M33,
-                vp.M44 - vp.M43));
-
+            planes[0] = Plane.Normalize(new Plane(vp.M14 + vp.M11, vp.M24 + vp.M21, vp.M34 + vp.M31, vp.M44 + vp.M41));
+            planes[1] = Plane.Normalize(new Plane(vp.M14 - vp.M11, vp.M24 - vp.M21, vp.M34 - vp.M31, vp.M44 - vp.M41));
+            planes[2] = Plane.Normalize(new Plane(vp.M14 + vp.M12, vp.M24 + vp.M22, vp.M34 + vp.M32, vp.M44 + vp.M42));
+            planes[3] = Plane.Normalize(new Plane(vp.M14 - vp.M12, vp.M24 - vp.M22, vp.M34 - vp.M32, vp.M44 - vp.M42));
+            planes[4] = Plane.Normalize(new Plane(vp.M13, vp.M23, vp.M33, vp.M43));
+            planes[5] = Plane.Normalize(new Plane(vp.M14 - vp.M13, vp.M24 - vp.M23, vp.M34 - vp.M33, vp.M44 - vp.M43));
             return planes;
         }
+
         public static Plane[] ExtractCameraFrustum(Matrix4x4 vp)
         {
             Plane[] planes = new Plane[6];
-
-            // Left
-            planes[0] = Plane.Normalize(new Plane(
-                vp.M14 + vp.M11,
-                vp.M24 + vp.M21,
-                vp.M34 + vp.M31,
-                vp.M44 + vp.M41));
-
-            // Right
-            planes[1] = Plane.Normalize(new Plane(
-                vp.M14 - vp.M11,
-                vp.M24 - vp.M21,
-                vp.M34 - vp.M31,
-                vp.M44 - vp.M41));
-
-            // Bottom
-            planes[2] = Plane.Normalize(new Plane(
-                vp.M14 + vp.M12,
-                vp.M24 + vp.M22,
-                vp.M34 + vp.M32,
-                vp.M44 + vp.M42));
-
-            // Top
-            planes[3] = Plane.Normalize(new Plane(
-                vp.M14 - vp.M12,
-                vp.M24 - vp.M22,
-                vp.M34 - vp.M32,
-                vp.M44 - vp.M42));
-
-            // Near
-            planes[4] = Plane.Normalize(new Plane(
-                vp.M13,
-                vp.M23,
-                vp.M33,
-                vp.M43));
-
-            // Far
-            planes[5] = Plane.Normalize(new Plane(
-                vp.M14 - vp.M13,
-                vp.M24 - vp.M23,
-                vp.M34 - vp.M33,
-                vp.M44 - vp.M43));
-
+            planes[0] = Plane.Normalize(new Plane(vp.M14 + vp.M11, vp.M24 + vp.M21, vp.M34 + vp.M31, vp.M44 + vp.M41));
+            planes[1] = Plane.Normalize(new Plane(vp.M14 - vp.M11, vp.M24 - vp.M21, vp.M34 - vp.M31, vp.M44 - vp.M41));
+            planes[2] = Plane.Normalize(new Plane(vp.M14 + vp.M12, vp.M24 + vp.M22, vp.M34 + vp.M32, vp.M44 + vp.M42));
+            planes[3] = Plane.Normalize(new Plane(vp.M14 - vp.M12, vp.M24 - vp.M22, vp.M34 - vp.M32, vp.M44 - vp.M42));
+            planes[4] = Plane.Normalize(new Plane(vp.M13, vp.M23, vp.M33, vp.M43));
+            planes[5] = Plane.Normalize(new Plane(vp.M14 - vp.M13, vp.M24 - vp.M23, vp.M34 - vp.M33, vp.M44 - vp.M43));
             return planes;
         }
 
-        /// <summary>
-        /// AABB vs Camera Frustum
-        /// </summary>
         private static bool IsAABBInFrustum(Plane[] planes, AABB aabb, float margin = 3.0f)
         {
-            // Tambahkan margin ke bounding box
             Vector3 min = aabb.Min - new Vector3(margin);
             Vector3 max = aabb.Max + new Vector3(margin);
-
             foreach (var pl in planes)
             {
-                // Pilih vertex paling jauh dari arah normal plane
                 Vector3 p = new Vector3(
                     pl.Normal.X >= 0 ? max.X : min.X,
                     pl.Normal.Y >= 0 ? max.Y : min.Y,
                     pl.Normal.Z >= 0 ? max.Z : min.Z
                 );
-
-                // Jika vertex itu masih di belakang plane → AABB di luar frustum
                 if (Vector3.Dot(pl.Normal, p) + pl.D < 0f)
                     return false;
             }
-
             return true;
         }
-
     }
 }

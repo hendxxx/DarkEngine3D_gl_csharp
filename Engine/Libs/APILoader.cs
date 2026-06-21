@@ -81,6 +81,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr DepthFuncPtr = IntPtr.Zero;
         internal static IntPtr VertexAttribDivisorPtr = IntPtr.Zero;
         internal static IntPtr DrawArraysInstancedPtr = IntPtr.Zero;
+        internal static IntPtr DrawElementsInstancedPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -145,6 +146,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static void DrawArraysInstanced(uint mode, int first, int count, int instanceCount)
             => ((delegate* unmanaged[Cdecl]<uint, int, int, int, void>)DrawArraysInstancedPtr)(mode, first, count, instanceCount);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DrawElementsInstanced(uint mode, int count, uint type, void* indices, int instanceCount)
+            => ((delegate* unmanaged[Cdecl]<uint, int, uint, void*, int, void>)DrawElementsInstancedPtr)(mode, count, type, indices, instanceCount);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DrawBuffer(uint buf)

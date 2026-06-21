@@ -164,6 +164,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float yaw = (float)(rng.NextDouble() * 360.0);
 
                 var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
+                obj.CastShadow = true;
                 SnapToTerrain(obj, gameTerrainChunk);
             }
 
@@ -178,6 +179,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
             PlayerObject.IsPlayer = true;
+            PlayerObject.CastShadow = true; 
+
             PlayerObject.SetFacing(initialHeading);
 
             PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
@@ -219,13 +222,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             staticObjectManagers =
             [
                 //new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
-                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
+                new StaticObjectManager {  RotationCorrection = new Vector3(180, 0, 0) },
                 new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
             ];
 
             //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
-            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 200, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[0].CastShadow = true;
+            staticObjectManagers[0].UseAlpha = true;
+
+
             staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
+            staticObjectManagers[1].CastShadow = false;
+            staticObjectManagers[1].UseAlpha = false;
 
         }
 
