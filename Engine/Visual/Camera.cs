@@ -50,7 +50,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private float smoothYaw;
         private float smoothPitch;
         public float savedYaw;
-        public float zoomSpeed = Config.PlayerConfig.ZoomSpeed;
+        public float zoomSpeed = CameraConfig.ZoomSpeed;
 
         // Camera sway
         private float swayTimer = 0f;
@@ -69,7 +69,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public bool IsADS = false;
         
         public bool FlyMode = false;
-        public float FlySpeed = 50f; // sesuai permintaan
+        public float FlySpeed = Config.CameraConfig.CameraFlySpeed; // sesuai permintaan
 
         public bool IsFlyMode=false;
          
@@ -147,11 +147,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             var preset = CurrentPreset;
             if (preset != null)
             {
-                Config.PlayerConfig.TargetCameraDistance = preset.DefaultDistance;
-                Config.PlayerConfig.CameraMinDistance = preset.MinDistance;
-                Config.PlayerConfig.MaxCameraDistance = preset.MaxDistance;
+                CameraConfig.TargetCameraDistance = preset.DefaultDistance;
+                CameraConfig.CameraMinDistance = preset.MinDistance;
+                CameraConfig.MaxCameraDistance = preset.MaxDistance;
                 targetShoulderOffset = preset.ShoulderOffset;
-                Config.PlayerConfig.CameraOffsetHeight = preset.HeightOffset;
+                CameraConfig.CameraOffsetHeight = preset.HeightOffset;
             }
         }
 
@@ -324,17 +324,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             shoulderOffset = Helpers.OGLMath.Lerp(
                 shoulderOffset,
                 targetShoulderOffset * camScale,
-                Config.PlayerConfig.CameraFollowSpeed
+                CameraConfig.CameraFollowSpeed
             );
 
             float shoulder = shoulderOffset;
-            float camDist = Config.PlayerConfig.CameraDistance * camScale;
+            float camDist = CameraConfig.CameraDistance * camScale;
 
             // ZOOM
-            Config.PlayerConfig.CameraDistance =
-                Helpers.OGLMath.Lerp(Config.PlayerConfig.CameraDistance,
-                                     Config.PlayerConfig.TargetCameraDistance,
-                                     Config.PlayerConfig.CameraFollowSpeed);
+            CameraConfig.CameraDistance =
+                Helpers.OGLMath.Lerp(CameraConfig.CameraDistance,
+                                     CameraConfig.TargetCameraDistance,
+                                     CameraConfig.CameraFollowSpeed);
 
 
             if (IsADS)
@@ -345,7 +345,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             else
             {
                 shoulder = Helpers.OGLMath.Lerp(shoulder, targetShoulderOffset, 6f * dt);
-                camDist = Helpers.OGLMath.Lerp(camDist, Config.PlayerConfig.TargetCameraDistance, 6f * dt);
+                camDist = Helpers.OGLMath.Lerp(camDist, CameraConfig.TargetCameraDistance, 6f * dt);
             }
 
             Vector3 offset = new Vector3(shoulder, 0, -camDist);
@@ -389,9 +389,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // SCROLL ZOOM
             if (preset.AllowZoom && Mouse.ScrollY != 0)
             {
-                PlayerConfig.TargetCameraDistance -= Mouse.ScrollY * (Config.PlayerConfig.ZoomSpeed * camScale);
-                PlayerConfig.TargetCameraDistance = Math.Clamp(
-                    PlayerConfig.TargetCameraDistance,
+                CameraConfig.TargetCameraDistance -= Mouse.ScrollY * (CameraConfig.ZoomSpeed * camScale);
+                CameraConfig.TargetCameraDistance = Math.Clamp(
+                    CameraConfig.TargetCameraDistance,
                     preset.MinDistance * camScale,
                     preset.MaxDistance * camScale
                 );
@@ -504,7 +504,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             Vector3 flatFront = new(Front.X, 0, Front.Z);
             if (flatFront.LengthSquared() > 0.0001f)
-                headPos += Vector3.Normalize(flatFront) * Config.PlayerConfig.FirstPersonCameraForwardOffset * camScale;
+                headPos += Vector3.Normalize(flatFront) * CameraConfig.FirstPersonCameraForwardOffset * camScale;
 
             // Smooth camera position
             //float lag = 3f;

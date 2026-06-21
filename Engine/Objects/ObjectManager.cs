@@ -71,6 +71,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int CulledObjects { get; private set; }
         public bool DisableFrustumCull = false;
 
+        // Cull freeze mode (Shift+P) — objects outside frozen frustum stay hidden
+        public bool CullFreezeEnabled = false;
+        public Matrix4x4 CullFreezeViewProj;
 
         public CharacterAgent PlayerAgent;
         public GltfObject PlayerObject;
@@ -567,8 +570,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (_hasOcclusionTextureLoc != -1) GL.Uniform1i(_hasOcclusionTextureLoc, 0);
             if (_hasEmissiveTextureLoc != -1) GL.Uniform1i(_hasEmissiveTextureLoc, 0);
             
-            var frustum = ExtractFrustumPlanes(Matrix4x4.Multiply(view, proj));
-              
+            // Use frozen frustum for culling when CullFreeze is active
+            Vector4[] frustum;
+            if (CullFreezeEnabled)
+                frustum = ExtractFrustumPlanes(CullFreezeViewProj);
+            else
+                frustum = ExtractFrustumPlanes(Matrix4x4.Multiply(view, proj));
 
             for (int i = 0; i < _objects.Count; i++)
             {
@@ -617,7 +624,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 if (manager != null)
                 {
-                    manager.Draw(camera, light, csm);
+                    if (CullFreezeEnabled)
+                        manager.Draw(camera, light, csm, CullFreezeViewProj, true);
+                    else
+                        manager.Draw(camera, light, csm);
                     DrawnObjects = DrawnObjects + manager.GetObjectDrawn;
                 }
             }

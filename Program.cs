@@ -43,7 +43,7 @@ public unsafe class Program
         
         // Init Camera
         Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 500.0f);
-        camera.CurrentMode = CameraMode.OTS;
+        camera.CurrentMode = CameraMode.Orbit;
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;
@@ -58,7 +58,7 @@ public unsafe class Program
         Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "16:00");
 
         // Init Keyboard and Mouse
-        Keyboard.Init(glfwLib, 1.0f); // Increased speed for freefly mode
+        Keyboard.Init(glfwLib); // Increased speed for freefly mode
         Mouse.Init(glfwLib, window);
 
         Texture[] images =

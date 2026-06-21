@@ -24,6 +24,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool frozenMode = false;
         public static bool GetShowDebug() => frozenMode;
 
+        // Shift+P: freeze culling — objects outside the frozen frustum stay hidden while camera moves
+        static int prevShiftPState = 0;
+        static bool cullFreezeMode = false;
+        static Matrix4x4 cullFreezeViewProj;
+        public static bool GetCullFreezeMode() => cullFreezeMode;
+        public static Matrix4x4 GetCullFreezeViewProj() => cullFreezeViewProj;
+
         // ← TAMBAHKAN: Travel time measurement system
         static Stopwatch? travelStopwatch = null;
         static Vector3? travelStartPos = new Vector3();
@@ -83,7 +90,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             return shadowFilterMode;
         }
 
-        public static unsafe void Init(nint glfwLib, float _speedCam)
+        public static unsafe void Init(nint glfwLib)
         {
             lineShaderProgram = Shader.GetLineShaderProgram();
             glfwGetKey = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)NativeLibrary.GetExport(glfwLib, "glfwGetKey");
@@ -91,9 +98,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
             isWireframe = false;
             f1Pressed = false;
-
-            speedCam = _speedCam;
-
+             
             lineVLoc = GL.GetUniformLocation(lineShaderProgram, "view");
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
         }
@@ -277,9 +282,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             // ← TAMBAHKAN: Travel measurement (tekan T untuk start, atau lagi untuk stop)
             MeasureTravelTime(window, camera);
              
-            // P: toggle freeze frustum
+            // P: toggle freeze frustum (debug visualization)
             int pState = glfwGetKey(window, Const.GLFW_KEY_P);
-            if (pState == Const.GLFW_PRESS && prevPState != Const.GLFW_PRESS)
+            bool shiftHeld = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS ||
+                             glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
+
+            if (pState == Const.GLFW_PRESS && prevPState != Const.GLFW_PRESS && !shiftHeld)
             {
                 frozenMode = !frozenMode;
                 if (frozenMode)
@@ -289,6 +297,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                     frozenCorners = TerrainChunk.GetFrustumCorners(view, proj);
                     gameTerrainChunk?.SetFrozenFrustumCorners(frozenCorners);
                     gameTerrainChunk?.SetHighlightFrustumMatches(true);
+                    camera.FlyMode = true; // auto freefly
                 }
                 else
                 {
@@ -298,6 +307,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 }
             }
             prevPState = pState;
+
+            // Shift+P: freeze culling — captured frustum determines which objects are hidden
+            // Re-use shiftHeld from the P handler above (already queried)
+            int pStateShift = glfwGetKey(window, Const.GLFW_KEY_P);
+
+            if (pStateShift == Const.GLFW_PRESS && prevShiftPState != Const.GLFW_PRESS && shiftHeld)
+            {
+                cullFreezeMode = !cullFreezeMode;
+                if (cullFreezeMode)
+                {
+                    Matrix4x4 view = camera.GetViewMatrix();
+                    Matrix4x4 proj = camera.GetProjectionMatrix();
+                    cullFreezeViewProj = view * proj;
+                    camera.FlyMode = true; // auto freefly
+                    Console.WriteLine("Cull Freeze: ON — objects outside frozen frustum will stay hidden");
+                }
+                else
+                {
+                    Console.WriteLine("Cull Freeze: OFF");
+                }
+            }
+            prevShiftPState = pStateShift;
 
             // =========================================================================
             // SISTEM INPUT & TRANSISI HALUS INTERAKTIF CUACA 1, 2, 3 (GLFW CORE PROFILE)

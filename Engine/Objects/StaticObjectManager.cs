@@ -281,7 +281,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         //  DRAW — main color pass with GPU instancing
         // ────────────────────────────────────────────────────────────────
 
-        public void Draw(Camera camera, Lights light, CSM csm = null)
+        public void Draw(Camera camera, Lights light, CSM csm = null, Matrix4x4? frozenViewProj = null, bool cullFreezeEnabled = false)
         {
             if (_objects.Count == 0) return;
 
@@ -341,7 +341,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ── Step 1: compute visible objects, determine LOD, build instance lists ──
             //   instanceLists: key = (gpuDataHash, meshIdx), value = list of model matrices
             var instanceLists = new Dictionary<(int gpuHash, int meshIdx, int nodeIdx), (List<Matrix4x4> mats, MeshGpu mesh, GltfModelGpuData gpu)>();
-            var viewProj = view * proj;
+            Matrix4x4 viewProj = cullFreezeEnabled && frozenViewProj.HasValue
+                ? frozenViewProj.Value
+                : view * proj;
             Plane[] cameraFrustum = ExtractCameraFrustum(viewProj);
 
             foreach (var obj in _objects)

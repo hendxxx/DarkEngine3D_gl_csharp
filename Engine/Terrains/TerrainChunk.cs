@@ -293,7 +293,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         //private float exposureState = 1.0f;
-        public int Render(Camera camera, Plane[]? frozenPlanes)
+        public int Render(Camera camera, Plane[]? frozenPlanes, Plane[]? cullFreezePlanes = null)
         {
             int totalTriangles = 0;
 
@@ -304,14 +304,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             ExtractPlanes(vp, planes);
 
+            // Gunakan cull-freeze planes jika aktif, bukan live camera frustum
+            Plane[] cullPlanes = cullFreezePlanes ?? planes;
+
             bool usingFrozen = frozenPlanes != null;
 
             for (int x = 0; x < ChunksPerSide; x++)
             {
                 for (int z = 0; z < ChunksPerSide; z++)
                 {
-                    // 2. Cek apakah chunk terlihat oleh kamera (tetap digunakan untuk mesh render)
-                    bool inside = IsChunkInFrustum(x, z, planes);
+                    // 2. Cek apakah chunk terlihat (pakai cull freeze planes jika aktif)
+                    bool inside = IsChunkInFrustum(x, z, cullPlanes);
 
                     if (inside)
                     {

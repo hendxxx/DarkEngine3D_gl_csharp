@@ -108,6 +108,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
 
     public static class CameraConfig
     {
+        // ============================
+        // Camera
+        // ============================
+        public static float CameraDistance = 10.0f;
+        public static float CameraOffsetHeight = 1.8f;
+        public static float CameraFlySpeed = 10.0f;
+
+        public static float CameraMinDistance = 1.5f;
+
+        public static float TargetCameraDistance = 10.0f;
+        public static float ShoulderOffset = 10.0f;
+
+        public static float TargetShoulderOffset = 0.6f;
+        public static float ZoomSpeed = 1.5f;
+        public static float CameraFollowSpeed = 0.15f;
+        public static float FirstPersonHeadYawLimit = 85.0f;
+        public static float FirstPersonCameraForwardOffset = 0.35f;
+
+
+        public static float MaxCameraDistance = 15.0f;
         public readonly static Dictionary<CameraMode, CameraPreset> Presets = new()
         {
             { CameraMode.OTS, new CameraPreset {
@@ -176,25 +196,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         private const float jumpForce = 10f;
 
 
-        // ============================
-        // Camera
-        // ============================
-        public static float CameraDistance = 10.0f;  
-        public static float CameraOffsetHeight = 1.8f;  
-
-        public static float CameraMinDistance = 1.5f;  
-        
-        public static float TargetCameraDistance = 10.0f;  
-        public static float ShoulderOffset = 10.0f;  
-
-        public static float TargetShoulderOffset = 0.6f;  
-        public static float ZoomSpeed = 1.5f;  
-        public static float CameraFollowSpeed = 0.15f;  
-        public static float FirstPersonHeadYawLimit = 85.0f;
-        public static float FirstPersonCameraForwardOffset = 0.35f;
-        
-
-        public static float MaxCameraDistance = 15.0f; 
     }
 
     // ============================

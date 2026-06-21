@@ -248,7 +248,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 Mouse.Update(window, camera);
                 camera.UpdateVectors();
 
-                PlayerConfig.TargetShoulderOffset = lastTargetShoulderOffset;
+                CameraConfig.TargetShoulderOffset = lastTargetShoulderOffset;
 
                 // 2. Third-person keeps ALT free-look.
                 if (!camera.freeLook && objectManager != null)
@@ -382,12 +382,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 int renderedTris = 0;
                 if (gameTerrainChunk != null)
-                    renderedTris = gameTerrainChunk.Render(camera, gameTerrainChunk.GetFrozenPlanes());
+                {
+                    // Compute cull freeze planes from frozen VP if active
+                    Plane[]? cullFreezePlanes = null;
+                    if (Keyboard.GetCullFreezeMode())
+                    {
+                        var freezeVP = Keyboard.GetCullFreezeViewProj();
+                        cullFreezePlanes = TerrainChunk.ExtractFrustumPlanes(freezeVP);
+                    }
+
+                    renderedTris = gameTerrainChunk.Render(camera, gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes);
+                }
  
 
                 // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)
                 {
+                    // Sync cull freeze state from Keyboard
+                    objectManager.CullFreezeEnabled = Keyboard.GetCullFreezeMode();
+                    objectManager.CullFreezeViewProj = Keyboard.GetCullFreezeViewProj();
+
                     objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                     objectManager.Draw(camera, light, csm);
                 }
@@ -465,7 +479,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                 string title1 = $"🕒 [ {gTime} ]";
                 string title2 = $"⚡ FPS: {lastFPS}";
-                string title3 = $"🎥 MODE: {camera.CurrentMode}";
+                string freeze = Keyboard.GetCullFreezeMode() ? " [CULL FREEZE]" : "";
+                string title3 = $"🎥 MODE: {camera.CurrentMode}{freeze}";
                 string title4 = $"📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
                 string title5 = $" POS: X ={camera.Position.X:N2} Y={camera.Position.Y:N2} Z={camera.Position.Z:N2}";
                 string title6 = "";
