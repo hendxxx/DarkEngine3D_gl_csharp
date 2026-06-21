@@ -30,10 +30,6 @@ uniform int useFog;
 uniform vec3 realSunDir;   // arah matahari asli dari CPU
 uniform vec3 shadowDir;    // arah shadow (sun/moon blend)
 
-
-// BLUE NOISE
-uniform sampler2D blueNoiseTex;
-
 // ======================================================
 // NOISE & STOCHASTIC
 // ======================================================
@@ -85,166 +81,165 @@ vec3 stochasticTriplanarCliff(sampler2D tex, vec3 worldPos, vec3 normal, float t
 }
 
 // ======================================================
-// POISSON DISK KERNELS
+// SHADOW — Poisson 32 PCF (sama seperti gltf_fragment)
 // ======================================================
-vec2 poisson16[16] = vec2[](
-    vec2(-0.94201624, -0.39906216),
-    vec2(0.94558609, -0.76890725),
-    vec2(-0.09418410, -0.92938870),
-    vec2(0.34495938, 0.29387760),
-    vec2(-0.91588581, 0.45771432),
-    vec2(-0.81544232, -0.87912464),
-    vec2(-0.38277543, 0.27676845),
-    vec2(0.97484398, 0.75648379),
-    vec2(0.44323325, -0.97511554),
-    vec2(0.53742981, -0.47373420),
-    vec2(-0.26496911, -0.41893023),
-    vec2(0.79197514, 0.19090188),
-    vec2(-0.24188840, 0.99706507),
-    vec2(-0.81409955, 0.91437590),
-    vec2(0.19984126, 0.78641367),
-    vec2(0.14383161, -0.14100790)
-);
 
-vec2 poisson32[32] = vec2[](
-    vec2(-0.613392, 0.617481), vec2(0.170019, -0.040254),
-    vec2(-0.299417, 0.791925), vec2(0.645680, 0.493210),
-    vec2(-0.651784, 0.717887), vec2(0.421003, 0.027070),
-    vec2(-0.817194, -0.271096), vec2(-0.705374, -0.668203),
-    vec2(0.977050, -0.108615), vec2(0.063326, 0.142369),
-    vec2(0.203528, 0.214331), vec2(-0.667531, 0.326090),
-    vec2(-0.098422, -0.295755), vec2(-0.885922, 0.215369),
-    vec2(0.566637, 0.605213), vec2(0.039766, -0.396100),
-    vec2(0.751946, 0.453352), vec2(0.078707, -0.715323),
-    vec2(-0.075838, -0.529344), vec2(0.724479, -0.580798),
-    vec2(0.222999, -0.215125), vec2(-0.467574, -0.405438),
-    vec2(-0.248268, -0.814753), vec2(0.354411, -0.887570),
-    vec2(0.175817, 0.382366), vec2(0.487472, -0.063082),
-    vec2(-0.084078, 0.898312), vec2(-0.667531, -0.326090),
-    vec2(-0.270690, -0.235939), vec2(-0.704948, 0.403686),
-    vec2(0.440840, -0.639999), vec2(-0.280480, 0.293709)
-);
-
-// ======================================================
-// ROTATION + BLUE NOISE
-// ======================================================
-mat2 rotate(float a) {
-    float s = sin(a);
-    float c = cos(a);
-    return mat2(c, -s, s, c);
+// Pseudo-random rotation angle from fragment screen position
+float randomAngle(vec2 uv)
+{
+    return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-float blueNoise(vec2 uv) {
-    return texture(blueNoiseTex, uv * 0.25).r;
+// 16 uniformly-distributed points on a unit disk (radius², angle)
+const vec2 poissonDisk16[16] = vec2[](
+    vec2(0.0152, 2.9841), vec2(0.0541, 0.5123), vec2(0.1128, 4.2219), vec2(0.1894, 1.3347),
+    vec2(0.2817, 5.6128), vec2(0.3869, 3.0471), vec2(0.5018, 0.1029), vec2(0.6234, 3.8762),
+    vec2(0.7481, 1.9024), vec2(0.8723, 5.1487), vec2(0.9512, 2.4129), vec2(0.9941, 0.3451),
+    vec2(0.8203, 4.7892), vec2(0.6904, 0.9821), vec2(0.5609, 2.7418), vec2(0.4302, 5.4983)
+);
+
+// 32 uniformly-distributed points on a unit disk (radius², angle)
+const vec2 poissonDisk32[32] = vec2[](
+    vec2(0.0034, 2.9785), vec2(0.0162, 5.8570), vec2(0.0386, 1.4657), vec2(0.0696, 4.4191),
+    vec2(0.1087, 0.0767), vec2(0.1548, 2.6142), vec2(0.2079, 5.2858), vec2(0.2679, 1.0664),
+    vec2(0.3329, 4.4218), vec2(0.4021, 0.6931), vec2(0.4732, 3.6884), vec2(0.5456, 0.2867),
+    vec2(0.6186, 2.9115), vec2(0.6909, 5.6626), vec2(0.7611, 1.8262), vec2(0.8279, 4.6792),
+    vec2(0.8893, 1.2053), vec2(0.9443, 4.0302), vec2(0.9912, 0.4060), vec2(0.9920, 3.3644),
+    vec2(0.9447, 6.1380), vec2(0.8905, 2.3424), vec2(0.8294, 5.2761), vec2(0.7622, 0.9003),
+    vec2(0.6903, 3.8174), vec2(0.6161, 0.0229), vec2(0.5434, 2.7208), vec2(0.4725, 5.7597),
+    vec2(0.4034, 1.5024), vec2(0.3355, 4.6110), vec2(0.2685, 0.5141), vec2(0.2025, 3.6672)
+);
+
+bool setupShadow(vec4 fragPosLightSpace, out vec2 uv, out float receiverZ)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    uv = projCoords.xy;
+    receiverZ = projCoords.z;
+    return projCoords.z > 1.0 || projCoords.z < 0.0;
 }
 
-// ======================================================
-// PCSS
-// ======================================================
+// Poisson 16 PCF with configurable radius (texels)
+float poisson16(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float radius)
+{
+    vec2 uv; float receiverZ;
+    if (setupShadow(fragPosLightSpace, uv, receiverZ)) return receiverZ > 1.0 ? 1.0 : 0.0;
+
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
+
+    float shadow = 0.0;
+    for (int i = 0; i < 16; ++i)
+    {
+        float r = sqrt(poissonDisk16[i].x) * radius;
+        float a = poissonDisk16[i].y + angle;
+        vec2 offset = vec2(r * cos(a), r * sin(a));
+        float d = texture(shadowMap, uv + offset * texelSize).r;
+        shadow += (receiverZ - bias > d) ? 0.0 : 1.0;
+    }
+    return shadow / 16.0;
+}
+
+
+// Poisson 32 PCF with configurable radius (texels)
+float poisson32(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float radius)
+{
+    vec2 uv; float receiverZ;
+    if (setupShadow(fragPosLightSpace, uv, receiverZ)) return receiverZ > 1.0 ? 1.0 : 0.0;
+
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
+
+    float shadow = 0.0;
+    for (int i = 0; i < 32; ++i)
+    {
+        float r = sqrt(poissonDisk32[i].x) * radius;
+        float a = poissonDisk32[i].y + angle;
+        vec2 offset = vec2(r * cos(a), r * sin(a));
+        float d = texture(shadowMap, uv + offset * texelSize).r;
+        shadow += (receiverZ - bias > d) ? 0.0 : 1.0;
+    }
+    return shadow / 32.0;
+}
+
+// Hard shadow (single sample)
+float hardShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+{
+    vec2 uv; float receiverZ;
+    if (setupShadow(fragPosLightSpace, uv, receiverZ)) return receiverZ > 1.0 ? 1.0 : 0.0;
+    float d = texture(shadowMap, uv).r;
+    return (receiverZ - bias > d) ? 0.0 : 1.0;
+}
+
+// ── PCSS Helpers ─────────────────────────────────────────────────────────
+
+// Find average blocker depth in search region
 float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchRadius)
 {
     float blockers = 0.0;
     float count = 0.0;
-
-    vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
-
-    // Gunakan 4x4 grid untuk pencarian blocker lebih akurat
+    vec2 texel = 1.0 / textureSize(shadowMap, 0);
     for (int x = -2; x <= 2; x++)
     for (int y = -2; y <= 2; y++)
     {
         vec2 offset = vec2(x, y) * texel * searchRadius;
-        float shadowDepth = texture(shadowMap, uv + offset).r;
-        if (shadowDepth < zReceiver - 0.0002) {
-            blockers += shadowDepth;
-            count += 1.0;
-        }
+        float d = texture(shadowMap, uv + offset).r;
+        if (d < zReceiver - 0.0002) { blockers += d; count += 1.0; }
     }
-
-    if (count < 1.0)
-        return -1.0;
-
+    if (count < 1.0) return -1.0;
     return blockers / count;
 }
 
-float PCSS(sampler2D shadowMap, vec4 fragPosLightSpace, float bias)
+// PCSS with Poisson sampling
+float pcss(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int sampleCount, float maxRadius)
 {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
-
-    // Anti-artifact: jangan sample di luar NDC
-    if (projCoords.z > 1.0 || projCoords.z < 0.0)
-        return 1.0;
+    if (projCoords.z > 1.0 || projCoords.z < 0.0) return 1.0;
 
     vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
     float zReceiver = projCoords.z - bias;
 
-    // searchRadius dalam texel - cukup untuk tangkap blocker dekat
-    float searchRadius = 8.0;
-
-    float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, searchRadius);
-    if (avgBlocker < 0.0)
-        return 1.0;
+    float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, 8.0);
+    if (avgBlocker < 0.0) return 1.0;
 
     float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
     penumbra = clamp(penumbra * 4.0, 0.0, 8.0);
+    float filterRadius = clamp(penumbra * 0.006 * 350.0, 1.5, maxRadius);
 
-    // lightSize kecil = shadow tepi lebih tajam
-    float lightSize = 0.006;
-    float filterRadius = penumbra * lightSize * 350.0;
-
-    // Minimum filter radius per mode:
-    // Mode 0 (hard/PCF biasa): tidak pakai PCSS, ditangani sendiri di bawah
-    // Mode 1 (soft 16-sample): min 1.5 texel spread
-    // Mode 2 (ultra 32-sample): min 2.0 texel spread
-    if (shadowFilterMode == 1) filterRadius = clamp(filterRadius, 1.5, 6.0);
-    if (shadowFilterMode == 2) filterRadius = clamp(filterRadius, 2.0, 8.0);
+    vec2 texel = 1.0 / textureSize(shadowMap, 0);
+    float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
+    int n = (sampleCount == 16) ? 16 : 32;
 
     float shadow = 0.0;
-    vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
-
-    if (shadowFilterMode == 0)
+    for (int i = 0; i < n; i++)
     {
-        // Hard shadow: simple 3x3 PCF tanpa penumbra, krisp dan tidak kotak
-        for (int x = -1; x <= 1; x++)
-        for (int y = -1; y <= 1; y++)
-        {
-            float pcfDepth = texture(shadowMap, uv + vec2(x, y) * texel).r;
-            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
-        }
-        shadow /= 9.0;
+        int idx = (i * 3) % 32;
+        float r = sqrt(poissonDisk32[idx].x) * filterRadius;
+        float a = poissonDisk32[idx].y + angle;
+        vec2 offset = vec2(r * cos(a), r * sin(a));
+        float d = texture(shadowMap, uv + offset * texel).r;
+        shadow += (zReceiver > d) ? 0.0 : 1.0;
     }
-    else if (shadowFilterMode == 1)
-    {
-        // 16-sample Poisson + rotated blue noise, tanpa clamp offset
-        float angle = blueNoise(uv) * 6.2831853;
-        mat2 rot = rotate(angle);
-
-        for (int i = 0; i < 16; i++)
-        {
-            vec2 offset = rot * poisson16[i] * filterRadius * texel;
-            float pcfDepth = texture(shadowMap, uv + offset).r;
-            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
-        }
-        shadow /= 16.0;
-    }
-    else if (shadowFilterMode == 2)
-    {
-        // 32-sample Poisson + rotated blue noise, tanpa clamp offset
-        float angle = blueNoise(uv * 1.37) * 6.2831853;
-        mat2 rot = rotate(angle);
-
-        for (int i = 0; i < 32; i++)
-        {
-            vec2 offset = rot * poisson32[i] * filterRadius * texel;
-            float pcfDepth = texture(shadowMap, uv + offset).r;
-            shadow += (zReceiver > pcfDepth) ? 0.0 : 1.0;
-        }
-        shadow /= 32.0;
-    }
-
-    return shadow;
+    return shadow / float(n);
 }
 
+
+// Dispatch — 10 modes consistent across all shaders
+// 0=PCF 16, 1=Hard, 2=PCF 16, 3=PCF 16 Soft, 4=PCF 32, 5=PCF 32 Soft, 6=PCSS 16, 7=PCSS 16 Soft, 8=PCSS 32, 9=PCSS 32 Soft
+float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+{
+    if (shadowFilterMode == 1) return hardShadow(fragPosLightSpace, shadowMap, bias);
+    if (shadowFilterMode == 2) return poisson16(fragPosLightSpace, shadowMap, bias, 5.0);
+    if (shadowFilterMode == 3) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0);
+    if (shadowFilterMode == 4) return poisson32(fragPosLightSpace, shadowMap, bias, 5.0);
+    if (shadowFilterMode == 5) return poisson32(fragPosLightSpace, shadowMap, bias, 10.0);
+    if (shadowFilterMode == 6) return pcss(shadowMap, fragPosLightSpace, bias, 16, 6.0);
+    if (shadowFilterMode == 7) return pcss(shadowMap, fragPosLightSpace, bias, 16, 12.0);
+    if (shadowFilterMode == 8) return pcss(shadowMap, fragPosLightSpace, bias, 32, 6.0);
+    if (shadowFilterMode == 9) return pcss(shadowMap, fragPosLightSpace, bias, 32, 12.0);
+    return poisson16(fragPosLightSpace, shadowMap, bias, 5.0); // default mode 0  
+}
 // ======================================================
 // MAIN
 // ======================================================
@@ -305,7 +300,7 @@ void main() {
     float slopeShadow = pow(1.0 - slope, 0.5);
     float finalDiff = diff * mix(0.7, 1.0, slopeShadow);
 
-    // CSM + PCSS
+    // CSM + CalculateShadow
     float depth = viewDepth;
 
     float blendRange0 = cascadeEnds[0] * 0.1;
@@ -327,31 +322,31 @@ void main() {
     vec4 worldPos4 = vec4(FragPos, 1.0);
 
     if (depth < cascadeEnds[0] - blendRange0) {
-        shadow = PCSS(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
+        shadow = CalculateShadow(lightSpaceMatrices[0] * worldPos4, shadowMap0, bias0);
         cascadeIndex = 0;
     }
     else if (depth < cascadeEnds[0]) {
         float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
-        float s0 = PCSS(shadowMap0, lightSpaceMatrices[0] * worldPos4, bias0);
-        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
+        float s0 = CalculateShadow(lightSpaceMatrices[0] * worldPos4, shadowMap0, bias0);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias0);
         shadow = mix(s0, s1, t);
         cascadeIndex = 1;
         cascadeBlendT = t;
     }
     else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
+        shadow = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias0);
         cascadeIndex = 1;
     }
     else if (depth < cascadeEnds[1]) {
         float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = PCSS(shadowMap1, lightSpaceMatrices[1] * worldPos4, bias0);
-        float s2 = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias0);
+        float s2 = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias0);
         shadow = mix(s1, s2, t);
         cascadeIndex = 2;
         cascadeBlendT = t;
     }
     else {
-        shadow = PCSS(shadowMap2, lightSpaceMatrices[2] * worldPos4, bias0);
+        shadow = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias0);
         cascadeIndex = 2;
     }
 

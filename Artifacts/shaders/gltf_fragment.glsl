@@ -43,7 +43,7 @@ uniform int hasMetallicRoughnessTexture;
 uniform int hasOcclusionTexture;
 uniform int hasEmissiveTexture;
 
-// ── Shadow Filter Mode (0 = 4×4 Rotated PCF, 1 = Hard, 2 = Soft 4×4) ────
+// ── Shadow Filter Mode (0-6: Soft PCF, Hard, PCF, PCF Soft, PCSS 16, PCSS 32, PCSS Soft) ──
 uniform int shadowFilterMode;
 
 // ── Fog ────────────────────────────────────────────────────────────────────
@@ -110,84 +110,170 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     return ggx1 * ggx2;
 }
 
+// ── Poisson-disk helpers ──────────────────────────────────────────────────
+
 // Pseudo-random rotation angle from fragment screen position
 float randomAngle(vec2 uv)
 {
     return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-// ── Mode 0: 4×4 rotated-grid PCF — 16 samples with per-fragment rotation ──
-// Breaks up grid aliasing for smooth, natural shadow edges.
-float pcf4x4Rotated(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+// 16 uniformly-distributed points on a unit disk (radius², angle)
+const vec2 poissonDisk16[16] = vec2[](
+    vec2(0.0152, 2.9841), vec2(0.0541, 0.5123), vec2(0.1128, 4.2219), vec2(0.1894, 1.3347),
+    vec2(0.2817, 5.6128), vec2(0.3869, 3.0471), vec2(0.5018, 0.1029), vec2(0.6234, 3.8762),
+    vec2(0.7481, 1.9024), vec2(0.8723, 5.1487), vec2(0.9512, 2.4129), vec2(0.9941, 0.3451),
+    vec2(0.8203, 4.7892), vec2(0.6904, 0.9821), vec2(0.5609, 2.7418), vec2(0.4302, 5.4983)
+);
+
+// 32 uniformly-distributed points on a unit disk (pre-computed Poisson disk)
+// Values are pairs of (radius², angle) packed as (x, y) — radius² for
+// uniform density, angle in radians.
+const vec2 poissonDisk32[32] = vec2[](
+    vec2(0.0034, 2.9785), vec2(0.0162, 5.8570), vec2(0.0386, 1.4657), vec2(0.0696, 4.4191),
+    vec2(0.1087, 0.0767), vec2(0.1548, 2.6142), vec2(0.2079, 5.2858), vec2(0.2679, 1.0664),
+    vec2(0.3329, 4.4218), vec2(0.4021, 0.6931), vec2(0.4732, 3.6884), vec2(0.5456, 0.2867),
+    vec2(0.6186, 2.9115), vec2(0.6909, 5.6626), vec2(0.7611, 1.8262), vec2(0.8279, 4.6792),
+    vec2(0.8893, 1.2053), vec2(0.9443, 4.0302), vec2(0.9912, 0.4060), vec2(0.9920, 3.3644),
+    vec2(0.9447, 6.1380), vec2(0.8905, 2.3424), vec2(0.8294, 5.2761), vec2(0.7622, 0.9003),
+    vec2(0.6903, 3.8174), vec2(0.6161, 0.0229), vec2(0.5434, 2.7208), vec2(0.4725, 5.7597),
+    vec2(0.4034, 1.5024), vec2(0.3355, 4.6110), vec2(0.2685, 0.5141), vec2(0.2025, 3.6672)
+);
+
+// Shared projCoords setup — returns projected UV or early-out values
+// stored in retVal for the caller to return immediately.
+// We use out-parameters since GLSL doesn't have multiple return values.
+bool setupShadow(vec4 fragPosLightSpace, out vec2 uv, out float receiverZ)
 {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
-    if (projCoords.z > 1.0) return 1.0;
-    if (projCoords.z < 0.0) return 0.0;
+    uv = projCoords.xy;
+    receiverZ = projCoords.z;
+    return projCoords.z > 1.0 || projCoords.z < 0.0;
+}
+
+// Poisson 16 PCF with configurable radius (texels)
+float poisson16(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float radius)
+{
+    vec2 uv; float receiverZ;
+    if (setupShadow(fragPosLightSpace, uv, receiverZ)) return receiverZ > 1.0 ? 1.0 : 0.0;
 
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-
     float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
-    float s = sin(angle), c = cos(angle);
 
     float shadow = 0.0;
-    for (int x = 0; x < 4; ++x)
-        for (int y = 0; y < 4; ++y)
-        {
-            vec2 offset = vec2(float(x) - 1.5, float(y) - 1.5);
-            vec2 rot = vec2(offset.x * c - offset.y * s,
-                            offset.x * s + offset.y * c);
-            float d = texture(shadowMap, projCoords.xy + rot * texelSize).r;
-            shadow += (projCoords.z - bias > d) ? 0.0 : 1.0;
-        }
+    for (int i = 0; i < 16; ++i)
+    {
+        float r = sqrt(poissonDisk16[i].x) * radius;
+        float a = poissonDisk16[i].y + angle;
+        vec2 offset = vec2(r * cos(a), r * sin(a));
+        float d = texture(shadowMap, uv + offset * texelSize).r;
+        shadow += (receiverZ - bias > d) ? 0.0 : 1.0;
+    }
     return shadow / 16.0;
+}
+
+
+
+// ── Poisson 32-disk PCF with configurable radius (texels) ──
+// 32 irregular samples with per-fragment rotation give smooth,
+// natural shadow edges without grid or blocky artifacts.
+float poisson32(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float radius)
+{
+    vec2 uv; float receiverZ;
+    if (setupShadow(fragPosLightSpace, uv, receiverZ)) return receiverZ > 1.0 ? 1.0 : 0.0;
+
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
+
+    float shadow = 0.0;
+    for (int i = 0; i < 32; ++i)
+    {
+        float r = sqrt(poissonDisk32[i].x) * radius;
+        float a = poissonDisk32[i].y + angle;
+        vec2 offset = vec2(r * cos(a), r * sin(a));
+        float d = texture(shadowMap, uv + offset * texelSize).r;
+        shadow += (receiverZ - bias > d) ? 0.0 : 1.0;
+    }
+    return shadow / 32.0;
 }
 
 // ── Mode 1: Hard shadow (single sample, no filtering) ──
 float hardShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
 {
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5;
-    if (projCoords.z > 1.0) return 1.0;
-    if (projCoords.z < 0.0) return 0.0;
-    float d = texture(shadowMap, projCoords.xy).r;
-    return (projCoords.z - bias > d) ? 0.0 : 1.0;
+    vec2 uv; float receiverZ;
+    if (setupShadow(fragPosLightSpace, uv, receiverZ)) return receiverZ > 1.0 ? 1.0 : 0.0;
+    float d = texture(shadowMap, uv).r;
+    return (receiverZ - bias > d) ? 0.0 : 1.0;
 }
 
-// ── Mode 2: 4×4 rotated PCF with 2× kernel radius (softer shadows) ──
-float pcf4x4Soft(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+// ── PCSS Helpers ─────────────────────────────────────────────────────────
+
+// Find average blocker depth in search region
+float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchRadius)
+{
+    float blockers = 0.0;
+    float count = 0.0;
+    vec2 texel = 1.0 / textureSize(shadowMap, 0);
+    for (int x = -2; x <= 2; x++)
+    for (int y = -2; y <= 2; y++)
+    {
+        vec2 offset = vec2(x, y) * texel * searchRadius;
+        float d = texture(shadowMap, uv + offset).r;
+        if (d < zReceiver - 0.0002) { blockers += d; count += 1.0; }
+    }
+    if (count < 1.0) return -1.0;
+    return blockers / count;
+}
+
+// PCSS with Poisson sampling
+float pcss(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int sampleCount, float maxRadius)
 {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
-    if (projCoords.z > 1.0) return 1.0;
-    if (projCoords.z < 0.0) return 0.0;
+    if (projCoords.z > 1.0 || projCoords.z < 0.0) return 1.0;
 
-    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
+    float zReceiver = projCoords.z - bias;
 
+    float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, 8.0);
+    if (avgBlocker < 0.0) return 1.0;
+
+    float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
+    penumbra = clamp(penumbra * 4.0, 0.0, 8.0);
+    float filterRadius = clamp(penumbra * 0.006 * 350.0, 1.5, maxRadius);
+
+    vec2 texel = 1.0 / textureSize(shadowMap, 0);
     float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
-    float s = sin(angle), c = cos(angle);
+    int n = (sampleCount == 16) ? 16 : 32;
 
     float shadow = 0.0;
-    for (int x = 0; x < 4; ++x)
-        for (int y = 0; y < 4; ++y)
-        {
-            vec2 offset = vec2(float(x) - 1.5, float(y) - 1.5);
-            vec2 rot = vec2(offset.x * c - offset.y * s,
-                            offset.x * s + offset.y * c);
-            float d = texture(shadowMap, projCoords.xy + rot * texelSize * 2.0).r;
-            shadow += (projCoords.z - bias > d) ? 0.0 : 1.0;
-        }
-    return shadow / 16.0;
+    for (int i = 0; i < n; i++)
+    {
+        int idx = (i * 3) % 32; // spread indices for variety
+        float r = sqrt(poissonDisk32[idx].x) * filterRadius;
+        float a = poissonDisk32[idx].y + angle;
+        vec2 offset = vec2(r * cos(a), r * sin(a));
+        float d = texture(shadowMap, uv + offset * texel).r;
+        shadow += (zReceiver > d) ? 0.0 : 1.0;
+    }
+    return shadow / float(n);
 }
 
-// Dispatch to the selected shadow filter mode
+// Dispatch — 10 modes consistent across all shaders
+// 0=PCF 16, 1=Hard, 2=PCF 16, 3=PCF 16 Soft, 4=PCF 32, 5=PCF 32 Soft, 6=PCSS 16, 7=PCSS 16 Soft, 8=PCSS 32, 9=PCSS 32 Soft
 float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
 {
-    if (shadowFilterMode == 1)
-        return hardShadow(fragPosLightSpace, shadowMap, bias);
-    if (shadowFilterMode == 2)
-        return pcf4x4Soft(fragPosLightSpace, shadowMap, bias);
-    return pcf4x4Rotated(fragPosLightSpace, shadowMap, bias); // default mode 0
+    if (shadowFilterMode == 1) return hardShadow(fragPosLightSpace, shadowMap, bias);
+    if (shadowFilterMode == 2) return poisson16(fragPosLightSpace, shadowMap, bias, 5.0);
+    if (shadowFilterMode == 3) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0);
+    if (shadowFilterMode == 4) return poisson32(fragPosLightSpace, shadowMap, bias, 5.0);
+    if (shadowFilterMode == 5) return poisson32(fragPosLightSpace, shadowMap, bias, 10.0);
+    if (shadowFilterMode == 6) return pcss(shadowMap, fragPosLightSpace, bias, 16, 6.0);
+    if (shadowFilterMode == 7) return pcss(shadowMap, fragPosLightSpace, bias, 16, 12.0);
+    if (shadowFilterMode == 8) return pcss(shadowMap, fragPosLightSpace, bias, 32, 6.0);
+    if (shadowFilterMode == 9) return pcss(shadowMap, fragPosLightSpace, bias, 32, 12.0);
+    return poisson16(fragPosLightSpace, shadowMap, bias, 5.0); // default mode 0  
 }
 
 void main()

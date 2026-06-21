@@ -540,6 +540,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.Uniform1f(_cascadeEndsLoc0, csm.CascadeEnds[0]);
                 GL.Uniform1f(_cascadeEndsLoc1, csm.CascadeEnds[1]);
                 GL.Uniform1f(_cascadeEndsLoc2, csm.CascadeEnds[2]);
+
+                // Send shadow filter mode to this shader program
+                int shadowFilterLoc = GL.GetUniformLocation(_shaderProgram, "shadowFilterMode");
+                if (shadowFilterLoc != -1)
+                    GL.Uniform1i(shadowFilterLoc, Inputs.Keyboard.GetIsHardShadow());
             }
             
             // Set default PBR uniforms

@@ -164,14 +164,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             if (IsKeyPressed(window, Const.GLFW_KEY_H))
             {
                 shadowFilterMode++;
-                if (shadowFilterMode > 2)
+                if (shadowFilterMode > 9)
                     shadowFilterMode = 0;
 
                 string modeName = shadowFilterMode switch
                 {
-                    0 => "3x3 PCF",
-                    1 => "16-sample Poisson",
-                    2 => "32-sample Poisson",
+                    0 => "PCF 16",
+                    1 => "Hard Shadow",
+                    2 => "PCF 16",
+                    3 => "PCF 16 soft",
+                    4 => "PCF 32",
+                    5 => "PCF 32 Soft",
+                    6 => "PCSS 16",
+                    7 => "PCSS 16 Soft",
+                    8 => "PCSS 32",
+                    9 => "PCSS 32 Soft",
                     _ => "Unknown"
                 };
 
