@@ -65,7 +65,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public Vector3 RotationCorrection = Vector3.Zero;
 
         private readonly int _modelLoc, _viewLoc, _projLoc;
-        private readonly int _sunDirLoc, _lightColorLoc, _viewPosLoc;
+        private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
         private readonly int _baseColorLoc, _useAlbedoLoc, _albedoMapLoc;
 
         // PBR uniforms
@@ -97,6 +97,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _viewLoc = GL.GetUniformLocation(_shaderProgram, "view");
             _projLoc = GL.GetUniformLocation(_shaderProgram, "projection");
             _sunDirLoc = GL.GetUniformLocation(_shaderProgram, "sunDir");
+            _realSunDirLoc = GL.GetUniformLocation(_shaderProgram, "realSunDir");
             _lightColorLoc = GL.GetUniformLocation(_shaderProgram, "lightColor");
             _viewPosLoc = GL.GetUniformLocation(_shaderProgram, "viewPos");
             _baseColorLoc = GL.GetUniformLocation(_shaderProgram, "baseColorFactor");
@@ -284,6 +285,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)Unsafe.AsPointer(ref view));
             GL.UniformMatrix4fv(_projLoc, 1, false, (float*)Unsafe.AsPointer(ref proj));
             GL.Uniform3f(_sunDirLoc, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
+            if (_realSunDirLoc != -1) GL.Uniform3f(_realSunDirLoc, light.RealSunDir.X, light.RealSunDir.Y, light.RealSunDir.Z);
             GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
             GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
 

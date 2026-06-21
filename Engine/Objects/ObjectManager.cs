@@ -28,6 +28,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _viewLoc;
         private readonly int _projLoc;
         private readonly int _sunDirLoc;
+        private readonly int _realSunDirLoc;
         private readonly int _lightColorLoc;
         private readonly int _fogColorLoc;
         private readonly int _viewPosLoc;
@@ -83,6 +84,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _viewLoc = GL.GetUniformLocation(_shaderProgram, "view");
             _projLoc = GL.GetUniformLocation(_shaderProgram, "projection");
             _sunDirLoc = GL.GetUniformLocation(_shaderProgram, "sunDir");
+            _realSunDirLoc = GL.GetUniformLocation(_shaderProgram, "realSunDir");
             _lightColorLoc = GL.GetUniformLocation(_shaderProgram, "lightColor");
             _fogColorLoc = GL.GetUniformLocation(_shaderProgram, "fogColor");
             _viewPosLoc = GL.GetUniformLocation(_shaderProgram, "viewPos");
@@ -517,6 +519,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.UniformMatrix4fv(_projLoc, 1, false, (float*)Unsafe.AsPointer(ref proj));
 
             GL.Uniform3f(_sunDirLoc, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
+            if (_realSunDirLoc != -1) GL.Uniform3f(_realSunDirLoc, light.RealSunDir.X, light.RealSunDir.Y, light.RealSunDir.Z);
             GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
             GL.Uniform3f(_fogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
             GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
