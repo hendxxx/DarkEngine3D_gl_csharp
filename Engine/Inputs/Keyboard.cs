@@ -169,9 +169,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
                 string modeName = shadowFilterMode switch
                 {
-                    0 => "PCF Grid 5x5",
-                    1 => "Poisson 16",
-                    2 => "Poisson 32",
+                    0 => "3x3 PCF",
+                    1 => "16-sample Poisson",
+                    2 => "32-sample Poisson",
                     _ => "Unknown"
                 };
 

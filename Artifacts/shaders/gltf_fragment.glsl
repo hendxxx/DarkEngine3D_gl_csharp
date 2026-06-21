@@ -43,6 +43,9 @@ uniform int hasMetallicRoughnessTexture;
 uniform int hasOcclusionTexture;
 uniform int hasEmissiveTexture;
 
+// ── Shadow Filter Mode (0 = 4×4 Rotated PCF, 1 = Hard, 2 = Soft 4×4) ────
+uniform int shadowFilterMode;
+
 // ── Fog ────────────────────────────────────────────────────────────────────
 uniform int useFog;
 
@@ -107,20 +110,84 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     return ggx1 * ggx2;
 }
 
-float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias) {
+// Pseudo-random rotation angle from fragment screen position
+float randomAngle(vec2 uv)
+{
+    return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+// ── Mode 0: 4×4 rotated-grid PCF — 16 samples with per-fragment rotation ──
+// Breaks up grid aliasing for smooth, natural shadow edges.
+float pcf4x4Rotated(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+{
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
-    if(projCoords.z > 1.0) return 1.0;
-    float shadow = 0.0;
+    if (projCoords.z > 1.0) return 1.0;
+    if (projCoords.z < 0.0) return 0.0;
+
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for(int x = -1; x <= 1; ++x) {
-        for(int y = -1; y <= 1; ++y) {
-            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
-            shadow += projCoords.z - bias > pcfDepth ? 0.0 : 1.0;
+
+    float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
+    float s = sin(angle), c = cos(angle);
+
+    float shadow = 0.0;
+    for (int x = 0; x < 4; ++x)
+        for (int y = 0; y < 4; ++y)
+        {
+            vec2 offset = vec2(float(x) - 1.5, float(y) - 1.5);
+            vec2 rot = vec2(offset.x * c - offset.y * s,
+                            offset.x * s + offset.y * c);
+            float d = texture(shadowMap, projCoords.xy + rot * texelSize).r;
+            shadow += (projCoords.z - bias > d) ? 0.0 : 1.0;
         }
-    }
-    shadow /= 9.0;
-    return shadow;
+    return shadow / 16.0;
+}
+
+// ── Mode 1: Hard shadow (single sample, no filtering) ──
+float hardShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    if (projCoords.z > 1.0) return 1.0;
+    if (projCoords.z < 0.0) return 0.0;
+    float d = texture(shadowMap, projCoords.xy).r;
+    return (projCoords.z - bias > d) ? 0.0 : 1.0;
+}
+
+// ── Mode 2: 4×4 rotated PCF with 2× kernel radius (softer shadows) ──
+float pcf4x4Soft(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    if (projCoords.z > 1.0) return 1.0;
+    if (projCoords.z < 0.0) return 0.0;
+
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+
+    float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
+    float s = sin(angle), c = cos(angle);
+
+    float shadow = 0.0;
+    for (int x = 0; x < 4; ++x)
+        for (int y = 0; y < 4; ++y)
+        {
+            vec2 offset = vec2(float(x) - 1.5, float(y) - 1.5);
+            vec2 rot = vec2(offset.x * c - offset.y * s,
+                            offset.x * s + offset.y * c);
+            float d = texture(shadowMap, projCoords.xy + rot * texelSize * 2.0).r;
+            shadow += (projCoords.z - bias > d) ? 0.0 : 1.0;
+        }
+    return shadow / 16.0;
+}
+
+// Dispatch to the selected shadow filter mode
+float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+{
+    if (shadowFilterMode == 1)
+        return hardShadow(fragPosLightSpace, shadowMap, bias);
+    if (shadowFilterMode == 2)
+        return pcf4x4Soft(fragPosLightSpace, shadowMap, bias);
+    return pcf4x4Rotated(fragPosLightSpace, shadowMap, bias); // default mode 0
 }
 
 void main()
