@@ -326,23 +326,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
                         if (worldMap?[x, z] != null)
                         {
-                            // CDLOD: Calculate distance from camera to chunk center (Scaled to World Space)
+                            // Hitung jarak untuk distance-based LOD
                             float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                             float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                             float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
-
                             Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
-                            float distance = Vector3.Distance(camera.Position, chunkCenter);
-                            float scaledChunkSize = ChunkSize * TerrainScale;
+                            float dist = Vector3.Distance(camera.Position, chunkCenter);
 
-                            // Determine LOD level based on distance (Optimized for FPS)
+                            // LOD distance-based pake threshold dari Config
+                            float tLOD0 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD0_Distance;
+                            float tLOD1 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD1_Distance;
+                            float tLOD2 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD2_Distance;
                             int lodIndex;
-                            if (distance > scaledChunkSize * 4.5f) lodIndex = 3;
-                            else if (distance > scaledChunkSize * 2.2f) lodIndex = 2;
-                            else if (distance > scaledChunkSize * 1.0f) lodIndex = 1;
-                            else lodIndex = 0;
+                            if (dist < tLOD0) lodIndex = 0;
+                            else if (dist < tLOD1) lodIndex = 1;
+                            else if (dist < tLOD2) lodIndex = 2;
+                            else lodIndex = 3;
+
+                            if (lodIndex > 3) lodIndex = 3;
                               
-                            worldMap[x, z].Draw( lodIndex); 
+                            worldMap[x, z].Draw(lodIndex); 
 
                             // Estimate actual triangles rendered based on LOD
                             int chunkTriangles = worldMap[x, z].TriangleCount;
@@ -403,8 +406,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Ambil frustum ortho cascade ini
             Plane[]? orthoPlanes = CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
 
-            float scaledChunkSize = ChunkSize * TerrainScale;
-
             for (int x = 0; x < ChunksPerSide; x++)
             {
                 for (int z = 0; z < ChunksPerSide; z++)
@@ -416,22 +417,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
                         continue;
 
-                    // LOD pakai jarak horizontal (lebih stabil untuk shadow)
+                    // Hitung jarak untuk distance-based LOD (shadow)
                     float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
                     float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
+                    Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
+                    float dist = Vector3.Distance(camera.Position, chunkCenter);
 
-                    Vector2 camXZ = new(camera.Position.X, camera.Position.Z);
-                    Vector2 chunkXZ = new(chunkCenterX, chunkCenterZ);
-
-                    float distance = Vector2.Distance(camXZ, chunkXZ);
-                    float d = distance / scaledChunkSize;
-
+                    float tLOD0 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD0_Distance;
+                    float tLOD1 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD1_Distance;
+                    float tLOD2 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD2_Distance;
                     int lodIndex;
-                    if (d > 16.0f) lodIndex = 3;
-                    else if (d > 11.0f) lodIndex = 2;
-                    else if (d > 5.0f) lodIndex = 1;
-                    else lodIndex = 0;
+                    if (dist < tLOD0) lodIndex = 0;
+                    else if (dist < tLOD1) lodIndex = 1;
+                    else if (dist < tLOD2) lodIndex = 2;
+                    else lodIndex = 3;
+
+                    if (lodIndex > 3) lodIndex = 3;
 
                     worldMap[x, z].Draw(lodIndex, false);
                 }

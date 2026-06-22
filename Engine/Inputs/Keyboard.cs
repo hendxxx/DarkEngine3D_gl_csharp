@@ -210,7 +210,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             }
 
             // =========================================================================
-            // L TOGGLE LOD COLOR (RISING EDGE)
+            // L TOGGLE CSM LOD COLOR (RISING EDGE)
             // =========================================================================
             int lState = glfwGetKey(window, Const.GLFW_KEY_L);
             if (lState == Const.GLFW_PRESS)
@@ -226,6 +226,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             {
                 lPressed = false;
             }
+
+
 
             // =========================================================================
             // < AND > TOGGLE CAMERA MODE

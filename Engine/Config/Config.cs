@@ -45,6 +45,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     public static class LODConfig
     {
         // ============================
+        // OBJECT LOD — distance thresholds untuk static & dynamic object mesh
+        // Semua object (pohon, rumput, dll) mengacu ke threshold ini
+        // ============================
+        public readonly static float ObjectLOD0_Distance = 35f;
+        public readonly static float ObjectLOD1_Distance = 50f;
+        public readonly static float ObjectLOD2_Distance = 100f;
+        public readonly static float ObjectLOD3_Distance = 120f;
+
+        // ============================
+        // TERRAIN LOD — distance thresholds untuk terrain chunk
+        // (dalam satuan world unit. Gunakan multiplier chunk size atau absolute)
+        // ============================
+        public readonly static float TerrainLOD0_Distance = 60f;
+        public readonly static float TerrainLOD1_Distance = 130f;
+        public readonly static float TerrainLOD2_Distance = 250f;
+        public readonly static float TerrainLOD3_Distance = 500f;
+
+        // ============================
         // ANIMATION LOD
         // ============================
         public readonly static float AnimLOD0_Distance = 35f;

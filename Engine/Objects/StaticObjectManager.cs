@@ -14,6 +14,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public Dictionary<int, List<int>> Lods = new();
         // Pre-computed LOD fallback: for target LOD 0-3, which actual LOD to use
         public int[] LodFallback = [0, 1, 2, 3];
+        // Highest LOD level available in this group (for auto-cull at max distance)
+        public int MaxLOD = 3;
     }
 
     public class StaticObject
@@ -67,6 +69,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public bool CastShadow = true;
         public bool UseAlpha = true;
+
+        // Object distance thresholds (dari Config, bisa diedit di satu tempat)
+        private static float LOD0_Dist => DarkEngine3D_gl_csharp.Engine.Config.LODConfig.ObjectLOD0_Distance;
+        private static float LOD1_Dist => DarkEngine3D_gl_csharp.Engine.Config.LODConfig.ObjectLOD1_Distance;
+        private static float LOD2_Dist => DarkEngine3D_gl_csharp.Engine.Config.LODConfig.ObjectLOD2_Distance;
+        private static float LOD3_Dist => DarkEngine3D_gl_csharp.Engine.Config.LODConfig.ObjectLOD3_Distance;
+
+        public bool CullAtMaxLOD = false;
 
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
 
@@ -192,12 +202,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var g in groups.Values)
             {
                 var sorted = g.Lods.Keys.OrderBy(k => k).ToArray();
+                g.MaxLOD = sorted.Last();
                 for (int t = 0; t < 4; t++)
                     g.LodFallback[t] = sorted.FirstOrDefault(k => k >= t, sorted.Last());
 
                 // Debug: log LOD structure
                 var lodInfo = string.Join(", ", g.Lods.Select(kv => $"LOD{kv.Key}: meshes[{string.Join(",", kv.Value)}]"));
-                Console.WriteLine($"[StaticObjectManager] Group '{g.BaseName}': {g.Lods.Count} LOD levels | {lodInfo} | Fallback: [{string.Join(",", g.LodFallback)}]");
+                Console.WriteLine($"[StaticObjectManager] Group '{g.BaseName}': {g.Lods.Count} LOD levels (0-{g.MaxLOD}) | {lodInfo} | Fallback: [{string.Join(",", g.LodFallback)}]");
             }
 
             _modelGroups[path] = groups.Values.ToList();
@@ -391,12 +402,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
                     continue;
 
-                float dist = Vector3.Distance(camera.Position, obj.Position);
                 var group = obj.Group;
                 if (group == null || group.Lods.Count == 0) continue;
 
-                // LOD selection — pakai pre-computed fallback
-                int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
+                // LOD selection — distance-based pake threshold dari Config
+                float dist = Vector3.Distance(camera.Position, obj.Position);
+                int targetLOD;
+                if (dist < LOD0_Dist) targetLOD = 0;
+                else if (dist < LOD1_Dist) targetLOD = 1;
+                else if (dist < LOD2_Dist) targetLOD = 2;
+                else targetLOD = 3;
+
+                // Auto-cull: jika target LOD melebihi max LOD model, skip render
+                if (targetLOD > group.MaxLOD)
+                    continue;
+
+                // CullAtMaxLOD: skip di LOD tertinggi meskipun model punya LOD itu
+                if (CullAtMaxLOD && targetLOD >= 3)
+                    continue;
+
                 int actualLOD = group.LodFallback[targetLOD];
 
                 var meshIndices = group.Lods[actualLOD];
@@ -540,12 +564,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (outside) continue;
                 }
 
-                float dist = Vector3.Distance(camera.Position, obj.Position);
                 var group = obj.Group;
                 if (group == null || group.Lods.Count == 0) continue;
 
-                // Shadow LOD — pakai pre-computed fallback
-                int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
+                // Shadow LOD — distance-based pake threshold dari Config
+                float dist = Vector3.Distance(camera.Position, obj.Position);
+                int targetLOD;
+                if (dist < LOD0_Dist) targetLOD = 0;
+                else if (dist < LOD1_Dist) targetLOD = 1;
+                else if (dist < LOD2_Dist) targetLOD = 2;
+                else targetLOD = 3;
+
+                // Auto-cull: jika target LOD melebihi max LOD model, skip render shadow
+                if (targetLOD > group.MaxLOD)
+                    continue;
+
+                // CullAtMaxLOD: skip shadow di LOD tertinggi meskipun model punya LOD itu
+                if (CullAtMaxLOD && targetLOD >= 3)
+                    continue;
+
                 int actualLOD = group.LodFallback[targetLOD];
 
                 // Auto-disable alpha test when shadow LOD > 1 (far away objects)

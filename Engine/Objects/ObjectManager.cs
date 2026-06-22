@@ -235,11 +235,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
             staticObjectManagers[0].CastShadow = true;
             staticObjectManagers[0].UseAlpha = true;
+            staticObjectManagers[0].CullAtMaxLOD = false; // rumput jauh tidak perlu di-render
 
 
             staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
+            staticObjectManagers[1].CullAtMaxLOD = true; // rumput jauh tidak perlu di-render
 
         }
 
@@ -384,20 +386,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         a.AiLOD = CharacterAgent.AiLodLevel.Full;
                 }
 
-                // ---------- Anim LOD ----------
+                // ---------- Anim LOD (distance-based) ----------
                 if (!insideFrustum)
                 {
                     // di luar frustum → animasi skip total
                     go.AnimLOD = 3;
                 }
-                else if (dist < LODConfig.AnimLOD0_Distance)
-                    go.AnimLOD = 0;
-                else if (dist < LODConfig.AnimLOD1_Distance)
-                    go.AnimLOD = 1;
-                else if (dist < LODConfig.AnimLOD2_Distance)
-                    go.AnimLOD = 2;
                 else
-                    go.AnimLOD = 3;
+                {
+                    int lod;
+                    if (dist < LODConfig.AnimLOD0_Distance) lod = 0;
+                    else if (dist < LODConfig.AnimLOD1_Distance) lod = 1;
+                    else if (dist < LODConfig.AnimLOD2_Distance) lod = 2;
+                    else lod = 3;
+                    go.AnimLOD = lod;
+                }
             }
 
             // 2) AI tick + movement (menghormati AiLOD di dalam CharacterAgent)
@@ -581,17 +584,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 var obj = _objects[i];
 
-                float dist = Vector3.Distance(camera.Position, obj.Position);
                 if (!obj.IsVisible)
                     obj.AnimLOD = 3;
-                else if (dist < 20f)
-                    obj.AnimLOD = 0;
-                else if (dist < 50f)
-                    obj.AnimLOD = 1;
-                else if (dist < 120f)
-                    obj.AnimLOD = 2;
                 else
-                    obj.AnimLOD = 3;
+                {
+                    // AnimLOD distance-based pake threshold dari Config
+                    float dist = Vector3.Distance(camera.Position, obj.Position);
+                    int lod;
+                    if (dist < LODConfig.AnimLOD0_Distance) lod = 0;
+                    else if (dist < LODConfig.AnimLOD1_Distance) lod = 1;
+                    else if (dist < LODConfig.AnimLOD2_Distance) lod = 2;
+                    else lod = 3;
+                    obj.AnimLOD = lod;
+                }
 
                 if (!DisableFrustumCull && !IsAABBInFrustum(frustum, obj.WorldAABB))
                 {
