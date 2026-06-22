@@ -12,6 +12,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     {
         public string BaseName = "";
         public Dictionary<int, List<int>> Lods = new();
+        // Pre-computed LOD fallback: for target LOD 0-3, which actual LOD to use
+        public int[] LodFallback = [0, 1, 2, 3];
     }
 
     public class StaticObject
@@ -22,7 +24,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public Quaternion Rotation;
         public Quaternion CorrectionQuat = Quaternion.Identity;
         public float Scale = 1f;
-        public AABB WorldAABB => GpuData.LocalAABB.ToWorld(Position, Scale, Rotation * CorrectionQuat);
+
+        // Pre-computed once (static objects never move)
+        public AABB CachedWorldAABB;
+        public Matrix4x4 CachedBaseWorldMat;
 
         // Per-instance flags
         public bool CastShadow = true;
@@ -88,6 +93,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         // Instance batching cache: (gpuDataHash, meshIdx) -> instance VBO handle
         private readonly Dictionary<(int, int), uint> _instanceVBOs = [];
+
+        // Reusable instance lists — cleared each frame to avoid re-allocation
+        private class InstanceGroup
+        {
+            public readonly List<Matrix4x4> Mats = [];
+            public MeshGpu Mesh;
+            public GltfModelGpuData Gpu;
+        }
+        private readonly Dictionary<(int gpuHash, int meshIdx, int nodeIdx), InstanceGroup> _drawInstanceLists = [];
+        private readonly Dictionary<(int gpuHash, int meshIdx, int nodeIdx, bool hasAlpha), InstanceGroup> _shadowInstanceLists = [];
+
+        // Reusable matrix buffer for UploadInstances (avoids [..mats] copy alloc)
+        private Matrix4x4[] _matrixUploadBuffer = [];
 
         public StaticObjectManager()
         {
@@ -169,6 +187,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (!group.Lods.ContainsKey(lodLevel)) group.Lods[lodLevel] = new List<int>();
                 group.Lods[lodLevel].Add(i);
             }
+
+            // Pre-compute LodFallback for each group
+            foreach (var g in groups.Values)
+            {
+                var sorted = g.Lods.Keys.OrderBy(k => k).ToArray();
+                for (int t = 0; t < 4; t++)
+                    g.LodFallback[t] = sorted.FirstOrDefault(k => k >= t, sorted.Last());
+
+                // Debug: log LOD structure
+                var lodInfo = string.Join(", ", g.Lods.Select(kv => $"LOD{kv.Key}: meshes[{string.Join(",", kv.Value)}]"));
+                Console.WriteLine($"[StaticObjectManager] Group '{g.BaseName}': {g.Lods.Count} LOD levels | {lodInfo} | Fallback: [{string.Join(",", g.LodFallback)}]");
+            }
+
             _modelGroups[path] = groups.Values.ToList();
         }
 
@@ -205,6 +236,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             var sobj = new StaticObject(gpuData, selectedGroup, pos, yaw, scale);
             sobj.CorrectionQuat = corrQuat;
+            // Pre-compute cached values (static objects never move)
+            sobj.CachedWorldAABB = sobj.GpuData.LocalAABB.ToWorld(sobj.Position, sobj.Scale, sobj.Rotation * sobj.CorrectionQuat);
+            sobj.CachedBaseWorldMat = Matrix4x4.CreateScale(sobj.Scale) *
+                                       Matrix4x4.CreateFromQuaternion(sobj.CorrectionQuat) *
+                                       Matrix4x4.CreateFromQuaternion(sobj.Rotation) *
+                                       Matrix4x4.CreateTranslation(sobj.Position);
             _objects.Add(sobj);
             TotalObject++;
         }
@@ -258,13 +295,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>Upload model matrices to an instance VBO and set up attributes on the mesh VAO.</summary>
-        private void UploadInstances(uint vao, uint instanceVBO, Matrix4x4[] modelMatrices)
+        private void UploadInstances(uint vao, uint instanceVBO, List<Matrix4x4> modelMatrices)
         {
+            int count = modelMatrices.Count;
             int stride = sizeof(float) * 16; // 16 floats per mat4
-            int byteSize = modelMatrices.Length * stride;
+            int byteSize = count * stride;
+
+            // Ensure reusable buffer is large enough
+            if (_matrixUploadBuffer.Length < count)
+                Array.Resize(ref _matrixUploadBuffer, Math.Max(count, _matrixUploadBuffer.Length * 2));
+            modelMatrices.CopyTo(_matrixUploadBuffer, 0);
 
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, instanceVBO);
-            GCHandle handle = GCHandle.Alloc(modelMatrices, GCHandleType.Pinned);
+            GCHandle handle = GCHandle.Alloc(_matrixUploadBuffer, GCHandleType.Pinned);
             try
             {
                 GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)byteSize, (void*)handle.AddrOfPinnedObject(), Const.GL_DYNAMIC_DRAW);
@@ -330,17 +373,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.Uniform1i(shadowFilterLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsHardShadow());
             }
 
-            // Pre-calculate correction quaternion
-            float rx = RotationCorrection.X * MathF.PI / 180f;
-            float ry = RotationCorrection.Y * MathF.PI / 180f;
-            float rz = RotationCorrection.Z * MathF.PI / 180f;
-            var correctionQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
-
             ObjectDrawn = 0;
 
             // ── Step 1: compute visible objects, determine LOD, build instance lists ──
-            //   instanceLists: key = (gpuDataHash, meshIdx), value = list of model matrices
-            var instanceLists = new Dictionary<(int gpuHash, int meshIdx, int nodeIdx), (List<Matrix4x4> mats, MeshGpu mesh, GltfModelGpuData gpu)>();
+            // Reuse instance lists — clear from previous frame instead of new alloc
+            foreach (var kv in _drawInstanceLists)
+                kv.Value.Mats.Clear();
+            _drawInstanceLists.Clear();
+
             Matrix4x4 viewProj = cullFreezeEnabled && frozenViewProj.HasValue
                 ? frozenViewProj.Value
                 : view * proj;
@@ -348,27 +388,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             foreach (var obj in _objects)
             {
-                if (!IsAABBInFrustum(cameraFrustum, obj.WorldAABB, 5f))
+                if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
                     continue;
 
                 float dist = Vector3.Distance(camera.Position, obj.Position);
                 var group = obj.Group;
                 if (group == null || group.Lods.Count == 0) continue;
 
-                // LOD selection
+                // LOD selection — pakai pre-computed fallback
                 int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
-                int actualLOD = targetLOD;
-                if (!group.Lods.ContainsKey(actualLOD))
-                {
-                    var available = group.Lods.Keys.OrderBy(k => k).ToList();
-                    actualLOD = available.FirstOrDefault(k => k >= targetLOD, available.Last());
-                }
+                int actualLOD = group.LodFallback[targetLOD];
 
                 var meshIndices = group.Lods[actualLOD];
-                var baseWorldMat = Matrix4x4.CreateScale(obj.Scale) *
-                                   Matrix4x4.CreateFromQuaternion(correctionQuat) *
-                                   Matrix4x4.CreateFromQuaternion(obj.Rotation) *
-                                   Matrix4x4.CreateTranslation(obj.Position);
+                var baseWorldMat = obj.CachedBaseWorldMat;
 
                 foreach (int meshIdx in meshIndices)
                 {
@@ -376,28 +408,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                   ? obj.GpuData.MeshToNode[meshIdx] : -1;
 
                     var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx);
-                    if (!instanceLists.TryGetValue(key, out var entry))
+                    if (!_drawInstanceLists.TryGetValue(key, out var entry))
                     {
-                        entry = (new List<Matrix4x4>(), obj.GpuData.Meshes[meshIdx], obj.GpuData);
-                        instanceLists[key] = entry;
+                        entry = new InstanceGroup { Mesh = obj.GpuData.Meshes[meshIdx], Gpu = obj.GpuData };
+                        _drawInstanceLists[key] = entry;
                     }
 
                     Matrix4x4 modelMat = baseWorldMat;
                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
                         modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
 
-                    entry.mats.Add(modelMat);
+                    entry.Mats.Add(modelMat);
                 }
             }
 
             // ── Step 2: draw each instance group with a single instanced draw call ──
-            foreach (var kv in instanceLists)
+            foreach (var kv in _drawInstanceLists)
             {
-                var (mats, mesh, gpu) = kv.Value;
+                var entry = kv.Value;
+                var mats = entry.Mats;
                 if (mats.Count == 0) continue;
+                var mesh = entry.Mesh;
 
                 uint instanceVBO = GetInstanceVBO(kv.Key.gpuHash, kv.Key.meshIdx);
-                UploadInstances(mesh.VAO, instanceVBO, [.. mats]);
+                UploadInstances(mesh.VAO, instanceVBO, mats);
 
                 // Set material uniforms once per group (all instances share the same mesh)
                 if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
@@ -486,13 +520,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 ? CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex])
                 : null;
 
-            float rx = RotationCorrection.X * MathF.PI / 180f;
-            float ry = RotationCorrection.Y * MathF.PI / 180f;
-            float rz = RotationCorrection.Z * MathF.PI / 180f;
-            var correctionQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
-
             // ── Step 1: filter by CastShadow + frustum, group by (gpuData, meshIdx) ──
-            var instanceLists = new Dictionary<(int gpuHash, int meshIdx, int nodeIdx, bool hasAlpha), (List<Matrix4x4> mats, MeshGpu mesh, GltfModelGpuData gpu)>();
+            // Reuse instance lists — clear from previous frame instead of new alloc
+            foreach (var kv in _shadowInstanceLists)
+                kv.Value.Mats.Clear();
+            _shadowInstanceLists.Clear();
 
             foreach (var obj in _objects)
             {
@@ -512,23 +544,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var group = obj.Group;
                 if (group == null || group.Lods.Count == 0) continue;
 
-                // Shadow LOD
+                // Shadow LOD — pakai pre-computed fallback
                 int targetLOD = (dist < 30f) ? 0 : (dist < 70f) ? 1 : (dist < 160f) ? 2 : 3;
-                int actualLOD = targetLOD;
-                if (!group.Lods.ContainsKey(actualLOD))
-                {
-                    var available = group.Lods.Keys.OrderBy(k => k).ToList();
-                    actualLOD = available.FirstOrDefault(k => k >= targetLOD, available.Last());
-                }
+                int actualLOD = group.LodFallback[targetLOD];
 
                 // Auto-disable alpha test when shadow LOD > 1 (far away objects)
                 bool useAlpha = obj.UseAlphaTest && UseAlpha && (targetLOD <= 1);
 
                 var meshIndices = group.Lods[actualLOD];
-                var baseWorldMat = Matrix4x4.CreateScale(obj.Scale) *
-                                   Matrix4x4.CreateFromQuaternion(correctionQuat) *
-                                   Matrix4x4.CreateFromQuaternion(obj.Rotation) *
-                                   Matrix4x4.CreateTranslation(obj.Position);
+                var baseWorldMat = obj.CachedBaseWorldMat;
 
                 foreach (int meshIdx in meshIndices)
                 {
@@ -536,29 +560,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                   ? obj.GpuData.MeshToNode[meshIdx] : -1;
 
                     var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx, useAlpha);
-                    if (!instanceLists.TryGetValue(key, out var entry))
+                    if (!_shadowInstanceLists.TryGetValue(key, out var entry))
                     {
-                        entry = (new List<Matrix4x4>(), obj.GpuData.Meshes[meshIdx], obj.GpuData);
-                        instanceLists[key] = entry;
+                        entry = new InstanceGroup { Mesh = obj.GpuData.Meshes[meshIdx], Gpu = obj.GpuData };
+                        _shadowInstanceLists[key] = entry;
                     }
 
                     Matrix4x4 modelMat = baseWorldMat;
                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
                         modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
 
-                    entry.mats.Add(modelMat);
+                    entry.Mats.Add(modelMat);
                 }
             }
 
             // ── Step 2: draw each group ──
-            foreach (var kv in instanceLists)
+            foreach (var kv in _shadowInstanceLists)
             {
-                var (mats, mesh, gpu) = kv.Value;
-                bool hasAlpha = kv.Key.hasAlpha;
+                var entry = kv.Value;
+                var mats = entry.Mats;
                 if (mats.Count == 0) continue;
+                var mesh = entry.Mesh;
+                bool hasAlpha = kv.Key.hasAlpha;
 
                 uint instanceVBO = GetInstanceVBO(kv.Key.gpuHash, kv.Key.meshIdx);
-                UploadInstances(mesh.VAO, instanceVBO, [.. mats]);
+                UploadInstances(mesh.VAO, instanceVBO, mats);
 
                 if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
                 else GL.Enable(Const.GL_CULL_FACE);
@@ -601,7 +627,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             planes[1] = Plane.Normalize(new Plane(vp.M14 - vp.M11, vp.M24 - vp.M21, vp.M34 - vp.M31, vp.M44 - vp.M41));
             planes[2] = Plane.Normalize(new Plane(vp.M14 + vp.M12, vp.M24 + vp.M22, vp.M34 + vp.M32, vp.M44 + vp.M42));
             planes[3] = Plane.Normalize(new Plane(vp.M14 - vp.M12, vp.M24 - vp.M22, vp.M34 - vp.M32, vp.M44 - vp.M42));
-            planes[4] = Plane.Normalize(new Plane(vp.M13, vp.M23, vp.M33, vp.M43));
+            // Near (a3 + a2 untuk row-major VP matrix)
+            planes[4] = Plane.Normalize(new Plane(vp.M14 + vp.M13, vp.M24 + vp.M23, vp.M34 + vp.M33, vp.M44 + vp.M43));
             planes[5] = Plane.Normalize(new Plane(vp.M14 - vp.M13, vp.M24 - vp.M23, vp.M34 - vp.M33, vp.M44 - vp.M43));
             return planes;
         }
@@ -613,7 +640,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             planes[1] = Plane.Normalize(new Plane(vp.M14 - vp.M11, vp.M24 - vp.M21, vp.M34 - vp.M31, vp.M44 - vp.M41));
             planes[2] = Plane.Normalize(new Plane(vp.M14 + vp.M12, vp.M24 + vp.M22, vp.M34 + vp.M32, vp.M44 + vp.M42));
             planes[3] = Plane.Normalize(new Plane(vp.M14 - vp.M12, vp.M24 - vp.M22, vp.M34 - vp.M32, vp.M44 - vp.M42));
-            planes[4] = Plane.Normalize(new Plane(vp.M13, vp.M23, vp.M33, vp.M43));
+            // Near (a3 + a2 untuk row-major VP matrix)
+            planes[4] = Plane.Normalize(new Plane(vp.M14 + vp.M13, vp.M24 + vp.M23, vp.M34 + vp.M33, vp.M44 + vp.M43));
             planes[5] = Plane.Normalize(new Plane(vp.M14 - vp.M13, vp.M24 - vp.M23, vp.M34 - vp.M33, vp.M44 - vp.M43));
             return planes;
         }
