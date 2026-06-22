@@ -130,6 +130,15 @@ public unsafe class Program
         UpdateLoading(window, hud, images, "Loading objects ... ");
 
         ObjectManager objectManager = new();
+        objectManager.OnLoadProgress += (progress, status) =>
+        {
+            int filled = (int)(progress * 20);
+            string bar = new string('#', filled) + new string('-', 20 - filled);
+            Console.Write($"\r{status} [{bar}] {progress * 100:F1}%");
+            UpdateLoading(window, hud, images, status);
+            if (progress >= 1.0f)
+                Console.WriteLine();
+        };
         objectManager.Init(camera,gameTerrainChunk);
 
         Thread.Sleep(500);

@@ -75,6 +75,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool CullFreezeEnabled = false;
         public Matrix4x4 CullFreezeViewProj;
 
+        // Event untuk melacak progress loading object (progress 0-1, status message)
+        public event Action<float, string>? OnLoadProgress;
+
         public CharacterAgent PlayerAgent;
         public GltfObject PlayerObject;
 
@@ -139,8 +142,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             _objects.Clear();
             _agents.Clear();
-              
-            // AI SPAWN
+
+            // ─────────────────────────────────────
+            // PHASE 1: AI CHARACTERS (0% → 15%)
+            // ─────────────────────────────────────
+            OnLoadProgress?.Invoke(0f, "AI: spawning characters...");
+            
             for (int i = 0; i < 5; i++)
             {
                 float px, pz;
@@ -171,12 +178,57 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
                 obj.CastShadow = true;
                 SnapToTerrain(obj, gameTerrainChunk);
+
+                float phase = (i + 1) / 5f;
+                OnLoadProgress?.Invoke(phase * 0.10f, $"AI: spawning character {i+1}/5");
             }
 
+            OnLoadProgress?.Invoke(0.10f, "AI: initializing wandering...");
+            WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
+            WanderRadius = 38f;
+            InitWanderingAgents();
 
-            // === PLAYER SPAWN ===
+            OnLoadProgress?.Invoke(0.15f, "AI: done");
+
+            // ─────────────────────────────────────
+            // PHASE 2: STATIC OBJECTS (15% → 85%)
+            // ─────────────────────────────────────
+            staticObjectManagers =
+            [
+                new StaticObjectManager {  RotationCorrection = new Vector3(180, 0, 0) },
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
+            ];
+
+            OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
+
+            // Trees
+            string treesName = "trees";
+            OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
+            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+                (p) => OnLoadProgress?.Invoke(0.16f + p * 0.04f, $"Static: loading {treesName}..."));
+            staticObjectManagers[0].CastShadow = true;
+            staticObjectManagers[0].UseAlpha = true;
+            staticObjectManagers[0].CullAtMaxLOD = false;
+
+            OnLoadProgress?.Invoke(0.20f, $"Static: {treesName} done");
+
+            // Daisies
+            string daisiesName = "daises";
+            OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+                (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
+            staticObjectManagers[1].CastShadow = false;
+            staticObjectManagers[1].UseAlpha = false;
+            staticObjectManagers[1].CullAtMaxLOD = true;
+
+            OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
+
+            // ─────────────────────────────────────
+            // PHASE 3: PLAYER + ANIMATIONS (85% → 100%)
+            // ─────────────────────────────────────
+            OnLoadProgress?.Invoke(0.85f, "Player: spawning character...");
+
             string playerPath = "Artifacts\\objects\\Ybot.glb";
-
             float playerX = 0f;
             float playerZ = 0f;
             float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
@@ -185,7 +237,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
             PlayerObject.IsPlayer = true;
             PlayerObject.CastShadow = true; 
-
             PlayerObject.SetFacing(initialHeading);
 
             PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
@@ -194,54 +245,48 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 Heading = initialHeading
             };
 
-            //load animation
-            ApplyAnimationFileToAll("Artifacts\\objects\\Xbot.glb");
+            OnLoadProgress?.Invoke(0.87f, "Player: loading animations...");
 
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\Fighting-idle.glb", "fightstance");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\fist-fight.glb", "fistfight");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\punching-bag.glb", "punchbag");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\hook.glb", "hook");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\body-block.glb", "block");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\taking-punch.glb", "hurt");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\dying.glb", "dying", retargetRoot: true);
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\looking-around.glb", "lookaround");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\entry.glb", "entry");
-
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-left.glb", "strafeleft");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-strafe-right.glb", "straferight");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walking-backwards.glb", "backward");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walking-backwards2.glb", "backward2");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-happy.glb", "walk-happy");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\walk-standard.glb", "walk-standard");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\natural-idle.glb", "idle");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\jump.glb", "jump");
-            ApplyAnimationFileToAll("Artifacts\\objects\\anim\\land.glb", "land");
-
-            //LoadAnimationFolder("Artifacts\\objects\\anim");
-
-            //Init AI Wandering
-            WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
-            WanderRadius = 38f;
-            InitWanderingAgents();
-
-            staticObjectManagers =
+            // Load animation files dan apply ke semua object (AI + Player)
+            string[] animFiles =
             [
-                //new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
-                new StaticObjectManager {  RotationCorrection = new Vector3(180, 0, 0) },
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
+                "Artifacts\\objects\\Xbot.glb",
+                "Artifacts\\objects\\anim\\Fighting-idle.glb", "Artifacts\\objects\\anim\\fist-fight.glb",
+                "Artifacts\\objects\\anim\\punching-bag.glb", "Artifacts\\objects\\anim\\hook.glb",
+                "Artifacts\\objects\\anim\\body-block.glb", "Artifacts\\objects\\anim\\taking-punch.glb",
+                "Artifacts\\objects\\anim\\dying.glb", "Artifacts\\objects\\anim\\looking-around.glb",
+                "Artifacts\\objects\\anim\\entry.glb",
+                "Artifacts\\objects\\anim\\walk-strafe-left.glb", "Artifacts\\objects\\anim\\walk-strafe-right.glb",
+                "Artifacts\\objects\\anim\\walking-backwards.glb", "Artifacts\\objects\\anim\\walking-backwards2.glb",
+                "Artifacts\\objects\\anim\\walk-happy.glb", "Artifacts\\objects\\anim\\walk-standard.glb",
+                "Artifacts\\objects\\anim\\natural-idle.glb", "Artifacts\\objects\\anim\\jump.glb",
+                "Artifacts\\objects\\anim\\land.glb"
+            ];
+            string?[] animClipNames =
+            [
+                null, // Xbot.glb -> base anim
+                "fightstance", "fistfight", "punchbag", "hook", "block", "hurt",
+                "dying", "lookaround", "entry",
+                "strafeleft", "straferight", "backward", "backward2",
+                "walk-happy", "walk-standard", "idle", "jump", "land"
+            ];
+            bool[] retargetRoot =
+            [
+                false, false, false, false, false, false, false,
+                true,   // dying
+                false, false, false, false, false, false,
+                false, false, false, false, false
             ];
 
-            //staticManagers[0].AddRandomObjects("Artifacts/objects/biomes/maple_tree.glb", 100, new Vector3(0, 0, 0), 100f, 1f, gameTerrainChunk);
-            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
-            staticObjectManagers[0].CastShadow = true;
-            staticObjectManagers[0].UseAlpha = true;
-            staticObjectManagers[0].CullAtMaxLOD = false; // rumput jauh tidak perlu di-render
+            for (int i = 0; i < animFiles.Length; i++)
+            {
+                string clipName = animClipNames[i] ?? "base";
+                ApplyAnimationFileToAll(animFiles[i], animClipNames[i], retargetRoot[i]);
+                float p = 0.87f + ((i + 1) / (float)animFiles.Length) * 0.13f;
+                OnLoadProgress?.Invoke(p, $"Player: anim {clipName} ({i+1}/{animFiles.Length})");
+            }
 
-
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk);
-            staticObjectManagers[1].CastShadow = false;
-            staticObjectManagers[1].UseAlpha = false;
-            staticObjectManagers[1].CullAtMaxLOD = true; // rumput jauh tidak perlu di-render
+            OnLoadProgress?.Invoke(1.0f, "Loading complete!");
 
         }
 

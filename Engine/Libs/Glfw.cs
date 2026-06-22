@@ -402,8 +402,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     objectManager.CullFreezeEnabled = Keyboard.GetCullFreezeMode();
                     objectManager.CullFreezeViewProj = Keyboard.GetCullFreezeViewProj();
 
-                    objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                     objectManager.Draw(camera, light, csm);
+                    objectManager.DrawHealthBars(camera, hud);   // health bars above heads
                 }
 
                 //float currentweatherMode = Keyboard.GetCurrentWeather() > 0.5f ? 1 : 0; // 0 = cerah, 1 = badai

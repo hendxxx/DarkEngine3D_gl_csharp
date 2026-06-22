@@ -33,9 +33,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // Terrain clamp
         private float lastTerrainY = 0f;
 
-        // Camera mode
+        // Camera mode — property dibacking oleh _cameraMode agar HUD dan logic selalu sinkron
         private CameraMode _cameraMode = CameraMode.Orbit;
-        public CameraMode CurrentMode { get; set; }
+        public CameraMode CurrentMode
+        {
+            get => _cameraMode;
+            set => _cameraMode = value;
+        }
         public CameraPreset CurrentPreset => CameraConfig.Presets.TryGetValue(_cameraMode, out var p) ? p : null;
 
         // Shoulder swap
