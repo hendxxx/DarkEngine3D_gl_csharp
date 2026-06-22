@@ -431,13 +431,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         a.AiLOD = CharacterAgent.AiLodLevel.Full;
                 }
 
-                // ---------- Anim LOD (distance-based) ----------
-                if (!insideFrustum)
-                {
-                    // di luar frustum → animasi skip total
-                    go.AnimLOD = 3;
-                }
-                else
+                // ---------- Anim LOD (distance-based, jangan pakai IsVisible) ----------
                 {
                     int lod;
                     if (dist < LODConfig.AnimLOD0_Distance) lod = 0;
@@ -644,6 +638,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 if (!DisableFrustumCull && !IsAABBInFrustum(frustum, obj.WorldAABB))
+                {
+                    CulledObjects++;
+                    continue;
+                }
+
+                // Occlusion culling: jika IsVisible=false (di-set oleh OcclusionCulling), skip render
+                if (!obj.IsVisible && OcclusionCulling.Enabled)
                 {
                     CulledObjects++;
                     continue;

@@ -215,6 +215,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // Camera toggle
         public const int GLFW_KEY_V = 86;
 
+        // Occlusion culling toggle
+        public const int GLFW_KEY_B = 66;
+
+        // ======================
+        // OCCLUSION QUERY CONSTANTS
+        // ======================
+        public const uint GL_SAMPLES_PASSED = 0x8914;
+        public const uint GL_ANY_SAMPLES_PASSED = 0x8C2F;
+        public const uint GL_QUERY_RESULT = 0x8866;
+        public const uint GL_QUERY_RESULT_AVAILABLE = 0x8867;
+
         // ======================
         // MOUSE BUTTONS
         // ======================

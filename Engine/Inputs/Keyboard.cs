@@ -57,6 +57,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool commaPressed = false;
         static bool periodPressed = false;
 
+        // Occlusion culling toggle
+        static bool bPressed = false;
+        static bool occlusionCullingEnabled = false;
+        public static bool GetOcclusionCullingEnabled() => occlusionCullingEnabled;
+        public static void SetOcclusionCullingEnabled(bool value) => occlusionCullingEnabled = value;
+
         private static Dictionary<int, bool> lastKeyState = new Dictionary<int, bool>();
 
         // Properti public jika Anda ingin membaca status ini saat pengiriman uniform di render loop
@@ -331,6 +337,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 }
             }
             prevShiftPState = pStateShift;
+
+            // =========================================================================
+            // B TOGGLE OCCLUSION CULLING
+            // =========================================================================
+            int bState = glfwGetKey(window, Const.GLFW_KEY_B);
+            if (bState == Const.GLFW_PRESS)
+            {
+                if (!bPressed)
+                {
+                    occlusionCullingEnabled = !occlusionCullingEnabled;
+                    DarkEngine3D_gl_csharp.Engine.Visual.OcclusionCulling.Enabled = occlusionCullingEnabled;
+                    bPressed = true;
+                    Console.WriteLine(occlusionCullingEnabled ? "Occlusion Culling: ON" : "Occlusion Culling: OFF");
+                }
+            }
+            else bPressed = false;
 
             // =========================================================================
             // SISTEM INPUT & TRANSISI HALUS INTERAKTIF CUACA 1, 2, 3 (GLFW CORE PROFILE)

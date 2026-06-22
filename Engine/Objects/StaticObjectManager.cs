@@ -208,7 +208,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // Debug: log LOD structure
                 var lodInfo = string.Join(", ", g.Lods.Select(kv => $"LOD{kv.Key}: meshes[{string.Join(",", kv.Value)}]"));
-                Console.WriteLine($"[StaticObjectManager] Group '{g.BaseName}': {g.Lods.Count} LOD levels (0-{g.MaxLOD}) | {lodInfo} | Fallback: [{string.Join(",", g.LodFallback)}]");
             }
 
             _modelGroups[path] = groups.Values.ToList();

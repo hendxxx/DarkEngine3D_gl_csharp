@@ -95,6 +95,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.VertexAttribDivisorPtr = GetProcAddress(glLib, "glVertexAttribDivisor");
             GL.DrawArraysInstancedPtr = GetProcAddress(glLib, "glDrawArraysInstanced");
             GL.DrawElementsInstancedPtr = GetProcAddress(glLib, "glDrawElementsInstanced");
+
+            GL.GenQueriesPtr = GetProcAddress(glLib, "glGenQueries");
+            GL.DeleteQueriesPtr = GetProcAddress(glLib, "glDeleteQueries");
+            GL.BeginQueryPtr = GetProcAddress(glLib, "glBeginQuery");
+            GL.EndQueryPtr = GetProcAddress(glLib, "glEndQuery");
+            GL.GetQueryObjectivPtr = GetProcAddress(glLib, "glGetQueryObjectiv");
+            GL.GetQueryObjectuivPtr = GetProcAddress(glLib, "glGetQueryObjectuiv");
+            GL.ColorMaskPtr = GetProcAddress(glLib, "glColorMask");
              
             return glLib;
         }

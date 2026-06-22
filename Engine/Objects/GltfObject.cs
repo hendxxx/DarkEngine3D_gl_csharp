@@ -535,9 +535,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void Update(float dt)
         {
             // ============================================
-            // 0. SKIP TOTAL JIKA TIDAK TERLIHAT (LOD3)
+            // 0. SKIP TOTAL JIKA LOD3 (freeze total)
+            // NOTE: IsVisible tidak ngaruh ke animasi — animasi
+            // tetap jalan walau di-occlude, biar pas visible lagi
+            // posenya valid.
             // ============================================
-            if (!IsVisible || AnimLOD == 3)
+            if (AnimLOD == 3)
                 return;
 
             // ============================================

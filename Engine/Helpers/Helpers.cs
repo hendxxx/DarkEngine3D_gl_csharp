@@ -447,9 +447,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                     }
                 }
 
-                LocalAABB = data.Meshes.Length > 0
-                    ? AABB.FromVertices(data.Meshes[0].Vertices)
-                    : new AABB(Vector3.Zero, Vector3.One);
+                // Compute local AABB from ALL meshes (not just the first one)
+                if (data.Meshes.Length > 0)
+                {
+                    Vector3 mn = new(float.PositiveInfinity);
+                    Vector3 mx = new(float.NegativeInfinity);
+                    for (int mi = 0; mi < data.Meshes.Length; mi++)
+                    {
+                        var verts = data.Meshes[mi].Vertices;
+                        if (verts == null || verts.Length == 0) continue;
+                        for (int vi = 0; vi < verts.Length; vi++)
+                        {
+                            mn = Vector3.Min(mn, verts[vi].Position);
+                            mx = Vector3.Max(mx, verts[vi].Position);
+                        }
+                    }
+                    LocalAABB = new AABB(mn, mx);
+                }
+                else
+                    LocalAABB = new AABB(Vector3.Zero, Vector3.One);
             }
 
             private uint[] UploadTextures(GltfData data)

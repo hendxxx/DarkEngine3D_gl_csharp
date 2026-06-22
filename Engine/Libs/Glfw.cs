@@ -222,10 +222,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             int shadowStaticAlphaModelLoc = GL.GetUniformLocation(shadowStaticAlphaShader, "model");
             int shadowStaticAlphaLightSpaceLoc = GL.GetUniformLocation(shadowStaticAlphaShader, "lightSpaceMatrix");
 
+            // --- SOFTWARE OCCLUSION CULLING SETUP ---
+            OcclusionCulling occlusionCulling = new OcclusionCulling();
+
+            // Register all animated objects untuk occlusion testing
+            if (objectManager != null)
+            {
+                for (int ai = 0; ai < objectManager.GetObjects().Count; ai++)
+                    occlusionCulling.RegisterObject();
+            }
+
+            // --- SPAWN 4 RANDOM BIG BOXES FOR OC TESTING ---
+            Object3D[] testBoxes = null;
+            // World-space AABBs dari test boxes (untuk software OC)
+            Helpers.ObjectHelpers.AABB[] testBoxAABBs = null;
+            if (gameTerrainChunk != null)
+            {
+                testBoxes = Object3D.SpawnFourRandomBigBoxes(gameTerrainChunk);
+                // Compute world-space AABB untuk setiap test box
+                testBoxAABBs = new Helpers.ObjectHelpers.AABB[testBoxes.Length];
+                for (int bi = 0; bi < testBoxes.Length; bi++)
+                    testBoxAABBs[bi] = testBoxes[bi].GetWorldAABB();
+                Console.WriteLine($"[Glfw] Spawned {testBoxes.Length} test boxes for OC testing.");
+            }
+
             FramebufferViewer framebufferViewer = new();
             // Game Loop (Zero-GC)
             Console.WriteLine("Engine Running...");
             float time = 0f;
+            int occlusionFrameCount = 0;
             while (glfwWindow(window) == 0)
             {
                 deltaTime = Glfw.GetDeltaTime();
@@ -322,6 +347,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
                 GL.Viewport(0, 0, _windowWidth, _windowHeight);
 
+                // --- SOFTWARE OCCLUSION CULLING ---
+                if (OcclusionCulling.Enabled && objectManager != null && testBoxes != null && testBoxAABBs != null)
+                {
+                    occlusionFrameCount++;
+
+                    // Update occluders (re-register setiap frame karena posisi object tetap)
+                    occlusionCulling.ClearOccluders();
+                    for (int bi = 0; bi < testBoxAABBs.Length; bi++)
+                        occlusionCulling.RegisterOccluder(testBoxAABBs[bi]);
+
+                    // Collect AABBs dari animated objects
+                    var animObjs = objectManager.GetObjects();
+                    var objectAABBs = new Helpers.ObjectHelpers.AABB[animObjs.Count];
+                    for (int oi = 0; oi < animObjs.Count; oi++)
+                        objectAABBs[oi] = animObjs[oi].WorldAABB;
+
+                    // Cek visibility via CPU ray-AABB test
+                    occlusionCulling.CheckVisibility(camera.Position, objectAABBs);
+
+                    // Apply visibility ke objects (skip player)
+                    int visCount = 0, occludedCount = 0;
+                    for (int oi = 0; oi < animObjs.Count; oi++)
+                    {
+                        if (animObjs[oi].IsPlayer)
+                        {
+                            animObjs[oi].IsVisible = true;
+                            continue;
+                        }
+                        bool vis = occlusionCulling.IsVisible(oi);
+                        animObjs[oi].IsVisible = vis;
+                        if (vis) visCount++; else occludedCount++;
+                    }
+                    objectManager.PlayerObject.IsVisible = true;
+
+                    if (occlusionFrameCount == 1 || occludedCount > 0)
+                        Console.WriteLine($"[SW OC] Frame {occlusionFrameCount}: {visCount} visible, {occludedCount} occluded (player excluded)");
+                }
+
                 // --- MAIN RENDER PASS ---
                 ppStack.BindSceneFBO(); 
                 GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
@@ -395,6 +458,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 }
  
 
+
+
+                // ---- Draw OC Test Boxes ----
+                if (testBoxes != null)
+                {
+                    GL.UseProgram(Shader.GetShaderProgram());
+                    camera.SetViewAndProjection(viewLocation, projectionLocation);
+                    for (int bi = 0; bi < testBoxes.Length; bi++)
+                        testBoxes[bi].Draw(deltaTime, window, 0f);
+                }
+
                 // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)
                 {
@@ -419,6 +493,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 {
                     GL.Disable(Const.GL_DEPTH_TEST);
                     objectManager.DrawDebugAABBs(camera, gameTerrainChunk?.GetFrozenPlanes());
+                    GL.Enable(Const.GL_DEPTH_TEST);
+                }
+
+                // ---- OC Debug: Render AABB wireframe (depth test OFF) ----
+                if (OcclusionCulling.Enabled && objectManager != null && occlusionFrameCount > 1)
+                {
+                    GL.Disable(Const.GL_DEPTH_TEST);
+                    var animObjs = objectManager.GetObjects();
+                    for (int oi = 0; oi < animObjs.Count; oi++)
+                    {
+                        var aabb = animObjs[oi].WorldAABB;
+                        Vector3 color = animObjs[oi].IsPlayer ? new Vector3(0f, 1f, 0f) : new Vector3(1f, 0f, 0f);
+                        TerrainChunk.DrawAABBWireframe(aabb, color, camera);
+                    }
                     GL.Enable(Const.GL_DEPTH_TEST);
                 }
 
@@ -488,6 +576,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 {
                     title6 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
                 }
+                string title7 = "";
+                if (OcclusionCulling.Enabled && occlusionFrameCount > 1)
+                {
+                    title7 = $" OC: {occlusionCulling.VisibleCount} visible / {occlusionCulling.OccludedCount} occluded";
+                }
 
                 hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
                 hud.DrawText(title2, 10, 90, new Vector3(1, 0, 0));
@@ -495,6 +588,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 hud.DrawText(title4, 10, 150, new Vector3(1, 0, 0));
                 hud.DrawText(title5, 10, 180, new Vector3(1, 0, 0));
                 hud.DrawText(title6, 10, 210, new Vector3(1, 0, 0));
+                if (!string.IsNullOrEmpty(title7))
+                    hud.DrawText(title7, 10, 240, new Vector3(0, 1, 1)); // Cyan for OC info
 
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();

@@ -725,11 +725,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             int vLoc = GL.GetUniformLocation(lineShader, "view");
             int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
 
             Matrix4x4 v = camera.GetViewMatrix();
             Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
             GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
             GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
 
             GL.BindVertexArray(debugVao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);

@@ -83,6 +83,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr DrawArraysInstancedPtr = IntPtr.Zero;
         internal static IntPtr DrawElementsInstancedPtr = IntPtr.Zero;
 
+        // Occlusion query function pointers
+        internal static IntPtr GenQueriesPtr = IntPtr.Zero;
+        internal static IntPtr DeleteQueriesPtr = IntPtr.Zero;
+        internal static IntPtr BeginQueryPtr = IntPtr.Zero;
+        internal static IntPtr EndQueryPtr = IntPtr.Zero;
+        internal static IntPtr GetQueryObjectivPtr = IntPtr.Zero;
+        internal static IntPtr GetQueryObjectuivPtr = IntPtr.Zero;
+        internal static IntPtr ColorMaskPtr = IntPtr.Zero;
+
         // Buat properti pembungkus agar pemanggilan tetap bersih
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static unsafe void ReadPixels(
@@ -141,6 +150,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void VertexAttribDivisor(uint index, uint divisor)
             => ((delegate* unmanaged[Cdecl]<uint, uint, void>)VertexAttribDivisorPtr)(index, divisor);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GenQueries(int n, uint* queries)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenQueriesPtr)(n, queries);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DeleteQueries(int n, uint* queries)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteQueriesPtr)(n, queries);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void BeginQuery(uint target, uint id)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BeginQueryPtr)(target, id);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void EndQuery(uint target)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)EndQueryPtr)(target);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GetQueryObjectiv(uint id, uint pname, int* param)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, int*, void>)GetQueryObjectivPtr)(id, pname, param);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GetQueryObjectuiv(uint id, uint pname, uint* param)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, uint*, void>)GetQueryObjectuivPtr)(id, pname, param);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DrawArraysInstanced(uint mode, int first, int count, int instanceCount)
@@ -402,6 +435,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void BlendFunc(uint sfactor, uint dfactor)
             => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BlendFuncPtr)(sfactor, dfactor);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ColorMask(bool red, bool green, bool blue, bool alpha)
+            => ((delegate* unmanaged[Cdecl]<byte, byte, byte, byte, void>)ColorMaskPtr)(
+                (byte)(red ? 1 : 0), (byte)(green ? 1 : 0), (byte)(blue ? 1 : 0), (byte)(alpha ? 1 : 0));
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

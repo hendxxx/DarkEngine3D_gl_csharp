@@ -25,6 +25,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public uint VAO, VBO;
         private int _vertexCount;
+        public int VertexCount => _vertexCount;
         private int useTexture;
 
         // NEW: joints for skinning (safe default)
@@ -148,20 +149,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float dist = rng.NextFloat(areaRadius * 0.2f, areaRadius);
                 float px = MathF.Cos(angle) * dist;
                 float pz = MathF.Sin(angle) * dist;
-                float py = sy * 0.5f;
-
                 Vector3 color = new Vector3(0.4f + 0.15f * i, 0.2f + 0.1f * (3 - i), 0.3f);
 
-                boxes[i] = CreateBoxObject( sx, sy, sz, px, py, pz, color);
-
-                AlignToTerrain(boxes[i], terrain);
+                // Posisi Y: center box di terrainHeight + setengah tinggi box (supaya bottom box di terrain)
+                float terrainY = terrain.GetHeightAt(px, pz);
+                boxes[i] = CreateBoxObject(sx, sy, sz, px, terrainY + sy * 0.5f, pz, color);
             }
             return boxes;
-        }
-        public static  void AlignToTerrain(Object3D object3d, TerrainChunk terrain)
-        { 
-            float terrainY = terrain.GetHeightAt(object3d.GetPosition().X, object3d.GetPosition().Z);
-            object3d.SetPosition(object3d.GetPosition().X, terrainY*2, object3d.GetPosition().Z);
         }
         private void SetupGPUResources(Vertex[] data)
         {
@@ -271,6 +265,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             return true;
+        }
+
+        /// <summary>Compute world-space AABB dari local vertices + position.</summary>
+        public Helpers.ObjectHelpers.AABB GetWorldAABB()
+        {
+            if (localVertices == null || localVertices.Length == 0)
+                return new Helpers.ObjectHelpers.AABB(objectPosition, objectPosition);
+            var mn = localVertices[0] + objectPosition;
+            var mx = localVertices[0] + objectPosition;
+            for (int i = 1; i < localVertices.Length; i++)
+            {
+                var wp = localVertices[i] + objectPosition;
+                mn = Vector3.Min(mn, wp);
+                mx = Vector3.Max(mx, wp);
+            }
+            return new Helpers.ObjectHelpers.AABB(mn, mx);
         }
 
         // NEW: safe setter for joints
