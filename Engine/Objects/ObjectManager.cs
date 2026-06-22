@@ -215,7 +215,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 10000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
@@ -623,19 +623,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 var obj = _objects[i];
 
-                if (!obj.IsVisible)
-                    obj.AnimLOD = 3;
-                else
-                {
-                    // AnimLOD distance-based pake threshold dari Config
-                    float dist = Vector3.Distance(camera.Position, obj.Position);
-                    int lod;
-                    if (dist < LODConfig.AnimLOD0_Distance) lod = 0;
-                    else if (dist < LODConfig.AnimLOD1_Distance) lod = 1;
-                    else if (dist < LODConfig.AnimLOD2_Distance) lod = 2;
-                    else lod = 3;
-                    obj.AnimLOD = lod;
-                }
+                // AnimLOD distance-based pake threshold dari Config
+                // NOTE: jangan override AnimLOD berdasarkan IsVisible — animasi harus tetap
+                // jalan walau di-occlude biar pas visible lagi pose-nya valid (tidak freeze).
+                float dist = Vector3.Distance(camera.Position, obj.Position);
+                int lod;
+                if (dist < LODConfig.AnimLOD0_Distance) lod = 0;
+                else if (dist < LODConfig.AnimLOD1_Distance) lod = 1;
+                else if (dist < LODConfig.AnimLOD2_Distance) lod = 2;
+                else lod = 3;
+                obj.AnimLOD = lod;
 
                 if (!DisableFrustumCull && !IsAABBInFrustum(frustum, obj.WorldAABB))
                 {

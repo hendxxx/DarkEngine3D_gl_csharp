@@ -232,19 +232,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     occlusionCulling.RegisterObject();
             }
 
-            // --- SPAWN 4 RANDOM BIG BOXES FOR OC TESTING ---
-            Object3D[] testBoxes = null;
-            // World-space AABBs dari test boxes (untuk software OC)
-            Helpers.ObjectHelpers.AABB[] testBoxAABBs = null;
-            if (gameTerrainChunk != null)
-            {
-                testBoxes = Object3D.SpawnFourRandomBigBoxes(gameTerrainChunk);
-                // Compute world-space AABB untuk setiap test box
-                testBoxAABBs = new Helpers.ObjectHelpers.AABB[testBoxes.Length];
-                for (int bi = 0; bi < testBoxes.Length; bi++)
-                    testBoxAABBs[bi] = testBoxes[bi].GetWorldAABB();
-                Console.WriteLine($"[Glfw] Spawned {testBoxes.Length} test boxes for OC testing.");
-            }
+
 
             FramebufferViewer framebufferViewer = new();
             // Game Loop (Zero-GC)
@@ -348,14 +336,85 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 GL.Viewport(0, 0, _windowWidth, _windowHeight);
 
                 // --- SOFTWARE OCCLUSION CULLING ---
-                if (OcclusionCulling.Enabled && objectManager != null && testBoxes != null && testBoxAABBs != null)
+                if (OcclusionCulling.Enabled && objectManager != null && gameTerrainChunk != null)
                 {
                     occlusionFrameCount++;
 
-                    // Update occluders (re-register setiap frame karena posisi object tetap)
+                    // =====================================================
+                    // PHASE 1: AABB OCCLUDERS (trees, buildings — solid objects)
+                    // =====================================================
                     occlusionCulling.ClearOccluders();
-                    for (int bi = 0; bi < testBoxAABBs.Length; bi++)
-                        occlusionCulling.RegisterOccluder(testBoxAABBs[bi]);
+
+                    // Reset visibility semua static objects
+                    if (objectManager.staticObjectManagers != null)
+                    {
+                        for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            foreach (var sobj in mgr.GetObjects())
+                                sobj.IsVisible = true;
+                        }
+                    }
+
+                    // Semua static objects sebagai occluders
+                    if (objectManager.staticObjectManagers != null)
+                    {
+                        for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+
+                            bool narrowTrunk = (mi == 0);
+
+                            foreach (var sobj in mgr.GetObjects())
+                            {
+                                float distSq = Vector3.DistanceSquared(camera.Position, sobj.Position);
+                                if (distSq >= camera.FarDist * camera.FarDist) continue;
+
+                                // Cek terrain occlusion
+                                Vector3 objPos = sobj.Position;
+                                Vector3 dir = objPos - camera.Position;
+                                float totalDist = dir.Length();
+                                if (totalDist < 0.5f) continue;
+                                dir /= totalDist;
+
+                                float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
+                                if (camera.Position.Y < camTerrainH - 0.5f) continue;
+
+                                const int numSamples = 8;
+                                float stepSize = totalDist / numSamples;
+                                bool behindTerrain = false;
+                                for (int s = 1; s < numSamples; s++)
+                                {
+                                    Vector3 samplePos = camera.Position + dir * (s * stepSize);
+                                    float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
+                                    if (samplePos.Y < terrainH - 0.3f)
+                                    {
+                                        behindTerrain = true;
+                                        break;
+                                    }
+                                }
+                                if (behindTerrain)
+                                {
+                                    sobj.IsVisible = false; // cull from rendering
+                                    continue; // don't register as occluder
+                                }
+
+                                var aabb = sobj.CachedWorldAABB;
+                                if (narrowTrunk)
+                                {
+                                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
+                                    const float trunkRadius = 0.35f;
+                                    aabb = new Helpers.ObjectHelpers.AABB(
+                                        new Vector3(center.X - trunkRadius, aabb.Min.Y, center.Z - trunkRadius),
+                                        new Vector3(center.X + trunkRadius, aabb.Max.Y, center.Z + trunkRadius)
+                                    );
+                                }
+                                occlusionCulling.RegisterOccluder(aabb);
+                            }
+                        }
+                    }
 
                     // Collect AABBs dari animated objects
                     var animObjs = objectManager.GetObjects();
@@ -366,23 +425,80 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     // Cek visibility via CPU ray-AABB test
                     occlusionCulling.CheckVisibility(camera.Position, objectAABBs);
 
-                    // Apply visibility ke objects (skip player)
+                    // Apply AABB-based visibility (semua visible dulu)
+                    for (int oi = 0; oi < animObjs.Count; oi++)
+                        animObjs[oi].IsVisible = occlusionCulling.IsVisible(oi);
+
+                    // =====================================================
+                    // PHASE 2: TERRAIN HEIGHT RAY-MARCHING
+                    // Terrain adalah heightfield surface — pakai ray marching
+                    // untuk sample heightmap di sepanjang garis pandang.
+                    // =====================================================
+                    for (int oi = 0; oi < animObjs.Count; oi++)
+                    {
+                        if (animObjs[oi].IsPlayer) continue;
+                        if (!animObjs[oi].IsVisible) continue; // already occluded by tree
+
+                        Vector3 charPos = animObjs[oi].Position;
+                        Vector3 dir = charPos - camera.Position;
+                        float totalDist = dir.Length();
+                        if (totalDist < 0.5f) continue;
+                        dir /= totalDist;
+
+                        // Skip if camera is below terrain (inside ground) — avoid false occlusion
+                        float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
+                        if (camera.Position.Y < camTerrainH - 0.5f) continue;
+
+                        const int numSamples = 16;
+                        float stepSize = totalDist / numSamples;
+                        bool terrainOccluded = false;
+
+                        // Start from 10% along the ray to avoid near-camera false hits
+                        int startSample = Math.Max(1, numSamples / 10);
+                        for (int s = startSample; s < numSamples; s++)
+                        {
+                            float t = s * stepSize;
+                            Vector3 samplePos = camera.Position + dir * t;
+                            float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
+
+                            // Ray below terrain surface → occluded by terrain
+                            if (samplePos.Y < terrainH - 0.5f)
+                            {
+                                terrainOccluded = true;
+                                break;
+                            }
+                        }
+
+                        if (terrainOccluded)
+                            animObjs[oi].IsVisible = false;
+                    }
+
+                    // Player always visible
+                    objectManager.PlayerObject.IsVisible = true;
+
+                    // Count stats (animated + static)
                     int visCount = 0, occludedCount = 0;
                     for (int oi = 0; oi < animObjs.Count; oi++)
                     {
-                        if (animObjs[oi].IsPlayer)
-                        {
-                            animObjs[oi].IsVisible = true;
-                            continue;
-                        }
-                        bool vis = occlusionCulling.IsVisible(oi);
-                        animObjs[oi].IsVisible = vis;
-                        if (vis) visCount++; else occludedCount++;
+                        if (animObjs[oi].IsPlayer) continue;
+                        if (animObjs[oi].IsVisible) visCount++; else occludedCount++;
                     }
-                    objectManager.PlayerObject.IsVisible = true;
+                    int staticVisCount = 0, staticOccludedCount = 0;
+                    if (objectManager.staticObjectManagers != null)
+                    {
+                        for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            foreach (var sobj in mgr.GetObjects())
+                            {
+                                if (sobj.IsVisible) staticVisCount++; else staticOccludedCount++;
+                            }
+                        }
+                    }
 
-                    if (occlusionFrameCount == 1 || occludedCount > 0)
-                        Console.WriteLine($"[SW OC] Frame {occlusionFrameCount}: {visCount} visible, {occludedCount} occluded (player excluded)");
+                    if (occlusionFrameCount <= 10 || occludedCount > 0 || staticOccludedCount > 0)
+                        Console.WriteLine($"[SW OC] Frame {occlusionFrameCount}: chars {visCount}v/{occludedCount}o | static {staticVisCount}v/{staticOccludedCount}o | occluders={occlusionCulling.OccluderCount}");
                 }
 
                 // --- MAIN RENDER PASS ---
@@ -460,14 +576,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
 
 
-                // ---- Draw OC Test Boxes ----
-                if (testBoxes != null)
-                {
-                    GL.UseProgram(Shader.GetShaderProgram());
-                    camera.SetViewAndProjection(viewLocation, projectionLocation);
-                    for (int bi = 0; bi < testBoxes.Length; bi++)
-                        testBoxes[bi].Draw(deltaTime, window, 0f);
-                }
+
 
                 // ---- glTF Object Manager (autonomous wandering agents) ----
                 if (objectManager != null)
@@ -500,13 +609,81 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 if (OcclusionCulling.Enabled && objectManager != null && occlusionFrameCount > 1)
                 {
                     GL.Disable(Const.GL_DEPTH_TEST);
+
+                    // Animated objects (karakter AI)
                     var animObjs = objectManager.GetObjects();
                     for (int oi = 0; oi < animObjs.Count; oi++)
                     {
                         var aabb = animObjs[oi].WorldAABB;
-                        Vector3 color = animObjs[oi].IsPlayer ? new Vector3(0f, 1f, 0f) : new Vector3(1f, 0f, 0f);
+                        Vector3 color = animObjs[oi].IsPlayer ? new Vector3(0f, 1f, 0f) : new Vector3(0f, 0.5f, 1f);
                         TerrainChunk.DrawAABBWireframe(aabb, color, camera);
                     }
+
+                    // Static object debug AABBs
+                    if (objectManager.staticObjectManagers != null)
+                    {
+                        for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+
+                            bool narrowTrunk = (mi == 0);
+                            bool checkTerrainCull = true; // semua static object di-terrain-cull
+
+                            foreach (var sobj in mgr.GetObjects())
+                            {
+                                float distSq = Vector3.DistanceSquared(camera.Position, sobj.Position);
+                                if (distSq >= camera.FarDist * camera.FarDist) continue;
+
+                                // Determine color based on terrain occlusion
+                                bool isCulled = false;
+                                if (checkTerrainCull)
+                                {
+                                    Vector3 objPos = sobj.Position;
+                                    Vector3 dir = objPos - camera.Position;
+                                    float totalDist = dir.Length();
+                                    if (totalDist >= 0.5f)
+                                    {
+                                        dir /= totalDist;
+                                        float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
+                                        if (camera.Position.Y >= camTerrainH - 0.5f)
+                                        {
+                                            const int numSamples = 8;
+                                            float stepSize = totalDist / numSamples;
+                                            for (int s = 1; s < numSamples; s++)
+                                            {
+                                                Vector3 samplePos = camera.Position + dir * (s * stepSize);
+                                                float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
+                                                if (samplePos.Y < terrainH - 0.3f)
+                                                {
+                                                    isCulled = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Trees: merah = culled, kuning = active
+                                // Daisies: merah = culled, magenta = active
+                                Vector3 debugColor = isCulled ? new Vector3(1f, 0f, 0f)
+                                    : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
+
+                                var aabb = sobj.CachedWorldAABB;
+                                if (narrowTrunk)
+                                {
+                                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
+                                    const float trunkRadius = 0.35f;
+                                    aabb = new Helpers.ObjectHelpers.AABB(
+                                        new Vector3(center.X - trunkRadius, aabb.Min.Y, center.Z - trunkRadius),
+                                        new Vector3(center.X + trunkRadius, aabb.Max.Y, center.Z + trunkRadius)
+                                    );
+                                }
+                                TerrainChunk.DrawAABBWireframe(aabb, debugColor, camera);
+                            }
+                        }
+                    }
+
                     GL.Enable(Const.GL_DEPTH_TEST);
                 }
 

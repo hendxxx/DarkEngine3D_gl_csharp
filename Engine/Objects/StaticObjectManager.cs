@@ -35,6 +35,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool CastShadow = true;
         public bool UseAlphaTest = true;
 
+        // Occlusion culling flag (di-set oleh OC system setiap frame)
+        public bool IsVisible = true;
+
         public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
         {
             GpuData = gpuData;
@@ -402,6 +405,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             foreach (var obj in _objects)
             {
+                // Occlusion culling: skip jika di belakang terrain
+                if (OcclusionCulling.Enabled && !obj.IsVisible)
+                    continue;
+
                 if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
                     continue;
 

@@ -1015,5 +1015,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         {
             return mapLoader?.GetHeightInterpolated(worldX, worldZ) ?? 0f;
         }
+
     }
 }

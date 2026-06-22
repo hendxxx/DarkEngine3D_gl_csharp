@@ -132,7 +132,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // ============================
         public static float CameraDistance = 10.0f;
         public static float CameraOffsetHeight = 1.8f;
-        public static float CameraFlySpeed = 10.0f;
+        public static float CameraFlySpeed = 50.0f;
 
         public static float CameraMinDistance = 1.5f;
 

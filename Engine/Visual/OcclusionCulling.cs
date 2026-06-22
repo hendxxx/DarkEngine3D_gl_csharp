@@ -52,8 +52,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             for (int oi = 0; oi < objectAABBs.Length && oi < _visibilityResults.Count; oi++)
             {
                 var aabb = objectAABBs[oi];
-                Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
-                Vector3 dir = center - cameraPos;
+
+                // Closest point on AABB surface from camera = ujung AABB terdekat
+                Vector3 closest = new(
+                    Math.Clamp(cameraPos.X, aabb.Min.X, aabb.Max.X),
+                    Math.Clamp(cameraPos.Y, aabb.Min.Y, aabb.Max.Y),
+                    Math.Clamp(cameraPos.Z, aabb.Min.Z, aabb.Max.Z)
+                );
+
+                Vector3 dir = closest - cameraPos;
                 float objDist = dir.Length();
                 if (objDist < 0.001f) { _visibilityResults[oi] = true; continue; }
                 dir /= objDist;

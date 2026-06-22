@@ -44,6 +44,7 @@ public unsafe class Program
         // Init Camera
         Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10, Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 500.0f);
         camera.CurrentMode = CameraMode.Orbit;
+        //OcclusionCulling.Enabled = true;
         Glfw.SetMainCamera(camera);
 
         Keyboard.IsFogActive = false;
