@@ -524,12 +524,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 m.M34 - m.M32,
                 m.M44 - m.M42);
 
-            // Near
+            // Near (a3 + a2 untuk row-major VP matrix)
             planes[4] = new Plane(
-                m.M13,
-                m.M23,
-                m.M33,
-                m.M43);
+                m.M14 + m.M13,
+                m.M24 + m.M23,
+                m.M34 + m.M33,
+                m.M44 + m.M43);
 
             // Far
             planes[5] = new Plane(
@@ -591,12 +591,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         private static bool IsChunkInFrustum(int chunkIndexX, int chunkIndexZ, Plane[] planes)
         {
-            float minX = (chunkIndexX * ChunkSize) - _halfMapSize;
-            float maxX = minX + ChunkSize;
-            float minZ = (chunkIndexZ * ChunkSize) - _halfMapSize;
-            float maxZ = minZ + ChunkSize;
-            float minY = -0.0f;
-            float maxY = 1.0f;
+            float minX = ((chunkIndexX * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxX = minX + ChunkSize * TerrainScale;
+            float minZ = ((chunkIndexZ * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxZ = minZ + ChunkSize * TerrainScale;
+
+            float minY = -5f;
+            float maxY = 5f;
+
+            if (worldMap != null)
+            {
+                var chunk = worldMap[chunkIndexX, chunkIndexZ];
+                if (chunk != null)
+                {
+                    minY = MathF.Min(minY, chunk.MinY);
+                    maxY = MathF.Max(maxY, chunk.MaxY);
+                }
+            }
+
+            float yPadding = 2.0f;
+            minY -= yPadding;
+            maxY += yPadding;
 
             foreach (var p in planes)
             {
@@ -604,7 +619,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 float py = (p.Normal.Y >= 0) ? maxY : minY;
                 float pz = (p.Normal.Z >= 0) ? maxZ : minZ;
 
-                if (Vector3.Dot(p.Normal, new Vector3(px, py, pz)) + p.D < -100.0f)
+                if (Vector3.Dot(p.Normal, new Vector3(px, py, pz)) + p.D < 0.0f)
                 {
                     return false;
                 }
@@ -906,8 +921,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             planes[2] = Plane.Normalize(new Plane(vp.M14 + vp.M12, vp.M24 + vp.M22, vp.M34 + vp.M32, vp.M44 + vp.M42));
             // Top
             planes[3] = Plane.Normalize(new Plane(vp.M14 - vp.M12, vp.M24 - vp.M22, vp.M34 - vp.M32, vp.M44 - vp.M42));
-            // Near
-            planes[4] = Plane.Normalize(new Plane(vp.M13, vp.M23, vp.M33, vp.M43));
+            // Near (a3 + a2 untuk row-major VP matrix)
+            planes[4] = Plane.Normalize(new Plane(vp.M14 + vp.M13, vp.M24 + vp.M23, vp.M34 + vp.M33, vp.M44 + vp.M43));
             // Far
             planes[5] = Plane.Normalize(new Plane(vp.M14 - vp.M13, vp.M24 - vp.M23, vp.M34 - vp.M33, vp.M44 - vp.M43));
         }

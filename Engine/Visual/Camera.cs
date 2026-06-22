@@ -34,7 +34,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private float lastTerrainY = 0f;
 
         // Camera mode
-        private CameraMode _cameraMode = CameraMode.OTS;
+        private CameraMode _cameraMode = CameraMode.Orbit;
         public CameraMode CurrentMode { get; set; }
         public CameraPreset CurrentPreset => CameraConfig.Presets.TryGetValue(_cameraMode, out var p) ? p : null;
 
