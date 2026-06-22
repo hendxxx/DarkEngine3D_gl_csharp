@@ -7,7 +7,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
 
         public static float[] CascadeLayer = [ 30.0f, 70.0f, 140.0f ];
         // Semua cascade di 4096 agar tidak ada penurunan kualitas bayangan
-        public static int[] CascadeSizes = [4096, 2048, 1024]; 
+        public static int[] CascadeSizes = [8192, 4096, 2048]; 
+        //public static int[] CascadeSizes = [4096, 2048, 1024]; 
 
     }
     // ============================
