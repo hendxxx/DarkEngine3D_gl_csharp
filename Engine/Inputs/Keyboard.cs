@@ -19,10 +19,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static uint lineShaderProgram;
         static Vector3[]? frozenCorners = null;
 
-        // state untuk tombol P (edge detection)
+        // state untuk tombol P (edge detection) — toggle BBox wireframe
         static int prevPState = 0;
-        static bool frozenMode = false;
-        public static bool GetShowDebug() => frozenMode;
+        static bool showBBox = false;
+        static bool pPressed = false;
+        public static bool GetShowBBox() => showBBox;
 
         // Shift+P: freeze culling — objects outside the frozen frustum stay hidden while camera moves
         static int prevShiftPState = 0;
@@ -61,7 +62,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool bPressed = false;
         static bool occlusionCullingEnabled = false;
         public static bool GetOcclusionCullingEnabled() => occlusionCullingEnabled;
-        public static void SetOcclusionCullingEnabled(bool value) => occlusionCullingEnabled = value;
+        public static void SetOcclusionCullingEnabled(bool value)
+        {
+            occlusionCullingEnabled = value;
+            DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.UseOcclusion = value;
+        }
 
         private static Dictionary<int, bool> lastKeyState = new Dictionary<int, bool>();
 
@@ -290,37 +295,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             // ← TAMBAHKAN: Travel measurement (tekan T untuk start, atau lagi untuk stop)
             MeasureTravelTime(window, camera);
              
-            // P: toggle freeze frustum (debug visualization)
+            // P: toggle BBox wireframe (debug bounding boxes)
             int pState = glfwGetKey(window, Const.GLFW_KEY_P);
             bool shiftHeld = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS ||
                              glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
 
-            if (pState == Const.GLFW_PRESS && prevPState != Const.GLFW_PRESS && !shiftHeld)
+            if (pState == Const.GLFW_PRESS && !pPressed && !shiftHeld)
             {
-                frozenMode = !frozenMode;
-                if (frozenMode)
-                {
-                    Matrix4x4 view = camera.GetViewMatrix();
-                    Matrix4x4 proj = camera.GetProjectionMatrix();
-                    frozenCorners = TerrainChunk.GetFrustumCorners(view, proj);
-                    gameTerrainChunk?.SetFrozenFrustumCorners(frozenCorners);
-                    gameTerrainChunk?.SetHighlightFrustumMatches(true);
-                    camera.FlyMode = true; // auto freefly
-                }
-                else
-                {
-                    frozenCorners = null;
-                    gameTerrainChunk?.ClearFrozenFrustumCorners();
-                    gameTerrainChunk?.SetHighlightFrustumMatches(false);
-                }
+                showBBox = !showBBox;
+                pPressed = true;
+                Console.WriteLine(showBBox ? "BBox Wireframe: ON" : "BBox Wireframe: OFF");
+            }
+            else if (pState != Const.GLFW_PRESS)
+            {
+                pPressed = false;
             }
             prevPState = pState;
 
             // Shift+P: freeze culling — captured frustum determines which objects are hidden
-            // Re-use shiftHeld from the P handler above (already queried)
-            int pStateShift = glfwGetKey(window, Const.GLFW_KEY_P);
-
-            if (pStateShift == Const.GLFW_PRESS && prevShiftPState != Const.GLFW_PRESS && shiftHeld)
+            if (pState == Const.GLFW_PRESS && prevShiftPState != Const.GLFW_PRESS && shiftHeld)
             {
                 cullFreezeMode = !cullFreezeMode;
                 if (cullFreezeMode)
@@ -336,7 +329,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                     Console.WriteLine("Cull Freeze: OFF");
                 }
             }
-            prevShiftPState = pStateShift;
+            prevShiftPState = pState;
 
             // =========================================================================
             // B TOGGLE OCCLUSION CULLING
@@ -347,6 +340,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 if (!bPressed)
                 {
                     occlusionCullingEnabled = !occlusionCullingEnabled;
+                    DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.UseOcclusion = occlusionCullingEnabled;
                     DarkEngine3D_gl_csharp.Engine.Visual.OcclusionCulling.Enabled = occlusionCullingEnabled;
                     bPressed = true;
                     Console.WriteLine(occlusionCullingEnabled ? "Occlusion Culling: ON" : "Occlusion Culling: OFF");

@@ -16,6 +16,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int[] LodFallback = [0, 1, 2, 3];
         // Highest LOD level available in this group (for auto-cull at max distance)
         public int MaxLOD = 3;
+        // Per-group local AABB (computed from meshes belonging to this group only)
+        public AABB LocalAABB;
     }
 
     public class StaticObject
@@ -37,6 +39,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         // Occlusion culling flag (di-set oleh OC system setiap frame)
         public bool IsVisible = true;
+
+        // Apakah object ini bisa menjadi occluder (menghalangi object lain)
+        public bool IsOccluder = false;
 
         public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
         {
@@ -209,6 +214,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 for (int t = 0; t < 4; t++)
                     g.LodFallback[t] = sorted.FirstOrDefault(k => k >= t, sorted.Last());
 
+                // Compute per-group AABB from all meshes in this group (lowest LOD has most detail)
+                Vector3 mn = new(float.PositiveInfinity);
+                Vector3 mx = new(float.NegativeInfinity);
+                bool hasVerts = false;
+                // Gather all mesh indices from all LOD levels of this group
+                var allMeshIndices = g.Lods.Values.SelectMany(mi => mi).Distinct().ToArray();
+                foreach (int mi in allMeshIndices)
+                {
+                    if (mi < 0 || mi >= gpuData.Data.Meshes.Length) continue;
+                    var verts = gpuData.Data.Meshes[mi].Vertices;
+                    if (verts == null || verts.Length == 0) continue;
+                    hasVerts = true;
+                    for (int vi = 0; vi < verts.Length; vi++)
+                    {
+                        mn = Vector3.Min(mn, verts[vi].Position);
+                        mx = Vector3.Max(mx, verts[vi].Position);
+                    }
+                }
+                g.LocalAABB = hasVerts
+                    ? new AABB(mn, mx)
+                    : gpuData.LocalAABB;  // fallback to global AABB
+
                 // Debug: log LOD structure
                 var lodInfo = string.Join(", ", g.Lods.Select(kv => $"LOD{kv.Key}: meshes[{string.Join(",", kv.Value)}]"));
             }
@@ -216,7 +243,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _modelGroups[path] = groups.Values.ToList();
         }
 
-        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "")
+        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null)
         {
             if (!_modelCache.TryGetValue(path, out var gpuData))
             {
@@ -241,6 +268,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                 ?? availableGroups[0];
             }
 
+            // Snap to terrain height if requested
+            if (snapToTerrain && terrain != null)
+            {
+                float terrainY = terrain.GetHeightAt(pos.X, pos.Z);
+                pos.Y = terrainY;
+            }
+
             // Pre-compute correction quaternion for this manager
             float rx = RotationCorrection.X * MathF.PI / 180f;
             float ry = RotationCorrection.Y * MathF.PI / 180f;
@@ -250,7 +284,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var sobj = new StaticObject(gpuData, selectedGroup, pos, yaw, scale);
             sobj.CorrectionQuat = corrQuat;
             // Pre-compute cached values (static objects never move)
-            sobj.CachedWorldAABB = sobj.GpuData.LocalAABB.ToWorld(sobj.Position, sobj.Scale, sobj.Rotation * sobj.CorrectionQuat);
+            // Use per-group AABB instead of combined GPU AABB for better accuracy
+            var localAABB = selectedGroup.LocalAABB.Min != selectedGroup.LocalAABB.Max
+                ? selectedGroup.LocalAABB
+                : sobj.GpuData.LocalAABB;
+            sobj.CachedWorldAABB = localAABB.ToWorld(sobj.Position, sobj.Scale, sobj.Rotation * sobj.CorrectionQuat);
             sobj.CachedBaseWorldMat = Matrix4x4.CreateScale(sobj.Scale) *
                                        Matrix4x4.CreateFromQuaternion(sobj.CorrectionQuat) *
                                        Matrix4x4.CreateFromQuaternion(sobj.Rotation) *
@@ -423,9 +461,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 else if (dist < LOD2_Dist) targetLOD = 2;
                 else targetLOD = 3;
 
-                // Auto-cull: jika target LOD melebihi max LOD model, skip render
+                // Clamp targetLOD ke MaxLOD yang tersedia — jangan cull object hanya karena
+                // tidak punya LOD variant tinggi. Model dengan 1 mesh (MaxLOD=0/1) akan tetap
+                // dirender dengan mesh yang sama untuk semua jarak.
                 if (targetLOD > group.MaxLOD)
-                    continue;
+                    targetLOD = group.MaxLOD;
 
                 // CullAtMaxLOD: skip di LOD tertinggi meskipun model punya LOD itu
                 if (CullAtMaxLOD && targetLOD >= 3)
@@ -585,9 +625,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 else if (dist < LOD2_Dist) targetLOD = 2;
                 else targetLOD = 3;
 
-                // Auto-cull: jika target LOD melebihi max LOD model, skip render shadow
+                // Clamp targetLOD ke MaxLOD yang tersedia — jangan cull shadow object hanya karena
+                // tidak punya LOD variant tinggi.
                 if (targetLOD > group.MaxLOD)
-                    continue;
+                    targetLOD = group.MaxLOD;
 
                 // CullAtMaxLOD: skip shadow di LOD tertinggi meskipun model punya LOD itu
                 if (CullAtMaxLOD && targetLOD >= 3)

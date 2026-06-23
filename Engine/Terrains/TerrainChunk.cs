@@ -1016,5 +1016,48 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             return mapLoader?.GetHeightInterpolated(worldX, worldZ) ?? 0f;
         }
 
+        /// <summary>Dapatkan world-space AABB untuk chunk tertentu.</summary>
+        public static Helpers.ObjectHelpers.AABB GetChunkWorldAABB(int chunkX, int chunkZ)
+        {
+            float minX = ((chunkX * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxX = minX + ChunkSize * TerrainScale;
+            float minZ = ((chunkZ * ChunkSize) - _halfMapSize) * TerrainScale;
+            float maxZ = minZ + ChunkSize * TerrainScale;
+            float minY = -10f;
+            float maxY = 10f;
+            if (worldMap != null)
+            {
+                var chunk = worldMap[chunkX, chunkZ];
+                if (chunk != null)
+                {
+                    minY = MathF.Min(minY, chunk.MinY);
+                    maxY = MathF.Max(maxY, chunk.MaxY);
+                }
+            }
+            return new Helpers.ObjectHelpers.AABB(
+                new Vector3(minX, minY, minZ),
+                new Vector3(maxX, maxY, maxZ)
+            );
+        }
+
+        /// <summary>Daftarkan semua terrain chunk AABBs sebagai occluders untuk occlusion culling.</summary>
+        public static void RegisterChunkOccluders(Visual.OcclusionCulling occlusionCulling, Vector3 cameraPos, float farDist)
+        {
+            if (worldMap == null) return;
+            float farSq = farDist * farDist;
+            for (int x = 0; x < ChunksPerSide; x++)
+            {
+                for (int z = 0; z < ChunksPerSide; z++)
+                {
+                    // Skip chunks too far from camera
+                    var aabb = GetChunkWorldAABB(x, z);
+                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
+                    if (Vector3.DistanceSquared(center, cameraPos) > farSq)
+                        continue;
+                    occlusionCulling.RegisterOccluder(aabb);
+                }
+            }
+        }
+
     }
 }

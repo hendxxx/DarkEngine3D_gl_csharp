@@ -336,16 +336,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 GL.Viewport(0, 0, _windowWidth, _windowHeight);
 
                 // --- SOFTWARE OCCLUSION CULLING ---
-                if (OcclusionCulling.Enabled && objectManager != null && gameTerrainChunk != null)
+                if (Config.OcclusionConfig.UseOcclusion && objectManager != null && gameTerrainChunk != null)
                 {
                     occlusionFrameCount++;
 
                     // =====================================================
-                    // PHASE 1: AABB OCCLUDERS (trees, buildings — solid objects)
+                    // PHASE 1: REGISTER OCCLUDERS
                     // =====================================================
                     occlusionCulling.ClearOccluders();
 
-                    // Reset visibility semua static objects
+                    // Reset visibility semua objects
+                    // Static objects
                     if (objectManager.staticObjectManagers != null)
                     {
                         for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
@@ -356,8 +357,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                                 sobj.IsVisible = true;
                         }
                     }
+                    // Animated objects
+                    var animObjs = objectManager.GetObjects();
+                    for (int oi = 0; oi < animObjs.Count; oi++)
+                        animObjs[oi].IsVisible = true;
 
-                    // Semua static objects sebagai occluders
+                    // 1A. Terrain occlusion handled by ray-march (Phase 1B untuk static, Phase 3 untuk animated).
+                    // Tidak pakai AABB terrain chunk karena bounding box chunk terlalu besar (Y=-10..10)
+                    // dan menyebabkan false positive — semua object di belakang chunk terrain ikut ke-cull.
+
+                    // 1B. Register STATIC OBJECTS yang bertanda IsOccluder sebagai occluders
                     if (objectManager.staticObjectManagers != null)
                     {
                         for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
@@ -365,111 +374,172 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                             var mgr = objectManager.staticObjectManagers[mi];
                             if (mgr == null) continue;
 
-                            bool narrowTrunk = (mi == 0);
-
                             foreach (var sobj in mgr.GetObjects())
                             {
                                 float distSq = Vector3.DistanceSquared(camera.Position, sobj.Position);
                                 if (distSq >= camera.FarDist * camera.FarDist) continue;
 
-                                // Cek terrain occlusion
-                                Vector3 objPos = sobj.Position;
-                                Vector3 dir = objPos - camera.Position;
-                                float totalDist = dir.Length();
-                                if (totalDist < 0.5f) continue;
-                                dir /= totalDist;
+                                // Cek terrain occlusion (ray-march) untuk static objects — test 8 ujung AABB
+                                var aabb = sobj.CachedWorldAABB;
+                                Vector3[] corners = new Vector3[8]
+                                {
+                                    new(aabb.Min.X, aabb.Min.Y, aabb.Min.Z),
+                                    new(aabb.Max.X, aabb.Min.Y, aabb.Min.Z),
+                                    new(aabb.Max.X, aabb.Max.Y, aabb.Min.Z),
+                                    new(aabb.Min.X, aabb.Max.Y, aabb.Min.Z),
+                                    new(aabb.Min.X, aabb.Min.Y, aabb.Max.Z),
+                                    new(aabb.Max.X, aabb.Min.Y, aabb.Max.Z),
+                                    new(aabb.Max.X, aabb.Max.Y, aabb.Max.Z),
+                                    new(aabb.Min.X, aabb.Max.Y, aabb.Max.Z),
+                                };
 
                                 float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
-                                if (camera.Position.Y < camTerrainH - 0.5f) continue;
+                                bool allCornersBehindTerrain = true;
 
-                                const int numSamples = 8;
-                                float stepSize = totalDist / numSamples;
-                                bool behindTerrain = false;
-                                for (int s = 1; s < numSamples; s++)
+                                for (int ci = 0; ci < 8; ci++)
                                 {
-                                    Vector3 samplePos = camera.Position + dir * (s * stepSize);
-                                    float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
-                                    if (samplePos.Y < terrainH - 0.3f)
+                                    Vector3 cornerPos = corners[ci];
+                                    Vector3 dir = cornerPos - camera.Position;
+                                    float totalDist = dir.Length();
+                                    if (totalDist < 0.5f) { allCornersBehindTerrain = false; break; }
+                                    dir /= totalDist;
+
+                                    if (camera.Position.Y < camTerrainH - 0.5f) { allCornersBehindTerrain = false; break; }
+
+                                    const int numSamples = 8;
+                                    float stepSize = totalDist / numSamples;
+                                    bool cornerBehindTerrain = false;
+                                    for (int s = 1; s < numSamples; s++)
                                     {
-                                        behindTerrain = true;
+                                        Vector3 samplePos = camera.Position + dir * (s * stepSize);
+                                        float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
+                                        if (samplePos.Y < terrainH - 0.3f)
+                                        {
+                                            cornerBehindTerrain = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if (!cornerBehindTerrain)
+                                    {
+                                        allCornersBehindTerrain = false; // ada corner yg tidak terhalang terrain
                                         break;
                                     }
                                 }
-                                if (behindTerrain)
+
+                                if (allCornersBehindTerrain)
                                 {
                                     sobj.IsVisible = false; // cull from rendering
                                     continue; // don't register as occluder
                                 }
 
-                                var aabb = sobj.CachedWorldAABB;
-                                if (narrowTrunk)
+                                // Hanya register sebagai occluder jika IsOccluder=true
+                                // Gunakan per-group AABB asli (tanpa narrowTrunk hack)
+                                if (sobj.IsOccluder)
                                 {
-                                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
-                                    const float trunkRadius = 0.35f;
-                                    aabb = new Helpers.ObjectHelpers.AABB(
-                                        new Vector3(center.X - trunkRadius, aabb.Min.Y, center.Z - trunkRadius),
-                                        new Vector3(center.X + trunkRadius, aabb.Max.Y, center.Z + trunkRadius)
-                                    );
+                                    occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);
                                 }
-                                occlusionCulling.RegisterOccluder(aabb);
                             }
                         }
                     }
 
-                    // Collect AABBs dari animated objects
-                    var animObjs = objectManager.GetObjects();
+                    // =====================================================
+                    // PHASE 2: TEST ALL OBJECTS TERHADAP OCCLUDERS (AABB)
+                    // =====================================================
+
+                    // 2A. Test ANIMATED OBJECTS terhadap occluders (terrain + IsOccluder objects)
                     var objectAABBs = new Helpers.ObjectHelpers.AABB[animObjs.Count];
                     for (int oi = 0; oi < animObjs.Count; oi++)
                         objectAABBs[oi] = animObjs[oi].WorldAABB;
 
-                    // Cek visibility via CPU ray-AABB test
                     occlusionCulling.CheckVisibility(camera.Position, objectAABBs);
 
-                    // Apply AABB-based visibility (semua visible dulu)
                     for (int oi = 0; oi < animObjs.Count; oi++)
                         animObjs[oi].IsVisible = occlusionCulling.IsVisible(oi);
 
+                    // 2B. Test STATIC OBJECTS terhadap occluders (IsOccluder objects only — terrain sudah via ray-march)
+                    // Mengikuti frustum far distance, bukan 50% lagi, karena occluders sekarang hanya object explicit
+                    if (objectManager.staticObjectManagers != null)
+                    {
+                        float farSq = camera.FarDist * camera.FarDist;
+                        for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            foreach (var sobj in mgr.GetObjects())
+                            {
+                                if (!sobj.IsVisible) continue; // already culled by terrain
+                                // Skip object di luar frustum far distance
+                                float distSq = Vector3.DistanceSquared(camera.Position, sobj.Position);
+                                if (distSq > farSq) continue;
+                                if (occlusionCulling.IsOccludedByOccluders(camera.Position, sobj.CachedWorldAABB))
+                                    sobj.IsVisible = false;
+                            }
+                        }
+                    }
+
                     // =====================================================
-                    // PHASE 2: TERRAIN HEIGHT RAY-MARCHING
-                    // Terrain adalah heightfield surface — pakai ray marching
-                    // untuk sample heightmap di sepanjang garis pandang.
+                    // PHASE 3: TERRAIN HEIGHT RAY-MARCHING (fine-grained) — test 8 ujung AABB
                     // =====================================================
                     for (int oi = 0; oi < animObjs.Count; oi++)
                     {
                         if (animObjs[oi].IsPlayer) continue;
-                        if (!animObjs[oi].IsVisible) continue; // already occluded by tree
+                        if (!animObjs[oi].IsVisible) continue; // already occluded
 
-                        Vector3 charPos = animObjs[oi].Position;
-                        Vector3 dir = charPos - camera.Position;
-                        float totalDist = dir.Length();
-                        if (totalDist < 0.5f) continue;
-                        dir /= totalDist;
-
-                        // Skip if camera is below terrain (inside ground) — avoid false occlusion
-                        float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
-                        if (camera.Position.Y < camTerrainH - 0.5f) continue;
-
-                        const int numSamples = 16;
-                        float stepSize = totalDist / numSamples;
-                        bool terrainOccluded = false;
-
-                        // Start from 10% along the ray to avoid near-camera false hits
-                        int startSample = Math.Max(1, numSamples / 10);
-                        for (int s = startSample; s < numSamples; s++)
+                        var aabb = animObjs[oi].WorldAABB;
+                        Vector3[] corners = new Vector3[8]
                         {
-                            float t = s * stepSize;
-                            Vector3 samplePos = camera.Position + dir * t;
-                            float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
+                            new(aabb.Min.X, aabb.Min.Y, aabb.Min.Z),
+                            new(aabb.Max.X, aabb.Min.Y, aabb.Min.Z),
+                            new(aabb.Max.X, aabb.Max.Y, aabb.Min.Z),
+                            new(aabb.Min.X, aabb.Max.Y, aabb.Min.Z),
+                            new(aabb.Min.X, aabb.Min.Y, aabb.Max.Z),
+                            new(aabb.Max.X, aabb.Min.Y, aabb.Max.Z),
+                            new(aabb.Max.X, aabb.Max.Y, aabb.Max.Z),
+                            new(aabb.Min.X, aabb.Max.Y, aabb.Max.Z),
+                        };
 
-                            // Ray below terrain surface → occluded by terrain
-                            if (samplePos.Y < terrainH - 0.5f)
+                        float camTerrainH2 = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
+                        if (camera.Position.Y < camTerrainH2 - 0.5f) continue;
+
+                        bool allCornersBehindTerrain = true;
+
+                        for (int ci = 0; ci < 8; ci++)
+                        {
+                            Vector3 cornerPos = corners[ci];
+                            Vector3 dir2 = cornerPos - camera.Position;
+                            float totalDist2 = dir2.Length();
+                            if (totalDist2 < 0.5f) { allCornersBehindTerrain = false; break; }
+                            dir2 /= totalDist2;
+
+                            const int numSamples2 = 16;
+                            float stepSize2 = totalDist2 / numSamples2;
+                            bool cornerOccluded = false;
+
+                            // Start from 10% along the ray to avoid near-camera false hits
+                            int startSample = Math.Max(1, numSamples2 / 10);
+                            for (int s = startSample; s < numSamples2; s++)
                             {
-                                terrainOccluded = true;
+                                float t = s * stepSize2;
+                                Vector3 samplePos = camera.Position + dir2 * t;
+                                float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
+
+                                // Ray below terrain surface → occluded by terrain
+                                if (samplePos.Y < terrainH - 0.5f)
+                                {
+                                    cornerOccluded = true;
+                                    break;
+                                }
+                            }
+
+                            if (!cornerOccluded)
+                            {
+                                allCornersBehindTerrain = false; // ada corner yg terlihat
                                 break;
                             }
                         }
 
-                        if (terrainOccluded)
+                        if (allCornersBehindTerrain)
                             animObjs[oi].IsVisible = false;
                     }
 
@@ -497,8 +567,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         }
                     }
 
-                    if (occlusionFrameCount <= 10 || occludedCount > 0 || staticOccludedCount > 0)
-                        Console.WriteLine($"[SW OC] Frame {occlusionFrameCount}: chars {visCount}v/{occludedCount}o | static {staticVisCount}v/{staticOccludedCount}o | occluders={occlusionCulling.OccluderCount}");
+                    //if (occlusionFrameCount <= 10 || occludedCount > 0 || staticOccludedCount > 0)
+                        //Console.WriteLine($"[SW OC] Frame {occlusionFrameCount}: chars {visCount}v/{occludedCount}o | static {staticVisCount}v/{staticOccludedCount}o | occluders={occlusionCulling.OccluderCount}");
                 }
 
                 // --- MAIN RENDER PASS ---
@@ -596,19 +666,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 // 2. jalankan semua postprocess pass
                 ppStack.RunStack(_windowWidth, _windowHeight, time);
 
-                // Debug bounding boxes (toggled with P key)
-                // Uses frozen frustum (same as chunk box coloring)
-                if (Keyboard.GetShowDebug() && objectManager != null)
+                // ---- BBox Wireframe (toggled with P key) ----
+                if (Keyboard.GetShowBBox() && objectManager != null)
                 {
                     GL.Disable(Const.GL_DEPTH_TEST);
-                    objectManager.DrawDebugAABBs(camera, gameTerrainChunk?.GetFrozenPlanes());
-                    GL.Enable(Const.GL_DEPTH_TEST);
-                }
 
-                // ---- OC Debug: Render AABB wireframe (depth test OFF) ----
-                if (OcclusionCulling.Enabled && objectManager != null && occlusionFrameCount > 1)
-                {
-                    GL.Disable(Const.GL_DEPTH_TEST);
+                    // Draw all object AABBs via ObjectManager
+                    objectManager.DrawDebugAABBs(camera, null);
 
                     // Animated objects (karakter AI)
                     var animObjs = objectManager.GetObjects();
@@ -627,59 +691,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                             var mgr = objectManager.staticObjectManagers[mi];
                             if (mgr == null) continue;
 
-                            bool narrowTrunk = (mi == 0);
-                            bool checkTerrainCull = true; // semua static object di-terrain-cull
-
                             foreach (var sobj in mgr.GetObjects())
                             {
                                 float distSq = Vector3.DistanceSquared(camera.Position, sobj.Position);
                                 if (distSq >= camera.FarDist * camera.FarDist) continue;
 
-                                // Determine color based on terrain occlusion
-                                bool isCulled = false;
-                                if (checkTerrainCull)
-                                {
-                                    Vector3 objPos = sobj.Position;
-                                    Vector3 dir = objPos - camera.Position;
-                                    float totalDist = dir.Length();
-                                    if (totalDist >= 0.5f)
-                                    {
-                                        dir /= totalDist;
-                                        float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
-                                        if (camera.Position.Y >= camTerrainH - 0.5f)
-                                        {
-                                            const int numSamples = 8;
-                                            float stepSize = totalDist / numSamples;
-                                            for (int s = 1; s < numSamples; s++)
-                                            {
-                                                Vector3 samplePos = camera.Position + dir * (s * stepSize);
-                                                float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
-                                                if (samplePos.Y < terrainH - 0.3f)
-                                                {
-                                                    isCulled = true;
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                // Determine color based on occlusion status
+                                bool isCulled = !sobj.IsVisible && Config.OcclusionConfig.UseOcclusion;
 
-                                // Trees: merah = culled, kuning = active
-                                // Daisies: merah = culled, magenta = active
+                                // Trees/objects: kuning = active, merah = culled
+                                // Daisies: magenta = active, merah = culled
                                 Vector3 debugColor = isCulled ? new Vector3(1f, 0f, 0f)
                                     : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
 
-                                var aabb = sobj.CachedWorldAABB;
-                                if (narrowTrunk)
-                                {
-                                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
-                                    const float trunkRadius = 0.35f;
-                                    aabb = new Helpers.ObjectHelpers.AABB(
-                                        new Vector3(center.X - trunkRadius, aabb.Min.Y, center.Z - trunkRadius),
-                                        new Vector3(center.X + trunkRadius, aabb.Max.Y, center.Z + trunkRadius)
-                                    );
-                                }
-                                TerrainChunk.DrawAABBWireframe(aabb, debugColor, camera);
+                                TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, camera);
                             }
                         }
                     }
@@ -751,12 +776,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 string title6 = "";
                 if (objectManager!= null)
                 {
-                    title6 = $" Objects: {objectManager.DrawnObjects:N0} / {objectManager.TotalObjects:N0}";
+                    int culledTotal = objectManager.TotalObjects - objectManager.DrawnObjects;
+                    title6 = $" Objects: {objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {objectManager.TotalObjects:N0} total";
                 }
                 string title7 = "";
                 if (OcclusionCulling.Enabled && occlusionFrameCount > 1)
                 {
-                    title7 = $" OC: {occlusionCulling.VisibleCount} visible / {occlusionCulling.OccludedCount} occluded";
+                    int ocStaticCount = 0;
+                    if (objectManager != null && objectManager.staticObjectManagers != null)
+                    {
+                        for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            foreach (var sobj in mgr.GetObjects())
+                                if (!sobj.IsVisible) ocStaticCount++;
+                        }
+                    }
+                    title7 = $" OC: {occlusionCulling.VisibleCount}v / {occlusionCulling.OccludedCount}o (static {ocStaticCount}o)";
                 }
 
                 hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));

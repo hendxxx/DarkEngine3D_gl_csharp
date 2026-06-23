@@ -235,6 +235,9 @@
     <None Update="Artifacts\objects\anim\walking-backwards2.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\big_rock.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\biomes\daises.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -282,6 +285,9 @@
     </None>
     <None Update="Artifacts\objects\biomes\Tree_9.glb">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\damaged_wall.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\hazmat_guy.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

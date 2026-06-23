@@ -188,15 +188,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             WanderRadius = 38f;
             InitWanderingAgents();
 
-            OnLoadProgress?.Invoke(0.15f, "AI: done");
-
-            // ─────────────────────────────────────
+            OnLoadProgress?.Invoke(0.15f, "AI: done");            // ─────────────────────────────────────
             // PHASE 2: STATIC OBJECTS (15% → 85%)
             // ─────────────────────────────────────
             staticObjectManagers =
             [
-                new StaticObjectManager {  RotationCorrection = new Vector3(180, 0, 0) },
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }
+                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }  // Wall occluder
             ];
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
@@ -215,11 +214,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 10000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
             staticObjectManagers[1].CullAtMaxLOD = true;
+
+            OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
+
+            // Wall occluder — object besar untuk test occlusion
+            // Posisi di antara player start dan area pohon/AI
+            string wallPath = "Artifacts/objects/damaged_wall.glb";
+            staticObjectManagers[2].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "wall", true, gameTerrainChunk);
+            staticObjectManagers[2].CastShadow = true;
+            staticObjectManagers[2].UseAlpha = true;
+            staticObjectManagers[2].CullAtMaxLOD = false;
+            // Set IsOccluder=true agar object ini menjadi penghalang
+            foreach (var sobj in staticObjectManagers[2].GetObjects())
+                sobj.IsOccluder = true;
 
             OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
 
@@ -311,7 +323,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null)
+        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null, bool snapToTerrain = false)
         {
             var gpuData = LoadModel(modelPath);
             var q = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
@@ -333,6 +345,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 obj.Update(0f);
             }
+
+            // Snap to terrain height if requested
+            if (snapToTerrain && terrainForSnap != null)
+                SnapToTerrain(obj, terrainForSnap);
 
             return obj;
         }

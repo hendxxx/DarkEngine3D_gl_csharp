@@ -235,4 +235,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static float Sprint = 4.0f;
 
     }
+
+    // ============================
+    // Occlusion Config
+    // ============================
+    public static class OcclusionConfig
+    {
+        // Master toggle for software occlusion culling
+        public static bool UseOcclusion = true;
+    }
 }

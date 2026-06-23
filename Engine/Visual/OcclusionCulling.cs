@@ -10,7 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// </summary>
     public class OcclusionCulling
     {
-        public static bool Enabled { get; set; } = false;
+        public static bool Enabled { get; set; } = true;
 
         // Occluders: world-space AABBs dari object besar (test boxes, nantinya terrain chunk)
         private readonly List<Helpers.ObjectHelpers.AABB> _occluders = [];
@@ -53,32 +53,48 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             {
                 var aabb = objectAABBs[oi];
 
-                // Closest point on AABB surface from camera = ujung AABB terdekat
-                Vector3 closest = new(
-                    Math.Clamp(cameraPos.X, aabb.Min.X, aabb.Max.X),
-                    Math.Clamp(cameraPos.Y, aabb.Min.Y, aabb.Max.Y),
-                    Math.Clamp(cameraPos.Z, aabb.Min.Z, aabb.Max.Z)
-                );
-
-                Vector3 dir = closest - cameraPos;
-                float objDist = dir.Length();
-                if (objDist < 0.001f) { _visibilityResults[oi] = true; continue; }
-                dir /= objDist;
-
-                bool occluded = false;
-                for (int bi = 0; bi < _occluders.Count; bi++)
+                // Test all 8 corners — object is visible if ANY corner is visible
+                Span<Vector3> corners = stackalloc Vector3[8]
                 {
-                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
+                    new(aabb.Min.X, aabb.Min.Y, aabb.Min.Z),
+                    new(aabb.Max.X, aabb.Min.Y, aabb.Min.Z),
+                    new(aabb.Max.X, aabb.Max.Y, aabb.Min.Z),
+                    new(aabb.Min.X, aabb.Max.Y, aabb.Min.Z),
+                    new(aabb.Min.X, aabb.Min.Y, aabb.Max.Z),
+                    new(aabb.Max.X, aabb.Min.Y, aabb.Max.Z),
+                    new(aabb.Max.X, aabb.Max.Y, aabb.Max.Z),
+                    new(aabb.Min.X, aabb.Max.Y, aabb.Max.Z),
+                };
+
+                bool allCornersOccluded = true;
+                for (int ci = 0; ci < 8; ci++)
+                {
+                    Vector3 dir = corners[ci] - cameraPos;
+                    float objDist = dir.Length();
+                    if (objDist < 0.001f) { allCornersOccluded = false; break; }
+                    dir /= objDist;
+
+                    bool cornerOccluded = false;
+                    for (int bi = 0; bi < _occluders.Count; bi++)
                     {
-                        if (hitDist < objDist)
+                        if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
                         {
-                            occluded = true;
-                            break;
+                            if (hitDist < objDist)
+                            {
+                                cornerOccluded = true;
+                                break;
+                            }
                         }
+                    }
+
+                    if (!cornerOccluded)
+                    {
+                        allCornersOccluded = false;
+                        break;
                     }
                 }
 
-                _visibilityResults[oi] = !occluded;
+                _visibilityResults[oi] = !allCornersOccluded;
             }
         }
 
@@ -92,6 +108,56 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public int ObjectCount => _visibilityResults.Count;
         public int OccluderCount => _occluders.Count;
+
+        /// <summary>
+        /// Test a single AABB against all registered occluders.
+        /// Tests all 8 corners — returns true ONLY if ALL corners are occluded.
+        /// Returns true if the object is occluded (hidden behind any occluder).
+        /// </summary>
+        public bool IsOccludedByOccluders(Vector3 cameraPos, Helpers.ObjectHelpers.AABB objAABB)
+        {
+            if (!Enabled) return false;
+            if (_occluders.Count == 0) return false;
+
+            // Test all 8 corners — object is visible if ANY corner is visible
+            Span<Vector3> corners = stackalloc Vector3[8]
+            {
+                new(objAABB.Min.X, objAABB.Min.Y, objAABB.Min.Z),
+                new(objAABB.Max.X, objAABB.Min.Y, objAABB.Min.Z),
+                new(objAABB.Max.X, objAABB.Max.Y, objAABB.Min.Z),
+                new(objAABB.Min.X, objAABB.Max.Y, objAABB.Min.Z),
+                new(objAABB.Min.X, objAABB.Min.Y, objAABB.Max.Z),
+                new(objAABB.Max.X, objAABB.Min.Y, objAABB.Max.Z),
+                new(objAABB.Max.X, objAABB.Max.Y, objAABB.Max.Z),
+                new(objAABB.Min.X, objAABB.Max.Y, objAABB.Max.Z),
+            };
+
+            for (int ci = 0; ci < 8; ci++)
+            {
+                Vector3 dir = corners[ci] - cameraPos;
+                float objDist = dir.Length();
+                if (objDist < 0.001f) return false;
+                dir /= objDist;
+
+                bool cornerOccluded = false;
+                for (int bi = 0; bi < _occluders.Count; bi++)
+                {
+                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
+                    {
+                        if (hitDist < objDist)
+                        {
+                            cornerOccluded = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!cornerOccluded)
+                    return false; // found a visible corner → object is visible
+            }
+
+            return true; // all corners occluded
+        }
 
         public int OccludedCount
         {
