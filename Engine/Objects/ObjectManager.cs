@@ -219,6 +219,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
             staticObjectManagers[1].CullAtMaxLOD = true;
+            staticObjectManagers[1].SkipTerrainRayMarch = true; // 50rb daisies — skip ray-march, tetap ikut AABB occlusion
 
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
 

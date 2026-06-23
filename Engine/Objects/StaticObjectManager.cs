@@ -85,6 +85,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private static float LOD3_Dist => DarkEngine3D_gl_csharp.Engine.Config.LODConfig.ObjectLOD3_Distance;
 
         public bool CullAtMaxLOD = false;
+        // Skip terrain ray-march test untuk object kecil di tanah (daisies, grass, dll)
+        // — object tetap ikut AABB occlusion test terhadap wall/occluders (Phase 2B)
+        public bool SkipTerrainRayMarch = false;
 
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
 
