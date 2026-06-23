@@ -2,6 +2,7 @@ using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
 
@@ -263,7 +264,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
 
-        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
+        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, StaticObjectManager[]? staticManagers = null)
         {
             // Toggle FlyMode
             if (Keyboard.IsKeyPressed(window, Const.GLFW_KEY_G))
@@ -281,10 +282,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (_cameraMode == CameraMode.FirstPerson)
                 SetCameraFirstPerson(window, position, gameTerrainChunk, dt);
             else
-                SetCameraThirdPerson(window, position, gameTerrainChunk, dt);
+                SetCameraThirdPerson(window, position, gameTerrainChunk, dt, staticManagers);
         }
 
-        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
+        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, StaticObjectManager[]? staticManagers = null)
         {
             var preset = CurrentPreset;
             if (preset == null) return;
@@ -449,6 +450,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     finalPos.Y = terrainY + minHeight;
                 }
             }
+
+            // ── Wall collision: slide finalPos ke arah pivot (player) SEBELUM smoothing ──
+            // Pakai SlideCameraToPivot bukan PushCamera — jadi camera maju ke player saat
+            // kena wall, bukan didorong ke samping/tembus ke belakang tembok.
+            finalPos = CollisionHelper.SlideCameraToPivot(finalPos, pivotPos, minDist, staticManagers);
 
             // Smooth camera movement
             float lag = 6f;

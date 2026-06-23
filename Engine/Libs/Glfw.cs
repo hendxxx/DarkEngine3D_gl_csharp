@@ -365,14 +365,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                         }
                     }
 
-                    // 5. Set Camera orbital (sudah ada terrain collision di dalamnya)
-                    camera.SetCamera(window, objectManager.PlayerAgent.Position, gameTerrainChunk, deltaTime);
+                    // 5. Set Camera orbital (sudah ada terrain + wall collision di dalamnya)
+                    camera.SetCamera(window, objectManager.PlayerAgent.Position, gameTerrainChunk, deltaTime, staticMgrs);
 
-                    // ── COLLISION: push camera keluar dari static objects ──
+                    // Safety net: push Position langsung tanpa sync smoothCamPos.
+                    // finalPos sudah di-push di dalam SetCameraThirdPerson, jadi lerp target aman.
+                    // Tapi selama transisi lerp, Position mungkin masih 1-2cm di dalam wall.
+                    // Push ini cuma nudge Position, tidak ganggu smoothCamPos — jadi tidak ada jitter.
                     var camPos = camera.Position;
-                    var pushedCam = Helpers.CollisionHelper.PushCamera(camPos, staticMgrs);
-                    if (pushedCam != camPos)
-                        camera.PushPosition(pushedCam); // sync smoothCamPos biar tidak jitter
+                    var safeCamPos = Helpers.CollisionHelper.PushCamera(camPos, staticMgrs);
+                    if (safeCamPos != camPos)
+                        camera.Position = safeCamPos; // NOT PushPosition — jangan sync smoothCamPos!
                 }
                 // 6. Update Light (moved up for CSM lightDir calculations)
                 light.Update(deltaTime, camera.Position);

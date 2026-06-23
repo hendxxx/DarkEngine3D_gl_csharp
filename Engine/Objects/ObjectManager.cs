@@ -192,19 +192,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // PHASE 2: STATIC OBJECTS (15% → 85%)
             // ─────────────────────────────────────
             staticObjectManagers =
-            [
+            [ 
                 new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
                 new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
                 new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }  // Wall occluder
             ];
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
-
+             
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
             staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
-                (p) => OnLoadProgress?.Invoke(0.16f + p * 0.04f, $"Static: loading {treesName}..."),
+                (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 collisionPart: "bark",
                 overrideCollisionSizeX: 1.2f,
                 overrideCollisionSizeZ: 1.2f);
@@ -221,7 +221,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 10000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
