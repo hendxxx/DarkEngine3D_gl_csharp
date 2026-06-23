@@ -33,6 +33,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public AABB CachedWorldAABB;
         public Matrix4x4 CachedBaseWorldMat;
 
+        // Collision: nama mesh part yang dipakai untuk collision AABB (misal "bark")
+        // Null/kosong = pakai full AABB (semua mesh)
+        public string? CollisionPart = null;
+        // Cached collision AABB (hanya dari mesh yang namanya mengandung CollisionPart)
+        // Null = pakai CachedWorldAABB
+        public AABB? CachedCollisionAABB = null;
+
+        // Manual override ukuran collision AABB (0 = tidak di-override, pakai computed AABB)
+        // OverrideSizeX = lebar (sumbu X), OverrideSizeZ = panjang/depth (sumbu Z)
+        // Tinggi (sumbu Y) tetap menggunakan hasil compute dari mesh.
+        public float OverrideCollisionSizeX = 0f;
+        public float OverrideCollisionSizeZ = 0f;
+
         // Per-instance flags
         public bool CastShadow = true;
         public bool UseAlphaTest = true;
@@ -42,6 +55,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         // Apakah object ini bisa menjadi occluder (menghalangi object lain)
         public bool IsOccluder = false;
+
+        // Apakah object ini bisa ditabrak (collision untuk player/NPC/camera)
+        public bool IsCollidable = false;
 
         public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
         {
@@ -218,6 +234,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     g.LodFallback[t] = sorted.FirstOrDefault(k => k >= t, sorted.Last());
 
                 // Compute per-group AABB from all meshes in this group (lowest LOD has most detail)
+                // Terapkan node transform agar AABB sesuai dengan visual rendering
                 Vector3 mn = new(float.PositiveInfinity);
                 Vector3 mx = new(float.NegativeInfinity);
                 bool hasVerts = false;
@@ -226,13 +243,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 foreach (int mi in allMeshIndices)
                 {
                     if (mi < 0 || mi >= gpuData.Data.Meshes.Length) continue;
+
+                    // Cari node transform untuk mesh ini (sama seperti rendering: nodeMatrix * baseWorldMat)
+                    int nodeIdx = (gpuData.MeshToNode != null && mi < gpuData.MeshToNode.Length)
+                        ? gpuData.MeshToNode[mi] : -1;
+                    Matrix4x4 nodeMat = (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
+                        ? gpuData.Data.Nodes[nodeIdx].LocalMatrix
+                        : Matrix4x4.Identity;
+
                     var verts = gpuData.Data.Meshes[mi].Vertices;
                     if (verts == null || verts.Length == 0) continue;
                     hasVerts = true;
                     for (int vi = 0; vi < verts.Length; vi++)
                     {
-                        mn = Vector3.Min(mn, verts[vi].Position);
-                        mx = Vector3.Max(mx, verts[vi].Position);
+                        // Transform vertex ke model-local space pakai node matrix
+                        Vector3 modelLocal = Vector3.Transform(verts[vi].Position, nodeMat);
+                        mn = Vector3.Min(mn, modelLocal);
+                        mx = Vector3.Max(mx, modelLocal);
                     }
                 }
                 g.LocalAABB = hasVerts
@@ -246,7 +273,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _modelGroups[path] = groups.Values.ToList();
         }
 
-        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null)
+        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null, string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
         {
             if (!_modelCache.TryGetValue(path, out var gpuData))
             {
@@ -291,16 +318,54 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var localAABB = selectedGroup.LocalAABB.Min != selectedGroup.LocalAABB.Max
                 ? selectedGroup.LocalAABB
                 : sobj.GpuData.LocalAABB;
-            sobj.CachedWorldAABB = localAABB.ToWorld(sobj.Position, sobj.Scale, sobj.Rotation * sobj.CorrectionQuat);
+            sobj.CollisionPart = collisionPart;
+            // Compute BaseWorldMat DULU (sama persis dengan rendering), pakai ini untuk AABB
             sobj.CachedBaseWorldMat = Matrix4x4.CreateScale(sobj.Scale) *
                                        Matrix4x4.CreateFromQuaternion(sobj.CorrectionQuat) *
                                        Matrix4x4.CreateFromQuaternion(sobj.Rotation) *
                                        Matrix4x4.CreateTranslation(sobj.Position);
+            sobj.CachedWorldAABB = localAABB.Transform(sobj.CachedBaseWorldMat);
+
+            // Compute per-mesh collision AABB jika CollisionPart di-set
+            // Pakai Transform(CachedBaseWorldMat) biar transform order sama persis dengan rendering
+            if (!string.IsNullOrEmpty(collisionPart))
+            {
+                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj);
+                sobj.CachedCollisionAABB = collLocalAABB.Transform(sobj.CachedBaseWorldMat);
+            }
+
+            // Apply manual override size untuk collision AABB (X dan Z saja, Y tetap)
+            // Hanya berlaku jika CachedCollisionAABB != null dan override > 0
+            if (sobj.CachedCollisionAABB.HasValue && (overrideCollisionSizeX > 0f || overrideCollisionSizeZ > 0f))
+            {
+                var ca = sobj.CachedCollisionAABB.Value;
+                Vector3 center = (ca.Min + ca.Max) * 0.5f;
+                Vector3 halfSize = (ca.Max - ca.Min) * 0.5f;
+                if (overrideCollisionSizeX > 0f) halfSize.X = overrideCollisionSizeX * 0.5f;
+                if (overrideCollisionSizeZ > 0f) halfSize.Z = overrideCollisionSizeZ * 0.5f;
+                // Y tetap dari hasil compute mesh
+                sobj.CachedCollisionAABB = new AABB(center - halfSize, center + halfSize);
+            }
+            // Copy Y dari CachedWorldAABB (tinggi sudah benar dari OC/frustum —
+            // mencakup semua mesh group, bukan cuma mesh "bark")
+            // Ini penting karena mesh "bark" mungkin tidak mencakup tinggi penuh pohon,
+            // dan random rotation/position membuat AABB collision Y tidak akurat.
+            if (sobj.CachedCollisionAABB.HasValue)
+            {
+                var ca = sobj.CachedCollisionAABB.Value;
+                ca.Min.Y = sobj.CachedWorldAABB.Min.Y;
+                ca.Max.Y = sobj.CachedWorldAABB.Max.Y;
+                sobj.CachedCollisionAABB = ca;
+            }
+
+            sobj.OverrideCollisionSizeX = overrideCollisionSizeX;
+            sobj.OverrideCollisionSizeZ = overrideCollisionSizeZ;
+
             _objects.Add(sobj);
             TotalObject++;
         }
 
-        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain, Action<float>? onProgress = null)
+        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain, Action<float>? onProgress = null, string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
         {
             var rng = new Random();
             int reportInterval = Math.Max(count / 100, 1); // report ~100x selama loading
@@ -311,7 +376,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float x = center.X + MathF.Cos(a) * d;
                 float z = center.Z + MathF.Sin(a) * d;
                 float y = terrain.GetHeightAt(x, z);
-                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale);
+                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ);
 
                 if (onProgress != null && (i % reportInterval == 0 || i == count - 1))
                     onProgress((float)(i + 1) / count);
@@ -705,6 +770,52 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+        }
+
+        /// <summary>
+        /// Compute LOCAL AABB dari mesh-mesh yang namanya mengandung partName (case-insensitive).
+        /// Menerapkan node transform GLTF agar AABB sesuai dengan visual rendering.
+        /// World transform dilakukan oleh caller via CachedBaseWorldMat.
+        /// </summary>
+        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj)
+        {
+            Vector3 mn = new(float.PositiveInfinity);
+            Vector3 mx = new(float.NegativeInfinity);
+            bool found = false;
+
+            var meshes = gpuData.Data.Meshes;
+            if (meshes == null) return sobj.Group.LocalAABB;
+
+            for (int mi = 0; mi < meshes.Length; mi++)
+            {
+                string? meshName = meshes[mi].Name;
+                if (string.IsNullOrEmpty(meshName)) continue;
+                if (!meshName.Contains(partName, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var verts = meshes[mi].Vertices;
+                if (verts == null || verts.Length == 0) continue;
+
+                // Cari node transform untuk mesh ini (sama seperti rendering: nodeMatrix * baseWorldMat)
+                int nodeIdx = (gpuData.MeshToNode != null && mi < gpuData.MeshToNode.Length)
+                    ? gpuData.MeshToNode[mi] : -1;
+                Matrix4x4 nodeMat = (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
+                    ? gpuData.Data.Nodes[nodeIdx].LocalMatrix
+                    : Matrix4x4.Identity;
+
+                found = true;
+                for (int vi = 0; vi < verts.Length; vi++)
+                {
+                    // Transform vertex ke model-local space pakai node matrix
+                    Vector3 modelLocal = Vector3.Transform(verts[vi].Position, nodeMat);
+                    mn = Vector3.Min(mn, modelLocal);
+                    mx = Vector3.Max(mx, modelLocal);
+                }
+            }
+
+            if (!found)
+                return sobj.Group.LocalAABB; // fallback ke group local AABB jika tidak ada mesh yang cocok
+
+            return new AABB(mn, mx); // LOCAL AABB (belum di-transform ke world)
         }
 
         // ────────────────────────────────────────────────────────────────

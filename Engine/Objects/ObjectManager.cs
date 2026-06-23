@@ -204,17 +204,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
             staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
-                (p) => OnLoadProgress?.Invoke(0.16f + p * 0.04f, $"Static: loading {treesName}..."));
+                (p) => OnLoadProgress?.Invoke(0.16f + p * 0.04f, $"Static: loading {treesName}..."),
+                collisionPart: "bark",
+                overrideCollisionSizeX: 1.2f,
+                overrideCollisionSizeZ: 1.2f);
             staticObjectManagers[0].CastShadow = true;
             staticObjectManagers[0].UseAlpha = true;
             staticObjectManagers[0].CullAtMaxLOD = false;
+
+            // Trees — collidable (player/NPC gak bisa tembus pohon)
+            foreach (var sobj in staticObjectManagers[0].GetObjects())
+                sobj.IsCollidable = true;
 
             OnLoadProgress?.Invoke(0.20f, $"Static: {treesName} done");
 
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
@@ -222,6 +229,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             staticObjectManagers[1].SkipTerrainRayMarch = true; // 50rb daisies — skip ray-march, tetap ikut AABB occlusion
 
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
+
+            // Daisies — collidable (player/NPC gak bisa tembus pohon)
+            foreach (var sobj in staticObjectManagers[1].GetObjects())
+                sobj.IsCollidable = false;
 
             // Wall occluder — object besar untuk test occlusion
             // Posisi di antara player start dan area pohon/AI
@@ -233,6 +244,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Set IsOccluder=true agar object ini menjadi penghalang
             foreach (var sobj in staticObjectManagers[2].GetObjects())
                 sobj.IsOccluder = true;
+            // Wall — collidable (player/NPC/camera gak bisa tembus)
+            foreach (var sobj in staticObjectManagers[2].GetObjects())
+                sobj.IsCollidable = true;
 
             OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
 

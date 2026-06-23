@@ -243,6 +243,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
 
+        /// <summary>Push camera position + sync smoothing agar tidak jitter.</summary>
+        public void PushPosition(Vector3 newPos)
+        {
+            Position = newPos;
+            smoothCamPos = newPos;
+        }
+
         public void ClampToTerrain(MapLoader mapLoader, float dt)
         {
             float minHeight = 1.0f;

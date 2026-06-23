@@ -291,12 +291,88 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                     // 4A. Update player movement dulu
                     objectManager.PlayerAgent.Move(window, camera, deltaTime, gameTerrainChunk, Vector3.Zero, 0f);
 
+                    // ── COLLISION: push player keluar dari static objects ──
+                    var staticMgrs = objectManager.staticObjectManagers;
+                    var playerPos = objectManager.PlayerAgent.Position;
+                    var pushedPlayer = Helpers.CollisionHelper.PushCharacter(playerPos, staticMgrs);
+                    if (pushedPlayer != playerPos)
+                    {
+                        // Snap to terrain setelah di-push
+                        pushedPlayer.Y = gameTerrainChunk.GetHeightAt(pushedPlayer.X, pushedPlayer.Z);
+                        objectManager.PlayerAgent.Position = pushedPlayer;
+                    }
+
                     // 4B. Update NPC AI + movement
                     objectManager.UpdateAgents(window, deltaTime, gameTerrainChunk, camera); 
 
-                    // 5. Set Camera orbital
+                    // ── COLLISION: push NPC keluar dari static objects ──
+                    var allObjs = objectManager.GetObjects();
+                    for (int oi = 0; oi < allObjs.Count; oi++)
+                    {
+                        if (allObjs[oi].IsPlayer) continue;
+                        var npcPos = allObjs[oi].Position;
+                        var pushedNpc = Helpers.CollisionHelper.PushCharacter(npcPos, staticMgrs);
+                        if (pushedNpc != npcPos)
+                        {
+                            pushedNpc.Y = gameTerrainChunk.GetHeightAt(pushedNpc.X, pushedNpc.Z);
+                            allObjs[oi].Position = pushedNpc;
+                        }
+                    }
+
+                    // ── COLLISION: player vs AI characters ──
+                    {
+                        var pPos = objectManager.PlayerAgent.Position;
+                        for (int oi = 0; oi < allObjs.Count; oi++)
+                        {
+                            if (allObjs[oi].IsPlayer) continue;
+                            var aiPos = allObjs[oi].Position;
+
+                            float dx = pPos.X - aiPos.X;
+                            float dz = pPos.Z - aiPos.Z;
+                            float distSq = dx * dx + dz * dz;
+                            float minDist = CharacterAgent.CollisionRadius + CharacterAgent.CollisionRadius;
+
+                            if (distSq >= minDist * minDist) continue;
+
+                            float dist = MathF.Sqrt(distSq);
+                            float nx, nz;
+                            if (dist > 1e-4f) { nx = dx / dist; nz = dz / dist; }
+                            else { nx = 1f; nz = 0f; }
+
+                            float push = (minDist - dist) * 0.5f;
+                            pPos.X += nx * push;
+                            pPos.Z += nz * push;
+                            aiPos.X -= nx * push;
+                            aiPos.Z -= nz * push;
+
+                            // Snap to terrain setelah push
+                            pPos.Y = gameTerrainChunk.GetHeightAt(pPos.X, pPos.Z);
+                            aiPos.Y = gameTerrainChunk.GetHeightAt(aiPos.X, aiPos.Z);
+
+                            allObjs[oi].Position = aiPos;
+                        }
+                        objectManager.PlayerAgent.Position = pPos;
+                    }
+
+                    // ── RE-CHECK: player vs static objects (setelah player vs AI push, bisa masuk ke tree) ──
+                    {
+                        var recheckPos = objectManager.PlayerAgent.Position;
+                        var recheckPushed = Helpers.CollisionHelper.PushCharacter(recheckPos, staticMgrs);
+                        if (recheckPushed != recheckPos)
+                        {
+                            recheckPushed.Y = gameTerrainChunk.GetHeightAt(recheckPushed.X, recheckPushed.Z);
+                            objectManager.PlayerAgent.Position = recheckPushed;
+                        }
+                    }
+
+                    // 5. Set Camera orbital (sudah ada terrain collision di dalamnya)
                     camera.SetCamera(window, objectManager.PlayerAgent.Position, gameTerrainChunk, deltaTime);
 
+                    // ── COLLISION: push camera keluar dari static objects ──
+                    var camPos = camera.Position;
+                    var pushedCam = Helpers.CollisionHelper.PushCamera(camPos, staticMgrs);
+                    if (pushedCam != camPos)
+                        camera.PushPosition(pushedCam); // sync smoothCamPos biar tidak jitter
                 }
                 // 6. Update Light (moved up for CSM lightDir calculations)
                 light.Update(deltaTime, camera.Position);
@@ -795,6 +871,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                                     : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
 
                                 TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, camera);
+                            }
+                        }
+
+                        // Collision AABBs (ungu) — untuk static objects yang punya CachedCollisionAABB
+                        var collisionColor = new Vector3(0.6f, 0f, 1f); // ungu
+                        for (int mi = 0; mi < objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            foreach (var sobj in mgr.GetObjects())
+                            {
+                                if (sobj.CachedCollisionAABB.HasValue)
+                                    TerrainChunk.DrawAABBWireframe(sobj.CachedCollisionAABB.Value, collisionColor, camera);
                             }
                         }
                     }

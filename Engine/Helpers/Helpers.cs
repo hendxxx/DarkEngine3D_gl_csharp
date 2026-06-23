@@ -341,6 +341,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 return new AABB(mn, mx);
             }
 
+            /// <summary>
+            /// Transform all 8 corners by a full 4×4 matrix (row-vector),
+            /// then compute the new axis-aligned min/max.
+            /// </summary>
+            public readonly AABB Transform(Matrix4x4 mat)
+            {
+                Vector3 mn = new(float.PositiveInfinity);
+                Vector3 mx = new(float.NegativeInfinity);
+
+                Span<Vector3> corners =
+                [
+                    new(Min.X, Min.Y, Min.Z),
+                    new(Max.X, Min.Y, Min.Z),
+                    new(Max.X, Max.Y, Min.Z),
+                    new(Min.X, Max.Y, Min.Z),
+                    new(Min.X, Min.Y, Max.Z),
+                    new(Max.X, Min.Y, Max.Z),
+                    new(Max.X, Max.Y, Max.Z),
+                    new(Min.X, Min.Y, Max.Z),
+                ];
+
+                for (int i = 0; i < 8; i++)
+                {
+                    var wp = Vector3.Transform(corners[i], mat);
+                    mn = Vector3.Min(mn, wp);
+                    mx = Vector3.Max(mx, wp);
+                }
+
+                return new AABB(mn, mx);
+            }
+
             public static AABB FromVertices(SkinnedVertex[] verts)
             {
                 if (verts.Length == 0) return new AABB(Vector3.Zero, Vector3.Zero);
@@ -448,18 +479,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 }
 
                 // Compute local AABB from ALL meshes (not just the first one)
+                // Terapkan node transform agar AABB sesuai dengan visual rendering
                 if (data.Meshes.Length > 0)
                 {
                     Vector3 mn = new(float.PositiveInfinity);
                     Vector3 mx = new(float.NegativeInfinity);
                     for (int mi = 0; mi < data.Meshes.Length; mi++)
                     {
+                        // Cari node transform untuk mesh ini
+                        int nodeIdx = (MeshToNode != null && mi < MeshToNode.Length) ? MeshToNode[mi] : -1;
+                        Matrix4x4 nodeMat = (nodeIdx >= 0 && data.Nodes != null && nodeIdx < data.Nodes.Length)
+                            ? data.Nodes[nodeIdx].LocalMatrix
+                            : Matrix4x4.Identity;
+
                         var verts = data.Meshes[mi].Vertices;
                         if (verts == null || verts.Length == 0) continue;
                         for (int vi = 0; vi < verts.Length; vi++)
                         {
-                            mn = Vector3.Min(mn, verts[vi].Position);
-                            mx = Vector3.Max(mx, verts[vi].Position);
+                            Vector3 modelLocal = Vector3.Transform(verts[vi].Position, nodeMat);
+                            mn = Vector3.Min(mn, modelLocal);
+                            mx = Vector3.Max(mx, modelLocal);
                         }
                     }
                     LocalAABB = new AABB(mn, mx);
