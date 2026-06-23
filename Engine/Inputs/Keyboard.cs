@@ -58,15 +58,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool commaPressed = false;
         static bool periodPressed = false;
 
-        // Occlusion culling toggle
+        // Occlusion culling toggle — 3-state: Off → SW → HiZ → Off
         static bool bPressed = false;
-        static bool occlusionCullingEnabled = false;
-        public static bool GetOcclusionCullingEnabled() => occlusionCullingEnabled;
-        public static void SetOcclusionCullingEnabled(bool value)
+        // Sync initial state dengan Config
+        static int occlusionModeIndex = DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.UseOcclusion
+            ? (DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.Mode == DarkEngine3D_gl_csharp.Engine.Config.OcclusionMode.HiZ ? 2 : 1)
+            : 0;
+        public static bool GetOcclusionCullingEnabled() => occlusionModeIndex > 0;
+        public static string GetOcclusionModeName() => occlusionModeIndex switch
         {
-            occlusionCullingEnabled = value;
-            DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.UseOcclusion = value;
-        }
+            2 => "HiZ",
+            1 => "SW",
+            _ => "OFF"
+        };
+        public static int GetOcclusionModeIndex() => occlusionModeIndex;
 
         private static Dictionary<int, bool> lastKeyState = new Dictionary<int, bool>();
 
@@ -332,18 +337,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             prevShiftPState = pState;
 
             // =========================================================================
-            // B TOGGLE OCCLUSION CULLING
+            // B TOGGLE OCCLUSION MODE: Off → SW → HiZ → Off
             // =========================================================================
             int bState = glfwGetKey(window, Const.GLFW_KEY_B);
             if (bState == Const.GLFW_PRESS)
             {
                 if (!bPressed)
                 {
-                    occlusionCullingEnabled = !occlusionCullingEnabled;
-                    DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.UseOcclusion = occlusionCullingEnabled;
-                    DarkEngine3D_gl_csharp.Engine.Visual.OcclusionCulling.Enabled = occlusionCullingEnabled;
+                    occlusionModeIndex = (occlusionModeIndex + 1) % 3; // 0→1→2→0
+
+                    bool enable = occlusionModeIndex > 0;
+                    DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.UseOcclusion = enable;
+                    DarkEngine3D_gl_csharp.Engine.Visual.OcclusionCulling.Enabled = enable;
+
+                    if (occlusionModeIndex == 2)
+                        DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.Mode = DarkEngine3D_gl_csharp.Engine.Config.OcclusionMode.HiZ;
+                    else if (occlusionModeIndex == 1)
+                        DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.Mode = DarkEngine3D_gl_csharp.Engine.Config.OcclusionMode.Software;
+
+                    string modeName = GetOcclusionModeName();
+                    Console.WriteLine($"Occlusion Culling: {modeName}");
                     bPressed = true;
-                    Console.WriteLine(occlusionCullingEnabled ? "Occlusion Culling: ON" : "Occlusion Culling: OFF");
                 }
             }
             else bPressed = false;

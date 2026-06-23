@@ -110,6 +110,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_RGBA16F = 0x881A;
         public const uint GL_RGBA8 = 0x8058;
+        public const uint GL_R32F = 0x822E;
+        public const uint GL_R16F = 0x822D;
 
         public const uint GL_DEPTH_COMPONENT = 0x1902;
         public const uint GL_DEPTH_COMPONENT24 = 0x81A6;

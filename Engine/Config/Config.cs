@@ -239,15 +239,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     // ============================
     // Occlusion Config
     // ============================
+    public enum OcclusionMode { Software, HiZ }
+
     public static class OcclusionConfig
     {
-        // Master toggle for software occlusion culling
+        // Pilih mode occlusion culling: Software (CPU ray-march) atau HiZ (GPU depth prepass)
+        public static OcclusionMode Mode = OcclusionMode.HiZ;
+
+        // Master toggle for occlusion culling (applies to both modes)
         public static bool UseOcclusion = true;
 
-        // Distance threshold untuk terrain occlusion quality:
+        // Distance threshold untuk terrain occlusion quality (Software mode only):
         // Object < TerrainOcclusionNearDist → pakai 1-corner ray-march (akurat)
         // Object >= TerrainOcclusionNearDist → pakai quick height check (cepat)
         // Default 50f = ObjectLOD1_Distance
         public static float TerrainOcclusionNearDist = 50f;
+
+        // Hi-Z resolution scale (0-1). 0.25f = 32×18, 0.5f = 64×36, 1.0f = 128×72
+        // Lebih besar = lebih akurat, tapi lebih lambat (GetHeightAt calls)
+        public static float HiZResolutionScale = 0.25f;
+
+        // Hi-Z depth buffer step size (meters). 5f = step 5m × 60 steps = 300m range
+        // Lebih kecil = lebih akurat untuk ridge tipis, tapi 2× GetHeightAt tiap halving
+        public static float HiZStepSize = 5f;
     }
 }
