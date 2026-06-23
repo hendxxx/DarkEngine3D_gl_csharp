@@ -377,11 +377,59 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                                 float distSq = Vector3.DistanceSquared(camera.Position, sobj.Position);
                                 if (distSq >= camera.FarDist * camera.FarDist) continue;
 
-                                // Skip terrain ray-march untuk object kecil di tanah (daisies, grass)
-                                // — mereka tetap ikut Phase 2B AABB occlusion terhadap wall/occluders
-                                if (!mgr.SkipTerrainRayMarch)
+                                bool terrainOccluded = false;
+
+                                if (mgr.SkipTerrainRayMarch)
                                 {
-                                    // Cek terrain occlusion (ray-march) untuk static objects — test 8 ujung AABB
+                                    // ── Distance-based quality untuk object kecil (daisies/grass) ──
+                                    float nearSq = Config.OcclusionConfig.TerrainOcclusionNearDist * Config.OcclusionConfig.TerrainOcclusionNearDist;
+                                    if (distSq < nearSq)
+                                    {
+                                        // Near: 1-corner (bottom-center AABB) ray-march, 8 samples
+                                        var aabb = sobj.CachedWorldAABB;
+                                        Vector3 bottomCenter = new(
+                                            (aabb.Min.X + aabb.Max.X) * 0.5f,
+                                            aabb.Min.Y,
+                                            (aabb.Min.Z + aabb.Max.Z) * 0.5f
+                                        );
+
+                                        float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
+                                        if (camera.Position.Y >= camTerrainH - 0.5f)
+                                        {
+                                            Vector3 dir = bottomCenter - camera.Position;
+                                            float totalDist = dir.Length();
+                                            if (totalDist >= 0.5f)
+                                            {
+                                                dir /= totalDist;
+                                                const int numSamples = 8;
+                                                float stepSize = totalDist / numSamples;
+                                                for (int s = 1; s < numSamples; s++)
+                                                {
+                                                    Vector3 samplePos = camera.Position + dir * (s * stepSize);
+                                                    float terrainH = gameTerrainChunk.GetHeightAt(samplePos.X, samplePos.Z);
+                                                    if (samplePos.Y < terrainH - 0.3f)
+                                                    {
+                                                        terrainOccluded = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Far: quick height check — cek apakah ada terrain blocking di midpoint
+                                        Vector3 midPoint = camera.Position + (sobj.Position - camera.Position) * 0.5f;
+                                        float midTerrainH = gameTerrainChunk.GetHeightAt(midPoint.X, midPoint.Z);
+                                        float camTerrainH = gameTerrainChunk.GetHeightAt(camera.Position.X, camera.Position.Z);
+                                        if (camera.Position.Y >= camTerrainH - 0.5f && midPoint.Y < midTerrainH - 0.5f)
+                                            terrainOccluded = true;
+                                    }
+                                }
+                                else
+                                {
+                                    // ── Full quality untuk object normal (trees, wall) ──
+                                    // Cek terrain occlusion (ray-march) — test 8 ujung AABB
                                     var aabb = sobj.CachedWorldAABB;
                                     Vector3[] corners = new Vector3[8]
                                     {
@@ -424,20 +472,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
                                         if (!cornerBehindTerrain)
                                         {
-                                            allCornersBehindTerrain = false; // ada corner yg tidak terhalang terrain
+                                            allCornersBehindTerrain = false;
                                             break;
                                         }
                                     }
 
                                     if (allCornersBehindTerrain)
-                                    {
-                                        sobj.IsVisible = false; // cull from rendering
-                                        continue; // don't register as occluder
-                                    }
+                                        terrainOccluded = true;
+                                }
+
+                                if (terrainOccluded)
+                                {
+                                    sobj.IsVisible = false; // cull from rendering
+                                    continue; // don't register as occluder
                                 }
 
                                 // Hanya register sebagai occluder jika IsOccluder=true
-                                // Gunakan per-group AABB asli (tanpa narrowTrunk hack)
                                 if (sobj.IsOccluder)
                                 {
                                     occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);

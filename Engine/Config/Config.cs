@@ -243,5 +243,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     {
         // Master toggle for software occlusion culling
         public static bool UseOcclusion = true;
+
+        // Distance threshold untuk terrain occlusion quality:
+        // Object < TerrainOcclusionNearDist → pakai 1-corner ray-march (akurat)
+        // Object >= TerrainOcclusionNearDist → pakai quick height check (cepat)
+        // Default 50f = ObjectLOD1_Distance
+        public static float TerrainOcclusionNearDist = 50f;
     }
 }
