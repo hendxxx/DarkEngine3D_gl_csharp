@@ -221,7 +221,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 10000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;

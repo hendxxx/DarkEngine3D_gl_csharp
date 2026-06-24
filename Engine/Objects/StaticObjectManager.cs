@@ -635,7 +635,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-            GL.Enable(Const.GL_CULL_FACE);
+            GL.Disable(Const.GL_CULL_FACE);
         }
 
         // ────────────────────────────────────────────────────────────────
