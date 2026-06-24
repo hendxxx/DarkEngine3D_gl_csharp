@@ -199,6 +199,9 @@
     <None Update="Artifacts\objects\anim\jumping.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\anim\jump_loop.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\anim\land.fbx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -299,6 +302,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\Stuntman.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\UEPerson.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\Women.glb">

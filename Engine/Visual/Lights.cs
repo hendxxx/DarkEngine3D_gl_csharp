@@ -37,7 +37,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // smoothing shadowDir: makin besar, makin cepat ngejar matahari
         // Dengan sun speed 30x, nilai 5.0 terlalu agresif → shadow flicker.
         // 0.8 = smooth tapi tetap update cepat saat matahari bergerak
-        private const float ShadowSmoothSpeed = 0.25f;
+        private const float ShadowSmoothSpeed = 0.95f;
 
         public Lights(Vector3 _sundir, Vector3 _lightColor, Vector3 _viewpos, string? startTime = null)
         {

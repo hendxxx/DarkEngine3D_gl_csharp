@@ -158,7 +158,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Temper = _rng.NextDouble() < 0.5 ? Mentality.Aggressive : Mentality.Coward;
 
             var clips = obj.GetClipNames();
-            _idleClip = First(clips, "idle","natural-idle") ?? "idle";
+            _idleClip = First(clips, "idle") ?? "idle";
             _walkClip = First(clips, "walk") ?? "walk";
              
             _runClip = First(clips, "run") ?? _walkClip;
@@ -195,13 +195,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (_runClips.Count == 0)
             {
                 _runClips.Add("run");
-            }
-
-            _jumpClips = All(clips, "jump");
-            if (_jumpClips.Count == 0)
-            {
-                _jumpClips.Add("jump");
-            }
+            } 
 
             _backwardClips = All(clips, "backward", "backward2", "walking-backwards");
             if (_backwardClips.Count == 0)
@@ -566,9 +560,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private float lastHeading = 0f;
          
         private float _verticalVelocity = 0f;
-        private const float gravity = -9.81f;
-        private const float jumpForce = 4.85f;
+        private float gravity = -98.1f;        // game-like gravity (not realistic -9.81)
+        private float jumpForce = 100f;      // ~1.5m dengan gravity -25: sqrt(2*25*1.5)
         private bool _isJumping = false;      // untuk fisik 
+        private bool _jumpCut = false;        // variable jump: sudah dipotong?
         private float headingVelocity = 0f;
         // -----------------------------------------------------------------------
         //  Movement with LOD
@@ -699,13 +694,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _obj.PlayOnce("block", "fightstance");
                 }
 
-                // --- JUMP (hanya kalau tidak ada one-shot lain) ---
-                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && !_oneShotPlaying)
+                // --- JUMP (hanya kalau tidak ada one-shot & tidak sedang di udara) ---
+                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && !_oneShotPlaying && !_isJumping)
                 {
-                    // ANIMASI
+                    // Animasi takeoff: play jump clip dengan speed tetap (snappy)
+                    _obj.PlaybackSpeed = 1.2f;
                     _oneShotPlaying = true;
-                    _oneShotName = "jump";
-                    _obj.PlayOnce("jump","idle");
+                    _oneShotName = "jump_start";
+                    _obj.PlayOnce("jump_start", "jump_loop");
 
                     // FISIK
                     _isJumping = true;
@@ -717,12 +713,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 if (_isJumping)
                 {
-                    // Apex slow (opsional)
-                    if (_verticalVelocity > 0 && _verticalVelocity < 2f)
-                        _verticalVelocity *= 0.92f;
+                    // ── Variable jump height ──
+                    // Lepas space saat naik = lompatan dipotong (cukup sekali)
+                    if (!_jumpCut && _verticalVelocity > 1f && !Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
+                    {
+                        _verticalVelocity *= 0.35f;
+                        _jumpCut = true;
+                    }
 
-                    // Gravity
-                    _verticalVelocity += gravity * dt;
+                    // ── Gravity (descent lebih cepat dari ascent) ──
+                    float effectiveGravity = _verticalVelocity > 0 ? gravity : gravity * 1.5f;
+
+                    // ── Apex hang time ──
+                    // Slow down gravity di puncak lompatan (velocity ~0)
+                    // biar ada jeda sesaat sebelum jatuh
+                    if (_verticalVelocity > -0.8f && _verticalVelocity < 0.8f && !_jumpCut)
+                        effectiveGravity *= 0.4f;
+
+                    _verticalVelocity += effectiveGravity * dt;
                     pos.Y += _verticalVelocity * dt;
 
                     float groundY = terrain.GetHeightAt(pos.X, pos.Z);
@@ -732,15 +740,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     {
                         pos.Y = groundY;
                         _isJumping = false;
+                        _jumpCut = false;
                         _verticalVelocity = 0f;
+                        _obj.PlaybackSpeed = 1f;
 
-                        // Landing anim (opsional)
-                        if (!_oneShotPlaying)   // jangan override punch/block
-                        {
-                            _oneShotPlaying = true;
-                            _oneShotName = "land";
-                            _obj.PlayOnce("land", "idle");
-                        }
+                        // Landing anim — selalu jalan (override jump anim)
+                        _oneShotPlaying = false;
+                        _oneShotName = "";
+
+                        _oneShotPlaying = true;
+                        _oneShotName = "jump_end";
+                        _obj.PlayOnce("jump_end", "idle");
                     }
                 }
 
@@ -754,6 +764,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     {
                         _oneShotPlaying = false;
                         _oneShotName = "";
+                        _obj.PlaybackSpeed = 1f;
+
+                        // ── 3-Phase Jump: transisi ke mid-air loop ──
+                        // Kalau jump takeoff selesai tapi masih di udara,
+                        // mulai looping jumpLoop (animasi melayang)
+                        if (_isJumping && _obj.HasClip("jump_Loop"))
+                            _obj.Play("jump_Loop", 0.2f);
                     }
                     else
                     {
@@ -762,6 +779,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         // - animasi movement JANGAN override
                         goto APPLY_MOVEMENT_ONLY;
                     }
+                }
+
+                // =======================================
+                // 2.5. MID-AIR CHECK
+                // Kalau masih di udara (jump anim selesai tp blm landing),
+                // jangan play movement animation — biar di pose idle
+                // =======================================
+                if (_isJumping)
+                {
+                    goto APPLY_MOVEMENT_ONLY;
                 }
 
                 // =======================================

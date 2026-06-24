@@ -130,7 +130,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void Init(Camera camera,TerrainChunk gameTerrainChunk)
         {
-            string xbotPath = "Artifacts\\objects\\Xbot.glb";
+            string xbotPath = "Artifacts\\objects\\ybot.glb";
             var rng = new Random();
 
             float spawnCX = 0f;
@@ -255,7 +255,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ─────────────────────────────────────
             OnLoadProgress?.Invoke(0.85f, "Player: spawning character...");
 
-            string playerPath = "Artifacts\\objects\\Ybot.glb";
+            string playerPath = "Artifacts\\objects\\Xbot.glb";
             float playerX = 0f;
             float playerZ = 0f;
             float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
@@ -278,6 +278,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             string[] animFiles =
             [
                 "Artifacts\\objects\\Xbot.glb",
+                //"Artifacts\\objects\\UEPerson.glb",
                 "Artifacts\\objects\\anim\\Fighting-idle.glb", "Artifacts\\objects\\anim\\fist-fight.glb",
                 "Artifacts\\objects\\anim\\punching-bag.glb", "Artifacts\\objects\\anim\\hook.glb",
                 "Artifacts\\objects\\anim\\body-block.glb", "Artifacts\\objects\\anim\\taking-punch.glb",
@@ -286,23 +287,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 "Artifacts\\objects\\anim\\walk-strafe-left.glb", "Artifacts\\objects\\anim\\walk-strafe-right.glb",
                 "Artifacts\\objects\\anim\\walking-backwards.glb", "Artifacts\\objects\\anim\\walking-backwards2.glb",
                 "Artifacts\\objects\\anim\\walk-happy.glb", "Artifacts\\objects\\anim\\walk-standard.glb",
-                "Artifacts\\objects\\anim\\natural-idle.glb", "Artifacts\\objects\\anim\\jump.glb",
-                "Artifacts\\objects\\anim\\land.glb"
-            ];
+                             ];
             string?[] animClipNames =
             [
                 null, // Xbot.glb -> base anim
+                //null, // UEPerson.glb -> base anim
                 "fightstance", "fistfight", "punchbag", "hook", "block", "hurt",
-                "dying", "lookaround", "entry",
+                "dying",
+                "lookaround", "entry",
                 "strafeleft", "straferight", "backward", "backward2",
-                "walk-happy", "walk-standard", "idle", "jump", "land"
+                "walk-happy", "walk-standard" 
             ];
             bool[] retargetRoot =
             [
-                false, false, false, false, false, false, false,
-                true,   // dying
+                false,
+                false, 
                 false, false, false, false, false, false,
-                false, false, false, false, false
+                true,   // dying
+                false, false, 
+                false, false, false, false,
+                false, false, false,  
             ];
 
             for (int i = 0; i < animFiles.Length; i++)
