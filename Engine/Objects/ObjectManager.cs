@@ -130,7 +130,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void Init(Camera camera,TerrainChunk gameTerrainChunk)
         {
-            string xbotPath = "Artifacts\\objects\\ybot.glb";
+            string xbotPath = "Artifacts\\objects\\Ybot.glb";
             var rng = new Random();
 
             float spawnCX = 0f;
@@ -269,7 +269,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
             {
                 IsPlayer = true,
-                Heading = initialHeading
+                Heading = initialHeading,
+                StaticManagers = staticObjectManagers
             };
 
             OnLoadProgress?.Invoke(0.87f, "Player: loading animations...");
@@ -278,7 +279,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             string[] animFiles =
             [
                 "Artifacts\\objects\\Xbot.glb",
-                //"Artifacts\\objects\\UEPerson.glb",
+                //"Artifacts\\objects\\Ybot.glb",
                 "Artifacts\\objects\\anim\\Fighting-idle.glb", "Artifacts\\objects\\anim\\fist-fight.glb",
                 "Artifacts\\objects\\anim\\punching-bag.glb", "Artifacts\\objects\\anim\\hook.glb",
                 "Artifacts\\objects\\anim\\body-block.glb", "Artifacts\\objects\\anim\\taking-punch.glb",
@@ -287,7 +288,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 "Artifacts\\objects\\anim\\walk-strafe-left.glb", "Artifacts\\objects\\anim\\walk-strafe-right.glb",
                 "Artifacts\\objects\\anim\\walking-backwards.glb", "Artifacts\\objects\\anim\\walking-backwards2.glb",
                 "Artifacts\\objects\\anim\\walk-happy.glb", "Artifacts\\objects\\anim\\walk-standard.glb",
-                             ];
+                "Artifacts\\objects\\anim\\jump-start.glb", "Artifacts\\objects\\anim\\jump-loop.glb", "Artifacts\\objects\\anim\\jump-end.glb",
+                "Artifacts\\objects\\anim\\zombie-walk.glb"
+            ];
+
             string?[] animClipNames =
             [
                 null, // Xbot.glb -> base anim
@@ -296,17 +300,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 "dying",
                 "lookaround", "entry",
                 "strafeleft", "straferight", "backward", "backward2",
-                "walk-happy", "walk-standard" 
+                "walk-happy", "walk-standard" ,
+                "jump-start", "jump-loop", "jump-end",
+                "zombie-walk"
             ];
             bool[] retargetRoot =
             [
                 false,
-                false, 
-                false, false, false, false, false, false,
+                //false, 
+                false, false, false, false, false, false,false,
                 true,   // dying
                 false, false, 
                 false, false, false, false,
-                false, false, false,  
+                false, false, 
+                false, false, false,
+                true
             ];
 
             for (int i = 0; i < animFiles.Length; i++)
