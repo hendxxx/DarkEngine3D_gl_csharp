@@ -799,7 +799,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     if (!_jumpCut && _verticalVelocity > 1f && !Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
                     {
-                        _verticalVelocity *= 0.35f;
+                        _verticalVelocity *= 0.15f;
                         _jumpCut = true;
                     }
 
