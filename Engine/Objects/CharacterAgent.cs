@@ -86,6 +86,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly Random _rng;
 
         private readonly string _idleClip;
+        private readonly List<string> _idleClips;
         private readonly string _walkClip;
         private readonly List<string> _walkClips;
         private readonly List<string> _runClips;
@@ -158,8 +159,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Temper = _rng.NextDouble() < 0.5 ? Mentality.Aggressive : Mentality.Coward;
 
             var clips = obj.GetClipNames();
-            _idleClip = First(clips, "idle") ?? "idle";
-            _walkClip = First(clips, "walk") ?? "walk";
+            _idleClip = First(clips, "idle", "natural-idle") ?? "idle";
+            _walkClip = First(clips, "walk" ) ?? "walk";
              
             _runClip = First(clips, "run") ?? _walkClip;
             _stanceClip = First(clips, "fightstance", "fightingidle", "fighting-idle", "fighting_idle", "guard", "stance")
@@ -181,7 +182,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _heading = _targetHeading = RandomAngle();
 
 
-            //Player
+            //Player 
+
             _walkClips = All(clips, "walk");
 
             if (_walkClips.Count == 0)
@@ -189,6 +191,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 _walkClips.Add("walk");
                 _walkClips.Add("walk-happy");
                 _walkClips.Add("walk-standard");
+                _walkClips.Add("zombie-walk");
             }
 
             _runClips = All(clips, "run");
@@ -559,11 +562,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private bool justReleasedFreeLook = false;
         private float lastHeading = 0f;
          
+        // ---- locomotion system (UE-style) -------------------------------------
+        private float _currentSpeed = 0f;
+        private Vector3 _moveDirection = Vector3.Zero;
+        // ---- locomotion tuning (feel the weight!) ----
+        private const float Acceleration = 2.0f;    // slow build-up ~1.5s to full speed
+        private const float Deceleration = 2.0f;    // very gradual stop = lots of slide
+        private const float GroundFriction = 0.5f;  // barely any friction — coast naturally
+        // Big speed gap for clear walk/run distinction
+        private const float WalkSpeedPlayer = 1.5f;
+        private const float RunSpeedPlayer = 2.5f;
+        private const float MaxStepHeight = 0.45f;
+        public StaticObjectManager[]? StaticManagers;
+
         private float _verticalVelocity = 0f;
-        private float gravity = -98.1f;        // game-like gravity (not realistic -9.81)
-        private float jumpForce = 100f;      // ~1.5m dengan gravity -25: sqrt(2*25*1.5)
-        private bool _isJumping = false;      // untuk fisik 
-        private bool _jumpCut = false;        // variable jump: sudah dipotong?
+        private float gravity = -30f;
+        private float jumpForce = 60f;
+        private bool _isJumping = false;
+        private bool _jumpCut = false;
         private float headingVelocity = 0f;
         // -----------------------------------------------------------------------
         //  Movement with LOD
@@ -576,59 +592,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (IsPlayer)
             {
                 if (camera.IsFlyMode) return;
-                // =======================================
-                // 3. FREE LOOK / ORBIT LOGIC
-                // =======================================
-                // Deteksi ALT baru dilepas
+
+                // ── FREE LOOK / HEADING ──
                 justReleasedFreeLook = wasFreeLook && !camera.freeLook;
+                wasFreeLook = camera.freeLook;
 
                 bool allowOrbit = camera.CurrentPreset?.AllowFreeLook ?? false;
 
-                if (camera.freeLook || allowOrbit) 
+                if (camera.freeLook || allowOrbit)
                 {
-                    // Kamera bebas mengitari karakter tanpa memaksa badan berputar.
-                    // Badan hanya berputar kalau ada input gerakan (sudah di-handle di atas).
-                    lastHeading = _heading; 
+                    lastHeading = _heading;
                 }
                 else
                 {
-                    // Player mengikuti arah kamera (Shooter / OTS mode)
-
-                    float turnSpeed;
-
-                    if (justReleasedFreeLook)
-                        turnSpeed = 0.8f;   // super lambat, cinematic
-                    else
-                        turnSpeed = 4f;     // normal turning
-
                     if (camera.CurrentMode == CameraMode.FirstPerson)
                         _heading = camera.Yaw;
                     else
                     {
                         float smoothTime = justReleasedFreeLook ? 0.35f : 0.12f;
-
                         _heading = Helpers.OGLMath.SmoothDampAngle(
-                            lastHeading,
-                            camera.Yaw,
-                            ref headingVelocity,
-                            smoothTime,
-                            dt
-                        ); 
-                    } 
+                            lastHeading, camera.Yaw, ref headingVelocity, smoothTime, dt);
+                    }
                     lastHeading = _heading;
                 }
 
-                // Update state SETELAH rotasi
-                wasFreeLook = camera.freeLook;
-                 
-                // 2. Hitung forward/right dari heading
+                // ── Movement vectors ──
                 float rad = Helpers.OGLMath.ToRadians(_heading);
-
                 Vector3 forward = new(MathF.Sin(rad), 0, MathF.Cos(rad));
+
                 if (camera.CurrentMode == CameraMode.FirstPerson)
                 {
                     wasFreeLook = false;
-
                     forward = new Vector3(camera.Front.X, 0, camera.Front.Z);
                     if (forward.LengthSquared() < 0.0001f)
                         forward = Forward;
@@ -637,46 +631,123 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                 Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
 
-                float speedWalkVal = Config.PlayerConfig.Walk;
-                float speedRunVal = Config.PlayerConfig.Run;
-                float speed = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_SHIFT) ? speedRunVal * Const.SHIFT_SPEED_MULTIPLIER : speedWalkVal;
+                float speedWalkVal = WalkSpeedPlayer;
+                float speedRunVal = RunSpeedPlayer;
+                _isRunning = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_SHIFT);
 
-                var pos = Position;
+                // ── Input to desired movement ──
+                Vector3 inputDir = Vector3.Zero;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W)) inputDir += forward;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S)) inputDir -= forward;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A)) inputDir -= right;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D)) inputDir += right;
 
-                // Movement scale (configurable)
+                bool hasInput = inputDir.LengthSquared() > 0.0001f;
+                if (hasInput) inputDir = Vector3.Normalize(inputDir);
+
+                // ── Scale multiplier ──
                 float moveScaleMul = 1.0f;
                 if (ScaleConfig.ScaleMovement)
                 {
                     moveScaleMul = ScaleHelpers.Normalize(
-                        _obj.Scale,
-                        ScaleConfig.MovementBaseScale,
-                        ScaleConfig.MovementMinMul,
-                        ScaleConfig.MovementMaxMul
-                    );
+                        _obj.Scale, ScaleConfig.MovementBaseScale,
+                        ScaleConfig.MovementMinMul, ScaleConfig.MovementMaxMul);
                 }
 
-                // Movement
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                    pos += forward * speed * moveScaleMul * dt;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
-                    pos -= forward * speed * moveScaleMul * dt;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                    pos -= right * speedWalkVal * moveScaleMul * dt;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                    pos += right * speedWalkVal * moveScaleMul * dt;
+                // ── Natural walk→run transition (no shift needed!) ──
+                float walkTarget = speedWalkVal * moveScaleMul;          // 1.5
+                float runTarget = speedRunVal * moveScaleMul;            // 4.0
+                float sprintTarget = speedRunVal * Const.SHIFT_SPEED_MULTIPLIER * moveScaleMul; // 6.0
 
-                pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
+                float targetSpeed = 0f;
+                if (hasInput)
+                {
+                    if (_isRunning)
+                        targetSpeed = sprintTarget;                      // SHIFT = sprint
+                    else if (_currentGait == Gait.Run && _currentSpeed > walkTarget * 0.5f)
+                        targetSpeed = runTarget;                         // Already running → stay running
+                    else if (_currentSpeed >= walkTarget * 0.85f)
+                        targetSpeed = runTarget;                         // Speed tinggi → switch ke run
+                    else
+                        targetSpeed = walkTarget;                         // Speed rendah = walk
+                }
+
+                // ── Acceleration / Deceleration (smooth, weighty) ──
+                float accel = hasInput ? Acceleration : Deceleration;
+                // Use critically-damped spring for smooth, weighty feel
+                float lerpFactor = 1f - MathF.Exp(-accel * dt);
+                _currentSpeed += (targetSpeed - _currentSpeed) * lerpFactor;
+                
+                // Extra friction when stopping
+                if (!hasInput && _currentSpeed > 0f)
+                    _currentSpeed -= GroundFriction * dt;
+                
+                if (_currentSpeed < 0.01f) _currentSpeed = 0f;
+
+                // ── Movement direction (keep last direction during deceleration!) ──
+                if (hasInput) _moveDirection = inputDir;
+                // When no input, _moveDirection stays from last frame so
+                // backward deceleration stays backward (not snap to forward)
+
+                // ── Calculate new position ──
+                var pos = Position;
+                Vector3 newPos = pos + _moveDirection * _currentSpeed * dt;
+
+                // ── Terrain height (with step-up) ──
+                float currentTerrainY = terrain.GetHeightAt(pos.X, pos.Z);
+                float newTerrainY = terrain.GetHeightAt(newPos.X, newPos.Z);
+                float terrainStep = newTerrainY - currentTerrainY;
+
+                if (terrainStep > 0f && terrainStep <= MaxStepHeight)
+                {
+                    // Step up onto small terrain rise
+                    newPos.Y = newTerrainY;
+                }
+                else if (terrainStep > MaxStepHeight)
+                {
+                    // Too steep — don't move up, just stay in place
+                    newPos = pos;
+                    _currentSpeed *= 0.3f;
+                }
+                else
+                {
+                    // Downhill or flat — follow terrain
+                    newPos.Y = newTerrainY;
+                }
+
+                // ── Static object collision + step up ──
+                if (StaticManagers != null && hasInput)
+                {
+                    Vector3 pushed = CollisionHelper.PushCharacter(newPos, StaticManagers);
+                    bool blocked = (pushed - newPos).LengthSquared() > 0.001f;
+
+                    if (blocked)
+                    {
+                        // Try stepping up onto the object
+                        Vector3 stepUpPos = newPos + new Vector3(0, MaxStepHeight, 0);
+                        Vector3 stepUpPushed = CollisionHelper.PushCharacter(stepUpPos, StaticManagers);
+                        bool stepCleared = (stepUpPushed - stepUpPos).LengthSquared() < 0.001f;
+
+                        if (stepCleared && stepUpPushed.Y > newPos.Y + 0.05f)
+                        {
+                            // Step-up successful — use the higher position
+                            newPos = stepUpPushed;
+                        }
+                        else
+                        {
+                            // Blocked — use collision-pushed position
+                            newPos = pushed;
+                            _currentSpeed *= 0.85f;
+                        }
+                    }
+                }
+
+                // Ensure Y is on terrain
+                newPos.Y = MathF.Max(newPos.Y, terrain.GetHeightAt(newPos.X, newPos.Z));
 
                 // =====================
                 // ACTION INPUTS
                 // =====================
-
-                _isRunning = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_SHIFT);
-                 
-
-                // =======================================
-                // 1. TRIGGER ONE-SHOT (INTERRUPTIBLE)
-                // =======================================
 
                 // --- PUNCH ---
                 if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT) && !_oneShotPlaying)
@@ -685,7 +756,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _oneShotName = "hook";
                     _obj.PlayOnce("hook", "fightstance");
                 }
-
                 // --- BLOCK ---
                 else if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_MIDDLE) && !_oneShotPlaying)
                 {
@@ -693,159 +763,184 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _oneShotName = "block";
                     _obj.PlayOnce("block", "fightstance");
                 }
-
-                // --- JUMP (hanya kalau tidak ada one-shot & tidak sedang di udara) ---
+                // --- JUMP ---
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && !_oneShotPlaying && !_isJumping)
                 {
-                    // Animasi takeoff: play jump clip dengan speed tetap (snappy)
-                    _obj.PlaybackSpeed = 1.2f;
+                    _obj.PlayOnce("jump-start", "jump-loop");
                     _oneShotPlaying = true;
-                    _oneShotName = "jump_start";
-                    _obj.PlayOnce("jump_start", "jump_loop");
-
-                    // FISIK
+                    _oneShotName = "jump-start";
                     _isJumping = true;
                     _verticalVelocity = jumpForce;
                 }
-                // =====================
-                // APPLY GRAVITY (FISIK)
-                // =====================
 
+                // =====================
+                // GRAVITY / JUMP
+                // =====================
                 if (_isJumping)
                 {
-                    // ── Variable jump height ──
-                    // Lepas space saat naik = lompatan dipotong (cukup sekali)
                     if (!_jumpCut && _verticalVelocity > 1f && !Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
                     {
-                        _verticalVelocity *= 0.35f;
+                        _verticalVelocity *= 0.15f;
                         _jumpCut = true;
                     }
 
-                    // ── Gravity (descent lebih cepat dari ascent) ──
                     float effectiveGravity = _verticalVelocity > 0 ? gravity : gravity * 1.5f;
 
-                    // ── Apex hang time ──
-                    // Slow down gravity di puncak lompatan (velocity ~0)
-                    // biar ada jeda sesaat sebelum jatuh
                     if (_verticalVelocity > -0.8f && _verticalVelocity < 0.8f && !_jumpCut)
                         effectiveGravity *= 0.4f;
 
                     _verticalVelocity += effectiveGravity * dt;
-                    pos.Y += _verticalVelocity * dt;
+                    newPos.Y += _verticalVelocity * dt;
 
-                    float groundY = terrain.GetHeightAt(pos.X, pos.Z);
+                    float groundY = terrain.GetHeightAt(newPos.X, newPos.Z);
 
-                    // Sudah menyentuh tanah
-                    if (pos.Y <= groundY)
+                    if (newPos.Y <= groundY)
                     {
-                        pos.Y = groundY;
+                        newPos.Y = groundY;
                         _isJumping = false;
                         _jumpCut = false;
                         _verticalVelocity = 0f;
-                        _obj.PlaybackSpeed = 1f;
 
-                        // Landing anim — selalu jalan (override jump anim)
                         _oneShotPlaying = false;
                         _oneShotName = "";
-
                         _oneShotPlaying = true;
-                        _oneShotName = "jump_end";
-                        _obj.PlayOnce("jump_end", "idle");
+                        _oneShotName = "jump-end";
+                        _obj.PlayOnce("jump-end", "idle");
                     }
                 }
 
-                // =======================================
-                // 2. CEK APAKAH ONE-SHOT MASIH JALAN
-                // =======================================
+                // =====================
+                // ONE-SHOT CHECK
+                // =====================
                 if (_oneShotPlaying)
                 {
-                    // kalau animasi one-shot sudah selesai → kembali ke normal
                     if (!_obj.IsPlaying(_oneShotName))
                     {
                         _oneShotPlaying = false;
                         _oneShotName = "";
                         _obj.PlaybackSpeed = 1f;
 
-                        // ── 3-Phase Jump: transisi ke mid-air loop ──
-                        // Kalau jump takeoff selesai tapi masih di udara,
-                        // mulai looping jumpLoop (animasi melayang)
-                        if (_isJumping && _obj.HasClip("jump_Loop"))
-                            _obj.Play("jump_Loop", 0.2f);
+                        if (_isJumping && _obj.HasClip("jump-loop"))
+                            _obj.Play("jump-loop", 0.2f);
                     }
                     else
                     {
-                        // one-shot masih jalan:
-                        // - movement FISIK tetap jalan
-                        // - animasi movement JANGAN override
-                        goto APPLY_MOVEMENT_ONLY;
+                        Position = newPos;
+                        _obj.Position = newPos;
+                        _obj.SetFacing(_heading);
+                        return;
                     }
                 }
 
-                // =======================================
-                // 2.5. MID-AIR CHECK
-                // Kalau masih di udara (jump anim selesai tp blm landing),
-                // jangan play movement animation — biar di pose idle
-                // =======================================
                 if (_isJumping)
                 {
-                    goto APPLY_MOVEMENT_ONLY;
+                    Position = newPos;
+                    _obj.Position = newPos;
+                    _obj.SetFacing(_heading);
+                    return;
                 }
 
-                // =======================================
-                // 3. MOVEMENT ANIMATION (hanya kalau
-                //    TIDAK ada one-shot aktif)
-                // =======================================
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                {
-                    if (_isRunning)
-                    {
-                        _currentRunClip = _runClips[_rng.Next(_runClips.Count)];
-                        _obj.Play(_currentRunClip, 0.15f);
-                    }
-                    else
-                    {
-                        if (!_isWalking)
-                            _currentWalkingClip = _walkClips[_rng.Next(_walkClips.Count)];
+                // =====================
+                // LOCOMOTION ANIMATION (speed + direction)
+                // =====================
+                float speed = _currentSpeed;
 
-                        _obj.Play(_currentWalkingClip, 0.2f);
-                        _isWalking = true;
-                    }
-                }
-                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+                if (speed < 0.1f)
                 {
-                    if (!_isBackward)
-                        _currentBackwardClip = _backwardClips[_rng.Next(_backwardClips.Count)];
-
-                    _obj.Play(_currentBackwardClip, 0.2f);
-                    _isBackward = true;
-                }
-                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                {
-                    _obj.Play("strafeleft", 0.2f);
-                }
-                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                {
-                    _obj.Play("straferight", 0.2f);
+                    // ── IDLE ──
+                    _obj.Play("idle", 0.25f);
+                    _isWalking = false;
+                    _isBackward = false;
+                    _currentGait = Gait.Idle;
+                    _obj.PlaybackSpeed = 1f;
                 }
                 else
                 {
-                    _obj.Play("idle", 0.2f);
-                    _isWalking = false;
-                    _isBackward = false;
+                    // Movement direction relative to facing
+                    float fwdDot = Vector3.Dot(_moveDirection, forward);
+                    float rightDot = Vector3.Dot(_moveDirection, right);
+
+                    bool isBwd  = fwdDot < -0.3f;
+                    bool isStrafeL = rightDot < -0.3f;
+                    bool isStrafeR = rightDot > 0.3f;
+
+                    // speedRatio follows the CURRENT target so animation speed matches intent
+                    float walkMax = speedWalkVal * moveScaleMul;
+                    float runMax = speedRunVal * moveScaleMul;
+                    float sprintMax = speedRunVal * Const.SHIFT_SPEED_MULTIPLIER * moveScaleMul;
+                    float targetMax = walkMax;
+                    if (_isRunning)
+                        targetMax = sprintMax;       // sprint
+                    else if (targetSpeed > walkMax + 0.01f)
+                        targetMax = runMax;          // natural run (no shift)
+                    else if (speed > 0.1f)
+                        targetMax = walkMax;          // walking
+                    float speedRatio = targetMax > 0.01f ? MathF.Min(1f, speed / targetMax) : 0f;
+
+                    string animClip;
+                    float blend = 0.22f;
+                    _obj.PlaybackSpeed = 0.5f + speedRatio * 0.8f;
+
+                    if (isBwd && !(fwdDot > 0.3f))
+                    {
+                        // ── BACKWARD ──
+                        if (!_isBackward || string.IsNullOrEmpty(_currentBackwardClip))
+                            _currentBackwardClip = _backwardClips[_rng.Next(_backwardClips.Count)];
+                        animClip = _currentBackwardClip;
+                        _isBackward = true;
+                        _isWalking = false;
+                        _currentGait = Gait.Walk;
+                    }
+                    else if (isStrafeL && !(fwdDot > 0.3f))
+                    {
+                        // ── STRAFE LEFT (no forward) ──
+                        animClip = "strafeleft";
+                        _isBackward = false;
+                        _isWalking = false;
+                        _currentGait = Gait.Walk;
+                    }
+                    else if (isStrafeR && !(fwdDot > 0.3f))
+                    {
+                        // ── STRAFE RIGHT (no forward) ──
+                        animClip = "straferight";
+                        _isBackward = false;
+                        _isWalking = false;
+                        _currentGait = Gait.Walk;
+                    }
+                    else
+                    {
+                        // ── FORWARD ──
+                        // Gait follows SPEED + shift:
+                        //   shift held OR speed > 80% walkMax → run (covers deceleration from run too)
+                        float runThreshold = walkMax * 0.8f;
+                        bool useRunAnim = _isRunning || speed > runThreshold;
+
+                        if (useRunAnim)
+                        {
+                            _currentRunClip = _runClips[_rng.Next(_runClips.Count)];
+                            animClip = _currentRunClip;
+                            blend = 0.18f;
+                            _currentGait = Gait.Run;
+                        }
+                        else
+                        {
+                            if (!_isWalking || string.IsNullOrEmpty(_currentWalkingClip))
+                                _currentWalkingClip = _walkClips[_rng.Next(_walkClips.Count)];
+                            animClip = _currentWalkingClip;
+                            _isWalking = true;
+                            blend = 0.25f;
+                            _currentGait = Gait.Walk;
+                        }
+                        _isBackward = false;
+                    }
+
+                    _obj.Play(animClip, blend);
                 }
 
-                // =======================================
-                // 4. MOVEMENT FISIK SELALU JALAN
-                // =======================================
-                APPLY_MOVEMENT_ONLY:
-
-                // movement fisik tetap jalan di sini
-                // pos sudah kamu update di atas
-                // tinggal apply:
-                Position = pos;
-                _obj.Position = pos;
-                _obj.SetFacing(_heading); 
-
+                // ── Apply final position + rotation ──
+                Position = newPos;
+                _obj.Position = newPos;
+                _obj.SetFacing(_heading);
                 return;
             }
 
@@ -925,7 +1020,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         private bool _punchPlaying = false;
         private bool _blockPlaying = false;
-        private bool _jumpPlaying = false;
 
 
         private bool _isBackward = false;
@@ -933,6 +1027,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private string _currentJumpClip;
 
 
+        private Gait _currentGait = Gait.Idle;
         private bool _isWalking = false;
         private bool _isRunning = false;
         private string _currentWalkingClip;
