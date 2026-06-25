@@ -455,7 +455,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (idle >= 0) PlayIndex(idle, 0f);
             else if (_curClip < 0 && _clips.Count > 0) PlayIndex(0, 0f);
 
-            //Console.WriteLine($"[GltfObject] External animation applied: {_clips.Count} clips total, {totalMatched} bones retargeted, current='{CurrentClipName}'");
+            string clipDbgName = clipNameOverride ?? "(internal)";
+            Console.WriteLine($"[DEBUG] Anim '{clipDbgName}': {totalMatched} bones matched, {_clips.Count} total clips, dest skeleton {dstNodes.Length} nodes");
+            if (totalMatched == 0 && clipNameOverride != null && clipNameOverride != "base")
+            {
+                Console.WriteLine($"[WARN] Anim '{clipDbgName}' matched ZERO bones — see debug_bones.txt for names");
+                // Write ALL bone names to a debug file (once per unique clip name)
+                try
+                {
+                    string dbgPath = "debug_bones.txt";
+                    string marker = $"=== {clipDbgName} on {dstNodes.Length}-node skeleton ===\r\n";
+                    if (!File.Exists(dbgPath) || !File.ReadAllText(dbgPath).Contains(marker))
+                    {
+                        using var sw = new StreamWriter(dbgPath, append: true);
+                        sw.Write(marker);
+                        sw.WriteLine($"SRC skeleton ({srcNodes.Length} nodes) — bone names:");
+                        for (int si = 0; si < srcNodes.Length; si++)
+                        {
+                            string nm = NormalizeBoneName(srcNodes[si].Name);
+                            int di = srcToDst[si];
+                            sw.WriteLine($"  [{si,3}] '{srcNodes[si].Name}' → norm='{nm}' → {(di >= 0 ? $"dst[{di}]" : "(NO MATCH)")}");
+                        }
+                        sw.WriteLine($"DST skeleton ({dstNodes.Length} nodes) — bone names:");
+                        for (int di = 0; di < dstNodes.Length; di++)
+                        {
+                            string nm = NormalizeBoneName(dstNodes[di].Name);
+                            sw.WriteLine($"  [{di,3}] '{dstNodes[di].Name}' → norm='{nm}'");
+                        }
+                        sw.WriteLine();
+                    }
+                }
+                catch { }
+            }
         }
 
         // Strip a Mixamo-style namespace prefix ("mixamorig:", "mixamorig8:", …) so
@@ -464,7 +495,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (string.IsNullOrEmpty(name)) return "";
             int c = name.IndexOf(':');
-            return c >= 0 ? name[(c + 1)..] : name;
+            if (c >= 0) return name[(c + 1)..];
+            // Handle "mixamorig" prefix without colon (e.g., "mixamorigHips")
+            // Some Mixamo exports strip the colon, producing "mixamorigHips"
+            // instead of "mixamorig:Hips". This normalizes both to "Hips".
+            const string prefix = "mixamorig";
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                int start = prefix.Length;
+                // Skip optional version digits (e.g., "mixamorig8Hips")
+                while (start < name.Length && char.IsDigit(name[start])) start++;
+                return name[start..];
+            }
+            return name;
         }
 
         // Forward-kinematics for rotations only: global[i] = parentGlobal * local[i].
