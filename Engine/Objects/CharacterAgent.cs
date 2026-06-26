@@ -576,7 +576,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public StaticObjectManager[]? StaticManagers;
 
         private float _verticalVelocity = 0f;
-        private float gravity = -30f;
+        private float gravity = -9.81f;
         private float jumpForce = 60f;
         private bool _isJumping = false;
         private bool _jumpCut = false;
@@ -766,11 +766,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // --- JUMP ---
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && !_oneShotPlaying && !_isJumping)
                 {
-                    _obj.PlayOnce("jump-start", "jump-loop");
                     _oneShotPlaying = true;
                     _oneShotName = "jump-start";
                     _isJumping = true;
                     _verticalVelocity = jumpForce;
+                    _obj.PlayOnce("jump-start", "jump-loop");
                 }
 
                 // =====================
@@ -780,7 +780,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     if (!_jumpCut && _verticalVelocity > 1f && !Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
                     {
-                        _verticalVelocity *= 0.15f;
+                        _verticalVelocity *= 0.35f;
                         _jumpCut = true;
                     }
 
