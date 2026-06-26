@@ -2,6 +2,15 @@ using System.Collections.Generic;
 
 namespace DarkEngine3D_gl_csharp.Engine.Config
 {
+    // ============================
+    // Gameplay Config
+    // ============================
+    public static class GameplayConfig
+    {
+        /// <summary>Whether pressing ESC toggles the pause menu in-game.</summary>
+        public static bool PauseOnEsc = false;
+    }
+
     public static class ShadowConfig
     {
 

@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 
 namespace DarkEngine3D_gl_csharp.Engine.Scene
@@ -11,6 +12,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private IScene? _currentScene;
         private IScene? _nextScene;
         private bool _running;
+        private bool _altEnterWasDown = false;
 
         /// <summary>The currently active scene.</summary>
         public IScene? CurrentScene => _currentScene;
@@ -38,6 +40,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
 
                 _currentScene?.Update(dt);
+
+                // ── Alt+Enter: toggle fullscreen globally ──
+                bool altHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
+                               Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT);
+                bool enterHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER);
+                bool altEnterNow = altHeld && enterHeld;
+                if (altEnterNow && !_altEnterWasDown)
+                {
+                    Glfw.ToggleFullscreen();
+                }
+                _altEnterWasDown = altEnterNow;
+
                 _currentScene?.Render();
 
                 OpenGL.SwapBuffer(window);

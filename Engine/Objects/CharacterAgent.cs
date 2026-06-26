@@ -90,7 +90,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly string _walkClip;
         private readonly List<string> _walkClips;
         private readonly List<string> _runClips;
-        private readonly List<string> _jumpClips;
 
         private readonly List<string> _backwardClips;
         private readonly string _strafeLeftClips;
@@ -575,6 +574,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float MaxStepHeight = 0.45f;
         public StaticObjectManager[]? StaticManagers;
 
+        // ---- gait blend: smooth walk↔run transition ----
+        private float _gaitBlend = 0f;      // 0 = walk, 1 = run (smoothly interpolated)
+        private const float GaitBlendAccel = 3.5f;   // walk→run: ~0.3s to reach 63%
+        private const float GaitBlendDecel = 5.0f;   // run→walk: ~0.2s to reach 63%
+
         private float _verticalVelocity = 0f;
         private float gravity = -9.81f;
         private float jumpForce = 60f;
@@ -642,6 +646,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A)) inputDir -= right;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D)) inputDir += right;
 
+                // ── Block horizontal movement during jump ──
+                if (_isJumping)
+                {
+                    inputDir = Vector3.Zero;
+                }
+
                 bool hasInput = inputDir.LengthSquared() > 0.0001f;
                 if (hasInput) inputDir = Vector3.Normalize(inputDir);
 
@@ -654,22 +664,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         ScaleConfig.MovementMinMul, ScaleConfig.MovementMaxMul);
                 }
 
-                // ── Natural walk→run transition (no shift needed!) ──
-                float walkTarget = speedWalkVal * moveScaleMul;          // 1.5
-                float runTarget = speedRunVal * moveScaleMul;            // 4.0
-                float sprintTarget = speedRunVal * Const.SHIFT_SPEED_MULTIPLIER * moveScaleMul; // 6.0
+                // ── Gait blend: smooth walk↔run transition ──
+                // _gaitBlend smoothly interpolates toward desired gait (0=walk, 1=run)
+                float desiredGait = (_isRunning && hasInput) ? 1f : 0f;
+                float gaitAccel = desiredGait > _gaitBlend ? GaitBlendAccel : GaitBlendDecel;
+                float gaitFactor = 1f - MathF.Exp(-gaitAccel * dt);
+                _gaitBlend += (desiredGait - _gaitBlend) * gaitFactor;
 
-                float targetSpeed = 0f;
+                float walkTarget = speedWalkVal * moveScaleMul;          // 1.5
+                float runTarget = speedRunVal * moveScaleMul;            // 2.5
+
+                float targetSpeed;
                 if (hasInput)
                 {
-                    if (_isRunning)
-                        targetSpeed = sprintTarget;                      // SHIFT = sprint
-                    else if (_currentGait == Gait.Run && _currentSpeed > walkTarget * 0.5f)
-                        targetSpeed = runTarget;                         // Already running → stay running
-                    else if (_currentSpeed >= walkTarget * 0.85f)
-                        targetSpeed = runTarget;                         // Speed tinggi → switch ke run
-                    else
-                        targetSpeed = walkTarget;                         // Speed rendah = walk
+                    // Speed blends smoothly: walk → run on shift, run → walk on release
+                    targetSpeed = walkTarget + _gaitBlend * (runTarget - walkTarget);
+                }
+                else if (_currentSpeed > walkTarget + 0.1f)
+                {
+                    // Decelerating from run: first slow to walk speed
+                    targetSpeed = walkTarget;
+                }
+                else
+                {
+                    targetSpeed = 0f;
                 }
 
                 // ── Acceleration / Deceleration (smooth, weighty) ──
@@ -750,14 +768,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // =====================
 
                 // --- PUNCH ---
-                if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT) && !_oneShotPlaying)
+                if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT) && !_oneShotPlaying && !_isJumping)
                 {
                     _oneShotPlaying = true;
                     _oneShotName = "hook";
                     _obj.PlayOnce("hook", "fightstance");
                 }
                 // --- BLOCK ---
-                else if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_MIDDLE) && !_oneShotPlaying)
+                else if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_MIDDLE) && !_oneShotPlaying && !_isJumping)
                 {
                     _oneShotPlaying = true;
                     _oneShotName = "block";
@@ -767,10 +785,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && !_oneShotPlaying && !_isJumping)
                 {
                     _oneShotPlaying = true;
-                    _oneShotName = "jump-start";
+                    _oneShotName = "jump-end";
                     _isJumping = true;
                     _verticalVelocity = jumpForce;
-                    _obj.PlayOnce("jump-start", "jump-loop");
+                    _obj.PlayOnce("jump-end","idle");
                 }
 
                 // =====================
@@ -801,11 +819,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         _jumpCut = false;
                         _verticalVelocity = 0f;
 
-                        _oneShotPlaying = false;
-                        _oneShotName = "";
-                        _oneShotPlaying = true;
-                        _oneShotName = "jump-end";
-                        _obj.PlayOnce("jump-end", "idle");
+                        // Jump landing — next frame locomotion animation resumes naturally
                     }
                 }
 
@@ -820,8 +834,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         _oneShotName = "";
                         _obj.PlaybackSpeed = 1f;
 
-                        if (_isJumping && _obj.HasClip("jump-loop"))
-                            _obj.Play("jump-loop", 0.2f);
+
                     }
                     else
                     {
@@ -864,17 +877,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     bool isStrafeL = rightDot < -0.3f;
                     bool isStrafeR = rightDot > 0.3f;
 
-                    // speedRatio follows the CURRENT target so animation speed matches intent
+                    // speedRatio follows gait blend so animation matches intent
                     float walkMax = speedWalkVal * moveScaleMul;
                     float runMax = speedRunVal * moveScaleMul;
-                    float sprintMax = speedRunVal * Const.SHIFT_SPEED_MULTIPLIER * moveScaleMul;
-                    float targetMax = walkMax;
-                    if (_isRunning)
-                        targetMax = sprintMax;       // sprint
-                    else if (targetSpeed > walkMax + 0.01f)
-                        targetMax = runMax;          // natural run (no shift)
-                    else if (speed > 0.1f)
-                        targetMax = walkMax;          // walking
+                    float targetMax = walkMax + _gaitBlend * (runMax - walkMax);
                     float speedRatio = targetMax > 0.01f ? MathF.Min(1f, speed / targetMax) : 0f;
 
                     string animClip;
@@ -910,10 +916,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     else
                     {
                         // ── FORWARD ──
-                        // Gait follows SPEED + shift:
-                        //   shift held OR speed > 80% walkMax → run (covers deceleration from run too)
-                        float runThreshold = walkMax * 0.8f;
-                        bool useRunAnim = _isRunning || speed > runThreshold;
+                        // Run anim when gait blend > 50% (smooth transition)
+                        bool useRunAnim = _gaitBlend > 0.5f;
 
                         if (useRunAnim)
                         {
@@ -1024,7 +1028,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         private bool _isBackward = false;
         private string _currentBackwardClip;
-        private string _currentJumpClip;
 
 
         private Gait _currentGait = Gait.Idle;

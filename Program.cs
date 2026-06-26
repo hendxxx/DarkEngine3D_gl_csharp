@@ -31,6 +31,10 @@ public unsafe class Program
         OpenGL.Init();
         OpenGL.CacheGlfwFunctions(glfwLib);
 
+        // Set initial viewport to actual framebuffer size (Glfw.Init updated the
+        // size variables but couldn't call GL.Viewport because OpenGL wasn't loaded yet)
+        GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+
         var glVersion = GL.GetString(Const.VERSION);
         Console.WriteLine($"Versi OpenGL aktif: {glVersion}");
 
@@ -42,7 +46,7 @@ public unsafe class Program
 
         // Init Camera
         Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10,
-            Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 500.0f);
+            (float)Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, 0.1f, 500.0f);
         camera.CurrentMode = CameraMode.Orbit;
 
         Keyboard.IsFogActive = false;
@@ -67,17 +71,16 @@ public unsafe class Program
 
         SceneManager sceneManager = new();
         
-        // Create scenes — LoadingScene will load everything and switch to GameScene
-        GameScene gameScene = new(camera, light);
-        LoadingScene loadingScene = new(sceneManager, camera, light);
+        // Create MainMenuScene first — user chooses Start Game to load the game
+        MainMenuScene mainMenu = new(sceneManager, camera, light);
 
         // ═══════════════════════════════════════════════════
-        // PHASE 3: MAIN LOOP (starts with LoadingScene)
+        // PHASE 3: MAIN LOOP (starts with MainMenuScene)
         // ═══════════════════════════════════════════════════
 
-        // LoadingScene.Enter() loads all assets synchronously (showing progress),
-        // then switches to GameScene. SceneManager.Run() handles the game loop.
-        sceneManager.Run(loadingScene);
+        // MainMenuScene renders the menu. "Start Game" switches to LoadingScene,
+        // which loads assets and then switches to GameScene.
+        sceneManager.Run(mainMenu);
 
         // Shutdown
         Console.WriteLine("Program Shutdown.");

@@ -18,7 +18,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     {
         public string Name => "GameScene";
 
-        // ── Injected resources (set by LoadingScene or Program) ──
+        // ── Dependencies ──
+        private readonly SceneManager _sceneManager;
         private Camera _camera;
         private Lights _light;
         private Texture[]? _skyTextures;
@@ -64,11 +65,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private float _lastTargetShoulderOffset;
 
+        // ── Pause menu ──
+        private const int PauseItemCount = 3;
+        private const float PauseBtnW = 300f;
+        private const float PauseBtnH = 50f;
+        private const float PauseBtnSpacing = 14f;
+        private bool _paused = false;
+        private int _pauseSelection = 0;
+        private bool _escapeWasDown = false;
+        private bool _pauseUpWasDown = false;
+        private bool _pauseDownWasDown = false;
+        private bool _pauseEnterWasDown = false;
+        private bool _pauseMouseWasDown = false;
+
+        // ── Exit confirmation dialog ──
+        private bool _confirmingExit = false;
+        private int _confirmSelection = 0; // 0 = No, 1 = Yes
+        private bool _confirmLeftWasDown = false;
+        private bool _confirmRightWasDown = false;
+        private bool _confirmEnterWasDown = false;
+        private bool _confirmMouseWasDown = false;
+        private bool _confirmEscapeWasDown = false;
+
         // ── FPS counter ──
         private int _renderedTris;
 
-        public GameScene(Camera camera, Lights light)
+        public GameScene(SceneManager sceneManager, Camera camera, Lights light)
         {
+            _sceneManager = sceneManager;
             _camera = camera;
             _light = light;
         }
@@ -168,6 +192,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _lastCameraMode = _camera.CurrentMode;
             _lastTargetShoulderOffset = CameraConfig.TargetShoulderOffset;
 
+            _paused = false;
+            _pauseSelection = 0;
+
             Mouse.ShowMouse(false);
 
             Console.WriteLine("[GameScene] Engine Running...");
@@ -183,9 +210,50 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
+
+            // ── ESCAPE: always toggle pause (ESC always opens/closes the menu) ──
+            bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+            if (escapeDown && !_escapeWasDown && !_confirmingExit)
+            {
+                _paused = !_paused;
+                if (_paused)
+                {
+                    _pauseSelection = 0;
+                    Mouse.ShowMouse(true);
+                }
+                else
+                {
+                    Mouse.ShowMouse(false);
+                }
+            }
+            _escapeWasDown = escapeDown;
+
+            // ── Pause menu overlay input ──
+            if (_paused)
+            {
+                if (_confirmingExit)
+                    HandleConfirmInput(window);
+                else
+                    HandlePauseInput(window);
+
+                // If PauseOnEsc = false: freeze game behind the menu (return early)
+                // If PauseOnEsc = true:  game simulation still runs behind the overlay
+                if (!Config.GameplayConfig.PauseOnEsc)
+                    return;
+            }
+            else
+            {
+                _pauseUpWasDown = false;
+                _pauseDownWasDown = false;
+                _pauseEnterWasDown = false;
+            }
+
             _time += deltaTime;
 
-            // ── Camera mode / freelook ──
+            // ── Player input & camera control — only when not paused ──
+            if (!_paused)
+            {
+                // ── Camera mode / freelook ──
             if (_camera.CurrentMode == CameraMode.FirstPerson)
             {
                 _camera.freeLook = false;
@@ -197,33 +265,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                      Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
             }
 
-            // 1. Mouse → yaw/pitch → vectors
-            Mouse.Update(window, _camera);
-            _camera.UpdateVectors();
+                // 1. Mouse → yaw/pitch → vectors
+                Mouse.Update(window, _camera);
+                _camera.UpdateVectors();
 
-            CameraConfig.TargetShoulderOffset = _lastTargetShoulderOffset;
+                CameraConfig.TargetShoulderOffset = _lastTargetShoulderOffset;
 
-            // 2. Third-person keeps ALT free-look
-            if (!_camera.freeLook && _objectManager != null)
-                _objectManager.PlayerAgent.Heading = _camera.Yaw;
+                // 2. Third-person keeps ALT free-look
+                if (!_camera.freeLook && _objectManager != null)
+                    _objectManager.PlayerAgent.Heading = _camera.Yaw;
 
-            // 3. Update keyboard
-            Keyboard.Update(window, _light, _camera, deltaTime, _gameTerrainChunk);
+                // 3. Update keyboard
+                Keyboard.Update(window, _light, _camera, deltaTime, _gameTerrainChunk);
 
-            // 3A. Check if camera mode changed and notify player
-            if (_camera.CurrentMode != _lastCameraMode && _objectManager != null)
-            {
-                _lastCameraMode = _camera.CurrentMode;
-                _objectManager.PlayerAgent.OnCameraModeChanged(_camera.CurrentMode);
+                // 3A. Check if camera mode changed and notify player
+                if (_camera.CurrentMode != _lastCameraMode && _objectManager != null)
+                {
+                    _lastCameraMode = _camera.CurrentMode;
+                    _objectManager.PlayerAgent.OnCameraModeChanged(_camera.CurrentMode);
+                }
             }
 
             if (_objectManager != null)
             {
-                // 4. Update agents
+                // 4. Update agents (AI, physics, animations) — always runs
                 _objectManager.Update(deltaTime);
 
-                // 4A. Update player movement
-                _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
+                // 4A. Update player movement — only when not paused
+                if (!_paused)
+                    _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
 
                 // ── COLLISION: push player out of static objects ──
                 var staticMgrs = _objectManager.staticObjectManagers;
@@ -238,7 +308,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
 
-                // ── COLLISION: push NPC out of static objects ──
+                // ── COLLISION: push NPC out of static objects (always runs) ──
                 var allObjs = _objectManager.GetObjects();
                 for (int oi = 0; oi < allObjs.Count; oi++)
                 {
@@ -297,7 +367,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                 }
 
-                // 5. Set Camera orbital (with terrain + wall collision)
+                // 5. Set Camera orbital (with terrain + wall collision) — always runs
                 _camera.SetCamera(window, _objectManager.PlayerAgent.Position, _gameTerrainChunk, deltaTime, staticMgrs);
 
                 // Safety net: push Position directly without syncing smoothCamPos
@@ -307,10 +377,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _camera.Position = safeCamPos;
             }
 
-            // 6. Update Light
+            // 6. Update Light (always runs)
             _light.Update(deltaTime, _camera.Position);
 
-            // ── CSM Shadow Pass ──
+            // ── CSM Shadow Pass (always runs for visual updates behind menu) ──
             if (_csm != null)
             {
                 _csm.UpdateMatrices(_camera, _light.ShadowDirStable);
@@ -357,7 +427,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
             }
 
-            // ── Occlusion Culling ──
+            // ── Occlusion Culling (always runs for visual updates behind menu) ──
             if (Config.OcclusionConfig.UseOcclusion && _objectManager != null && _gameTerrainChunk != null)
             {
                 _occlusionFrameCount++;
@@ -713,8 +783,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _objectManager.DrawHealthBars(_camera, _hud);
             }
 
-            // ── Post Process ──
+            // ── Post Process (render SceneFBO to screen) ──
             _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
+
+            // ── Pause Blur Overlay ──
+            if (_paused && !_confirmingExit)
+            {
+                _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
+            }
 
             // ── Debug BBox Wireframe (toggled with P key) ──
             if (Keyboard.GetShowBBox() && _objectManager != null)
@@ -767,6 +843,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
+            // ── PAUSE MENU / CONFIRM OVERLAY ──
+            if (_paused)
+            {
+                if (_confirmingExit)
+                {
+                    // Still apply blur behind confirm dialog
+                    _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
+                    RenderConfirmDialog();
+                }
+                else
+                    RenderPauseMenu();
+            }
+
             // ── HUD ──
             int totalMapTris = TerrainChunk.GetTotalMapTriangles();
             string gTime = _light.GetFormattedTime();
@@ -807,16 +896,342 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
-            _hud.DrawText(title2, 10, 90, new Vector3(1, 0, 0));
-            _hud.DrawText(title3, 10, 120, new Vector3(1, 1, 0));
-            _hud.DrawText(title4, 10, 150, new Vector3(1, 0, 0));
-            _hud.DrawText(title5, 10, 180, new Vector3(1, 0, 0));
-            _hud.DrawText(title6, 10, 210, new Vector3(1, 0, 0));
+            float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
+            _hud.DrawText(title2, 10, 60 + debugLineH, new Vector3(1, 0, 0));
+            _hud.DrawText(title3, 10, 60 + debugLineH * 2, new Vector3(1, 1, 0));
+            _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
+            _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
+            _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
             if (!string.IsNullOrEmpty(title7))
-                _hud.DrawText(title7, 10, 240, new Vector3(0, 1, 1));
+                _hud.DrawText(title7, 10, 60 + debugLineH * 6, new Vector3(0, 1, 1));
 
             // ── Update window title (FPS, etc.) ──
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
+        }
+
+        /// <summary>Handle pause menu input (keyboard + mouse).</summary>
+        private void HandlePauseInput(nint window)
+        {
+            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
+            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+            float titleY = h * 0.28f;
+            float startY = titleY + 70f;
+
+            // ── Mouse hover detection ──
+            int hoveredIndex = -1;
+            for (int i = 0; i < PauseItemCount; i++)
+            {
+                float bx = (w - PauseBtnW) * 0.5f;
+                float by = startY + i * (PauseBtnH + PauseBtnSpacing);
+                if (mouseX >= bx && mouseX <= bx + PauseBtnW &&
+                    mouseY >= by && mouseY <= by + PauseBtnH)
+                {
+                    hoveredIndex = i;
+                    break;
+                }
+            }
+            if (hoveredIndex >= 0)
+                _pauseSelection = hoveredIndex;
+
+            // ── Mouse click ──
+            if (mousePressed && !_pauseMouseWasDown)
+            {
+                _pauseMouseWasDown = true;
+                if (hoveredIndex >= 0)
+                    ExecutePauseAction(hoveredIndex);
+            }
+            if (!mousePressed)
+                _pauseMouseWasDown = false;
+
+            // ── Keyboard navigation ──
+            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+
+            if (upDown && !_pauseUpWasDown)
+                _pauseSelection = (_pauseSelection - 1 + PauseItemCount) % PauseItemCount;
+            if (downDown && !_pauseDownWasDown)
+                _pauseSelection = (_pauseSelection + 1) % PauseItemCount;
+            if (enterDown && !_pauseEnterWasDown)
+                ExecutePauseAction(_pauseSelection);
+
+            _pauseUpWasDown = upDown;
+            _pauseDownWasDown = downDown;
+            _pauseEnterWasDown = enterDown;
+        }
+
+        /// <summary>Handle confirmation dialog input.</summary>
+        private void HandleConfirmInput(nint window)
+        {
+            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
+            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+            const float btnW = 160f;
+            const float btnH = 46f;
+            const float btnSpacing = 20f;
+            float panelCY = h * 0.5f;
+            float panelCX = w * 0.5f;
+            float startX = panelCX - (btnW * 2 + btnSpacing) * 0.5f;
+            float btnY = panelCY + 30f;
+
+            // ── Mouse hover ──
+            int hoveredIndex = -1;
+            for (int i = 0; i < 2; i++)
+            {
+                float bx = startX + i * (btnW + btnSpacing);
+                if (mouseX >= bx && mouseX <= bx + btnW &&
+                    mouseY >= btnY && mouseY <= btnY + btnH)
+                {
+                    hoveredIndex = i;
+                    break;
+                }
+            }
+            if (hoveredIndex >= 0)
+                _confirmSelection = hoveredIndex;
+
+            // ── Mouse click ──
+            if (mousePressed && !_confirmMouseWasDown)
+            {
+                _confirmMouseWasDown = true;
+                if (hoveredIndex >= 0)
+                    ExecuteConfirmAction(hoveredIndex);
+            }
+            if (!mousePressed)
+                _confirmMouseWasDown = false;
+
+            // ── Keyboard ──
+            bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            bool escDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+
+            if (leftDown && !_confirmLeftWasDown)
+                _confirmSelection = 0;
+            if (rightDown && !_confirmRightWasDown)
+                _confirmSelection = 1;
+            // Escape = cancel (go back to pause menu) — uses its own edge tracking
+            if (escDown && !_confirmEscapeWasDown)
+            {
+                _confirmingExit = false;
+                _confirmSelection = 0;
+            }
+            if (enterDown && !_confirmEnterWasDown)
+                ExecuteConfirmAction(_confirmSelection);
+
+            _confirmLeftWasDown = leftDown;
+            _confirmRightWasDown = rightDown;
+            _confirmEnterWasDown = enterDown;
+            _confirmEscapeWasDown = escDown;
+        }
+
+        /// <summary>Execute the action for the given pause menu index.</summary>
+        private void ExecutePauseAction(int index)
+        {
+            if (index == 0) // Resume
+            {
+                _paused = false;
+                Mouse.ShowMouse(false);
+            }
+            else if (index == 1) // Toggle PauseOnEsc (background freezes or keeps running)
+            {
+                Config.GameplayConfig.PauseOnEsc = !Config.GameplayConfig.PauseOnEsc;
+                Console.WriteLine($"[GameScene] PauseOnEsc = {Config.GameplayConfig.PauseOnEsc}");
+            }
+            else // Back to Main Menu → show confirmation
+            {
+                _confirmingExit = true;
+                _confirmSelection = 0; // default to "No" for safety
+            }
+        }
+
+        /// <summary>Execute confirmation dialog action.</summary>
+        private void ExecuteConfirmAction(int index)
+        {
+            if (index == 1) // Yes → really exit
+            {
+                Console.WriteLine("[GameScene] Returning to Main Menu...");
+                MainMenuScene mainMenu = new(_sceneManager, _camera, _light);
+                _sceneManager.SwitchScene(mainMenu);
+            }
+            else // No → go back to pause menu
+            {
+                _confirmingExit = false;
+                _confirmSelection = 0;
+            }
+        }
+
+        /// <summary>Render the exit confirmation dialog overlay.</summary>
+        private void RenderConfirmDialog()
+        {
+            if (_hud == null) return;
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            // Dark overlay (same as pause)
+            _hud.DrawBox(0, 0, w, h, new Vector3(0f, 0f, 0f) * 0.45f);
+
+            // Panel background
+            float panelW = 420f;
+            float panelH = 180f;
+            float panelX = (w - panelW) * 0.5f;
+            float panelY = (h - panelH) * 0.5f;
+            _hud.DrawBox(panelX, panelY, panelW, panelH, new Vector3(0.08f, 0.09f, 0.14f));
+
+            // Top accent
+            _hud.DrawBox(panelX, panelY, panelW, 2f, new Vector3(0.4f, 0.5f, 0.9f));
+            // Bottom accent
+            _hud.DrawBox(panelX, panelY + panelH - 2f, panelW, 2f, new Vector3(0.4f, 0.5f, 0.9f) * 0.5f);
+
+            // Question text — centered using GetTextExtents
+            string question = "Exit to Main Menu?";
+            var qExtents = _hud.GetTextExtents(question);
+            float qx = (w - qExtents.Width) * 0.5f;
+            float qy = panelY + 34f;
+            _hud.DrawText(question, qx, qy, new Vector3(0.9f, 0.9f, 1.0f));
+
+            // Sub text — positioned below question using actual text height, centered
+            string sub = "Any unsaved progress will be lost.";
+            var subExtents = _hud.GetTextExtents(sub);
+            float sx = (w - subExtents.Width) * 0.5f;
+            float subY = qy + qExtents.Height + 8f;
+            _hud.DrawText(sub, sx, subY, new Vector3(0.55f, 0.55f, 0.65f));
+
+            // Divider — positioned below sub text
+            float dividerY = subY + subExtents.Height + 14f;
+            _hud.DrawBox(panelX + 20f, dividerY, panelW - 40f, 1f, new Vector3(0.2f, 0.22f, 0.3f));
+
+            // Buttons — positioned below divider
+            const float btnW = 160f;
+            const float btnH = 46f;
+            const float btnSpacing = 20f;
+            float startX = w * 0.5f - (btnW * 2 + btnSpacing) * 0.5f;
+            float btnY = dividerY + 20f;
+
+            string[] labels = ["NO", "YES"];
+            for (int i = 0; i < 2; i++)
+            {
+                float bx = startX + i * (btnW + btnSpacing);
+                bool isSelected = (i == _confirmSelection);
+
+                // Selected glow
+                if (isSelected)
+                {
+                    float pulse = 0.5f + 0.5f * MathF.Sin(_time * 3f);
+                    _hud.DrawBox(bx - 6f, btnY - 4f, btnW + 12f, btnH + 8f,
+                        new Vector3(0.3f, 0.4f, 0.9f) * (0.06f + pulse * 0.05f));
+                }
+
+                // Background
+                _hud.DrawBox(bx, btnY, btnW, btnH,
+                    isSelected ? new Vector3(0.22f, 0.28f, 0.45f) : new Vector3(0.10f, 0.12f, 0.18f));
+
+                // Borders
+                Vector3 border = isSelected
+                    ? new Vector3(0.5f, 0.6f, 1.0f)
+                    : new Vector3(0.15f, 0.18f, 0.25f);
+                _hud.DrawBox(bx, btnY, btnW, 1f, border);
+                _hud.DrawBox(bx, btnY + btnH - 1f, btnW, 1f, border);
+
+                // Side bar for selected
+                if (isSelected)
+                    _hud.DrawBox(bx - 3f, btnY + 4f, 3f, btnH - 8f, new Vector3(0.4f, 0.5f, 0.9f));
+
+                // Text — centered using GetTextExtents (single pass)
+                var extents = _hud.GetTextExtents(labels[i]);
+                float textX = bx + (btnW - extents.Width) * 0.5f;
+                float textY = extents.GetCenteredBaselineY(btnY, btnH);
+                _hud.DrawText(labels[i], textX, textY,
+                    isSelected ? new Vector3(0.95f, 0.95f, 1.0f) : new Vector3(0.6f, 0.6f, 0.7f));
+            }
+
+            // Hint — centered horizontally
+            string hint = "Left/Right to navigate - Enter to select - Esc to go back";
+            _hud.DrawCenteredText(hint, w, panelY + panelH + 20f,
+                new Vector3(0.35f, 0.35f, 0.5f));
+        }
+
+        /// <summary>Render the pause menu overlay on top of the frozen game frame.</summary>
+        private void RenderPauseMenu()
+        {
+            if (_hud == null) return;
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            // Dark overlay
+            _hud.DrawBox(0, 0, w, h, new Vector3(0f, 0f, 0f) * 0.45f);
+
+            // Title — centered using GetTextExtents
+            string title = "PAUSED";
+            var titleExtents = _hud.GetTextExtents(title);
+            float titleX = (w - titleExtents.Width) * 0.5f;
+            float titleY = h * 0.28f;
+            _hud.DrawText(title, titleX, titleY, new Vector3(0.9f, 0.9f, 1.0f));
+
+            // Decorative line — positioned below title using text height
+            float lineW = 120f;
+            _hud.DrawBox((w - lineW) * 0.5f, titleY + titleExtents.Height + 14f, lineW, 1f, new Vector3(0.4f, 0.5f, 0.9f) * 0.6f);
+
+            // Buttons
+            string worldStatus = Config.GameplayConfig.PauseOnEsc ? "RUNNING" : "PAUSED";
+            string[] pauseItems = ["RESUME", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
+            float btnW = 300f;
+            float btnH = 50f;
+            float btnSpacing = 14f;
+            float startY = titleY + titleExtents.Height + 40f;
+
+            for (int i = 0; i < pauseItems.Length; i++)
+            {
+                float bx = (w - btnW) * 0.5f;
+                float by = startY + i * (btnH + btnSpacing);
+                bool isSelected = (i == _pauseSelection);
+
+                // Selected glow
+                if (isSelected)
+                {
+                    float glowPulse = 0.5f + 0.5f * MathF.Sin(_time * 3f);
+                    float glowAlpha = 0.07f + glowPulse * 0.05f;
+                    _hud.DrawBox(bx - 8f, by - 6f, btnW + 16f, btnH + 12f,
+                        new Vector3(0.3f, 0.4f, 0.9f) * glowAlpha);
+                }
+
+                // Background
+                _hud.DrawBox(bx, by, btnW, btnH,
+                    isSelected ? new Vector3(0.22f, 0.28f, 0.45f) : new Vector3(0.10f, 0.12f, 0.18f));
+
+                // Borders
+                Vector3 border = isSelected
+                    ? new Vector3(0.5f, 0.6f, 1.0f)
+                    : new Vector3(0.15f, 0.18f, 0.25f);
+                _hud.DrawBox(bx, by, btnW, 1f, border);
+                _hud.DrawBox(bx, by + btnH - 1f, btnW, 1f, border);
+
+                // Selected side bar
+                if (isSelected)
+                {
+                    _hud.DrawBox(bx - 3f, by + 4f, 3f, btnH - 8f, new Vector3(0.4f, 0.5f, 0.9f));
+                }
+
+                // Text — centered using GetTextExtents (single pass)
+                var extents = _hud.GetTextExtents(pauseItems[i]);
+                float textX = bx + (btnW - extents.Width) * 0.5f;
+                float textY = extents.GetCenteredBaselineY(by, btnH);
+                _hud.DrawText(pauseItems[i], textX, textY,
+                    isSelected ? new Vector3(0.95f, 0.95f, 1.0f) : new Vector3(0.6f, 0.6f, 0.7f));
+            }
+
+            // Bottom hint — centered horizontally
+            string hint = Config.GameplayConfig.PauseOnEsc
+                ? "Up/Down to navigate - Enter to select - World still runs behind"
+                : "Up/Down to navigate - Enter to select - World paused behind";
+            _hud.DrawCenteredText(hint, w, startY + pauseItems.Length * (btnH + btnSpacing) + 20f,
+                new Vector3(0.35f, 0.35f, 0.5f));
         }
 
         public void Exit()

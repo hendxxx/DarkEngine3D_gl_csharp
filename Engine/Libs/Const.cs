@@ -204,6 +204,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const int GLFW_KEY_PERIOD = 46;
 
 
+        // Arrow keys
+        public const int GLFW_KEY_UP = 265;
+        public const int GLFW_KEY_DOWN = 264;
+        public const int GLFW_KEY_LEFT = 263;
+        public const int GLFW_KEY_RIGHT = 262;
+
+        // Enter
+        public const int GLFW_KEY_ENTER = 257;
+
         // Space
         public const int GLFW_KEY_SPACE = 32;
 

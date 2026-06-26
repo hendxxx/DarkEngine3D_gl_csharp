@@ -24,6 +24,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         // Projection params
         public float FoV;
+        public float BaseFoV = 60f;   // User-configured base FOV (non-ADS)
         public float NearDist;
         public float FarDist;
         private float _aspect;
@@ -322,7 +323,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             else
                 IsADS = false;
 
-            float targetFov = IsADS ? 45.0f : 60.0f;
+            float targetFov = IsADS ? 45.0f : BaseFoV;
             FoV = Helpers.OGLMath.Lerp(FoV, targetFov, 8f * dt);
             _projectionDirty = true;
 

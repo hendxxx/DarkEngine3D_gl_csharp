@@ -289,7 +289,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 "Artifacts\\objects\\anim\\walking-backwards.glb", "Artifacts\\objects\\anim\\walking-backwards2.glb",
                 "Artifacts\\objects\\anim\\walk-happy.glb", "Artifacts\\objects\\anim\\walk-standard.glb",
                 "Artifacts\\objects\\anim\\jump-start.glb", "Artifacts\\objects\\anim\\jump-loop.glb", "Artifacts\\objects\\anim\\jump-end.glb",
-                "Artifacts\\objects\\anim\\zombie-walk.glb"
+                "Artifacts\\objects\\anim\\zombie-walk.glb","Artifacts\\objects\\anim\\jumping.glb"
             ];
 
             string?[] animClipNames =
@@ -302,7 +302,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 "strafeleft", "straferight", "backward", "backward2",
                 "walk-happy", "walk-standard" ,
                 "jump-start", "jump-loop", "jump-end",
-                "zombie-walk"
+                "zombie-walk","jumping"
+
             ];
             bool[] retargetRoot =
             [
@@ -314,7 +315,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 false, false, false, false,
                 false, false, 
                 false, false, false,
-                true
+                false, false
             ];
 
             for (int i = 0; i < animFiles.Length; i++)

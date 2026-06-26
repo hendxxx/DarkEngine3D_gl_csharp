@@ -40,7 +40,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _light = light;
 
             // Create GameScene early (we'll pass fully loaded resources to it)
-            _gameScene = new GameScene(camera, light);
+            _gameScene = new GameScene(sceneManager, camera, light);
         }
 
         public void Enter()
@@ -55,7 +55,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ];
             _images = images;
 
-            HUD hud = new("Artifacts\\fonts\\Ngaco.ttf", 32.0f);
+            HUD hud = new("Artifacts\\fonts\\Ngaco.ttf", 28.0f);
             _hud = hud;
 
             RenderFrame("Loading engine ...");
@@ -181,15 +181,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float margin = 40;
             float spinnerSize = 128;
 
-            // LEFT-BOTTOM TEXT
-            float textX = margin;
-            float textY = Glfw.WindowHeight - margin;
-            _hud.DrawText(text, textX, textY, new Vector3(0, 0, 0));
-
-            // RIGHT-BOTTOM SPINNER
+            // RIGHT-BOTTOM SPINNER — anchor for vertical alignment
             float spinnerX = Glfw.WindowWidth - spinnerSize - margin;
             float spinnerY = Glfw.WindowHeight - spinnerSize - margin;
             _hud.DrawSpinner(spinnerX, spinnerY, spinnerSize, _images[1].ID, dt);
+
+            // LEFT-BOTTOM TEXT — vertically aligned to spinner center using TextExtents
+            float spinnerCenterY = spinnerY + spinnerSize * 0.5f;
+            var extents = _hud.GetTextExtents(text);
+            float textX = margin;
+            float textY = spinnerCenterY - (extents.MinY + extents.Height * 0.5f);
+            _hud.DrawText(text, textX, textY, new Vector3(0, 0, 0));
 
             OpenGL.SwapBuffer(window);
             OpenGL.PollEvents();
