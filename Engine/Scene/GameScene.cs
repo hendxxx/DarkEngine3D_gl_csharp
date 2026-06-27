@@ -66,7 +66,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private float _lastTargetShoulderOffset;
 
         // ── Pause menu (responsive grid) ──
-        private const int PauseItemCount = 3;
+        private const int PauseItemCount = 4;
         private const int PauseBtnColStart = 3;
         private const int PauseBtnColEnd = 9;
         private const float PauseBtnH = 50f;
@@ -84,12 +84,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private const float _confirmDlgScale = 1.4f;
         private bool _confirmingExit = false;
         private int _confirmSelection = 0; // 0 = No, 1 = Yes
-        private int _confirmLastHovered = -1; // only update confirm selection from hover when this changes
+        private int _confirmLastHovered = -1;
         private bool _confirmLeftWasDown = false;
         private bool _confirmRightWasDown = false;
         private bool _confirmEnterWasDown = false;
         private bool _confirmMouseWasDown = false;
         private bool _confirmEscapeWasDown = false;
+
+        // ── In-game settings panel (accessed from pause menu) ──
+        private bool _settingsActive = false;
+        private int _settingsSelection = 0;
+        private int _settingsLastHovered = -1;
+        private bool _settingsUpWasDown = false;
+        private bool _settingsDownWasDown = false;
+        private bool _settingsLeftWasDown = false;
+        private bool _settingsRightWasDown = false;
+        private bool _settingsEnterWasDown = false;
+        private bool _settingsEscapeWasDown = false;
+        private bool _settingsMouseWasDown = false;
+
+        private readonly string[] _inGameSettingLabels = [
+            "Field of View",
+            "Mouse Sensitivity",
+            "Shadow Quality",
+            "VSync",
+            "⬅ BACK",
+        ];
+        private readonly string[][] _inGameSettingOptions = [
+            ["60°", "70°", "80°", "90°", "100°", "110°"],
+            ["0.25×", "0.50×", "0.75×", "1.0×", "1.5×", "2.0×", "3.0×"],
+            ["LOW", "MEDIUM", "HIGH", "ULTRA"],
+            ["OFF", "ON"],
+        ];
+        /// <summary>Current live value index for each setting. 0=FOV, 1=Mouse, 2=Shadow, 3=VSync. Synced in Enter().</summary>
+        private int[] _inGameSettingValues = [0, 3, 3, 0];
+        /// <summary>Snapshot taken when settings panel opens; restored on cancel (BACK/ESC).</summary>
+        private int[] _settingsSnapshot = [0, 3, 3, 0];
+
+        // Shadow quality presets shared via ShadowPresets.CascadeSizes (no local field needed)
 
         // ── FPS counter ──
         private int _renderedTris;
@@ -200,6 +232,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _pauseSelection = 0;
             _pauseLastHovered = -1;
             _confirmLastHovered = -1;
+            _settingsActive = false;
+            _settingsSelection = 0;
+
+            // Sync in-game settings with current config/camera state
+            _inGameSettingValues[0] = Math.Clamp(((int)_camera.BaseFoV - 60) / 10, 0, 5);
+
+            // Reverse-lookup mouse sensitivity index
+            float sens = Mouse.Sensitivity;
+            float[] mouseMult = [0.25f, 0.50f, 0.75f, 1.0f, 1.5f, 2.0f, 3.0f];
+            _inGameSettingValues[1] = 3; // default 1.0×
+            for (int m = 0; m < mouseMult.Length; m++)
+            {
+                if (Math.Abs(sens - 0.1f * mouseMult[m]) < 0.001f)
+                { _inGameSettingValues[1] = m; break; }
+            }
+
+            // Shadow quality: map cascade size to preset index
+            _inGameSettingValues[2] = Config.ShadowConfig.CascadeSizes[0] switch
+            {
+                2048 => 0, 4096 => (Config.ShadowConfig.CascadeSizes[1] == 2048) ? 1 : 2,
+                _ => 3
+            };
 
             Mouse.ShowMouse(false);
 
@@ -239,11 +293,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 if (_confirmingExit)
                     HandleConfirmInput(window);
+                else if (_settingsActive)
+                    HandleSettingsInput(window);
                 else
                     HandlePauseInput(window);
 
-                // If PauseOnEsc = false: freeze game behind the menu (return early)
-                // If PauseOnEsc = true:  game simulation still runs behind the overlay
                 if (!Config.GameplayConfig.PauseOnEsc)
                     return;
             }
@@ -252,6 +306,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _pauseUpWasDown = false;
                 _pauseDownWasDown = false;
                 _pauseEnterWasDown = false;
+                _settingsActive = false;
             }
 
             _time += deltaTime;
@@ -793,7 +848,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
 
             // ── Pause Blur Overlay ──
-            if (_paused && !_confirmingExit)
+            if (_paused && !_confirmingExit && !_settingsActive)
             {
                 _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
             }
@@ -849,14 +904,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // ── PAUSE MENU / CONFIRM OVERLAY ──
+            // ── PAUSE MENU / SETTINGS / CONFIRM OVERLAY ──
             if (_paused)
             {
                 if (_confirmingExit)
                 {
-                    // Still apply blur behind confirm dialog
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
                     RenderConfirmDialog();
+                }
+                else if (_settingsActive)
+                {
+                    _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
+                    RenderSettingsPanel();
                 }
                 else
                     RenderPauseMenu();
@@ -972,6 +1031,157 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _pauseEnterWasDown = enterDown;
         }
 
+        /// <summary>Handle in-game settings panel input (mouse + keyboard).
+        /// Each setting cycles immediately — no APPLY button needed.
+        /// Index 5 (BACK) returns to the pause menu.</summary>
+        private void HandleSettingsInput(nint window)
+        {
+            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
+            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            float panelX = w * 0.25f, panelW = w * 0.5f;
+            float rowH = 42f, rowGap = 8f;
+            float totalH = _inGameSettingLabels.Length * rowH + (_inGameSettingLabels.Length - 1) * rowGap;
+            float titleY = h * 0.28f;
+            float startY = titleY + 70f;
+
+            // ── Mouse hover — only update when hovering a different row ──
+            int hoveredIndex = -1;
+            for (int i = 0; i < _inGameSettingLabels.Length; i++)
+            {
+                float ry = startY + i * (rowH + rowGap);
+                if (mouseX >= panelX && mouseX <= panelX + panelW &&
+                    mouseY >= ry && mouseY <= ry + rowH)
+                {
+                    hoveredIndex = i;
+                    break;
+                }
+            }
+            if (hoveredIndex >= 0 && hoveredIndex != _settingsLastHovered)
+                _settingsSelection = hoveredIndex;
+            _settingsLastHovered = hoveredIndex;
+
+            // ── Mouse click ──
+            if (mousePressed && !_settingsMouseWasDown)
+            {
+                _settingsMouseWasDown = true;
+                if (hoveredIndex >= 0)
+                {
+                    if (hoveredIndex == _inGameSettingLabels.Length - 1) // BACK → cancel
+                    {
+                        CancelInGameSettings();
+                    }
+                    else
+                    {
+                        CycleInGameSetting(hoveredIndex, 1);
+                    }
+                }
+            }
+            if (!mousePressed)
+                _settingsMouseWasDown = false;
+
+            // ── Keyboard navigation ──
+            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            bool escDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+
+            if (upDown && !_settingsUpWasDown)
+                _settingsSelection = (_settingsSelection - 1 + _inGameSettingLabels.Length) % _inGameSettingLabels.Length;
+            if (downDown && !_settingsDownWasDown)
+                _settingsSelection = (_settingsSelection + 1) % _inGameSettingLabels.Length;
+
+            // LEFT/RIGHT: cycle setting (not on BACK row)
+            if (leftDown && !_settingsLeftWasDown && _settingsSelection < _inGameSettingLabels.Length - 1)
+                CycleInGameSetting(_settingsSelection, -1);
+            if (rightDown && !_settingsRightWasDown && _settingsSelection < _inGameSettingLabels.Length - 1)
+                CycleInGameSetting(_settingsSelection, 1);
+
+            // Enter → BACK (cancel) or cycle forward
+            if (enterDown && !_settingsEnterWasDown)
+            {
+                if (_settingsSelection == _inGameSettingLabels.Length - 1) // BACK
+                    CancelInGameSettings();
+                else
+                    CycleInGameSetting(_settingsSelection, 1);
+            }
+
+            // ESC → cancel: revert to snapshot and return to pause menu
+            if (escDown && !_settingsEscapeWasDown)
+            {
+                CancelInGameSettings();
+            }
+
+            _settingsUpWasDown = upDown;
+            _settingsDownWasDown = downDown;
+            _settingsLeftWasDown = leftDown;
+            _settingsRightWasDown = rightDown;
+            _settingsEnterWasDown = enterDown;
+            _settingsEscapeWasDown = escDown;
+        }
+
+        /// <summary>Cancel settings and revert to snapshot values.</summary>
+        private void CancelInGameSettings()
+        {
+            // Revert setting values to snapshot
+            for (int i = 0; i < _inGameSettingValues.Length; i++)
+            {
+                if (_inGameSettingValues[i] != _settingsSnapshot[i])
+                {
+                    _inGameSettingValues[i] = _settingsSnapshot[i];
+                    ApplySingleSetting(i);
+                }
+            }
+            _settingsActive = false;
+            Console.WriteLine("[Settings] Cancelled — reverted to previous values.");
+        }
+
+        /// <summary>Apply a single setting by index using the current _inGameSettingValues[i].</summary>
+        private void ApplySingleSetting(int settingIndex)
+        {
+            int val = _inGameSettingValues[settingIndex];
+            switch (settingIndex)
+            {
+                case 0: // FOV
+                {
+                    int fovVal = int.Parse(_inGameSettingOptions[0][val].Replace("°", ""));
+                    _camera.BaseFoV = fovVal;
+                    _camera.FoV = fovVal;
+                    break;
+                }
+                case 1: // Mouse Sensitivity
+                {
+                    float[] multipliers = [0.25f, 0.50f, 0.75f, 1.0f, 1.5f, 2.0f, 3.0f];
+                    Mouse.Sensitivity = 0.1f * multipliers[val];
+                    break;
+                }
+                case 2: // Shadow Quality
+                {
+                    Config.ShadowConfig.CascadeSizes = Config.ShadowPresets.CascadeSizes[val];
+                    break;
+                }
+                case 3: // VSync
+                {
+                    Glfw.SetSwapInterval(val == 1 ? 1 : 0);
+                    break;
+                }
+            }
+        }
+
+        /// <summary>Cycle an in-game setting and apply immediately (live preview).</summary>
+        private void CycleInGameSetting(int settingIndex, int direction)
+        {
+            int count = _inGameSettingOptions[settingIndex].Length;
+            _inGameSettingValues[settingIndex] = (_inGameSettingValues[settingIndex] + direction + count) % count;
+            ApplySingleSetting(settingIndex);
+            Console.WriteLine($"[Settings] {_inGameSettingLabels[settingIndex]} = {_inGameSettingOptions[settingIndex][_inGameSettingValues[settingIndex]]}");
+        }
+
         /// <summary>Handle confirmation dialog input.</summary>
         private void HandleConfirmInput(nint window)
         {
@@ -1041,7 +1251,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _paused = false;
                 Mouse.ShowMouse(false);
             }
-            else if (index == 1) // Toggle PauseOnEsc (background freezes or keeps running)
+            else if (index == 1) // Settings — save snapshot for cancel
+            {
+                // Save snapshot of current values for cancel/revert
+                Array.Copy(_inGameSettingValues, _settingsSnapshot, _inGameSettingValues.Length);
+                _settingsActive = true;
+                _settingsSelection = 0;
+            }
+            else if (index == 2) // Toggle PauseOnEsc
             {
                 Config.GameplayConfig.PauseOnEsc = !Config.GameplayConfig.PauseOnEsc;
                 Console.WriteLine($"[GameScene] PauseOnEsc = {Config.GameplayConfig.PauseOnEsc}");
@@ -1049,8 +1266,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             else // Back to Main Menu → show confirmation
             {
                 _confirmingExit = true;
-                _confirmSelection = 0; // default to "No" for safety
+                _confirmSelection = 0;
             }
+        }
+
+        /// <summary>Save current in-game settings to settings.json so they persist across sessions.</summary>
+        private void SaveInGameSettingsToJson()
+        {
+            var saved = SettingsSave.Load();
+            saved.Fov = 60 + _inGameSettingValues[0] * 10;
+            saved.MouseSensitivity = _inGameSettingValues[1];
+            saved.ShadowQuality = _inGameSettingValues[2];
+            saved.VSync = _inGameSettingValues[3] == 1;
+            SettingsSave.Save(saved);
+            Console.WriteLine("[GameScene] In-game settings saved to settings.json");
         }
 
         /// <summary>Execute confirmation dialog action.</summary>
@@ -1058,8 +1287,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             if (index == 1) // Yes → really exit
             {
+                SaveInGameSettingsToJson();
                 Console.WriteLine("[GameScene] Returning to Main Menu...");
-                MainMenuScene mainMenu = new(_sceneManager, _camera, _light);
+                MainMenuScene mainMenu = new(_sceneManager, _camera, _light, "In-game settings saved!");
                 _sceneManager.SwitchScene(mainMenu);
             }
             else // No → go back to pause menu
@@ -1096,6 +1326,106 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 new Vector3(0.35f, 0.35f, 0.45f));
         }
 
+        /// <summary>Render the in-game settings panel overlay.</summary>
+        private void RenderSettingsPanel()
+        {
+            if (_hud == null) return;
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            // Dark overlay
+            _hud.DrawBox(0, 0, w, h, new Vector3(0f, 0f, 0f) * 0.45f);
+
+            float panelX = w * 0.25f, panelW = w * 0.5f;
+            float rowH = 42f, rowGap = 8f;
+
+            // Title — centered
+            var sgGrid = new GridLayout(w, h);
+            float setCenterX = sgGrid.CenterX(2, 10);
+            string title = "SETTINGS";
+            var titleExt = _hud.GetTextExtents(title);
+            float titleX = setCenterX - titleExt.Width * 0.5f;
+            float titleY = h * 0.28f;
+            _hud.DrawText(title, titleX, titleY, new Vector3(0.9f, 0.9f, 1.0f));
+
+            // Decorative line
+            float lineW = 80f;
+            float lineX = setCenterX - lineW * 0.5f;
+            _hud.DrawBox(lineX, titleY + titleExt.Height + 14f, lineW, 1f, new Vector3(0.4f, 0.5f, 0.9f) * 0.6f);
+
+            // Setting rows
+            float startY = titleY + 70f;
+
+            for (int i = 0; i < _inGameSettingLabels.Length; i++)
+            {
+                float ry = startY + i * (rowH + rowGap);
+                bool isSelected = (i == _settingsSelection);
+                bool isBackBtn = (i == _inGameSettingLabels.Length - 1);
+
+                // Row background
+                if (isSelected)
+                {
+                    float glowPulse = 0.5f + 0.5f * MathF.Sin(_time * 3f);
+                    _hud.DrawBox(panelX - 4f, ry - 3f, panelW + 8f, rowH + 6f,
+                        new Vector3(0.3f, 0.4f, 0.9f) * (0.06f + glowPulse * 0.05f));
+                }
+
+                if (isBackBtn)
+                {
+                    // BACK button — full button style
+                    Vector3 btnBg = isSelected
+                        ? new Vector3(0.22f, 0.28f, 0.45f)
+                        : new Vector3(0.10f, 0.12f, 0.18f);
+                    _hud.DrawBox(panelX, ry, panelW, rowH, btnBg);
+
+                    Vector3 border = isSelected
+                        ? new Vector3(0.5f, 0.6f, 1.0f)
+                        : new Vector3(0.15f, 0.18f, 0.25f);
+                    _hud.DrawBox(panelX, ry, panelW, 1f, border);
+                    _hud.DrawBox(panelX, ry + rowH - 1f, panelW, 1f, border);
+
+                    if (isSelected)
+                    {
+                        _hud.DrawBox(panelX - 3f, ry + 4f, 3f, rowH - 8f, new Vector3(0.4f, 0.5f, 0.9f));
+                    }
+
+                    var backExt = _hud.GetTextExtents(_inGameSettingLabels[i]);
+                    float backX = panelX + (panelW - backExt.Width) * 0.5f;
+                    float backY = backExt.GetCenteredBaselineY(ry, rowH);
+                    _hud.DrawText(_inGameSettingLabels[i], backX, backY,
+                        isSelected ? new Vector3(0.95f, 0.95f, 1.0f) : new Vector3(0.6f, 0.6f, 0.7f));
+                }
+                else
+                {
+                    // Regular setting row — label left, value right
+                    string label = _inGameSettingLabels[i];
+                    string value = _inGameSettingOptions[i][_inGameSettingValues[i]];
+                    string display = isSelected ? $"< {value} >" : value;
+
+                    var lblExt = _hud.GetTextExtents(label);
+                    float lblY = lblExt.GetCenteredBaselineY(ry, rowH);
+                    _hud.DrawText(label, panelX + 14f, lblY,
+                        isSelected ? new Vector3(0.9f, 0.9f, 1.0f) : new Vector3(0.6f, 0.6f, 0.75f));
+
+                    var valExt = _hud.GetTextExtents(display);
+                    float valX = panelX + panelW - 14f - valExt.Width;
+                    float valY = valExt.GetCenteredBaselineY(ry, rowH);
+                    _hud.DrawText(display, valX, valY,
+                        isSelected ? new Vector3(0.6f, 0.7f, 1.0f) : new Vector3(0.5f, 0.5f, 0.6f));
+                }
+            }
+
+            // Bottom hint
+            string hint = "Arrow keys or mouse to navigate  -  Left/Right to cycle  -  Esc to go back";
+            var phGrid = new GridLayout(w, h);
+            float phCenterX = phGrid.CenterX(2, 10);
+            var phExt = _hud.GetTextExtents(hint);
+            _hud.DrawText(hint, phCenterX - phExt.Width * 0.5f,
+                startY + _inGameSettingLabels.Length * (rowH + rowGap) + 20f,
+                new Vector3(0.35f, 0.35f, 0.45f));
+        }
+
         /// <summary>Render the pause menu overlay on top of the frozen game frame.</summary>
         private void RenderPauseMenu()
         {
@@ -1123,7 +1453,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Buttons (responsive grid width)
             string worldStatus = Config.GameplayConfig.PauseOnEsc ? "RUNNING" : "PAUSED";
-            string[] pauseItems = ["RESUME", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
+            string[] pauseItems = ["RESUME", "SETTINGS", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
             var pGrid = new GridLayout(w, h);
             float pauseBtnW = pGrid.SpanW(PauseBtnColStart, PauseBtnColEnd);
             float btnH = 50f;

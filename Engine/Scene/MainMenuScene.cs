@@ -70,6 +70,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private string _notificationText = "";
         private float _notificationTimer = 0f;
         private const float NotificationDuration = 3f;
+        /// <summary>Optional message shown when this scene starts (e.g. "Settings saved!").</summary>
+        private readonly string _startupNotification;
 
         // ── ESC confirm dialog (settings) ──
         private bool _confirmActive = false;
@@ -142,13 +144,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             new(1280, 720,  "1280 x 720"),
             new(2560, 1440, "2560 x 1440"),
         ];
-        private static readonly int[][] CascadePresets =
-        [
-            [2048, 1024, 512],   // Low
-            [4096, 2048, 1024],  // Medium
-            [4096, 4096, 2048],  // High
-            [8192, 4096, 2048],  // Ultra
-        ];
+        // CascadePresets shared via ShadowPresets utility class
 
         // ── Settings panel layout (shared between Update hover + RenderSettings) ──
         private const int SettingsColStart = 2;
@@ -199,11 +195,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             public Vector3 Color;
         }
 
-        public MainMenuScene(SceneManager sceneManager, Camera camera, Lights light)
+        public MainMenuScene(SceneManager sceneManager, Camera camera, Lights light,
+            string startupNotification = "")
         {
             _sceneManager = sceneManager;
             _camera = camera;
             _light = light;
+            _startupNotification = startupNotification;
         }
 
         public void Enter()
@@ -296,6 +294,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _settingsLastHoveredRow = -1;
             _notificationText = "";
 
+            // ── Show startup notification if provided (e.g. "In-game settings saved")
+            if (!string.IsNullOrEmpty(_startupNotification))
+            {
+                ShowNotification(_startupNotification);
+            }
+
             Console.WriteLine("[MainMenu] Entered.");
         }
 
@@ -308,6 +312,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             _deltaTime = deltaTime;
             _totalTime += deltaTime;
+
+            // ── Update notification timer ──
+            if (_notificationTimer > 0f)
+                _notificationTimer -= deltaTime;
 
             // ── Update particles ──
             UpdateParticles(deltaTime);
@@ -766,7 +774,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             SettingsSave.Save(data);
 
             // ── Apply Shadow Quality ──
-            Config.ShadowConfig.CascadeSizes = CascadePresets[sq];
+            Config.ShadowConfig.CascadeSizes = Config.ShadowPresets.CascadeSizes[sq];
 
             // ── Apply OC Mode ──
             ApplyOcclusionMode(oc);
@@ -797,7 +805,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int oc = _settingValues[4];
             int fovVal = int.Parse(_settingOptions[5][_settingValues[5]]);
 
-            Config.ShadowConfig.CascadeSizes = CascadePresets[sq];
+            Config.ShadowConfig.CascadeSizes = Config.ShadowPresets.CascadeSizes[sq];
             ApplyOcclusionMode(oc);
             _camera.BaseFoV = fovVal;
             _camera.FoV = fovVal;
@@ -911,6 +919,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ==========================================
 
             RenderTitle(w, h);
+
+            // ── Toast notification (shown on main screen, above everything except exit confirm) ──
+            if (_notificationTimer > 0f && !_settingsOpen)
+            {
+                float fadeAlpha = Math.Min(1f, _notificationTimer);
+                string notifText = _notificationText;
+                var notifExt = _hud.GetTextExtents(notifText);
+                float notifX = w * 0.5f - notifExt.Width * 0.5f;
+                float notifY = h * 0.12f;
+                _hud.DrawText(notifText, notifX, notifY,
+                    new Vector3(0.3f, 0.9f, 0.4f) * fadeAlpha);
+            }
 
             // ── Exit confirm dialog (rendered before settings check) ──
             if (_exitConfirmActive)
@@ -1213,18 +1233,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Divider — positioned based on title text height
             _hud.DrawBox(panelX + 20f, dividerY, panelW - 40f, 1f, new Vector3(0.2f, 0.22f, 0.3f));
 
-            // ── Notification toast (below title) ──
-            if (_notificationTimer > 0f)
-            {
-                float fadeAlpha = Math.Min(1f, _notificationTimer);
-                float notifY = dividerY + 8f;
-                string notifText = _notificationText;
-                var notifExt = _hud.GetTextExtents(notifText);
-                float notifX = panelX + (panelW - notifExt.Width) * 0.5f;
-                _hud.DrawText(notifText, notifX, notifY,
-                    new Vector3(0.3f, 0.9f, 0.4f) * fadeAlpha);
-                _notificationTimer -= _deltaTime;
-            }
+
 
             // ── Confirm dialog overlay ──
             if (_confirmActive)
