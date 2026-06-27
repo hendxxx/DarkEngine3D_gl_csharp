@@ -12,8 +12,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     {
         /// <summary>
         /// Base dialog size for scale = 1.0.
+        /// Public so hit-testing code can reference without duplicating literals.
         /// </summary>
-        private const float BaseDlgW = 380f, BaseDlgH = 160f;
+        public const float BaseDlgW = 380f;
+        public const float BaseDlgH = 160f;
+
+        /// <summary>Base button dimensions / gap / offset for scale = 1.0.</summary>
+        public const float BaseBtnW = 150f;
+        public const float BaseBtnH = 40f;
+        public const float BaseBtnGap = 20f;
+        /// <summary>Y offset of the button row from the dialog top, at scale = 1.0.</summary>
+        public const float BaseBtnOffsetY = 94f;
 
         /// <summary>
         /// Draw a confirm dialog overlay with the standard visual style.
@@ -47,19 +56,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // Title
             var titleExt = hud.GetTextExtents(title);
-            hud.DrawText(title, dlgX + (dlgW - titleExt.Width) * 0.5f, dlgY + 22f * scale,
+            hud.DrawText(title, dlgX + (dlgW - titleExt.Width) * 0.5f, dlgY + 35f * scale,
                 new Vector3(1.0f, 1.0f, 1.0f));
 
             // Message
             var msgExt = hud.GetTextExtents(message);
-            hud.DrawText(message, dlgX + (dlgW - msgExt.Width) * 0.5f, dlgY + 52f * scale,
+            hud.DrawText(message, dlgX + (dlgW - msgExt.Width) * 0.5f, dlgY + 60f * scale,
                 new Vector3(0.85f, 0.85f, 0.9f));
 
-            // Buttons — scaled
-            float btnW = 150f * scale, btnH = 40f * scale, btnGap = 20f * scale;
+            // Buttons — scaled (uses public constants so hit-testing can stay in sync)
+            float btnW = BaseBtnW * scale, btnH = BaseBtnH * scale, btnGap = BaseBtnGap * scale;
             float totalBtnW = btnW * 2 + btnGap;
             float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
-            float btnY = dlgY + 94f * scale;
+            float btnY = dlgY + BaseBtnOffsetY * scale;
 
             Vector3 unselectedBg = new(0.12f, 0.13f, 0.18f);
             Vector3 unselectedText = new(0.55f, 0.55f, 0.65f);
@@ -78,12 +87,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     hud.DrawBox(bx, btnY + btnH - 1f * scale, btnW, 1f * scale, btnSideColors[b] * 0.5f);
                 }
 
-                string label = isSel ? $"| {btnLabels[b]} |" : btnLabels[b];
+                string label = isSel ? btnLabels[b] : btnLabels[b];
                 var ext = hud.GetTextExtents(label);
                 hud.DrawText(label, bx + (btnW - ext.Width) * 0.5f,
                     ext.GetCenteredBaselineY(btnY, btnH),
                     isSel ? btnTextColors[b] : unselectedText);
             }
+        }
+
+        /// <summary>
+        /// Compute the bounding rectangle of a confirm-dialog button in screen coordinates.
+        /// Use this from input-handling code so hit-testing always matches what DrawBox renders.
+        /// </summary>
+        /// <param name="w">Screen width in pixels.</param>
+        /// <param name="h">Screen height in pixels.</param>
+        /// <param name="scale">Size multiplier (same value passed to DrawBox).</param>
+        /// <param name="buttonIndex">Button index (0 = left, 1 = right).</param>
+        /// <param name="x">Left edge of the button in screen coordinates.</param>
+        /// <param name="y">Top edge of the button in screen coordinates.</param>
+        /// <param name="width">Width of the button.</param>
+        /// <param name="height">Height of the button.</param>
+        public static void GetButtonRect(int w, int h, float scale, int buttonIndex,
+            out float x, out float y, out float width, out float height)
+        {
+            float dlgW = BaseDlgW * scale;
+            float dlgH = BaseDlgH * scale;
+            float dlgX = (w - dlgW) * 0.5f;
+            float dlgY = (h - dlgH) * 0.5f;
+
+            float btnGap = BaseBtnGap * scale;
+            float totalBtnW = BaseBtnW * scale * 2 + btnGap;
+            float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
+
+            x = btnStartX + buttonIndex * (BaseBtnW * scale + btnGap);
+            y = dlgY + BaseBtnOffsetY * scale;
+            width = BaseBtnW * scale;
+            height = BaseBtnH * scale;
         }
     }
 }

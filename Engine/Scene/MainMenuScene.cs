@@ -108,7 +108,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         private readonly string[][] _settingOptions =
         [
-            ["1920 x 1080", "1280 x 720", "2560 x 1440"],
+            [Resolutions[0].Label, Resolutions[1].Label, Resolutions[2].Label],
             ["OFF", "ON"],
             ["OFF", "ON"],
             ["LOW", "MEDIUM", "HIGH", "ULTRA"],
@@ -124,7 +124,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         // 0=Res,1=FS,2=VSync,3=Shadow,4=OC,5=FOV,6=Mouse,7=Apply,8=Cancel
 
         // ── Shared lookup tables (avoid duplication) ──
-        private static readonly int[][] ResolutionValues = [[1920, 1080], [1280, 720], [2560, 1440]];
+        private readonly struct ResInfo
+        {
+            public readonly int Width, Height;
+            public readonly string Label, CompactLabel;
+            public ResInfo(int w, int h, string label)
+            {
+                Width = w; Height = h;
+                Label = label;
+                CompactLabel = $"{w}x{h}";
+            }
+        }
+
+        private static readonly ResInfo[] Resolutions =
+        [
+            new(1920, 1080, "1920 x 1080"),
+            new(1280, 720,  "1280 x 720"),
+            new(2560, 1440, "2560 x 1440"),
+        ];
         private static readonly int[][] CascadePresets =
         [
             [2048, 1024, 512],   // Low
@@ -372,23 +389,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                     // Mouse hover on dialog buttons — only update when hovering a different button
                     {
-                        float dlgW = 380f;
-                        float dlgH = 160f;
-                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
-                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
-                        float btnW2 = 150f;
-                        float btnH2 = 40f;
-                        float btnGap = 20f;
-                        float totalBtnW = btnW2 * 2 + btnGap;
-                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
-                        float btnY2 = dlgY + 95f;
-
                         int hoveredConfirm = -1;
                         for (int b = 0; b < 2; b++)
                         {
-                            float bx2 = btnStartX + b * (btnW2 + btnGap);
-                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
-                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            ConfirmDialog.GetButtonRect(Glfw.WindowWidth, Glfw.WindowHeight, 1.0f, b,
+                                out float bx, out float by, out float bw, out float bh);
+                            if (mouseX >= bx && mouseX <= bx + bw &&
+                                mouseY >= by && mouseY <= by + bh)
                             {
                                 hoveredConfirm = b;
                                 break;
@@ -426,22 +433,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (mousePressed && !_confirmMouseWasDown)
                     {
                         _confirmMouseWasDown = true;
-                        float dlgW = 380f;
-                        float dlgH = 160f;
-                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
-                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
-                        float btnW2 = 150f;
-                        float btnH2 = 40f;
-                        float btnGap = 20f;
-                        float totalBtnW = btnW2 * 2 + btnGap;
-                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
-                        float btnY2 = dlgY + 95f;
-
                         for (int b = 0; b < 2; b++)
                         {
-                            float bx2 = btnStartX + b * (btnW2 + btnGap);
-                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
-                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            ConfirmDialog.GetButtonRect(Glfw.WindowWidth, Glfw.WindowHeight, 1.0f, b,
+                                out float bx, out float by, out float bw, out float bh);
+                            if (mouseX >= bx && mouseX <= bx + bw &&
+                                mouseY >= by && mouseY <= by + bh)
                             {
                                 _confirmSelection = b;
                                 if (b == 0) // Discard
@@ -561,23 +558,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     // Mouse hover on dialog buttons — only update when hovering a different button
                     {
-                        float dlgW = 380f;
-                        float dlgH = 160f;
-                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
-                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
-                        float btnW2 = 150f;
-                        float btnH2 = 40f;
-                        float btnGap = 20f;
-                        float totalBtnW = btnW2 * 2 + btnGap;
-                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
-                        float btnY2 = dlgY + 90f;
-
                         int hoveredExit = -1;
                         for (int b = 0; b < 2; b++)
                         {
-                            float bx2 = btnStartX + b * (btnW2 + btnGap);
-                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
-                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            ConfirmDialog.GetButtonRect(Glfw.WindowWidth, Glfw.WindowHeight, 1.0f, b,
+                                out float bx, out float by, out float bw, out float bh);
+                            if (mouseX >= bx && mouseX <= bx + bw &&
+                                mouseY >= by && mouseY <= by + bh)
                             {
                                 hoveredExit = b;
                                 break;
@@ -616,22 +603,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (mousePressed && !_exitConfirmMouseWasDown)
                     {
                         _exitConfirmMouseWasDown = true;
-                        float dlgW = 380f;
-                        float dlgH = 160f;
-                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
-                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
-                        float btnW2 = 150f;
-                        float btnH2 = 40f;
-                        float btnGap = 20f;
-                        float totalBtnW = btnW2 * 2 + btnGap;
-                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
-                        float btnY2 = dlgY + 90f;
-
                         for (int b = 0; b < 2; b++)
                         {
-                            float bx2 = btnStartX + b * (btnW2 + btnGap);
-                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
-                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            ConfirmDialog.GetButtonRect(Glfw.WindowWidth, Glfw.WindowHeight, 1.0f, b,
+                                out float bx, out float by, out float bw, out float bh);
+                            if (mouseX >= bx && mouseX <= bx + bw &&
+                                mouseY >= by && mouseY <= by + bh)
                             {
                                 if (b == 1) // Yes → exit
                                 {
@@ -802,12 +779,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ApplyMouseSensitivity(_settingValues[6]);
 
             // ── Live apply Resolution, VSync, Fullscreen ──
-            Glfw.SetWindowSize(ResolutionValues[res][0], ResolutionValues[res][1]);
+            Glfw.SetWindowSize(Resolutions[res].Width, Resolutions[res].Height);
             Glfw.SetSwapInterval(vs ? 1 : 0);
             Glfw.SetFullscreen(fs);
 
-            string[] resLabels = ["1920x1080", "1280x720", "2560x1440"];
-            Console.WriteLine($"[Settings] Applied: Resolution={resLabels[res]}, Fullscreen={fs}, VSync={vs}, ShadowQuality={sq}, OC={oc}, FOV={fovVal}, MouseSens={_settingOptions[6][_settingValues[6]]}");
+            Console.WriteLine($"[Settings] Applied: Resolution={Resolutions[res].CompactLabel}, Fullscreen={fs}, VSync={vs}, ShadowQuality={sq}, OC={oc}, FOV={fovVal}, MouseSens={_settingOptions[6][_settingValues[6]]}");
         }
 
         /// <summary>Re-apply the current _settingValues to render state (no save to JSON).
@@ -826,7 +802,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _camera.BaseFoV = fovVal;
             _camera.FoV = fovVal;
             ApplyMouseSensitivity(_settingValues[6]);
-            Glfw.SetWindowSize(ResolutionValues[res][0], ResolutionValues[res][1]);
+            Glfw.SetWindowSize(Resolutions[res].Width, Resolutions[res].Height);
             Glfw.SetSwapInterval(vs ? 1 : 0);
             Glfw.SetFullscreen(fs);
         }

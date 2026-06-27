@@ -179,17 +179,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud.DrawImage(0, 0, Glfw.WindowWidth, Glfw.WindowHeight, _images[0].ID);
 
             var grid = new GridLayout(Glfw.WindowWidth, Glfw.WindowHeight);
-            float spinnerSize = 96f;
+            float spinnerSize = 100f;
 
             // RIGHT-BOTTOM SPINNER — positioned using grid (col 9-11, bottom)
-            float spinnerX = grid.ColX(9);
+            float spinnerX = grid.ColX(11);
             float spinnerY = Glfw.WindowHeight - spinnerSize - grid.Margin;
             _hud.DrawSpinner(spinnerX, spinnerY, spinnerSize, _images[1].ID, dt);
 
             // LEFT-BOTTOM TEXT — aligned to grid col 2, vertically centered with spinner
             float spinnerCenterY = spinnerY + spinnerSize * 0.5f;
             var extents = _hud.GetTextExtents(text);
-            float textX = grid.ColX(2);
+            float textX = grid.ColX(0);
             float textY = spinnerCenterY - (extents.MinY + extents.Height * 0.5f);
             _hud.DrawText(text, textX, textY, new Vector3(0.85f, 0.85f, 0.9f), new Vector3(0f, 0f, 0f), 1.5f);
 

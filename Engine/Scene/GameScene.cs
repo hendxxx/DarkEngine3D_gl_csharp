@@ -81,6 +81,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _pauseMouseWasDown = false;
 
         // ── Exit confirmation dialog ──
+        private const float _confirmDlgScale = 1.4f;
         private bool _confirmingExit = false;
         private int _confirmSelection = 0; // 0 = No, 1 = Yes
         private int _confirmLastHovered = -1; // only update confirm selection from hover when this changes
@@ -979,21 +980,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
-            var cGrid = new GridLayout(w, h);
-            const float confirmBtnW = 160f;
-            const float confirmBtnH = 46f;
-            const float confirmBtnSpacing = 20f;
-            // Center both buttons using grid columns 4-9 (6 cols)
-            float confirmStartX = cGrid.CenterX(4, 9) - (confirmBtnW * 2 + confirmBtnSpacing) * 0.5f;
-            float confirmBtnY = h * 0.5f + 30f;
 
             // ── Mouse hover — only update when hovering a different button ──
             int hoveredIndex = -1;
             for (int i = 0; i < 2; i++)
             {
-                float bx = confirmStartX + i * (confirmBtnW + confirmBtnSpacing);
-                if (mouseX >= bx && mouseX <= bx + confirmBtnW &&
-                    mouseY >= confirmBtnY && mouseY <= confirmBtnY + confirmBtnH)
+                ConfirmDialog.GetButtonRect(w, h, _confirmDlgScale, i,
+                    out float bx, out float btnY, out float btnW, out float btnH);
+                if (mouseX >= bx && mouseX <= bx + btnW &&
+                    mouseY >= btnY && mouseY <= btnY + btnH)
                 {
                     hoveredIndex = i;
                     break;
@@ -1082,18 +1077,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
 
-            float dlgScale = 1.4f;
-
             ConfirmDialog.DrawBox(_hud, w, h,
                 "Exit to Main Menu?", "Any unsaved progress will be lost.",
                 ["NO", "YES"],
                 [new Vector3(0.22f, 0.28f, 0.45f), new Vector3(0.6f, 0.2f, 0.15f)],
                 [new Vector3(0.5f, 0.6f, 1.0f), new Vector3(1.0f, 0.4f, 0.3f)],
                 [new Vector3(0.7f, 0.7f, 0.9f), new Vector3(1.0f, 0.5f, 0.4f)],
-                _confirmSelection, dlgScale);
+                _confirmSelection, _confirmDlgScale);
 
             // Hint — centered below dialog bottom, matching main menu style
-            float dlgH = 160f * dlgScale;
+            float dlgH = ConfirmDialog.BaseDlgH * _confirmDlgScale;
             float dlgBottom = (h - dlgH) * 0.5f + dlgH;
             var chGrid = new GridLayout(w, h);
             float chCenterX = chGrid.CenterX(2, 10);
