@@ -178,20 +178,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             _hud.DrawImage(0, 0, Glfw.WindowWidth, Glfw.WindowHeight, _images[0].ID);
 
-            float margin = 40;
-            float spinnerSize = 128;
+            var grid = new GridLayout(Glfw.WindowWidth, Glfw.WindowHeight);
+            float spinnerSize = 96f;
 
-            // RIGHT-BOTTOM SPINNER — anchor for vertical alignment
-            float spinnerX = Glfw.WindowWidth - spinnerSize - margin;
-            float spinnerY = Glfw.WindowHeight - spinnerSize - margin;
+            // RIGHT-BOTTOM SPINNER — positioned using grid (col 9-11, bottom)
+            float spinnerX = grid.ColX(9);
+            float spinnerY = Glfw.WindowHeight - spinnerSize - grid.Margin;
             _hud.DrawSpinner(spinnerX, spinnerY, spinnerSize, _images[1].ID, dt);
 
-            // LEFT-BOTTOM TEXT — vertically aligned to spinner center using TextExtents
+            // LEFT-BOTTOM TEXT — aligned to grid col 2, vertically centered with spinner
             float spinnerCenterY = spinnerY + spinnerSize * 0.5f;
             var extents = _hud.GetTextExtents(text);
-            float textX = margin;
+            float textX = grid.ColX(2);
             float textY = spinnerCenterY - (extents.MinY + extents.Height * 0.5f);
-            _hud.DrawText(text, textX, textY, new Vector3(0, 0, 0));
+            _hud.DrawText(text, textX, textY, new Vector3(0.85f, 0.85f, 0.9f), new Vector3(0f, 0f, 0f), 1.5f);
 
             OpenGL.SwapBuffer(window);
             OpenGL.PollEvents();

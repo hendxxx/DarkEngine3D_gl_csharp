@@ -65,13 +65,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private float _lastTargetShoulderOffset;
 
-        // ── Pause menu ──
+        // ── Pause menu (responsive grid) ──
         private const int PauseItemCount = 3;
-        private const float PauseBtnW = 300f;
+        private const int PauseBtnColStart = 3;
+        private const int PauseBtnColEnd = 9;
         private const float PauseBtnH = 50f;
         private const float PauseBtnSpacing = 14f;
         private bool _paused = false;
         private int _pauseSelection = 0;
+        private int _pauseLastHovered = -1; // only update pause selection from hover when this changes
         private bool _escapeWasDown = false;
         private bool _pauseUpWasDown = false;
         private bool _pauseDownWasDown = false;
@@ -81,6 +83,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         // ── Exit confirmation dialog ──
         private bool _confirmingExit = false;
         private int _confirmSelection = 0; // 0 = No, 1 = Yes
+        private int _confirmLastHovered = -1; // only update confirm selection from hover when this changes
         private bool _confirmLeftWasDown = false;
         private bool _confirmRightWasDown = false;
         private bool _confirmEnterWasDown = false;
@@ -194,6 +197,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             _paused = false;
             _pauseSelection = 0;
+            _pauseLastHovered = -1;
+            _confirmLastHovered = -1;
 
             Mouse.ShowMouse(false);
 
@@ -917,24 +922,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
+            var grid = new GridLayout(w, h);
+            float pauseBtnW = grid.SpanW(PauseBtnColStart, PauseBtnColEnd);
             float titleY = h * 0.28f;
             float startY = titleY + 70f;
 
-            // ── Mouse hover detection ──
+            // ── Mouse hover detection — only update when hovering a different button ──
             int hoveredIndex = -1;
+            float pauseBx = (w - pauseBtnW) * 0.5f;
             for (int i = 0; i < PauseItemCount; i++)
             {
-                float bx = (w - PauseBtnW) * 0.5f;
                 float by = startY + i * (PauseBtnH + PauseBtnSpacing);
-                if (mouseX >= bx && mouseX <= bx + PauseBtnW &&
+                if (mouseX >= pauseBx && mouseX <= pauseBx + pauseBtnW &&
                     mouseY >= by && mouseY <= by + PauseBtnH)
                 {
                     hoveredIndex = i;
                     break;
                 }
             }
-            if (hoveredIndex >= 0)
+            if (hoveredIndex >= 0 && hoveredIndex != _pauseLastHovered)
                 _pauseSelection = hoveredIndex;
+            _pauseLastHovered = hoveredIndex;
 
             // ── Mouse click ──
             if (mousePressed && !_pauseMouseWasDown)
@@ -971,28 +979,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
-            const float btnW = 160f;
-            const float btnH = 46f;
-            const float btnSpacing = 20f;
-            float panelCY = h * 0.5f;
-            float panelCX = w * 0.5f;
-            float startX = panelCX - (btnW * 2 + btnSpacing) * 0.5f;
-            float btnY = panelCY + 30f;
+            var cGrid = new GridLayout(w, h);
+            const float confirmBtnW = 160f;
+            const float confirmBtnH = 46f;
+            const float confirmBtnSpacing = 20f;
+            // Center both buttons using grid columns 4-9 (6 cols)
+            float confirmStartX = cGrid.CenterX(4, 9) - (confirmBtnW * 2 + confirmBtnSpacing) * 0.5f;
+            float confirmBtnY = h * 0.5f + 30f;
 
-            // ── Mouse hover ──
+            // ── Mouse hover — only update when hovering a different button ──
             int hoveredIndex = -1;
             for (int i = 0; i < 2; i++)
             {
-                float bx = startX + i * (btnW + btnSpacing);
-                if (mouseX >= bx && mouseX <= bx + btnW &&
-                    mouseY >= btnY && mouseY <= btnY + btnH)
+                float bx = confirmStartX + i * (confirmBtnW + confirmBtnSpacing);
+                if (mouseX >= bx && mouseX <= bx + confirmBtnW &&
+                    mouseY >= confirmBtnY && mouseY <= confirmBtnY + confirmBtnH)
                 {
                     hoveredIndex = i;
                     break;
                 }
             }
-            if (hoveredIndex >= 0)
+            if (hoveredIndex >= 0 && hoveredIndex != _confirmLastHovered)
                 _confirmSelection = hoveredIndex;
+            _confirmLastHovered = hoveredIndex;
 
             // ── Mouse click ──
             if (mousePressed && !_confirmMouseWasDown)
@@ -1073,87 +1082,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
 
-            // Dark overlay (same as pause)
-            _hud.DrawBox(0, 0, w, h, new Vector3(0f, 0f, 0f) * 0.45f);
+            float dlgScale = 1.4f;
 
-            // Panel background
-            float panelW = 420f;
-            float panelH = 180f;
-            float panelX = (w - panelW) * 0.5f;
-            float panelY = (h - panelH) * 0.5f;
-            _hud.DrawBox(panelX, panelY, panelW, panelH, new Vector3(0.08f, 0.09f, 0.14f));
+            ConfirmDialog.DrawBox(_hud, w, h,
+                "Exit to Main Menu?", "Any unsaved progress will be lost.",
+                ["NO", "YES"],
+                [new Vector3(0.22f, 0.28f, 0.45f), new Vector3(0.6f, 0.2f, 0.15f)],
+                [new Vector3(0.5f, 0.6f, 1.0f), new Vector3(1.0f, 0.4f, 0.3f)],
+                [new Vector3(0.7f, 0.7f, 0.9f), new Vector3(1.0f, 0.5f, 0.4f)],
+                _confirmSelection, dlgScale);
 
-            // Top accent
-            _hud.DrawBox(panelX, panelY, panelW, 2f, new Vector3(0.4f, 0.5f, 0.9f));
-            // Bottom accent
-            _hud.DrawBox(panelX, panelY + panelH - 2f, panelW, 2f, new Vector3(0.4f, 0.5f, 0.9f) * 0.5f);
-
-            // Question text — centered using GetTextExtents
-            string question = "Exit to Main Menu?";
-            var qExtents = _hud.GetTextExtents(question);
-            float qx = (w - qExtents.Width) * 0.5f;
-            float qy = panelY + 34f;
-            _hud.DrawText(question, qx, qy, new Vector3(0.9f, 0.9f, 1.0f));
-
-            // Sub text — positioned below question using actual text height, centered
-            string sub = "Any unsaved progress will be lost.";
-            var subExtents = _hud.GetTextExtents(sub);
-            float sx = (w - subExtents.Width) * 0.5f;
-            float subY = qy + qExtents.Height + 8f;
-            _hud.DrawText(sub, sx, subY, new Vector3(0.55f, 0.55f, 0.65f));
-
-            // Divider — positioned below sub text
-            float dividerY = subY + subExtents.Height + 14f;
-            _hud.DrawBox(panelX + 20f, dividerY, panelW - 40f, 1f, new Vector3(0.2f, 0.22f, 0.3f));
-
-            // Buttons — positioned below divider
-            const float btnW = 160f;
-            const float btnH = 46f;
-            const float btnSpacing = 20f;
-            float startX = w * 0.5f - (btnW * 2 + btnSpacing) * 0.5f;
-            float btnY = dividerY + 20f;
-
-            string[] labels = ["NO", "YES"];
-            for (int i = 0; i < 2; i++)
-            {
-                float bx = startX + i * (btnW + btnSpacing);
-                bool isSelected = (i == _confirmSelection);
-
-                // Selected glow
-                if (isSelected)
-                {
-                    float pulse = 0.5f + 0.5f * MathF.Sin(_time * 3f);
-                    _hud.DrawBox(bx - 6f, btnY - 4f, btnW + 12f, btnH + 8f,
-                        new Vector3(0.3f, 0.4f, 0.9f) * (0.06f + pulse * 0.05f));
-                }
-
-                // Background
-                _hud.DrawBox(bx, btnY, btnW, btnH,
-                    isSelected ? new Vector3(0.22f, 0.28f, 0.45f) : new Vector3(0.10f, 0.12f, 0.18f));
-
-                // Borders
-                Vector3 border = isSelected
-                    ? new Vector3(0.5f, 0.6f, 1.0f)
-                    : new Vector3(0.15f, 0.18f, 0.25f);
-                _hud.DrawBox(bx, btnY, btnW, 1f, border);
-                _hud.DrawBox(bx, btnY + btnH - 1f, btnW, 1f, border);
-
-                // Side bar for selected
-                if (isSelected)
-                    _hud.DrawBox(bx - 3f, btnY + 4f, 3f, btnH - 8f, new Vector3(0.4f, 0.5f, 0.9f));
-
-                // Text — centered using GetTextExtents (single pass)
-                var extents = _hud.GetTextExtents(labels[i]);
-                float textX = bx + (btnW - extents.Width) * 0.5f;
-                float textY = extents.GetCenteredBaselineY(btnY, btnH);
-                _hud.DrawText(labels[i], textX, textY,
-                    isSelected ? new Vector3(0.95f, 0.95f, 1.0f) : new Vector3(0.6f, 0.6f, 0.7f));
-            }
-
-            // Hint — centered horizontally
-            string hint = "Left/Right to navigate - Enter to select - Esc to go back";
-            _hud.DrawCenteredText(hint, w, panelY + panelH + 20f,
-                new Vector3(0.35f, 0.35f, 0.5f));
+            // Hint — centered below dialog bottom, matching main menu style
+            float dlgH = 160f * dlgScale;
+            float dlgBottom = (h - dlgH) * 0.5f + dlgH;
+            var chGrid = new GridLayout(w, h);
+            float chCenterX = chGrid.CenterX(2, 10);
+            string hint = "Arrow keys or mouse to navigate  -  Enter to select  -  Esc to go back";
+            var chExt = _hud.GetTextExtents(hint);
+            _hud.DrawText(hint, chCenterX - chExt.Width * 0.5f, dlgBottom + 22f,
+                new Vector3(0.35f, 0.35f, 0.45f));
         }
 
         /// <summary>Render the pause menu overlay on top of the frozen game frame.</summary>
@@ -1167,28 +1114,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Dark overlay
             _hud.DrawBox(0, 0, w, h, new Vector3(0f, 0f, 0f) * 0.45f);
 
-            // Title — centered using GetTextExtents
+            // Title — centered using grid
+            var pgGrid = new GridLayout(w, h);
+            float pauseCenterX = pgGrid.CenterX(2, 10);
             string title = "PAUSED";
             var titleExtents = _hud.GetTextExtents(title);
-            float titleX = (w - titleExtents.Width) * 0.5f;
+            float titleX = pauseCenterX - titleExtents.Width * 0.5f;
             float titleY = h * 0.28f;
             _hud.DrawText(title, titleX, titleY, new Vector3(0.9f, 0.9f, 1.0f));
 
-            // Decorative line — positioned below title using text height
+            // Decorative line — positioned below title using text height, centered in grid
             float lineW = 120f;
-            _hud.DrawBox((w - lineW) * 0.5f, titleY + titleExtents.Height + 14f, lineW, 1f, new Vector3(0.4f, 0.5f, 0.9f) * 0.6f);
+            float lineX = pauseCenterX - lineW * 0.5f;
+            _hud.DrawBox(lineX, titleY + titleExtents.Height + 14f, lineW, 1f, new Vector3(0.4f, 0.5f, 0.9f) * 0.6f);
 
-            // Buttons
+            // Buttons (responsive grid width)
             string worldStatus = Config.GameplayConfig.PauseOnEsc ? "RUNNING" : "PAUSED";
             string[] pauseItems = ["RESUME", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
-            float btnW = 300f;
+            var pGrid = new GridLayout(w, h);
+            float pauseBtnW = pGrid.SpanW(PauseBtnColStart, PauseBtnColEnd);
             float btnH = 50f;
             float btnSpacing = 14f;
             float startY = titleY + titleExtents.Height + 40f;
 
             for (int i = 0; i < pauseItems.Length; i++)
             {
-                float bx = (w - btnW) * 0.5f;
+                float bx = (w - pauseBtnW) * 0.5f;
                 float by = startY + i * (btnH + btnSpacing);
                 bool isSelected = (i == _pauseSelection);
 
@@ -1197,20 +1148,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     float glowPulse = 0.5f + 0.5f * MathF.Sin(_time * 3f);
                     float glowAlpha = 0.07f + glowPulse * 0.05f;
-                    _hud.DrawBox(bx - 8f, by - 6f, btnW + 16f, btnH + 12f,
+                    _hud.DrawBox(bx - 8f, by - 6f, pauseBtnW + 16f, btnH + 12f,
                         new Vector3(0.3f, 0.4f, 0.9f) * glowAlpha);
                 }
 
                 // Background
-                _hud.DrawBox(bx, by, btnW, btnH,
+                _hud.DrawBox(bx, by, pauseBtnW, btnH,
                     isSelected ? new Vector3(0.22f, 0.28f, 0.45f) : new Vector3(0.10f, 0.12f, 0.18f));
 
                 // Borders
                 Vector3 border = isSelected
                     ? new Vector3(0.5f, 0.6f, 1.0f)
                     : new Vector3(0.15f, 0.18f, 0.25f);
-                _hud.DrawBox(bx, by, btnW, 1f, border);
-                _hud.DrawBox(bx, by + btnH - 1f, btnW, 1f, border);
+                _hud.DrawBox(bx, by, pauseBtnW, 1f, border);
+                _hud.DrawBox(bx, by + btnH - 1f, pauseBtnW, 1f, border);
 
                 // Selected side bar
                 if (isSelected)
@@ -1220,18 +1171,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 // Text — centered using GetTextExtents (single pass)
                 var extents = _hud.GetTextExtents(pauseItems[i]);
-                float textX = bx + (btnW - extents.Width) * 0.5f;
+                float textX = bx + (pauseBtnW - extents.Width) * 0.5f;
                 float textY = extents.GetCenteredBaselineY(by, btnH);
                 _hud.DrawText(pauseItems[i], textX, textY,
                     isSelected ? new Vector3(0.95f, 0.95f, 1.0f) : new Vector3(0.6f, 0.6f, 0.7f));
             }
 
-            // Bottom hint — centered horizontally
+            // Bottom hint — centered in grid, matching main menu style
             string hint = Config.GameplayConfig.PauseOnEsc
-                ? "Up/Down to navigate - Enter to select - World still runs behind"
-                : "Up/Down to navigate - Enter to select - World paused behind";
-            _hud.DrawCenteredText(hint, w, startY + pauseItems.Length * (btnH + btnSpacing) + 20f,
-                new Vector3(0.35f, 0.35f, 0.5f));
+                ? "Arrow keys or mouse to navigate  -  Enter to select  -  World still runs behind"
+                : "Arrow keys or mouse to navigate  -  Enter to select  -  World paused behind";
+            var phGrid = new GridLayout(w, h);
+            float phCenterX = phGrid.CenterX(2, 10);
+            var phExt = _hud.GetTextExtents(hint);
+            _hud.DrawText(hint, phCenterX - phExt.Width * 0.5f, startY + pauseItems.Length * (btnH + btnSpacing) + 20f,
+                new Vector3(0.35f, 0.35f, 0.45f));
         }
 
         public void Exit()

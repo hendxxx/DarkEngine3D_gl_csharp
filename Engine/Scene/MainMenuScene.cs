@@ -30,6 +30,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private readonly MenuAction[] _menuItems = [MenuAction.StartGame, MenuAction.Settings, MenuAction.Exit];
         private readonly string[] _menuLabels = ["START GAME", "SETTINGS", "EXIT"];
         private int _selectedIndex = 0;
+        private int _menuLastHovered = -1; // only update selection from hover when this changes
         private bool _settingsOpen = false;
 
         // ── Random ──
@@ -40,20 +41,57 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _downWasDown = false;
         private bool _enterWasDown = false;
         private bool _escapeWasDown = false;
+        private bool _leftWasDown = false;
+        private bool _rightWasDown = false;
         private bool _mouseWasDown = false;
 
-        // ── Layout constants ──
-        private const float ButtonWidth = 340f;
+        // ── Grid-based layout (responsive) ──
+        private const int BtnColStart = 3;        // main menu buttons start column
+        private const int BtnColEnd = 9;           // main menu buttons end column
         private const float ButtonHeight = 58f;
         private const float ButtonSpacing = 16f;
 
         // ── Interactive Settings ──
         private int _settingsSelection = 0;
+        private int _settingsLastHoveredRow = -1; // only update selection from hover when this changes
         private bool _settingsUpWasDown = false;
         private bool _settingsDownWasDown = false;
         private bool _settingsEnterWasDown = false;
         private bool _settingsMouseWasDown = false;
         private bool _settingsEscapeWasDown = false;
+        private bool _settingsLeftWasDown = false;
+        private bool _settingsRightWasDown = false;
+
+        // ── Snapshot for cancel / unsaved-changes detection ──
+        private readonly int[] _savedSettingValues = [0, 0, 0, 3, 1, 0, 3, 0, 0];
+        private bool _hasUnsavedChanges = false;
+
+        // ── Toast notification ──
+        private string _notificationText = "";
+        private float _notificationTimer = 0f;
+        private const float NotificationDuration = 3f;
+
+        // ── ESC confirm dialog (settings) ──
+        private bool _confirmActive = false;
+        private int _confirmSelection = 0;
+        private int _confirmLastHovered = -1; // only update confirm selection from hover when this changes
+        private bool _confirmUpWasDown = false;
+        private bool _confirmDownWasDown = false;
+        private bool _confirmLeftWasDown = false;
+        private bool _confirmRightWasDown = false;
+        private bool _confirmEnterWasDown = false;
+        private bool _confirmEscapeWasDown = false;
+        private bool _confirmMouseWasDown = false;
+
+        // ── Exit confirm dialog (main menu) ──
+        private bool _exitConfirmActive = false;
+        private int _exitConfirmSelection = 0; // 0 = Cancel, 1 = Yes
+        private int _exitConfirmLastHovered = -1;
+        private bool _exitConfirmLeftWasDown = false;
+        private bool _exitConfirmRightWasDown = false;
+        private bool _exitConfirmEnterWasDown = false;
+        private bool _exitConfirmEscapeWasDown = false;
+        private bool _exitConfirmMouseWasDown = false;
 
         private readonly string[] _settingLabels =
         [
@@ -65,6 +103,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             "FOV",
             "Mouse Sensitivity",
             "APPLY & SAVE",
+            "CANCEL",
         ];
 
         private readonly string[][] _settingOptions =
@@ -76,12 +115,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ["Software", "HiZ", "OFF"],
             ["60", "70", "80", "90", "100", "110"],
             ["0.25×", "0.50×", "0.75×", "1.0×", "1.5×", "2.0×", "3.0×"],
-            [""],   // Apply button — single empty option, no cycling
+            [""],   // Apply button
+            [""],   // Cancel button
         ];
 
-        // Current value index for each setting (last = 0 always for Apply)
-        private readonly int[] _settingValues = [0, 0, 0, 3, 1, 0, 3, 0];
-        // 0=Res,1=FS,2=VSync,3=Shadow,4=OC,5=FOV,6=Mouse,7=Apply
+        // Current value index for each setting (last 2 = 0 always for Apply/Cancel)
+        private readonly int[] _settingValues = [0, 0, 0, 3, 1, 0, 3, 0, 0];
+        // 0=Res,1=FS,2=VSync,3=Shadow,4=OC,5=FOV,6=Mouse,7=Apply,8=Cancel
 
         // ── Shared lookup tables (avoid duplication) ──
         private static readonly int[][] ResolutionValues = [[1920, 1080], [1280, 720], [2560, 1440]];
@@ -94,6 +134,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         ];
 
         // ── Settings panel layout (shared between Update hover + RenderSettings) ──
+        private const int SettingsColStart = 2;
+        private const int SettingsColEnd = 10;
+        private const float SettingsPanelH = 540f;
+
         private readonly struct SettingsLayout
         {
             public readonly float PanelW, PanelH;
@@ -105,9 +149,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             public SettingsLayout(int screenW, int screenH, HUD hud)
             {
-                PanelW = 500f;
-                PanelH = 430f;
-                PanelX = (screenW - PanelW) * 0.5f;
+                var grid = new GridLayout(screenW, screenH);
+                PanelW = grid.SpanW(SettingsColStart, SettingsColEnd);
+                PanelH = SettingsPanelH;
+                PanelX = grid.ColX(SettingsColStart);
                 PanelY = (screenH - PanelH) * 0.5f;
                 TitleH = hud.MeasureTextHeight("SETTINGS");
                 DividerY = PanelY + 20f + TitleH + 14f;
@@ -162,15 +207,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Reset all edge-detection flags to prevent held-down keys
             // (e.g. Enter/Esc from confirm dialog) from triggering immediate actions.
-            _upWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
-            _downWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
-            _enterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            _upWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP)Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            _downWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN)Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            _enterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER)Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
             _escapeWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+            _leftWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            _rightWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
             _mouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
             _settingsUpWasDown = _upWasDown;
             _settingsDownWasDown = _downWasDown;
             _settingsEnterWasDown = _enterWasDown;
             _settingsEscapeWasDown = _escapeWasDown;
+            _settingsLeftWasDown = _leftWasDown;
+            _settingsRightWasDown = _rightWasDown;
             _settingsMouseWasDown = _mouseWasDown;
 
             // ── Initialize particles ──
@@ -218,6 +267,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (_settingValues[6] >= _settingOptions[6].Length) _settingValues[6] = _settingOptions[6].Length - 1;
             ApplyMouseSensitivity(_settingValues[6]);
 
+            // ── Save snapshot for cancel detection ──
+            Array.Copy(_settingValues, _savedSettingValues, _settingValues.Length);
+            _hasUnsavedChanges = false;
+            _confirmActive = false;
+            _confirmLastHovered = -1;
+            _exitConfirmActive = false;
+            _exitConfirmSelection = 0;
+            _exitConfirmLastHovered = -1;
+            _menuLastHovered = -1;
+            _settingsLastHoveredRow = -1;
+            _notificationText = "";
+
             Console.WriteLine("[MainMenu] Entered.");
         }
 
@@ -250,7 +311,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             Mouse.GetCursorPosition(out double mouseX, out double mouseY);
             bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
 
-            // Calculate button positions (centered)
+            // Calculate button positions (centered, responsive width)
+            var btnGrid = new GridLayout(Glfw.WindowWidth, Glfw.WindowHeight);
+            float btnWidth = btnGrid.SpanW(BtnColStart, BtnColEnd);
             float totalHeight = _menuItems.Length * ButtonHeight + (_menuItems.Length - 1) * ButtonSpacing;
             float startY = (Glfw.WindowHeight - totalHeight) * 0.5f;
 
@@ -258,26 +321,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int hoveredIndex = -1;
             if (!_settingsOpen)
             {
+                float bx = (Glfw.WindowWidth - btnWidth) * 0.5f;
                 for (int i = 0; i < _menuItems.Length; i++)
                 {
-                    float bx = (Glfw.WindowWidth - ButtonWidth) * 0.5f;
                     float by = startY + i * (ButtonHeight + ButtonSpacing);
-                    if (mouseX >= bx && mouseX <= bx + ButtonWidth &&
+                    if (mouseX >= bx && mouseX <= bx + btnWidth &&
                         mouseY >= by && mouseY <= by + ButtonHeight)
                     {
                         hoveredIndex = i;
                         break;
                     }
                 }
-                if (hoveredIndex >= 0)
-                    _selectedIndex = hoveredIndex;
             }
 
-            // ── Mouse click ──
+            // ── Only update main menu selection from hover when no confirm dialog is blocking ──
+            if (hoveredIndex >= 0 && hoveredIndex != _menuLastHovered && !_exitConfirmActive)
+                _selectedIndex = hoveredIndex;
+            _menuLastHovered = hoveredIndex;
+
+            // ── Mouse click — only for main menu when no confirm dialog is active ──
             if (mousePressed && !_mouseWasDown)
             {
                 _mouseWasDown = true;
-                if (hoveredIndex >= 0 && !_settingsOpen)
+                if (hoveredIndex >= 0 && !_settingsOpen && !_exitConfirmActive)
                 {
                     ExecuteMenuAction(_menuItems[hoveredIndex]);
                 }
@@ -286,33 +352,170 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _mouseWasDown = false;
 
             // ── Keyboard navigation ──
-            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
-            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
-            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP)Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN)Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER)Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
             bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
 
             if (_settingsOpen)
             {
-                // ── Settings navigation ──
-                if (escapeDown && !_settingsEscapeWasDown)
-                    _settingsOpen = false;
+                // ── Confirm dialog is active ──
+                if (_confirmActive)
+                {
+                    // Up/Down/Left/Right to navigate
+                    if ((upDown && !_confirmUpWasDown)(leftDown && !_confirmLeftWasDown))
+                        _confirmSelection = (_confirmSelection - 1 + 2) % 2;
+                    if ((downDown && !_confirmDownWasDown)(rightDown && !_confirmRightWasDown))
+                        _confirmSelection = (_confirmSelection + 1) % 2;
 
-                // Mouse hover in settings panel
+                    // Mouse hover on dialog buttons — only update when hovering a different button
+                    {
+                        float dlgW = 380f;
+                        float dlgH = 160f;
+                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
+                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
+                        float btnW2 = 150f;
+                        float btnH2 = 40f;
+                        float btnGap = 20f;
+                        float totalBtnW = btnW2 * 2 + btnGap;
+                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
+                        float btnY2 = dlgY + 95f;
+
+                        int hoveredConfirm = -1;
+                        for (int b = 0; b < 2; b++)
+                        {
+                            float bx2 = btnStartX + b * (btnW2 + btnGap);
+                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
+                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            {
+                                hoveredConfirm = b;
+                                break;
+                            }
+                        }
+                        if (hoveredConfirm >= 0 && hoveredConfirm != _confirmLastHovered)
+                            _confirmSelection = hoveredConfirm;
+                        _confirmLastHovered = hoveredConfirm;
+                    }
+
+                    // ESC → cancel (keep editing)
+                    if (escapeDown && !_confirmEscapeWasDown)
+                        _confirmActive = false;
+
+                    // Enter/Space to confirm
+                    bool confirmActivate = (enterDown && !_confirmEnterWasDown);
+                    if (confirmActivate)
+                    {
+                        if (_confirmSelection == 0) // Discard
+                        {
+                            // Reset to snapshot and close
+                            Array.Copy(_savedSettingValues, _settingValues, _settingValues.Length);
+                            _hasUnsavedChanges = false;
+                            _confirmActive = false;
+                            _settingsOpen = false;
+                            ApplyCurrentSettingsImmediate(); // re-apply old values
+                        }
+                        else // Keep editing
+                        {
+                            _confirmActive = false;
+                        }
+                    }
+
+                    // Mouse click on dialog buttons
+                    if (mousePressed && !_confirmMouseWasDown)
+                    {
+                        _confirmMouseWasDown = true;
+                        float dlgW = 380f;
+                        float dlgH = 160f;
+                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
+                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
+                        float btnW2 = 150f;
+                        float btnH2 = 40f;
+                        float btnGap = 20f;
+                        float totalBtnW = btnW2 * 2 + btnGap;
+                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
+                        float btnY2 = dlgY + 95f;
+
+                        for (int b = 0; b < 2; b++)
+                        {
+                            float bx2 = btnStartX + b * (btnW2 + btnGap);
+                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
+                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            {
+                                _confirmSelection = b;
+                                if (b == 0) // Discard
+                                {
+                                    Array.Copy(_savedSettingValues, _settingValues, _settingValues.Length);
+                                    _hasUnsavedChanges = false;
+                                    _confirmActive = false;
+                                    _settingsOpen = false;
+                                    ApplyCurrentSettingsImmediate();
+                                }
+                                else // Keep editing
+                                {
+                                    _confirmActive = false;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if (!mousePressed)
+                        _confirmMouseWasDown = false;
+
+                    _confirmUpWasDown = upDown;
+                    _confirmDownWasDown = downDown;
+                    _confirmLeftWasDown = leftDown;
+                    _confirmRightWasDown = rightDown;
+                    _confirmEnterWasDown = enterDown;
+                    _confirmEscapeWasDown = escapeDown;
+                    _mouseWasDown = mousePressed;
+
+                    // Still update main-menu flags to prevent bleed
+                    _upWasDown = upDown;
+                    _downWasDown = downDown;
+                    _leftWasDown = leftDown;
+                    _rightWasDown = rightDown;
+                    _enterWasDown = enterDown;
+                    _escapeWasDown = escapeDown;
+                    return;
+                }
+
+                // ── ESC → confirm if dirty, else close ──
+                if (escapeDown && !_settingsEscapeWasDown)
+                {
+                    if (_hasUnsavedChanges)
+                    {
+                        _confirmActive = true;
+                        _confirmSelection = 1; // default to "Keep editing"
+                        _confirmEscapeWasDown = escapeDown; // prevent held ESC from immediately closing confirm dialog
+                    }
+                    else
+                    {
+                        _settingsOpen = false;
+                    }
+                }
+
+                // ── Mouse hover in settings panel — only update selection when hovering a different row ──
                 if (_hud != null)
                 {
                     var lay = new SettingsLayout(Glfw.WindowWidth, Glfw.WindowHeight, _hud);
+                    int hoveredRow = -1;
                     for (int i = 0; i < _settingLabels.Length; i++)
                     {
                         float itemY = lay.ListStartY + i * (lay.LineH + lay.LineGap);
-                        // Hover zone exactly matches the visual row spacing:
-                        // [itemY, itemY + lineH + lineGap) = 38px per item, no gaps, no overlap
-                        if (mouseX >= lay.PanelX + 20f && mouseX <= lay.PanelX + lay.PanelW - 20f &&
+                        if (mouseX >= lay.PanelX && mouseX <= lay.PanelX + lay.PanelW &&
                             mouseY >= itemY && mouseY < itemY + lay.LineH + lay.LineGap)
                         {
-                            _settingsSelection = i;
+                            hoveredRow = i;
                             break;
                         }
                     }
+                    if (hoveredRow >= 0 && hoveredRow != _settingsLastHoveredRow)
+                    {
+                        _settingsSelection = hoveredRow;
+                    }
+                    _settingsLastHoveredRow = hoveredRow;
                 }
 
                 if (upDown && !_settingsUpWasDown)
@@ -320,15 +523,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (downDown && !_settingsDownWasDown)
                     _settingsSelection = (_settingsSelection + 1) % _settingLabels.Length;
 
-                // Enter/Space/Click → cycle current setting
-                bool settingsActivate = (enterDown && !_settingsEnterWasDown) || (mousePressed && !_settingsMouseWasDown);
+                // LEFT/RIGHT → cycle selected setting backward/forward
+                if (leftDown && !_settingsLeftWasDown)
+                    CycleSetting(_settingsSelection, -1);
+                if (rightDown && !_settingsRightWasDown)
+                    CycleSetting(_settingsSelection, 1);
+
+                // Enter/Space/Click → cycle current setting forward
+                bool settingsActivate = (enterDown && !_settingsEnterWasDown)(mousePressed && !_settingsMouseWasDown);
                 if (settingsActivate)
                 {
-                    CycleSetting(_settingsSelection);
+                    CycleSetting(_settingsSelection, 1);
                 }
 
                 _settingsUpWasDown = upDown;
                 _settingsDownWasDown = downDown;
+                _settingsLeftWasDown = leftDown;
+                _settingsRightWasDown = rightDown;
                 _settingsEnterWasDown = enterDown;
                 _settingsEscapeWasDown = escapeDown;
                 if (!mousePressed) _settingsMouseWasDown = false;
@@ -339,10 +550,119 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _downWasDown = downDown;
                 _enterWasDown = enterDown;
                 _escapeWasDown = escapeDown;
+                _leftWasDown = leftDown;
+                _rightWasDown = rightDown;
                 return;
             }
             else
             {
+                // ── Exit confirm dialog ──
+                if (_exitConfirmActive)
+                {
+                    // Mouse hover on dialog buttons — only update when hovering a different button
+                    {
+                        float dlgW = 380f;
+                        float dlgH = 160f;
+                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
+                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
+                        float btnW2 = 150f;
+                        float btnH2 = 40f;
+                        float btnGap = 20f;
+                        float totalBtnW = btnW2 * 2 + btnGap;
+                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
+                        float btnY2 = dlgY + 90f;
+
+                        int hoveredExit = -1;
+                        for (int b = 0; b < 2; b++)
+                        {
+                            float bx2 = btnStartX + b * (btnW2 + btnGap);
+                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
+                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            {
+                                hoveredExit = b;
+                                break;
+                            }
+                        }
+                        if (hoveredExit >= 0 && hoveredExit != _exitConfirmLastHovered)
+                            _exitConfirmSelection = hoveredExit;
+                        _exitConfirmLastHovered = hoveredExit;
+                    }
+
+                    // Left/Right to navigate
+                    if (leftDown && !_exitConfirmLeftWasDown)
+                        _exitConfirmSelection = 0;
+                    if (rightDown && !_exitConfirmRightWasDown)
+                        _exitConfirmSelection = 1;
+
+                    // Enter/Space to confirm
+                    if (enterDown && !_exitConfirmEnterWasDown)
+                    {
+                        if (_exitConfirmSelection == 1) // Yes → exit
+                        {
+                            Console.WriteLine("[MainMenu] Exiting...");
+                            _sceneManager.Stop();
+                        }
+                        else // Cancel
+                        {
+                            _exitConfirmActive = false;
+                        }
+                    }
+
+                    // ESC → cancel
+                    if (escapeDown && !_exitConfirmEscapeWasDown)
+                        _exitConfirmActive = false;
+
+                    // Mouse click
+                    if (mousePressed && !_exitConfirmMouseWasDown)
+                    {
+                        _exitConfirmMouseWasDown = true;
+                        float dlgW = 380f;
+                        float dlgH = 160f;
+                        float dlgX = (Glfw.WindowWidth - dlgW) * 0.5f;
+                        float dlgY = (Glfw.WindowHeight - dlgH) * 0.5f;
+                        float btnW2 = 150f;
+                        float btnH2 = 40f;
+                        float btnGap = 20f;
+                        float totalBtnW = btnW2 * 2 + btnGap;
+                        float btnStartX = dlgX + (dlgW - totalBtnW) * 0.5f;
+                        float btnY2 = dlgY + 90f;
+
+                        for (int b = 0; b < 2; b++)
+                        {
+                            float bx2 = btnStartX + b * (btnW2 + btnGap);
+                            if (mouseX >= bx2 && mouseX <= bx2 + btnW2 &&
+                                mouseY >= btnY2 && mouseY <= btnY2 + btnH2)
+                            {
+                                if (b == 1) // Yes → exit
+                                {
+                                    Console.WriteLine("[MainMenu] Exiting...");
+                                    _sceneManager.Stop();
+                                }
+                                else // Cancel
+                                {
+                                    _exitConfirmActive = false;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if (!mousePressed)
+                        _exitConfirmMouseWasDown = false;
+
+                    _exitConfirmLeftWasDown = leftDown;
+                    _exitConfirmRightWasDown = rightDown;
+                    _exitConfirmEnterWasDown = enterDown;
+                    _exitConfirmEscapeWasDown = escapeDown;
+
+                    _upWasDown = upDown;
+                    _downWasDown = downDown;
+                    _enterWasDown = enterDown;
+                    _escapeWasDown = escapeDown;
+                    _leftWasDown = leftDown;
+                    _rightWasDown = rightDown;
+                    return;
+                }
+
                 if (upDown && !_upWasDown)
                     _selectedIndex = (_selectedIndex - 1 + _menuItems.Length) % _menuItems.Length;
                 if (downDown && !_downWasDown)
@@ -355,6 +675,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _downWasDown = downDown;
             _enterWasDown = enterDown;
             _escapeWasDown = escapeDown;
+            _leftWasDown = leftDown;
+            _rightWasDown = rightDown;
         }
 
         private void UpdateParticles(float dt)
@@ -378,7 +700,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 p.Alpha = Math.Clamp(p.Alpha, 0.05f, 0.7f);
 
                 // Respawn when off-screen
-                if (p.Y < -10f || p.X < -50f || p.X > w + 50f)
+                if (p.Y < -10fp.X < -50fp.X > w + 50f)
                 {
                     p.X = (float)(_rng.NextDouble() * w);
                     p.Y = h + (float)(_rng.NextDouble() * 20f);
@@ -406,8 +728,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     break;
 
                 case MenuAction.Exit:
-                    Console.WriteLine("[MainMenu] Exiting...");
-                    _sceneManager.Stop();
+                    _exitConfirmActive = true;
+                    _exitConfirmSelection = 0; // default to Cancel
+                    // Prevent held Enter/Space from immediately confirming the dialog
+                    nint exitWindow = Glfw.GetWindow();
+                    _exitConfirmEnterWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ENTER)
+                                           Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_SPACE);
+                    _exitConfirmEscapeWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ESCAPE);
                     break;
             }
         }
@@ -483,86 +810,90 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             Console.WriteLine($"[Settings] Applied: Resolution={resLabels[res]}, Fullscreen={fs}, VSync={vs}, ShadowQuality={sq}, OC={oc}, FOV={fovVal}, MouseSens={_settingOptions[6][_settingValues[6]]}");
         }
 
-        /// <summary>Cycle the given setting to its next option and apply the change.</summary>
-        private void CycleSetting(int index)
+        /// <summary>Re-apply the current _settingValues to render state (no save to JSON).
+        /// Used after cancel to restore the old values from snapshot.</summary>
+        private void ApplyCurrentSettingsImmediate()
+        {
+            int res = _settingValues[0];
+            bool fs = _settingValues[1] == 1;
+            bool vs = _settingValues[2] == 1;
+            int sq = _settingValues[3];
+            int oc = _settingValues[4];
+            int fovVal = int.Parse(_settingOptions[5][_settingValues[5]]);
+
+            Config.ShadowConfig.CascadeSizes = CascadePresets[sq];
+            ApplyOcclusionMode(oc);
+            _camera.BaseFoV = fovVal;
+            _camera.FoV = fovVal;
+            ApplyMouseSensitivity(_settingValues[6]);
+            Glfw.SetWindowSize(ResolutionValues[res][0], ResolutionValues[res][1]);
+            Glfw.SetSwapInterval(vs ? 1 : 0);
+            Glfw.SetFullscreen(fs);
+        }
+
+        /// <summary>Cycle the given setting forward or backward — no live apply.
+        /// Changes are only committed when the user presses APPLY & SAVE (index 7).
+        /// Use direction = 1 for next, -1 for previous.</summary>
+        private void CycleSetting(int index, int direction = 1)
         {
             // ── APPLY & SAVE button — execute, don't cycle ──
             if (index == 7)
             {
                 ApplySettings();
+                // Update snapshot after apply so cancel uses new saved values
+                Array.Copy(_settingValues, _savedSettingValues, _settingValues.Length);
+                _hasUnsavedChanges = false;
+                ShowNotification("Settings applied!");
                 return;
             }
 
-            _settingValues[index] = (_settingValues[index] + 1) % _settingOptions[index].Length;
-            int val = _settingValues[index];
-
-            switch (index)
+            // ── CANCEL button — discard changes ──
+            if (index == 8)
             {
-                case 0: // Resolution — live apply
-                    {
-                        int w = ResolutionValues[val][0], h = ResolutionValues[val][1];
-                        Glfw.SetWindowSize(w, h);
-                        Console.WriteLine($"[Settings] Resolution → {_settingOptions[index][val]} (live)");
-                    }
-                    break;
-
-                case 1: // Fullscreen — live toggle
-                    Glfw.SetFullscreen(val == 1);
-                    Console.WriteLine($"[Settings] Fullscreen → {_settingOptions[index][val]} (live)");
-                    break;
-
-                case 2: // VSync — live apply
-                    Glfw.SetSwapInterval(val); // 0=OFF, 1=ON
-                    Console.WriteLine($"[Settings] VSync → {_settingOptions[index][val]} (live)");
-                    break;
-
-                case 3: // Shadow Quality — live apply
-                    Config.ShadowConfig.CascadeSizes = CascadePresets[val];
-                    Console.WriteLine($"[Settings] Shadow Quality → {_settingOptions[index][val]} (live)");
-                    break;
-
-                case 4: // OC Mode — live apply
-                    ApplyOcclusionMode(val);
-                    Console.WriteLine($"[Settings] OC Mode → {_settingOptions[index][val]} (live)");
-                    break;
-
-                case 5: // FOV — live apply
-                    {
-                        int fovVal = int.Parse(_settingOptions[index][val]);
-                        _camera.BaseFoV = fovVal;
-                        _camera.FoV = fovVal;
-                        Console.WriteLine($"[Settings] FOV → {_settingOptions[index][val]}° (live)");
-                    }
-                    break;
-
-                case 6: // Mouse Sensitivity — live apply
-                    ApplyMouseSensitivity(val);
-                    Console.WriteLine($"[Settings] Mouse Sensitivity → {_settingOptions[index][val]} (live)");
-                    break;
-
-                default:
-                    Console.WriteLine($"[Settings] {_settingLabels[index]} → {_settingOptions[index][val]}");
-                    break;
+                CancelSettings();
+                return;
             }
 
-            // ── Auto-save to JSON ──
-            var data = new SettingsData
-            {
-                Resolution = _settingValues[0],
-                Fullscreen = _settingValues[1] == 1,
-                VSync = _settingValues[2] == 1,
-                ShadowQuality = _settingValues[3],
-                OcclusionMode = _settingValues[4],
-                Fov = int.Parse(_settingOptions[5][_settingValues[5]]),
-                MouseSensitivity = _settingValues[6],
-            };
-            SettingsSave.Save(data);
+            // Cycle the value index — no live update, no auto-save.
+            int count = _settingOptions[index].Length;
+            _settingValues[index] = (_settingValues[index] + direction + count) % count;
+            int val = _settingValues[index];
+
+            // Track dirty state
+            _hasUnsavedChanges = HasChanges();
+            Console.WriteLine($"[Settings] {_settingLabels[index]} → {_settingOptions[index][val]} (pending)");
+        }
+
+        /// <summary>Show a toast notification that auto-fades after NotificationDuration.</summary>
+        private void ShowNotification(string text)
+        {
+            _notificationText = text;
+            _notificationTimer = NotificationDuration;
+        }
+
+        /// <summary>Reset settings to the saved snapshot and close.</summary>
+        private void CancelSettings()
+        {
+            Array.Copy(_savedSettingValues, _settingValues, _settingValues.Length);
+            _hasUnsavedChanges = false;
+            _settingsOpen = false;
+            ApplyCurrentSettingsImmediate();
+            Console.WriteLine("[Settings] Cancelled — reverted to saved values.");
+        }
+
+        /// <summary>Compare current values with saved snapshot to detect unsaved changes.</summary>
+        private bool HasChanges()
+        {
+            for (int i = 0; i < _settingValues.Length; i++)
+                if (_settingValues[i] != _savedSettingValues[i])
+                    return true;
+            return false;
         }
 
         public void Render()
         {
             GL.ClearColor(0.04f, 0.04f, 0.06f, 1.0f);
-            GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+            GL.Clear(Const.GL_COLOR_BUFFER_BIT Const.GL_DEPTH_BUFFER_BIT);
 
             if (_hud == null) return;
 
@@ -603,7 +934,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             //  LAYER 6: Title
             // ==========================================
 
-            RenderTitle(w);
+            RenderTitle(w, h);
+
+            // ── Exit confirm dialog (rendered before settings check) ──
+            if (_exitConfirmActive)
+            {
+                RenderExitConfirmDialog(w, h);
+                return;
+            }
 
             // ── Settings overlay ──
             if (_settingsOpen)
@@ -624,7 +962,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             string hint = "Arrow keys or mouse to navigate - Enter to select";
             float hintY = h - 45f;
-            _hud.DrawCenteredText(hint, w, hintY, new Vector3(0.35f, 0.35f, 0.45f));
+            var grid = new GridLayout(w, h);
+            float hintCenterX = grid.CenterX(2, 10);
+            var hintExt = _hud.GetTextExtents(hint);
+            _hud.DrawText(hint, hintCenterX - hintExt.Width * 0.5f, hintY, new Vector3(0.35f, 0.35f, 0.45f));
+
         }
 
         // =====================================================
@@ -760,42 +1102,64 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         //  UI RENDERERS
         // =====================================================
 
-        private void RenderTitle(int w)
+        private void RenderTitle(int w, int h)
         {
             if (_hud == null) return;
+
+            var grid = new GridLayout(w, h);
+            float titleCenterX = grid.CenterX(2, 10);
 
             string title = "DARK ENGINE 3D";
             float titleY = 70f;
 
             // Title shadow
-            _hud.DrawCenteredText(title, w, titleY + 2, new Vector3(0, 0, 0));
+            var titleExt = _hud.GetTextExtents(title);
+            _hud.DrawText(title, titleCenterX - titleExt.Width * 0.5f, titleY + 2, new Vector3(0, 0, 0));
 
             // Title main — pulsing gold
             float pulse = 0.85f + 0.15f * MathF.Sin(_totalTime * 1.2f);
-            _hud.DrawCenteredText(title, w, titleY, new Vector3(0.95f * pulse, 0.75f * pulse, 0.15f * pulse));
+            _hud.DrawText(title, titleCenterX - titleExt.Width * 0.5f, titleY, new Vector3(0.95f * pulse, 0.75f * pulse, 0.15f * pulse));
 
-            // Decorative line under title
+            // Decorative line under title — centered in grid span
             float lineW = 200f + 40f * MathF.Sin(_totalTime * 0.5f);
-            float lineX = (w - lineW) * 0.5f;
+            float lineX = titleCenterX - lineW * 0.5f;
             float lineY = titleY + 42f;
             float lineAlpha = 0.3f + 0.2f * MathF.Sin(_totalTime * 0.7f);
             _hud.DrawBox(lineX, lineY, lineW, 1f, new Vector3(0.4f, 0.5f, 0.9f) * lineAlpha);
 
             // Subtitle
-            string subtitle = "v1.0 — Made with ❤ in C# & OpenGL";
-            _hud.DrawCenteredText(subtitle, w, titleY + 50f, new Vector3(0.5f, 0.5f, 0.6f));
+            string subtitle = "v1.0 - Made with love in C# & OpenGL";
+            var subExt = _hud.GetTextExtents(subtitle);
+            _hud.DrawText(subtitle, titleCenterX - subExt.Width * 0.5f, titleY + 50f, new Vector3(0.5f, 0.5f, 0.6f));
+        }
+
+
+
+        private void RenderExitConfirmDialog(int w, int h)
+        {
+            if (_hud == null) return;
+
+            ConfirmDialog.DrawBox(_hud, w, h,
+                "Exit Game?", "Are you sure you want to exit?",
+                ["CANCEL", "YES"],
+                [new Vector3(0.22f, 0.28f, 0.45f), new Vector3(0.6f, 0.2f, 0.15f)],
+                [new Vector3(0.5f, 0.6f, 1.0f), new Vector3(1.0f, 0.4f, 0.3f)],
+                [new Vector3(0.7f, 0.7f, 0.9f), new Vector3(1.0f, 0.5f, 0.4f)],
+                _exitConfirmSelection);
         }
 
         private void RenderButtons(int w, int h)
         {
             if (_hud == null) return;
 
+            var btnGrid = new GridLayout(w, h);
+            float btnWidth = btnGrid.SpanW(BtnColStart, BtnColEnd);
             float totalHeight = _menuItems.Length * ButtonHeight + (_menuItems.Length - 1) * ButtonSpacing;
             float startY = (h - totalHeight) * 0.5f;
 
             for (int i = 0; i < _menuItems.Length; i++)
             {
-                float bx = (w - ButtonWidth) * 0.5f;
+                float bx = (w - btnWidth) * 0.5f;
                 float by = startY + i * (ButtonHeight + ButtonSpacing);
                 bool isSelected = (i == _selectedIndex);
 
@@ -806,7 +1170,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     float glowExpand = 10f + glowPulse * 6f;
                     float glowAlpha = 0.08f + glowPulse * 0.06f;
                     _hud.DrawBox(bx - glowExpand, by - glowExpand,
-                        ButtonWidth + glowExpand * 2, ButtonHeight + glowExpand * 2,
+                        btnWidth + glowExpand * 2, ButtonHeight + glowExpand * 2,
                         new Vector3(0.3f, 0.4f, 0.9f) * glowAlpha);
                 }
 
@@ -814,14 +1178,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 Vector3 bgColor = isSelected
                     ? new Vector3(0.22f, 0.28f, 0.45f)
                     : new Vector3(0.10f, 0.12f, 0.18f);
-                _hud.DrawBox(bx, by, ButtonWidth, ButtonHeight, bgColor);
+                _hud.DrawBox(bx, by, btnWidth, ButtonHeight, bgColor);
 
                 // Button borders (top and bottom accent lines)
                 Vector3 borderColor = isSelected
                     ? new Vector3(0.5f, 0.6f, 1.0f)
                     : new Vector3(0.15f, 0.18f, 0.25f);
-                _hud.DrawBox(bx, by, ButtonWidth, 1f, borderColor);
-                _hud.DrawBox(bx, by + ButtonHeight - 1f, ButtonWidth, 1f, borderColor);
+                _hud.DrawBox(bx, by, btnWidth, 1f, borderColor);
+                _hud.DrawBox(bx, by + ButtonHeight - 1f, btnWidth, 1f, borderColor);
 
                 // Selected: animated side bar
                 if (isSelected)
@@ -836,7 +1200,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     ? new Vector3(0.95f, 0.95f, 1.0f)
                     : new Vector3(0.6f, 0.6f, 0.7f);
                 var extents = _hud.GetTextExtents(_menuLabels[i]);
-                float textX = bx + (ButtonWidth - extents.Width) * 0.5f;
+                float textX = bx + (btnWidth - extents.Width) * 0.5f;
                 float textY = extents.GetCenteredBaselineY(by, ButtonHeight);
                 _hud.DrawText(_menuLabels[i], textX, textY, textColor);
 
@@ -865,62 +1229,100 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Bottom accent bar
             _hud.DrawBox(panelX, panelY + panelH - 2f, panelW, 2f, new Vector3(0.4f, 0.5f, 0.9f) * 0.5f);
 
-            // Title
-            float titleY = panelY + 20f;
-            _hud.DrawText("SETTINGS", panelX + 20f, titleY, new Vector3(0.9f, 0.9f, 1.0f));
+            // Title with dirty indicator
+            string titleText = _hasUnsavedChanges ? "SETTINGS  *" : "SETTINGS";
+            float titleY = panelY + 40f;
+            _hud.DrawText(titleText, panelX + 20f, titleY, new Vector3(0.9f, 0.9f, 1.0f));
 
             // Divider — positioned based on title text height
             _hud.DrawBox(panelX + 20f, dividerY, panelW - 40f, 1f, new Vector3(0.2f, 0.22f, 0.3f));
 
-            // Setting items — interactive, selectable, cycleable
+            // ── Notification toast (below title) ──
+            if (_notificationTimer > 0f)
+            {
+                float fadeAlpha = Math.Min(1f, _notificationTimer);
+                float notifY = dividerY + 8f;
+                string notifText = _notificationText;
+                var notifExt = _hud.GetTextExtents(notifText);
+                float notifX = panelX + (panelW - notifExt.Width) * 0.5f;
+                _hud.DrawText(notifText, notifX, notifY,
+                    new Vector3(0.3f, 0.9f, 0.4f) * fadeAlpha);
+                _notificationTimer -= _deltaTime;
+            }
 
+            // ── Confirm dialog overlay ──
+            if (_confirmActive)
+            {
+                ConfirmDialog.DrawBox(_hud, w, h,
+                    "Unsaved Changes", "Discard changes?",
+                    ["DISCARD", "KEEP EDITING"],
+                    [new Vector3(0.6f, 0.2f, 0.15f), new Vector3(0.15f, 0.35f, 0.15f)],
+                    [new Vector3(1.0f, 0.4f, 0.3f), new Vector3(0.4f, 1.0f, 0.4f)],
+                    [new Vector3(1.0f, 0.5f, 0.4f), new Vector3(0.5f, 1.0f, 0.5f)],
+                    _confirmSelection);
+                return; // skip rest of settings rendering when confirm is active
+            }
+
+            // ── Setting items — interactive, selectable, cycleable ──
             for (int i = 0; i < _settingLabels.Length; i++)
             {
                 float itemY = listStartY + i * (lineH + lineGap);
                 bool isSelected = (i == _settingsSelection);
 
-                // Selected: highlight background + side bar
-                if (isSelected)
+                // ── Shared button metrics (same for all rows) ──
+                float btnPadX = 20f;
+                float btnPadY = lineGap * 0.5f;
+                float btnW = panelW - btnPadX * 2f;
+                float btnH = lineH + btnPadY * 2f;
+                float btnX = panelX + btnPadX;
+                float btnY = itemY + (lineGap - btnPadY * 2f) * 0.5f;
+
+                // Dirty indicator
+                bool isDirty = i < 7 && _settingValues[i] != _savedSettingValues[i];
+
+                // ── Regular setting row (index 0-6) — no background, just text ──
+                if (i < 7)
                 {
-                    float pulse = 0.5f + 0.5f * MathF.Sin(_totalTime * 3f);
-                    _hud.DrawBox(panelX + 20f, itemY - 2f, panelW - 40f, lineH + 4f,
-                        new Vector3(0.3f, 0.4f, 0.9f) * (0.04f + pulse * 0.03f));
-                    _hud.DrawBox(panelX + 18f, itemY + 1f, 2f, lineH - 2f,
-                        new Vector3(0.4f, 0.5f, 0.9f));
+                    // Selected: subtle side bar highlight only
+                    if (isSelected)
+                    {
+                        float pulse = 0.7f + 0.3f * MathF.Sin(_totalTime * 3f);
+                        _hud.DrawBox(btnX + 3f, btnY + 2f, 2f, btnH - 4f,
+                            new Vector3(0.4f, 0.5f, 0.9f) * (0.6f + pulse * 0.4f));
+                    }
+
+                    // Label (left) with dirty mark — centered vertically
+                    string label = _settingLabels[i] + (isDirty ? "*" : "");
+                    var labelExt = _hud.GetTextExtents(label);
+                    float labelY = labelExt.GetCenteredBaselineY(btnY, btnH);
+                    _hud.DrawText(label, btnX + 14f, labelY,
+                        isSelected ? new Vector3(0.9f, 0.9f, 1.0f) : new Vector3(0.6f, 0.6f, 0.75f));
+
+                    // Value (right) — centered vertically
+                    string value = _settingOptions[i][_settingValues[i]];
+                    string display = isSelected ? $"< {value} >" : value;
+                    var valExtents = _hud.GetTextExtents(display);
+                    float valX = btnX + btnW - 14f - valExtents.Width;
+                    float valY = valExtents.GetCenteredBaselineY(btnY, btnH);
+                    _hud.DrawText(display, valX, valY,
+                        isSelected ? new Vector3(0.6f, 0.7f, 1.0f) : new Vector3(0.5f, 0.5f, 0.6f));
                 }
-
-                // Label
-                _hud.DrawText(_settingLabels[i], panelX + 30f, itemY,
-                    isSelected ? new Vector3(0.9f, 0.9f, 1.0f) : new Vector3(0.6f, 0.6f, 0.75f));
-
-                // Value (right-aligned) + cycle hint arrows
-                if (i == _settingLabels.Length - 1)
+                // ── APPLY & SAVE button (index 7) ──
+                else if (i == 7)
                 {
-                    // ── APPLY button: separator + centered green button ──
-                    // Separator line above Apply (always visible)
                     float sepY = itemY - lineGap * 0.5f;
                     _hud.DrawBox(panelX + 30f, sepY, panelW - 60f, 1f, new Vector3(0.2f, 0.22f, 0.25f));
 
-                    // Full-width button highlight (green accent)
-                    float btnPadX = 20f;
-                    float btnPadY = 4f;
-                    float btnW = panelW - btnPadX * 2f;
-                    float btnH = lineH + btnPadY * 2f;
-                    float btnX = panelX + btnPadX;
-                    float btnY = itemY - btnPadY + 2f;
-
                     Vector3 btnBg = isSelected
-                        ? new Vector3(0.15f, 0.50f, 0.20f)  // green when selected
-                        : new Vector3(0.10f, 0.14f, 0.12f); // dark green bg
+                        ? new Vector3(0.15f, 0.50f, 0.20f)
+                        : new Vector3(0.10f, 0.14f, 0.12f);
                     _hud.DrawBox(btnX, btnY, btnW, btnH, btnBg);
 
                     if (isSelected)
                     {
                         float pulse = 0.7f + 0.3f * MathF.Sin(_totalTime * 3f);
                         _hud.DrawBox(btnX, btnY, btnW, btnH, new Vector3(0.2f, 0.7f, 0.3f) * pulse * 0.12f);
-                        // Left accent bar (green)
                         _hud.DrawBox(btnX + 2f, btnY + 3f, 2f, btnH - 6f, new Vector3(0.3f, 0.9f, 0.4f));
-                        // Bottom border glow
                         _hud.DrawBox(btnX, btnY + btnH - 1f, btnW, 1f, new Vector3(0.3f, 0.9f, 0.4f) * 0.5f);
                     }
                     else
@@ -929,30 +1331,51 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         _hud.DrawBox(btnX, btnY + btnH - 1f, btnW, 1f, new Vector3(0.15f, 0.35f, 0.18f));
                     }
 
-                    // Centered text
-                    string applyLabel = isSelected ? "▶  APPLY SETTINGS  ◀" : "▶  APPLY SETTINGS";
+                    string applyLabel = isSelected ? "APPLY & SAVE" : "APPLY & SAVE";
                     var applyExt = _hud.GetTextExtents(applyLabel);
                     float applyX = panelX + (panelW - applyExt.Width) * 0.5f;
                     float applyY = applyExt.GetCenteredBaselineY(btnY, btnH);
                     _hud.DrawText(applyLabel, applyX, applyY,
                         isSelected ? new Vector3(0.5f, 1.0f, 0.5f) : new Vector3(0.5f, 0.75f, 0.5f));
                 }
+                // ── CANCEL button (index 8) ──
                 else
                 {
-                    string value = _settingOptions[i][_settingValues[i]];
-                    string display = isSelected
-                        ? $"< {value} >"
-                        : value;
-                    var valExtents = _hud.GetTextExtents(display);
-                    float valX = panelX + panelW - 30f - valExtents.Width;
-                    _hud.DrawText(display, valX, itemY,
-                        isSelected ? new Vector3(0.6f, 0.7f, 1.0f) : new Vector3(0.5f, 0.5f, 0.6f));
+                    Vector3 btnBg = isSelected
+                        ? new Vector3(0.50f, 0.12f, 0.12f)
+                        : new Vector3(0.14f, 0.10f, 0.10f);
+                    _hud.DrawBox(btnX, btnY, btnW, btnH, btnBg);
+
+                    if (isSelected)
+                    {
+                        float pulse = 0.7f + 0.3f * MathF.Sin(_totalTime * 3f);
+                        _hud.DrawBox(btnX, btnY, btnW, btnH, new Vector3(0.7f, 0.2f, 0.2f) * pulse * 0.12f);
+                        _hud.DrawBox(btnX + 2f, btnY + 3f, 2f, btnH - 6f, new Vector3(0.9f, 0.3f, 0.3f));
+                        _hud.DrawBox(btnX, btnY + btnH - 1f, btnW, 1f, new Vector3(0.9f, 0.3f, 0.3f) * 0.5f);
+                    }
+                    else
+                    {
+                        _hud.DrawBox(btnX, btnY, btnW, 1f, new Vector3(0.35f, 0.15f, 0.15f));
+                        _hud.DrawBox(btnX, btnY + btnH - 1f, btnW, 1f, new Vector3(0.35f, 0.15f, 0.15f));
+                    }
+
+                    string cancelLabel = isSelected ? "CANCEL" : "CANCEL";
+                    var cancelExt = _hud.GetTextExtents(cancelLabel);
+                    float cancelX = panelX + (panelW - cancelExt.Width) * 0.5f;
+                    float cancelY = cancelExt.GetCenteredBaselineY(btnY, btnH);
+                    _hud.DrawText(cancelLabel, cancelX, cancelY,
+                        isSelected ? new Vector3(1.0f, 0.5f, 0.5f) : new Vector3(0.75f, 0.5f, 0.5f));
                 }
             }
 
-            // Back hint — positioned after last settings line
-            float hintY = listStartY + _settingLabels.Length * (lineH + lineGap) + 14f;
-            _hud.DrawText("Press ESC to go back", panelX + 20f, hintY, new Vector3(0.35f, 0.35f, 0.5f));
+            // Back hint — centered within panel, matching main menu hint style
+            float hintY = listStartY + _settingLabels.Length * (lineH + lineGap) + 40f;
+            string hintText = _hasUnsavedChanges
+                ? "Arrow keys or mouse to cycle  -  Enter to select  -  ESC to discard"
+                : "Arrow keys or mouse to cycle  -  Enter to select  -  ESC to close";
+            var hintExt = _hud.GetTextExtents(hintText);
+            float hintX = panelX + (panelW - hintExt.Width) * 0.5f;
+            _hud.DrawText(hintText, hintX, hintY, new Vector3(0.35f, 0.35f, 0.45f));
         }
 
         public void Exit()
