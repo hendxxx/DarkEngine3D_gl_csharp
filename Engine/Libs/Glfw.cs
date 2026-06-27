@@ -29,6 +29,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         private static delegate* unmanaged[Cdecl]<IntPtr, nint, int, int, int, int, int, void> glfwSetWindowMonitor;
         private static delegate* unmanaged[Cdecl]<IntPtr, int> glfwWindowShouldClose;
         private static delegate* unmanaged[Cdecl]<IntPtr, out int, out int, void> glfwGetFramebufferSize;
+        private static delegate* unmanaged[Cdecl]<IntPtr, int, int, void> glfwSetWindowPos;
 
         private static delegate* unmanaged[Cdecl]<nint> glfwGetPrimaryMonitor;
 
@@ -77,13 +78,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             var glfwInit = Marshal.GetDelegateForFunctionPointer<glfwInitDelegate>(NativeLibrary.GetExport(glfwLib, "glfwInit"));
             var glfwCreateWindow = Marshal.GetDelegateForFunctionPointer<glfwCreateWindowDelegate>(NativeLibrary.GetExport(glfwLib, "glfwCreateWindow"));
             var glfwMakeContextCurrent = (delegate* unmanaged[Cdecl]<IntPtr, void>)NativeLibrary.GetExport(glfwLib, "glfwMakeContextCurrent");
-            var glfwSetWindowPos = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowPos");
 
             glfwSetWindowSizeCallback = (delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, int, int, void>, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowSizeCallback");
             glfwSetWindowSize = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowSize");
             glfwSwapInterval = (delegate* unmanaged[Cdecl]<int, void>)NativeLibrary.GetExport(glfwLib, "glfwSwapInterval");
             glfwSetWindowMonitor = (delegate* unmanaged[Cdecl]<IntPtr, nint, int, int, int, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowMonitor");
             glfwGetFramebufferSize = (delegate* unmanaged[Cdecl]<IntPtr, out int, out int, void>)NativeLibrary.GetExport(glfwLib, "glfwGetFramebufferSize");
+            glfwSetWindowPos = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowPos");
 
             glfwWindowShouldClose = (delegate* unmanaged[Cdecl]<IntPtr, int>)NativeLibrary.GetExport(glfwLib, "glfwWindowShouldClose");
             glfwGetTime = (delegate* unmanaged[Cdecl]<double>)NativeLibrary.GetExport(glfwLib, "glfwGetTime");
@@ -139,7 +140,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return window;
         }
 
-
+        public static void SetWindowPosition(int width, int height)
+        {
+            glfwSetWindowPos(window, width, height);
+        }
         public static void SetWindowSize(int width, int height)
         {
             glfwSetWindowSize(window, width, height);

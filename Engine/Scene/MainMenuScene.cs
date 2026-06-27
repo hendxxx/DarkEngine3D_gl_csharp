@@ -493,7 +493,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     {
                         _confirmActive = true;
                         _confirmSelection = 1; // default to "Keep editing"
-                        _confirmEscapeWasDown = escapeDown; // prevent held ESC from immediately closing confirm dialog
+                        nint win = Glfw.GetWindow();
+                        _confirmLeftWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_A);
+                        _confirmRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
+                        _confirmUpWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_W);
+                        _confirmDownWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_S);
+                        _confirmEnterWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_SPACE);
+                        _confirmEscapeWasDown = escapeDown;
+                        _confirmMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
                     }
                     else
                     {
@@ -710,16 +717,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 case MenuAction.Settings:
                     _settingsOpen = true;
                     Console.WriteLine("[MainMenu] Settings opened.");
+                    // Sync edge-tracking flags to prevent input bleed
+                    nint settingsWin = Glfw.GetWindow();
+                    _settingsUpWasDown = Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_W);
+                    _settingsDownWasDown = Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_S);
+                    _settingsLeftWasDown = Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_A);
+                    _settingsRightWasDown = Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_D);
+                    _settingsEnterWasDown = Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_SPACE);
+                    _settingsEscapeWasDown = Keyboard.IsKeyDown(settingsWin, Const.GLFW_KEY_ESCAPE);
+                    _settingsMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
                     break;
 
                 case MenuAction.Exit:
                     _exitConfirmActive = true;
                     _exitConfirmSelection = 0; // default to Cancel
-                    // Prevent held Enter/Space from immediately confirming the dialog
+                    // Prevent held inputs from immediately confirming the dialog
                     nint exitWindow = Glfw.GetWindow();
-                    _exitConfirmEnterWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ENTER) |
-                                           Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_SPACE);
+                    _exitConfirmLeftWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_A);
+                    _exitConfirmRightWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_D);
+                    _exitConfirmEnterWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_SPACE);
                     _exitConfirmEscapeWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ESCAPE);
+                    _exitConfirmMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
                     break;
             }
         }
@@ -787,9 +805,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ApplyMouseSensitivity(_settingValues[6]);
 
             // ── Live apply Resolution, VSync, Fullscreen ──
+
             Glfw.SetWindowSize(Resolutions[res].Width, Resolutions[res].Height);
             Glfw.SetSwapInterval(vs ? 1 : 0);
             Glfw.SetFullscreen(fs);
+            Glfw.SetWindowPosition(0,0);
 
             Console.WriteLine($"[Settings] Applied: Resolution={Resolutions[res].CompactLabel}, Fullscreen={fs}, VSync={vs}, ShadowQuality={sq}, OC={oc}, FOV={fovVal}, MouseSens={_settingOptions[6][_settingValues[6]]}");
         }
@@ -810,6 +830,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _camera.BaseFoV = fovVal;
             _camera.FoV = fovVal;
             ApplyMouseSensitivity(_settingValues[6]);
+            Glfw.SetWindowPosition(0, 0);
             Glfw.SetWindowSize(Resolutions[res].Width, Resolutions[res].Height);
             Glfw.SetSwapInterval(vs ? 1 : 0);
             Glfw.SetFullscreen(fs);
@@ -927,7 +948,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 string notifText = _notificationText;
                 var notifExt = _hud.GetTextExtents(notifText);
                 float notifX = w * 0.5f - notifExt.Width * 0.5f;
-                float notifY = h * 0.12f;
+                float notifY = h * 0.20f;
                 _hud.DrawText(notifText, notifX, notifY,
                     new Vector3(0.3f, 0.9f, 0.4f) * fadeAlpha);
             }
@@ -1189,8 +1210,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     float barPulse = 0.7f + 0.3f * MathF.Sin(_totalTime * 3f);
                     _hud.DrawBox(bx - 3f, by + 4f, 3f, ButtonHeight - 8f,
                         new Vector3(0.4f, 0.5f, 0.9f) * barPulse);
-                }
-
+                } 
                 // Button text — centered using GetTextExtents (single pass)
                 Vector3 textColor = isSelected
                     ? new Vector3(0.95f, 0.95f, 1.0f)

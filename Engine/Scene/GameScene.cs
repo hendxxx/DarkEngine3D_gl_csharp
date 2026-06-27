@@ -914,7 +914,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 else if (_settingsActive)
                 {
-                    _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
                     RenderSettingsPanel();
                 }
                 else
@@ -1070,9 +1069,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _settingsMouseWasDown = true;
                 if (hoveredIndex >= 0)
                 {
-                    if (hoveredIndex == _inGameSettingLabels.Length - 1) // BACK → cancel
+                    if (hoveredIndex == _inGameSettingLabels.Length - 1) // BACK → save and exit
                     {
-                        CancelInGameSettings();
+                        ApplyAndExitInGameSettings();
                     }
                     else
                     {
@@ -1102,19 +1101,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (rightDown && !_settingsRightWasDown && _settingsSelection < _inGameSettingLabels.Length - 1)
                 CycleInGameSetting(_settingsSelection, 1);
 
-            // Enter → BACK (cancel) or cycle forward
+            // Enter → BACK (save and exit) or cycle forward
             if (enterDown && !_settingsEnterWasDown)
             {
                 if (_settingsSelection == _inGameSettingLabels.Length - 1) // BACK
-                    CancelInGameSettings();
+                    ApplyAndExitInGameSettings();
                 else
                     CycleInGameSetting(_settingsSelection, 1);
             }
 
-            // ESC → cancel: revert to snapshot and return to pause menu
+            // ESC → save and exit: save setting changes and return to pause menu
             if (escDown && !_settingsEscapeWasDown)
             {
-                CancelInGameSettings();
+                ApplyAndExitInGameSettings();
             }
 
             _settingsUpWasDown = upDown;
@@ -1123,6 +1122,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _settingsRightWasDown = rightDown;
             _settingsEnterWasDown = enterDown;
             _settingsEscapeWasDown = escDown;
+        }
+
+        /// <summary>Apply and save settings, then exit settings panel.</summary>
+        private void ApplyAndExitInGameSettings()
+        {
+            SaveInGameSettingsToJson();
+            _settingsActive = false;
+            Console.WriteLine("[Settings] Applied and saved in-game settings.");
         }
 
         /// <summary>Cancel settings and revert to snapshot values.</summary>
@@ -1163,6 +1170,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 case 2: // Shadow Quality
                 {
                     Config.ShadowConfig.CascadeSizes = Config.ShadowPresets.CascadeSizes[val];
+                    _csm?.Dispose();
+                    _csm = new CSM(Config.ShadowConfig.CascadeSizes[0]);
                     break;
                 }
                 case 3: // VSync
@@ -1171,6 +1180,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     break;
                 }
             }
+
         }
 
         /// <summary>Cycle an in-game setting and apply immediately (live preview).</summary>
@@ -1257,6 +1267,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 Array.Copy(_inGameSettingValues, _settingsSnapshot, _inGameSettingValues.Length);
                 _settingsActive = true;
                 _settingsSelection = 0;
+                // Sync edge-tracking flags to prevent input bleed/flickering
+                nint win = Glfw.GetWindow();
+                _settingsUpWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_W);
+                _settingsDownWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_S);
+                _settingsLeftWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_A);
+                _settingsRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
+                _settingsEnterWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_SPACE);
+                _settingsEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
+                _settingsMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
             }
             else if (index == 2) // Toggle PauseOnEsc
             {
@@ -1267,6 +1286,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 _confirmingExit = true;
                 _confirmSelection = 0;
+                // Sync edge-tracking flags to prevent input bleed/flickering
+                nint win = Glfw.GetWindow();
+                _confirmLeftWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_A);
+                _confirmRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
+                _confirmEnterWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_SPACE);
+                _confirmEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
+                _confirmMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
             }
         }
 

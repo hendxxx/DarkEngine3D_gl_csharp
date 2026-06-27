@@ -23,8 +23,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float Pitch = 0.0f;
 
         // Projection params
-        public float FoV;
-        public float BaseFoV = 60f;   // User-configured base FOV (non-ADS)
+        private float _fov;
+        public float FoV
+        {
+            get => _fov;
+            set
+            {
+                if (Math.Abs(_fov - value) > 0.0001f)
+                {
+                    _fov = value;
+                    _projectionDirty = true;
+                }
+            }
+        }
+
+        private float _baseFov = 60f;
+        public float BaseFoV
+        {
+            get => _baseFov;
+            set
+            {
+                if (Math.Abs(_baseFov - value) > 0.0001f)
+                {
+                    _baseFov = value;
+                    _projectionDirty = true;
+                }
+            }
+        }
         public float NearDist;
         public float FarDist;
         private float _aspect;
