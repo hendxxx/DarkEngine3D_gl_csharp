@@ -207,12 +207,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Reset all edge-detection flags to prevent held-down keys
             // (e.g. Enter/Esc from confirm dialog) from triggering immediate actions.
-            _upWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP)Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
-            _downWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN)Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
-            _enterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER)Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            _upWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            _downWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            _enterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
             _escapeWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
-            _leftWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
-            _rightWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+            _leftWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            _rightWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
             _mouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
             _settingsUpWasDown = _upWasDown;
             _settingsDownWasDown = _downWasDown;
@@ -352,11 +352,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _mouseWasDown = false;
 
             // ── Keyboard navigation ──
-            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP)Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
-            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN)Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
-            bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
-            bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT)Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
-            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER)Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
             bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
 
             if (_settingsOpen)
@@ -365,9 +365,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_confirmActive)
                 {
                     // Up/Down/Left/Right to navigate
-                    if ((upDown && !_confirmUpWasDown)(leftDown && !_confirmLeftWasDown))
+                    if ((upDown && !_confirmUpWasDown) || (leftDown && !_confirmLeftWasDown))
                         _confirmSelection = (_confirmSelection - 1 + 2) % 2;
-                    if ((downDown && !_confirmDownWasDown)(rightDown && !_confirmRightWasDown))
+                    if ((downDown && !_confirmDownWasDown) || (rightDown && !_confirmRightWasDown))
                         _confirmSelection = (_confirmSelection + 1) % 2;
 
                     // Mouse hover on dialog buttons — only update when hovering a different button
@@ -530,7 +530,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     CycleSetting(_settingsSelection, 1);
 
                 // Enter/Space/Click → cycle current setting forward
-                bool settingsActivate = (enterDown && !_settingsEnterWasDown)(mousePressed && !_settingsMouseWasDown);
+                bool settingsActivate = (enterDown && !_settingsEnterWasDown) || (mousePressed && !_settingsMouseWasDown);
                 if (settingsActivate)
                 {
                     CycleSetting(_settingsSelection, 1);
@@ -700,7 +700,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 p.Alpha = Math.Clamp(p.Alpha, 0.05f, 0.7f);
 
                 // Respawn when off-screen
-                if (p.Y < -10fp.X < -50fp.X > w + 50f)
+                if (p.Y < -10f || p.X < -50f || p.X > w + 50f)
                 {
                     p.X = (float)(_rng.NextDouble() * w);
                     p.Y = h + (float)(_rng.NextDouble() * 20f);
@@ -732,7 +732,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _exitConfirmSelection = 0; // default to Cancel
                     // Prevent held Enter/Space from immediately confirming the dialog
                     nint exitWindow = Glfw.GetWindow();
-                    _exitConfirmEnterWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ENTER)
+                    _exitConfirmEnterWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ENTER) |
                                            Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_SPACE);
                     _exitConfirmEscapeWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ESCAPE);
                     break;
@@ -893,7 +893,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         public void Render()
         {
             GL.ClearColor(0.04f, 0.04f, 0.06f, 1.0f);
-            GL.Clear(Const.GL_COLOR_BUFFER_BIT Const.GL_DEPTH_BUFFER_BIT);
+            GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
 
             if (_hud == null) return;
 
