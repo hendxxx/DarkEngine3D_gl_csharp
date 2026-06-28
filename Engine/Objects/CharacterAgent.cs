@@ -566,19 +566,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private float _currentSpeed = 0f;
         private Vector3 _moveDirection = Vector3.Zero;
         // ---- locomotion tuning (feel the weight!) ----
-        private const float Acceleration = 2.0f;    // slow build-up ~1.5s to full speed
-        private const float Deceleration = 2.0f;    // very gradual stop = lots of slide
-        private const float GroundFriction = 0.5f;  // barely any friction — coast naturally
-        // Big speed gap for clear walk/run distinction
+        private const float Acceleration = 6.0f;    // fast build-up ~0.17s to full speed
+        private const float Deceleration = 6.0f;    // snappy stop
+        private const float GroundFriction = 3.0f;  // good friction — stops quickly
+        // Speed values (walk/run feel responsive)
         private const float WalkSpeedPlayer = 1.5f;
-        private const float RunSpeedPlayer = 2.5f;
+        private const float RunSpeedPlayer = 2.0f;
         private const float MaxStepHeight = 0.45f;
         public StaticObjectManager[]? StaticManagers;
 
         // ---- gait blend: smooth walk↔run transition ----
         private float _gaitBlend = 0f;      // 0 = walk, 1 = run (smoothly interpolated)
-        private const float GaitBlendAccel = 3.5f;   // walk→run: ~0.3s to reach 63%
-        private const float GaitBlendDecel = 5.0f;   // run→walk: ~0.2s to reach 63%
+        private const float GaitBlendAccel = 6.0f;   // walk→run: ~0.17s to reach 63%
+        private const float GaitBlendDecel = 10.0f;   // run→walk: ~0.1s to reach 63%
 
         private float _verticalVelocity = 0f;
         private float gravity = -9.81f;

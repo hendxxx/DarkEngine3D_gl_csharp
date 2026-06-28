@@ -85,6 +85,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _pauseEnterWasDown = false;
         private bool _pauseMouseWasDown = false;
 
+        // ── Input cooldown after unpausing (prevents menu click bleed) ──
+        private float _inputCooldown = 0f;
+
         // ── Save/Load system ──
         private bool _saveLoadActive = false;
         private bool _isSaveMode = false; // true=save, false=load
@@ -253,6 +256,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _paused = false;
             _pauseSelection = 0;
             _pauseLastHovered = -1;
+            _inputCooldown = 0.15f;
             _confirmLastHovered = -1;
             _saveLoadActive = false;
             _saveLoadSelection = 0;
@@ -389,36 +393,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Player input & camera control — only when not paused ──
             if (!_paused)
             {
-                // ── Camera mode / freelook ──
-            if (_camera.CurrentMode == CameraMode.FirstPerson)
-            {
-                _camera.freeLook = false;
-            }
-            else
-            {
-                _camera.freeLook =
-                    (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
-                     Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
-            }
-
-                // 1. Mouse → yaw/pitch → vectors
-                Mouse.Update(window, _camera);
-                _camera.UpdateVectors();
-
-                CameraConfig.TargetShoulderOffset = _lastTargetShoulderOffset;
-
-                // 2. Third-person keeps ALT free-look
-                if (!_camera.freeLook && _objectManager != null)
-                    _objectManager.PlayerAgent.Heading = _camera.Yaw;
-
-                // 3. Update keyboard
-                Keyboard.Update(window, _light, _camera, deltaTime, _gameTerrainChunk);
-
-                // 3A. Check if camera mode changed and notify player
-                if (_camera.CurrentMode != _lastCameraMode && _objectManager != null)
+                // ── Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed ──
+                if (_inputCooldown > 0f)
                 {
-                    _lastCameraMode = _camera.CurrentMode;
-                    _objectManager.PlayerAgent.OnCameraModeChanged(_camera.CurrentMode);
+                    _inputCooldown -= deltaTime;
+                    // Still allow camera to run (no mouse delta), skip character input
+                }
+                else
+                {
+                    // ── Camera mode / freelook ──
+                    if (_camera.CurrentMode == CameraMode.FirstPerson)
+                    {
+                        _camera.freeLook = false;
+                    }
+                    else
+                    {
+                        _camera.freeLook =
+                            (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
+                             Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
+                    }
+
+                    // 1. Mouse → yaw/pitch → vectors
+                    Mouse.Update(window, _camera);
+                    _camera.UpdateVectors();
+
+                    CameraConfig.TargetShoulderOffset = _lastTargetShoulderOffset;
+
+                    // 2. Third-person keeps ALT free-look
+                    if (!_camera.freeLook && _objectManager != null)
+                        _objectManager.PlayerAgent.Heading = _camera.Yaw;
+
+                    // 3. Update keyboard
+                    Keyboard.Update(window, _light, _camera, deltaTime, _gameTerrainChunk);
+
+                    // 3A. Check if camera mode changed and notify player
+                    if (_camera.CurrentMode != _lastCameraMode && _objectManager != null)
+                    {
+                        _lastCameraMode = _camera.CurrentMode;
+                        _objectManager.PlayerAgent.OnCameraModeChanged(_camera.CurrentMode);
+                    }
                 }
             }
 
@@ -427,8 +440,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4. Update agents (AI, physics, animations) — always runs
                 _objectManager.Update(deltaTime);
 
-                // 4A. Update player movement — only when not paused
-                if (!_paused)
+                // 4A. Update player movement — only when not paused (skip during input cooldown)
+                if (!_paused && _inputCooldown <= 0f)
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
 
                 // ── COLLISION: push player out of static objects ──
@@ -1267,6 +1280,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (!_saveLoadWasAlreadyPaused && !_settingsActive && !_confirmingExit)
             {
                 _paused = false;
+                _inputCooldown = 0.15f;
                 Mouse.ShowMouse(false);
                 Mouse.ResetState();
             }
@@ -1310,6 +1324,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (!_settingsActive && !_confirmingExit)
             {
                 _paused = false;
+                _inputCooldown = 0.15f;
                 Mouse.ShowMouse(false);
                 Mouse.ResetState();
             }
@@ -1355,6 +1370,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Close load UI after loading
             _saveLoadActive = false;
             _paused = false;
+            _inputCooldown = 0.15f;
             Mouse.ShowMouse(false);
             Mouse.ResetState();
 
@@ -1621,6 +1637,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (index == 0) // Resume
             {
                 _paused = false;
+                _inputCooldown = 0.15f;
                 Mouse.ShowMouse(false);
                 Mouse.ResetState();
             }

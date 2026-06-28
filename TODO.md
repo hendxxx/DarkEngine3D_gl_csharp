@@ -3,6 +3,7 @@ Pending:
 1. Implemnet foot IK
 2. Implement biomes generation
 3. Implemet Vertext Clustering
+4. terrain displacement mapping and tessellation shaders
 
 Done:
 1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
