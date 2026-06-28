@@ -850,10 +850,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             if (_ppStack == null || _csm == null || _skybox == null || _hud == null) return;
 
+            bool wireframeMode = Keyboard.GetIsWireframe();
+
             // ── MAIN RENDER PASS ──
-            _ppStack.BindSceneFBO();
-            GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
-            GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+            if (wireframeMode)
+            {
+                // Wireframe: render directly to screen, skip postprocess (F1 conflicts with PP)
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+            }
+            else
+            {
+                _ppStack.BindSceneFBO();
+                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+            }
 
             // 3. Draw Skybox
             _skybox.Draw(_camera, _light, 0f, _skyTextures!, _gameTerrainChunk);
@@ -932,8 +945,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _objectManager.DrawHealthBars(_camera, _hud);
             }
 
-            // ── Post Process (render SceneFBO to screen) ──
-            _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
+            // ── Post Process (render SceneFBO to screen) — skip in wireframe mode ──
+            if (!wireframeMode)
+                _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
+            else
+                GL.Enable(Const.GL_DEPTH_TEST);
 
             // ── Capture screenshot right after post-process, before any UI overlays ──
             if (_pendingScreenshotSlot >= 0)
@@ -944,13 +960,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 SaveManager.CaptureScreenshot(slot);
             }
 
-            // ── Pause Blur Overlay ──
+            // ── Pause Blur Overlay (skip in wireframe mode) ──
             if (_paused && !_confirmingExit && !_settingsActive)
             {
-                _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
+                if (!wireframeMode)
+                    _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
             }
 
-            // ── Debug BBox Wireframe (toggled with P key) ──
+            // ── Debug BBox Wireframe + LOD Labels (toggled with P key) ──
             if (Keyboard.GetShowBBox() && _objectManager != null)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
@@ -963,6 +980,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     var aabb = animObjs[oi].WorldAABB;
                     Vector3 color = animObjs[oi].IsPlayer ? new Vector3(0f, 1f, 0f) : new Vector3(0f, 0.5f, 1f);
                     TerrainChunk.DrawAABBWireframe(aabb, color, _camera);
+
+                    // LOD label for animated objects
+                    int animLod = animObjs[oi].AnimLOD;
+                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
+                    DrawLODLabel(center, animLod, animObjs[oi].IsPlayer);
                 }
 
                 if (_objectManager.staticObjectManagers != null)
@@ -982,6 +1004,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                                 : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
 
                             TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, _camera);
+
+                            // LOD label for static objects
+                            Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
+                            DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
                         }
                     }
 
@@ -1006,12 +1032,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 if (_saveLoadActive)
                 {
-                    _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
+                    if (!wireframeMode)
+                        _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
                     RenderSaveLoadPanel();
                 }
                 else if (_confirmingExit)
                 {
-                    _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
+                    if (!wireframeMode)
+                        _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
                     RenderConfirmDialog();
                 }
                 else if (_settingsActive)
@@ -1923,6 +1951,50 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var phExt = _hud.GetTextExtents(hint);
             _hud.DrawText(hint, phCenterX - phExt.Width * 0.5f, startY + pauseItems.Length * (btnH + btnSpacing) + 20f,
                 new Vector3(0.35f, 0.35f, 0.45f));
+        }
+
+        /// <summary>Draw a color-coded LOD level label at the given world position, projected to screen.</summary>
+        private void DrawLODLabel(Vector3 worldPos, int lodLevel, bool isPlayer)
+        {
+            if (_hud == null) return;
+
+            var viewMat = _camera.GetViewMatrix();
+            var projMat = _camera.GetProjectionMatrix();
+            var vpMat = viewMat * projMat;
+
+            var clip = Vector4.Transform(new Vector4(worldPos, 1f), vpMat);
+            if (clip.W <= 0.05f) return;
+
+            float nx = clip.X / clip.W;
+            float ny = clip.Y / clip.W;
+
+            // Outside screen
+            if (nx < -1.2f || nx > 1.2f || ny < -1.2f || ny > 1.2f) return;
+
+            float sx = (nx * 0.5f + 0.5f) * Glfw.WindowWidth;
+            float sy = (1f - (ny * 0.5f + 0.5f)) * Glfw.WindowHeight;
+
+            // Color-code LOD level
+            string label;
+            Vector3 color;
+            if (isPlayer)
+            {
+                label = "PLAYER";
+                color = new Vector3(0f, 1f, 0f);
+            }
+            else
+            {
+                switch (lodLevel)
+                {
+                    case 0: label = "LOD0"; color = new Vector3(0.2f, 0.9f, 0.2f); break; // green
+                    case 1: label = "LOD1"; color = new Vector3(0.2f, 0.5f, 1.0f); break; // blue
+                    case 2: label = "LOD2"; color = new Vector3(1.0f, 0.9f, 0.2f); break; // yellow
+                    case 3: label = "LOD3"; color = new Vector3(1.0f, 0.3f, 0.2f); break; // red
+                    default: label = $"LOD{lodLevel}"; color = new Vector3(0.5f, 0.5f, 0.5f); break;
+                }
+            }
+
+            _hud.DrawText(label, sx - _hud.GetTextExtents(label).Width * 0.5f, sy - 18f, color, new Vector3(0f, 0f, 0f), 1.5f);
         }
 
         public void Exit()

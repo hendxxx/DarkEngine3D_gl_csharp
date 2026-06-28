@@ -50,6 +50,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool CastShadow = true;
         public bool UseAlphaTest = true;
 
+        // Current LOD level being rendered (set every frame by StaticObjectManager.Draw)
+        public int CurrentLOD = 0;
+
         // Occlusion culling flag (di-set oleh OC system setiap frame)
         public bool IsVisible = true;
 
@@ -540,6 +543,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     continue;
 
                 int actualLOD = group.LodFallback[targetLOD];
+                obj.CurrentLOD = actualLOD; // Store for debug overlay
 
                 var meshIndices = group.Lods[actualLOD];
                 var baseWorldMat = obj.CachedBaseWorldMat;

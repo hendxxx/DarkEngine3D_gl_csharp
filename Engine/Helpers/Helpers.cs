@@ -460,6 +460,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             public GltfModelGpuData(GltfData data)
             {
                 Data = data;
+
+                // Generate simplified LOD meshes via vertex clustering
+                GenerateSimplifiedLODs(data);
+
                 TextureIDs = UploadTextures(data);
                 Meshes = new MeshGpu[data.Meshes.Length];
                 MeshToNode = new int[data.Meshes.Length];
@@ -475,6 +479,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                         var n = data.Nodes[ni];
                         if (n.Mesh >= 0 && n.Mesh < MeshToNode.Length)
                             MeshToNode[n.Mesh] = ni;
+                    }
+
+                    // Propagate node indices to auto-generated LOD variants
+                    for (int mi = 0; mi < data.Meshes.Length; mi++)
+                    {
+                        if (MeshToNode[mi] >= 0) continue;
+                        string? name = data.Meshes[mi].Name;
+                        if (string.IsNullOrEmpty(name)) continue;
+                        int lodIdx = name.LastIndexOf("_LOD", StringComparison.OrdinalIgnoreCase);
+                        if (lodIdx < 0) continue;
+                        string baseLookup = name[..lodIdx];
+                        for (int bi = 0; bi < data.Meshes.Length; bi++)
+                        {
+                            if (bi == mi) continue;
+                            if (string.Equals(data.Meshes[bi].Name, baseLookup, StringComparison.OrdinalIgnoreCase))
+                            {
+                                MeshToNode[mi] = MeshToNode[bi];
+                                break;
+                            }
+                        }
                     }
                 }
 
@@ -698,6 +722,210 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                     };
 
                     //Console.WriteLine($"  [GltfGPU] Mesh[{m}] VAO={vao} verts={mesh.Vertices.Length} idx={mesh.Indices.Length} hasTex={matGpu.HasTexture}");
+                }
+            }
+
+            // ────────────────────────────────────────────────────────────────
+            //  Vertex-Clustering LOD Generation (auto LOD2 & LOD3)
+            // ────────────────────────────────────────────────────────────────
+
+            private static void SimplifySkinned(SkinnedVertex[] verts, uint[] indices, float cellSize,
+                out SkinnedVertex[] outVerts, out uint[] outIndices)
+            {
+                if (verts.Length == 0 || indices.Length == 0)
+                {
+                    outVerts = verts;
+                    outIndices = indices;
+                    return;
+                }
+
+                // 1. Cluster: grid key -> list of vertex indices
+                var clusters = new Dictionary<(int, int, int), List<int>>();
+                for (int i = 0; i < verts.Length; i++)
+                {
+                    ref var v = ref verts[i];
+                    var key = (
+                        (int)MathF.Floor(v.Position.X / cellSize),
+                        (int)MathF.Floor(v.Position.Y / cellSize),
+                        (int)MathF.Floor(v.Position.Z / cellSize)
+                    );
+                    if (!clusters.TryGetValue(key, out var list))
+                    {
+                        list = new List<int>();
+                        clusters[key] = list;
+                    }
+                    list.Add(i);
+                }
+
+                // 2. Create averaged vertex per cluster
+                var newVerts = new List<SkinnedVertex>();
+                var clusterToNewIdx = new Dictionary<(int, int, int), int>();
+
+                foreach (var kv in clusters)
+                {
+                    var list = kv.Value;
+                    Vector3 pos = Vector3.Zero;
+                    Vector3 nrm = Vector3.Zero;
+                    Vector2 uv = Vector2.Zero;
+                    Vector4 weights = Vector4.Zero;
+
+                    // Bone indices: pick from vertex with highest total weight
+                    int bestVi = list[0];
+                    float bestWeightSum = verts[bestVi].BoneWeights.X
+                                        + verts[bestVi].BoneWeights.Y
+                                        + verts[bestVi].BoneWeights.Z
+                                        + verts[bestVi].BoneWeights.W;
+
+                    foreach (int vi in list)
+                    {
+                        pos += verts[vi].Position;
+                        nrm += verts[vi].Normal;
+                        uv  += verts[vi].TexCoord;
+                        weights += verts[vi].BoneWeights;
+
+                        float ws = verts[vi].BoneWeights.X + verts[vi].BoneWeights.Y
+                                 + verts[vi].BoneWeights.Z + verts[vi].BoneWeights.W;
+                        if (ws > bestWeightSum)
+                        {
+                            bestWeightSum = ws;
+                            bestVi = vi;
+                        }
+                    }
+
+                    float inv = 1.0f / list.Count;
+                    pos *= inv;
+                    nrm = Vector3.Normalize(nrm * inv);
+                    uv  *= inv;
+                    weights *= inv;
+
+                    // Re-normalize bone weights to sum ~1
+                    float tw = weights.X + weights.Y + weights.Z + weights.W;
+                    if (tw > 1e-6f) weights /= tw;
+
+                    int newIdx = newVerts.Count;
+                    newVerts.Add(new SkinnedVertex(pos, nrm, uv, weights, verts[bestVi].BoneIds));
+                    clusterToNewIdx[kv.Key] = newIdx;
+                }
+
+                // 3. Rebuild indices, skipping degenerate triangles
+                var newIndices = new List<uint>();
+                for (int i = 0; i < indices.Length; i += 3)
+                {
+                    uint i0 = indices[i], i1 = indices[i + 1], i2 = indices[i + 2];
+
+                    var k0 = (
+                        (int)MathF.Floor(verts[i0].Position.X / cellSize),
+                        (int)MathF.Floor(verts[i0].Position.Y / cellSize),
+                        (int)MathF.Floor(verts[i0].Position.Z / cellSize));
+                    var k1 = (
+                        (int)MathF.Floor(verts[i1].Position.X / cellSize),
+                        (int)MathF.Floor(verts[i1].Position.Y / cellSize),
+                        (int)MathF.Floor(verts[i1].Position.Z / cellSize));
+                    var k2 = (
+                        (int)MathF.Floor(verts[i2].Position.X / cellSize),
+                        (int)MathF.Floor(verts[i2].Position.Y / cellSize),
+                        (int)MathF.Floor(verts[i2].Position.Z / cellSize));
+
+                    int a = clusterToNewIdx[k0];
+                    int b = clusterToNewIdx[k1];
+                    int c = clusterToNewIdx[k2];
+
+                    if (a == b || b == c || c == a) continue;
+
+                    newIndices.Add((uint)a);
+                    newIndices.Add((uint)b);
+                    newIndices.Add((uint)c);
+                }
+
+                outVerts = [.. newVerts];
+                outIndices = [.. newIndices];
+            }
+
+            /// <summary>
+            /// For each mesh that doesn't already have _LOD2 / _LOD3 variants,
+            /// generate simplified versions via vertex clustering and append to data.Meshes.
+            /// </summary>
+            private static void GenerateSimplifiedLODs(GltfData data)
+            {
+                if (data.Meshes == null || data.Meshes.Length == 0) return;
+
+                // Collect existing LOD-named mesh names for overlap detection
+                var existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < data.Meshes.Length; i++)
+                    if (!string.IsNullOrEmpty(data.Meshes[i].Name))
+                        existingNames.Add(data.Meshes[i].Name);
+
+                var newMeshes = new List<GltfMeshData>();
+
+                for (int mi = 0; mi < data.Meshes.Length; mi++)
+                {
+                    var mesh = data.Meshes[mi];
+                    if (mesh.Vertices.Length < 3 || mesh.Indices.Length < 3) continue;
+
+                    string baseName = string.IsNullOrEmpty(mesh.Name) ? $"mesh_{mi}" : mesh.Name;
+
+                    // Skip meshes that already have LOD suffix (they're already LOD variants)
+                    if (System.Text.RegularExpressions.Regex.IsMatch(baseName, @"_LOD\d+",
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                        continue;
+
+                    // Skip skinned meshes (characters) — GltfObject.Draw renders ALL meshes,
+                    // not LOD-selected groups. Auto-generated LODs would draw on top of original.
+                    bool isSkinned = false;
+                    for (int svi = 0; svi < mesh.Vertices.Length && !isSkinned; svi++)
+                    {
+                        ref var sv = ref mesh.Vertices[svi];
+                        // Non-skinned mesh has weights = (1,0,0,0) from GltfLoader default
+                        if (sv.BoneWeights.X < 0.99f || sv.BoneWeights.Y > 0.01f ||
+                            sv.BoneWeights.Z > 0.01f || sv.BoneWeights.W > 0.01f)
+                            isSkinned = true;
+                    }
+                    if (isSkinned) continue;
+
+                    // Compute AABB diagonal for cell size scaling
+                    Vector3 mn = mesh.Vertices[0].Position;
+                    Vector3 mx = mesh.Vertices[0].Position;
+                    for (int vi = 1; vi < mesh.Vertices.Length; vi++)
+                    {
+                        mn = Vector3.Min(mn, mesh.Vertices[vi].Position);
+                        mx = Vector3.Max(mx, mesh.Vertices[vi].Position);
+                    }
+                    float diag = (mx - mn).Length();
+                    if (diag < 1e-6f) continue;
+
+                    // Generate LOD2 and LOD3
+                    float[] cellSizes = [diag * 0.03f, diag * 0.08f];
+                    string[] suffixes = ["_LOD2", "_LOD3"];
+
+                    for (int li = 0; li < 2; li++)
+                    {
+                        string lodName = baseName + suffixes[li];
+                        if (existingNames.Contains(lodName)) continue;
+
+                        SimplifySkinned(mesh.Vertices, mesh.Indices, cellSizes[li],
+                            out var simplifiedVerts, out var simplifiedIndices);
+
+                        // Skip if simplification produced no valid triangles
+                        if (simplifiedIndices.Length < 3) continue;
+
+                        newMeshes.Add(new GltfMeshData
+                        {
+                            Name = lodName,
+                            Vertices = simplifiedVerts,
+                            Indices = simplifiedIndices,
+                            MaterialIndex = mesh.MaterialIndex
+                        });
+
+                        existingNames.Add(lodName);
+                    }
+                }
+
+                if (newMeshes.Count > 0)
+                {
+                    int oldLen = data.Meshes.Length;
+                    Array.Resize(ref data.Meshes, oldLen + newMeshes.Count);
+                    for (int i = 0; i < newMeshes.Count; i++)
+                        data.Meshes[oldLen + i] = newMeshes[i];
                 }
             }
 

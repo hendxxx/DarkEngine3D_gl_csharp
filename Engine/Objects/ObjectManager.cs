@@ -203,7 +203,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 collisionPart: "bark",
                 overrideCollisionSizeX: 1.2f,
@@ -221,7 +221,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
             staticObjectManagers[1].CastShadow = false;
             staticObjectManagers[1].UseAlpha = false;
