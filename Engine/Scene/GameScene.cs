@@ -1052,13 +1052,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // ── HUD ──
             int totalMapTris = TerrainChunk.GetTotalMapTriangles();
+            int totalObjTris = _objectManager?.TotalObjectTriangles ?? 0;
+            int renderedObjTris = _objectManager?.RenderedTriangles ?? 0;
+            int totalAllTris = totalMapTris + totalObjTris;
+            int renderedAllTris = _renderedTris + renderedObjTris;
             string gTime = _light.GetFormattedTime();
 
             string title1 = $"🕒 [ {gTime} ]";
             string title2 = $"⚡ FPS: {Glfw.GetLastFPS()}";
             string freeze = Keyboard.GetCullFreezeMode() ? " [CULL FREEZE]" : "";
             string title3 = $"🎥 MODE: {_camera.CurrentMode}{freeze}";
-            string title4 = $"📐 TRIS: {_renderedTris:N0} / {totalMapTris:N0}";
+            string title4 = $"📐 TRIS: {renderedAllTris:N0} / {totalAllTris:N0}  (terrain {_renderedTris:N0} | objects {renderedObjTris:N0})";
             string title5 = $" POS: X ={_camera.Position.X:N2} Y={_camera.Position.Y:N2} Z={_camera.Position.Z:N2}";
             string title6 = "";
             if (_objectManager != null)

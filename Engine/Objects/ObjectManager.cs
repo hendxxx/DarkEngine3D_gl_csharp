@@ -69,6 +69,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int DrawnObjects { get; private set; }
         public int TotalObjects { get; private set; }
         public int CulledObjects { get; private set; }
+        /// <summary>Total triangles rendered this frame (animated + static objects, excludes terrain).</summary>
+        public int RenderedTriangles { get; private set; }
+        /// <summary>Total available triangles for ALL objects (animated + static) at full LOD0 detail.</summary>
+        public int TotalObjectTriangles { get; private set; }
         public bool DisableFrustumCull = false;
 
         // Cull freeze mode (Shift+P) — objects outside frozen frustum stay hidden
@@ -325,6 +329,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float p = 0.87f + ((i + 1) / (float)animFiles.Length) * 0.13f;
                 OnLoadProgress?.Invoke(p, $"Player: anim {clipName} ({i+1}/{animFiles.Length})");
             }
+
+            // ── Compute total available object triangles (LOD0) ──
+            TotalObjectTriangles = 0;
+            foreach (var obj in _objects)
+            {
+                var meshes = obj.GpuData.Data.Meshes;
+                if (meshes != null)
+                {
+                    for (int mi = 0; mi < meshes.Length; mi++)
+                    {
+                        if (meshes[mi].Vertices.Length >= 3 && meshes[mi].Indices.Length >= 3)
+                            TotalObjectTriangles += meshes[mi].Indices.Length / 3;
+                    }
+                }
+            }
+            foreach (var mgr in staticObjectManagers)
+                if (mgr != null)
+                    TotalObjectTriangles += mgr.TotalTriangles;
 
             OnLoadProgress?.Invoke(1.0f, "Loading complete!");
 
@@ -599,6 +621,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             DrawnObjects = 0;
             CulledObjects = 0;
+            RenderedTriangles = 0;
 
             GL.UseProgram(_shaderProgram);
 
@@ -702,6 +725,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                
 
+                // Count rendered triangles for this animated object
+                var meshes = obj.GpuData.Data.Meshes;
+                if (meshes != null)
+                {
+                    for (int mi = 0; mi < meshes.Length; mi++)
+                    {
+                        if (meshes[mi].Vertices.Length >= 3 && meshes[mi].Indices.Length >= 3)
+                            RenderedTriangles += meshes[mi].Indices.Length / 3;
+                    }
+                }
+
                 obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc,
                          _metallicFactorLoc, _roughnessFactorLoc, _normalScaleLoc,
                          _occlusionStrengthLoc, _emissiveFactorLoc,
@@ -721,6 +755,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     else
                         manager.Draw(camera, light, csm);
                     DrawnObjects = DrawnObjects + manager.GetObjectDrawn;
+                    RenderedTriangles += manager.RenderedTriangles;
                 }
             }
 

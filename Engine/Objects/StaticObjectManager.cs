@@ -76,8 +76,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     {
         public int GetObjectDrawn => ObjectDrawn;
         public int GetTotalObject => TotalObject;
+        public int RenderedTriangles => _renderedTriangles;
+        public int TotalTriangles => _totalTriangles;
         private int ObjectDrawn = 0;
         private int TotalObject = 0;
+        private int _renderedTriangles = 0;
+        private int _totalTriangles = 0;
         private readonly Dictionary<string, GltfModelGpuData> _modelCache = [];
         private readonly Dictionary<string, List<StaticObjectGroup>> _modelGroups = [];
         private readonly List<StaticObject> _objects = [];
@@ -361,6 +365,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 sobj.CachedCollisionAABB = ca;
             }
 
+            // ── Count total triangles for this instance (LOD0 / most detailed) ──
+            int instanceTriangles = 0;
+            if (selectedGroup.Lods.TryGetValue(0, out var lod0Indices))
+            {
+                var meshes = gpuData.Data.Meshes;
+                foreach (int mi in lod0Indices)
+                {
+                    if (mi >= 0 && mi < meshes!.Length)
+                        instanceTriangles += meshes[mi].Indices.Length / 3;
+                }
+            }
+            else
+            {
+                // Fallback: use the lowest available LOD level
+                int lowestKey = selectedGroup.Lods.Keys.Min();
+                if (selectedGroup.Lods.TryGetValue(lowestKey, out var fallbackIndices))
+                {
+                    var meshes = gpuData.Data.Meshes;
+                    foreach (int mi in fallbackIndices)
+                    {
+                        if (mi >= 0 && mi < meshes!.Length)
+                            instanceTriangles += meshes[mi].Indices.Length / 3;
+                    }
+                }
+            }
+            _totalTriangles += instanceTriangles;
+
             sobj.OverrideCollisionSizeX = overrideCollisionSizeX;
             sobj.OverrideCollisionSizeZ = overrideCollisionSizeZ;
 
@@ -500,6 +531,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             ObjectDrawn = 0;
+            _renderedTriangles = 0;
 
             // ── Step 1: compute visible objects, determine LOD, build instance lists ──
             // Reuse instance lists — clear from previous frame instead of new alloc
@@ -634,6 +666,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 else
                     GL.DrawArraysInstanced(Const.GL_TRIANGLES, 0, mesh.VertexCount, mats.Count);
 
+                int trisPerInstance = mesh.IndexCount / 3;
+                _renderedTriangles += mats.Count * trisPerInstance;
                 ObjectDrawn += mats.Count;
             }
 
