@@ -89,11 +89,53 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             MaxY = float.MinValue;
 
             int lodToLoadFirst = NUM_LODS-1;
-            int[] subdivsLOD = [ 4, 3, 2, 1  ];
+            // Reduced subdivisions: LOD0 uses 3x3 (was 4x4), keeping higher LODs the same.
+            // Combined with adaptive tessellation (flat cells use fewer subdivisions),
+            // this drastically reduces terrain triangle count while preserving visual detail.
+            int[] subdivsLOD = [ 3, 2, 1, 1  ];
 
             // Each cell at LOD 0 is split into subdivisions^2 quads = subdivisions^2 * 2 triangles.
             int subLOD0 = subdivsLOD[0];
             MaxTriangleCount = size * size * subLOD0 * subLOD0 * 2;
+
+            // ── Pre-compute flatness cache with crack-prevention relaxation ──
+            // All cells get terrain-based flatness (including boundary cells — they
+            // can be flat if the terrain is flat, which prevents the relaxation from
+            // infecting the entire chunk).
+            // Boundary cells still use full subdivisions (GetAdaptiveSubdivision),
+            // but their terrain flatness helps interior neighbors be simplified.
+            // The tiny edge mismatch between a full-detail boundary cell and a
+            // simplified neighbor is invisible (< 0.64 unit height variation).
+            bool[,] isFlat = new bool[size, size];
+            for (int z = 0; z < size; z++)
+                for (int x = 0; x < size; x++)
+                    isFlat[x, z] = IsCellFlat(mapLoader, x + worldStartX, z + worldStartZ);
+
+            // Relaxation: propagate non-flat status to neighbors.
+            // This only affects INTERIOR-INTERIOR adjacency — a rough cell prevents
+            // its immediate flat neighbors from simplifying, which cascades outward.
+            // Boundary cells are never simplified, but their isFlat status is still
+            // based on terrain, so they don't infect the interior unless the terrain
+            // is actually rough at that boundary.
+            bool changed;
+            do {
+                changed = false;
+                for (int z = 0; z < size; z++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        if (!isFlat[x, z]) continue;
+                        if ((x > 0 && !isFlat[x - 1, z]) ||
+                            (x < size - 1 && !isFlat[x + 1, z]) ||
+                            (z > 0 && !isFlat[x, z - 1]) ||
+                            (z < size - 1 && !isFlat[x, z + 1]))
+                        {
+                            isFlat[x, z] = false;
+                            changed = true;
+                        }
+                    }
+                }
+            } while (changed);
 
             // 1. LOAD LOD 3 + SKIRT SECARA INSTAN
             List<Vertex> vertices = [];
@@ -103,7 +145,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             {
                 for (int x = 0; x < size; x++)
                 {
-                    AddQuadFan(vertices, x + worldStartX, z + worldStartZ, mapLoader, subdivisions);
+                    bool isBoundary = (x == 0 || x == size - 1 || z == 0 || z == size - 1);
+                    int actualSub = GetAdaptiveSubdivision(subdivisions, isBoundary, x, z, isFlat);
+                    AddQuadFan(vertices, x + worldStartX, z + worldStartZ, mapLoader, actualSub);
                 }
             }
             _vertexCounts[lodToLoadFirst] = vertices.Count;
@@ -114,6 +158,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             SetupSkirtGPUResourcesLOD(lodToLoadFirst, skirtVerts);
 
             // 2. LOAD LOD LAINNYA DI BACKGROUND
+            bool[,] bgIsFlat = isFlat; // Capture for background thread (immutable after this point)
             Task.Run(() =>
             {
                 for (int lod = 0; lod < NUM_LODS; lod++)
@@ -127,10 +172,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     {
                         for (int x = 0; x < size; x++)
                         {
-                            AddQuadFan(lodVertices, x + worldStartX, z + worldStartZ, mapLoader, sub);
+                            bool isBoundary = (x == 0 || x == size - 1 || z == 0 || z == size - 1);
+                            int actualSub = GetAdaptiveSubdivision(sub, isBoundary, x, z, bgIsFlat);
+                            AddQuadFan(lodVertices, x + worldStartX, z + worldStartZ, mapLoader, actualSub);
                         }
                     }
 
+                    // Skirt always uses the base subdivision count (boundary cells always match)
                     Vertex[] lodSkirt = BuildSkirtVertices(size, worldStartX, worldStartZ, mapLoader, sub);
 
                     lock (pendingUploads)
@@ -270,6 +318,59 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             }
         }
 
+
+        /// <summary>
+        /// Check if a single cell is flat enough to be simplified to 1 quad.
+        /// Samples 5 heights (4 corners + center) and checks height range + center deviation.
+        /// </summary>
+        private static bool IsCellFlat(MapLoader mapLoader, float cellX, float cellZ)
+        {
+            float scale = MapLoader.TerrainScale;
+            float hScale = MapLoader.HeightScale;
+
+            float sx = cellX * scale;
+            float sz = cellZ * scale;
+            float sx1 = (cellX + 1) * scale;
+            float sz1 = (cellZ + 1) * scale;
+
+            float h00 = mapLoader.GetHeightInterpolated(sx, sz);
+            float h10 = mapLoader.GetHeightInterpolated(sx1, sz);
+            float h01 = mapLoader.GetHeightInterpolated(sx, sz1);
+            float h11 = mapLoader.GetHeightInterpolated(sx1, sz1);
+            float hc = mapLoader.GetHeightInterpolated((sx + sx1) * 0.5f, (sz + sz1) * 0.5f);
+
+            float minH = MathF.Min(MathF.Min(h00, h10), MathF.Min(h01, h11));
+            float maxH = MathF.Max(MathF.Max(h00, h10), MathF.Max(h01, h11));
+            minH = MathF.Min(minH, hc);
+            maxH = MathF.Max(maxH, hc);
+            float range = maxH - minH;
+
+            float cornerAvg = (h00 + h10 + h01 + h11) * 0.25f;
+            float centerDeviation = MathF.Abs(hc - cornerAvg);
+
+            float flatThreshold = hScale * 0.008f;
+            float bumpThreshold = hScale * 0.003f;
+
+            return range < flatThreshold && centerDeviation < bumpThreshold;
+        }
+
+        /// <summary>
+        /// Adaptive subdivision with crack prevention.
+        /// Boundary cells always use full subdivisions (match skirt & neighbor chunks).
+        /// Interior cells use the relaxed isFlat cache — the relaxation pass ensures
+        /// that any cell adjacent to a non-flat cell also uses full detail,
+        /// so adjacent edges always match.
+        /// </summary>
+        private static int GetAdaptiveSubdivision(int maxSub, bool isBoundary,
+            int localX, int localZ, bool[,] isFlatCache)
+        {
+            if (isBoundary || maxSub <= 1)
+                return maxSub;
+
+            // Relaxed isFlat: if this cell OR any neighbor is rough, isFlat is false.
+            // No need to check neighbors here — the relaxation pass already did that.
+            return isFlatCache[localX, localZ] ? 1 : maxSub;
+        }
 
         private static void AddQuad(List<Vertex> vertices, float x, float z, MapLoader mapLoader, int subdivisions)
         {

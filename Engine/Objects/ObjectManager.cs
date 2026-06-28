@@ -207,7 +207,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 collisionPart: "bark",
                 overrideCollisionSizeX: 1.2f,
