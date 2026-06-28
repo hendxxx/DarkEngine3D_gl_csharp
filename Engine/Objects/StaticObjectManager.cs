@@ -87,6 +87,66 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly List<StaticObject> _objects = [];
         private readonly uint _shaderProgram;
 
+        // ── Spatial Grid ──
+        private const float _gridCellSize = 16f;       // 16×16m cells
+        private const float _gridVisibleRange = 120f;  // Max visible range (matches LOD3_Distance)
+        private List<int>[,] _gridCells;
+
+        // ── HLOD (optional, controlled by Config.LODConfig.UseHLOD) ──
+        private const float _hlodRegionSize = 64f;     // 64×64m HLOD regions
+        private const float _hlodNearDist = 35f;       // Near range: individual instancing
+        private const float _hlodMidDist = 120f;       // Mid range: HLOD merged meshes
+        private HlodRegion[,] _hlodRegions;
+        private bool _hlodEnabled = false;
+
+        // ── HLOD Statistics (populated after BuildHLOD) ──
+        private int _hlodTotalIndividualTris = 0;       // Total triangles if ALL objects rendered individually at LOD0
+        private int _hlodTotalMergedTris = 0;           // Total triangles in merged HLOD meshes
+        private int _hlodRegionCount = 0;               // Number of non-empty HLOD regions
+        private int _hlodTotalObjects = 0;              // Total objects covered by HLOD
+        private int _hlodVisibleRegions = 0;            // Regions that passed frustum + distance cull this frame
+        public int HLODTotalIndividualTris => _hlodTotalIndividualTris;
+        public int HLODTotalMergedTris => _hlodTotalMergedTris;
+        public int HLODRegionCount => _hlodRegionCount;
+        public int HLODTotalObjects => _hlodTotalObjects;
+        public int HLODVisibleRegions => _hlodVisibleRegions;
+
+        // ── Shared identity instance VBO for HLOD meshes ──
+        // The static_vertex.glsl shader reads model matrix from instanced attributes
+        // at locations 5-8. HLOD meshes (non-instanced) need identity at these locations.
+        private static uint _identityInstanceVBO = 0;
+        private static bool _identityInstanceVBOSetup = false;
+
+        private static void EnsureIdentityInstanceVBO()
+        {
+            if (_identityInstanceVBOSetup) return;
+            _identityInstanceVBOSetup = true;
+
+            // One identity Matrix4x4 (16 floats)
+            float[] identity = [
+                1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                0f, 0f, 0f, 1f
+            ];
+
+            uint vbo;
+            GL.GenBuffers(1, &vbo);
+            _identityInstanceVBO = vbo;
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, _identityInstanceVBO);
+            fixed (float* p = identity)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(16 * sizeof(float)), p, Const.GL_STATIC_DRAW);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, 0);
+        }
+
+        private class HlodRegion
+        {
+            public MeshGpu MergedMesh;
+            public AABB WorldAABB;
+            public int ObjectCount;
+            public float CenterX, CenterZ;
+        }
+
         // Shadow map uniforms
         private readonly int _shadowMap0Loc;
         private readonly int _shadowMap1Loc;
@@ -111,6 +171,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // Skip terrain ray-march test untuk object kecil di tanah (daisies, grass, dll)
         // — object tetap ikut AABB occlusion test terhadap wall/occluders (Phase 2B)
         public bool SkipTerrainRayMarch = false;
+
+        /// <summary>Enable spatial grid optimization for this manager (reduces per-frame iteration).</summary>
+        public bool EnableSpatialGrid = false;
+
+        /// <summary>
+        /// If true, use TerrainChunk chunk dimensions for the grid instead of computing
+        /// bounds from object positions. Set for objects placed on terrain (daisies, grass).
+        /// Grid dimensions become ChunksPerSide × ChunksPerSide with cell size = ChunkSize × TerrainScale.
+        /// </summary>
+        public bool UseTerrainGrid = false;
 
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
 
@@ -418,6 +488,269 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ────────────────────────────────────────────────────────────────
+        //  Spatial Grid + optional HLOD Builder
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Partition objects into a 2D spatial grid for faster per-frame iteration.
+        /// If Config.LODConfig.UseHLOD is true, also builds HLOD merged meshes.
+        /// Must be called after all objects are added.
+        /// </summary>
+        public void BuildSpatialGrid()
+        {
+            if (!EnableSpatialGrid || _objects.Count == 0) return;
+
+            int gridW, gridH;
+            float originX, originZ;
+
+            if (UseTerrainGrid && TerrainChunk.ChunksPerSide > 0)
+            {
+                // Use terrain chunk grid — ChunksPerSide × ChunksPerSide
+                // (e.g. 16×16 = 256 cells for a 256×256 map)
+                gridW = TerrainChunk.ChunksPerSide;
+                gridH = TerrainChunk.ChunksPerSide;
+                int halfMapSize = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize) / 2;
+                originX = -halfMapSize * TerrainChunk.TerrainScale;
+                originZ = -halfMapSize * TerrainChunk.TerrainScale;
+            }
+            else
+            {
+                // Compute world bounds from actual object positions
+                float minX = float.MaxValue, maxX = float.MinValue;
+                float minZ = float.MaxValue, maxZ = float.MinValue;
+                for (int i = 0; i < _objects.Count; i++)
+                {
+                    var pos = _objects[i].Position;
+                    if (pos.X < minX) minX = pos.X;
+                    if (pos.X > maxX) maxX = pos.X;
+                    if (pos.Z < minZ) minZ = pos.Z;
+                    if (pos.Z > maxZ) maxZ = pos.Z;
+                }
+                float worldSizeX = maxX - minX;
+                float worldSizeZ = maxZ - minZ;
+                if (worldSizeX < 1f || worldSizeZ < 1f) return;
+
+                gridW = (int)Math.Ceiling(worldSizeX / _gridCellSize) + 1;
+                gridH = (int)Math.Ceiling(worldSizeZ / _gridCellSize) + 1;
+                originX = minX;
+                originZ = minZ;
+            }
+
+            _gridCells = new List<int>[gridW, gridH];
+            for (int gx = 0; gx < gridW; gx++)
+                for (int gz = 0; gz < gridH; gz++)
+                    _gridCells[gx, gz] = new List<int>();
+
+            float invCellSize = 1f / _gridCellSize;
+            for (int i = 0; i < _objects.Count; i++)
+            {
+                var pos = _objects[i].Position;
+                int gx = (int)((pos.X - originX) * invCellSize);
+                int gz = (int)((pos.Z - originZ) * invCellSize);
+                gx = Math.Clamp(gx, 0, gridW - 1);
+                gz = Math.Clamp(gz, 0, gridH - 1);
+                _gridCells[gx, gz].Add(i);
+            }
+
+            Console.WriteLine($"[Grid] Built {gridW}×{gridH} grid for {_objects.Count} objects.");
+
+            // ── Optional: Build HLOD merged meshes ──
+            if (DarkEngine3D_gl_csharp.Engine.Config.LODConfig.UseHLOD)
+            {
+                // Reset HLOD stats before building
+                _hlodTotalIndividualTris = 0;
+                _hlodTotalMergedTris = 0;
+                _hlodRegionCount = 0;
+                _hlodTotalObjects = 0;
+
+                // Count individual tris for all objects (LOD0)
+                foreach (var obj in _objects)
+                {
+                    if (obj.Group == null || !obj.Group.Lods.TryGetValue(0, out var miList)) continue;
+                    var meshes = obj.GpuData.Data.Meshes;
+                    if (meshes == null) continue;
+                    foreach (int mi in miList)
+                    {
+                        if (mi >= 0 && mi < meshes!.Length)
+                            _hlodTotalIndividualTris += meshes[mi].Indices.Length / 3;
+                    }
+                }
+                _hlodTotalObjects = _objects.Count;
+
+                BuildHLOD(originX, originZ);
+            }
+        }
+
+        /// <summary>Build HLOD merged meshes per region. Called after spatial grid is ready.</summary>
+        private void BuildHLOD(float worldMinX, float worldMinZ)
+        {
+            float worldSizeX = _gridCells.GetLength(0) * _gridCellSize;
+            float worldSizeZ = _gridCells.GetLength(1) * _gridCellSize;
+
+            int hlodCountX = Math.Max(1, (int)Math.Ceiling(worldSizeX / _hlodRegionSize));
+            int hlodCountZ = Math.Max(1, (int)Math.Ceiling(worldSizeZ / _hlodRegionSize));
+            _hlodRegions = new HlodRegion[hlodCountX, hlodCountZ];
+
+            // Collect object indices per HLOD region
+            var hlodObjLists = new List<int>[hlodCountX, hlodCountZ];
+            for (int hx = 0; hx < hlodCountX; hx++)
+                for (int hz = 0; hz < hlodCountZ; hz++)
+                    hlodObjLists[hx, hz] = new List<int>();
+
+            for (int i = 0; i < _objects.Count; i++)
+            {
+                var pos = _objects[i].Position;
+                int hx = (int)((pos.X - worldMinX) / _hlodRegionSize);
+                int hz = (int)((pos.Z - worldMinZ) / _hlodRegionSize);
+                hx = Math.Clamp(hx, 0, hlodCountX - 1);
+                hz = Math.Clamp(hz, 0, hlodCountZ - 1);
+                hlodObjLists[hx, hz].Add(i);
+            }
+
+            Console.WriteLine($"[HLOD] Building {hlodCountX}×{hlodCountZ} regions ({_objects.Count} objects)...");
+            int totalTris = 0;
+            int nonEmptyCount = 0;
+
+            for (int hx = 0; hx < hlodCountX; hx++)
+            {
+                for (int hz = 0; hz < hlodCountZ; hz++)
+                {
+                    var indices = hlodObjLists[hx, hz];
+                    if (indices.Count == 0) continue;
+
+                    var mergedVerts = new List<SkinnedVertex>();
+                    var mergedIdx = new List<uint>();
+                    Vector3 regMin = new(float.PositiveInfinity);
+                    Vector3 regMax = new(float.NegativeInfinity);
+                    var mat = default(MeshMaterialGpu);
+                    bool matSet = false;
+                    uint vertOff = 0;
+
+                    foreach (int oi in indices)
+                    {
+                        var obj = _objects[oi];
+
+                        if (obj.Group == null || !obj.Group.Lods.TryGetValue(0, out var miList) || miList.Count == 0)
+                            continue;
+
+                        var meshes = obj.GpuData.Data.Meshes;
+                        if (meshes == null) continue;
+
+                        foreach (int mi in miList)
+                        {
+                            if (mi < 0 || mi >= meshes.Length) continue;
+                            var src = meshes[mi];
+                            if (src.Vertices.Length < 3) continue;
+
+                            if (!matSet && mi < obj.GpuData.Meshes.Length)
+                            {
+                                mat = obj.GpuData.Meshes[mi].Material;
+                                matSet = true;
+                            }
+
+                            // Compute model matrix same as in Draw() — apply node transform
+                            int nodeIdx = (obj.GpuData.MeshToNode != null && mi < obj.GpuData.MeshToNode.Length)
+                                ? obj.GpuData.MeshToNode[mi] : -1;
+                            Matrix4x4 worldMat = obj.CachedBaseWorldMat;
+                            if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
+                                worldMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * obj.CachedBaseWorldMat;
+                            // Rotation-only for normals (remove translation)
+                            Matrix4x4 normMat = worldMat;
+                            normMat.M41 = 0; normMat.M42 = 0; normMat.M43 = 0;
+
+                            for (int vi = 0; vi < src.Vertices.Length; vi++)
+                            {
+                                ref var sv = ref src.Vertices[vi];
+                                var wp = Vector3.Transform(sv.Position, worldMat);
+                                var wn = Vector3.TransformNormal(sv.Normal, normMat);
+                                mergedVerts.Add(new SkinnedVertex(wp, Vector3.Normalize(wn), sv.TexCoord, sv.BoneWeights, sv.BoneIds));
+                                regMin = Vector3.Min(regMin, wp);
+                                regMax = Vector3.Max(regMax, wp);
+                            }
+                            for (int ii = 0; ii < src.Indices.Length; ii++)
+                                mergedIdx.Add(src.Indices[ii] + vertOff);
+                            vertOff += (uint)src.Vertices.Length;
+                        }
+                    }
+
+                    if (mergedVerts.Count < 3 || mergedIdx.Count < 3) continue;
+                    nonEmptyCount++;
+
+                    var mm = CreateMeshGpu([.. mergedVerts], [.. mergedIdx], ref mat);
+
+                    _hlodRegions[hx, hz] = new HlodRegion
+                    {
+                        MergedMesh = mm,
+                        WorldAABB = new AABB(regMin, regMax),
+                        ObjectCount = indices.Count,
+                        CenterX = worldMinX + hx * _hlodRegionSize + _hlodRegionSize * 0.5f,
+                        CenterZ = worldMinZ + hz * _hlodRegionSize + _hlodRegionSize * 0.5f
+                    };
+                    totalTris += mergedIdx.Count / 3;
+                }
+            }
+
+            _hlodEnabled = true;
+            _hlodTotalMergedTris = totalTris;
+            _hlodRegionCount = nonEmptyCount;
+            Console.WriteLine($"[HLOD] Done! {totalTris:N0} tris, {nonEmptyCount} regions, memory ~{totalTris * 64 / 1024 / 1024}MB (est).");
+        }
+
+        /// <summary>Create MeshGpu from raw vertex/index data for HLOD.</summary>
+        private static MeshGpu CreateMeshGpu(SkinnedVertex[] verts, uint[] idx, ref MeshMaterialGpu mat)
+        {
+            uint vao, vbo, ebo = 0;
+            GL.GenVertexArrays(1, &vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindVertexArray(vao);
+
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            fixed (SkinnedVertex* p = verts)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(verts.Length * sizeof(SkinnedVertex)), p, Const.GL_STATIC_DRAW);
+
+            if (idx.Length > 0)
+            {
+                GL.GenBuffers(1, &ebo);
+                GL.BindBuffer(Const.GL_ELEMENT_ARRAY_BUFFER, ebo);
+                fixed (uint* ip = idx)
+                    GL.BufferData(Const.GL_ELEMENT_ARRAY_BUFFER, (nuint)(idx.Length * sizeof(uint)), ip, Const.GL_STATIC_DRAW);
+            }
+
+            // ── Vertex attributes (locations 0-4) ──
+            int stride = Marshal.SizeOf<SkinnedVertex>();
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)12);
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 2, Const.GL_FLOAT, false, stride, (void*)24);
+            GL.EnableVertexAttribArray(3);
+            GL.VertexAttribPointer(3, 4, Const.GL_FLOAT, false, stride, (void*)32);
+            GL.EnableVertexAttribArray(4);
+            GL.VertexAttribIPointer(4, 4, Const.GL_INT, stride, (void*)48);
+
+            // ── Instanced identity attributes (locations 5-8) for static_vertex.glsl ──
+            // The static vertex shader requires model matrix as instanced attributes.
+            // HLOD draws a single mesh (non-instanced), but the shader still reads
+            // from these locations. Without them, the model matrix is mat4(0) = garbage.
+            EnsureIdentityInstanceVBO();
+            int instanceStride = 16 * sizeof(float); // 4 vec4 rows
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, _identityInstanceVBO);
+            for (int i = 0; i < 4; i++)
+            {
+                uint attr = (uint)(5 + i);
+                GL.EnableVertexAttribArray(attr);
+                GL.VertexAttribPointer(attr, 4, Const.GL_FLOAT, false, instanceStride, (void*)(i * 16));
+                GL.VertexAttribDivisor(attr, 1u); // divisor=1 so it stays for the single instance
+            }
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, 0);
+
+            GL.BindVertexArray(0);
+
+            return new MeshGpu { VAO = vao, VBO = vbo, EBO = ebo, VertexCount = verts.Length, IndexCount = idx.Length, Material = mat };
+        }
+
+        // ────────────────────────────────────────────────────────────────
         //  GPU Instancing: group by (gpuData, meshIdx), draw all at once
         // ────────────────────────────────────────────────────────────────
 
@@ -544,59 +877,145 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 : view * proj;
             Plane[] cameraFrustum = ExtractCameraFrustum(viewProj);
 
-            foreach (var obj in _objects)
+            // Determine camera position in world space
+            float camX = camera.Position.X;
+            float camZ = camera.Position.Z;
+
+            // Use spatial grid if available, otherwise fall back to full iteration
+            if (_gridCells != null)
             {
-                // Occlusion culling: skip jika di belakang terrain
-                if (OcclusionCulling.Enabled && !obj.IsVisible)
-                    continue;
+                // ── Spatial Grid: only iterate cells within visible range ──
+                // Compute visible cell range based on actual object bounds
+                // Since _gridCells was built from actual object positions, we just
+                // compute which cells cover objects within _gridVisibleRange of camera
+                int gridW = _gridCells.GetLength(0);
+                int gridH = _gridCells.GetLength(1);
 
-                if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
-                    continue;
-
-                var group = obj.Group;
-                if (group == null || group.Lods.Count == 0) continue;
-
-                // LOD selection — distance-based pake threshold dari Config
-                float dist = Vector3.Distance(camera.Position, obj.Position);
-                int targetLOD;
-                if (dist < LOD0_Dist) targetLOD = 0;
-                else if (dist < LOD1_Dist) targetLOD = 1;
-                else if (dist < LOD2_Dist) targetLOD = 2;
-                else targetLOD = 3;
-
-                // Clamp targetLOD ke MaxLOD yang tersedia — jangan cull object hanya karena
-                // tidak punya LOD variant tinggi. Model dengan 1 mesh (MaxLOD=0/1) akan tetap
-                // dirender dengan mesh yang sama untuk semua jarak.
-                if (targetLOD > group.MaxLOD)
-                    targetLOD = group.MaxLOD;
-
-                // CullAtMaxLOD: skip di LOD tertinggi meskipun model punya LOD itu
-                if (CullAtMaxLOD && targetLOD >= 3)
-                    continue;
-
-                int actualLOD = group.LodFallback[targetLOD];
-                obj.CurrentLOD = actualLOD; // Store for debug overlay
-
-                var meshIndices = group.Lods[actualLOD];
-                var baseWorldMat = obj.CachedBaseWorldMat;
-
-                foreach (int meshIdx in meshIndices)
+                for (int gz = 0; gz < gridH; gz++)
                 {
-                    int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length)
-                                  ? obj.GpuData.MeshToNode[meshIdx] : -1;
-
-                    var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx);
-                    if (!_drawInstanceLists.TryGetValue(key, out var entry))
+                    for (int gx = 0; gx < gridW; gx++)
                     {
-                        entry = new InstanceGroup { Mesh = obj.GpuData.Meshes[meshIdx], Gpu = obj.GpuData };
-                        _drawInstanceLists[key] = entry;
+                        var cellObjs = _gridCells[gx, gz];
+                        if (cellObjs == null || cellObjs.Count == 0) continue;
+
+                        // Quick distance check using first object's position (all objects in cell are close)
+                        var firstObj = _objects[cellObjs[0]];
+                        float dx = firstObj.Position.X - camX;
+                        float dz = firstObj.Position.Z - camZ;
+                        if (dx * dx + dz * dz > _gridVisibleRange * _gridVisibleRange)
+                            continue;
+
+                        foreach (int objIdx in cellObjs)
+                        {
+                            var obj = _objects[objIdx];
+
+                            // Occlusion culling
+                            if (OcclusionCulling.Enabled && !obj.IsVisible)
+                                continue;
+
+                            if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
+                                continue;
+
+                            var group = obj.Group;
+                            if (group == null || group.Lods.Count == 0) continue;
+
+                            // LOD selection — distance-based
+                            float dist = Vector3.Distance(camera.Position, obj.Position);
+                            int targetLOD;
+                            if (dist < LOD0_Dist) targetLOD = 0;
+                            else if (dist < LOD1_Dist) targetLOD = 1;
+                            else if (dist < LOD2_Dist) targetLOD = 2;
+                            else targetLOD = 3;
+
+                            if (targetLOD > group.MaxLOD)
+                                targetLOD = group.MaxLOD;
+
+                            if (CullAtMaxLOD && targetLOD >= 3)
+                                continue;
+
+                            int actualLOD = group.LodFallback[targetLOD];
+                            obj.CurrentLOD = actualLOD;
+
+                            var meshIndices = group.Lods[actualLOD];
+                            var baseWorldMat = obj.CachedBaseWorldMat;
+
+                            foreach (int meshIdx in meshIndices)
+                            {
+                                int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length)
+                                              ? obj.GpuData.MeshToNode[meshIdx] : -1;
+
+                                var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx);
+                                if (!_drawInstanceLists.TryGetValue(key, out var entry))
+                                {
+                                    entry = new InstanceGroup { Mesh = obj.GpuData.Meshes[meshIdx], Gpu = obj.GpuData };
+                                    _drawInstanceLists[key] = entry;
+                                }
+
+                                Matrix4x4 modelMat = baseWorldMat;
+                                if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
+                                    modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
+
+                                entry.Mats.Add(modelMat);
+                            }
+                        }
                     }
+                }
+            }
+            else
+            {
+                // ── Original: iterate all objects (no spatial grid) ──
+                foreach (var obj in _objects)
+                {
+                    // Occlusion culling: skip jika di belakang terrain
+                    if (OcclusionCulling.Enabled && !obj.IsVisible)
+                        continue;
 
-                    Matrix4x4 modelMat = baseWorldMat;
-                    if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
-                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
+                    if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
+                        continue;
 
-                    entry.Mats.Add(modelMat);
+                    var group = obj.Group;
+                    if (group == null || group.Lods.Count == 0) continue;
+
+                    // LOD selection — distance-based pake threshold dari Config
+                    float dist = Vector3.Distance(camera.Position, obj.Position);
+                    int targetLOD;
+                    if (dist < LOD0_Dist) targetLOD = 0;
+                    else if (dist < LOD1_Dist) targetLOD = 1;
+                    else if (dist < LOD2_Dist) targetLOD = 2;
+                    else targetLOD = 3;
+
+                    // Clamp targetLOD ke MaxLOD yang tersedia
+                    if (targetLOD > group.MaxLOD)
+                        targetLOD = group.MaxLOD;
+
+                    // CullAtMaxLOD: skip di LOD tertinggi
+                    if (CullAtMaxLOD && targetLOD >= 3)
+                        continue;
+
+                    int actualLOD = group.LodFallback[targetLOD];
+                    obj.CurrentLOD = actualLOD;
+
+                    var meshIndices = group.Lods[actualLOD];
+                    var baseWorldMat = obj.CachedBaseWorldMat;
+
+                    foreach (int meshIdx in meshIndices)
+                    {
+                        int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length)
+                                      ? obj.GpuData.MeshToNode[meshIdx] : -1;
+
+                        var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx);
+                        if (!_drawInstanceLists.TryGetValue(key, out var entry))
+                        {
+                            entry = new InstanceGroup { Mesh = obj.GpuData.Meshes[meshIdx], Gpu = obj.GpuData };
+                            _drawInstanceLists[key] = entry;
+                        }
+
+                        Matrix4x4 modelMat = baseWorldMat;
+                        if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
+                            modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
+
+                        entry.Mats.Add(modelMat);
+                    }
                 }
             }
 
@@ -669,6 +1088,56 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 int trisPerInstance = mesh.IndexCount / 3;
                 _renderedTriangles += mats.Count * trisPerInstance;
                 ObjectDrawn += mats.Count;
+            }
+
+            // ── Step 3: render HLOD region meshes (mid range) — optional, gated by config ──
+            _hlodVisibleRegions = 0;
+            if (_hlodEnabled)
+            {
+                // Compute visible HLOD regions within mid range
+                int hlodW = _hlodRegions.GetLength(0);
+                int hlodH = _hlodRegions.GetLength(1);
+                float rangeSq = _hlodMidDist * _hlodMidDist;
+
+                for (int hz = 0; hz < hlodH; hz++)
+                {
+                    for (int hx = 0; hx < hlodW; hx++)
+                    {
+                        var reg = _hlodRegions[hx, hz];
+                        if (reg == null || reg.ObjectCount == 0) continue;
+
+                        // Frustum cull
+                        if (!IsAABBInFrustum(cameraFrustum, reg.WorldAABB, 5f))
+                            continue;
+
+                        // Distance cull
+                        float dxc = camera.Position.X - reg.CenterX;
+                        float dzc = camera.Position.Z - reg.CenterZ;
+                        if (dxc * dxc + dzc * dzc > rangeSq)
+                            continue;
+
+                        // Skip near-range regions (objects already rendered via grid instancing)
+                        if (dxc * dxc + dzc * dzc < _hlodNearDist * _hlodNearDist)
+                            continue;
+
+                        _hlodVisibleRegions++;
+
+                        var mesh = reg.MergedMesh;
+                        var identity = Matrix4x4.Identity;
+                        GL.UniformMatrix4fv(_modelLoc, 1, false, (float*)Unsafe.AsPointer(ref identity));
+
+                        SetHLODMaterialUniforms(mesh);
+
+                        GL.BindVertexArray(mesh.VAO);
+                        if (mesh.IndexCount > 0)
+                            GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                        else
+                            GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+
+                        _renderedTriangles += mesh.IndexCount / 3;
+                        ObjectDrawn++;
+                    }
+                }
             }
 
             GL.BindVertexArray(0);
@@ -854,6 +1323,136 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 return sobj.Group.LocalAABB; // fallback ke group local AABB jika tidak ada mesh yang cocok
 
             return new AABB(mn, mx); // LOCAL AABB (belum di-transform ke world)
+        }
+
+        /// <summary>Set material uniforms for an HLOD merged mesh draw call.</summary>
+        private void SetHLODMaterialUniforms(MeshGpu mesh)
+        {
+            if (mesh.Material.DoubleSided) GL.Disable(Const.GL_CULL_FACE);
+            else GL.Enable(Const.GL_CULL_FACE);
+
+            GL.Uniform4f(_baseColorLoc, mesh.Material.BaseColorFactor.X, mesh.Material.BaseColorFactor.Y,
+                         mesh.Material.BaseColorFactor.Z, mesh.Material.BaseColorFactor.W);
+
+            if (mesh.Material.HasBaseColorTexture)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
+                GL.Uniform1i(_useAlbedoLoc, 1);
+                GL.Uniform1i(_albedoMapLoc, 0);
+            }
+            else GL.Uniform1i(_useAlbedoLoc, 0);
+
+            if (_metallicFactorLoc != -1) GL.Uniform1f(_metallicFactorLoc, mesh.Material.MetallicFactor);
+            if (_roughnessFactorLoc != -1) GL.Uniform1f(_roughnessFactorLoc, mesh.Material.RoughnessFactor);
+            if (_normalScaleLoc != -1) GL.Uniform1f(_normalScaleLoc, mesh.Material.NormalScale);
+            if (_occlusionStrengthLoc != -1) GL.Uniform1f(_occlusionStrengthLoc, mesh.Material.OcclusionStrength);
+            if (_emissiveFactorLoc != -1) GL.Uniform3f(_emissiveFactorLoc, mesh.Material.EmissiveFactor.X, mesh.Material.EmissiveFactor.Y, mesh.Material.EmissiveFactor.Z);
+            if (_hasNormalTextureLoc != -1) GL.Uniform1i(_hasNormalTextureLoc, mesh.Material.HasNormalTexture ? 1 : 0);
+            if (_hasMetallicRoughnessTextureLoc != -1) GL.Uniform1i(_hasMetallicRoughnessTextureLoc, mesh.Material.HasMetallicRoughnessTexture ? 1 : 0);
+            if (_hasOcclusionTextureLoc != -1) GL.Uniform1i(_hasOcclusionTextureLoc, mesh.Material.HasOcclusionTexture ? 1 : 0);
+            if (_hasEmissiveTextureLoc != -1) GL.Uniform1i(_hasEmissiveTextureLoc, mesh.Material.HasEmissiveTexture ? 1 : 0);
+
+            if (mesh.Material.HasNormalTexture && mesh.Material.NormalTextureID != 0)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 3);
+                GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.NormalTextureID);
+            }
+            if (mesh.Material.HasMetallicRoughnessTexture && mesh.Material.MetallicRoughnessTextureID != 0)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 4);
+                GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.MetallicRoughnessTextureID);
+            }
+            if (mesh.Material.HasOcclusionTexture && mesh.Material.OcclusionTextureID != 0)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 5);
+                GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.OcclusionTextureID);
+            }
+            if (mesh.Material.HasEmissiveTexture && mesh.Material.EmissiveTextureID != 0)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.EmissiveTextureID);
+            }
+        }
+
+        /// <summary>
+        /// Draw HLOD region wireframe visualization in world space.
+        /// Color coding:
+        ///   Green (0,1,0):    Near range (< 35m) — individual instancing digunakan
+        ///   Yellow (1,1,0):   Mid range (35-120m) — HLOD merged mesh DI-RENDER
+        ///   Red (1,0,0):      Far range (> 120m) — HLOD region di-cull
+        ///   Dim gray (0.3):   Not in frustum
+        /// </summary>
+        public void DrawHLODDebug(Camera camera, Plane[] cameraFrustum)
+        {
+            if (!_hlodEnabled || _hlodRegions == null) return;
+
+            int hlodW = _hlodRegions.GetLength(0);
+            int hlodH = _hlodRegions.GetLength(1);
+            float nearSq = _hlodNearDist * _hlodNearDist;
+            float midSq = _hlodMidDist * _hlodMidDist;
+
+            for (int hz = 0; hz < hlodH; hz++)
+            {
+                for (int hx = 0; hx < hlodW; hx++)
+                {
+                    var reg = _hlodRegions[hx, hz];
+                    if (reg == null || reg.ObjectCount == 0) continue;
+
+                    // Choose color based on distance from camera
+                    float dxc = camera.Position.X - reg.CenterX;
+                    float dzc = camera.Position.Z - reg.CenterZ;
+                    float distSq = dxc * dxc + dzc * dzc;
+
+                    // Check frustum
+                    bool inFrustum = IsAABBInFrustum(cameraFrustum, reg.WorldAABB, 10f);
+
+                    Vector3 color;
+                    if (!inFrustum)
+                        color = new Vector3(0.3f, 0.3f, 0.3f); // dim gray: outside frustum
+                    else if (distSq < nearSq)
+                        color = new Vector3(0.0f, 1.0f, 0.0f); // green: near range (individual instancing)
+                    else if (distSq < midSq)
+                        color = new Vector3(1.0f, 1.0f, 0.0f); // yellow: mid range (HLOD rendered)
+                    else
+                        color = new Vector3(1.0f, 0.0f, 0.0f); // red: far range (culled)
+
+                    // Draw AABB wireframe with slightly extended Y bounds for visibility
+                    var aabb = reg.WorldAABB;
+                    float heightExt = (aabb.Max.Y - aabb.Min.Y) * 0.5f + 2f;
+                    float centerY = (aabb.Min.Y + aabb.Max.Y) * 0.5f;
+                    var visAABB = new Helpers.ObjectHelpers.AABB(
+                        new Vector3(aabb.Min.X, centerY - heightExt, aabb.Min.Z),
+                        new Vector3(aabb.Max.X, centerY + heightExt, aabb.Max.Z)
+                    );
+                    TerrainChunk.DrawAABBWireframe(visAABB, color, camera);
+                }
+            }
+        }
+
+        /// <summary>Cleanup GPU resources for HLOD merged meshes.</summary>
+        public void DisposeHLOD()
+        {
+            if (_hlodRegions == null) return;
+            for (int hx = 0; hx < _hlodRegions.GetLength(0); hx++)
+            {
+                for (int hz = 0; hz < _hlodRegions.GetLength(1); hz++)
+                {
+                    var reg = _hlodRegions[hx, hz];
+                    if (reg?.MergedMesh.VAO == 0) continue;
+                    if (reg != null)
+                    {
+                        uint vao = reg.MergedMesh.VAO;
+                        uint vbo = reg.MergedMesh.VBO;
+                        uint ebo = reg.MergedMesh.EBO;
+                        GL.DeleteVertexArrays(1, &vao);
+                        GL.DeleteBuffers(1, &vbo);
+                        if (ebo != 0) GL.DeleteBuffers(1, &ebo);
+                    }
+                }
+            }
+            _hlodRegions = null;
+            _hlodEnabled = false;
         }
 
         // ────────────────────────────────────────────────────────────────

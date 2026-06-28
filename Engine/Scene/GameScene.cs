@@ -967,6 +967,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
             }
 
+            // ── HLOD Visualization (toggled with K key) ──
+            if (Keyboard.GetShowHLOD() && _objectManager != null)
+            {
+                GL.Disable(Const.GL_DEPTH_TEST);
+
+                Plane[] hlodFrustum = StaticObjectManager.ExtractCameraFrustum(
+                    Matrix4x4.Multiply(_camera.GetViewMatrix(), _camera.GetProjectionMatrix()));
+                _objectManager.DrawHLODDebug(_camera, hlodFrustum);
+
+                GL.Enable(Const.GL_DEPTH_TEST);
+            }
+
             // ── Debug BBox Wireframe + LOD Labels (toggled with P key) ──
             if (Keyboard.GetShowBBox() && _objectManager != null)
             {
@@ -981,10 +993,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     Vector3 color = animObjs[oi].IsPlayer ? new Vector3(0f, 1f, 0f) : new Vector3(0f, 0.5f, 1f);
                     TerrainChunk.DrawAABBWireframe(aabb, color, _camera);
 
-                    // LOD label for animated objects
-                    int animLod = animObjs[oi].AnimLOD;
-                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
-                    DrawLODLabel(center, animLod, animObjs[oi].IsPlayer);
+                    //// LOD label for animated objects
+                    //int animLod = animObjs[oi].AnimLOD;
+                    //Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
+                    //DrawLODLabel(center, animLod, animObjs[oi].IsPlayer);
                 }
 
                 if (_objectManager.staticObjectManagers != null)
@@ -1005,9 +1017,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                             TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, _camera);
 
-                            // LOD label for static objects
-                            Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
-                            DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
+                            //// LOD label for static objects
+                            //Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
+                            //DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
                         }
                     }
 
@@ -1113,6 +1125,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
             if (!string.IsNullOrEmpty(title7))
                 _hud.DrawText(title7, 10, 60 + debugLineH * 6, new Vector3(0, 1, 1));
+
+            // ── HLOD Statistics (if any HLOD regions exist) ──
+            if (_objectManager != null && _objectManager.staticObjectManagers != null)
+            {
+                bool hasHLOD = false;
+                int hlodTotalTris = 0, hlodMergedTris = 0, hlodRegions = 0, hlodObjs = 0, hlodVisible = 0;
+                foreach (var mgr in _objectManager.staticObjectManagers)
+                {
+                    if (mgr != null && mgr.HLODRegionCount > 0)
+                    {
+                        hasHLOD = true;
+                        hlodTotalTris += mgr.HLODTotalIndividualTris;
+                        hlodMergedTris += mgr.HLODTotalMergedTris;
+                        hlodRegions += mgr.HLODRegionCount;
+                        hlodObjs += mgr.HLODTotalObjects;
+                        hlodVisible += mgr.HLODVisibleRegions;
+                    }
+                }
+                if (hasHLOD)
+                {
+                    float trisSavedPct = hlodTotalTris > 0
+                        ? (1f - (float)hlodMergedTris / hlodTotalTris) * 100f
+                        : 0f;
+                    string hlodLine1 = $"HLOD: {hlodObjs:N0} objects  ➔  {hlodRegions} merged regions";
+                    string hlodLine2 = $"      Tris: {hlodTotalTris:N0} (indiv) ➔ {hlodMergedTris:N0} (merged)  = {trisSavedPct:N1}% saved";
+                    string hlodLine3 = $"      Draw calls: {hlodTotalTris:N0} max (indiv) ➔ ~{hlodVisible}/{hlodRegions} visible (merged)";
+                    _hud.DrawText(hlodLine1, 10, 60 + debugLineH * 7, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine2, 10, 60 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine3, 10, 60 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
+                }
+            }
 
             // ── Update window title (FPS, etc.) ──
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);

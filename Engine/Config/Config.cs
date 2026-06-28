@@ -106,6 +106,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public readonly static float SimulatedSpeedMultiplier = 0.85f;
 
         // ============================
+        // HLOD — Hierarchical LOD untuk dense static objects (daisies, grass, dll)
+        // ============================
+        // Enable: build merged meshes per region untuk mid-range rendering.
+        // Memory: ~80MB GPU untuk 100K daisies. Default OFF karena OOM risk.
+        public static bool UseHLOD = false ;
+
+        // ============================
         // Frustum LOD
         // ============================
         // seberapa jauh dari forward camera masih dianggap "near frustum"

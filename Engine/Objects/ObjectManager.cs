@@ -203,54 +203,73 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             ];
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
+
+
+            // Wall occluder — object besar untuk test occlusion
+            // Posisi di antara player start dan area pohon/AI
+            string wallPath = "Artifacts/objects/damaged_wall.glb";
+            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "wall", true, gameTerrainChunk);
+            staticObjectManagers[0].CastShadow = true;
+            staticObjectManagers[0].UseAlpha = true;
+            staticObjectManagers[0].CullAtMaxLOD = false;
+            // Set IsOccluder=true agar object ini menjadi penghalang
+            foreach (var sobj in staticObjectManagers[0].GetObjects())
+                sobj.IsOccluder = true;
+
+            // Wall — collidable (player/NPC/camera gak bisa tembus)
+            foreach (var sobj in staticObjectManagers[0].GetObjects())
+                sobj.IsCollidable = true;
              
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 collisionPart: "bark",
                 overrideCollisionSizeX: 1.2f,
-                overrideCollisionSizeZ: 1.2f);
-            staticObjectManagers[0].CastShadow = true;
-            staticObjectManagers[0].UseAlpha = true;
-            staticObjectManagers[0].CullAtMaxLOD = false;
+                overrideCollisionSizeZ: 1.2f
+                );
+            //Config.LODConfig.UseHLOD = true;
+            staticObjectManagers[1].CastShadow = true;
+            staticObjectManagers[1].UseAlpha = true;
+            staticObjectManagers[1].CullAtMaxLOD = false;
+            staticObjectManagers[1].EnableSpatialGrid = true;
+            staticObjectManagers[1].UseTerrainGrid = true;
+            staticObjectManagers[1].BuildSpatialGrid();
 
             // Trees — collidable (player/NPC gak bisa tembus pohon)
-            foreach (var sobj in staticObjectManagers[0].GetObjects())
-                sobj.IsCollidable = true;
+            foreach (var sobj in staticObjectManagers[1].GetObjects())
+                sobj.IsCollidable = true; 
 
             OnLoadProgress?.Invoke(0.20f, $"Static: {treesName} done");
 
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[1].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
-            staticObjectManagers[1].CastShadow = false;
-            staticObjectManagers[1].UseAlpha = false;
-            staticObjectManagers[1].CullAtMaxLOD = true;
-            staticObjectManagers[1].SkipTerrainRayMarch = true; // 50rb daisies — skip ray-march, tetap ikut AABB occlusion
+            staticObjectManagers[2].CastShadow = false;
+            staticObjectManagers[2].UseAlpha = false;
+            staticObjectManagers[2].CullAtMaxLOD = true;
+            staticObjectManagers[2].SkipTerrainRayMarch = true; // 100rb daisies — skip ray-march
+
+            // Enable spatial grid + HLOD untuk daisies
+            // Spatial grid: uses terrain chunk grid (16×16) instead of bounds-based (33×33)
+            // HLOD: merged meshes per 64m region for mid-range (35-120m), ~16 draw calls
+            //Config.LODConfig.UseHLOD = true;
+            staticObjectManagers[2].EnableSpatialGrid = true;
+            staticObjectManagers[2].UseTerrainGrid = true;
+            OnLoadProgress?.Invoke(0.80f, "Static: building spatial grid + HLOD...\n");
+            staticObjectManagers[2].BuildSpatialGrid();
+
+            // Set UseHLOD back to false for non-HLOD managers (trees, wall)
+            //Config.LODConfig.UseHLOD = false;
 
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
 
             // Daisies — collidable (player/NPC gak bisa tembus pohon)
             foreach (var sobj in staticObjectManagers[1].GetObjects())
                 sobj.IsCollidable = false;
-
-            // Wall occluder — object besar untuk test occlusion
-            // Posisi di antara player start dan area pohon/AI
-            string wallPath = "Artifacts/objects/damaged_wall.glb";
-            staticObjectManagers[2].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "wall", true, gameTerrainChunk);
-            staticObjectManagers[2].CastShadow = true;
-            staticObjectManagers[2].UseAlpha = true;
-            staticObjectManagers[2].CullAtMaxLOD = false;
-            // Set IsOccluder=true agar object ini menjadi penghalang
-            foreach (var sobj in staticObjectManagers[2].GetObjects())
-                sobj.IsOccluder = true;
-            // Wall — collidable (player/NPC/camera gak bisa tembus)
-            foreach (var sobj in staticObjectManagers[2].GetObjects())
-                sobj.IsCollidable = true;
 
             OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
 
@@ -836,6 +855,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         }
 
+        /// <summary>
+        /// Delegate HLOD debug visualization to all static managers that have HLOD enabled.
+        /// </summary>
+        public void DrawHLODDebug(Camera camera, Plane[] cameraFrustum)
+        {
+            if (staticObjectManagers == null) return;
+            foreach (var mgr in staticObjectManagers)
+            {
+                if (mgr != null)
+                    mgr.DrawHLODDebug(camera, cameraFrustum);
+            }
+        }
+
         public void DrawHealthBars(Camera camera, HUD hud)
         {
             const float headHeight = 2.1f;
@@ -941,6 +973,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _modelCache.Clear();
             _objects.Clear();
             _agents.Clear();
+
+            // Cleanup HLOD GPU resources (VAO/VBO/EBO for merged meshes)
+            foreach (var mgr in staticObjectManagers)
+                mgr?.DisposeHLOD();
         }
 
         private static Vector4[] ExtractFrustumPlanes(Matrix4x4 vp)

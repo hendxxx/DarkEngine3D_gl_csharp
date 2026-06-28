@@ -44,6 +44,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static float TargetWeather = 0.001f;  // Cuaca tujuan awal (default: sedikit mendung)
         static float CurrentWeather = 0.001f; // Nilai cuaca aktif yang sedang merayap halus
 
+        // Variabel kontrol untuk toggle HLOD visualization
+        static bool showHLOD = false;
+        static bool kPressed = false;
+        public static bool GetShowHLOD() => showHLOD;
+
         // Variabel kontrol untuk toggle kabut
         static bool isFogActive = true;
         static int shadowFilterMode = 0;
@@ -224,6 +229,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             else
             {
                 oPressed = false;
+            }
+
+            // =========================================================================
+            // K TOGGLE HLOD VISUALIZATION (RISING EDGE)
+            // =========================================================================
+            int kState = glfwGetKey(window, Const.GLFW_KEY_K);
+            if (kState == Const.GLFW_PRESS)
+            {
+                if (!kPressed)
+                {
+                    showHLOD = !showHLOD;
+                    kPressed = true;
+                    Console.WriteLine(showHLOD ? "HLOD Visualization: ON" : "HLOD Visualization: OFF");
+                }
+            }
+            else
+            {
+                kPressed = false;
             }
 
             // =========================================================================

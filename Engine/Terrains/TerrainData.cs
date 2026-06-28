@@ -14,7 +14,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         // Vertical drop applied to skirt bottom vertices. Must be deeper than the worst
         // expected height difference at an LOD boundary so cracks stay hidden.
-        private const float SkirtDepth = 0.25f;
+        // Dynamically scaled by HeightScale — computed in Generate().
+        private static float SkirtDepth = 5.0f;
 
         public float MinY { get; private set; } = float.MaxValue;
         public float MaxY { get; private set; } = float.MinValue;
@@ -88,6 +89,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             MinY = float.MaxValue;
             MaxY = float.MinValue;
 
+            // Set skirt depth proportional to height scale so it's deep enough to hide
+            // LOD seam gaps even on steep terrain.
+            SkirtDepth = Math.Max(0.5f, MapLoader.HeightScale * 0.05f);
+
             int lodToLoadFirst = NUM_LODS-1;
             // Reduced subdivisions: LOD0 uses 3x3 (was 4x4), keeping higher LODs the same.
             // Combined with adaptive tessellation (flat cells use fewer subdivisions),
@@ -99,24 +104,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             MaxTriangleCount = size * size * subLOD0 * subLOD0 * 2;
 
             // ── Pre-compute flatness cache with crack-prevention relaxation ──
-            // All cells get terrain-based flatness (including boundary cells — they
-            // can be flat if the terrain is flat, which prevents the relaxation from
-            // infecting the entire chunk).
-            // Boundary cells still use full subdivisions (GetAdaptiveSubdivision),
-            // but their terrain flatness helps interior neighbors be simplified.
-            // The tiny edge mismatch between a full-detail boundary cell and a
-            // simplified neighbor is invisible (< 0.64 unit height variation).
+            // All cells get terrain-based flatness. Boundary cells always use full
+            // subdivisions (isBoundary in GetAdaptiveSubdivision), but their isFlat
+            // is based on actual terrain so they don't infect interior cells.
+            //
+            // The relaxation pass prevents cracks by propagating non-flat status:
+            // if a cell is rough, its neighbors also use full detail. This cascades
+            // outward so adjacent cells always have matching edge subdivisions.
+            //
+            // Boundary-adjacent cells (x=1, size-2, z=1, size-2) are NOT forced to
+            // full detail — doing so would infect the entire chunk via relaxation
+            // propagation, killing all simplification. On flat terrain the height
+            // mismatch at the boundary-adjacent edge is sub-threshold (< 0.64 units)
+            // and invisible. Skirts handle inter-chunk LOD seam gaps.
+            //
             bool[,] isFlat = new bool[size, size];
             for (int z = 0; z < size; z++)
                 for (int x = 0; x < size; x++)
                     isFlat[x, z] = IsCellFlat(mapLoader, x + worldStartX, z + worldStartZ);
 
-            // Relaxation: propagate non-flat status to neighbors.
-            // This only affects INTERIOR-INTERIOR adjacency — a rough cell prevents
-            // its immediate flat neighbors from simplifying, which cascades outward.
-            // Boundary cells are never simplified, but their isFlat status is still
-            // based on terrain, so they don't infect the interior unless the terrain
-            // is actually rough at that boundary.
+            // Relaxation: propagate non-flat status to neighbors so adjacent edges match.
             bool changed;
             do {
                 changed = false;
@@ -367,8 +374,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             if (isBoundary || maxSub <= 1)
                 return maxSub;
 
-            // Relaxed isFlat: if this cell OR any neighbor is rough, isFlat is false.
-            // No need to check neighbors here — the relaxation pass already did that.
+            // Relaxed isFlat: rough cells and their neighbors are already marked
+            // non-flat by the relaxation pass — no need to check neighbors here.
             return isFlatCache[localX, localZ] ? 1 : maxSub;
         }
 
@@ -419,33 +426,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             }
         }
 
-        // Hapus GenerateSkirts dan semua referensi skirt agar bagian bawah terrain rapi
-        // Jika ingin skirt, harus diimplementasikan dengan teknik stitching yang benar, 
-        // tapi untuk sekarang kita bersihkan agar tidak ada dinding vertikal yang aneh.
-
-
-        // compute normal sampling the same height source (mapLoader)
+        // Skirt built via BuildSkirtVertices() — drops SkirtDepth units below each
+        // chunk edge to hide LOD seam gaps between adjacent chunks at different LODs.
+        // Face culling is disabled when drawing skirts (winding is inconsistent).
+        //
+        // Compute normal sampling the same height source (mapLoader)
         private static Vector3 CalculateNormalFromMap(MapLoader mapLoader, float xScaled, float zScaled)
         {
             // Jarak sampel terkecil di dunia nyata adalah 1 unit Voxel / Skala Terrain
             float step = MapLoader.TerrainScale;
 
             // Ambil 4 sampel ketinggian di sekeliling koordinat saat ini
-            float hL = mapLoader.GetHeightInterpolated(xScaled - step, zScaled); // Kiri (Left)
-            float hR = mapLoader.GetHeightInterpolated(xScaled + step, zScaled); // Kanan (Right)
-            float hD = mapLoader.GetHeightInterpolated(xScaled, zScaled - step); // Bawah (Down)
-            float hU = mapLoader.GetHeightInterpolated(xScaled, zScaled + step); // Atas (Up)
+            float hL = mapLoader.GetHeightInterpolated(xScaled - step, zScaled);
+            float hR = mapLoader.GetHeightInterpolated(xScaled + step, zScaled);
+            float hD = mapLoader.GetHeightInterpolated(xScaled, zScaled - step);
+            float hU = mapLoader.GetHeightInterpolated(xScaled, zScaled + step);
 
-            // Hitung gradien kemiringan (Kemiringan = Perubahan Tinggi / Perubahan Jarak)
-            // Ingat: Jarak dari Kiri ke Kanan adalah 2 * step
             float deltaX = (hL - hR);
             float deltaZ = (hD - hU);
 
-            // Bentuk vektor normal mentah. 
-            // Angka 2.0f mewakili jarak horizontal (2 * step) yang sudah disetarakan skalanya.
             Vector3 normal = new(deltaX, 2.0f, deltaZ);
-
-            // WAJIB: Lakukan normalisasi agar panjang vektor kembali menjadi 1.0f sebelum dikirim ke GPU
             return Vector3.Normalize(normal);
         }
 
