@@ -57,6 +57,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public Behavior Mode { get; private set; } = Behavior.Wander;
         public CharacterAgent? Target { get; private set; }
         public float Health { get; private set; } = MaxHealth;
+        public void SetHealth(float health) => Health = Math.Clamp(health, 0f, MaxHealth);
         public bool Dead { get; private set; }
         public float DeadElapsed => _deadTime;
         public Vector3 Position { get => _obj.Position; set => _obj.Position = value; }

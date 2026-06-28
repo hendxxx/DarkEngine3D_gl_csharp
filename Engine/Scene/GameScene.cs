@@ -16,6 +16,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     /// </summary>
     public unsafe class GameScene : IScene
     {
+        /// <summary>If >= 0, load this save slot on Enter(). Set by MainMenuScene before starting the game.</summary>
+        public static int PendingLoadSlot = -1;
+
         public string Name => "GameScene";
 
         // ── Dependencies ──
@@ -66,7 +69,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private float _lastTargetShoulderOffset;
 
         // ── Pause menu (responsive grid) ──
-        private const int PauseItemCount = 4;
+        private const int PauseItemCount = 6;
         private const int PauseBtnColStart = 3;
         private const int PauseBtnColEnd = 9;
         private const float PauseBtnH = 50f;
@@ -75,10 +78,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private int _pauseSelection = 0;
         private int _pauseLastHovered = -1; // only update pause selection from hover when this changes
         private bool _escapeWasDown = false;
+        private bool _f5WasDown = false;
+        private bool _f6WasDown = false;
         private bool _pauseUpWasDown = false;
         private bool _pauseDownWasDown = false;
         private bool _pauseEnterWasDown = false;
         private bool _pauseMouseWasDown = false;
+
+        // ── Save/Load system ──
+        private bool _saveLoadActive = false;
+        private bool _isSaveMode = false; // true=save, false=load
+        private bool _saveLoadWasAlreadyPaused = false; // true=opened from pause menu
+        private int _saveLoadSelection = 0;
+        private bool _saveLoadUpWasDown = false;
+        private bool _saveLoadDownWasDown = false;
+        private bool _saveLoadEnterWasDown = false;
+        private bool _saveLoadEscapeWasDown = false;
+        private bool _saveLoadLeftWasDown = false;
+        private bool _saveLoadRightWasDown = false;
+        private bool _saveLoadMouseWasDown = false;
+        private SaveSlotInfo[] _saveSlots = new SaveSlotInfo[SaveManager.NumSlots];
+        private string _saveNotification = "";
+        private float _saveNotificationTimer = 0f;
+        private int _pendingScreenshotSlot = -1;
 
         // ── Exit confirmation dialog ──
         private const float _confirmDlgScale = 1.4f;
@@ -232,6 +254,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _pauseSelection = 0;
             _pauseLastHovered = -1;
             _confirmLastHovered = -1;
+            _saveLoadActive = false;
+            _saveLoadSelection = 0;
+            _saveNotification = "";
+
             _settingsActive = false;
             _settingsSelection = 0;
 
@@ -254,6 +280,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 2048 => 0, 4096 => (Config.ShadowConfig.CascadeSizes[1] == 2048) ? 1 : 2,
                 _ => 3
             };
+
+            // ── Load pending save (set by MainMenuScene Continue/Load Game) ──
+            if (PendingLoadSlot >= 0)
+            {
+                int slotToLoad = PendingLoadSlot;
+                PendingLoadSlot = -1; // Reset immediately to prevent double-load
+
+                var savedData = SaveManager.Load(slotToLoad);
+                if (savedData != null)
+                {
+                    if (_objectManager != null && _objectManager.PlayerAgent != null && _objectManager.PlayerObject != null)
+                    {
+                        var loadPos = new Vector3(savedData.PlayerX, savedData.PlayerY, savedData.PlayerZ);
+                        _objectManager.PlayerAgent.Position = loadPos;
+                        _objectManager.PlayerObject.Position = loadPos;
+                        _objectManager.PlayerAgent.Heading = savedData.PlayerHeading;
+                        _objectManager.PlayerAgent.SetHealth(savedData.PlayerHealth);
+
+                        if (Enum.IsDefined(typeof(CameraMode), savedData.CameraMode))
+                            _camera.CurrentMode = (CameraMode)savedData.CameraMode;
+                        _camera.Pitch = savedData.CameraPitch;
+                        CameraConfig.TargetCameraDistance = savedData.CameraDistance;
+                        _camera.ApplyPreset();
+                        _lastCameraMode = _camera.CurrentMode;
+
+                        _light.WorldTime = savedData.WorldTime;
+
+                        Console.WriteLine($"[GameScene] Loaded save from slot {slotToLoad}: {savedData.SaveTime}");
+                    }
+                }
+            }
 
             Mouse.ShowMouse(false);
 
@@ -284,14 +341,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 else
                 {
                     Mouse.ShowMouse(false);
+                    Mouse.ResetState();
                 }
             }
             _escapeWasDown = escapeDown;
 
+            // ── F5/F6: Save/Load ──
+            bool f5Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F5);
+            bool f6Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F6);
+
+            if (f5Down && !_f5WasDown && !_saveLoadActive)
+            {
+                OpenSaveLoadUI(true); // Save mode
+            }
+            if (f6Down && !_f6WasDown && !_saveLoadActive)
+            {
+                OpenSaveLoadUI(false); // Load mode
+            }
+            _f5WasDown = f5Down;
+            _f6WasDown = f6Down;
+
             // ── Pause menu overlay input ──
             if (_paused)
             {
-                if (_confirmingExit)
+                if (_saveLoadActive)
+                    HandleSaveLoadInput(window);
+                else if (_confirmingExit)
                     HandleConfirmInput(window);
                 else if (_settingsActive)
                     HandleSettingsInput(window);
@@ -847,6 +922,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Post Process (render SceneFBO to screen) ──
             _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
 
+            // ── Capture screenshot right after post-process, before any UI overlays ──
+            if (_pendingScreenshotSlot >= 0)
+            {
+                int slot = _pendingScreenshotSlot;
+                _pendingScreenshotSlot = -1; // Reset immediately
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                SaveManager.CaptureScreenshot(slot);
+            }
+
             // ── Pause Blur Overlay ──
             if (_paused && !_confirmingExit && !_settingsActive)
             {
@@ -904,10 +988,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // ── PAUSE MENU / SETTINGS / CONFIRM OVERLAY ──
+            // ── PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY ──
             if (_paused)
             {
-                if (_confirmingExit)
+                if (_saveLoadActive)
+                {
+                    _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
+                    RenderSaveLoadPanel();
+                }
+                else if (_confirmingExit)
                 {
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
                     RenderConfirmDialog();
@@ -936,6 +1025,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 int culledTotal = _objectManager.TotalObjects - _objectManager.DrawnObjects;
                 title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total";
             }
+            // ── Save notification ──
+            if (_saveNotificationTimer > 0f)
+            {
+                _saveNotificationTimer -= _deltaTime;
+                float fade = Math.Min(1f, _saveNotificationTimer);
+                var notifExt = _hud.GetTextExtents(_saveNotification);
+                float notifX = Glfw.WindowWidth * 0.5f - notifExt.Width * 0.5f;
+                float notifY = Glfw.WindowHeight * 0.15f;
+                _hud.DrawText(_saveNotification, notifX, notifY, new Vector3(0.3f, 0.9f, 0.4f) * fade);
+            }
+
             string title7 = "";
             string ocMode = Inputs.Keyboard.GetOcclusionModeName();
             bool ocActive = Inputs.Keyboard.GetOcclusionCullingEnabled();
@@ -1028,6 +1128,268 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _pauseUpWasDown = upDown;
             _pauseDownWasDown = downDown;
             _pauseEnterWasDown = enterDown;
+        }
+
+        /// <summary>Handle save/load slot selection input (mouse + keyboard), grid-aligned.</summary>
+        private void HandleSaveLoadInput(nint window)
+        {
+            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
+            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            SaveSlotUI.GetPanelRect(w, h, out float panelX, out float panelW,
+                out float panelY, out float panelH, out float startY);
+
+            float bx = panelX + GridLayout.Gutter * 0.5f;
+            float bw = panelW - GridLayout.Gutter;
+
+            // ── Mouse hover ──
+            int hovered = -1;
+            for (int i = 0; i < SaveManager.NumSlots; i++)
+            {
+                float sy = startY + i * (SaveSlotUI.SlotRowH + SaveSlotUI.SlotGap);
+                if (mouseX >= bx && mouseX <= bx + bw &&
+                    mouseY >= sy && mouseY <= sy + SaveSlotUI.SlotRowH)
+                {
+                    hovered = i;
+                    break;
+                }
+            }
+            if (hovered >= 0)
+                _saveLoadSelection = hovered;
+
+            // ── Mouse click ──
+            if (mousePressed && !_saveLoadMouseWasDown)
+            {
+                _saveLoadMouseWasDown = true;
+                if (hovered >= 0)
+                {
+                    if (_isSaveMode)
+                        SaveGameToSlot(hovered);
+                    else if (_saveSlots[hovered].HasData)
+                        LoadGameFromSlot(hovered);
+                }
+            }
+            if (!mousePressed)
+                _saveLoadMouseWasDown = false;
+
+            // ── Keyboard navigation ──
+            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            bool escDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+            bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+
+            if (upDown && !_saveLoadUpWasDown)
+                _saveLoadSelection = (_saveLoadSelection - 1 + SaveManager.NumSlots) % SaveManager.NumSlots;
+            if (downDown && !_saveLoadDownWasDown)
+                _saveLoadSelection = (_saveLoadSelection + 1) % SaveManager.NumSlots;
+
+            // Enter → confirm save/load
+            if (enterDown && !_saveLoadEnterWasDown)
+            {
+                if (_isSaveMode)
+                    SaveGameToSlot(_saveLoadSelection);
+                else if (_saveSlots[_saveLoadSelection].HasData)
+                    LoadGameFromSlot(_saveLoadSelection);
+            }
+
+            // ESC → close save/load panel
+            if (escDown && !_saveLoadEscapeWasDown)
+            {
+                CloseSaveLoadUI();
+            }
+
+            // Left/Right to cycle slots (wraparound)
+            if ((leftDown && !_saveLoadLeftWasDown) || (rightDown && !_saveLoadRightWasDown))
+            {
+                // Cycle through empty slots quickly
+                int dir = (leftDown && !_saveLoadLeftWasDown) ? -1 : 1;
+                _saveLoadSelection = (_saveLoadSelection + dir + SaveManager.NumSlots) % SaveManager.NumSlots;
+            }
+
+            _saveLoadUpWasDown = upDown;
+            _saveLoadDownWasDown = downDown;
+            _saveLoadEnterWasDown = enterDown;
+            _saveLoadEscapeWasDown = escDown;
+            _saveLoadLeftWasDown = leftDown;
+            _saveLoadRightWasDown = rightDown;
+
+            // Keep other edge flags in sync
+            _escapeWasDown = escDown;
+        }
+
+        /// <summary>Open the save/load UI overlay.</summary>
+        private void OpenSaveLoadUI(bool saveMode)
+        {
+            _saveLoadActive = true;
+            _isSaveMode = saveMode;
+            _saveLoadSelection = 0;
+            _saveLoadWasAlreadyPaused = _paused; // Remember if we were already paused
+            _paused = true;
+            Mouse.ShowMouse(true);
+
+            // Refresh slot info
+            _saveSlots = SaveManager.GetAllSlots();
+
+            // Load thumbnails in the background (lazy load on render)
+            for (int i = 0; i < _saveSlots.Length; i++)
+            {
+                if (_saveSlots[i].HasData)
+                {
+                    SaveManager.GetOrLoadThumbnail(ref _saveSlots[i], SaveSlotUI.ThumbW, SaveSlotUI.ThumbH);
+                }
+            }
+
+            // Sync edge-tracking flags to prevent input bleed
+            nint win = Glfw.GetWindow();
+            _saveLoadUpWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_W);
+            _saveLoadDownWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_S);
+            _saveLoadEnterWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_SPACE);
+            _saveLoadEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
+            _saveLoadLeftWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_A);
+            _saveLoadRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
+            _saveLoadMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            Console.WriteLine($"[GameScene] Save/Load UI opened (mode: {(saveMode ? "Save" : "Load")})");
+        }
+
+        /// <summary>Close the save/load UI and return to pause menu or game.</summary>
+        private void CloseSaveLoadUI()
+        {
+            _saveLoadActive = false;
+            _saveNotification = "";
+
+            // If save/load was opened from the game (not from pause menu), unpause
+            if (!_saveLoadWasAlreadyPaused && !_settingsActive && !_confirmingExit)
+            {
+                _paused = false;
+                Mouse.ShowMouse(false);
+                Mouse.ResetState();
+            }
+            // Otherwise, return to the pause menu naturally (keep _paused = true)
+            Console.WriteLine("[GameScene] Save/Load UI closed");
+        }
+
+        /// <summary>Save current game state to a slot.</summary>
+        private void SaveGameToSlot(int slotIndex)
+        {
+            if (_objectManager == null || _objectManager.PlayerAgent == null) return;
+
+            var data = new SaveData
+            {
+                PlayerX = _objectManager.PlayerAgent.Position.X,
+                PlayerY = _objectManager.PlayerAgent.Position.Y,
+                PlayerZ = _objectManager.PlayerAgent.Position.Z,
+                PlayerHeading = _objectManager.PlayerAgent.Heading,
+                PlayerHealth = _objectManager.PlayerAgent.Health,
+                CameraMode = (int)_camera.CurrentMode,
+                CameraDistance = CameraConfig.TargetCameraDistance,
+                CameraYaw = _camera.Yaw,
+                CameraPitch = _camera.Pitch,
+                WorldTime = _light.WorldTime,
+                SaveTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+            };
+
+            SaveManager.Save(slotIndex, data);
+            _pendingScreenshotSlot = slotIndex; // Capture at end of Render() instead
+
+            _saveNotification = $"Game saved to Slot {slotIndex + 1}!";
+            _saveNotificationTimer = 3f;
+
+            // Refresh slot info and thumbnail
+            _saveSlots[slotIndex] = SaveManager.GetSlotInfo(slotIndex);
+            if (_saveSlots[slotIndex].HasThumbnail)
+                SaveManager.GetOrLoadThumbnail(ref _saveSlots[slotIndex], SaveSlotUI.ThumbW, SaveSlotUI.ThumbH);
+
+            // Close save UI after saving
+            _saveLoadActive = false;
+            if (!_settingsActive && !_confirmingExit)
+            {
+                _paused = false;
+                Mouse.ShowMouse(false);
+                Mouse.ResetState();
+            }
+
+            Console.WriteLine($"[GameScene] Game saved to slot {slotIndex}");
+        }
+
+        /// <summary>Load game state from a slot.</summary>
+        private void LoadGameFromSlot(int slotIndex)
+        {
+            var data = SaveManager.Load(slotIndex);
+            if (data == null)
+            {
+                Console.WriteLine($"[GameScene] Failed to load slot {slotIndex}");
+                return;
+            }
+
+            if (_objectManager == null || _objectManager.PlayerAgent == null || _objectManager.PlayerObject == null)
+                return;
+
+            // Restore player position
+            var pos = new Vector3(data.PlayerX, data.PlayerY, data.PlayerZ);
+            _objectManager.PlayerAgent.Position = pos;
+            _objectManager.PlayerObject.Position = pos;
+            _objectManager.PlayerAgent.Heading = data.PlayerHeading;
+            _objectManager.PlayerAgent.SetHealth(data.PlayerHealth);
+
+            // Restore camera
+            if (Enum.IsDefined(typeof(CameraMode), data.CameraMode))
+                _camera.CurrentMode = (CameraMode)data.CameraMode;
+            _camera.Yaw = data.CameraYaw;
+            _camera.Pitch = data.CameraPitch;
+            CameraConfig.TargetCameraDistance = data.CameraDistance;
+            _camera.ApplyPreset();
+            _lastCameraMode = _camera.CurrentMode;
+
+            // Restore world time
+            _light.WorldTime = data.WorldTime;
+
+            _saveNotification = $"Game loaded from Slot {slotIndex + 1}!";
+            _saveNotificationTimer = 3f;
+
+            // Close load UI after loading
+            _saveLoadActive = false;
+            _paused = false;
+            Mouse.ShowMouse(false);
+            Mouse.ResetState();
+
+            Console.WriteLine($"[GameScene] Game loaded from slot {slotIndex}: {data.SaveTime}");
+        }
+
+        /// <summary>Render the save/load slot selection panel overlay (grid-aligned).</summary>
+        private void RenderSaveLoadPanel()
+        {
+            if (_hud == null) return;
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+            var grid = new GridLayout(w, h);
+
+            string title = _isSaveMode ? "SAVE GAME" : "LOAD GAME";
+
+            SaveSlotUI.GetPanelRect(w, h, out float panelX, out float panelW,
+                out float panelY, out float panelH, out float startY);
+
+            // Panel frame
+            SaveSlotUI.RenderPanelFrame(_hud, w, h, title, _saveSlots, panelX, panelW, panelY, panelH);
+
+            // Slots
+            SaveSlotUI.RenderSlots(_hud, w, h, _saveSlots, _saveLoadSelection, panelX, panelW, startY, title);
+
+            // Hint text — centered using grid
+            string hint = _isSaveMode
+                ? "Select a slot to save  -  Enter to confirm  -  Esc to cancel"
+                : "Select a slot to load  -  Enter to confirm  -  Esc to cancel";
+            float hintY = panelY + panelH - 24f;
+            var hintExt = _hud.GetTextExtents(hint);
+            float hintCenterX = grid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
+            float hintX = hintCenterX - hintExt.Width * 0.5f;
+            _hud.DrawText(hint, hintX, hintY, new Vector3(0.35f, 0.35f, 0.45f));
         }
 
         /// <summary>Handle in-game settings panel input (mouse + keyboard).
@@ -1260,8 +1622,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 _paused = false;
                 Mouse.ShowMouse(false);
+                Mouse.ResetState();
             }
-            else if (index == 1) // Settings — save snapshot for cancel
+            else if (index == 1) // Save Game
+            {
+                OpenSaveLoadUI(true);
+            }
+            else if (index == 2) // Load Game
+            {
+                OpenSaveLoadUI(false);
+            }
+            else if (index == 3) // Settings — save snapshot for cancel
             {
                 // Save snapshot of current values for cancel/revert
                 Array.Copy(_inGameSettingValues, _settingsSnapshot, _inGameSettingValues.Length);
@@ -1277,12 +1648,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _settingsEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
                 _settingsMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
             }
-            else if (index == 2) // Toggle PauseOnEsc
+            else if (index == 4) // Toggle PauseOnEsc
             {
                 Config.GameplayConfig.PauseOnEsc = !Config.GameplayConfig.PauseOnEsc;
                 Console.WriteLine($"[GameScene] PauseOnEsc = {Config.GameplayConfig.PauseOnEsc}");
             }
-            else // Back to Main Menu → show confirmation
+            else // Back to Main Menu (index 5) → show confirmation
             {
                 _confirmingExit = true;
                 _confirmSelection = 0;
@@ -1479,7 +1850,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Buttons (responsive grid width)
             string worldStatus = Config.GameplayConfig.PauseOnEsc ? "RUNNING" : "PAUSED";
-            string[] pauseItems = ["RESUME", "SETTINGS", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
+            string[] pauseItems = ["RESUME", "SAVE GAME", "LOAD GAME", "SETTINGS", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
             var pGrid = new GridLayout(w, h);
             float pauseBtnW = pGrid.SpanW(PauseBtnColStart, PauseBtnColEnd);
             float btnH = 50f;

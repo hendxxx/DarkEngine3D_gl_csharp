@@ -31,6 +31,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         }
         public static float DeltaX { get; private set; }
         public static float DeltaY { get; private set; }
+
+        /// <summary>Reset the mouse state so the next Update call re-initializes without a delta jump.
+        /// Call this when unpausing to discard menu mouse movements.</summary>
+        public static void ResetState()
+        {
+            firstMouse = true;
+            DeltaX = 0;
+            DeltaY = 0;
+        }
          
 
 

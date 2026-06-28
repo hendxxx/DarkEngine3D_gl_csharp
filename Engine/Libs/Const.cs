@@ -170,6 +170,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const int GLFW_KEY_ESCAPE = 256;
         public const int GLFW_KEY_F1 = 290;
+        public const int GLFW_KEY_F5 = 294;
+        public const int GLFW_KEY_F6 = 295;
         public const int GLFW_KEY_P = 80;
         public const int GLFW_KEY_T = 84;
 

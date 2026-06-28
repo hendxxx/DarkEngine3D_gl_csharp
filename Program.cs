@@ -12,16 +12,55 @@ public unsafe class Program
     public static void Main()
     {
         // ═══════════════════════════════════════════════════
+        // PHASE 0: LOAD SETTINGS (before window creation)
+        // ═══════════════════════════════════════════════════
+        var settings = SettingsSave.Load();
+
+        // Initialize save system directories
+        SaveManager.Init();
+
+        // Apply resolution to window size
+        // 0=1920x1080, 1=1280x720, 2=2560x1440
+        Glfw.WindowWidth = settings.Resolution switch
+        {
+            1 => 1280,
+            2 => 2560,
+            _ => 1920,
+        };
+        Glfw.WindowHeight = settings.Resolution switch
+        {
+            1 => 720,
+            2 => 1440,
+            _ => 1080,
+        };
+
+        // Apply Shadow Quality to config immediately
+        // 0=Low, 1=Medium, 2=High, 3=Ultra
+        int sq = Math.Clamp(settings.ShadowQuality, 0, ShadowPresets.CascadeSizes.Length - 1);
+        ShadowConfig.CascadeSizes = ShadowPresets.CascadeSizes[sq];
+
+        // Apply Occlusion Mode to config immediately
+        switch (settings.OcclusionMode)
+        {
+            case 0:
+                OcclusionConfig.Mode = OcclusionMode.Software;
+                OcclusionConfig.UseOcclusion = true;
+                break;
+            case 1:
+                OcclusionConfig.Mode = OcclusionMode.HiZ;
+                OcclusionConfig.UseOcclusion = true;
+                break;
+            default:
+                OcclusionConfig.UseOcclusion = false;
+                break;
+        }
+
+        // ═══════════════════════════════════════════════════
         // PHASE 1: ENGINE BOOTSTRAP (minimal initialization)
         // ═══════════════════════════════════════════════════
 
-        //Glfw.WindowWidth = 2560;
-        //Glfw.WindowHeight = 1440;
-        Glfw.WindowWidth = 1920;
-        Glfw.WindowHeight = 1080;
-
-        // Init GLFW and Create Window
-        Glfw.Init("My Native C# Engine", false);
+        // Init GLFW and Create Window (fullscreen from settings)
+        Glfw.Init("My Native C# Engine", settings.Fullscreen);
 
         // Load Library GLFW
         IntPtr glfwLib = Glfw.GetglfwLib();
@@ -40,6 +79,8 @@ public unsafe class Program
 
         OpenGL.EnableDepthTest(true);
         OpenGL.EnableFaceCulling(true);
+        // Apply VSync after window creation
+        Glfw.SetSwapInterval(settings.VSync ? 1 : 0);
 
         // Init Shader
         Shader.Init();

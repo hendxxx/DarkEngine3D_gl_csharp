@@ -26,9 +26,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private float _totalTime;
 
         // ── Menu state ──
-        private enum MenuAction { StartGame, Settings, Exit }
-        private readonly MenuAction[] _menuItems = [MenuAction.StartGame, MenuAction.Settings, MenuAction.Exit];
-        private readonly string[] _menuLabels = ["START GAME", "SETTINGS", "EXIT"];
+        private enum MenuAction { Continue, LoadGame, StartGame, Settings, Exit }
+        private MenuAction[] _menuItems = [MenuAction.StartGame, MenuAction.Settings, MenuAction.Exit];
+        private string[] _menuLabels = ["START GAME", "SETTINGS", "EXIT"];
         private int _selectedIndex = 0;
         private int _menuLastHovered = -1; // only update selection from hover when this changes
         private bool _settingsOpen = false;
@@ -84,6 +84,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _confirmEnterWasDown = false;
         private bool _confirmEscapeWasDown = false;
         private bool _confirmMouseWasDown = false;
+
+        // ── Load Game overlay ──
+        private bool _loadGameActive = false;
+        private int _loadGameSelection = 0;
+        private bool _loadGameUpWasDown = false;
+        private bool _loadGameDownWasDown = false;
+        private bool _loadGameEnterWasDown = false;
+        private bool _loadGameEscapeWasDown = false;
+        private bool _loadGameLeftWasDown = false;
+        private bool _loadGameRightWasDown = false;
+        private bool _loadGameMouseWasDown = false;
+        private SaveSlotInfo[] _loadSlots = new SaveSlotInfo[SaveManager.NumSlots];
 
         // ── Exit confirm dialog (main menu) ──
         private bool _exitConfirmActive = false;
@@ -292,6 +304,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _exitConfirmLastHovered = -1;
             _menuLastHovered = -1;
             _settingsLastHoveredRow = -1;
+            _loadGameActive = false;
+            _loadGameSelection = 0;
             _notificationText = "";
 
             // ── Show startup notification if provided (e.g. "In-game settings saved")
@@ -299,6 +313,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 ShowNotification(_startupNotification);
             }
+
+            // ── Build menu based on existing saves ──
+            BuildMenu();
 
             Console.WriteLine("[MainMenu] Entered.");
         }
@@ -363,6 +380,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (hoveredIndex >= 0 && hoveredIndex != _menuLastHovered && !_exitConfirmActive)
                 _selectedIndex = hoveredIndex;
             _menuLastHovered = hoveredIndex;
+
+            // ── Load Game overlay handling ──
+            if (_loadGameActive)
+            {
+                HandleLoadGameInput(window);
+                return;
+            }
 
             // ── Mouse click — only for main menu when no confirm dialog is active ──
             if (mousePressed && !_mouseWasDown)
@@ -704,15 +728,51 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
         }
 
+        /// <summary>Build the main menu item list — NEW GAME always shown.</summary>
+        private void BuildMenu()
+        {
+            if (SaveManager.HasAnySave())
+            {
+                _menuItems = [MenuAction.Continue, MenuAction.StartGame, MenuAction.LoadGame, MenuAction.Settings, MenuAction.Exit];
+                _menuLabels = ["CONTINUE", "NEW GAME", "LOAD GAME", "SETTINGS", "EXIT"];
+            }
+            else
+            {
+                _menuItems = [MenuAction.StartGame, MenuAction.Settings, MenuAction.Exit];
+                _menuLabels = ["NEW GAME", "SETTINGS", "EXIT"];
+            }
+            _selectedIndex = 0;
+        }
+
         private void ExecuteMenuAction(MenuAction action)
         {
             switch (action)
             {
-                case MenuAction.StartGame:
-                    Console.WriteLine("[MainMenu] Starting game...");
-                    LoadingScene loadingScene = new(_sceneManager, _camera, _light);
-                    _sceneManager.SwitchScene(loadingScene);
+                case MenuAction.Continue:
+                {
+                    int latestSlot = SaveManager.GetLatestSlot();
+                    if (latestSlot >= 0)
+                    {
+                        Console.WriteLine($"[MainMenu] Continuing from slot {latestSlot}...");
+                        GameScene.PendingLoadSlot = latestSlot;
+                        LoadingScene loadingScene = new(_sceneManager, _camera, _light);
+                        _sceneManager.SwitchScene(loadingScene);
+                    }
                     break;
+                }
+
+                case MenuAction.LoadGame:
+                    OpenLoadGameUI();
+                    break;
+
+                case MenuAction.StartGame:
+                {
+                    Console.WriteLine("[MainMenu] Starting new game...");
+                    GameScene.PendingLoadSlot = -1;
+                    var loadingSceneNew = new LoadingScene(_sceneManager, _camera, _light);
+                    _sceneManager.SwitchScene(loadingSceneNew);
+                    break;
+                }
 
                 case MenuAction.Settings:
                     _settingsOpen = true;
@@ -739,7 +799,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _exitConfirmEscapeWasDown = Keyboard.IsKeyDown(exitWindow, Const.GLFW_KEY_ESCAPE);
                     _exitConfirmMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
                     break;
+
             }
+        }
+
+        /// <summary>Open the Load Game overlay with save slot selection.</summary>
+        private void OpenLoadGameUI()
+        {
+            _loadGameActive = true;
+            _loadGameSelection = 0;
+
+            // Refresh slot info and load thumbnails
+            _loadSlots = SaveManager.GetAllSlots();
+            for (int i = 0; i < _loadSlots.Length; i++)
+            {
+                if (_loadSlots[i].HasData)
+                    SaveManager.GetOrLoadThumbnail(ref _loadSlots[i], SaveSlotUI.ThumbW, SaveSlotUI.ThumbH);
+            }
+
+            // Sync edge-tracking flags
+            nint win = Glfw.GetWindow();
+            _loadGameUpWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_W);
+            _loadGameDownWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_S);
+            _loadGameEnterWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_SPACE);
+            _loadGameEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
+            _loadGameLeftWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_A);
+            _loadGameRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
+            _loadGameMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            Console.WriteLine("[MainMenu] Load Game UI opened");
+        }
+
+        /// <summary>Start the game and load a specific save slot.</summary>
+        private void StartGameWithLoad(int slotIndex)
+        {
+            Console.WriteLine($"[MainMenu] Starting game with load from slot {slotIndex}...");
+            GameScene.PendingLoadSlot = slotIndex;
+            LoadingScene loadingScene = new(_sceneManager, _camera, _light);
+            _sceneManager.SwitchScene(loadingScene);
         }
 
         /// <summary>Apply mouse sensitivity multiplier (0=0.25×, 1=0.50×, ..., 6=3.0×).</summary>
@@ -830,10 +927,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _camera.BaseFoV = fovVal;
             _camera.FoV = fovVal;
             ApplyMouseSensitivity(_settingValues[6]);
-            Glfw.SetWindowPosition(0, 0);
             Glfw.SetWindowSize(Resolutions[res].Width, Resolutions[res].Height);
             Glfw.SetSwapInterval(vs ? 1 : 0);
             Glfw.SetFullscreen(fs);
+            Glfw.SetWindowPosition(0, 0);
         }
 
         /// <summary>Cycle the given setting forward or backward — no live apply.
@@ -867,6 +964,88 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Track dirty state
             _hasUnsavedChanges = HasChanges();
             Console.WriteLine($"[Settings] {_settingLabels[index]} → {_settingOptions[index][val]} (pending)");
+        }
+
+        /// <summary>Handle the Load Game overlay input (grid-aligned).</summary>
+        private void HandleLoadGameInput(nint window)
+        {
+            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
+            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            SaveSlotUI.GetPanelRect(w, h, out float panelX, out float panelW,
+                out float panelY, out float panelH, out float startY);
+
+            float bx = panelX + GridLayout.Gutter * 0.5f;
+            float bw = panelW - GridLayout.Gutter;
+
+            // ── Mouse hover ──
+            int hovered = -1;
+            for (int i = 0; i < SaveManager.NumSlots; i++)
+            {
+                float sy = startY + i * (SaveSlotUI.SlotRowH + SaveSlotUI.SlotGap);
+                if (mouseX >= bx && mouseX <= bx + bw &&
+                    mouseY >= sy && mouseY <= sy + SaveSlotUI.SlotRowH)
+                {
+                    hovered = i;
+                    break;
+                }
+            }
+            if (hovered >= 0)
+                _loadGameSelection = hovered;
+
+            // ── Mouse click ──
+            if (mousePressed && !_loadGameMouseWasDown)
+            {
+                _loadGameMouseWasDown = true;
+                if (hovered >= 0 && _loadSlots[hovered].HasData)
+                {
+                    StartGameWithLoad(hovered);
+                }
+            }
+            if (!mousePressed)
+                _loadGameMouseWasDown = false;
+
+            // ── Keyboard navigation ──
+            bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+            bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+            bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+            bool escDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+            bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+            bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+
+            if (upDown && !_loadGameUpWasDown)
+                _loadGameSelection = (_loadGameSelection - 1 + SaveManager.NumSlots) % SaveManager.NumSlots;
+            if (downDown && !_loadGameDownWasDown)
+                _loadGameSelection = (_loadGameSelection + 1) % SaveManager.NumSlots;
+
+            if (enterDown && !_loadGameEnterWasDown)
+            {
+                if (_loadSlots[_loadGameSelection].HasData)
+                    StartGameWithLoad(_loadGameSelection);
+            }
+
+            if (escDown && !_loadGameEscapeWasDown)
+            {
+                _loadGameActive = false;
+            }
+
+            if ((leftDown && !_loadGameLeftWasDown) || (rightDown && !_loadGameRightWasDown))
+            {
+                int dir = (leftDown && !_loadGameLeftWasDown) ? -1 : 1;
+                _loadGameSelection = (_loadGameSelection + dir + SaveManager.NumSlots) % SaveManager.NumSlots;
+            }
+
+            _loadGameUpWasDown = upDown;
+            _loadGameDownWasDown = downDown;
+            _loadGameEnterWasDown = enterDown;
+            _loadGameEscapeWasDown = escDown;
+            _loadGameLeftWasDown = leftDown;
+            _loadGameRightWasDown = rightDown;
+
+            _escapeWasDown = escDown;
         }
 
         /// <summary>Show a toast notification that auto-fades after NotificationDuration.</summary>
@@ -951,6 +1130,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float notifY = h * 0.20f;
                 _hud.DrawText(notifText, notifX, notifY,
                     new Vector3(0.3f, 0.9f, 0.4f) * fadeAlpha);
+            }
+
+            // ── Load Game overlay ──
+            if (_loadGameActive)
+            {
+                RenderLoadGamePanel(w, h);
+                return;
             }
 
             // ── Exit confirm dialog (rendered before settings check) ──
@@ -1151,6 +1337,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
 
+
+        /// <summary>Render the Load Game overlay with save slot selection (grid-aligned).</summary>
+        private void RenderLoadGamePanel(int w, int h)
+        {
+            if (_hud == null) return;
+
+            var grid = new GridLayout(w, h);
+
+            SaveSlotUI.GetPanelRect(w, h, out float panelX, out float panelW,
+                out float panelY, out float panelH, out float startY);
+
+            SaveSlotUI.RenderPanelFrame(_hud, w, h, "LOAD GAME", _loadSlots, panelX, panelW, panelY, panelH);
+            SaveSlotUI.RenderSlots(_hud, w, h, _loadSlots, _loadGameSelection, panelX, panelW, startY, "LOAD");
+
+            string hint = "Select a slot to load  -  Enter to confirm  -  Esc to go back";
+            float hintY = panelY + panelH - 24f;
+            var hintExt = _hud.GetTextExtents(hint);
+            float hintCenterX = grid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
+            float hintX = hintCenterX - hintExt.Width * 0.5f;
+            _hud.DrawText(hint, hintX, hintY, new Vector3(0.35f, 0.35f, 0.45f));
+        }
 
         private void RenderExitConfirmDialog(int w, int h)
         {
