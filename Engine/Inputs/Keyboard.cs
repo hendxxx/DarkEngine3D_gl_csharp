@@ -139,12 +139,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
         public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime, TerrainChunk? gameTerrainChunk)
         { 
-            // Tombol ESC untuk Keluar
-            if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
-            {
-                // Beritahu GLFW untuk menutup jendela
-                glfwSetWindowShouldClose(window, 1);
-            }
+            //// Tombol ESC untuk Keluar
+            //if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
+            //{
+            //    // Beritahu GLFW untuk menutup jendela
+            //    glfwSetWindowShouldClose(window, 1);
+            //}
 
             // F1 toggle wireframe (rising edge)
             int f1State = glfwGetKey(window, Const.GLFW_KEY_F1);

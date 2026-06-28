@@ -23,7 +23,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float Pitch = 0.0f;
 
         // Projection params
-        public float FoV;
+        private float _fov;
+        public float FoV
+        {
+            get => _fov;
+            set
+            {
+                if (Math.Abs(_fov - value) > 0.0001f)
+                {
+                    _fov = value;
+                    _projectionDirty = true;
+                }
+            }
+        }
+
+        private float _baseFov = 60f;
+        public float BaseFoV
+        {
+            get => _baseFov;
+            set
+            {
+                if (Math.Abs(_baseFov - value) > 0.0001f)
+                {
+                    _baseFov = value;
+                    _projectionDirty = true;
+                }
+            }
+        }
         public float NearDist;
         public float FarDist;
         private float _aspect;
@@ -322,7 +348,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             else
                 IsADS = false;
 
-            float targetFov = IsADS ? 45.0f : 60.0f;
+            float targetFov = IsADS ? 45.0f : BaseFoV;
             FoV = Helpers.OGLMath.Lerp(FoV, targetFov, 8f * dt);
             _projectionDirty = true;
 

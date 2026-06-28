@@ -3,7 +3,7 @@ Pending:
 1. Implemnet foot IK
 2. Implement biomes generation
 3. Implemet Vertext Clustering
-4. Perbaiki filcer dishadow
+4. terrain displacement mapping and tessellation shaders
 
 Done:
 1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
@@ -18,3 +18,4 @@ Shadow:
 1. buatkan shadow untuk object, jadi ketika object berada di atas permukaan, akan ada bayangan yang mengikuti gerakan object tersebut.
 2. buatkan shadow dengan tehnik CSM, di dalam sudah ada LOD untuk Terrain bisa di manfaatkan untuk membuat shadow dengan kualitas yang baik tanpa harus menggunakan banyak resource.
 3. pastikan shadow bisa di render dengan baik di semua jenis terrain, jadi ketika object berada di atas permukaan yang berbeda, shadow tetap bisa terlihat dengan baik. 
+4. Perbaiki filter dishadow

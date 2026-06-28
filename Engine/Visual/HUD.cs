@@ -344,6 +344,99 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             OpenGL.EnableFaceCulling(true);
         }
 
+        /// <summary>Bundles the visual bounding box of a string: Width (pixel width from xoff/xadvance),
+        /// Height (pixel height from yoff/glyph height), and MinY (top yoff — usually negative).
+        /// Obtained via a single call to GetTextExtents, avoiding redundant iterations.</summary>
+        public readonly struct TextExtents
+        {
+            /// <summary>Visual pixel width of the text (maxX - minX).</summary>
+            public float Width { get; }
+            /// <summary>Visual pixel height of the text (maxY - minY).</summary>
+            public float Height { get; }
+            /// <summary>Top yoff offset from baseline (usually negative, above baseline).</summary>
+            public float MinY { get; }
+
+            public TextExtents(float width, float height, float minY)
+            {
+                Width = width;
+                Height = height;
+                MinY = minY;
+            }
+
+            /// <summary>Return the baseline Y that centers this text vertically in a box.</summary>
+            public float GetCenteredBaselineY(float boxY, float boxH) => boxY + (boxH - Height) * 0.5f - MinY;
+        }
+
+        /// <summary>Compute all text extents (width, height, top offset) in a single pass through the string.
+        /// Combines the horizontal bounding box (minX/maxX from xoff + xadvance) and the vertical bounding
+        /// box (minY/maxY from yoff + glyph height) so callers get everything with one iteration.</summary>
+        public TextExtents GetTextExtents(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return new TextExtents(0f, 0f, 0f);
+
+            float minX = float.MaxValue;
+            float maxX = float.MinValue;
+            float minY = float.MaxValue;
+            float maxY = float.MinValue;
+            bool hasGlyph = false;
+            float x = 0f;
+
+            foreach (char c in text)
+            {
+                if (c < 32 || c > 126) continue;
+                var bc = bakedChars[c - 32];
+
+                // Horizontal
+                float left = x + bc.xoff;
+                float right = x + bc.xoff + (bc.x1 - bc.x0);
+
+                // Vertical
+                float top = bc.yoff;
+                float bottom = bc.yoff + (bc.y1 - bc.y0);
+
+                if (!hasGlyph) { minX = left; maxX = right; minY = top; maxY = bottom; hasGlyph = true; }
+                else
+                {
+                    if (left < minX) minX = left;
+                    if (right > maxX) maxX = right;
+                    if (top < minY) minY = top;
+                    if (bottom > maxY) maxY = bottom;
+                }
+
+                x += bc.xadvance;
+            }
+
+            return hasGlyph
+                ? new TextExtents(maxX - minX, maxY - minY, minY)
+                : new TextExtents(0f, 0f, 0f);
+        }
+
+        /// <summary>Measure the exact pixel width of a string using the baked font glyph bounding box.
+        /// Unlike a simple xadvance sum, this accounts for negative xoff (glyph overhang) and
+        /// the actual rightmost extent of the last glyph — matching what DrawTextBatched renders.</summary>
+        public float MeasureText(string text) => GetTextExtents(text).Width;
+
+        /// <summary>Measure the exact visual pixel height of a string using the baked font glyph
+        /// bounding box. Accounts for ascent (negative yoff) and descent (positive yoff + height).</summary>
+        public float MeasureTextHeight(string text) => GetTextExtents(text).Height;
+
+        /// <summary>Return the baseline Y position that centers the visual glyph bounding box
+        /// vertically within a box at (boxY, boxH). Uses yoff + glyph height from baked chars
+        /// so it works correctly even when font ascent/descent don't match fontSize exactly.</summary>
+        public float GetCenteredBaselineY(string text, float boxY, float boxH)
+            => GetTextExtents(text).GetCenteredBaselineY(boxY, boxH);
+
+        /// <summary>Draw text centered horizontally within a container of the given width.
+        /// The container is assumed to start at x=0. For buttons/panels at an offset (bx),
+        /// use: DrawCenteredText(text, bx + btnW * 0.5f, y, color) where the second parameter
+        /// is the center X of the container.</summary>
+        public void DrawCenteredText(string text, float containerWidth, float y, Vector3 color)
+        {
+            float x = (containerWidth - GetTextExtents(text).Width) * 0.5f;
+            DrawText(text, x, y, color);
+        }
+
         private float spinnerAngle = 0f;
         public void DrawSpinner(float x, float y, float size, uint tex, float deltaTime)
         {
@@ -352,7 +445,5 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             DrawImage(x, y, size, size, tex, spinnerAngle, null);
         }
-
-
     }
 }

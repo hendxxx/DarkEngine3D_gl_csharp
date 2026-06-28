@@ -11,4 +11,4 @@ How to run the apps:
 4. Shift untuk meningkatkan kecepatan gerakan
 5. Tekan P untuk melihat garis frustum dan kotak chunk
 6. Kotak hijau adalah chunk yang sedang dirender, sedangkan kotak kuning adalah chunk yang tidak dirender karena berada di luar frustum kamera, pastikan tekan P.
-6. Tekan ESC untuk keluar dari aplikasi
+6. Tekan ESC untuk keluar dari aplikasi.

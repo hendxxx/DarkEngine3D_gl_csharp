@@ -19,7 +19,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static double lastX, lastY;
         private static double scrollX, scrollY;
         static bool firstMouse = true;
-        static float sensitivity = 0.1f;
+        public static float Sensitivity = 0.1f;
         private static nint window = 0;
         public static float ScrollY => (float)scrollY;
         public static float ScrollX => (float)scrollX;
@@ -31,8 +31,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         }
         public static float DeltaX { get; private set; }
         public static float DeltaY { get; private set; }
+
+        /// <summary>Reset the mouse state so the next Update call re-initializes without a delta jump.
+        /// Call this when unpausing to discard menu mouse movements.</summary>
+        public static void ResetState()
+        {
+            firstMouse = true;
+            DeltaX = 0;
+            DeltaY = 0;
+        }
          
 
+
+        /// <summary>Get the current cursor position in screen coordinates.</summary>
+        public static unsafe void GetCursorPosition(out double x, out double y)
+        {
+            x = 0; y = 0;
+            if (window == 0) return;
+            double mx = 0, my = 0;
+            glfwGetCursorPos(window, &mx, &my);
+            x = mx;
+            y = my;
+        }
 
         public static unsafe void Init(nint glfwLib, nint _window ,float _sensitivity = 0.1f)
         {
@@ -51,7 +71,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             lastX = Glfw.WindowWidth / 2;
             lastY = Glfw.WindowHeight / 2;
             firstMouse = true;
-            sensitivity = _sensitivity;
+            Sensitivity = _sensitivity;
 
             glfwSetCursorPos(window, lastX, lastY);
 
@@ -96,8 +116,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             // Invert yaw for all modes so that moving mouse right looks right
             offsetX = -offsetX;
 
-            camera.Yaw += offsetX * sensitivity;
-            camera.Pitch += offsetY * sensitivity;
+            camera.Yaw += offsetX * Sensitivity;
+            camera.Pitch += offsetY * Sensitivity;
 
             camera.UpdateVectors();
             
