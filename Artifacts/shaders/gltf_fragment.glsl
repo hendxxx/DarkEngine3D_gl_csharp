@@ -319,8 +319,9 @@ void main()
     float roughness = roughnessFactor;
     if (hasMetallicRoughnessTexture == 1) {
         vec2 mrSample = texture(metallicRoughnessMap, TexCoord).gb;
-        metallic = mrSample.r * metallicFactor;
-        roughness = mrSample.g * roughnessFactor;
+        // glTF 2.0: G channel = Roughness, B channel = Metallic
+        metallic = mrSample.g * metallicFactor;
+        roughness = mrSample.r * roughnessFactor;
     }
     roughness = max(roughness, 0.04);
     
@@ -409,7 +410,9 @@ void main()
     }
     
     // Combine all contributions
-    vec3 result = ambient + Lo + emissive* shadow;
+    // Darken ambient in shadow (but keep Lo already shadowed, emissive unshadowed)
+    float ambientShadow = mix(shadowDarken, 1.0, shadow);
+    vec3 result = ambient * ambientShadow + Lo + emissive;
     
     // ── Fog Application ───────────────────────────────────────────────────────
     if (useFog == 1)
@@ -425,7 +428,6 @@ void main()
     // ── Tone mapping + gamma ──────────────────────────────────────────────────
     result = result / (result + vec3(1.0));
     result = pow(result, vec3(1.0 / 2.2));
-    result = mix(result, result * shadowDarken, 1.0 - shadow);
 
     FragColor = vec4(result, 1.0);
 }

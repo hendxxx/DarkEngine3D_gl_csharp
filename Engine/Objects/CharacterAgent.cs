@@ -24,6 +24,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float TurnRate = 5.0f;
         private const float BlendTime = 0.22f;
         private const float Radius = 0.45f;
+        private const float CharacterHeight = 1.8f; // typical human height
+
+        public CollisionType ColType = CollisionType.Capsule;
+        public float CollisionHeight = CharacterHeight;
 
         // ---- perception / engagement ------------------------------------------
         private const float VisionRange = 14f;
@@ -53,6 +57,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float FacingOffsetDeg = 0f;
 
         public static float CollisionRadius => Radius;
+        public static float CapsuleHeight => CharacterHeight;
         public Mentality Temper { get; }
         public Behavior Mode { get; private set; } = Behavior.Wander;
         public CharacterAgent? Target { get; private set; }

@@ -461,10 +461,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             {
                 Data = data;
 
-                // Generate simplified LOD meshes via vertex clustering
-                GenerateSimplifiedLODs(data);
+            // Generate simplified LOD meshes via vertex clustering
+            GenerateSimplifiedLODs(data);
 
-                TextureIDs = UploadTextures(data);
+            TextureIDs = UploadTextures(data);
                 Meshes = new MeshGpu[data.Meshes.Length];
                 MeshToNode = new int[data.Meshes.Length];
                 for (int i = 0; i < MeshToNode.Length; i++) MeshToNode[i] = -1;

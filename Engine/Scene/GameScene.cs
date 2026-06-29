@@ -446,12 +446,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 // ── COLLISION: push player out of static objects ──
                 var staticMgrs = _objectManager.staticObjectManagers;
-                var playerPos = _objectManager.PlayerAgent.Position;
-                var pushedPlayer = Helpers.CollisionHelper.PushCharacter(playerPos, staticMgrs);
+                var playerAgent = _objectManager.PlayerAgent;
+                var playerPos = playerAgent.Position;
+                var pushedPlayer = Helpers.CollisionHelper.PushCharacterCapsule(playerPos, staticMgrs, playerAgent.CollisionHeight);
                 if (pushedPlayer != playerPos)
                 {
                     pushedPlayer.Y = _gameTerrainChunk.GetHeightAt(pushedPlayer.X, pushedPlayer.Z);
-                    _objectManager.PlayerAgent.Position = pushedPlayer;
+                    playerAgent.Position = pushedPlayer;
                 }
 
                 // 4B. Update NPC AI + movement
@@ -463,7 +464,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     if (allObjs[oi].IsPlayer) continue;
                     var npcPos = allObjs[oi].Position;
-                    var pushedNpc = Helpers.CollisionHelper.PushCharacter(npcPos, staticMgrs);
+                    // All NPC agents share the same default capsule height
+                    var pushedNpc = Helpers.CollisionHelper.PushCharacterCapsule(npcPos, staticMgrs);
                     if (pushedNpc != npcPos)
                     {
                         pushedNpc.Y = _gameTerrainChunk.GetHeightAt(pushedNpc.X, pushedNpc.Z);
@@ -471,13 +473,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                 }
 
-                // ── COLLISION: player vs AI characters ──
+                // ── COLLISION: player vs AI characters (capsule vs capsule) ──
                 {
-                    var pPos = _objectManager.PlayerAgent.Position;
+                    var pAgent = _objectManager.PlayerAgent;
+                    var pPos = pAgent.Position;
+                    float pSegMin = pPos.Y + CharacterAgent.CollisionRadius;
+                    float pSegMax = pPos.Y + pAgent.CollisionHeight - CharacterAgent.CollisionRadius;
+
                     for (int oi = 0; oi < allObjs.Count; oi++)
                     {
                         if (allObjs[oi].IsPlayer) continue;
                         var aiPos = allObjs[oi].Position;
+
+                        // Capsule Y-overlap check
+                        float aSegMin = aiPos.Y + CharacterAgent.CollisionRadius;
+                        float aSegMax = aiPos.Y + CharacterAgent.CapsuleHeight - CharacterAgent.CollisionRadius;
+                        float overlapY = MathF.Min(pSegMax, aSegMax) - MathF.Max(pSegMin, aSegMin);
+                        if (overlapY <= 0.001f) continue;
 
                         float dx = pPos.X - aiPos.X;
                         float dz = pPos.Z - aiPos.Z;
@@ -502,17 +514,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                         allObjs[oi].Position = aiPos;
                     }
-                    _objectManager.PlayerAgent.Position = pPos;
+                    pAgent.Position = pPos;
                 }
 
                 // ── RE-CHECK: player vs static objects ──
                 {
-                    var recheckPos = _objectManager.PlayerAgent.Position;
-                    var recheckPushed = Helpers.CollisionHelper.PushCharacter(recheckPos, staticMgrs);
+                    var recheckPos = playerAgent.Position;
+                    var recheckPushed = Helpers.CollisionHelper.PushCharacterCapsule(recheckPos, staticMgrs, playerAgent.CollisionHeight);
                     if (recheckPushed != recheckPos)
                     {
                         recheckPushed.Y = _gameTerrainChunk.GetHeightAt(recheckPushed.X, recheckPushed.Z);
-                        _objectManager.PlayerAgent.Position = recheckPushed;
+                        playerAgent.Position = recheckPushed;
                     }
                 }
 
@@ -986,17 +998,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 _objectManager.DrawDebugAABBs(_camera, null);
 
+                // Animated objects — shapes drawn by ObjectManager.DrawDebugAABBs (capsule for characters)
+                // Only draw LOD labels here
                 var animObjs = _objectManager.GetObjects();
                 for (int oi = 0; oi < animObjs.Count; oi++)
                 {
                     var aabb = animObjs[oi].WorldAABB;
-                    Vector3 color = animObjs[oi].IsPlayer ? new Vector3(0f, 1f, 0f) : new Vector3(0f, 0.5f, 1f);
-                    TerrainChunk.DrawAABBWireframe(aabb, color, _camera);
-
-                    //// LOD label for animated objects
-                    //int animLod = animObjs[oi].AnimLOD;
-                    //Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
-                    //DrawLODLabel(center, animLod, animObjs[oi].IsPlayer);
+                    int animLod = animObjs[oi].AnimLOD;
+                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
+                    DrawLODLabel(center, animLod, animObjs[oi].IsPlayer);
                 }
 
                 if (_objectManager.staticObjectManagers != null)
@@ -1017,9 +1027,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                             TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, _camera);
 
-                            //// LOD label for static objects
-                            //Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
-                            //DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
+                            // LOD label for static objects
+                            Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
+                            DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
                         }
                     }
 

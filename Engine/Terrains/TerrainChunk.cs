@@ -747,6 +747,244 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             GL.BindVertexArray(0);
         }
 
+        /// <summary>
+        /// Draw a wireframe standing capsule using the shared line shader.
+        /// Capsule defined by foot position, collider radius, and total height.
+        /// Draws: waist ring + vertical lines + top/bottom hemisphere arcs.
+        /// </summary>
+        public static unsafe void DrawCapsuleWireframe(Vector3 position, float radius, float height, Vector3 color, Camera camera)
+        {
+            float segStartY = position.Y + radius;
+            float segEndY   = position.Y + height - radius;
+            if (segEndY <= segStartY)
+            {
+                // Degenerate: just draw a sphere
+                DrawSphereWireframe(position, radius, color, camera);
+                return;
+            }
+
+            const int segments = 16;
+            int totalVerts = segments * 2          // waist ring
+                           + segments * 2          // top ring
+                           + segments * 2          // bottom ring
+                           + 8 * 2                 // vertical lines
+                           + segments * 4 * 2      // top hemisphere arcs (16 segs × 4 angles × 2 verts)
+                           + segments * 4 * 2;     // bottom hemisphere arcs
+            float[] lineData = new float[totalVerts * 3];
+            int idx = 0;
+
+            // Helper: write a line segment (x1,y1,z1 → x2,y2,z2)
+            void Line(Vector3 a, Vector3 b)
+            {
+                lineData[idx++] = a.X; lineData[idx++] = a.Y; lineData[idx++] = a.Z;
+                lineData[idx++] = b.X; lineData[idx++] = b.Y; lineData[idx++] = b.Z;
+            }
+
+            // Helper: point on capsule surface at angle θ (around Y) and height offset t (0=bottom, 1=top)
+            Vector3 CapsulePoint(float theta, float t)
+            {
+                float y = segStartY + t * (segEndY - segStartY);
+                return new Vector3(position.X + radius * MathF.Cos(theta), y, position.Z + radius * MathF.Sin(theta));
+            }
+
+            // ── Waist ring (center of cylinder section) ──
+            float midT = 0.5f;
+            for (int i = 0; i < segments; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segments;
+                float a1 = (i + 1) * MathF.PI * 2f / segments;
+                Line(CapsulePoint(a0, midT), CapsulePoint(a1, midT));
+            }
+
+            // ── Top ring (at segEndY) ──
+            for (int i = 0; i < segments; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segments;
+                float a1 = (i + 1) * MathF.PI * 2f / segments;
+                Line(CapsulePoint(a0, 1f), CapsulePoint(a1, 1f));
+            }
+
+            // ── Bottom ring (at segStartY) ──
+            for (int i = 0; i < segments; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segments;
+                float a1 = (i + 1) * MathF.PI * 2f / segments;
+                Line(CapsulePoint(a0, 0f), CapsulePoint(a1, 0f));
+            }
+
+            // ── 8 vertical lines ──
+            for (int i = 0; i < 8; i++)
+            {
+                float a = i * MathF.PI * 2f / 8;
+                Line(CapsulePoint(a, 0f), CapsulePoint(a, 1f));
+            }
+
+            // ── Top hemisphere: half-circle arc above segEndY ──
+            for (int i = 0; i < segments; i++)
+            {
+                float t0 = (i + 0) / (float)segments;
+                float t1 = (i + 1) / (float)segments;
+                float phi0 = t0 * MathF.PI * 0.5f; // 0 → π/2
+                float phi1 = t1 * MathF.PI * 0.5f;
+                // Sample at 4 angles around for the arc
+                for (int k = 0; k < 4; k++)
+                {
+                    float theta = k * MathF.PI * 2f / 4;
+                    float r0 = radius * MathF.Cos(phi0);
+                    float y0 = segEndY + radius * MathF.Sin(phi0);
+                    float r1 = radius * MathF.Cos(phi1);
+                    float y1 = segEndY + radius * MathF.Sin(phi1);
+                    Vector3 p0 = new(position.X + r0 * MathF.Cos(theta), y0, position.Z + r0 * MathF.Sin(theta));
+                    Vector3 p1 = new(position.X + r1 * MathF.Cos(theta), y1, position.Z + r1 * MathF.Sin(theta));
+                    // Only draw if within index buffer bounds
+                    if (idx + 5 < lineData.Length) { Line(p0, p1); }
+                }
+            }
+
+            // ── Bottom hemisphere: half-circle arc below segStartY ──
+            for (int i = 0; i < segments; i++)
+            {
+                float t0 = (i + 0) / (float)segments;
+                float t1 = (i + 1) / (float)segments;
+                float phi0 = t0 * MathF.PI * 0.5f;
+                float phi1 = t1 * MathF.PI * 0.5f;
+                for (int k = 0; k < 4; k++)
+                {
+                    float theta = k * MathF.PI * 2f / 4;
+                    float r0 = radius * MathF.Cos(phi0);
+                    float y0 = segStartY - radius * MathF.Sin(phi0);
+                    float r1 = radius * MathF.Cos(phi1);
+                    float y1 = segStartY - radius * MathF.Sin(phi1);
+                    Vector3 p0 = new(position.X + r0 * MathF.Cos(theta), y0, position.Z + r0 * MathF.Sin(theta));
+                    Vector3 p1 = new(position.X + r1 * MathF.Cos(theta), y1, position.Z + r1 * MathF.Sin(theta));
+                    if (idx + 5 < lineData.Length) { Line(p0, p1); }
+                }
+            }
+
+            int actualVerts = idx / 3;
+            if (actualVerts < 2) return;
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+
+            // Use a dynamic VAO/VBO approach similar to DrawLine
+            uint dVao, dVbo;
+            GL.GenVertexArrays(1, &dVao);
+            GL.GenBuffers(1, &dVbo);
+
+            GL.BindVertexArray(dVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, dVbo);
+            fixed (void* ptr = lineData)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(actualVerts * 3 * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, actualVerts);
+            GL.BindVertexArray(0);
+
+            // Cleanup temp buffers
+            GL.DeleteVertexArrays(1, &dVao);
+            GL.DeleteBuffers(1, &dVbo);
+        }
+
+        /// <summary>
+        /// Draw a wireframe sphere using the shared line shader.
+        /// Draws 3 rings (XY, XZ, YZ planes) for a clear sphere silhouette.
+        /// </summary>
+        public static unsafe void DrawSphereWireframe(Vector3 center, float radius, Vector3 color, Camera camera)
+        {
+            const int segs = 16;
+            int totalVerts = segs * 2 * 3; // 3 rings
+            float[] lineData = new float[totalVerts * 3];
+            int idx = 0;
+
+            void Line(float x1, float y1, float z1, float x2, float y2, float z2)
+            {
+                lineData[idx++] = x1; lineData[idx++] = y1; lineData[idx++] = z1;
+                lineData[idx++] = x2; lineData[idx++] = y2; lineData[idx++] = z2;
+            }
+
+            // Ring in XY plane (around Z)
+            for (int i = 0; i < segs; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segs;
+                float a1 = (i + 1) * MathF.PI * 2f / segs;
+                Line(
+                    center.X + radius * MathF.Cos(a0), center.Y + radius * MathF.Sin(a0), center.Z,
+                    center.X + radius * MathF.Cos(a1), center.Y + radius * MathF.Sin(a1), center.Z);
+            }
+
+            // Ring in XZ plane (around Y) — equator
+            for (int i = 0; i < segs; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segs;
+                float a1 = (i + 1) * MathF.PI * 2f / segs;
+                Line(
+                    center.X + radius * MathF.Cos(a0), center.Y, center.Z + radius * MathF.Sin(a0),
+                    center.X + radius * MathF.Cos(a1), center.Y, center.Z + radius * MathF.Sin(a1));
+            }
+
+            // Ring in YZ plane (around X)
+            for (int i = 0; i < segs; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segs;
+                float a1 = (i + 1) * MathF.PI * 2f / segs;
+                Line(
+                    center.X, center.Y + radius * MathF.Cos(a0), center.Z + radius * MathF.Sin(a0),
+                    center.X, center.Y + radius * MathF.Cos(a1), center.Z + radius * MathF.Sin(a1));
+            }
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+
+            uint dVao, dVbo;
+            GL.GenVertexArrays(1, &dVao);
+            GL.GenBuffers(1, &dVbo);
+
+            GL.BindVertexArray(dVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, dVbo);
+            fixed (void* ptr = lineData)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(totalVerts * 3 * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, totalVerts);
+            GL.BindVertexArray(0);
+
+            GL.DeleteVertexArrays(1, &dVao);
+            GL.DeleteBuffers(1, &dVbo);
+        }
+
         public unsafe void RenderFrustumDebug(Vector3[] c, uint shader, int vLoc, int pLoc, Camera camera)
         {
             float[] lineData =

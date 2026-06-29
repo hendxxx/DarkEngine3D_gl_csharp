@@ -197,70 +197,85 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ─────────────────────────────────────
             staticObjectManagers =
             [ 
-                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) }  // Wall occluder
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [0] — wall
+                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },  // [1] — LittlestTokyo
+                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) },  // [2] — trees (unchanged!)
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [3] — daisies (unchanged!) 
             ];
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
 
-
-            // Wall occluder — object besar untuk test occlusion
-            // Posisi di antara player start dan area pohon/AI
+            // Wall occluder
             string wallPath = "Artifacts/objects/damaged_wall.glb";
-            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "wall", true, gameTerrainChunk);
+            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "Object_2", true, gameTerrainChunk);
             staticObjectManagers[0].CastShadow = true;
             staticObjectManagers[0].UseAlpha = true;
             staticObjectManagers[0].CullAtMaxLOD = false;
-            // Set IsOccluder=true agar object ini menjadi penghalang
             foreach (var sobj in staticObjectManagers[0].GetObjects())
+            {
                 sobj.IsOccluder = true;
-
-            // Wall — collidable (player/NPC/camera gak bisa tembus)
-            foreach (var sobj in staticObjectManagers[0].GetObjects())
                 sobj.IsCollidable = true;
-             
+                sobj.ColType = CollisionType.Box;  // wall — box collision
+            }
+
+            // ── Non-LOD model tanpa RotationCorrection ──
+            string townPath = "Artifacts/objects/my_dungeon.glb";
+            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root");
+            staticObjectManagers[1].CastShadow = true;
+            staticObjectManagers[1].UseAlpha = true;
+            staticObjectManagers[1].CullAtMaxLOD = false;
+            foreach (var sobj in staticObjectManagers[1].GetObjects())
+                sobj.IsOccluder = true;
+            foreach (var sobj in staticObjectManagers[1].GetObjects())
+                sobj.IsCollidable = true;
+
             // Trees
-            string treesName = "trees";
+            string treesName = "realistic_trees_collection";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[0].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/realistic_trees_collection.glb", 100, new Vector3(0, 0, 0), 256f, 0.0025f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
-                collisionPart: "bark",
+                //groupName: "Christmas tree_LOD0,Christmas tree2_LOD0,Christmas tree3_LOD0",
+                groupName: "Tree EZTree1.Medium002,Tree EZTree0.Medium011",
+                collisionPart: "branches",
                 overrideCollisionSizeX: 1.2f,
                 overrideCollisionSizeZ: 1.2f
                 );
             //Config.LODConfig.UseHLOD = true;
-            staticObjectManagers[1].CastShadow = true;
-            staticObjectManagers[1].UseAlpha = true;
-            staticObjectManagers[1].CullAtMaxLOD = false;
-            staticObjectManagers[1].EnableSpatialGrid = true;
-            staticObjectManagers[1].UseTerrainGrid = true;
-            staticObjectManagers[1].BuildSpatialGrid();
+            staticObjectManagers[2].CastShadow = true;
+            staticObjectManagers[2].UseAlpha = true;
+            staticObjectManagers[2].CullAtMaxLOD = false;
+            staticObjectManagers[2].EnableSpatialGrid = true;
+            staticObjectManagers[2].UseTerrainGrid = true;
+            staticObjectManagers[2].BuildSpatialGrid();
 
             // Trees — collidable (player/NPC gak bisa tembus pohon)
-            foreach (var sobj in staticObjectManagers[1].GetObjects())
-                sobj.IsCollidable = true; 
+            foreach (var sobj in staticObjectManagers[2].GetObjects())
+            {
+                sobj.IsCollidable = true;
+                sobj.ColType = CollisionType.Box;  // trees — box collision
+            }
 
             OnLoadProgress?.Invoke(0.20f, $"Static: {treesName} done");
 
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
-                (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."));
-            staticObjectManagers[2].CastShadow = false;
-            staticObjectManagers[2].UseAlpha = false;
-            staticObjectManagers[2].CullAtMaxLOD = true;
-            staticObjectManagers[2].SkipTerrainRayMarch = true; // 100rb daisies — skip ray-march
+            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+                (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
+                groupName: "Daisy_1,Daisy_2,Daisy_3, Daisy_patch_big_1,Daisy_patch_big_2,Daisy_patch_big_3, Daisy_patch_small_1,Daisy_patch_small_2,Daisy_patch_small_3");
+            staticObjectManagers[3].CastShadow = false;
+            staticObjectManagers[3].UseAlpha = false;
+            staticObjectManagers[3].CullAtMaxLOD = true;
+            staticObjectManagers[3].SkipTerrainRayMarch = true; // 100rb daisies — skip ray-march
 
             // Enable spatial grid + HLOD untuk daisies
             // Spatial grid: uses terrain chunk grid (16×16) instead of bounds-based (33×33)
             // HLOD: merged meshes per 64m region for mid-range (35-120m), ~16 draw calls
             //Config.LODConfig.UseHLOD = true;
-            staticObjectManagers[2].EnableSpatialGrid = true;
-            staticObjectManagers[2].UseTerrainGrid = true;
+            staticObjectManagers[3].EnableSpatialGrid = true;
+            staticObjectManagers[3].UseTerrainGrid = true;
             OnLoadProgress?.Invoke(0.80f, "Static: building spatial grid + HLOD...\n");
-            staticObjectManagers[2].BuildSpatialGrid();
+            staticObjectManagers[3].BuildSpatialGrid();
 
             // Set UseHLOD back to false for non-HLOD managers (trees, wall)
             //Config.LODConfig.UseHLOD = false;
@@ -268,7 +283,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
 
             // Daisies — collidable (player/NPC gak bisa tembus pohon)
-            foreach (var sobj in staticObjectManagers[1].GetObjects())
+            foreach (var sobj in staticObjectManagers[3].GetObjects())
                 sobj.IsCollidable = false;
 
             OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
@@ -577,6 +592,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     var pa = a.Position;
                     var pb = b.Position;
+
+                    // Capsule Y-overlap check
+                    float aSegMin = pa.Y + CharacterAgent.CollisionRadius;
+                    float aSegMax = pa.Y + a.CollisionHeight - CharacterAgent.CollisionRadius;
+                    float bSegMin = pb.Y + CharacterAgent.CollisionRadius;
+                    float bSegMax = pb.Y + b.CollisionHeight - CharacterAgent.CollisionRadius;
+                    float overlapY = MathF.Min(aSegMax, bSegMax) - MathF.Max(aSegMin, bSegMin);
+                    if (overlapY <= 0.001f) continue;
 
                     float dx = pa.X - pb.X;
                     float dz = pa.Z - pb.Z;
@@ -910,8 +933,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public static void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
         {
-            float terrainY = terrain.GetHeightAt(obj.Position.X, obj.Position.Z);
-            obj.Position = new Vector3(obj.Position.X, terrainY, obj.Position.Z);
+            // Gunakan AlignToTerrain yang sudah benar — compute world AABB, cari bottom Y, sesuaikan posisi
+            obj.AlignToTerrain(terrain);
         }
 
         public void SnapAllToTerrain(TerrainChunk terrain)
@@ -948,10 +971,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var insideColor = new Vector3(0f, 0.5f, 1f);   // blue = inside frustum
             var outsideColor = new Vector3(1f, 1f, 0f);    // yellow = outside frustum
 
+            // Animated characters (player + NPC) — draw capsule wireframe
+            int agentIdx = 0;
             foreach (var obj in _objects)
             {
+                Vector3 pos = obj.Position;
+                // Try to get actual collision height from the corresponding agent
+                float capRadius = Objects.CharacterAgent.CollisionRadius;
+                float capHeight = Objects.CharacterAgent.CapsuleHeight;
+
+                if (obj.IsPlayer && PlayerAgent != null)
+                {
+                    capHeight = PlayerAgent.CollisionHeight;
+                    pos = PlayerAgent.Position;
+                }
+                else if (agentIdx < _agents.Count)
+                {
+                    capHeight = _agents[agentIdx].CollisionHeight;
+                    pos = _agents[agentIdx].Position;
+                    agentIdx++;
+                }
+
                 var color = IsAABBInFrustum(frustum, obj.WorldAABB) ? insideColor : outsideColor;
-                TerrainChunk.DrawAABBWireframe(obj.WorldAABB, color, camera);
+                TerrainChunk.DrawCapsuleWireframe(pos, capRadius, capHeight, color, camera);
             }
 
             foreach (var manager in staticObjectManagers)
