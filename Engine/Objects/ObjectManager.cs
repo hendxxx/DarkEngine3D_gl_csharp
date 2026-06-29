@@ -197,9 +197,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ─────────────────────────────────────
             staticObjectManagers =
             [ 
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [0] — wall
-                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },  // [1] — LittlestTokyo
-                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) },  // [2] — trees (unchanged!)
+                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy=true },  // [0] — wall
+                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy=true },  // [1] — LittlestTokyo
+                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },  // [2] — trees (unchanged!)
                 new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [3] — daisies (unchanged!) 
             ];
 
@@ -215,28 +215,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Box;  // wall — box collision
+                sobj.ColType = CollisionType.Box;  
             }
 
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
-            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root");
+            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root", true, gameTerrainChunk);
             staticObjectManagers[1].CastShadow = true;
             staticObjectManagers[1].UseAlpha = true;
-            staticObjectManagers[1].CullAtMaxLOD = false;
+            staticObjectManagers[1].CullAtMaxLOD = false; 
+
             foreach (var sobj in staticObjectManagers[1].GetObjects())
+            {
                 sobj.IsOccluder = true;
-            foreach (var sobj in staticObjectManagers[1].GetObjects())
                 sobj.IsCollidable = true;
+                sobj.ColType = CollisionType.Box;
+            }
 
             // Trees
-            string treesName = "realistic_trees_collection";
+            string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/realistic_trees_collection.glb", 100, new Vector3(0, 0, 0), 256f, 0.0025f, gameTerrainChunk,
+            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1000, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
-                //groupName: "Christmas tree_LOD0,Christmas tree2_LOD0,Christmas tree3_LOD0",
-                groupName: "Tree EZTree1.Medium002,Tree EZTree0.Medium011",
-                collisionPart: "branches",
+                groupName: "Christmas tree_LOD0,Christmas tree2_LOD0,Christmas tree3_LOD0",
+                //groupName: "Pine_big_1,Pine_large_1,Pine_medium_1,Pine_sapling_1,Pine_small_1",
+                collisionPart: "brak",
                 overrideCollisionSizeX: 1.2f,
                 overrideCollisionSizeZ: 1.2f
                 );
@@ -244,8 +247,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             staticObjectManagers[2].CastShadow = true;
             staticObjectManagers[2].UseAlpha = true;
             staticObjectManagers[2].CullAtMaxLOD = false;
-            staticObjectManagers[2].EnableSpatialGrid = true;
-            staticObjectManagers[2].UseTerrainGrid = true;
+            staticObjectManagers[2].EnableSpatialGrid = true; //cek lgi
+            staticObjectManagers[2].UseTerrainGrid = true; //cek lgi
             staticObjectManagers[2].BuildSpatialGrid();
 
             // Trees — collidable (player/NPC gak bisa tembus pohon)
@@ -260,7 +263,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 1000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1,Daisy_2,Daisy_3, Daisy_patch_big_1,Daisy_patch_big_2,Daisy_patch_big_3, Daisy_patch_small_1,Daisy_patch_small_2,Daisy_patch_small_3");
             staticObjectManagers[3].CastShadow = false;
@@ -302,6 +305,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
             PlayerObject.IsPlayer = true;
             PlayerObject.CastShadow = true; 
+            SnapToTerrain(PlayerObject, gameTerrainChunk);
             PlayerObject.SetFacing(initialHeading);
 
             PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)

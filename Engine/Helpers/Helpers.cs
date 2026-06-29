@@ -386,6 +386,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             }
         }
 
+        /// <summary>
+        /// Compute the full world-space transform for a node by walking parent hierarchy.
+        /// Row-vector: result = M_root * M_parent * ... * M_node (applied root-first, then children).
+        /// Returns Identity if nodeIdx is invalid.
+        /// </summary>
+        public static Matrix4x4 GetNodeWorldMatrix(GltfNode[] nodes, int nodeIdx)
+        {
+            if (nodes == null || nodeIdx < 0 || nodeIdx >= nodes.Length)
+                return Matrix4x4.Identity;
+
+            // Collect chain from node up to root
+            int count = 0;
+            int idx = nodeIdx;
+            while (idx >= 0 && idx < nodes.Length)
+            {
+                count++;
+                idx = nodes[idx].Parent;
+                if (count > 128) break; // safety
+            }
+
+            var chain = new int[count];
+            idx = nodeIdx;
+            for (int i = count - 1; i >= 0; i--)
+            {
+                chain[i] = idx;
+                idx = nodes[idx].Parent;
+            }
+
+            // Multiply from root down to node (row-vector: root first, then children)
+            Matrix4x4 result = Matrix4x4.Identity;
+            for (int i = 0; i < count; i++)
+                result = result * nodes[chain[i]].LocalMatrix;
+
+            return result;
+        }
+
         // ===========================================================================
         //  MeshMaterialGpu — material parameters on the GPU
         // ===========================================================================
@@ -457,7 +493,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             // map mesh index -> node index (-1 if none)
             public readonly int[] MeshToNode;
 
-            public GltfModelGpuData(GltfData data)
+            public GltfModelGpuData(GltfData data, bool useNodeHierarchy = false)
             {
                 Data = data;
 
@@ -512,9 +548,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                     {
                         // Cari node transform untuk mesh ini
                         int nodeIdx = (MeshToNode != null && mi < MeshToNode.Length) ? MeshToNode[mi] : -1;
-                        Matrix4x4 nodeMat = (nodeIdx >= 0 && data.Nodes != null && nodeIdx < data.Nodes.Length)
-                            ? data.Nodes[nodeIdx].LocalMatrix
-                            : Matrix4x4.Identity;
+                        Matrix4x4 nodeMat = Matrix4x4.Identity;
+                        if (nodeIdx >= 0 && data.Nodes != null && nodeIdx < data.Nodes.Length)
+                            nodeMat = useNodeHierarchy
+                                ? GetNodeWorldMatrix(data.Nodes, nodeIdx)
+                                : data.Nodes[nodeIdx].LocalMatrix;
 
                         var verts = data.Meshes[mi].Vertices;
                         if (verts == null || verts.Length == 0) continue;

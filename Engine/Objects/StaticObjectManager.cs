@@ -189,6 +189,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
 
         public Vector3 RotationCorrection = Vector3.Zero;
+        public bool UseNodeHierarchy = false;
 
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
@@ -312,7 +313,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             // ── Helper: compute AABB from a set of mesh indices ──
-            static AABB ComputeGroupAABB(int[] meshIndices, int[] meshToNode, GltfNode[]? nodes, GltfMeshData[] meshes)
+            static AABB ComputeGroupAABB(int[] meshIndices, int[] meshToNode, GltfNode[]? nodes, GltfMeshData[] meshes, bool useNodeHierarchy)
             {
                 Vector3 mn = new(float.PositiveInfinity);
                 Vector3 mx = new(float.NegativeInfinity);
@@ -324,9 +325,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     int nodeIdx = (meshToNode != null && mi < meshToNode.Length)
                         ? meshToNode[mi] : -1;
-                    Matrix4x4 nodeMat = (nodeIdx >= 0 && nodes != null && nodeIdx < nodes.Length)
-                        ? nodes[nodeIdx].LocalMatrix
-                        : Matrix4x4.Identity;
+                    Matrix4x4 nodeMat = Matrix4x4.Identity;
+                    if (nodeIdx >= 0 && nodes != null && nodeIdx < nodes.Length)
+                        nodeMat = useNodeHierarchy
+                            ? GetNodeWorldMatrix(nodes, nodeIdx)
+                            : nodes[nodeIdx].LocalMatrix;
 
                     var verts = meshes[mi].Vertices;
                     if (verts == null || verts.Length == 0) continue;
@@ -378,7 +381,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     g.MaxLOD = 1;
                     for (int t = 0; t < 4; t++)
                         g.LodFallback[t] = 1;
-                    g.LocalAABB = ComputeGroupAABB(meshes, gpuData.MeshToNode, nodes, gpuData.Data.Meshes);
+                    g.LocalAABB = ComputeGroupAABB(meshes, gpuData.MeshToNode, nodes, gpuData.Data.Meshes, UseNodeHierarchy);
 
                     groups.Add(g);
                 }
@@ -409,7 +412,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             rootGroup.MaxLOD = 1;
             for (int t = 0; t < 4; t++)
                 rootGroup.LodFallback[t] = 1;
-            rootGroup.LocalAABB = ComputeGroupAABB([.. rootGroup.Lods[1]], gpuData.MeshToNode, nodes, gpuData.Data.Meshes);
+            rootGroup.LocalAABB = ComputeGroupAABB([.. rootGroup.Lods[1]], gpuData.MeshToNode, nodes, gpuData.Data.Meshes, UseNodeHierarchy);
 
             // Insert root at the beginning (so it's the default first option)
             groups.Insert(0, rootGroup);
@@ -437,7 +440,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (!_modelCache.TryGetValue(path, out var gpuData))
             {
                 var data = GltfLoader.Load(path);
-                gpuData = new GltfModelGpuData(data);
+                gpuData = new GltfModelGpuData(data, UseNodeHierarchy);
                 _modelCache[path] = gpuData;
                 AnalyzeGltfGroups(path, gpuData);
             }
@@ -495,9 +498,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 float terrainY = terrain.GetHeightAt(pos.X, pos.Z);
 
-                // Compute transform without translation: Scale * Correction * Yaw
-                var totalRot = corrQuat * Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw * MathF.PI / 180f);
-                var noTrans = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromQuaternion(totalRot);
+                // Compute transform WITHOUT translation, matching CachedBaseWorldMat order:
+                // Scale * Correction * Yaw (row-vector: correction first, then yaw)
+                var yawQuat = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw * MathF.PI / 180f);
+                var noTrans = Matrix4x4.CreateScale(scale)
+                            * Matrix4x4.CreateFromQuaternion(corrQuat)
+                            * Matrix4x4.CreateFromQuaternion(yawQuat);
 
                 // Transform the bottom-4 corners of the group's local AABB and find min world Y
                 var aabb = selectedGroup.LocalAABB;
@@ -512,6 +518,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 pos.Y = terrainY - bottomY;
+
+                Console.WriteLine($"[Snap] '{path}' group='{selectedGroup.BaseName}' terrainY={terrainY:F4} bottomY={bottomY:F6} scale={scale} -> pos.Y={pos.Y:F4} (localAABB minY={aabb.Min.Y:F4} maxY={aabb.Max.Y:F4})");
             }
 
             var sobj = new StaticObject(gpuData, selectedGroup, pos, yaw, scale);
@@ -533,7 +541,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Pakai Transform(CachedBaseWorldMat) biar transform order sama persis dengan rendering
             if (!string.IsNullOrEmpty(collisionPart))
             {
-                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj);
+                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj, UseNodeHierarchy);
                 sobj.CachedCollisionAABB = collLocalAABB.Transform(sobj.CachedBaseWorldMat);
             }
 
@@ -606,7 +614,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float x = center.X + MathF.Cos(a) * d;
                 float z = center.Z + MathF.Sin(a) * d;
                 float y = terrain.GetHeightAt(x, z);
-                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, groupName, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ);
+                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, groupName, true, terrain, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ);
 
                 if (onProgress != null && (i % reportInterval == 0 || i == count - 1))
                     onProgress((float)(i + 1) / count);
@@ -785,7 +793,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                 ? obj.GpuData.MeshToNode[mi] : -1;
                             Matrix4x4 worldMat = obj.CachedBaseWorldMat;
                             if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                                worldMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * obj.CachedBaseWorldMat;
+                                worldMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * obj.CachedBaseWorldMat;
                             // Rotation-only for normals (remove translation)
                             Matrix4x4 normMat = worldMat;
                             normMat.M41 = 0; normMat.M42 = 0; normMat.M43 = 0;
@@ -1085,8 +1093,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                 }
 
                                 Matrix4x4 modelMat = baseWorldMat;
-                                if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
-                                    modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
+                                if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
+                                    modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                                 entry.Mats.Add(modelMat);
                             }
@@ -1144,8 +1152,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         }
 
                         Matrix4x4 modelMat = baseWorldMat;
-                        if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
-                            modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
+                        if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
+                            modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                         entry.Mats.Add(modelMat);
                     }
@@ -1363,8 +1371,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     }
 
                     Matrix4x4 modelMat = baseWorldMat;
-                    if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null)
-                        modelMat = obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix * baseWorldMat;
+                    if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
+                        modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                     entry.Mats.Add(modelMat);
                 }
@@ -1417,7 +1425,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// Menerapkan node transform GLTF agar AABB sesuai dengan visual rendering.
         /// World transform dilakukan oleh caller via CachedBaseWorldMat.
         /// </summary>
-        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj)
+        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj, bool useNodeHierarchy)
         {
             Vector3 mn = new(float.PositiveInfinity);
             Vector3 mx = new(float.NegativeInfinity);
@@ -1438,9 +1446,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // Cari node transform untuk mesh ini (sama seperti rendering: nodeMatrix * baseWorldMat)
                 int nodeIdx = (gpuData.MeshToNode != null && mi < gpuData.MeshToNode.Length)
                     ? gpuData.MeshToNode[mi] : -1;
-                Matrix4x4 nodeMat = (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
-                    ? gpuData.Data.Nodes[nodeIdx].LocalMatrix
-                    : Matrix4x4.Identity;
+                Matrix4x4 nodeMat = Matrix4x4.Identity;
+                if (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
+                    nodeMat = useNodeHierarchy
+                        ? GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx)
+                        : gpuData.Data.Nodes[nodeIdx].LocalMatrix;
 
                 found = true;
                 for (int vi = 0; vi < verts.Length; vi++)
