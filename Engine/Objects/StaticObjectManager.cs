@@ -189,7 +189,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
 
         public Vector3 RotationCorrection = Vector3.Zero;
-        public bool UseNodeHierarchy = false;
+        public bool UseNodeHierarchy =  false;
 
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
@@ -276,16 +276,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var nodes = gpuData.Data.Nodes;
             var groups = new List<StaticObjectGroup>();
 
-            // ── Helper: check if a mesh is an auto-generated LOD variant ──
-            bool IsLodMesh(int mi)
-            {
-                if (mi < 0 || mi >= gpuData.Data.Meshes.Length) return true;
-                string name = gpuData.Data.Meshes[mi].Name ?? $"mesh_{mi}";
-                return System.Text.RegularExpressions.Regex.IsMatch(name, @"_LOD\d+",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            }
-
-            // ── Helper: recursively collect non-LOD mesh indices under a node ──
+            // ── Helper: recursively collect mesh indices under a node (LOD variants included,
+            // since vertex clustering already handles LOD generation).
             HashSet<int> CollectSubtreeMeshes(int nodeIdx)
             {
                 var result = new HashSet<int>();
@@ -300,49 +292,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (idx < 0 || idx >= nodes.Length) continue;
 
                     if (nodes[idx].Mesh >= 0 && nodes[idx].Mesh < gpuData.Data.Meshes.Length)
-                    {
-                        if (!IsLodMesh(nodes[idx].Mesh))
-                            result.Add(nodes[idx].Mesh);
-                    }
+                        result.Add(nodes[idx].Mesh);
 
                     foreach (var child in nodes[idx].Children)
                         stack.Push(child);
                 }
 
                 return result;
-            }
-
-            // ── Helper: compute AABB from a set of mesh indices ──
-            static AABB ComputeGroupAABB(int[] meshIndices, int[] meshToNode, GltfNode[]? nodes, GltfMeshData[] meshes, bool useNodeHierarchy)
-            {
-                Vector3 mn = new(float.PositiveInfinity);
-                Vector3 mx = new(float.NegativeInfinity);
-                bool hasVerts = false;
-
-                foreach (int mi in meshIndices)
-                {
-                    if (mi < 0 || mi >= meshes.Length) continue;
-
-                    int nodeIdx = (meshToNode != null && mi < meshToNode.Length)
-                        ? meshToNode[mi] : -1;
-                    Matrix4x4 nodeMat = Matrix4x4.Identity;
-                    if (nodeIdx >= 0 && nodes != null && nodeIdx < nodes.Length)
-                        nodeMat = useNodeHierarchy
-                            ? GetNodeWorldMatrix(nodes, nodeIdx)
-                            : nodes[nodeIdx].LocalMatrix;
-
-                    var verts = meshes[mi].Vertices;
-                    if (verts == null || verts.Length == 0) continue;
-                    hasVerts = true;
-                    for (int vi = 0; vi < verts.Length; vi++)
-                    {
-                        Vector3 modelLocal = Vector3.Transform(verts[vi].Position, nodeMat);
-                        mn = Vector3.Min(mn, modelLocal);
-                        mx = Vector3.Max(mx, modelLocal);
-                    }
-                }
-
-                return hasVerts ? new AABB(mn, mx) : new AABB(Vector3.Zero, Vector3.One);
             }
 
             // ── Pass 1: create per-node groups for top-level children that have meshes ──
@@ -374,6 +330,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             continue;
                     }
 
+                    // Skip container nodes that have no mesh of their own
+                    // and only exist to group children (e.g. "Scene" root nodes).
+                    if (nodes[ni].Mesh < 0 && nodes[ni].Children.Length > 0 && meshes.Length > 1)
+                        continue;
+
                     string groupName = nodes[ni].Name ?? $"node_{ni}";
 
                     var g = new StaticObjectGroup { BaseName = groupName };
@@ -381,38 +342,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     g.MaxLOD = 1;
                     for (int t = 0; t < 4; t++)
                         g.LodFallback[t] = 1;
-                    g.LocalAABB = ComputeGroupAABB(meshes, gpuData.MeshToNode, nodes, gpuData.Data.Meshes, UseNodeHierarchy);
+                    g.LocalAABB = ComputeGroupAABB(meshes, gpuData.MeshToNode, nodes, gpuData.Data.Meshes);
 
                     groups.Add(g);
                 }
             }
 
-            // ── Pass 2: create "root" group with ALL meshes (excl. LOD variants) ──
+            // ── Pass 2: create "root" group with ALL meshes (LOD variants included).
+            // LOD filtering is disabled because vertex clustering handles LOD generation.
             var rootGroup = new StaticObjectGroup { BaseName = "root" };
             rootGroup.Lods[1] = new List<int>();
 
             for (int i = 0; i < gpuData.Data.Meshes.Length; i++)
-            {
-                if (!IsLodMesh(i))
-                    rootGroup.Lods[1].Add(i);
-            }
-
-            // If no non-LOD meshes, try LOD0 only
-            if (rootGroup.Lods[1].Count == 0)
-            {
-                for (int i = 0; i < gpuData.Data.Meshes.Length; i++)
-                {
-                    string meshName = gpuData.Data.Meshes[i].Name ?? $"mesh_{i}";
-                    if (System.Text.RegularExpressions.Regex.IsMatch(meshName, @"_LOD0(\D|$)",
-                            System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                        rootGroup.Lods[1].Add(i);
-                }
-            }
+                rootGroup.Lods[1].Add(i);
 
             rootGroup.MaxLOD = 1;
             for (int t = 0; t < 4; t++)
                 rootGroup.LodFallback[t] = 1;
-            rootGroup.LocalAABB = ComputeGroupAABB([.. rootGroup.Lods[1]], gpuData.MeshToNode, nodes, gpuData.Data.Meshes, UseNodeHierarchy);
+            rootGroup.LocalAABB = ComputeGroupAABB([.. rootGroup.Lods[1]], gpuData.MeshToNode, nodes, gpuData.Data.Meshes);
 
             // Insert root at the beginning (so it's the default first option)
             groups.Insert(0, rootGroup);
@@ -440,7 +387,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (!_modelCache.TryGetValue(path, out var gpuData))
             {
                 var data = GltfLoader.Load(path);
-                gpuData = new GltfModelGpuData(data, UseNodeHierarchy);
+                gpuData = new GltfModelGpuData(data, true);
                 _modelCache[path] = gpuData;
                 AnalyzeGltfGroups(path, gpuData);
             }
@@ -467,23 +414,117 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             else
             {
-                // Support comma-separated list: "pohon1,pohon2,pohon3" → pick random
+                // Support comma-separated list: "pohon1,pohon2,pohon3" → pick random one
                 var names = groupName.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                var rng = new Random();
+                string chosen = names[rng.Next(names.Length)];
 
-                if (names.Length > 1)
+                // First, try to find an existing group that matches by node name
+                selectedGroup = availableGroups.FirstOrDefault(g => g.BaseName.Equals(chosen, StringComparison.OrdinalIgnoreCase));
+
+                if (selectedGroup == null)
                 {
-                    var rng = new Random();
-                    string chosen = names[rng.Next(names.Length)];
-                    selectedGroup = availableGroups.FirstOrDefault(g => g.BaseName.Equals(chosen, StringComparison.OrdinalIgnoreCase))
-                                    ?? availableGroups.FirstOrDefault(g => g.BaseName.Equals("root", StringComparison.OrdinalIgnoreCase))
-                                    ?? availableGroups[0];
-                }
-                else
-                {
-                    // Single name: try to match, if not found fall back to "root" group
-                    selectedGroup = availableGroups.FirstOrDefault(g => g.BaseName.Equals(groupName, StringComparison.OrdinalIgnoreCase))
-                                    ?? availableGroups.FirstOrDefault(g => g.BaseName.Equals("root", StringComparison.OrdinalIgnoreCase))
-                                    ?? availableGroups[0];
+                    // No node group matches — search individual meshes by name instead
+                    var matchingIndices = new List<int>();
+                    // Strip _LOD + everything after it to get the variant's base name
+                    // e.g. "Christmas tree_LOD0" → "Christmas tree"
+                    //      "Christmas tree_2_LOD0_Bark_Mat_0" base would be "Christmas tree_2"
+                    string chosenBase = System.Text.RegularExpressions.Regex.Replace(chosen, @"_LOD\d+.*$", "",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                    for (int mi = 0; mi < gpuData.Data.Meshes.Length; mi++)
+                    {
+                        string? meshName = gpuData.Data.Meshes[mi].Name;
+                        if (string.IsNullOrEmpty(meshName)) continue;
+
+                        // Match by StartsWith: handles material suffixes like _Bark_Mat_0, _Brunches_Mat_0
+                        // e.g. "Christmas tree_LOD0_Bark_Mat_0" starts with chosen="Christmas tree_LOD0"
+                        bool exactLODMatch = meshName.StartsWith(chosen, StringComparison.OrdinalIgnoreCase);
+
+                        // Cross-LOD + material matching: strip _LOD+suffix from mesh name,
+                        // then compare base names. This avoids false positives between
+                        // "Christmas tree" and "Christmas tree_2" (which StartsWith would confuse).
+                        bool baseMatch = false;
+                        if (!string.IsNullOrEmpty(chosenBase))
+                        {
+                            string meshBase = System.Text.RegularExpressions.Regex.Replace(meshName, @"_LOD\d+.*$", "",
+                                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            baseMatch = meshBase.Equals(chosenBase, StringComparison.OrdinalIgnoreCase);
+                        }
+
+                        if (exactLODMatch || baseMatch)
+                        {
+                            matchingIndices.Add(mi);
+                        }
+                    }
+
+                    if (matchingIndices.Count > 0)
+                    {
+                        // Filter out original GLB LOD[1-3] variants (single _LOD occurrence).
+                        // Auto-generated vertex-clustering LODs have TWO _LOD occurrences.
+                        var filtered = new List<int>();
+                        foreach (int mi in matchingIndices)
+                        {
+                            string? mn = gpuData.Data.Meshes[mi].Name;
+                            if (string.IsNullOrEmpty(mn)) { filtered.Add(mi); continue; }
+                            int lodCount = 0, lastLodIdx = -1, searchFrom = 0;
+                            while (searchFrom >= 0 && searchFrom < mn.Length)
+                            {
+                                int found = mn.IndexOf("_LOD", searchFrom, StringComparison.OrdinalIgnoreCase);
+                                if (found < 0) break;
+                                lodCount++;
+                                lastLodIdx = found;
+                                searchFrom = found + 4;
+                            }
+                            bool isOriginalLod = lodCount == 1 && lastLodIdx >= 0 && lastLodIdx + 4 < mn.Length
+                                && mn[lastLodIdx + 4] >= '1' && mn[lastLodIdx + 4] <= '3';
+                            if (!isOriginalLod) filtered.Add(mi);
+                        }
+
+                        // Sort into LOD buckets: LOD0 = original, LOD2/3 = auto-generated.
+                        selectedGroup = new StaticObjectGroup { BaseName = chosen };
+                        var lods = new Dictionary<int, List<int>>();
+                        foreach (int mi in filtered)
+                        {
+                            string? meshName = gpuData.Data.Meshes[mi].Name ?? "";
+                            int lodLevel = 0;
+                            if (meshName.Contains("_LOD3", StringComparison.OrdinalIgnoreCase)) lodLevel = 3;
+                            else if (meshName.Contains("_LOD2", StringComparison.OrdinalIgnoreCase)) lodLevel = 2;
+                            if (!lods.ContainsKey(lodLevel)) lods[lodLevel] = new List<int>();
+                            lods[lodLevel].Add(mi);
+                        }
+                        int maxLod = 0;
+                        foreach (var kv in lods)
+                        {
+                            selectedGroup.Lods[kv.Key] = kv.Value;
+                            if (kv.Key > maxLod) maxLod = kv.Key;
+                        }
+                        selectedGroup.MaxLOD = maxLod;
+                        for (int t = 0; t < 4; t++)
+                        {
+                            int nearest = Math.Min(t, maxLod);
+                            while (nearest >= 0 && !selectedGroup.Lods.ContainsKey(nearest))
+                                nearest--;
+                            selectedGroup.LodFallback[t] = Math.Max(nearest, 0);
+                        }
+                        selectedGroup.LocalAABB = ComputeGroupAABB(
+                            [.. filtered], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes);
+                    }
+                    else
+                    {
+                        // Last resort: pick ONE random mesh from all available meshes
+                        // rather than falling back to the root group which includes ALL meshes.
+                        var lastRng = new Random();
+                        int pickIdx = lastRng.Next(gpuData.Data.Meshes.Length);
+                        selectedGroup = new StaticObjectGroup { BaseName = chosen };
+                        selectedGroup.Lods[0] = [pickIdx];
+                        selectedGroup.MaxLOD = 0;
+                        for (int t = 0; t < 4; t++)
+                            selectedGroup.LodFallback[t] = 0;
+                        selectedGroup.LocalAABB = ComputeGroupAABB(
+                            [pickIdx], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes);
+                        Console.WriteLine($"[WARN] No matching group/mesh for '{chosen}' in '{path}' — using random mesh {pickIdx}");
+                    }
                 }
             }
 
@@ -497,33 +538,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var corrQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
 
 
-            // Snap to terrain — account for group AABB offset (node transforms, scale, rotation)
+            // Snap to terrain — use LOD0-only AABB for accurate ground contact.
+            // Combined AABB (all LODs) may include LOD3 merged meshes with different
+            // node transforms that inflate the bottom Y, causing floating/sinking.
             if (snapToTerrain && terrain != null)
             {
                 float terrainY = terrain.GetHeightAt(pos.X, pos.Z);
 
-                // Compute transform WITHOUT translation, matching CachedBaseWorldMat order:
-                // Scale * Correction * Yaw (row-vector: correction first, then yaw)
+                // noTrans = Scale * Correction * Yaw (matching CachedBaseWorldMat order)
                 var yawQuat = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw * MathF.PI / 180f);
                 var noTrans = Matrix4x4.CreateScale(scale)
                             * Matrix4x4.CreateFromQuaternion(corrQuat)
                             * Matrix4x4.CreateFromQuaternion(yawQuat);
 
-                // Transform the bottom-4 corners of the group's local AABB and find min world Y
-                var aabb = selectedGroup.LocalAABB;
-                float bottomY = float.PositiveInfinity;
-                for (int ci = 0; ci < 8; ci++)
-                {
-                    float x = (ci & 1) == 0 ? aabb.Min.X : aabb.Max.X;
-                    float y = (ci & 2) == 0 ? aabb.Min.Y : aabb.Max.Y;
-                    float z = (ci & 4) == 0 ? aabb.Min.Z : aabb.Max.Z;
-                    var p = Vector3.Transform(new Vector3(x, y, z), noTrans);
-                    if (p.Y < bottomY) bottomY = p.Y;
-                }
+                // Compute AABB from LOD0 meshes only — these are the original high-detail
+                // meshes whose node transforms match the actual object ground position.
+                AABB snapAABB;
+                if (selectedGroup.Lods.TryGetValue(0, out var lod0Meshes) && lod0Meshes.Count > 0)
+                    snapAABB = ComputeGroupAABB([.. lod0Meshes], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes);
+                else
+                    snapAABB = selectedGroup.LocalAABB; // fallback to combined
 
-                pos.Y = terrainY - bottomY;
+                var rotatedAABB = snapAABB.Transform(noTrans);
+                pos.Y = terrainY - rotatedAABB.Min.Y;
 
-                Console.WriteLine($"[Snap] '{path}' group='{selectedGroup.BaseName}' terrainY={terrainY:F4} bottomY={bottomY:F6} scale={scale} -> pos.Y={pos.Y:F4} (localAABB minY={aabb.Min.Y:F4} maxY={aabb.Max.Y:F4})");
+                Console.WriteLine($"[Snap] group='{selectedGroup.BaseName}' lod0AABB.Min.Y={snapAABB.Min.Y:F4} max.Y={snapAABB.Max.Y:F4} " +
+                    $"(combined bottom={selectedGroup.LocalAABB.Min.Y:F4}) terrainY={terrainY:F4} -> pos.Y={pos.Y:F4}");
             }
 
             var sobj = new StaticObject(gpuData, selectedGroup, pos, yaw, scale);
@@ -557,7 +597,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Pakai Transform(CachedBaseWorldMat) biar transform order sama persis dengan rendering
             if (!string.IsNullOrEmpty(collisionPart))
             {
-                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj, UseNodeHierarchy);
+                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj);
                 sobj.CachedCollisionAABB = collLocalAABB.Transform(sobj.CachedBaseWorldMat);
             }
 
@@ -805,12 +845,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                     }
 
                                     // Compute model matrix same as in Draw() — apply node transform
-                                    // worldMat = (nodeWorldMatrix * baseWorldMat) when UseNodeHierarchy=true
                                     int nodeIdx = (obj.GpuData.MeshToNode != null && mi < obj.GpuData.MeshToNode.Length)
                                         ? obj.GpuData.MeshToNode[mi] : -1;
                                     Matrix4x4 worldMat = obj.CachedBaseWorldMat;
                                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                                        worldMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * obj.CachedBaseWorldMat;
+                                        worldMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * obj.CachedBaseWorldMat;
 
                             // Rotation-only for normals (remove translation)
                             Matrix4x4 normMat = worldMat;
@@ -1112,7 +1151,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                                 Matrix4x4 modelMat = baseWorldMat;
                                 if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                                    modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
+                                    modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
 
                                 entry.Mats.Add(modelMat);
                             }
@@ -1171,7 +1210,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                         Matrix4x4 modelMat = baseWorldMat;
                         if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                            modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
+                            modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
 
                         entry.Mats.Add(modelMat);
                     }
@@ -1390,7 +1429,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     Matrix4x4 modelMat = baseWorldMat;
                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                        modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
+                        modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
 
                     entry.Mats.Add(modelMat);
                 }
@@ -1438,12 +1477,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
         }
 
+        // ── Helper: compute AABB from a set of mesh indices ──
+        private static AABB ComputeGroupAABB(int[] meshIndices, int[] meshToNode, GltfNode[]? nodes, GltfMeshData[] meshes)
+        {
+            Vector3 mn = new(float.PositiveInfinity);
+            Vector3 mx = new(float.NegativeInfinity);
+            bool hasVerts = false;
+
+            foreach (int mi in meshIndices)
+            {
+                if (mi < 0 || mi >= meshes.Length) continue;
+
+                int nodeIdx = (meshToNode != null && mi < meshToNode.Length)
+                    ? meshToNode[mi] : -1;
+                Matrix4x4 nodeMat = Matrix4x4.Identity;
+                if (nodeIdx >= 0 && nodes != null && nodeIdx < nodes.Length)
+                    nodeMat = GetNodeWorldMatrix(nodes, nodeIdx);
+
+                var verts = meshes[mi].Vertices;
+                if (verts == null || verts.Length == 0) continue;
+                hasVerts = true;
+                for (int vi = 0; vi < verts.Length; vi++)
+                {
+                    Vector3 modelLocal = Vector3.Transform(verts[vi].Position, nodeMat);
+                    mn = Vector3.Min(mn, modelLocal);
+                    mx = Vector3.Max(mx, modelLocal);
+                }
+            }
+
+            return hasVerts ? new AABB(mn, mx) : new AABB(Vector3.Zero, Vector3.One);
+        }
+
         /// <summary>
         /// Compute LOCAL AABB dari mesh-mesh yang namanya mengandung partName (case-insensitive).
         /// Menerapkan node transform GLTF agar AABB sesuai dengan visual rendering.
         /// World transform dilakukan oleh caller via CachedBaseWorldMat.
         /// </summary>
-        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj, bool useNodeHierarchy)
+        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj)
         {
             Vector3 mn = new(float.PositiveInfinity);
             Vector3 mx = new(float.NegativeInfinity);
@@ -1452,8 +1522,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var meshes = gpuData.Data.Meshes;
             if (meshes == null) return sobj.Group.LocalAABB;
 
-            for (int mi = 0; mi < meshes.Length; mi++)
+            // Only search meshes that belong to this object's group (its children),
+            // not meshes from other groups/variants.
+            var groupMeshSet = new HashSet<int>();
+            foreach (var lodKv in sobj.Group.Lods)
+                foreach (int mi in lodKv.Value)
+                    groupMeshSet.Add(mi);
+
+            foreach (int mi in groupMeshSet)
             {
+                if (mi < 0 || mi >= meshes.Length) continue;
                 string? meshName = meshes[mi].Name;
                 if (string.IsNullOrEmpty(meshName)) continue;
                 if (!meshName.Contains(partName, StringComparison.OrdinalIgnoreCase)) continue;
@@ -1466,9 +1544,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     ? gpuData.MeshToNode[mi] : -1;
                 Matrix4x4 nodeMat = Matrix4x4.Identity;
                 if (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
-                    nodeMat = useNodeHierarchy
-                        ? GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx)
-                        : gpuData.Data.Nodes[nodeIdx].LocalMatrix;
+                    nodeMat = GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx);
 
                 found = true;
                 for (int vi = 0; vi < verts.Length; vi++)
