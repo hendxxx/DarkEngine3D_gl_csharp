@@ -199,15 +199,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             [ 
                 new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy=true },  // [0] — wall
                 new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy=true },  // [1] — LittlestTokyo
-                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },  // [2] — trees (unchanged!)
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [3] — daisies (unchanged!) 
+                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) ,UseNodeHierarchy =true},  // [2] — trees (unchanged!)
+                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) ,UseNodeHierarchy =true},  // [3] — daisies (unchanged!) 
             ];
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
 
             // Wall occluder
             string wallPath = "Artifacts/objects/damaged_wall.glb";
-            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "Object_2", true, gameTerrainChunk);
+            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, f, "Object_2", true, gameTerrainChunk);
             staticObjectManagers[0].CastShadow = true;
             staticObjectManagers[0].UseAlpha = true;
             staticObjectManagers[0].CullAtMaxLOD = false;
@@ -235,7 +235,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1000, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
+            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 10, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 groupName: "Christmas tree_LOD0,Christmas tree2_LOD0,Christmas tree3_LOD0",
                 //groupName: "Pine_big_1,Pine_large_1,Pine_medium_1,Pine_sapling_1,Pine_small_1",
@@ -263,7 +263,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 1000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 10, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1,Daisy_2,Daisy_3, Daisy_patch_big_1,Daisy_patch_big_2,Daisy_patch_big_3, Daisy_patch_small_1,Daisy_patch_small_2,Daisy_patch_small_3");
             staticObjectManagers[3].CastShadow = false;

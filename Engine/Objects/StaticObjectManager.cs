@@ -487,11 +487,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
             }
 
-            // Pre-compute correction quaternion for this manager
+            // Pre-compute correction quaternion for this manager.
+            // NOTE: correction should NOT affect the world-space AABB size computation
+            // other than via rotation only (handled by CachedBaseWorldMat).
+            // (translation is applied by CachedBaseWorldMat later)
             float rx = RotationCorrection.X * MathF.PI / 180f;
             float ry = RotationCorrection.Y * MathF.PI / 180f;
             float rz = RotationCorrection.Z * MathF.PI / 180f;
             var corrQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
+
 
             // Snap to terrain — account for group AABB offset (node transforms, scale, rotation)
             if (snapToTerrain && terrain != null)
@@ -530,12 +534,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 ? selectedGroup.LocalAABB
                 : sobj.GpuData.LocalAABB;
             sobj.CollisionPart = collisionPart;
-            // Compute BaseWorldMat DULU (sama persis dengan rendering), pakai ini untuk AABB
+
+            // IMPORTANT: CachedBaseWorldMat must match how vertices are transformed in Draw().
+            // In particular, if UseNodeHierarchy=true, the per-mesh instance model matrix becomes:
+            //   modelMat = (nodeWorldMatrix * baseWorldMat)
+            // where baseWorldMat already includes correction/yaw/scale/translation.
+            // Therefore AABB must be computed using node hierarchy as well.
+
+            // Compute base/world matrix WITHOUT any node hierarchy contribution.
             sobj.CachedBaseWorldMat = Matrix4x4.CreateScale(sobj.Scale) *
                                        Matrix4x4.CreateFromQuaternion(sobj.CorrectionQuat) *
                                        Matrix4x4.CreateFromQuaternion(sobj.Rotation) *
                                        Matrix4x4.CreateTranslation(sobj.Position);
+
+            // If node hierarchy is enabled, selectedGroup.LocalAABB was already computed in model-local space
+            // including node transforms (ComputeGroupAABB uses GetNodeWorldMatrix when UseNodeHierarchy=true).
+            // That means we only need to apply base world (translation/rotation/scale) here.
             sobj.CachedWorldAABB = localAABB.Transform(sobj.CachedBaseWorldMat);
+
 
             // Compute per-mesh collision AABB jika CollisionPart di-set
             // Pakai Transform(CachedBaseWorldMat) biar transform order sama persis dengan rendering
@@ -776,24 +792,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         var meshes = obj.GpuData.Data.Meshes;
                         if (meshes == null) continue;
 
-                        foreach (int mi in miList)
-                        {
-                            if (mi < 0 || mi >= meshes.Length) continue;
-                            var src = meshes[mi];
-                            if (src.Vertices.Length < 3) continue;
+                                foreach (int mi in miList)
+                                {
+                                    if (mi < 0 || mi >= meshes.Length) continue;
+                                    var src = meshes[mi];
+                                    if (src.Vertices.Length < 3) continue;
 
-                            if (!matSet && mi < obj.GpuData.Meshes.Length)
-                            {
-                                mat = obj.GpuData.Meshes[mi].Material;
-                                matSet = true;
-                            }
+                                    if (!matSet && mi < obj.GpuData.Meshes.Length)
+                                    {
+                                        mat = obj.GpuData.Meshes[mi].Material;
+                                        matSet = true;
+                                    }
 
-                            // Compute model matrix same as in Draw() — apply node transform
-                            int nodeIdx = (obj.GpuData.MeshToNode != null && mi < obj.GpuData.MeshToNode.Length)
-                                ? obj.GpuData.MeshToNode[mi] : -1;
-                            Matrix4x4 worldMat = obj.CachedBaseWorldMat;
-                            if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                                worldMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * obj.CachedBaseWorldMat;
+                                    // Compute model matrix same as in Draw() — apply node transform
+                                    // worldMat = (nodeWorldMatrix * baseWorldMat) when UseNodeHierarchy=true
+                                    int nodeIdx = (obj.GpuData.MeshToNode != null && mi < obj.GpuData.MeshToNode.Length)
+                                        ? obj.GpuData.MeshToNode[mi] : -1;
+                                    Matrix4x4 worldMat = obj.CachedBaseWorldMat;
+                                    if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
+                                        worldMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * obj.CachedBaseWorldMat;
+
                             // Rotation-only for normals (remove translation)
                             Matrix4x4 normMat = worldMat;
                             normMat.M41 = 0; normMat.M42 = 0; normMat.M43 = 0;
