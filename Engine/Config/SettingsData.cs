@@ -30,7 +30,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                     var data = JsonSerializer.Deserialize<SettingsData>(json);
                     if (data != null)
                     {
-                        Console.WriteLine($"[SettingsSave] Loaded from {FilePath}");
+                        //Console.WriteLine($"[SettingsSave] Loaded from {FilePath}");
                         return data;
                     }
                 }

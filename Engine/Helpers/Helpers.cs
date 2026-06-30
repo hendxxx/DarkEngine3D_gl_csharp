@@ -388,7 +388,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
 
         /// <summary>
         /// Compute the full world-space transform for a node by walking parent hierarchy.
-        /// Row-vector: result = M_root * M_parent * ... * M_node (applied root-first, then children).
+        /// Row-vector: result = M_node * M_parent * ... * M_root (applied node-first, then parents).
+        /// This matches GLTF hierarchy semantics: a vertex in node-local space goes through
+        /// the node's transform first, then its parent, grandparent, etc. up to the root.
         /// Returns Identity if nodeIdx is invalid.
         /// </summary>
         public static Matrix4x4 GetNodeWorldMatrix(GltfNode[] nodes, int nodeIdx)
@@ -414,9 +416,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 idx = nodes[idx].Parent;
             }
 
-            // Multiply from root down to node (row-vector: root first, then children)
+            // Chain = [root, ..., parent, node]. Multiply from node up to root so that
+            // row-vector: v * (M_node * M_parent * ... * M_root) applies node first,
+            // which is correct for hierarchy traversal.
             Matrix4x4 result = Matrix4x4.Identity;
-            for (int i = 0; i < count; i++)
+            for (int i = count - 1; i >= 0; i--)
                 result = result * nodes[chain[i]].LocalMatrix;
 
             return result;
@@ -493,7 +497,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             // map mesh index -> node index (-1 if none)
             public readonly int[] MeshToNode;
 
-            public GltfModelGpuData(GltfData data, bool useNodeHierarchy = false)
+            public GltfModelGpuData(GltfData data, bool useNodeHierarchy = true)
             {
                 Data = data;
 
@@ -536,6 +540,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                             }
                         }
                     }
+
                 }
 
                 // Compute local AABB from ALL meshes (not just the first one)
@@ -550,9 +555,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                         int nodeIdx = (MeshToNode != null && mi < MeshToNode.Length) ? MeshToNode[mi] : -1;
                         Matrix4x4 nodeMat = Matrix4x4.Identity;
                         if (nodeIdx >= 0 && data.Nodes != null && nodeIdx < data.Nodes.Length)
-                            nodeMat = useNodeHierarchy
-                                ? GetNodeWorldMatrix(data.Nodes, nodeIdx)
-                                : data.Nodes[nodeIdx].LocalMatrix;
+                        nodeMat = GetNodeWorldMatrix(data.Nodes, nodeIdx);
 
                         var verts = data.Meshes[mi].Vertices;
                         if (verts == null || verts.Length == 0) continue;
@@ -902,8 +905,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
 
                     string baseName = string.IsNullOrEmpty(mesh.Name) ? $"mesh_{mi}" : mesh.Name;
 
-                    // Skip meshes that already have LOD suffix (they're already LOD variants)
-                    if (System.Text.RegularExpressions.Regex.IsMatch(baseName, @"_LOD\d+",
+                    // Skip meshes that already have LOD1/2/3 variants (built-in GLB LOD)
+                    // _LOD0 meshes are NOT skipped — they get auto-generated LOD2/3 via vertex clustering.
+                    if (System.Text.RegularExpressions.Regex.IsMatch(baseName, @"_LOD[1-3]",
                             System.Text.RegularExpressions.RegexOptions.IgnoreCase))
                         continue;
 

@@ -4,6 +4,7 @@ Pending:
 2. Implement biomes generation, misal: putih=salju, hijau=rumput,hijua tua=pohon, coklat=tanah, biru=air, abu = slope atau cliff, dll. buat biomes ini dirender sesuai warnaya bersamaan heightmap dibentuk, tentukan best practise heightnya. nanti tiap region akan di isi object, contoh: hijau tua=pohon= nanti bakal isi random pake glb pohon, dst.
 3. buat debug mode jika T ditekan, terrain nya di kasih overlay sesuai warna biomes nya, tapi transparant 
 4. terrain displacement mapping and tessellation shaders
+5. Octahedral Impostors
 
 Done, misc:
 1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
