@@ -197,10 +197,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ─────────────────────────────────────
             staticObjectManagers =
             [ 
-                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) },  // [0] — wall
-                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) },  // [1] — LittlestTokyo
-                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) },  // [2] — trees (unchanged!)
-                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) },  // [3] — daisies (unchanged!) 
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [0] — wall
+                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0) , UseLocalMatrix=false},  // [1] — LittlestTokyo
+                new StaticObjectManager { RotationCorrection = new Vector3(-180, 0, 0) },  // [2] — trees (unchanged!)
+                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [3] — daisies (unchanged!) 
             ];
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
@@ -220,10 +220,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
-            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root", true, gameTerrainChunk);
+            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root", true, gameTerrainChunk, useLocalMatrix:false); 
             staticObjectManagers[1].CastShadow = true;
             staticObjectManagers[1].UseAlpha = true;
-            staticObjectManagers[1].CullAtMaxLOD = false; 
+            staticObjectManagers[1].CullAtMaxLOD = false;  
 
             foreach (var sobj in staticObjectManagers[1].GetObjects())
             {
@@ -235,7 +235,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 5000, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
+            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 100, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0" ,
                 //groupName: "Pine_big_1,Pine_large_1,Pine_medium_1,Pine_sapling_1,Pine_small_1",
@@ -263,7 +263,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 100, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1_LOD0,Daisy_patch_big_1_LOD0,Daisy_patch_small_1_LOD0");
             staticObjectManagers[3].CastShadow = false;
@@ -390,11 +390,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         }
 
-        public GltfModelGpuData LoadModel(string path)
+        public GltfModelGpuData LoadModel(string path, bool useLocalMatrix)
         {
             if (_modelCache.TryGetValue(path, out var cached)) return cached;
             var data = GltfLoader.Load(path);
-            var gpuData = new GltfModelGpuData(data);
+            var gpuData = new GltfModelGpuData(data, useLocalMatrix);
             _modelCache[path] = gpuData;
             return gpuData;
         }
@@ -411,9 +411,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null, bool snapToTerrain = false)
+        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null, bool snapToTerrain = false, bool useLocalMatrix=true)
         {
-            var gpuData = LoadModel(modelPath);
+            var gpuData = LoadModel(modelPath, useLocalMatrix);
             var q = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
             var obj = new GltfObject(gpuData, position, q, scale);
             _objects.Add(obj);
