@@ -28,8 +28,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             float radius,
             StaticObjectManager[]? managers,
             float capsuleHeight = 0f,
-            float maxStepUp = 0.001f,
-            float maxBlockHeight = 0.005f)
+            float maxStepUp = 0.1f,
+            float maxBlockHeight = 0.5f)
         {
             if (managers == null) return position;
 
@@ -67,12 +67,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                         sphereCenter = result;
                     }
 
-                    // Check BVH collision first if available
                     if (obj.CollisionBVH != null)
                     {
                         if (obj.CollisionBVH.SphereOverlaps(sphereCenter, radius))
                         {
-                            // Get closest point on BVH mesh for push direction
+                            // ── Cari titik terdekat ke FOOT (result), bukan ke sphereCenter ──
+                            // GetClosestPointOnMesh(result) mencari titik terdekat ke foot
+                            // di SEMUA triangle mesh. Push direction jadi horizontal karena
+                            // foot dan closest point di wall sama-sama di ground level.
+                            // Over-push 1.05x sudah dihapus, jadi jitter tidak terjadi.
                             Vector3 closestPt = obj.CollisionBVH.GetClosestPointOnMesh(result);
 
                             // Step-up check: if mesh surface is slightly above foot, climb it
@@ -84,11 +87,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                             }
                             else
                             {
-                                // Wall or drop: push out normally
+                                // Horizontal push only — Y component diabaikan karena
+                                // closestPt dan result bisa berbeda Y (misal closestPt
+                                // dari GetClosestPointOnMesh di edge case).
+                                // Pushing Y akan mengganggu terrain clamping.
                                 float dx = result.X - closestPt.X;
-                                float dy = result.Y - closestPt.Y;
                                 float dz = result.Z - closestPt.Z;
-                                float distSq = dx * dx + dy * dy + dz * dz;
+                                float distSq = dx * dx + dz * dz;
 
                                 if (distSq < radius * radius && distSq >= 0.0001f)
                                 {
@@ -101,7 +106,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                                     if (push > 0.001f)
                                     {
                                         result.X += (dx / dist) * push;
-                                        result.Y += (dy / dist) * push;
                                         result.Z += (dz / dist) * push;
                                     }
                                 }
@@ -165,10 +169,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                                     else
                                     {
                                         // Push out along direction from closest point
-                                        float push = (radius - dist) * 1.05f;
-                                        result.X += (dxr / dist) * push;
-                                        result.Y += (dyr / dist) * push;
-                                        result.Z += (dzr / dist) * push;
+                                        // No over-push multiplier (removed 1.05x to prevent jitter)
+                                        float push = radius - dist;
+                                        if (push > 0.001f)
+                                        {
+                                            result.X += (dxr / dist) * push;
+                                            result.Y += (dyr / dist) * push;
+                                            result.Z += (dzr / dist) * push;
+                                        }
                                     }
                                 }
                             }
@@ -196,6 +204,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         /// Camera wall collision: geser camera ke arah pivot (player) sampai tidak overlap dengan wall.
         /// Berbeda dengan PushCamera yang push ke arah sembarang, method ini menjaga kamera tetap
         /// di belakang player — jika ada wall antara camera dan player, camera mundur (zoom in).
+        ///
+        /// Sekarang mendukung BVH collision juga (bukan hanya AABB), dan tanpa over-push (1.05x).
         /// </summary>
         /// <param name="cameraPos">Posisi camera saat ini (ideal position setelah terrain collision).</param>
         /// <param name="pivotPos">Posisi pivot (player head/body).</param>
@@ -217,12 +227,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             float radius = CameraRadius;
 
             Vector3 result = cameraPos;
-            Vector3 dirToPivot = camToPivot / distToPivot; // arah dari camera ke player
+            Vector3 dirToPivot = camToPivot / distToPivot;
             const int maxIterations = 5;
 
             for (int iter = 0; iter < maxIterations; iter++)
             {
-                // Update dirToPivot dari posisi result terkini (setelah push iterasi sebelumnya)
                 Vector3 currentToPivot = pivotPos - result;
                 float currentDist = currentToPivot.Length();
                 if (currentDist < 0.001f) break;
@@ -237,46 +246,85 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                     {
                         if (!obj.IsCollidable) continue;
 
-                        var aabb = obj.CachedCollisionAABB ?? obj.CachedWorldAABB;
-
-                        // Sphere vs AABB: cek overlap
-                        float closestX = Math.Clamp(result.X, aabb.Min.X, aabb.Max.X);
-                        float closestY = Math.Clamp(result.Y, aabb.Min.Y, aabb.Max.Y);
-                        float closestZ = Math.Clamp(result.Z, aabb.Min.Z, aabb.Max.Z);
-
-                        float dx = result.X - closestX;
-                        float dy = result.Y - closestY;
-                        float dz = result.Z - closestZ;
-                        float distSq = dx * dx + dy * dy + dz * dz;
-
-                        if (distSq < radius * radius)
+                        if (obj.CollisionBVH != null)
                         {
-                            float dist = MathF.Sqrt(distSq);
-                            float pushDist = (radius - dist) * 1.05f;
+                            if (obj.CollisionBVH.SphereOverlaps(result, radius))
+                            {
+                                // ── Cari titik terdekat ke camera (result) di semua triangle ──
+                                // GetClosestPointOnMesh memberikan push direction yang akurat
+                                // karena camera dan mesh surface di Y yang sama.
+                                Vector3 closestPt = obj.CollisionBVH.GetClosestPointOnMesh(result);
 
-                            if (dist < 0.001f)
-                            {
-                                // Camera center di dalam AABB — push searah dirToPivot
-                                result += dirToPivot * pushDist;
-                            }
-                            else
-                            {
-                                // Proyeksikan push ke arah pivot (supaya camera maju ke player,
-                                // bukan ke samping/tembus ke belakang wall)
-                                float dot = (dx * dirToPivot.X + dy * dirToPivot.Y + dz * dirToPivot.Z) / dist;
-                                if (dot > 0.01f)
+                                float dx = result.X - closestPt.X;
+                                float dy = result.Y - closestPt.Y;
+                                float dz = result.Z - closestPt.Z;
+                                float distSq = dx * dx + dy * dy + dz * dz;
+
+                                if (distSq < radius * radius && distSq >= 0.0001f)
                                 {
-                                    result += dirToPivot * (pushDist / dot);
+                                    float dist = MathF.Sqrt(distSq);
+                                    float pushDist = radius - dist; // NO over-push
+
+                                    if (pushDist > 0.001f)
+                                    {
+                                        // Project push onto direction toward pivot
+                                        float dot = (dx * dirToPivot.X + dy * dirToPivot.Y + dz * dirToPivot.Z) / dist;
+                                        if (dot > 0.01f)
+                                        {
+                                            result += dirToPivot * (pushDist / dot);
+                                        }
+                                        else
+                                        {
+                                            // Push along mesh normal instead
+                                            result.X += (dx / dist) * pushDist;
+                                            result.Y += (dy / dist) * pushDist;
+                                            result.Z += (dz / dist) * pushDist;
+                                        }
+                                    }
                                 }
-                                else
-                                {
-                                    // Arah push tegak lurus atau menjauhi pivot — fallback ke push biasa
-                                    result.X += (dx / dist) * pushDist;
-                                    result.Y += (dy / dist) * pushDist;
-                                    result.Z += (dz / dist) * pushDist;
-                                }
+                                anyOverlap = true;
                             }
-                            anyOverlap = true;
+                        }
+                        else
+                        {
+                            // Fallback to AABB collision
+                            var aabb = obj.CachedCollisionAABB ?? obj.CachedWorldAABB;
+
+                            float closestX = Math.Clamp(result.X, aabb.Min.X, aabb.Max.X);
+                            float closestY = Math.Clamp(result.Y, aabb.Min.Y, aabb.Max.Y);
+                            float closestZ = Math.Clamp(result.Z, aabb.Min.Z, aabb.Max.Z);
+
+                            float dx = result.X - closestX;
+                            float dy = result.Y - closestY;
+                            float dz = result.Z - closestZ;
+                            float distSq = dx * dx + dy * dy + dz * dz;
+
+                            if (distSq < radius * radius)
+                            {
+                                float dist = MathF.Sqrt(distSq);
+                                float pushDist = radius - dist; // NO over-push
+
+                                if (dist < 0.001f)
+                                {
+                                    // Camera center di dalam AABB — push searah dirToPivot
+                                    result += dirToPivot * pushDist;
+                                }
+                                else if (pushDist > 0.001f)
+                                {
+                                    float dot = (dx * dirToPivot.X + dy * dirToPivot.Y + dz * dirToPivot.Z) / dist;
+                                    if (dot > 0.01f)
+                                    {
+                                        result += dirToPivot * (pushDist / dot);
+                                    }
+                                    else
+                                    {
+                                        result.X += (dx / dist) * pushDist;
+                                        result.Y += (dy / dist) * pushDist;
+                                        result.Z += (dz / dist) * pushDist;
+                                    }
+                                }
+                                anyOverlap = true;
+                            }
                         }
                     }
                 }

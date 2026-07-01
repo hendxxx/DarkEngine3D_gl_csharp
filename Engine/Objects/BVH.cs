@@ -428,6 +428,87 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>
+        /// Get the closest point on the mesh, but only considering triangles that
+        /// actually overlap the sphere. This prevents wrong push directions at
+        /// object edges where the absolute closest triangle might be on a different
+        /// face (back side) rather than the colliding face.
+        /// </summary>
+        public Vector3 GetClosestOverlappingPoint(Vector3 center, float radius)
+        {
+            if (Root == null) return center;
+            float bestDistSq = float.MaxValue;
+            return GetClosestOverlappingInNode(Root, center, radius, ref bestDistSq);
+        }
+
+        private Vector3 GetClosestOverlappingInNode(Node node, Vector3 center, float radius, ref float bestDistSq)
+        {
+            Vector3 bestPt = center;
+
+            // AABB-sphere check first
+            float closestX = Math.Clamp(center.X, node.Bounds.Min.X, node.Bounds.Max.X);
+            float closestY = Math.Clamp(center.Y, node.Bounds.Min.Y, node.Bounds.Max.Y);
+            float closestZ = Math.Clamp(center.Z, node.Bounds.Min.Z, node.Bounds.Max.Z);
+            float dx = center.X - closestX;
+            float dy = center.Y - closestY;
+            float dz = center.Z - closestZ;
+            float distSq = dx * dx + dy * dy + dz * dz;
+
+            // If node is farther than current best, skip entirely
+            if (distSq >= bestDistSq)
+                return bestPt;
+
+            if (node.IsLeaf)
+            {
+                // Leaf: check each triangle for sphere overlap
+                foreach (int triIdx in node.TriangleIndices!)
+                {
+                    if (!SphereTriangleOverlap(center, radius, triIdx))
+                        continue;
+
+                    int idx0 = _indices![triIdx * 3];
+                    int idx1 = _indices[triIdx * 3 + 1];
+                    int idx2 = _indices[triIdx * 3 + 2];
+
+                    Vector3 pt = ClosestPointOnTriangle(center, _vertices![idx0], _vertices[idx1], _vertices[idx2]);
+                    float d = Vector3.DistanceSquared(center, pt);
+                    if (d < bestDistSq)
+                    {
+                        bestDistSq = d;
+                        bestPt = pt;
+                    }
+                }
+                return bestPt;
+            }
+
+            // Internal: traverse both children
+            if (node.Left != null)
+            {
+                Vector3 leftPt = GetClosestOverlappingInNode(node.Left, center, radius, ref bestDistSq);
+                float d = Vector3.DistanceSquared(center, leftPt);
+                // CRITICAL: d > 0f prevents degenerate case where child returned
+                // 'center' (no overlapping triangles found), which would set
+                // bestDistSq = 0 and cause ALL subsequent nodes to be skipped.
+                if (d < bestDistSq && d > 0f)
+                {
+                    bestDistSq = d;
+                    bestPt = leftPt;
+                }
+            }
+            if (node.Right != null)
+            {
+                Vector3 rightPt = GetClosestOverlappingInNode(node.Right, center, radius, ref bestDistSq);
+                float d = Vector3.DistanceSquared(center, rightPt);
+                if (d < bestDistSq && d > 0f)
+                {
+                    bestDistSq = d;
+                    bestPt = rightPt;
+                }
+            }
+
+            return bestPt;
+        }
+
+        /// <summary>
         /// Get all triangle vertices from the mesh for debug visualization.
         /// Returns arrays of vertex positions for line drawing.
         /// Used by DebugVisualizer to render wireframe of collision mesh.

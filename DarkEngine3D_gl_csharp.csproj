@@ -328,6 +328,9 @@
     <None Update="Artifacts\objects\naruto_hiddenly_village.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\neighbourhood_city_modular_lowpoly.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\Paladin.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

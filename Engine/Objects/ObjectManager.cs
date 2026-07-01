@@ -210,7 +210,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "root", true, gameTerrainChunk);
             staticObjectManagers[0].CastShadow = true;
             staticObjectManagers[0].UseAlpha = true;
-            staticObjectManagers[0].CullAtMaxLOD = false;
+            staticObjectManagers[0].CullAtMaxLOD = true;
             foreach (var sobj in staticObjectManagers[0].GetObjects())
             {
                 sobj.IsOccluder = true;
@@ -221,9 +221,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
             staticObjectManagers[1].AddObject(townPath, new Vector3(40f, 0f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
-            staticObjectManagers[1].CastShadow = true;
-            staticObjectManagers[1].UseAlpha = true;
-            staticObjectManagers[1].CullAtMaxLOD = false;  
+            staticObjectManagers[1].CastShadow = false;
+            staticObjectManagers[1].UseAlpha = false;
+            staticObjectManagers[1].CullAtMaxLOD = false ; 
 
             foreach (var sobj in staticObjectManagers[1].GetObjects())
             {

@@ -540,11 +540,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 5. Set Camera orbital (with terrain + wall collision) — always runs
                 _camera.SetCamera(window, _objectManager.PlayerAgent.Position, _gameTerrainChunk, deltaTime, staticMgrs);
 
-                // Safety net: push Position directly without syncing smoothCamPos
+                // Safety net: push Position dan sync smoothCamPos agar tidak jitter
                 var camPos = _camera.Position;
                 var safeCamPos = Helpers.CollisionHelper.PushCamera(camPos, staticMgrs);
                 if (safeCamPos != camPos)
-                    _camera.Position = safeCamPos;
+                    _camera.PushPosition(safeCamPos);
             }
 
             // 6. Update Light (always runs)
