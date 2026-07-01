@@ -199,7 +199,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             [ 
                 new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [0] — wall
                 new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy=true },  // [1] — LittlestTokyo
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [2] — trees (unchanged!)
+                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },  // [2] — trees (unchanged!)
                 new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [3] — daisies (unchanged!) 
             ];
 
@@ -235,7 +235,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 50, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
+            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 150, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0" ,
                 //groupName: "Pine_big_1,Pine_large_1,Pine_medium_1,Pine_sapling_1,Pine_small_1",
@@ -263,7 +263,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1_LOD0,Daisy_patch_big_1_LOD0,Daisy_patch_small_1_LOD0");
             staticObjectManagers[3].CastShadow = false;

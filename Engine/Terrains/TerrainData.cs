@@ -15,7 +15,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         // Vertical drop applied to skirt bottom vertices. Must be deeper than the worst
         // expected height difference at an LOD boundary so cracks stay hidden.
         // Dynamically scaled by HeightScale — computed in Generate().
-        private static float SkirtDepth = 5.0f;
+        private static float SkirtDepth = 1.0f;
 
         public float MinY { get; private set; } = float.MaxValue;
         public float MaxY { get; private set; } = float.MinValue;
