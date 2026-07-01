@@ -52,7 +52,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // Per-instance flags
         public bool CastShadow = true;
         public bool UseAlphaTest = true;
-        public bool UseLocalMatrix = true;
+        public bool UseLocalMatrix = false;
 
         // Current LOD level being rendered (set every frame by StaticObjectManager.Draw)
         public int CurrentLOD = 0;
@@ -270,7 +270,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _hasEmissiveTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasEmissiveTexture");
         }
 
-        private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData,bool useLocalMatrix)
+        private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData)
         {
             if (_modelGroups.ContainsKey(path)) return;
 
@@ -343,7 +343,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     g.MaxLOD = 1;
                     for (int t = 0; t < 4; t++)
                         g.LodFallback[t] = 1;
-                    g.LocalAABB = ComputeGroupAABB(meshes, gpuData.MeshToNode, nodes, gpuData.Data.Meshes);
+                    g.LocalAABB = ComputeGroupAABB(meshes, gpuData.MeshToNode, nodes, gpuData.Data.Meshes, UseNodeHierarchy);
 
                     groups.Add(g);
                 }
@@ -360,7 +360,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             rootGroup.MaxLOD = 1;
             for (int t = 0; t < 4; t++)
                 rootGroup.LodFallback[t] = 1;
-            rootGroup.LocalAABB = ComputeGroupAABB([.. rootGroup.Lods[1]], gpuData.MeshToNode, nodes, gpuData.Data.Meshes);
+            rootGroup.LocalAABB = ComputeGroupAABB([.. rootGroup.Lods[1]], gpuData.MeshToNode, nodes, gpuData.Data.Meshes, UseNodeHierarchy);
 
             // Insert root at the beginning (so it's the default first option)
             groups.Insert(0, rootGroup);
@@ -383,14 +383,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _modelGroups[path] = groups;
         }
 
-        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null, string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f, bool useLocalMatrix = true)
+        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null, string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
         {
             if (!_modelCache.TryGetValue(path, out var gpuData))
             {
                 var data = GltfLoader.Load(path);
                 gpuData = new GltfModelGpuData(data, true);
                 _modelCache[path] = gpuData;
-                AnalyzeGltfGroups(path, gpuData, useLocalMatrix);
+                AnalyzeGltfGroups(path, gpuData);
             }
 
             var availableGroups = _modelGroups[path];
@@ -509,7 +509,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             selectedGroup.LodFallback[t] = Math.Max(nearest, 0);
                         }
                         selectedGroup.LocalAABB = ComputeGroupAABB(
-                            [.. filtered], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes);
+                            [.. filtered], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes, UseNodeHierarchy);
                     }
                     else
                     {
@@ -523,7 +523,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         for (int t = 0; t < 4; t++)
                             selectedGroup.LodFallback[t] = 0;
                         selectedGroup.LocalAABB = ComputeGroupAABB(
-                            [pickIdx], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes);
+                            [pickIdx], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes, UseNodeHierarchy);
                         Console.WriteLine($"[WARN] No matching group/mesh for '{chosen}' in '{path}' — using random mesh {pickIdx}");
                     }
                 }
@@ -556,7 +556,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // meshes whose node transforms match the actual object ground position.
                 AABB snapAABB;
                 if (selectedGroup.Lods.TryGetValue(0, out var lod0Meshes) && lod0Meshes.Count > 0)
-                    snapAABB = ComputeGroupAABB([.. lod0Meshes], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes);
+                    snapAABB = ComputeGroupAABB([.. lod0Meshes], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes, UseNodeHierarchy);
                 else
                     snapAABB = selectedGroup.LocalAABB; // fallback to combined
 
@@ -660,7 +660,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             TotalObject++;
         }
 
-        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain, Action<float>? onProgress = null, string groupName = "", string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f, bool useLocalMatrix =true)
+        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain, Action<float>? onProgress = null, string groupName = "", string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
         {
             var rng = new Random();
             int reportInterval = Math.Max(count / 100, 1); // report ~100x selama loading
@@ -671,7 +671,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float x = center.X + MathF.Cos(a) * d;
                 float z = center.Z + MathF.Sin(a) * d;
                 float y = terrain.GetHeightAt(x, z);
-                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, groupName, true, terrain, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ, useLocalMatrix);
+                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, groupName, true, terrain, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ);
 
                 if (onProgress != null && (i % reportInterval == 0 || i == count - 1))
                     onProgress((float)(i + 1) / count);
@@ -850,7 +850,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                         ? obj.GpuData.MeshToNode[mi] : -1;
                                     Matrix4x4 worldMat = obj.CachedBaseWorldMat;
                                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                                        worldMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * obj.CachedBaseWorldMat;
+                                        //worldMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * obj.CachedBaseWorldMat;
+                                        worldMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * obj.CachedBaseWorldMat;
+
 
                             // Rotation-only for normals (remove translation)
                             Matrix4x4 normMat = worldMat;
@@ -1152,7 +1154,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                                 Matrix4x4 modelMat = baseWorldMat;
                                 if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                                    modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
+                                    //modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
+                                    modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                                 entry.Mats.Add(modelMat);
                             }
@@ -1211,7 +1214,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                         Matrix4x4 modelMat = baseWorldMat;
                         if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                            modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
+                            //modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
+                            modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                         entry.Mats.Add(modelMat);
                     }
@@ -1430,7 +1434,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     Matrix4x4 modelMat = baseWorldMat;
                     if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                        modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
+                        //modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
+                        modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                     entry.Mats.Add(modelMat);
                 }
@@ -1479,7 +1484,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ── Helper: compute AABB from a set of mesh indices ──
-        private static AABB ComputeGroupAABB(int[] meshIndices, int[] meshToNode, GltfNode[]? nodes, GltfMeshData[] meshes)
+        private static AABB ComputeGroupAABB(int[] meshIndices, int[] meshToNode, GltfNode[]? nodes, GltfMeshData[] meshes, bool useNodeHierarchy)
         {
             Vector3 mn = new(float.PositiveInfinity);
             Vector3 mx = new(float.NegativeInfinity);
@@ -1493,7 +1498,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     ? meshToNode[mi] : -1;
                 Matrix4x4 nodeMat = Matrix4x4.Identity;
                 if (nodeIdx >= 0 && nodes != null && nodeIdx < nodes.Length)
-                    nodeMat = GetNodeWorldMatrix(nodes, nodeIdx);
+                    //nodeMat = GetNodeWorldMatrix(nodes, nodeIdx);
+                    nodeMat = useNodeHierarchy
+                           ? GetNodeWorldMatrix(nodes, nodeIdx)
+                           : nodes[nodeIdx].LocalMatrix;
 
                 var verts = meshes[mi].Vertices;
                 if (verts == null || verts.Length == 0) continue;
