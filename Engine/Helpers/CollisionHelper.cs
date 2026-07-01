@@ -27,7 +27,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             Vector3 position,
             float radius,
             StaticObjectManager[]? managers,
-            float capsuleHeight = 0f)
+            float capsuleHeight = 0f,
+            float maxStepUp = 0.1f,
+            float maxBlockHeight = 0.5f)
         {
             if (managers == null) return position;
 
@@ -41,11 +43,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 {
                     if (!obj.IsCollidable) continue;
 
-                    var aabb = obj.CachedCollisionAABB ?? obj.CachedWorldAABB;
-
                     // Determine sphere center:
                     //   Sphere mode:     position (center)
-                    //   Capsule mode:    closest point on capsule segment [pos.Y+radius, pos.Y+height-radius] to AABB
+                    //   Capsule mode:    closest point on capsule segment [pos.Y+radius, pos.Y+height-radius] to collision shape
                     Vector3 sphereCenter;
                     if (capsuleHeight > 0f && capsuleHeight > radius * 2f)
                     {
@@ -53,7 +53,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                         float segStartY = position.Y + radius;
                         float segEndY = position.Y + capsuleHeight - radius;
 
-                        // Find closest Y on segment to AABB center Y
+                        // For BVH: use AABB as fallback to find approx center
+                        var aabb = obj.CachedCollisionAABB ?? obj.CachedWorldAABB;
                         float aabbCenterY = (aabb.Min.Y + aabb.Max.Y) * 0.5f;
                         float t = (segEndY - segStartY) > 0.001f
                             ? Math.Clamp((aabbCenterY - segStartY) / (segEndY - segStartY), 0f, 1f)
@@ -66,53 +67,110 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                         sphereCenter = result;
                     }
 
-                    // Closest point on AABB to sphere center
-                    float closestX = Math.Clamp(sphereCenter.X, aabb.Min.X, aabb.Max.X);
-                    float closestY = Math.Clamp(sphereCenter.Y, aabb.Min.Y, aabb.Max.Y);
-                    float closestZ = Math.Clamp(sphereCenter.Z, aabb.Min.Z, aabb.Max.Z);
-
-                    float dx = sphereCenter.X - closestX;
-                    float dy = sphereCenter.Y - closestY;
-                    float dz = sphereCenter.Z - closestZ;
-                    float distSq = dx * dx + dy * dy + dz * dz;
-
-                    if (distSq < radius * radius && distSq >= 0f)
+                    // Check BVH collision first if available
+                    if (obj.CollisionBVH != null)
                     {
-                        // Push the ORIGINAL position, not the capsule center
-                        // Re-compute closest point from result (original position)
-                        float closestXr = Math.Clamp(result.X, aabb.Min.X, aabb.Max.X);
-                        float closestYr = Math.Clamp(result.Y, aabb.Min.Y, aabb.Max.Y);
-                        float closestZr = Math.Clamp(result.Z, aabb.Min.Z, aabb.Max.Z);
-
-                        float dxr = result.X - closestXr;
-                        float dyr = result.Y - closestYr;
-                        float dzr = result.Z - closestZr;
-                        float distSqr = dxr * dxr + dyr * dyr + dzr * dzr;
-
-                        if (distSqr < radius * radius)
+                        if (obj.CollisionBVH.SphereOverlaps(sphereCenter, radius))
                         {
-                            float dist = MathF.Sqrt(distSqr);
-                            if (dist < 0.001f)
-                            {
-                                // Center inside AABB — push along shortest axis
-                                float ex = MathF.Min(result.X - aabb.Min.X, aabb.Max.X - result.X);
-                                float ey = MathF.Min(result.Y - aabb.Min.Y, aabb.Max.Y - result.Y);
-                                float ez = MathF.Min(result.Z - aabb.Min.Z, aabb.Max.Z - result.Z);
+                            // Get closest point on BVH mesh for push direction
+                            Vector3 closestPt = obj.CollisionBVH.GetClosestPointOnMesh(result);
 
-                                if (ex <= ey && ex <= ez)
-                                    result.X = result.X <= aabb.Min.X + ex ? aabb.Min.X - radius : aabb.Max.X + radius;
-                                else if (ey <= ez)
-                                    result.Y = result.Y <= aabb.Min.Y + ey ? aabb.Min.Y - radius : aabb.Max.Y + radius;
-                                else
-                                    result.Z = result.Z <= aabb.Min.Z + ez ? aabb.Min.Z - radius : aabb.Max.Z + radius;
+                            // Step-up check: if mesh surface is slightly above foot, climb it
+                            float stepHeight = closestPt.Y - result.Y;
+                            if (stepHeight > 0f && stepHeight <= maxStepUp)
+                            {
+                                // Small step: lift character to surface level
+                                result.Y = closestPt.Y;
                             }
                             else
                             {
-                                // Push out along direction from closest point
-                                float push = (radius - dist) * 1.05f;
-                                result.X += (dxr / dist) * push;
-                                result.Y += (dyr / dist) * push;
-                                result.Z += (dzr / dist) * push;
+                                // Wall or drop: push out normally
+                                float dx = result.X - closestPt.X;
+                                float dy = result.Y - closestPt.Y;
+                                float dz = result.Z - closestPt.Z;
+                                float distSq = dx * dx + dy * dy + dz * dz;
+
+                                if (distSq < radius * radius && distSq >= 0.0001f)
+                                {
+                                    float dist = MathF.Sqrt(distSq);
+
+                                    // Exact push (no over-push multiplier) to prevent jitter
+                                    float push = radius - dist;
+
+                                    // Skip micro-pushes to avoid noise/jitter
+                                    if (push > 0.001f)
+                                    {
+                                        result.X += (dx / dist) * push;
+                                        result.Y += (dy / dist) * push;
+                                        result.Z += (dz / dist) * push;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to AABB collision
+                        var aabb = obj.CachedCollisionAABB ?? obj.CachedWorldAABB;
+
+                        // Closest point on AABB to sphere center
+                        float closestX = Math.Clamp(sphereCenter.X, aabb.Min.X, aabb.Max.X);
+                        float closestY = Math.Clamp(sphereCenter.Y, aabb.Min.Y, aabb.Max.Y);
+                        float closestZ = Math.Clamp(sphereCenter.Z, aabb.Min.Z, aabb.Max.Z);
+
+                        float dx = sphereCenter.X - closestX;
+                        float dy = sphereCenter.Y - closestY;
+                        float dz = sphereCenter.Z - closestZ;
+                        float distSq = dx * dx + dy * dy + dz * dz;
+
+                        if (distSq < radius * radius && distSq >= 0f)
+                        {
+                            // Step-up check: if obstacle top is slightly above foot, climb it
+                            float stepHeight = aabb.Max.Y - result.Y;
+                            if (stepHeight > 0f && stepHeight <= maxStepUp)
+                            {
+                                // Small step: lift character to top of obstacle
+                                result.Y = aabb.Max.Y;
+                            }
+                            else
+                            {
+                                // Push the ORIGINAL position, not the capsule center
+                                // Re-compute closest point from result (original position)
+                                float closestXr = Math.Clamp(result.X, aabb.Min.X, aabb.Max.X);
+                                float closestYr = Math.Clamp(result.Y, aabb.Min.Y, aabb.Max.Y);
+                                float closestZr = Math.Clamp(result.Z, aabb.Min.Z, aabb.Max.Z);
+
+                                float dxr = result.X - closestXr;
+                                float dyr = result.Y - closestYr;
+                                float dzr = result.Z - closestZr;
+                                float distSqr = dxr * dxr + dyr * dyr + dzr * dzr;
+
+                                if (distSqr < radius * radius)
+                                {
+                                    float dist = MathF.Sqrt(distSqr);
+                                    if (dist < 0.001f)
+                                    {
+                                        // Center inside AABB — push along shortest axis
+                                        float ex = MathF.Min(result.X - aabb.Min.X, aabb.Max.X - result.X);
+                                        float ey = MathF.Min(result.Y - aabb.Min.Y, aabb.Max.Y - result.Y);
+                                        float ez = MathF.Min(result.Z - aabb.Min.Z, aabb.Max.Z - result.Z);
+
+                                        if (ex <= ey && ex <= ez)
+                                            result.X = result.X <= aabb.Min.X + ex ? aabb.Min.X - radius : aabb.Max.X + radius;
+                                        else if (ey <= ez)
+                                            result.Y = result.Y <= aabb.Min.Y + ey ? aabb.Min.Y - radius : aabb.Max.Y + radius;
+                                        else
+                                            result.Z = result.Z <= aabb.Min.Z + ez ? aabb.Min.Z - radius : aabb.Max.Z + radius;
+                                    }
+                                    else
+                                    {
+                                        // Push out along direction from closest point
+                                        float push = (radius - dist) * 1.05f;
+                                        result.X += (dxr / dist) * push;
+                                        result.Y += (dyr / dist) * push;
+                                        result.Z += (dzr / dist) * push;
+                                    }
+                                }
                             }
                         }
                     }

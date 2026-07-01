@@ -748,6 +748,62 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         /// <summary>
+        /// Draw a collection of 3D line segments using the line shader.
+        /// Used for BVH mesh visualization and debug wireframes.
+        /// </summary>
+        public static unsafe void DrawLineSegments(List<Vector3> vertices, Vector3 color, Camera camera)
+        {
+            if (vertices == null || vertices.Count == 0)
+                return;
+
+            float[] lineData = new float[vertices.Count * 3];
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                lineData[i * 3] = vertices[i].X;
+                lineData[i * 3 + 1] = vertices[i].Y;
+                lineData[i * 3 + 2] = vertices[i].Z;
+            }
+
+            lock (debugBufferLock)
+            {
+                if (debugVao == 0 || debugVbo == 0)
+                {
+                    fixed (uint* pVao = &debugVao) GL.GenVertexArrays(1, pVao);
+                    fixed (uint* pVbo = &debugVbo) GL.GenBuffers(1, pVbo);
+                }
+            }
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+
+            GL.BindVertexArray(debugVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
+            fixed (void* ptr = lineData)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+            }
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, vertices.Count);
+            GL.BindVertexArray(0);
+        }
+
+        /// <summary>
         /// Draw a wireframe standing capsule using the shared line shader.
         /// Capsule defined by foot position, collider radius, and total height.
         /// Draws: waist ring + vertical lines + top/bottom hemisphere arcs.

@@ -451,7 +451,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 var pushedPlayer = Helpers.CollisionHelper.PushCharacterCapsule(playerPos, staticMgrs, playerAgent.CollisionHeight);
                 if (pushedPlayer != playerPos)
                 {
-                    pushedPlayer.Y = _gameTerrainChunk.GetHeightAt(pushedPlayer.X, pushedPlayer.Z);
+                    float terrainY = _gameTerrainChunk.GetHeightAt(pushedPlayer.X, pushedPlayer.Z);
+                    // Preserve Y if character was lifted onto an obstacle (step-up)
+                    if (pushedPlayer.Y <= terrainY + 0.01f)
+                        pushedPlayer.Y = terrainY;
                     playerAgent.Position = pushedPlayer;
                 }
 
@@ -468,7 +471,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     var pushedNpc = Helpers.CollisionHelper.PushCharacterCapsule(npcPos, staticMgrs);
                     if (pushedNpc != npcPos)
                     {
-                        pushedNpc.Y = _gameTerrainChunk.GetHeightAt(pushedNpc.X, pushedNpc.Z);
+                        float terrainY = _gameTerrainChunk.GetHeightAt(pushedNpc.X, pushedNpc.Z);
+                        // Preserve Y if character was lifted onto an obstacle (step-up)
+                        if (pushedNpc.Y <= terrainY + 0.01f)
+                            pushedNpc.Y = terrainY;
                         allObjs[oi].Position = pushedNpc;
                     }
                 }
@@ -523,7 +529,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     var recheckPushed = Helpers.CollisionHelper.PushCharacterCapsule(recheckPos, staticMgrs, playerAgent.CollisionHeight);
                     if (recheckPushed != recheckPos)
                     {
-                        recheckPushed.Y = _gameTerrainChunk.GetHeightAt(recheckPushed.X, recheckPushed.Z);
+                        float terrainY = _gameTerrainChunk.GetHeightAt(recheckPushed.X, recheckPushed.Z);
+                        // Preserve Y if character was lifted onto an obstacle (step-up)
+                        if (recheckPushed.Y <= terrainY + 0.01f)
+                            recheckPushed.Y = terrainY;
                         playerAgent.Position = recheckPushed;
                     }
                 }
@@ -741,9 +750,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                             if (sobj.IsOccluder)
                             {
-                                _occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);
+                                var occAABB = sobj.CollisionBVH != null
+                                    ? (sobj.CollisionBVH.Root?.Bounds ?? sobj.CachedWorldAABB)
+                                    : sobj.CachedWorldAABB;
+                                _occlusionCulling.RegisterOccluder(occAABB);
                                 if (useHiZ)
-                                    _hizOcc!.RegisterOccluder(sobj.CachedWorldAABB);
+                                    _hizOcc!.RegisterOccluder(occAABB);
                             }
                         }
                     }
@@ -775,15 +787,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             if (distSq > farSq) continue;
 
                             bool occluded;
+                            var testAABB = sobj.CollisionBVH != null
+                                ? (sobj.CollisionBVH.Root?.Bounds ?? sobj.CachedWorldAABB)
+                                : sobj.CachedWorldAABB;
                             if (useHiZ)
                             {
-                                occluded = _hizOcc!.IsTerrainOccluded(_camera.Position, sobj.CachedWorldAABB);
+                                occluded = _hizOcc!.IsTerrainOccluded(_camera.Position, testAABB);
                                 if (!occluded)
-                                    occluded = _hizOcc!.IsOccluded(_camera.Position, sobj.CachedWorldAABB);
+                                    occluded = _hizOcc!.IsOccluded(_camera.Position, testAABB);
                             }
                             else
                             {
-                                occluded = _occlusionCulling.IsOccludedByOccluders(_camera.Position, sobj.CachedWorldAABB);
+                                occluded = _occlusionCulling.IsOccludedByOccluders(_camera.Position, testAABB);
                             }
 
                             if (occluded)
@@ -1025,11 +1040,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             Vector3 debugColor = isCulled ? new Vector3(1f, 0f, 0f)
                                 : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
 
-                            TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, _camera);
+                            // When BVH mesh is shown, skip AABB for objects with BVH collision
+                            if (!Keyboard.GetShowBVHMesh() || sobj.CollisionBVH == null)
+                            {
+                                var debugAABB = (sobj.CollisionBVH != null && sobj.CollisionBVH.Root != null)
+                                    ? sobj.CollisionBVH.Root.Bounds
+                                    : sobj.CachedWorldAABB;
+                                TerrainChunk.DrawAABBWireframe(debugAABB, debugColor, _camera);
 
-                            // LOD label for static objects
-                            Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
-                            DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
+                                // LOD label for static objects
+                                Vector3 sobjCenter = (debugAABB.Min + debugAABB.Max) * 0.5f;
+                                DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
+                            }
                         }
                     }
 
@@ -1042,6 +1064,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         {
                             if (sobj.CachedCollisionAABB.HasValue)
                                 TerrainChunk.DrawAABBWireframe(sobj.CachedCollisionAABB.Value, collisionColor, _camera);
+                        }
+                    }
+
+                    // ── BVH Collision Mesh Debug (toggled with P key) ──
+                    if (Keyboard.GetShowBVHMesh())
+                    {
+                        var bvhColor = new Vector3(0f, 1f, 0.5f);
+                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                        {
+                            var mgr = _objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            foreach (var sobj in mgr.GetObjects())
+                            {
+                                if (sobj.CollisionBVH == null) continue;
+                                var verts = sobj.CollisionBVH.GetTriangleLineVertices();
+                                if (verts.Count > 0)
+                                    TerrainChunk.DrawLineSegments(verts, bvhColor, _camera);
+                            }
                         }
                     }
                 }

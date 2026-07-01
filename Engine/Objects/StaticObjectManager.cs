@@ -66,6 +66,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // Apakah object ini bisa ditabrak (collision untuk player/NPC/camera)
         public bool IsCollidable = false;
 
+        // BVH collision: more accurate mesh-based collision detection
+        // If null, falls back to AABB collision
+        public BVH? CollisionBVH = null;
+
         public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
         {
             GpuData = gpuData;
@@ -378,7 +382,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Log available groups ──
             var groupNames = string.Join(", ", groups.Select(g => g.BaseName));
-            Console.WriteLine($"[Groups] '{path}': {groupNames} ({groups.Count} groups, {rootGroup.Lods[1].Count} root meshes)");
+            //Console.WriteLine($"[Groups] '{path}': {groupNames} ({groups.Count} groups, {rootGroup.Lods[1].Count} root meshes)");
 
             _modelGroups[path] = groups;
         }
@@ -563,8 +567,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var rotatedAABB = snapAABB.Transform(noTrans);
                 pos.Y = terrainY - rotatedAABB.Min.Y;
 
-                Console.WriteLine($"[Snap] group='{selectedGroup.BaseName}' lod0AABB.Min.Y={snapAABB.Min.Y:F4} max.Y={snapAABB.Max.Y:F4} " +
-                    $"(combined bottom={selectedGroup.LocalAABB.Min.Y:F4}) terrainY={terrainY:F4} -> pos.Y={pos.Y:F4}");
+                //Console.WriteLine($"[Snap] group='{selectedGroup.BaseName}' lod0AABB.Min.Y={snapAABB.Min.Y:F4} max.Y={snapAABB.Max.Y:F4} " + $"(combined bottom={selectedGroup.LocalAABB.Min.Y:F4}) terrainY={terrainY:F4} -> pos.Y={pos.Y:F4}");
             }
 
             var sobj = new StaticObject(gpuData, selectedGroup, pos, yaw, scale);
@@ -1569,6 +1572,100 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 return sobj.Group.LocalAABB; // fallback ke group local AABB jika tidak ada mesh yang cocok
 
             return new AABB(mn, mx); // LOCAL AABB (belum di-transform ke world)
+        }
+
+        /// <summary>
+        /// Build BVH from all meshes in the object's selected group.
+        /// Combines vertices from all meshes and creates a hierarchical collision structure.
+        /// </summary>
+        private BVH? BuildBVHForObject(StaticObject sobj, StaticObjectGroup group)
+        {
+            var gpuData = sobj.GpuData;
+            var meshes = gpuData.Data.Meshes;
+            if (meshes == null || meshes.Length == 0)
+                 return null;
+
+            // Collect all triangles from all LOD0 meshes
+            var verticesList = new List<Vector3>();
+            var indicesList = new List<int>();
+            var meshSet = new HashSet<int>();
+
+            // Get LOD0 meshes, or fallback to lowest available LOD
+            if (!group.Lods.TryGetValue(0, out var lodMeshes))
+            {
+                int lowestKey = group.Lods.Keys.Min();
+                group.Lods.TryGetValue(lowestKey, out lodMeshes);
+            }
+
+            if (lodMeshes == null || lodMeshes.Count == 0)
+                return null;
+
+            foreach (int mi in lodMeshes)
+            {
+                if (mi < 0 || mi >= meshes.Length) continue;
+                meshSet.Add(mi);
+            }
+
+            // Combine all mesh vertices and indices
+            int vertexOffset = 0;
+            foreach (int mi in meshSet)
+            {
+                var mesh = meshes[mi];
+                if (mesh.Vertices == null || mesh.Indices == null)
+                    continue;
+
+                // Get node transform for this mesh
+                int nodeIdx = (gpuData.MeshToNode != null && mi < gpuData.MeshToNode.Length)
+                    ? gpuData.MeshToNode[mi] : -1;
+                Matrix4x4 nodeMat = Matrix4x4.Identity;
+                if (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
+                    nodeMat = GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx);
+
+                // Add vertices (transformed by node matrix, then world matrix)
+                // This puts the BVH in world space so collision checks work directly with world-space coordinates
+                Matrix4x4 worldMat = sobj.CachedBaseWorldMat;
+                foreach (var vert in mesh.Vertices)
+                {
+                    Vector3 transformedPos = Vector3.Transform(vert.Position, nodeMat);
+                    transformedPos = Vector3.Transform(transformedPos, worldMat);
+                    verticesList.Add(transformedPos);
+                }
+
+                // Add indices (with offset)
+                foreach (int idx in mesh.Indices)
+                {
+                    indicesList.Add(idx + vertexOffset);
+                }
+
+                vertexOffset += mesh.Vertices.Length;
+            }
+
+            if (verticesList.Count == 0 || indicesList.Count == 0)
+                return null;
+
+            // Build and return BVH
+            var bvh = new BVH();
+            bvh.Build([..verticesList], [..indicesList]);
+            return bvh;
+        }
+
+        /// <summary>
+        /// Build BVH for all objects whose ColType is set to CollisionType.BVH.
+        /// Must be called after setting ColType on the objects.
+        /// </summary>
+        public void BuildBVHForCollidableObjects()
+        {
+            foreach (var sobj in _objects)
+            {
+                if (sobj.ColType == CollisionType.BVH && sobj.CollisionBVH == null)
+                {
+                    sobj.CollisionBVH = BuildBVHForObject(sobj, sobj.Group);
+                    if (sobj.CollisionBVH != null)
+                    {
+                        Console.WriteLine($"[BVH] Built collision BVH for '{sobj.Group.BaseName}' at {sobj.Position}");
+                    }
+                }
+            }
         }
 
         /// <summary>Set material uniforms for an HLOD merged mesh draw call.</summary>

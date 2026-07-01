@@ -91,7 +91,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             // Set skirt depth proportional to height scale so it's deep enough to hide
             // LOD seam gaps even on steep terrain.
-            SkirtDepth = Math.Max(0.5f, MapLoader.HeightScale * 0.05f);
+            // CRITICAL: Increased multiplier (0.15f instead of 0.05f) to handle inter-chunk LOD mismatches.
+            // This ensures skirts hide cracks between chunks at vastly different subdivision levels.
+            SkirtDepth = Math.Max(2.0f, MapLoader.HeightScale * 0.15f);
 
             int lodToLoadFirst = NUM_LODS-1;
             // Reduced subdivisions: LOD0 uses 3x3 (was 4x4), keeping higher LODs the same.
@@ -124,6 +126,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     isFlat[x, z] = IsCellFlat(mapLoader, x + worldStartX, z + worldStartZ);
 
             // Relaxation: propagate non-flat status to neighbors so adjacent edges match.
+            // ENHANCED: Also mark boundary-adjacent cells (1 cell away from edge) as "must use full detail"
+            // to prevent visible cracks between chunks at different LODs.
             bool changed;
             do {
                 changed = false;
@@ -131,14 +135,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 {
                     for (int x = 0; x < size; x++)
                     {
-                        if (!isFlat[x, z]) continue;
-                        if ((x > 0 && !isFlat[x - 1, z]) ||
-                            (x < size - 1 && !isFlat[x + 1, z]) ||
-                            (z > 0 && !isFlat[x, z - 1]) ||
-                            (z < size - 1 && !isFlat[x, z + 1]))
+                        // Boundary-adjacent cells: mark as non-flat to force full detail
+                        // These are critical for preventing inter-chunk seams
+                        bool isBoundaryAdjacent = (x == 1 || x == size - 2 || z == 1 || z == size - 2) &&
+                                                   !(x == 0 || x == size - 1 || z == 0 || z == size - 1);
+
+                        if (isFlat[x, z])
                         {
-                            isFlat[x, z] = false;
-                            changed = true;
+                            // Check neighbors
+                            bool hasNonFlatNeighbor = (x > 0 && !isFlat[x - 1, z]) ||
+                                                     (x < size - 1 && !isFlat[x + 1, z]) ||
+                                                     (z > 0 && !isFlat[x, z - 1]) ||
+                                                     (z < size - 1 && !isFlat[x, z + 1]);
+
+                            if (hasNonFlatNeighbor || isBoundaryAdjacent)
+                            {
+                                isFlat[x, z] = false;
+                                changed = true;
+                            }
                         }
                     }
                 }
@@ -153,14 +167,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 for (int x = 0; x < size; x++)
                 {
                     bool isBoundary = (x == 0 || x == size - 1 || z == 0 || z == size - 1);
-                    int actualSub = GetAdaptiveSubdivision(subdivisions, isBoundary, x, z, isFlat);
+                    int actualSub = GetAdaptiveSubdivision(subdivisions, isBoundary, x, z, isFlat, size, subdivisions);
                     AddQuadFan(vertices, x + worldStartX, z + worldStartZ, mapLoader, actualSub);
                 }
             }
             _vertexCounts[lodToLoadFirst] = vertices.Count;
             SetupGPUResourcesLOD(lodToLoadFirst, [.. vertices]);
 
-            Vertex[] skirtVerts = BuildSkirtVertices(size, worldStartX, worldStartZ, mapLoader, subdivisions);
+            Vertex[] skirtVerts = BuildSkirtVertices(size, worldStartX, worldStartZ, mapLoader, subdivisions, subdivsLOD[0]);
             _skirtVertexCounts[lodToLoadFirst] = skirtVerts.Length;
             SetupSkirtGPUResourcesLOD(lodToLoadFirst, skirtVerts);
 
@@ -180,13 +194,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                         for (int x = 0; x < size; x++)
                         {
                             bool isBoundary = (x == 0 || x == size - 1 || z == 0 || z == size - 1);
-                            int actualSub = GetAdaptiveSubdivision(sub, isBoundary, x, z, bgIsFlat);
+                            int actualSub = GetAdaptiveSubdivision(sub, isBoundary, x, z, bgIsFlat, size, sub);
                             AddQuadFan(lodVertices, x + worldStartX, z + worldStartZ, mapLoader, actualSub);
                         }
                     }
 
-                    // Skirt always uses the base subdivision count (boundary cells always match)
-                    Vertex[] lodSkirt = BuildSkirtVertices(size, worldStartX, worldStartZ, mapLoader, sub);
+                    // Skirt uses the HIGHEST subdivision (LOD0) to ensure it covers all adjacent chunk details
+                    // This prevents cracks between chunks at different LODs by guaranteeing edge coverage
+                    Vertex[] lodSkirt = BuildSkirtVertices(size, worldStartX, worldStartZ, mapLoader, sub, subdivsLOD[0]);
 
                     lock (pendingUploads)
                     {
@@ -203,12 +218,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         public uint[] SkirtVAOs = new uint[NUM_LODS];
         public uint[] SkirtVBOs = new uint[NUM_LODS];
 
-        private static Vertex[] BuildSkirtVertices(int chunkSize, int worldStartX, int worldStartZ, MapLoader mapLoader, int subdivisions)
+        private static Vertex[] BuildSkirtVertices(int chunkSize, int worldStartX, int worldStartZ, MapLoader mapLoader, int subdivisions, int maxSubdivision)
         {
             float terrainScale = MapLoader.TerrainScale;
             float tilingFactor = 1.0f;
-            float step = 1.0f / subdivisions;
-            int segCount = chunkSize * subdivisions;
+            // Use the MAX subdivision to ensure skirt covers all possible adjacent chunk densities
+            float step = 1.0f / maxSubdivision;
+            int segCount = chunkSize * maxSubdivision;
 
             // 4 edges * segCount segments * 6 vertices per quad
             List<Vertex> verts = new(4 * segCount * 6);
@@ -362,21 +378,68 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         /// <summary>
+        /// Helper to determine if a cell position should use full subdivision detail
+        /// based on its neighbors' subdivision requirements.
+        /// This prevents cracks at boundaries between simplified and detailed meshes.
+        /// </summary>
+        private static bool ShouldUseDetailForNeighbors(int localX, int localZ, int chunkSize, bool[,] isFlatCache)
+        {
+            // Check all 4 adjacent neighbors (not diagonal)
+            // If any neighbor is non-flat, this cell should use full detail for edge matching
+            int[][] neighbors = [
+                [localX - 1, localZ],  // West
+                [localX + 1, localZ],  // East
+                [localX, localZ - 1],  // South
+                [localX, localZ + 1]   // North
+            ];
+
+            foreach (var neighbor in neighbors)
+            {
+                int nx = neighbor[0];
+                int nz = neighbor[1];
+
+                // Skip boundary cells (they always use full detail anyway)
+                if (nx < 0 || nx >= chunkSize || nz < 0 || nz >= chunkSize)
+                    continue;
+
+                // If neighbor is non-flat (rough), use full detail to match edges
+                if (!isFlatCache[nx, nz])
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Adaptive subdivision with crack prevention.
         /// Boundary cells always use full subdivisions (match skirt & neighbor chunks).
         /// Interior cells use the relaxed isFlat cache — the relaxation pass ensures
         /// that any cell adjacent to a non-flat cell also uses full detail,
         /// so adjacent edges always match.
+        /// 
+        /// CRACK FIX: If a cell is simplified (1 subdivision) but neighbors use higher
+        /// subdivisions, force this cell to match the neighbor's density.
+        /// This ensures adjacent mesh edges have the same vertex density.
         /// </summary>
         private static int GetAdaptiveSubdivision(int maxSub, bool isBoundary,
-            int localX, int localZ, bool[,] isFlatCache)
+            int localX, int localZ, bool[,] isFlatCache, int chunkSize, int baseSubdivisions)
         {
             if (isBoundary || maxSub <= 1)
                 return maxSub;
 
-            // Relaxed isFlat: rough cells and their neighbors are already marked
-            // non-flat by the relaxation pass — no need to check neighbors here.
-            return isFlatCache[localX, localZ] ? 1 : maxSub;
+            // Check if this cell is flat
+            if (isFlatCache[localX, localZ])
+            {
+                // If this flat cell has rough neighbors, use full subdivisions to match edges
+                if (ShouldUseDetailForNeighbors(localX, localZ, chunkSize, isFlatCache))
+                    return maxSub;
+
+                // Safe to simplify: all neighbors are also flat (or will be forced to detail)
+                return 1;
+            }
+
+            // Cell is rough, use full subdivisions
+            return maxSub;
         }
 
         private static void AddQuad(List<Vertex> vertices, float x, float z, MapLoader mapLoader, int subdivisions)

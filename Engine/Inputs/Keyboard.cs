@@ -22,8 +22,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         // state untuk tombol P (edge detection) — toggle BBox wireframe
         static int prevPState = 0;
         static bool showBBox = false;
+        static bool showBVHMesh = false;  // NEW: Toggle BVH mesh visualization
         static bool pPressed = false;
         public static bool GetShowBBox() => showBBox;
+        public static bool GetShowBVHMesh() => showBVHMesh;  // NEW: Get BVH viz state
         public static bool GetIsWireframe() => isWireframe;
 
         // Shift+P: freeze culling — objects outside the frozen frustum stay hidden while camera moves
@@ -331,9 +333,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
             if (pState == Const.GLFW_PRESS && !pPressed && !shiftHeld)
             {
-                showBBox = !showBBox;
-                pPressed = true;
-                Console.WriteLine(showBBox ? "BBox Wireframe: ON" : "BBox Wireframe: OFF");
+                // Cycle: OFF → BBox → BBox+BVH Mesh → OFF
+                if (!showBBox)
+                {
+                    showBBox = true;
+                    showBVHMesh = false;
+                    pPressed = true;
+                    Console.WriteLine("BBox Wireframe: ON");
+                }
+                else if (!showBVHMesh)
+                {
+                    showBVHMesh = true;
+                    pPressed = true;
+                    Console.WriteLine("BBox + BVH Collision Mesh: ON");
+                }
+                else
+                {
+                    showBBox = false;
+                    showBVHMesh = false;
+                    pPressed = true;
+                    Console.WriteLine("Debug Wireframe: OFF");
+                }
             }
             else if (pState != Const.GLFW_PRESS)
             {

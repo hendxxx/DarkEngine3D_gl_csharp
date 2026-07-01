@@ -207,7 +207,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // Wall occluder
             string wallPath = "Artifacts/objects/damaged_wall.glb";
-            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "Object_2", true, gameTerrainChunk);
+            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "root", true, gameTerrainChunk);
             staticObjectManagers[0].CastShadow = true;
             staticObjectManagers[0].UseAlpha = true;
             staticObjectManagers[0].CullAtMaxLOD = false;
@@ -220,7 +220,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
-            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root", true, gameTerrainChunk); 
+            staticObjectManagers[1].AddObject(townPath, new Vector3(40f, 34.7f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
             staticObjectManagers[1].CastShadow = true;
             staticObjectManagers[1].UseAlpha = true;
             staticObjectManagers[1].CullAtMaxLOD = false;  
@@ -229,8 +229,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Box;
+                sobj.ColType = CollisionType.BVH;
             }
+            staticObjectManagers[1].BuildBVHForCollidableObjects();
 
             // Trees
             string treesName = "trees";
