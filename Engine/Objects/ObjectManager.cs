@@ -220,7 +220,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
-            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root", true, gameTerrainChunk);
+            staticObjectManagers[1].AddObject(townPath, new Vector3(60f, 34.7f, 10f), 0f, 1f, "root", true, gameTerrainChunk, useLocalMatrix:false); 
             staticObjectManagers[1].CastShadow = true;
             staticObjectManagers[1].UseAlpha = true;
             staticObjectManagers[1].CullAtMaxLOD = false;  
@@ -390,11 +390,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         }
 
-        public GltfModelGpuData LoadModel(string path)
+        public GltfModelGpuData LoadModel(string path, bool useLocalMatrix)
         {
             if (_modelCache.TryGetValue(path, out var cached)) return cached;
             var data = GltfLoader.Load(path);
-            var gpuData = new GltfModelGpuData(data);
+            var gpuData = new GltfModelGpuData(data, useLocalMatrix);
             _modelCache[path] = gpuData;
             return gpuData;
         }
@@ -411,9 +411,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null, bool snapToTerrain = false)
+        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null, bool snapToTerrain = false, bool useLocalMatrix=true)
         {
-            var gpuData = LoadModel(modelPath);
+            var gpuData = LoadModel(modelPath, useLocalMatrix);
             var q = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
             var obj = new GltfObject(gpuData, position, q, scale);
             _objects.Add(obj);

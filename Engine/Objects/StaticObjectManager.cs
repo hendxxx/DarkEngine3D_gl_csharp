@@ -52,6 +52,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // Per-instance flags
         public bool CastShadow = true;
         public bool UseAlphaTest = true;
+        public bool UseLocalMatrix = true;
 
         // Current LOD level being rendered (set every frame by StaticObjectManager.Draw)
         public int CurrentLOD = 0;
@@ -269,7 +270,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _hasEmissiveTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasEmissiveTexture");
         }
 
-        private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData)
+        private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData,bool useLocalMatrix)
         {
             if (_modelGroups.ContainsKey(path)) return;
 
@@ -382,14 +383,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _modelGroups[path] = groups;
         }
 
-        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null, string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
+        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null, string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f, bool useLocalMatrix = true)
         {
             if (!_modelCache.TryGetValue(path, out var gpuData))
             {
                 var data = GltfLoader.Load(path);
                 gpuData = new GltfModelGpuData(data, true);
                 _modelCache[path] = gpuData;
-                AnalyzeGltfGroups(path, gpuData);
+                AnalyzeGltfGroups(path, gpuData, useLocalMatrix);
             }
 
             var availableGroups = _modelGroups[path];
@@ -659,7 +660,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             TotalObject++;
         }
 
-        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain, Action<float>? onProgress = null, string groupName = "", string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
+        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain, Action<float>? onProgress = null, string groupName = "", string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f, bool useLocalMatrix =true)
         {
             var rng = new Random();
             int reportInterval = Math.Max(count / 100, 1); // report ~100x selama loading
@@ -670,7 +671,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float x = center.X + MathF.Cos(a) * d;
                 float z = center.Z + MathF.Sin(a) * d;
                 float y = terrain.GetHeightAt(x, z);
-                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, groupName, true, terrain, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ);
+                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, groupName, true, terrain, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ, useLocalMatrix);
 
                 if (onProgress != null && (i % reportInterval == 0 || i == count - 1))
                     onProgress((float)(i + 1) / count);

@@ -393,8 +393,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         /// the node's transform first, then its parent, grandparent, etc. up to the root.
         /// Returns Identity if nodeIdx is invalid.
         /// </summary>
-        public static Matrix4x4 GetNodeWorldMatrix(GltfNode[] nodes, int nodeIdx)
+        public static Matrix4x4 GetNodeMatrix(GltfNode[] nodes, int nodeIdx, bool useLocalMatrix)
         {
+            if (useLocalMatrix) 
+                return nodes[nodeIdx].LocalMatrix; 
+
             if (nodes == null || nodeIdx < 0 || nodeIdx >= nodes.Length)
                 return Matrix4x4.Identity;
 
