@@ -28,8 +28,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             float radius,
             StaticObjectManager[]? managers,
             float capsuleHeight = 0f,
-            float maxStepUp = 0.1f,
-            float maxBlockHeight = 0.5f)
+            float maxStepUp = 0.001f,
+            float maxBlockHeight = 0.005f)
         {
             if (managers == null) return position;
 

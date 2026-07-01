@@ -378,6 +378,55 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return closest;
         }
 
+        private List<AABB>? _cachedLeafAABBs = null;
+
+        /// <summary>
+        /// Collect AABBs from leaf nodes for use as fine-grained occlusion occluders.
+        /// Filters out tiny AABBs (diagonal < minSize) and limits the total count.
+        /// This gives mesh-accurate occlusion instead of a single large bounding box.
+        /// Leaf AABBs are cached on first call (BVH is static).
+        /// </summary>
+        /// <param name="minSize">Minimum diagonal size to include (filters out tiny details).</param>
+        /// <param name="maxCount">Maximum number of AABBs to collect.</param>
+        /// <returns>List of leaf node AABBs.</returns>
+        public List<AABB> GetLeafAABBs(float minSize = 0.5f, int maxCount = 128)
+        {
+            // Return cached result on subsequent calls (BVH is static)
+            if (_cachedLeafAABBs != null)
+                return _cachedLeafAABBs;
+
+            // Collect ALL qualifying leaf AABBs first (avoids depth-first bias),
+            // then truncate to maxCount
+            var allLeaves = new List<AABB>();
+            if (Root == null) return allLeaves;
+            CollectLeafAABBs(Root, allLeaves, minSize);
+
+            if (allLeaves.Count > maxCount)
+                _cachedLeafAABBs = allLeaves.GetRange(0, maxCount);
+            else
+                _cachedLeafAABBs = allLeaves;
+
+            return _cachedLeafAABBs;
+        }
+
+        private static void CollectLeafAABBs(Node node, List<AABB> result, float minSize)
+        {
+            if (node.IsLeaf)
+            {
+                // Only include if AABB is large enough (skip tiny detail clusters)
+                Vector3 ext = node.Bounds.Max - node.Bounds.Min;
+                if (ext.LengthSquared() >= minSize * minSize)
+                    result.Add(node.Bounds);
+            }
+            else
+            {
+                if (node.Left != null)
+                    CollectLeafAABBs(node.Left, result, minSize);
+                if (node.Right != null)
+                    CollectLeafAABBs(node.Right, result, minSize);
+            }
+        }
+
         /// <summary>
         /// Get all triangle vertices from the mesh for debug visualization.
         /// Returns arrays of vertex positions for line drawing.

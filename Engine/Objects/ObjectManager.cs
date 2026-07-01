@@ -220,7 +220,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
-            staticObjectManagers[1].AddObject(townPath, new Vector3(40f, 34.7f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
+            staticObjectManagers[1].AddObject(townPath, new Vector3(40f, 0f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
             staticObjectManagers[1].CastShadow = true;
             staticObjectManagers[1].UseAlpha = true;
             staticObjectManagers[1].CullAtMaxLOD = false;  

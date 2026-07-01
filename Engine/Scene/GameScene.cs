@@ -750,12 +750,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                             if (sobj.IsOccluder)
                             {
-                                var occAABB = sobj.CollisionBVH != null
-                                    ? (sobj.CollisionBVH.Root?.Bounds ?? sobj.CachedWorldAABB)
-                                    : sobj.CachedWorldAABB;
-                                _occlusionCulling.RegisterOccluder(occAABB);
-                                if (useHiZ)
-                                    _hizOcc!.RegisterOccluder(occAABB);
+                                if (sobj.CollisionBVH != null)
+                                {
+                                    var bvhAABBs = sobj.CollisionBVH.GetLeafAABBs(minSize: 0.5f, maxCount: 64);
+                                    if (bvhAABBs.Count > 0)
+                                    {
+                                        foreach (var leafAABB in bvhAABBs)
+                                        {
+                                            _occlusionCulling.RegisterOccluder(leafAABB);
+                                            if (useHiZ)
+                                                _hizOcc!.RegisterOccluder(leafAABB);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);
+                                        if (useHiZ)
+                                            _hizOcc!.RegisterOccluder(sobj.CachedWorldAABB);
+                                    }
+                                }
+                                else
+                                {
+                                    _occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);
+                                    if (useHiZ)
+                                        _hizOcc!.RegisterOccluder(sobj.CachedWorldAABB);
+                                }
                             }
                         }
                     }
