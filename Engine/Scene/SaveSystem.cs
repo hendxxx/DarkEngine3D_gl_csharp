@@ -482,10 +482,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     {
         public const int PanelColStart = 2;
         public const int PanelColEnd = 10;
-        public const int SlotRowH = 88;
-        public const int SlotGap = 10;
-        public const int ThumbW = 140;
-        public const int ThumbH = 80;
+        public const int SlotRowH = 60;
+        public const int SlotGap = 5;
+        public const int ThumbW = 90;
+        public const int ThumbH = 50;
 
         /// <summary>Compute panel dimensions using the 12-column grid.</summary>
         public static void GetPanelRect(int w, int h, out float panelX, out float panelW, out float panelY, out float panelH, out float startY)
@@ -493,7 +493,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var grid = new GridLayout(w, h);
             panelX = grid.ColX(PanelColStart);
             panelW = grid.SpanW(PanelColStart, PanelColEnd);
-            panelH = SlotRowH * SaveManager.NumSlots + SlotGap * (SaveManager.NumSlots - 1) + 90f;
+            panelH = SlotRowH * SaveManager.NumSlots + SlotGap * (SaveManager.NumSlots - 1) + 100f;
             panelY = (h - panelH) * 0.5f;
             startY = panelY + 60f;
         }
@@ -551,7 +551,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     ? $"SLOT {i + 1}"
                     : $"SLOT {i + 1}  —  EMPTY";
                 float labelX = thumbX + ThumbW + 14f;
-                float labelY = sy + 10f;
+                float labelY = sy + 25f;
                 hud.DrawText(slotLabel, labelX, labelY,
                     slots[i].HasData ? new Vector3(0.9f, 0.9f, 1.0f) : new Vector3(0.4f, 0.4f, 0.5f));
 
@@ -596,12 +596,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float titleCenterX = grid.CenterX(PanelColStart, PanelColEnd);
             var titleExt = hud.GetTextExtents(title);
             float titleX = titleCenterX - titleExt.Width * 0.5f;
-            float titleY = panelY + 24f;
+            float titleY = panelY + 40f;
             hud.DrawText(title, titleX, titleY, new Vector3(0.9f, 0.9f, 1.0f));
 
             // Divider — centered under title
             float titleH = hud.MeasureTextHeight(title);
-            float divY = titleY + titleH + 12f;
+            float divY = titleY + titleH ;
             float divW = panelW * 0.6f;
             float divX = titleCenterX - divW * 0.5f;
             hud.DrawBox(divX, divY, divW, 1f, new Vector3(0.2f, 0.22f, 0.3f));

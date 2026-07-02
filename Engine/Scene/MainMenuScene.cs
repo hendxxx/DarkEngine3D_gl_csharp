@@ -22,6 +22,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         // ── Rendering ──
         private HUD? _hud;
+        private HUD? _hudSmall;
         private float _deltaTime;
         private float _totalTime;
 
@@ -221,6 +222,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             nint window = Glfw.GetWindow();
 
             _hud = new HUD("Artifacts\\fonts\\Worldstar.ttf", 28.0f);
+            _hudSmall = new HUD("Artifacts\\fonts\\Worldstar.ttf", 16.0f);
             _selectedIndex = 0;
             _settingsOpen = false;
             _settingsSelection = 0;
@@ -1188,17 +1190,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float t = i / bandCount;
                 float brightness = 0.03f + t * 0.04f; // darker at top
                 _hud.DrawBox(0, i * bandH, w, bandH + 1, new Vector3(brightness, brightness * 1.1f, brightness * 1.3f));
-            }
-
-            // Subtle center glow (warm light from behind buttons)
-            float glowCX = w * 0.5f;
-            float glowCY = h * 0.5f;
-            float glowW = 500f;
-            float glowH = 300f;
-            float pulse = 0.5f + 0.5f * MathF.Sin(_totalTime * 0.3f);
-            float glowAlpha = 0.03f + pulse * 0.02f;
-            _hud.DrawBox(glowCX - glowW * 0.5f, glowCY - glowH * 0.5f,
-                glowW, glowH, new Vector3(0.15f * glowAlpha * 4f, 0.2f * glowAlpha * 4f, 0.4f * glowAlpha * 4f));
+            } 
         }
 
         private void RenderParticles(int w, int h)
@@ -1349,10 +1341,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 out float panelY, out float panelH, out float startY);
 
             SaveSlotUI.RenderPanelFrame(_hud, w, h, "LOAD GAME", _loadSlots, panelX, panelW, panelY, panelH);
-            SaveSlotUI.RenderSlots(_hud, w, h, _loadSlots, _loadGameSelection, panelX, panelW, startY, "LOAD");
+            SaveSlotUI.RenderSlots(_hudSmall, w, h, _loadSlots, _loadGameSelection, panelX, panelW, startY, "LOAD");
 
             string hint = "Select a slot to load  -  Enter to confirm  -  Esc to go back";
-            float hintY = panelY + panelH - 24f;
+            float hintY = panelY + panelH - 10f;
             var hintExt = _hud.GetTextExtents(hint);
             float hintCenterX = grid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
             float hintX = hintCenterX - hintExt.Width * 0.5f;
@@ -1387,16 +1379,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float by = startY + i * (ButtonHeight + ButtonSpacing);
                 bool isSelected = (i == _selectedIndex);
 
-                // ── Pulsing glow behind selected button ──
-                if (isSelected)
-                {
-                    float glowPulse = 0.5f + 0.5f * MathF.Sin(_totalTime * 2.5f);
-                    float glowExpand = 10f + glowPulse * 6f;
-                    float glowAlpha = 0.08f + glowPulse * 0.06f;
-                    _hud.DrawBox(bx - glowExpand, by - glowExpand,
-                        btnWidth + glowExpand * 2, ButtonHeight + glowExpand * 2,
-                        new Vector3(0.3f, 0.4f, 0.9f) * glowAlpha);
-                }
+                //// ── Pulsing glow behind selected button ──
+                //if (isSelected)
+                //{
+                //    float glowPulse = 0.5f + 0.5f * MathF.Sin(_totalTime * 2.5f);
+                //    float glowExpand = 10f + glowPulse * 6f;
+                //    float glowAlpha = 0.08f + glowPulse * 0.06f;
+                //    _hud.DrawBox(bx - glowExpand, by - glowExpand,
+                //        btnWidth + glowExpand * 2, ButtonHeight + glowExpand * 2,
+                //        new Vector3(0.3f, 0.4f, 0.9f) * glowAlpha);
+                //}
 
                 // Button background
                 Vector3 bgColor = isSelected
@@ -1404,20 +1396,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     : new Vector3(0.10f, 0.12f, 0.18f);
                 _hud.DrawBox(bx, by, btnWidth, ButtonHeight, bgColor);
 
-                // Button borders (top and bottom accent lines)
-                Vector3 borderColor = isSelected
-                    ? new Vector3(0.5f, 0.6f, 1.0f)
-                    : new Vector3(0.15f, 0.18f, 0.25f);
-                _hud.DrawBox(bx, by, btnWidth, 1f, borderColor);
-                _hud.DrawBox(bx, by + ButtonHeight - 1f, btnWidth, 1f, borderColor);
+                //// Button borders (top and bottom accent lines)
+                //Vector3 borderColor = isSelected
+                //    ? new Vector3(0.5f, 0.6f, 1.0f)
+                //    : new Vector3(0.15f, 0.18f, 0.25f);
+                //_hud.DrawBox(bx, by, btnWidth, 1f, borderColor);
+                //_hud.DrawBox(bx, by + ButtonHeight - 1f, btnWidth, 1f, borderColor);
 
-                // Selected: animated side bar
-                if (isSelected)
-                {
-                    float barPulse = 0.7f + 0.3f * MathF.Sin(_totalTime * 3f);
-                    _hud.DrawBox(bx - 3f, by + 4f, 3f, ButtonHeight - 8f,
-                        new Vector3(0.4f, 0.5f, 0.9f) * barPulse);
-                } 
+                //// Selected: animated side bar
+                //if (isSelected)
+                //{
+                //    float barPulse = 0.7f + 0.3f * MathF.Sin(_totalTime * 3f);
+                //    _hud.DrawBox(bx - 3f, by + 4f, 3f, ButtonHeight - 8f,
+                //        new Vector3(0.4f, 0.5f, 0.9f) * barPulse);
+                //} 
                 // Button text — centered using GetTextExtents (single pass)
                 Vector3 textColor = isSelected
                     ? new Vector3(0.95f, 0.95f, 1.0f)
