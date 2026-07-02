@@ -372,6 +372,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 return new AABB(mn, mx);
             }
 
+            public readonly bool Contains(Vector3 point) =>
+                point.X >= Min.X && point.X <= Max.X &&
+                point.Y >= Min.Y && point.Y <= Max.Y &&
+                point.Z >= Min.Z && point.Z <= Max.Z;
+
             public static AABB FromVertices(SkinnedVertex[] verts)
             {
                 if (verts.Length == 0) return new AABB(Vector3.Zero, Vector3.Zero);

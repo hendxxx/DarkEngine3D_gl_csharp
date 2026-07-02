@@ -1083,6 +1083,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Determine camera position in world space
             float camX = camera.Position.X;
             float camZ = camera.Position.Z;
+            Vector3 cameraPos = camera.Position;
+            Vector3 cameraFront = camera.Front;
 
             // Use spatial grid if available, otherwise fall back to full iteration
             if (_gridCells != null)
@@ -1148,17 +1150,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                 int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length)
                                               ? obj.GpuData.MeshToNode[meshIdx] : -1;
 
+                                // Compute modelMat once untuk culling + instance list
+                                Matrix4x4 modelMat = baseWorldMat;
+                                if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
+                                    modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
+
                                 var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx);
                                 if (!_drawInstanceLists.TryGetValue(key, out var entry))
                                 {
                                     entry = new InstanceGroup { Mesh = obj.GpuData.Meshes[meshIdx], Gpu = obj.GpuData };
                                     _drawInstanceLists[key] = entry;
                                 }
-
-                                Matrix4x4 modelMat = baseWorldMat;
-                                if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                                    //modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
-                                    modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                                 entry.Mats.Add(modelMat);
                             }
@@ -1208,17 +1210,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         int nodeIdx = (obj.GpuData.MeshToNode != null && meshIdx < obj.GpuData.MeshToNode.Length)
                                       ? obj.GpuData.MeshToNode[meshIdx] : -1;
 
+                        // Compute modelMat once untuk culling + instance list
+                        Matrix4x4 modelMat = baseWorldMat;
+                        if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
+                            modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
+
                         var key = (RuntimeHelpers.GetHashCode(obj.GpuData), meshIdx, nodeIdx);
                         if (!_drawInstanceLists.TryGetValue(key, out var entry))
                         {
                             entry = new InstanceGroup { Mesh = obj.GpuData.Meshes[meshIdx], Gpu = obj.GpuData };
                             _drawInstanceLists[key] = entry;
                         }
-
-                        Matrix4x4 modelMat = baseWorldMat;
-                        if (nodeIdx >= 0 && obj.GpuData.Data.Nodes != null && nodeIdx < obj.GpuData.Data.Nodes.Length)
-                            //modelMat = GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) * baseWorldMat;
-                            modelMat = (UseNodeHierarchy ? GetNodeWorldMatrix(obj.GpuData.Data.Nodes, nodeIdx) : obj.GpuData.Data.Nodes[nodeIdx].LocalMatrix) * baseWorldMat;
 
                         entry.Mats.Add(modelMat);
                     }

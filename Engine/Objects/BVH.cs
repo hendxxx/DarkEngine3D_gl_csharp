@@ -178,11 +178,46 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 return false;
             }
 
-            // Internal node: traverse children
-            if (node.Left != null && SphereOverlapsNode(node.Left, sphereCenter, radius))
-                return true;
-            if (node.Right != null && SphereOverlapsNode(node.Right, sphereCenter, radius))
-                return true;
+            // Internal node: traverse closer child first for faster early-exit
+            float dLeft = float.MaxValue;
+            float dRight = float.MaxValue;
+
+            if (node.Left != null)
+            {
+                float cx2 = Math.Clamp(sphereCenter.X, node.Left.Bounds.Min.X, node.Left.Bounds.Max.X);
+                float cy2 = Math.Clamp(sphereCenter.Y, node.Left.Bounds.Min.Y, node.Left.Bounds.Max.Y);
+                float cz2 = Math.Clamp(sphereCenter.Z, node.Left.Bounds.Min.Z, node.Left.Bounds.Max.Z);
+                float dx2 = sphereCenter.X - cx2;
+                float dy2 = sphereCenter.Y - cy2;
+                float dz2 = sphereCenter.Z - cz2;
+                dLeft = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
+            }
+
+            if (node.Right != null)
+            {
+                float cx2 = Math.Clamp(sphereCenter.X, node.Right.Bounds.Min.X, node.Right.Bounds.Max.X);
+                float cy2 = Math.Clamp(sphereCenter.Y, node.Right.Bounds.Min.Y, node.Right.Bounds.Max.Y);
+                float cz2 = Math.Clamp(sphereCenter.Z, node.Right.Bounds.Min.Z, node.Right.Bounds.Max.Z);
+                float dx2 = sphereCenter.X - cx2;
+                float dy2 = sphereCenter.Y - cy2;
+                float dz2 = sphereCenter.Z - cz2;
+                dRight = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
+            }
+
+            if (dLeft <= dRight)
+            {
+                if (node.Left != null && SphereOverlapsNode(node.Left, sphereCenter, radius))
+                    return true;
+                if (node.Right != null && SphereOverlapsNode(node.Right, sphereCenter, radius))
+                    return true;
+            }
+            else
+            {
+                if (node.Right != null && SphereOverlapsNode(node.Right, sphereCenter, radius))
+                    return true;
+                if (node.Left != null && SphereOverlapsNode(node.Left, sphereCenter, radius))
+                    return true;
+            }
 
             return false;
         }
@@ -263,13 +298,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>
         /// Get the closest point on the mesh to a sphere center (with push direction).
         /// </summary>
-        public Vector3 GetClosestPointOnMesh(Vector3 sphereCenter)
+        /// <param name="sphereCenter">Query position (usually foot or camera position).</param>
+        /// <param name="maxSearchRadius">Limit search to triangles within this radius. Default unlimited.</param>
+        public Vector3 GetClosestPointOnMesh(Vector3 sphereCenter, float maxSearchRadius = float.MaxValue)
         {
             if (Root == null) return sphereCenter;
-            return GetClosestPointInNode(Root, sphereCenter);
+            float maxDistSq = maxSearchRadius >= float.MaxValue * 0.5f
+                ? float.MaxValue
+                : maxSearchRadius * maxSearchRadius;
+            return GetClosestPointInNode(Root, sphereCenter, maxDistSq);
         }
 
-        private Vector3 GetClosestPointInNode(Node node, Vector3 sphereCenter)
+        private Vector3 GetClosestPointInNode(Node node, Vector3 sphereCenter, float maxDistSq = float.MaxValue)
         {
             Vector3 closest = sphereCenter;
             float minDist = float.MaxValue;
@@ -327,11 +367,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 // Traverse closer child first
+                // AFTER first child, skip second child if its AABB is farther than
+                // the closest point already found (second-child early-out).
                 if (distLeft <= distRight)
                 {
                     if (node.Left != null)
                     {
-                        Vector3 leftPt = GetClosestPointInNode(node.Left, sphereCenter);
+                        Vector3 leftPt = GetClosestPointInNode(node.Left, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, leftPt);
                         if (d < minDist)
                         {
@@ -339,9 +381,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             closest = leftPt;
                         }
                     }
-                    if (node.Right != null)
+                    // Second-child early-out: skip right if its AABB is >= minDist
+                    if (node.Right != null && distRight < minDist)
                     {
-                        Vector3 rightPt = GetClosestPointInNode(node.Right, sphereCenter);
+                        Vector3 rightPt = GetClosestPointInNode(node.Right, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, rightPt);
                         if (d < minDist)
                         {
@@ -354,7 +397,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     if (node.Right != null)
                     {
-                        Vector3 rightPt = GetClosestPointInNode(node.Right, sphereCenter);
+                        Vector3 rightPt = GetClosestPointInNode(node.Right, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, rightPt);
                         if (d < minDist)
                         {
@@ -362,9 +405,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             closest = rightPt;
                         }
                     }
-                    if (node.Left != null)
+                    // Second-child early-out: skip left if its AABB is >= minDist
+                    if (node.Left != null && distLeft < minDist)
                     {
-                        Vector3 leftPt = GetClosestPointInNode(node.Left, sphereCenter);
+                        Vector3 leftPt = GetClosestPointInNode(node.Left, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, leftPt);
                         if (d < minDist)
                         {

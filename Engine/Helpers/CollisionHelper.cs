@@ -75,8 +75,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                             // GetClosestPointOnMesh(result) mencari titik terdekat ke foot
                             // di SEMUA triangle mesh. Push direction jadi horizontal karena
                             // foot dan closest point di wall sama-sama di ground level.
-                            // Over-push 1.05x sudah dihapus, jadi jitter tidak terjadi.
-                            Vector3 closestPt = obj.CollisionBVH.GetClosestPointOnMesh(result);
+                            // Traversal BVH dengan batas 100m — child-level early-out
+                            // di BVH skip node >100m untuk optimasi FPS.
+                            Vector3 closestPt = obj.CollisionBVH.GetClosestPointOnMesh(result, 100f);
 
                             // Step-up check: if mesh surface is slightly above foot, climb it
                             float stepHeight = closestPt.Y - result.Y;
@@ -253,7 +254,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                                 // ── Cari titik terdekat ke camera (result) di semua triangle ──
                                 // GetClosestPointOnMesh memberikan push direction yang akurat
                                 // karena camera dan mesh surface di Y yang sama.
-                                Vector3 closestPt = obj.CollisionBVH.GetClosestPointOnMesh(result);
+                                // Traversal BVH dengan batas 100m.
+                                Vector3 closestPt = obj.CollisionBVH.GetClosestPointOnMesh(result, 100f);
 
                                 float dx = result.X - closestPt.X;
                                 float dy = result.Y - closestPt.Y;
@@ -263,7 +265,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                                 if (distSq < radius * radius && distSq >= 0.0001f)
                                 {
                                     float dist = MathF.Sqrt(distSq);
-                                    float pushDist = radius - dist; // NO over-push
+                                    // Over-push 1.02x untuk cegah jitter (buffer kecil dari wall)
+                                    float pushDist = (radius - dist) * 1.02f;
 
                                     if (pushDist > 0.001f)
                                     {
@@ -302,12 +305,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                             if (distSq < radius * radius)
                             {
                                 float dist = MathF.Sqrt(distSq);
-                                float pushDist = radius - dist; // NO over-push
+                            // Over-push 1.02x untuk cegah jitter (AABB path)
+                            float pushDist = (radius - dist) * 1.02f;
 
-                                if (dist < 0.001f)
-                                {
-                                    // Camera center di dalam AABB — push searah dirToPivot
-                                    result += dirToPivot * pushDist;
+                            if (dist < 0.001f)
+                            {
+                                // Camera center di dalam AABB — push searah dirToPivot
+                                result += dirToPivot * pushDist;
                                 }
                                 else if (pushDist > 0.001f)
                                 {
