@@ -752,7 +752,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             {
                                 if (sobj.CollisionBVH != null)
                                 {
-                                    var bvhAABBs = sobj.CollisionBVH.GetLeafAABBs(minSize: 0.5f, maxCount: 64);
+                                    var bvhAABBs = sobj.CollisionBVH.GetLeafAABBs(minSize: 0.5f, maxCount: 4096);
                                     if (bvhAABBs.Count > 0)
                                     {
                                         foreach (var leafAABB in bvhAABBs)

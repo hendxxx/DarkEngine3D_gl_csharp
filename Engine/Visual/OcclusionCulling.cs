@@ -79,7 +79,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     {
                         if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
                         {
-                            if (hitDist < objDist)
+                            // Skip occluder if camera is inside it (hitDist <= 0)
+                            if (hitDist > 0.001f && hitDist < objDist)
                             {
                                 cornerOccluded = true;
                                 break;

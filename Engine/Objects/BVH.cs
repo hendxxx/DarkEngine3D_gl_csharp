@@ -453,21 +453,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return _cachedLeafAABBs;
         }
 
+        /// <summary>
+        /// Collect leaf AABBs using breadth-first (level-order) traversal for uniform spatial coverage.
+        /// This prevents all collected AABBs from clustering in one region (which happens with
+        /// depth-first traversal in a large BVH). With BFS, leaves from ALL regions of the tree
+        /// are collected evenly, giving better occlusion coverage for the full extent of large objects.
+        /// </summary>
         private static void CollectLeafAABBs(Node node, List<AABB> result, float minSize)
         {
-            if (node.IsLeaf)
+            // BFS using Queue — ensures uniform spatial coverage across the entire tree.
+            var queue = new Queue<Node>();
+            queue.Enqueue(node);
+
+            while (queue.Count > 0)
             {
-                // Only include if AABB is large enough (skip tiny detail clusters)
-                Vector3 ext = node.Bounds.Max - node.Bounds.Min;
-                if (ext.LengthSquared() >= minSize * minSize)
-                    result.Add(node.Bounds);
-            }
-            else
-            {
-                if (node.Left != null)
-                    CollectLeafAABBs(node.Left, result, minSize);
-                if (node.Right != null)
-                    CollectLeafAABBs(node.Right, result, minSize);
+                var current = queue.Dequeue();
+
+                if (current.IsLeaf)
+                {
+                    Vector3 ext = current.Bounds.Max - current.Bounds.Min;
+                    if (ext.LengthSquared() >= minSize * minSize)
+                        result.Add(current.Bounds);
+                }
+                else
+                {
+                    if (current.Left != null)
+                        queue.Enqueue(current.Left);
+                    if (current.Right != null)
+                        queue.Enqueue(current.Right);
+                }
             }
         }
 
