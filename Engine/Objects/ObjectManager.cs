@@ -69,6 +69,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int DrawnObjects { get; private set; }
         public int TotalObjects { get; private set; }
         public int CulledObjects { get; private set; }
+        public int CulledByFrustum { get; private set; }
+        public int CulledByOcclusion { get; private set; }
         /// <summary>Total triangles rendered this frame (animated + static objects, excludes terrain).</summary>
         public int RenderedTriangles { get; private set; }
         /// <summary>Total available triangles for ALL objects (animated + static) at full LOD0 detail.</summary>
@@ -670,6 +672,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             DrawnObjects = 0;
             CulledObjects = 0;
+            CulledByFrustum = 0;
+            CulledByOcclusion = 0;
             RenderedTriangles = 0;
 
             GL.UseProgram(_shaderProgram);
@@ -753,6 +757,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (!DisableFrustumCull && !IsAABBInFrustum(frustum, obj.WorldAABB))
                 {
                     CulledObjects++;
+                    CulledByFrustum++;
                     continue;
                 }
 
@@ -760,6 +765,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (!obj.IsVisible && OcclusionCulling.Enabled)
                 {
                     CulledObjects++;
+                    CulledByOcclusion++;
                     continue;
                 }
 

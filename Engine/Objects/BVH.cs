@@ -9,6 +9,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     /// </summary>
     public class BVH
     {
+        // ── Profiling counters (static, reset each frame) ──
+        public static int TotalRayTests = 0;
+        public static int TotalAABBTests = 0;
+        public static int TotalTriangleTests = 0;
+        public static int TotalNodeVisits = 0;
+
+        public static void ResetStats()
+        {
+            TotalRayTests = 0;
+            TotalAABBTests = 0;
+            TotalTriangleTests = 0;
+            TotalNodeVisits = 0;
+        }
+
         public class Node
         {
             public AABB Bounds;
@@ -23,7 +37,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private int[]? _indices;
         private int _maxTrianglesPerNode = 4;
 
-        private const float Epsilon = 0.0001f;
 
         /// <summary>
         /// Build BVH from mesh vertices and indices.
@@ -367,11 +380,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 // Traverse closer child first
-                // AFTER first child, skip second child if its AABB is farther than
-                // the closest point already found (second-child early-out).
+                // maxDistSq early-out: skip child if its AABB is beyond search radius
+                // AFTER first child, skip second child if its AABB is >= current best (minDist)
                 if (distLeft <= distRight)
                 {
-                    if (node.Left != null)
+                    if (node.Left != null && distLeft <= maxDistSq)
                     {
                         Vector3 leftPt = GetClosestPointInNode(node.Left, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, leftPt);
@@ -381,8 +394,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             closest = leftPt;
                         }
                     }
-                    // Second-child early-out: skip right if its AABB is >= minDist
-                    if (node.Right != null && distRight < minDist)
+                    // Second-child early-out: skip right if AABB >= minDist or >= maxDistSq
+                    if (node.Right != null && distRight < minDist && distRight <= maxDistSq)
                     {
                         Vector3 rightPt = GetClosestPointInNode(node.Right, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, rightPt);
@@ -395,7 +408,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                 else
                 {
-                    if (node.Right != null)
+                    if (node.Right != null && distRight <= maxDistSq)
                     {
                         Vector3 rightPt = GetClosestPointInNode(node.Right, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, rightPt);
@@ -405,8 +418,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             closest = rightPt;
                         }
                     }
-                    // Second-child early-out: skip left if its AABB is >= minDist
-                    if (node.Left != null && distLeft < minDist)
+                    // Second-child early-out: skip left if AABB >= minDist or >= maxDistSq
+                    if (node.Left != null && distLeft < minDist && distLeft <= maxDistSq)
                     {
                         Vector3 leftPt = GetClosestPointInNode(node.Left, sphereCenter, maxDistSq);
                         float d = Vector3.DistanceSquared(sphereCenter, leftPt);
@@ -422,68 +435,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return closest;
         }
 
-        private List<AABB>? _cachedLeafAABBs = null;
-
-        /// <summary>
-        /// Collect AABBs from leaf nodes for use as fine-grained occlusion occluders.
-        /// Filters out tiny AABBs (diagonal < minSize) and limits the total count.
-        /// This gives mesh-accurate occlusion instead of a single large bounding box.
-        /// Leaf AABBs are cached on first call (BVH is static).
-        /// </summary>
-        /// <param name="minSize">Minimum diagonal size to include (filters out tiny details).</param>
-        /// <param name="maxCount">Maximum number of AABBs to collect.</param>
-        /// <returns>List of leaf node AABBs.</returns>
-        public List<AABB> GetLeafAABBs(float minSize = 0.5f, int maxCount = 128)
-        {
-            // Return cached result on subsequent calls (BVH is static)
-            if (_cachedLeafAABBs != null)
-                return _cachedLeafAABBs;
-
-            // Collect ALL qualifying leaf AABBs first (avoids depth-first bias),
-            // then truncate to maxCount
-            var allLeaves = new List<AABB>();
-            if (Root == null) return allLeaves;
-            CollectLeafAABBs(Root, allLeaves, minSize);
-
-            if (allLeaves.Count > maxCount)
-                _cachedLeafAABBs = allLeaves.GetRange(0, maxCount);
-            else
-                _cachedLeafAABBs = allLeaves;
-
-            return _cachedLeafAABBs;
-        }
-
-        /// <summary>
-        /// Collect leaf AABBs using breadth-first (level-order) traversal for uniform spatial coverage.
-        /// This prevents all collected AABBs from clustering in one region (which happens with
-        /// depth-first traversal in a large BVH). With BFS, leaves from ALL regions of the tree
-        /// are collected evenly, giving better occlusion coverage for the full extent of large objects.
-        /// </summary>
-        private static void CollectLeafAABBs(Node node, List<AABB> result, float minSize)
-        {
-            // BFS using Queue — ensures uniform spatial coverage across the entire tree.
-            var queue = new Queue<Node>();
-            queue.Enqueue(node);
-
-            while (queue.Count > 0)
-            {
-                var current = queue.Dequeue();
-
-                if (current.IsLeaf)
-                {
-                    Vector3 ext = current.Bounds.Max - current.Bounds.Min;
-                    if (ext.LengthSquared() >= minSize * minSize)
-                        result.Add(current.Bounds);
-                }
-                else
-                {
-                    if (current.Left != null)
-                        queue.Enqueue(current.Left);
-                    if (current.Right != null)
-                        queue.Enqueue(current.Right);
-                }
-            }
-        }
 
         /// <summary>
         /// Check if a ray intersects any triangle in the BVH within maxDist.
@@ -493,20 +444,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool RayIntersects(Vector3 origin, Vector3 dir, float maxDist)
         {
             if (Root == null) return false;
-            return RayIntersectsNode(Root, origin, dir, maxDist);
+            TotalRayTests++;
+            float bestDist = maxDist;
+            // Root call: no inherited tBox — compute fresh AABB intersection
+            return RayIntersectsNode(Root, origin, dir, ref bestDist, inheritedTBox: null);
         }
 
-        private bool RayIntersectsNode(Node node, Vector3 origin, Vector3 dir, float maxDist)
+        /// <summary>
+        /// Recursive BVH ray intersection.
+        /// When called from a parent (inheritedTBox != null), skips the redundant
+        /// RayIntersectsAABB call — the parent already computed tBox for this child.
+        /// </summary>
+        private bool RayIntersectsNode(Node node, Vector3 origin, Vector3 dir, ref float bestDist, float? inheritedTBox)
         {
-            // Check node AABB first
+            TotalNodeVisits++;
+
+            // Determine tBox: use inherited value (from parent) or compute fresh
             float tBox;
-            if (!RayIntersectsAABB(origin, dir, node.Bounds, out tBox))
-                return false;
-            if (tBox > maxDist)
-                return false;
+            if (inheritedTBox.HasValue)
+            {
+                tBox = inheritedTBox.Value;
+                // bestDist may have been updated by sibling traversal since parent
+                // computed this tBox — re-check boundary condition
+                if (tBox >= bestDist)
+                    return false;
+            }
+            else
+            {
+                if (!RayIntersectsAABB(origin, dir, node.Bounds, out tBox))
+                    return false;
+                if (tBox >= bestDist)
+                    return false;
+            }
 
             if (node.IsLeaf)
             {
+                bool foundHit = false;
                 foreach (int triIdx in node.TriangleIndices!)
                 {
                     int idx0 = _indices![triIdx * 3];
@@ -518,26 +491,56 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     Vector3 v2 = _vertices[idx2];
 
                     float t;
-                    if (RayIntersectsTriangle(origin, dir, v0, v1, v2, out t) && t > 0.001f && t < maxDist)
-                        return true;
+                    if (RayIntersectsTriangle(origin, dir, v0, v1, v2, out t) && t > 0.001f && t < bestDist)
+                    {
+                        bestDist = t;   // Track closest hit distance
+                        foundHit = true; // Continue checking other tris in leaf for even closer hit
+                    }
                 }
-                return false;
+                return foundHit;
             }
 
-            // Internal: traverse both children
-            // Check left first (any order is fine since we just need true/false)
-            if (node.Left != null && RayIntersectsNode(node.Left, origin, dir, maxDist))
-                return true;
-            if (node.Right != null && RayIntersectsNode(node.Right, origin, dir, maxDist))
-                return true;
+            // Internal: pre-compute child AABB intersections
+            float tLeft = float.MaxValue;
+            float tRight = float.MaxValue;
+            bool hitLeft = node.Left != null &&
+                RayIntersectsAABB(origin, dir, node.Left.Bounds, out tLeft) && tLeft < bestDist;
+            bool hitRight = node.Right != null &&
+                RayIntersectsAABB(origin, dir, node.Right.Bounds, out tRight) && tRight < bestDist;
 
-            return false;
+            if (!hitLeft && !hitRight)
+                return false;
+
+            // Traverse closer child first; second-child early-out via bestDist
+            // Pass inheritedTBox = tLeft/tRight to child to skip redundant AABB check
+            bool anyHit = false;
+
+            if (hitLeft && tLeft <= tRight)
+            {
+                if (RayIntersectsNode(node.Left!, origin, dir, ref bestDist, tLeft))
+                    anyHit = true;
+                // Second-child early-out: skip if AABB entry >= current best
+                if (hitRight && tRight < bestDist)
+                    if (RayIntersectsNode(node.Right!, origin, dir, ref bestDist, tRight))
+                        anyHit = true;
+            }
+            else
+            {
+                if (hitRight && RayIntersectsNode(node.Right!, origin, dir, ref bestDist, tRight))
+                    anyHit = true;
+                if (hitLeft && tLeft < bestDist)
+                    if (RayIntersectsNode(node.Left!, origin, dir, ref bestDist, tLeft))
+                        anyHit = true;
+            }
+
+            return anyHit;
         }
 
         /// <summary>Möller-Trumbore ray-triangle intersection.</summary>
         private static bool RayIntersectsTriangle(Vector3 origin, Vector3 dir,
             Vector3 v0, Vector3 v1, Vector3 v2, out float t)
         {
+            TotalTriangleTests++;
             t = 0f;
             const float epsilon = 1e-7f;
 
@@ -569,6 +572,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>Ray-AABB intersection (slabs method).</summary>
         private static bool RayIntersectsAABB(Vector3 origin, Vector3 dir, AABB box, out float t)
         {
+            TotalAABBTests++;
             t = 0f;
             float tmin = 0f;
             float tmax = float.MaxValue;
@@ -627,6 +631,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float dz = center.Z - closestZ;
             float distSq = dx * dx + dy * dy + dz * dz;
 
+            // If sphere doesn't overlap this node's AABB, skip entirely
+            if (distSq > radius * radius)
+                return bestPt;
+
             // If node is farther than current best, skip entirely
             if (distSq >= bestDistSq)
                 return bestPt;
@@ -654,28 +662,78 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 return bestPt;
             }
 
-            // Internal: traverse both children
+            // Internal: compute distance to each child, traverse closer first
+            float dLeft = float.MaxValue;
+            float dRight = float.MaxValue;
+
             if (node.Left != null)
             {
-                Vector3 leftPt = GetClosestOverlappingInNode(node.Left, center, radius, ref bestDistSq);
-                float d = Vector3.DistanceSquared(center, leftPt);
-                // CRITICAL: d > 0f prevents degenerate case where child returned
-                // 'center' (no overlapping triangles found), which would set
-                // bestDistSq = 0 and cause ALL subsequent nodes to be skipped.
-                if (d < bestDistSq && d > 0f)
-                {
-                    bestDistSq = d;
-                    bestPt = leftPt;
-                }
+                float cx2 = Math.Clamp(center.X, node.Left.Bounds.Min.X, node.Left.Bounds.Max.X);
+                float cy2 = Math.Clamp(center.Y, node.Left.Bounds.Min.Y, node.Left.Bounds.Max.Y);
+                float cz2 = Math.Clamp(center.Z, node.Left.Bounds.Min.Z, node.Left.Bounds.Max.Z);
+                float dx2 = center.X - cx2;
+                float dy2 = center.Y - cy2;
+                float dz2 = center.Z - cz2;
+                dLeft = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
             }
+
             if (node.Right != null)
             {
-                Vector3 rightPt = GetClosestOverlappingInNode(node.Right, center, radius, ref bestDistSq);
-                float d = Vector3.DistanceSquared(center, rightPt);
-                if (d < bestDistSq && d > 0f)
+                float cx2 = Math.Clamp(center.X, node.Right.Bounds.Min.X, node.Right.Bounds.Max.X);
+                float cy2 = Math.Clamp(center.Y, node.Right.Bounds.Min.Y, node.Right.Bounds.Max.Y);
+                float cz2 = Math.Clamp(center.Z, node.Right.Bounds.Min.Z, node.Right.Bounds.Max.Z);
+                float dx2 = center.X - cx2;
+                float dy2 = center.Y - cy2;
+                float dz2 = center.Z - cz2;
+                dRight = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
+            }
+
+            // Traverse closer child first
+            // Second-child early-out: skip if its AABB >= current best
+            if (dLeft <= dRight)
+            {
+                if (node.Left != null)
                 {
-                    bestDistSq = d;
-                    bestPt = rightPt;
+                    Vector3 leftPt = GetClosestOverlappingInNode(node.Left, center, radius, ref bestDistSq);
+                    float d = Vector3.DistanceSquared(center, leftPt);
+                    if (d < bestDistSq && d > 0f)
+                    {
+                        bestDistSq = d;
+                        bestPt = leftPt;
+                    }
+                }
+                if (node.Right != null && dRight < bestDistSq)
+                {
+                    Vector3 rightPt = GetClosestOverlappingInNode(node.Right, center, radius, ref bestDistSq);
+                    float d = Vector3.DistanceSquared(center, rightPt);
+                    if (d < bestDistSq && d > 0f)
+                    {
+                        bestDistSq = d;
+                        bestPt = rightPt;
+                    }
+                }
+            }
+            else
+            {
+                if (node.Right != null)
+                {
+                    Vector3 rightPt = GetClosestOverlappingInNode(node.Right, center, radius, ref bestDistSq);
+                    float d = Vector3.DistanceSquared(center, rightPt);
+                    if (d < bestDistSq && d > 0f)
+                    {
+                        bestDistSq = d;
+                        bestPt = rightPt;
+                    }
+                }
+                if (node.Left != null && dLeft < bestDistSq)
+                {
+                    Vector3 leftPt = GetClosestOverlappingInNode(node.Left, center, radius, ref bestDistSq);
+                    float d = Vector3.DistanceSquared(center, leftPt);
+                    if (d < bestDistSq && d > 0f)
+                    {
+                        bestDistSq = d;
+                        bestPt = leftPt;
+                    }
                 }
             }
 

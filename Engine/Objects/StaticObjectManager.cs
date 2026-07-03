@@ -1387,6 +1387,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 if (!obj.CastShadow) continue;
 
+                // Skip occlusion-culled objects (IsVisible=false set by GameScene occlusion pipeline)
+                if (OcclusionCulling.Enabled && !obj.IsVisible)
+                    continue;
+
                 if (planes != null)
                 {
                     bool outside = false;
@@ -1830,7 +1834,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return planes;
         }
 
-        private static bool IsAABBInFrustum(Plane[] planes, AABB aabb, float margin = 3.0f)
+        public static bool IsAABBInFrustum(Plane[] planes, AABB aabb, float margin = 3.0f)
         {
             Vector3 min = aabb.Min - new Vector3(margin);
             Vector3 max = aabb.Max + new Vector3(margin);

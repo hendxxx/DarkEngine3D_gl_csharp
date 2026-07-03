@@ -1,6 +1,7 @@
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
+using System.Diagnostics;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
@@ -12,6 +13,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public class OcclusionCulling
     {
         public static bool Enabled { get; set; } = true;
+
+        // ── Profiling ──
+        public static long LastCheckVisibilityTicks = 0;
+        public static long LastIsOccludedTicks = 0;
 
         // Occluders: world-space AABBs dari object besar (test boxes, nantinya terrain chunk)
         private readonly List<Helpers.ObjectHelpers.AABB> _occluders = [];
@@ -60,22 +65,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (!Enabled) return;
             if (_occluders.Count == 0 || objectAABBs.Length == 0) return;
 
+            var sw = Stopwatch.StartNew();
+
+            // Allocate once outside the loop to avoid CA2014 warning
+            Span<Vector3> corners = stackalloc Vector3[8];
+
             for (int oi = 0; oi < objectAABBs.Length && oi < _visibilityResults.Count; oi++)
             {
                 var aabb = objectAABBs[oi];
 
-                // Test all 8 corners — object is visible if ANY corner is visible
-                Span<Vector3> corners = stackalloc Vector3[8]
-                {
-                    new(aabb.Min.X, aabb.Min.Y, aabb.Min.Z),
-                    new(aabb.Max.X, aabb.Min.Y, aabb.Min.Z),
-                    new(aabb.Max.X, aabb.Max.Y, aabb.Min.Z),
-                    new(aabb.Min.X, aabb.Max.Y, aabb.Min.Z),
-                    new(aabb.Min.X, aabb.Min.Y, aabb.Max.Z),
-                    new(aabb.Max.X, aabb.Min.Y, aabb.Max.Z),
-                    new(aabb.Max.X, aabb.Max.Y, aabb.Max.Z),
-                    new(aabb.Min.X, aabb.Max.Y, aabb.Max.Z),
-                };
+                // Fill 8 corners for this AABB
+                corners[0] = new Vector3(aabb.Min.X, aabb.Min.Y, aabb.Min.Z);
+                corners[1] = new Vector3(aabb.Max.X, aabb.Min.Y, aabb.Min.Z);
+                corners[2] = new Vector3(aabb.Max.X, aabb.Max.Y, aabb.Min.Z);
+                corners[3] = new Vector3(aabb.Min.X, aabb.Max.Y, aabb.Min.Z);
+                corners[4] = new Vector3(aabb.Min.X, aabb.Min.Y, aabb.Max.Z);
+                corners[5] = new Vector3(aabb.Max.X, aabb.Min.Y, aabb.Max.Z);
+                corners[6] = new Vector3(aabb.Max.X, aabb.Max.Y, aabb.Max.Z);
+                corners[7] = new Vector3(aabb.Min.X, aabb.Max.Y, aabb.Max.Z);
 
                 bool allCornersOccluded = true;
                 for (int ci = 0; ci < 8; ci++)
@@ -123,6 +130,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 _visibilityResults[oi] = !allCornersOccluded;
             }
+
+            sw.Stop();
+            LastCheckVisibilityTicks = sw.ElapsedTicks;
         }
 
         /// <summary>Dapatkan hasil visibility untuk satu object.</summary>
@@ -145,6 +155,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             if (!Enabled) return false;
             if (_occluders.Count == 0) return false;
+
+            var sw = Stopwatch.StartNew();
 
             // Test all 8 corners — object is visible if ANY corner is visible
             Span<Vector3> corners = stackalloc Vector3[8]
@@ -199,6 +211,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     return false; // found a visible corner → object is visible
             }
 
+            sw.Stop();
+            LastIsOccludedTicks = sw.ElapsedTicks;
             return true; // all corners occluded
         }
 

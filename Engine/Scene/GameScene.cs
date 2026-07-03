@@ -21,7 +21,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public string Name => "GameScene";
 
-        // ── Dependencies ──
+        // â”€â”€ Dependencies â”€â”€
         private readonly SceneManager _sceneManager;
         private Camera _camera;
         private Lights _light;
@@ -31,7 +31,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private HUD? _hud;
         private ObjectManager? _objectManager;
 
-        // ── Render state (initialized in Enter) ──
+        // â”€â”€ Render state (initialized in Enter) â”€â”€
         private PostProcessStack? _ppStack;
         private CSM? _csm;
         private OcclusionCulling? _occlusionCulling;
@@ -61,14 +61,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private uint _shaderProgram;
         private int _projectionLocation, _viewLocation;
 
-        // ── Per-frame state ──
+        // â”€â”€ Per-frame state â”€â”€
         private float _time = 0f;
         private float _deltaTime = 0f;
         private int _occlusionFrameCount = 0;
+        private int _staticFrustumCulled = 0;
+        private int _staticTerrainOccluded = 0;
+        private int _staticOcclusionCulled = 0;
         private CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private float _lastTargetShoulderOffset;
 
-        // ── Pause menu (responsive grid) ──
+        // â”€â”€ Pause menu (responsive grid) â”€â”€
         private const int PauseItemCount = 6;
         private const int PauseBtnColStart = 3;
         private const int PauseBtnColEnd = 9;
@@ -85,10 +88,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _pauseEnterWasDown = false;
         private bool _pauseMouseWasDown = false;
 
-        // ── Input cooldown after unpausing (prevents menu click bleed) ──
+        // â”€â”€ Input cooldown after unpausing (prevents menu click bleed) â”€â”€
         private float _inputCooldown = 0f;
 
-        // ── Save/Load system ──
+        // â”€â”€ Save/Load system â”€â”€
         private bool _saveLoadActive = false;
         private bool _isSaveMode = false; // true=save, false=load
         private bool _saveLoadWasAlreadyPaused = false; // true=opened from pause menu
@@ -105,7 +108,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private float _saveNotificationTimer = 0f;
         private int _pendingScreenshotSlot = -1;
 
-        // ── Exit confirmation dialog ──
+        // â”€â”€ Exit confirmation dialog â”€â”€
         private const float _confirmDlgScale = 1.4f;
         private bool _confirmingExit = false;
         private int _confirmSelection = 0; // 0 = No, 1 = Yes
@@ -116,7 +119,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _confirmMouseWasDown = false;
         private bool _confirmEscapeWasDown = false;
 
-        // ── In-game settings panel (accessed from pause menu) ──
+        // â”€â”€ In-game settings panel (accessed from pause menu) â”€â”€
         private bool _settingsActive = false;
         private int _settingsSelection = 0;
         private int _settingsLastHovered = -1;
@@ -133,11 +136,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             "Mouse Sensitivity",
             "Shadow Quality",
             "VSync",
-            "⬅ BACK",
+            "â¬… BACK",
         ];
         private readonly string[][] _inGameSettingOptions = [
-            ["60°", "70°", "80°", "90°", "100°", "110°"],
-            ["0.25×", "0.50×", "0.75×", "1.0×", "1.5×", "2.0×", "3.0×"],
+            ["60Â°", "70Â°", "80Â°", "90Â°", "100Â°", "110Â°"],
+            ["0.25Ã—", "0.50Ã—", "0.75Ã—", "1.0Ã—", "1.5Ã—", "2.0Ã—", "3.0Ã—"],
             ["LOW", "MEDIUM", "HIGH", "ULTRA"],
             ["OFF", "ON"],
         ];
@@ -148,7 +151,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         // Shadow quality presets shared via ShadowPresets.CascadeSizes (no local field needed)
 
-        // ── FPS counter ──
+        // â”€â”€ FPS counter â”€â”€
         private int _renderedTris;
 
         public GameScene(SceneManager sceneManager, Camera camera, Lights light)
@@ -187,12 +190,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _projectionLocation = GL.GetUniformLocation(_shaderProgram, "projection");
             _viewLocation = GL.GetUniformLocation(_shaderProgram, "view");
 
-            // ── Post-processing ──
+            // â”€â”€ Post-processing â”€â”€
             _ppStack = new PostProcessStack(Glfw.WindowWidth, Glfw.WindowHeight);
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram());
             // ppStack.AddPass(invertPass);
 
-            // ── CSM ──
+            // â”€â”€ CSM â”€â”€
             _csm = new CSM(Config.ShadowConfig.CascadeSizes[0]);
 
             // Cache terrain shader uniform locations
@@ -233,7 +236,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _shadowStaticAlphaModelLoc = GL.GetUniformLocation(_shadowStaticAlphaShader, "model");
             _shadowStaticAlphaLightSpaceLoc = GL.GetUniformLocation(_shadowStaticAlphaShader, "lightSpaceMatrix");
 
-            // ── Occlusion Culling ──
+            // â”€â”€ Occlusion Culling â”€â”€
             _occlusionCulling = new OcclusionCulling();
             if (Config.OcclusionConfig.Mode == OcclusionMode.HiZ)
             {
@@ -271,7 +274,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Reverse-lookup mouse sensitivity index
             float sens = Mouse.Sensitivity;
             float[] mouseMult = [0.25f, 0.50f, 0.75f, 1.0f, 1.5f, 2.0f, 3.0f];
-            _inGameSettingValues[1] = 3; // default 1.0×
+            _inGameSettingValues[1] = 3; // default 1.0Ã—
             for (int m = 0; m < mouseMult.Length; m++)
             {
                 if (Math.Abs(sens - 0.1f * mouseMult[m]) < 0.001f)
@@ -285,7 +288,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _ => 3
             };
 
-            // ── Load pending save (set by MainMenuScene Continue/Load Game) ──
+            // â”€â”€ Load pending save (set by MainMenuScene Continue/Load Game) â”€â”€
             if (PendingLoadSlot >= 0)
             {
                 int slotToLoad = PendingLoadSlot;
@@ -321,7 +324,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             Console.WriteLine("[GameScene] Engine Running...");
         }
 
-        /// <summary>Handle window resize — update viewport and camera aspect ratio.</summary>
+        /// <summary>Handle window resize â€” update viewport and camera aspect ratio.</summary>
         private void OnWindowResized(int width, int height)
         {
             _camera.UpdateAspectRatio((float)width, (float)height);
@@ -332,7 +335,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
 
-            // ── ESCAPE: always toggle pause (ESC always opens/closes the menu) ──
+            // â”€â”€ ESCAPE: always toggle pause (ESC always opens/closes the menu) â”€â”€
             bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
             if (escapeDown && !_escapeWasDown && !_confirmingExit)
             {
@@ -350,7 +353,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
             _escapeWasDown = escapeDown;
 
-            // ── F5/F6: Save/Load ──
+            // â”€â”€ F5/F6: Save/Load â”€â”€
             bool f5Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F5);
             bool f6Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F6);
 
@@ -365,7 +368,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _f5WasDown = f5Down;
             _f6WasDown = f6Down;
 
-            // ── Pause menu overlay input ──
+            // â”€â”€ Pause menu overlay input â”€â”€
             if (_paused)
             {
                 if (_saveLoadActive)
@@ -390,10 +393,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             _time += deltaTime;
 
-            // ── Player input & camera control — only when not paused ──
+            // â”€â”€ Player input & camera control â€” only when not paused â”€â”€
             if (!_paused)
             {
-                // ── Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed ──
+                // â”€â”€ Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed â”€â”€
                 if (_inputCooldown > 0f)
                 {
                     _inputCooldown -= deltaTime;
@@ -401,7 +404,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 else
                 {
-                    // ── Camera mode / freelook ──
+                    // â”€â”€ Camera mode / freelook â”€â”€
                     if (_camera.CurrentMode == CameraMode.FirstPerson)
                     {
                         _camera.freeLook = false;
@@ -413,7 +416,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                              Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
                     }
 
-                    // 1. Mouse → yaw/pitch → vectors
+                    // 1. Mouse â†’ yaw/pitch â†’ vectors
                     Mouse.Update(window, _camera);
                     _camera.UpdateVectors();
 
@@ -437,14 +440,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             if (_objectManager != null)
             {
-                // 4. Update agents (AI, physics, animations) — always runs
+                // 4. Update agents (AI, physics, animations) â€” always runs
                 _objectManager.Update(deltaTime);
 
-                // 4A. Update player movement — only when not paused (skip during input cooldown)
+                // 4A. Update player movement â€” only when not paused (skip during input cooldown)
                 if (!_paused && _inputCooldown <= 0f)
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
 
-                // ── COLLISION: push player out of static objects ──
+                // â”€â”€ COLLISION: push player out of static objects â”€â”€
                 var staticMgrs = _objectManager.staticObjectManagers;
                 var playerAgent = _objectManager.PlayerAgent;
                 var playerPos = playerAgent.Position;
@@ -461,7 +464,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
 
-                // ── COLLISION: push NPC out of static objects (always runs) ──
+                // â”€â”€ COLLISION: push NPC out of static objects (always runs) â”€â”€
                 var allObjs = _objectManager.GetObjects();
                 for (int oi = 0; oi < allObjs.Count; oi++)
                 {
@@ -479,7 +482,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                 }
 
-                // ── COLLISION: player vs AI characters (capsule vs capsule) ──
+                // â”€â”€ COLLISION: player vs AI characters (capsule vs capsule) â”€â”€
                 {
                     var pAgent = _objectManager.PlayerAgent;
                     var pPos = pAgent.Position;
@@ -523,7 +526,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     pAgent.Position = pPos;
                 }
 
-                // ── RE-CHECK: player vs static objects ──
+                // â”€â”€ RE-CHECK: player vs static objects â”€â”€
                 {
                     var recheckPos = playerAgent.Position;
                     var recheckPushed = Helpers.CollisionHelper.PushCharacterCapsule(recheckPos, staticMgrs, playerAgent.CollisionHeight);
@@ -537,7 +540,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                 }
 
-                // 5. Set Camera orbital (with terrain + wall collision) — always runs
+                // 5. Set Camera orbital (with terrain + wall collision) â€” always runs
                 _camera.SetCamera(window, _objectManager.PlayerAgent.Position, _gameTerrainChunk, deltaTime, staticMgrs);
 
                 // Safety net: push Position dan sync smoothCamPos agar tidak jitter
@@ -550,7 +553,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // 6. Update Light (always runs)
             _light.Update(deltaTime, _camera.Position);
 
-            // ── CSM Shadow Pass (always runs for visual updates behind menu) ──
+            // â”€â”€ CSM Shadow Pass (always runs for visual updates behind menu) â”€â”€
             if (_csm != null)
             {
                 _csm.UpdateMatrices(_camera, _light.ShadowDirStable);
@@ -597,10 +600,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
             }
 
-            // ── Occlusion Culling (always runs for visual updates behind menu) ──
+            // â”€â”€ Occlusion Culling (always runs for visual updates behind menu) â”€â”€
             if (Config.OcclusionConfig.UseOcclusion && _objectManager != null && _gameTerrainChunk != null)
             {
                 _occlusionFrameCount++;
+
+                // Reset BVH profiler + cull counters each frame
+                BVH.ResetStats();
+                OcclusionCulling.LastCheckVisibilityTicks = 0;
+                OcclusionCulling.LastIsOccludedTicks = 0;
+                _staticFrustumCulled = 0;
+                _staticTerrainOccluded = 0;
+                _staticOcclusionCulled = 0;
 
                 bool useHiZ = (Config.OcclusionConfig.Mode == OcclusionMode.HiZ && _hizOcc != null);
 
@@ -631,6 +642,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 1B. Register static objects as occluders
                 if (_objectManager.staticObjectManagers != null)
                 {
+                    // Extract frustum planes for frustum culling
+                    var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
+                    var frustumPlanes = StaticObjectManager.ExtractCameraFrustum(frustumVP);
+
                     for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
@@ -638,7 +653,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         foreach (var sobj in mgr.GetObjects())
                         {
                             float distSq = Vector3.DistanceSquared(_camera.Position, sobj.Position);
-                            if (distSq >= _camera.FarDist * _camera.FarDist) continue;
+                            if (distSq >= _camera.FarDist * _camera.FarDist) { sobj.IsVisible = false; _staticFrustumCulled++; continue; }
+                            // Frustum cull: skip objects outside camera frustum
+                            if (!StaticObjectManager.IsAABBInFrustum(frustumPlanes, sobj.CachedWorldAABB, 3f))
+                            {
+                                sobj.IsVisible = false;
+                                continue;
+                            }
+
 
                             if (!useHiZ)
                             {
@@ -889,7 +911,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             bool wireframeMode = Keyboard.GetIsWireframe();
 
-            // ── MAIN RENDER PASS ──
+            // â”€â”€ MAIN RENDER PASS â”€â”€
             if (wireframeMode)
             {
                 // Wireframe: render directly to screen, skip postprocess (F1 conflicts with PP)
@@ -908,7 +930,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // 3. Draw Skybox
             _skybox.Draw(_camera, _light, 0f, _skyTextures!, _gameTerrainChunk);
 
-            // ── Bind CSM Shadow Maps ──
+            // â”€â”€ Bind CSM Shadow Maps â”€â”€
             GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
             GL.BindTexture(Const.GL_TEXTURE_2D, _csm.ShadowTextures[0]);
 
@@ -972,7 +994,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes);
             }
 
-            // ── glTF Object Manager ──
+            // â”€â”€ glTF Object Manager â”€â”€
             if (_objectManager != null)
             {
                 _objectManager.CullFreezeEnabled = Keyboard.GetCullFreezeMode();
@@ -982,13 +1004,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _objectManager.DrawHealthBars(_camera, _hud);
             }
 
-            // ── Post Process (render SceneFBO to screen) — skip in wireframe mode ──
+            // â”€â”€ Post Process (render SceneFBO to screen) â€” skip in wireframe mode â”€â”€
             if (!wireframeMode)
                 _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
             else
                 GL.Enable(Const.GL_DEPTH_TEST);
 
-            // ── Capture screenshot right after post-process, before any UI overlays ──
+            // â”€â”€ Capture screenshot right after post-process, before any UI overlays â”€â”€
             if (_pendingScreenshotSlot >= 0)
             {
                 int slot = _pendingScreenshotSlot;
@@ -997,14 +1019,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 SaveManager.CaptureScreenshot(slot);
             }
 
-            // ── Pause Blur Overlay (skip in wireframe mode) ──
+            // â”€â”€ Pause Blur Overlay (skip in wireframe mode) â”€â”€
             if (_paused && !_confirmingExit && !_settingsActive)
             {
                 if (!wireframeMode)
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
             }
 
-            // ── HLOD Visualization (toggled with K key) ──
+            // â”€â”€ HLOD Visualization (toggled with K key) â”€â”€
             if (Keyboard.GetShowHLOD() && _objectManager != null)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
@@ -1016,14 +1038,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // ── Debug BBox Wireframe + LOD Labels (toggled with P key) ──
+            // â”€â”€ Debug BBox Wireframe + LOD Labels (toggled with P key) â”€â”€
             if (Keyboard.GetShowBBox() && _objectManager != null)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
 
                 _objectManager.DrawDebugAABBs(_camera, null);
 
-                // Animated objects — shapes drawn by ObjectManager.DrawDebugAABBs (capsule for characters)
+                // Animated objects â€” shapes drawn by ObjectManager.DrawDebugAABBs (capsule for characters)
                 // Only draw LOD labels here
                 var animObjs = _objectManager.GetObjects();
                 for (int oi = 0; oi < animObjs.Count; oi++)
@@ -1077,7 +1099,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                     }
 
-                    // ── BVH Collision Mesh Debug (toggled with P key) ──
+                    // â”€â”€ BVH Collision Mesh Debug (toggled with P key) â”€â”€
                     if (Keyboard.GetShowBVHMesh())
                     {
                         var bvhColor = new Vector3(0f, 1f, 0.5f);
@@ -1099,7 +1121,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // ── PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY ──
+            // â”€â”€ PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY â”€â”€
             if (_paused)
             {
                 if (_saveLoadActive)
@@ -1122,7 +1144,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     RenderPauseMenu();
             }
 
-            // ── HUD ──
+            // â”€â”€ HUD â”€â”€
             int totalMapTris = TerrainChunk.GetTotalMapTriangles();
             int totalObjTris = _objectManager?.TotalObjectTriangles ?? 0;
             int renderedObjTris = _objectManager?.RenderedTriangles ?? 0;
@@ -1130,19 +1152,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int renderedAllTris = _renderedTris + renderedObjTris;
             string gTime = _light.GetFormattedTime();
 
-            string title1 = $"🕒 [ {gTime} ]";
-            string title2 = $"⚡ FPS: {Glfw.GetLastFPS()}";
+            string title1 = $"ðŸ•’ [ {gTime} ]";
+            string title2 = $"âš¡ FPS: {Glfw.GetLastFPS()}";
             string freeze = Keyboard.GetCullFreezeMode() ? " [CULL FREEZE]" : "";
-            string title3 = $"🎥 MODE: {_camera.CurrentMode}{freeze}";
-            string title4 = $"📐 TRIS: {renderedAllTris:N0} / {totalAllTris:N0}  (terrain {_renderedTris:N0} | objects {renderedObjTris:N0})";
+            string title3 = $"ðŸŽ¥ MODE: {_camera.CurrentMode}{freeze}";
+            string title4 = $"ðŸ“ TRIS: {renderedAllTris:N0} / {totalAllTris:N0}  (terrain {_renderedTris:N0} | objects {renderedObjTris:N0})";
             string title5 = $" POS: X ={_camera.Position.X:N2} Y={_camera.Position.Y:N2} Z={_camera.Position.Z:N2}";
             string title6 = "";
             if (_objectManager != null)
             {
                 int culledTotal = _objectManager.TotalObjects - _objectManager.DrawnObjects;
-                title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total";
+                int animFrustum = _objectManager.CulledByFrustum;
+                int animOcc = _objectManager.CulledByOcclusion;
+                title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total  (anim: {animFrustum}f {animOcc}occ)";
             }
-            // ── Save notification ──
+            // â”€â”€ Save notification â”€â”€
             if (_saveNotificationTimer > 0f)
             {
                 _saveNotificationTimer -= _deltaTime;
@@ -1154,22 +1178,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             string title7 = "";
-            string ocMode = Inputs.Keyboard.GetOcclusionModeName();
+            string title8 = "";
+                            // BVH profiling stats
+                int bvhRays = BVH.TotalRayTests;
+                int bvhNodes = BVH.TotalNodeVisits;
+                int bvhAABBs = BVH.TotalAABBTests;
+                int bvhTris = BVH.TotalTriangleTests;
+                long ocCheckVisTicks = OcclusionCulling.LastCheckVisibilityTicks;
+                long ocIsOccTicks = OcclusionCulling.LastIsOccludedTicks;
+                double freq = System.Diagnostics.Stopwatch.Frequency;
+                double ocCheckVisMs = (double)ocCheckVisTicks / freq * 1000.0;
+                double ocIsOccMs = (double)ocIsOccTicks / freq * 1000.0;
+                title8 = $" BVH: rays={bvhRays} nodes={bvhNodes} aabb={bvhAABBs} tris={bvhTris}  OC: checkVis={ocCheckVisMs:N3}ms isOcc={ocIsOccMs:N3}ms";
+                string ocMode = Inputs.Keyboard.GetOcclusionModeName();
             bool ocActive = Inputs.Keyboard.GetOcclusionCullingEnabled();
             if (ocActive && _occlusionFrameCount > 1)
             {
-                int ocStaticCount = 0;
-                if (_objectManager != null && _objectManager.staticObjectManagers != null)
-                {
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
-                    {
-                        var mgr = _objectManager.staticObjectManagers[mi];
-                        if (mgr == null) continue;
-                        foreach (var sobj in mgr.GetObjects())
-                            if (!sobj.IsVisible) ocStaticCount++;
-                    }
-                }
-                title7 = $" OC [{ocMode}]: {_occlusionCulling!.VisibleCount}v / {_occlusionCulling.OccludedCount}o (static {ocStaticCount}o)";
+
+                int staticCulledAll = _staticFrustumCulled + _staticTerrainOccluded + _staticOcclusionCulled;
+                title7 = $" OC [{ocMode}]: {_occlusionCulling!.VisibleCount}v / {_occlusionCulling.OccludedCount}o | static: {staticCulledAll}cld ({_staticFrustumCulled}f {_staticTerrainOccluded}t {_staticOcclusionCulled}o)";
             }
             else if (ocActive)
             {
@@ -1185,8 +1212,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
             if (!string.IsNullOrEmpty(title7))
                 _hud.DrawText(title7, 10, 60 + debugLineH * 6, new Vector3(0, 1, 1));
+            // BVH profiling display (dim cyan)
+            if (!string.IsNullOrEmpty(title8))
+                _hud.DrawText(title8, 10, 60 + debugLineH * 8, new Vector3(0.2f, 0.7f, 0.8f));
 
-            // ── HLOD Statistics (if any HLOD regions exist) ──
+            // â”€â”€ HLOD Statistics (if any HLOD regions exist) â”€â”€
             if (_objectManager != null && _objectManager.staticObjectManagers != null)
             {
                 bool hasHLOD = false;
@@ -1208,16 +1238,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     float trisSavedPct = hlodTotalTris > 0
                         ? (1f - (float)hlodMergedTris / hlodTotalTris) * 100f
                         : 0f;
-                    string hlodLine1 = $"HLOD: {hlodObjs:N0} objects  ➔  {hlodRegions} merged regions";
-                    string hlodLine2 = $"      Tris: {hlodTotalTris:N0} (indiv) ➔ {hlodMergedTris:N0} (merged)  = {trisSavedPct:N1}% saved";
-                    string hlodLine3 = $"      Draw calls: {hlodTotalTris:N0} max (indiv) ➔ ~{hlodVisible}/{hlodRegions} visible (merged)";
-                    _hud.DrawText(hlodLine1, 10, 60 + debugLineH * 7, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine2, 10, 60 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine3, 10, 60 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
+                    string hlodLine1 = $"HLOD: {hlodObjs:N0} objects  âž”  {hlodRegions} merged regions";
+                    string hlodLine2 = $"      Tris: {hlodTotalTris:N0} (indiv) âž” {hlodMergedTris:N0} (merged)  = {trisSavedPct:N1}% saved";
+                    string hlodLine3 = $"      Draw calls: {hlodTotalTris:N0} max (indiv) âž” ~{hlodVisible}/{hlodRegions} visible (merged)";
+                    _hud.DrawText(hlodLine1, 10, 60 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine2, 10, 60 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine3, 10, 60 + debugLineH * 10, new Vector3(0.3f, 0.9f, 0.6f));
                 }
             }
 
-            // ── Update window title (FPS, etc.) ──
+            // â”€â”€ Update window title (FPS, etc.) â”€â”€
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
         }
 
@@ -1234,7 +1264,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float titleY = h * 0.28f;
             float startY = titleY + 70f;
 
-            // ── Mouse hover detection — only update when hovering a different button ──
+            // â”€â”€ Mouse hover detection â€” only update when hovering a different button â”€â”€
             int hoveredIndex = -1;
             float pauseBx = (w - pauseBtnW) * 0.5f;
             for (int i = 0; i < PauseItemCount; i++)
@@ -1251,7 +1281,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _pauseSelection = hoveredIndex;
             _pauseLastHovered = hoveredIndex;
 
-            // ── Mouse click ──
+            // â”€â”€ Mouse click â”€â”€
             if (mousePressed && !_pauseMouseWasDown)
             {
                 _pauseMouseWasDown = true;
@@ -1261,7 +1291,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (!mousePressed)
                 _pauseMouseWasDown = false;
 
-            // ── Keyboard navigation ──
+            // â”€â”€ Keyboard navigation â”€â”€
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
             bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
@@ -1293,7 +1323,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float bx = panelX + GridLayout.Gutter * 0.5f;
             float bw = panelW - GridLayout.Gutter;
 
-            // ── Mouse hover ──
+            // â”€â”€ Mouse hover â”€â”€
             int hovered = -1;
             for (int i = 0; i < SaveManager.NumSlots; i++)
             {
@@ -1308,7 +1338,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (hovered >= 0)
                 _saveLoadSelection = hovered;
 
-            // ── Mouse click ──
+            // â”€â”€ Mouse click â”€â”€
             if (mousePressed && !_saveLoadMouseWasDown)
             {
                 _saveLoadMouseWasDown = true;
@@ -1323,7 +1353,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (!mousePressed)
                 _saveLoadMouseWasDown = false;
 
-            // ── Keyboard navigation ──
+            // â”€â”€ Keyboard navigation â”€â”€
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
             bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
@@ -1336,7 +1366,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (downDown && !_saveLoadDownWasDown)
                 _saveLoadSelection = (_saveLoadSelection + 1) % SaveManager.NumSlots;
 
-            // Enter → confirm save/load
+            // Enter â†’ confirm save/load
             if (enterDown && !_saveLoadEnterWasDown)
             {
                 if (_isSaveMode)
@@ -1345,7 +1375,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     LoadGameFromSlot(_saveLoadSelection);
             }
 
-            // ESC → close save/load panel
+            // ESC â†’ close save/load panel
             if (escDown && !_saveLoadEscapeWasDown)
             {
                 CloseSaveLoadUI();
@@ -1532,7 +1562,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Slots
             SaveSlotUI.RenderSlots(_hud, w, h, _saveSlots, _saveLoadSelection, panelX, panelW, startY, title);
 
-            // Hint text — centered using grid
+            // Hint text â€” centered using grid
             string hint = _isSaveMode
                 ? "Select a slot to save  -  Enter to confirm  -  Esc to cancel"
                 : "Select a slot to load  -  Enter to confirm  -  Esc to cancel";
@@ -1544,7 +1574,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
         /// <summary>Handle in-game settings panel input (mouse + keyboard).
-        /// Each setting cycles immediately — no APPLY button needed.
+        /// Each setting cycles immediately â€” no APPLY button needed.
         /// Index 5 (BACK) returns to the pause menu.</summary>
         private void HandleSettingsInput(nint window)
         {
@@ -1560,7 +1590,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float titleY = h * 0.28f;
             float startY = titleY + 70f;
 
-            // ── Mouse hover — only update when hovering a different row ──
+            // â”€â”€ Mouse hover â€” only update when hovering a different row â”€â”€
             int hoveredIndex = -1;
             for (int i = 0; i < _inGameSettingLabels.Length; i++)
             {
@@ -1576,13 +1606,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _settingsSelection = hoveredIndex;
             _settingsLastHovered = hoveredIndex;
 
-            // ── Mouse click ──
+            // â”€â”€ Mouse click â”€â”€
             if (mousePressed && !_settingsMouseWasDown)
             {
                 _settingsMouseWasDown = true;
                 if (hoveredIndex >= 0)
                 {
-                    if (hoveredIndex == _inGameSettingLabels.Length - 1) // BACK → save and exit
+                    if (hoveredIndex == _inGameSettingLabels.Length - 1) // BACK â†’ save and exit
                     {
                         ApplyAndExitInGameSettings();
                     }
@@ -1595,7 +1625,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (!mousePressed)
                 _settingsMouseWasDown = false;
 
-            // ── Keyboard navigation ──
+            // â”€â”€ Keyboard navigation â”€â”€
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
             bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
@@ -1614,7 +1644,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (rightDown && !_settingsRightWasDown && _settingsSelection < _inGameSettingLabels.Length - 1)
                 CycleInGameSetting(_settingsSelection, 1);
 
-            // Enter → BACK (save and exit) or cycle forward
+            // Enter â†’ BACK (save and exit) or cycle forward
             if (enterDown && !_settingsEnterWasDown)
             {
                 if (_settingsSelection == _inGameSettingLabels.Length - 1) // BACK
@@ -1623,7 +1653,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     CycleInGameSetting(_settingsSelection, 1);
             }
 
-            // ESC → save and exit: save setting changes and return to pause menu
+            // ESC â†’ save and exit: save setting changes and return to pause menu
             if (escDown && !_settingsEscapeWasDown)
             {
                 ApplyAndExitInGameSettings();
@@ -1658,7 +1688,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
             _settingsActive = false;
-            Console.WriteLine("[Settings] Cancelled — reverted to previous values.");
+            Console.WriteLine("[Settings] Cancelled â€” reverted to previous values.");
         }
 
         /// <summary>Apply a single setting by index using the current _inGameSettingValues[i].</summary>
@@ -1669,7 +1699,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 case 0: // FOV
                 {
-                    int fovVal = int.Parse(_inGameSettingOptions[0][val].Replace("°", ""));
+                    int fovVal = int.Parse(_inGameSettingOptions[0][val].Replace("Â°", ""));
                     _camera.BaseFoV = fovVal;
                     _camera.FoV = fovVal;
                     break;
@@ -1714,7 +1744,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
 
-            // ── Mouse hover — only update when hovering a different button ──
+            // â”€â”€ Mouse hover â€” only update when hovering a different button â”€â”€
             int hoveredIndex = -1;
             for (int i = 0; i < 2; i++)
             {
@@ -1731,7 +1761,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _confirmSelection = hoveredIndex;
             _confirmLastHovered = hoveredIndex;
 
-            // ── Mouse click ──
+            // â”€â”€ Mouse click â”€â”€
             if (mousePressed && !_confirmMouseWasDown)
             {
                 _confirmMouseWasDown = true;
@@ -1741,7 +1771,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (!mousePressed)
                 _confirmMouseWasDown = false;
 
-            // ── Keyboard ──
+            // â”€â”€ Keyboard â”€â”€
             bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
             bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
             bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
@@ -1751,7 +1781,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _confirmSelection = 0;
             if (rightDown && !_confirmRightWasDown)
                 _confirmSelection = 1;
-            // Escape = cancel (go back to pause menu) — uses its own edge tracking
+            // Escape = cancel (go back to pause menu) â€” uses its own edge tracking
             if (escDown && !_confirmEscapeWasDown)
             {
                 _confirmingExit = false;
@@ -1784,7 +1814,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 OpenSaveLoadUI(false);
             }
-            else if (index == 3) // Settings — save snapshot for cancel
+            else if (index == 3) // Settings â€” save snapshot for cancel
             {
                 // Save snapshot of current values for cancel/revert
                 Array.Copy(_inGameSettingValues, _settingsSnapshot, _inGameSettingValues.Length);
@@ -1805,7 +1835,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 Config.GameplayConfig.PauseOnEsc = !Config.GameplayConfig.PauseOnEsc;
                 Console.WriteLine($"[GameScene] PauseOnEsc = {Config.GameplayConfig.PauseOnEsc}");
             }
-            else // Back to Main Menu (index 5) → show confirmation
+            else // Back to Main Menu (index 5) â†’ show confirmation
             {
                 _confirmingExit = true;
                 _confirmSelection = 0;
@@ -1834,14 +1864,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// <summary>Execute confirmation dialog action.</summary>
         private void ExecuteConfirmAction(int index)
         {
-            if (index == 1) // Yes → really exit
+            if (index == 1) // Yes â†’ really exit
             {
                 SaveInGameSettingsToJson();
                 Console.WriteLine("[GameScene] Returning to Main Menu...");
                 MainMenuScene mainMenu = new(_sceneManager, _camera, _light, "In-game settings saved!");
                 _sceneManager.SwitchScene(mainMenu);
             }
-            else // No → go back to pause menu
+            else // No â†’ go back to pause menu
             {
                 _confirmingExit = false;
                 _confirmSelection = 0;
@@ -1864,7 +1894,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 [new Vector3(0.7f, 0.7f, 0.9f), new Vector3(1.0f, 0.5f, 0.4f)],
                 _confirmSelection, _confirmDlgScale);
 
-            // Hint — centered below dialog bottom, matching main menu style
+            // Hint â€” centered below dialog bottom, matching main menu style
             float dlgH = ConfirmDialog.BaseDlgH * _confirmDlgScale;
             float dlgBottom = (h - dlgH) * 0.5f + dlgH;
             var chGrid = new GridLayout(w, h);
@@ -1889,7 +1919,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float panelX = w * 0.25f, panelW = w * 0.5f;
             float rowH = 42f, rowGap = 8f;
 
-            // Title — centered
+            // Title â€” centered
             var sgGrid = new GridLayout(w, h);
             float setCenterX = sgGrid.CenterX(2, 10);
             string title = "SETTINGS";
@@ -1922,7 +1952,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 if (isBackBtn)
                 {
-                    // BACK button — full button style
+                    // BACK button â€” full button style
                     Vector3 btnBg = isSelected
                         ? new Vector3(0.22f, 0.28f, 0.45f)
                         : new Vector3(0.10f, 0.12f, 0.18f);
@@ -1947,7 +1977,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 else
                 {
-                    // Regular setting row — label left, value right
+                    // Regular setting row â€” label left, value right
                     string label = _inGameSettingLabels[i];
                     string value = _inGameSettingOptions[i][_inGameSettingValues[i]];
                     string display = isSelected ? $"< {value} >" : value;
@@ -1986,7 +2016,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Dark overlay
             _hud.DrawBox(0, 0, w, h, new Vector3(0f, 0f, 0f) * 0.45f);
 
-            // Title — centered using grid
+            // Title â€” centered using grid
             var pgGrid = new GridLayout(w, h);
             float pauseCenterX = pgGrid.CenterX(2, 10);
             string title = "PAUSED";
@@ -1995,7 +2025,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float titleY = h * 0.28f;
             _hud.DrawText(title, titleX, titleY, new Vector3(0.9f, 0.9f, 1.0f));
 
-            // Decorative line — positioned below title using text height, centered in grid
+            // Decorative line â€” positioned below title using text height, centered in grid
             float lineW = 120f;
             float lineX = pauseCenterX - lineW * 0.5f;
             _hud.DrawBox(lineX, titleY + titleExtents.Height + 14f, lineW, 1f, new Vector3(0.4f, 0.5f, 0.9f) * 0.6f);
@@ -2041,7 +2071,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _hud.DrawBox(bx - 3f, by + 4f, 3f, btnH - 8f, new Vector3(0.4f, 0.5f, 0.9f));
                 }
 
-                // Text — centered using GetTextExtents (single pass)
+                // Text â€” centered using GetTextExtents (single pass)
                 var extents = _hud.GetTextExtents(pauseItems[i]);
                 float textX = bx + (pauseBtnW - extents.Width) * 0.5f;
                 float textY = extents.GetCenteredBaselineY(by, btnH);
@@ -2049,7 +2079,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     isSelected ? new Vector3(0.95f, 0.95f, 1.0f) : new Vector3(0.6f, 0.6f, 0.7f));
             }
 
-            // Bottom hint — centered in grid, matching main menu style
+            // Bottom hint â€” centered in grid, matching main menu style
             string hint = Config.GameplayConfig.PauseOnEsc
                 ? "Arrow keys or mouse to navigate  -  Enter to select  -  World still runs behind"
                 : "Arrow keys or mouse to navigate  -  Enter to select  -  World paused behind";
