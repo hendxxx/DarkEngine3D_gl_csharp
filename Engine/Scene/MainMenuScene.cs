@@ -224,6 +224,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud = new HUD("Artifacts\\fonts\\Worldstar.ttf", 28.0f);
             _hudSmall = new HUD("Artifacts\\fonts\\Worldstar.ttf", 16.0f);
             _selectedIndex = 0;
+            _menuLastHovered = -1;
             _settingsOpen = false;
             _settingsSelection = 0;
             _totalTime = 0f;
@@ -304,7 +305,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _exitConfirmActive = false;
             _exitConfirmSelection = 0;
             _exitConfirmLastHovered = -1;
-            _menuLastHovered = -1;
             _settingsLastHoveredRow = -1;
             _loadGameActive = false;
             _loadGameSelection = 0;
@@ -361,27 +361,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float totalHeight = _menuItems.Length * ButtonHeight + (_menuItems.Length - 1) * ButtonSpacing;
             float startY = (Glfw.WindowHeight - totalHeight) * 0.5f;
 
-            // ── Mouse hover detection — only for main menu buttons when settings closed ──
-            int hoveredIndex = -1;
-            if (!_settingsOpen)
+            // ── HUD Button System — replaces manual mouse hover/click for main menu ──
+            _hud.ClearButtons();
+            float menuBx = (Glfw.WindowWidth - btnWidth) * 0.5f;
+            for (int i = 0; i < _menuItems.Length; i++)
             {
-                float bx = (Glfw.WindowWidth - btnWidth) * 0.5f;
-                for (int i = 0; i < _menuItems.Length; i++)
-                {
-                    float by = startY + i * (ButtonHeight + ButtonSpacing);
-                    if (mouseX >= bx && mouseX <= bx + btnWidth &&
-                        mouseY >= by && mouseY <= by + ButtonHeight)
-                    {
-                        hoveredIndex = i;
-                        break;
-                    }
-                }
+                int captured = i;
+                float menuBy = startY + i * (ButtonHeight + ButtonSpacing);
+                var action = _menuItems[captured];
+                _hud.AddButton(_menuLabels[i], menuBx, menuBy, btnWidth, ButtonHeight,
+                    () => ExecuteMenuAction(action));
             }
-
-            // ── Only update main menu selection from hover when no confirm dialog is blocking ──
-            if (hoveredIndex >= 0 && hoveredIndex != _menuLastHovered && !_exitConfirmActive)
-                _selectedIndex = hoveredIndex;
-            _menuLastHovered = hoveredIndex;
+            if (!_exitConfirmActive)
+            {
+                _hud.UpdateButtons();
+                // Sync keyboard selection from hover (only when hover changes)
+                int hoveredIdx = -1;
+                for (int i = 0; i < _hud.ButtonCount; i++)
+                    if (_hud.Buttons[i].IsHovered)
+                        hoveredIdx = i;
+                if (hoveredIdx >= 0 && hoveredIdx != _menuLastHovered)
+                    _selectedIndex = hoveredIdx;
+                _menuLastHovered = hoveredIdx;
+            }
 
             // ── Load Game overlay handling ──
             if (_loadGameActive)
@@ -389,18 +391,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 HandleLoadGameInput(window);
                 return;
             }
-
-            // ── Mouse click — only for main menu when no confirm dialog is active ──
-            if (mousePressed && !_mouseWasDown)
-            {
-                _mouseWasDown = true;
-                if (hoveredIndex >= 0 && !_settingsOpen && !_exitConfirmActive)
-                {
-                    ExecuteMenuAction(_menuItems[hoveredIndex]);
-                }
-            }
-            if (!mousePressed)
-                _mouseWasDown = false;
 
             // ── Keyboard navigation ──
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
@@ -1367,60 +1357,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private void RenderButtons(int w, int h)
         {
             if (_hud == null) return;
-
-            var btnGrid = new GridLayout(w, h);
-            float btnWidth = btnGrid.SpanW(BtnColStart, BtnColEnd);
-            float totalHeight = _menuItems.Length * ButtonHeight + (_menuItems.Length - 1) * ButtonSpacing;
-            float startY = (h - totalHeight) * 0.5f;
-
-            for (int i = 0; i < _menuItems.Length; i++)
-            {
-                float bx = (w - btnWidth) * 0.5f;
-                float by = startY + i * (ButtonHeight + ButtonSpacing);
-                bool isSelected = (i == _selectedIndex);
-
-                //// ── Pulsing glow behind selected button ──
-                //if (isSelected)
-                //{
-                //    float glowPulse = 0.5f + 0.5f * MathF.Sin(_totalTime * 2.5f);
-                //    float glowExpand = 10f + glowPulse * 6f;
-                //    float glowAlpha = 0.08f + glowPulse * 0.06f;
-                //    _hud.DrawBox(bx - glowExpand, by - glowExpand,
-                //        btnWidth + glowExpand * 2, ButtonHeight + glowExpand * 2,
-                //        new Vector3(0.3f, 0.4f, 0.9f) * glowAlpha);
-                //}
-
-                // Button background
-                Vector3 bgColor = isSelected
-                    ? new Vector3(0.22f, 0.28f, 0.45f)
-                    : new Vector3(0.10f, 0.12f, 0.18f);
-                _hud.DrawBox(bx, by, btnWidth, ButtonHeight, bgColor);
-
-                //// Button borders (top and bottom accent lines)
-                //Vector3 borderColor = isSelected
-                //    ? new Vector3(0.5f, 0.6f, 1.0f)
-                //    : new Vector3(0.15f, 0.18f, 0.25f);
-                //_hud.DrawBox(bx, by, btnWidth, 1f, borderColor);
-                //_hud.DrawBox(bx, by + ButtonHeight - 1f, btnWidth, 1f, borderColor);
-
-                //// Selected: animated side bar
-                //if (isSelected)
-                //{
-                //    float barPulse = 0.7f + 0.3f * MathF.Sin(_totalTime * 3f);
-                //    _hud.DrawBox(bx - 3f, by + 4f, 3f, ButtonHeight - 8f,
-                //        new Vector3(0.4f, 0.5f, 0.9f) * barPulse);
-                //} 
-                // Button text — centered using GetTextExtents (single pass)
-                Vector3 textColor = isSelected
-                    ? new Vector3(0.95f, 0.95f, 1.0f)
-                    : new Vector3(0.6f, 0.6f, 0.7f);
-                var extents = _hud.GetTextExtents(_menuLabels[i]);
-                float textX = bx + (btnWidth - extents.Width) * 0.5f;
-                float textY = extents.GetCenteredBaselineY(by, ButtonHeight);
-                _hud.DrawText(_menuLabels[i], textX, textY, textColor);
-
-                // Selection indicator bar on the left (already drawn above)
-            }
+            _hud.DrawButtons(_totalTime, _selectedIndex);
         }
 
         private void RenderSettings(int w, int h)

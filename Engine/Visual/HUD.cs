@@ -1,9 +1,55 @@
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using StbTrueTypeSharp;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
+    /// <summary>Per-button style override. When non-null, overrides the global palette for this button.</summary>
+    public struct ButtonStyle
+    {
+        public Vector3 SelectedBg, UnselectedBg;
+        public Vector3 SelectedBorder, UnselectedBorder;
+        public Vector3 SelectedText, UnselectedText;
+        public Vector3 SelectedSidebar;
+        public Vector3 GlowColor;
+
+        public ButtonStyle(
+            Vector3 selectedBg, Vector3 unselectedBg,
+            Vector3 selectedBorder, Vector3 unselectedBorder,
+            Vector3 selectedText, Vector3 unselectedText,
+            Vector3 selectedSidebar, Vector3 glowColor)
+        {
+            SelectedBg = selectedBg;
+            UnselectedBg = unselectedBg;
+            SelectedBorder = selectedBorder;
+            UnselectedBorder = unselectedBorder;
+            SelectedText = selectedText;
+            UnselectedText = unselectedText;
+            SelectedSidebar = selectedSidebar;
+            GlowColor = glowColor;
+        }
+    }
+
+    /// <summary>Describes a single interactive button — position, label, and callbacks.</summary>
+    public struct ButtonDef
+    {
+        public string Label;
+        public float X, Y, W, H;
+        /// <summary>Called when the button is clicked (mouse press while hovering).</summary>
+        public Action? OnClick;
+        /// <summary>Called when the mouse enters the button area.</summary>
+        public Action? OnHoverEnter;
+        /// <summary>Called when the mouse leaves the button area.</summary>
+        public Action? OnHoverExit;
+        /// <summary>Whether the mouse is currently hovering over the button (set by UpdateButtons).</summary>
+        public bool IsHovered;
+        /// <summary>Optional per-button style override. When set, overrides the global palette for DrawButtons.</summary>
+        public ButtonStyle? Style;
+        /// <summary>Optional tag for custom data.</summary>
+        public object? Tag;
+    }
+
     public unsafe class HUD
     {
         private readonly uint vao;
@@ -445,5 +491,139 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             DrawImage(x, y, size, size, tex, spinnerAngle, null);
         }
+
+        // ──────────────────────────────────────────────
+        //  BUTTON SYSTEM — centralized hover/click/render
+        // ──────────────────────────────────────────────
+
+        private readonly List<ButtonDef> _buttons = [];
+        private bool _btnMouseWasDown = false;
+
+        /// <summary>Register a button. Returns its index for keyboard navigation.</summary>
+        public int AddButton(string label, float x, float y, float w, float h, Action? onClick = null, ButtonStyle? style = null)
+        {
+            var btn = new ButtonDef { Label = label, X = x, Y = y, W = w, H = h, OnClick = onClick, Style = style };
+            _buttons.Add(btn);
+            return _buttons.Count - 1;
+        }
+
+        /// <summary>Call once per frame BEFORE DrawButtons(). Detects hover + click for all buttons.
+        /// Updates _buttons[i].IsHovered and fires OnClick on mouse-press.</summary>
+        public void UpdateButtons()
+        {
+            Mouse.GetCursorPosition(out double mx, out double my);
+            bool mouseDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+            for (int i = 0; i < _buttons.Count; i++)
+            {
+                var btn = _buttons[i];
+                bool hovered = mx >= btn.X && mx <= btn.X + btn.W &&
+                               my >= btn.Y && my <= btn.Y + btn.H;
+
+                // Hover enter/exit callbacks
+                if (hovered && !btn.IsHovered)
+                    btn.OnHoverEnter?.Invoke();
+                else if (!hovered && btn.IsHovered)
+                    btn.OnHoverExit?.Invoke();
+
+                btn.IsHovered = hovered;
+
+                // Click detection (edge-triggered)
+                if (hovered && mouseDown && !_btnMouseWasDown)
+                    btn.OnClick?.Invoke();
+
+                _buttons[i] = btn;
+            }
+
+            _btnMouseWasDown = mouseDown;
+        }
+
+        /// <summary>
+        /// Draw all registered buttons with a standard style.
+        /// Style palette (can be overridden via params):
+        ///   - selectedBg / unselectedBg
+        ///   - selectedBorder / unselectedBorder
+        ///   - selectedText / unselectedText
+        ///   - selectedSidebar
+        ///   - glowColor
+        /// Pass keyboardSelected = -1 to use IsHovered as selection indicator.
+        /// </summary>
+        public void DrawButtons(float time, int keyboardSelected = -1,
+            Vector3? selectedBg = null, Vector3? unselectedBg = null,
+            Vector3? selectedBorder = null, Vector3? unselectedBorder = null,
+            Vector3? selectedText = null, Vector3? unselectedText = null,
+            Vector3? selectedSidebar = null, Vector3? glowColor = null)
+        {
+            // Default palette
+            var selBg = selectedBg ?? new Vector3(0.22f, 0.28f, 0.45f);
+            var unsBg = unselectedBg ?? new Vector3(0.10f, 0.12f, 0.18f);
+            var selBr = selectedBorder ?? new Vector3(0.5f, 0.6f, 1.0f);
+            var unsBr = unselectedBorder ?? new Vector3(0.15f, 0.18f, 0.25f);
+            var selTx = selectedText ?? new Vector3(0.95f, 0.95f, 1.0f);
+            var unsTx = unselectedText ?? new Vector3(0.6f, 0.6f, 0.7f);
+            var selSb = selectedSidebar ?? new Vector3(0.4f, 0.5f, 0.9f);
+            var glow  = glowColor ?? new Vector3(0.3f, 0.4f, 0.9f);
+
+            for (int i = 0; i < _buttons.Count; i++)
+            {
+                var btn = _buttons[i];
+                bool isSelected = keyboardSelected >= 0
+                    ? (i == keyboardSelected)
+                    : btn.IsHovered;
+
+                // Resolve colors: per-button style overrides global palette
+                var s = btn.Style;
+                var bg = isSelected ? (s?.SelectedBg ?? selBg) : (s?.UnselectedBg ?? unsBg);
+                var br = isSelected ? (s?.SelectedBorder ?? selBr) : (s?.UnselectedBorder ?? unsBr);
+                var tx = isSelected ? (s?.SelectedText ?? selTx) : (s?.UnselectedText ?? unsTx);
+                var sb = s?.SelectedSidebar ?? selSb;
+                var gl = s?.GlowColor ?? glow;
+
+                float bx = btn.X, by = btn.Y, bw = btn.W, bh = btn.H;
+
+                // Glow behind selected
+                if (isSelected)
+                {
+                    float glowPulse = 0.5f + 0.5f * MathF.Sin(time * 3f);
+                    float glowAlpha = 0.07f + glowPulse * 0.05f;
+                    DrawBox(bx - 6f, by - 5f, bw + 12f, bh + 10f, gl * glowAlpha);
+                }
+
+                // Background
+                DrawBox(bx, by, bw, bh, bg);
+
+                // Top/bottom borders
+                DrawBox(bx, by, bw, 1f, br);
+                DrawBox(bx, by + bh - 1f, bw, 1f, br);
+
+                // Selected: left sidebar
+                if (isSelected)
+                {
+                    float barPulse = 0.7f + 0.3f * MathF.Sin(time * 3f);
+                    DrawBox(bx - 3f, by + 4f, 3f, bh - 8f, sb * barPulse);
+                }
+
+                // Text centered
+                var ext = GetTextExtents(btn.Label);
+                float textX = bx + (bw - ext.Width) * 0.5f;
+                float textY = ext.GetCenteredBaselineY(by, bh);
+                DrawText(btn.Label, textX, textY, tx);
+            }
+        }
+
+        /// <summary>Remove all registered buttons.</summary>
+        public void ClearButtons()
+        {
+            _buttons.Clear();
+        }
+
+        /// <summary>Access registered buttons for custom rendering or keyboard navigation.</summary>
+        public IReadOnlyList<ButtonDef> Buttons => _buttons;
+
+        /// <summary>Number of registered buttons.</summary>
+        public int ButtonCount => _buttons.Count;
+
+        /// <summary>Get the bounding rect of a registered button (for keyboard nav indicators).</summary>
+        public ButtonDef GetButton(int index) => index >= 0 && index < _buttons.Count ? _buttons[index] : default;
     }
 }

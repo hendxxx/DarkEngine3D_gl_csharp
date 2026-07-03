@@ -79,14 +79,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private const float PauseBtnSpacing = 14f;
         private bool _paused = false;
         private int _pauseSelection = 0;
-        private int _pauseLastHovered = -1; // only update pause selection from hover when this changes
+        private int _pauseLastHovered = -1; // only update selection from hover when this changes
         private bool _escapeWasDown = false;
         private bool _f5WasDown = false;
         private bool _f6WasDown = false;
         private bool _pauseUpWasDown = false;
         private bool _pauseDownWasDown = false;
         private bool _pauseEnterWasDown = false;
-        private bool _pauseMouseWasDown = false;
 
         // â”€â”€ Input cooldown after unpausing (prevents menu click bleed) â”€â”€
         private float _inputCooldown = 0f;
@@ -102,7 +101,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _saveLoadEscapeWasDown = false;
         private bool _saveLoadLeftWasDown = false;
         private bool _saveLoadRightWasDown = false;
-        private bool _saveLoadMouseWasDown = false;
         private SaveSlotInfo[] _saveSlots = new SaveSlotInfo[SaveManager.NumSlots];
         private string _saveNotification = "";
         private float _saveNotificationTimer = 0f;
@@ -116,7 +114,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _confirmLeftWasDown = false;
         private bool _confirmRightWasDown = false;
         private bool _confirmEnterWasDown = false;
-        private bool _confirmMouseWasDown = false;
         private bool _confirmEscapeWasDown = false;
 
         // â”€â”€ In-game settings panel (accessed from pause menu) â”€â”€
@@ -129,7 +126,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _settingsRightWasDown = false;
         private bool _settingsEnterWasDown = false;
         private bool _settingsEscapeWasDown = false;
-        private bool _settingsMouseWasDown = false;
 
         private readonly string[] _inGameSettingLabels = [
             "Field of View",
@@ -1254,44 +1250,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// <summary>Handle pause menu input (keyboard + mouse).</summary>
         private void HandlePauseInput(nint window)
         {
-            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
-            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
-
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
             var grid = new GridLayout(w, h);
             float pauseBtnW = grid.SpanW(PauseBtnColStart, PauseBtnColEnd);
             float titleY = h * 0.28f;
             float startY = titleY + 70f;
+            string worldStatus = Config.GameplayConfig.PauseOnEsc ? "RUNNING" : "PAUSED";
+            string[] pauseItems = ["RESUME", "SAVE GAME", "LOAD GAME", "SETTINGS", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
 
-            // â”€â”€ Mouse hover detection â€” only update when hovering a different button â”€â”€
-            int hoveredIndex = -1;
             float pauseBx = (w - pauseBtnW) * 0.5f;
+            _hud.ClearButtons();
             for (int i = 0; i < PauseItemCount; i++)
             {
                 float by = startY + i * (PauseBtnH + PauseBtnSpacing);
-                if (mouseX >= pauseBx && mouseX <= pauseBx + pauseBtnW &&
-                    mouseY >= by && mouseY <= by + PauseBtnH)
-                {
-                    hoveredIndex = i;
-                    break;
-                }
+                int captured = i;
+                _hud.AddButton(pauseItems[i], pauseBx, by, pauseBtnW, PauseBtnH,
+                    () => ExecutePauseAction(captured));
             }
-            if (hoveredIndex >= 0 && hoveredIndex != _pauseLastHovered)
-                _pauseSelection = hoveredIndex;
-            _pauseLastHovered = hoveredIndex;
+            _hud.UpdateButtons();
 
-            // â”€â”€ Mouse click â”€â”€
-            if (mousePressed && !_pauseMouseWasDown)
-            {
-                _pauseMouseWasDown = true;
-                if (hoveredIndex >= 0)
-                    ExecutePauseAction(hoveredIndex);
-            }
-            if (!mousePressed)
-                _pauseMouseWasDown = false;
+            // Sync keyboard selection from hover (only when hover changes)
+            int hoveredIdx = -1;
+            for (int i = 0; i < _hud.ButtonCount; i++)
+                if (_hud.Buttons[i].IsHovered)
+                    hoveredIdx = i;
+            if (hoveredIdx >= 0 && hoveredIdx != _pauseLastHovered)
+                _pauseSelection = hoveredIdx;
+            _pauseLastHovered = hoveredIdx;
 
-            // â”€â”€ Keyboard navigation â”€â”€
+            // Keyboard navigation
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
             bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
@@ -1311,9 +1299,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// <summary>Handle save/load slot selection input (mouse + keyboard), grid-aligned.</summary>
         private void HandleSaveLoadInput(nint window)
         {
-            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
-            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
-
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
 
@@ -1323,36 +1308,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float bx = panelX + GridLayout.Gutter * 0.5f;
             float bw = panelW - GridLayout.Gutter;
 
-            // â”€â”€ Mouse hover â”€â”€
-            int hovered = -1;
+            _hud.ClearButtons();
             for (int i = 0; i < SaveManager.NumSlots; i++)
             {
                 float sy = startY + i * (SaveSlotUI.SlotRowH + SaveSlotUI.SlotGap);
-                if (mouseX >= bx && mouseX <= bx + bw &&
-                    mouseY >= sy && mouseY <= sy + SaveSlotUI.SlotRowH)
-                {
-                    hovered = i;
-                    break;
-                }
-            }
-            if (hovered >= 0)
-                _saveLoadSelection = hovered;
-
-            // â”€â”€ Mouse click â”€â”€
-            if (mousePressed && !_saveLoadMouseWasDown)
-            {
-                _saveLoadMouseWasDown = true;
-                if (hovered >= 0)
+                int captured = i;
+                _hud.AddButton("", bx, sy, bw, SaveSlotUI.SlotRowH, () =>
                 {
                     if (_isSaveMode)
-                        SaveGameToSlot(hovered);
-                    else if (_saveSlots[hovered].HasData)
-                        LoadGameFromSlot(hovered);
-                }
+                        SaveGameToSlot(captured);
+                    else if (_saveSlots[captured].HasData)
+                        LoadGameFromSlot(captured);
+                });
             }
-            if (!mousePressed)
-                _saveLoadMouseWasDown = false;
+            _hud.UpdateButtons();
 
+            for (int i = 0; i < _hud.ButtonCount; i++)
+                if (_hud.Buttons[i].IsHovered)
+                    _saveLoadSelection = i;
             // â”€â”€ Keyboard navigation â”€â”€
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
@@ -1430,7 +1403,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _saveLoadEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
             _saveLoadLeftWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_A);
             _saveLoadRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
-            _saveLoadMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
 
             Console.WriteLine($"[GameScene] Save/Load UI opened (mode: {(saveMode ? "Save" : "Load")})");
         }
@@ -1578,53 +1550,39 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// Index 5 (BACK) returns to the pause menu.</summary>
         private void HandleSettingsInput(nint window)
         {
-            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
-            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
-
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
 
             float panelX = w * 0.25f, panelW = w * 0.5f;
             float rowH = 42f, rowGap = 8f;
-            float totalH = _inGameSettingLabels.Length * rowH + (_inGameSettingLabels.Length - 1) * rowGap;
             float titleY = h * 0.28f;
             float startY = titleY + 70f;
 
-            // â”€â”€ Mouse hover â€” only update when hovering a different row â”€â”€
-            int hoveredIndex = -1;
+            _hud.ClearButtons();
             for (int i = 0; i < _inGameSettingLabels.Length; i++)
             {
                 float ry = startY + i * (rowH + rowGap);
-                if (mouseX >= panelX && mouseX <= panelX + panelW &&
-                    mouseY >= ry && mouseY <= ry + rowH)
+                int captured = i;
+                if (i == _inGameSettingLabels.Length - 1)
                 {
-                    hoveredIndex = i;
-                    break;
+                    _hud.AddButton("", panelX, ry, panelW, rowH,
+                        () => ApplyAndExitInGameSettings());
+                }
+                else
+                {
+                    _hud.AddButton("", panelX, ry, panelW, rowH,
+                        () => CycleInGameSetting(captured, 1));
                 }
             }
-            if (hoveredIndex >= 0 && hoveredIndex != _settingsLastHovered)
-                _settingsSelection = hoveredIndex;
-            _settingsLastHovered = hoveredIndex;
+            _hud.UpdateButtons();
 
-            // â”€â”€ Mouse click â”€â”€
-            if (mousePressed && !_settingsMouseWasDown)
-            {
-                _settingsMouseWasDown = true;
-                if (hoveredIndex >= 0)
-                {
-                    if (hoveredIndex == _inGameSettingLabels.Length - 1) // BACK â†’ save and exit
-                    {
-                        ApplyAndExitInGameSettings();
-                    }
-                    else
-                    {
-                        CycleInGameSetting(hoveredIndex, 1);
-                    }
-                }
-            }
-            if (!mousePressed)
-                _settingsMouseWasDown = false;
-
+            int hoveredIdx = -1;
+            for (int i = 0; i < _hud.ButtonCount; i++)
+                if (_hud.Buttons[i].IsHovered)
+                    hoveredIdx = i;
+            if (hoveredIdx >= 0 && hoveredIdx != _settingsLastHovered)
+                _settingsSelection = hoveredIdx;
+            _settingsLastHovered = hoveredIdx;
             // â”€â”€ Keyboard navigation â”€â”€
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
@@ -1738,40 +1696,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// <summary>Handle confirmation dialog input.</summary>
         private void HandleConfirmInput(nint window)
         {
-            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
-            bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
-
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
 
-            // â”€â”€ Mouse hover â€” only update when hovering a different button â”€â”€
-            int hoveredIndex = -1;
+            _hud.ClearButtons();
             for (int i = 0; i < 2; i++)
             {
                 ConfirmDialog.GetButtonRect(w, h, _confirmDlgScale, i,
                     out float bx, out float btnY, out float btnW, out float btnH);
-                if (mouseX >= bx && mouseX <= bx + btnW &&
-                    mouseY >= btnY && mouseY <= btnY + btnH)
-                {
-                    hoveredIndex = i;
-                    break;
-                }
+                int captured = i;
+                _hud.AddButton("", bx, btnY, btnW, btnH, () => ExecuteConfirmAction(captured));
             }
-            if (hoveredIndex >= 0 && hoveredIndex != _confirmLastHovered)
-                _confirmSelection = hoveredIndex;
-            _confirmLastHovered = hoveredIndex;
+            _hud.UpdateButtons();
 
-            // â”€â”€ Mouse click â”€â”€
-            if (mousePressed && !_confirmMouseWasDown)
-            {
-                _confirmMouseWasDown = true;
-                if (hoveredIndex >= 0)
-                    ExecuteConfirmAction(hoveredIndex);
-            }
-            if (!mousePressed)
-                _confirmMouseWasDown = false;
-
-            // â”€â”€ Keyboard â”€â”€
+            int hoveredIdx = -1;
+            for (int i = 0; i < _hud.ButtonCount; i++)
+                if (_hud.Buttons[i].IsHovered)
+                    hoveredIdx = i;
+            if (hoveredIdx >= 0 && hoveredIdx != _confirmLastHovered)
+                _confirmSelection = hoveredIdx;
+            _confirmLastHovered = hoveredIdx;
             bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
             bool rightDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
             bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
@@ -1828,7 +1772,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _settingsRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
                 _settingsEnterWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_SPACE);
                 _settingsEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
-                _settingsMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
             }
             else if (index == 4) // Toggle PauseOnEsc
             {
@@ -1845,7 +1788,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _confirmRightWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_D);
                 _confirmEnterWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(win, Const.GLFW_KEY_SPACE);
                 _confirmEscapeWasDown = Keyboard.IsKeyDown(win, Const.GLFW_KEY_ESCAPE);
-                _confirmMouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
             }
         }
 
@@ -2016,7 +1958,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Dark overlay
             _hud.DrawBox(0, 0, w, h, new Vector3(0f, 0f, 0f) * 0.45f);
 
-            // Title â€” centered using grid
+            // Title — centered using grid
             var pgGrid = new GridLayout(w, h);
             float pauseCenterX = pgGrid.CenterX(2, 10);
             string title = "PAUSED";
@@ -2025,69 +1967,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float titleY = h * 0.28f;
             _hud.DrawText(title, titleX, titleY, new Vector3(0.9f, 0.9f, 1.0f));
 
-            // Decorative line â€” positioned below title using text height, centered in grid
+            // Decorative line — centered in grid
             float lineW = 120f;
             float lineX = pauseCenterX - lineW * 0.5f;
             _hud.DrawBox(lineX, titleY + titleExtents.Height + 14f, lineW, 1f, new Vector3(0.4f, 0.5f, 0.9f) * 0.6f);
 
-            // Buttons (responsive grid width)
-            string worldStatus = Config.GameplayConfig.PauseOnEsc ? "RUNNING" : "PAUSED";
-            string[] pauseItems = ["RESUME", "SAVE GAME", "LOAD GAME", "SETTINGS", $"World: [{worldStatus}]", "BACK TO MAIN MENU"];
-            var pGrid = new GridLayout(w, h);
-            float pauseBtnW = pGrid.SpanW(PauseBtnColStart, PauseBtnColEnd);
-            float btnH = 50f;
-            float btnSpacing = 14f;
-            float startY = titleY + titleExtents.Height + 40f;
-
-            for (int i = 0; i < pauseItems.Length; i++)
-            {
-                float bx = (w - pauseBtnW) * 0.5f;
-                float by = startY + i * (btnH + btnSpacing);
-                bool isSelected = (i == _pauseSelection);
-
-                // Selected glow
-                if (isSelected)
-                {
-                    float glowPulse = 0.5f + 0.5f * MathF.Sin(_time * 3f);
-                    float glowAlpha = 0.07f + glowPulse * 0.05f;
-                    _hud.DrawBox(bx - 8f, by - 6f, pauseBtnW + 16f, btnH + 12f,
-                        new Vector3(0.3f, 0.4f, 0.9f) * glowAlpha);
-                }
-
-                // Background
-                _hud.DrawBox(bx, by, pauseBtnW, btnH,
-                    isSelected ? new Vector3(0.22f, 0.28f, 0.45f) : new Vector3(0.10f, 0.12f, 0.18f));
-
-                // Borders
-                Vector3 border = isSelected
-                    ? new Vector3(0.5f, 0.6f, 1.0f)
-                    : new Vector3(0.15f, 0.18f, 0.25f);
-                _hud.DrawBox(bx, by, pauseBtnW, 1f, border);
-                _hud.DrawBox(bx, by + btnH - 1f, pauseBtnW, 1f, border);
-
-                // Selected side bar
-                if (isSelected)
-                {
-                    _hud.DrawBox(bx - 3f, by + 4f, 3f, btnH - 8f, new Vector3(0.4f, 0.5f, 0.9f));
-                }
-
-                // Text â€” centered using GetTextExtents (single pass)
-                var extents = _hud.GetTextExtents(pauseItems[i]);
-                float textX = bx + (pauseBtnW - extents.Width) * 0.5f;
-                float textY = extents.GetCenteredBaselineY(by, btnH);
-                _hud.DrawText(pauseItems[i], textX, textY,
-                    isSelected ? new Vector3(0.95f, 0.95f, 1.0f) : new Vector3(0.6f, 0.6f, 0.7f));
-            }
-
-            // Bottom hint â€” centered in grid, matching main menu style
-            string hint = Config.GameplayConfig.PauseOnEsc
-                ? "Arrow keys or mouse to navigate  -  Enter to select  -  World still runs behind"
-                : "Arrow keys or mouse to navigate  -  Enter to select  -  World paused behind";
-            var phGrid = new GridLayout(w, h);
-            float phCenterX = phGrid.CenterX(2, 10);
-            var phExt = _hud.GetTextExtents(hint);
-            _hud.DrawText(hint, phCenterX - phExt.Width * 0.5f, startY + pauseItems.Length * (btnH + btnSpacing) + 20f,
-                new Vector3(0.35f, 0.35f, 0.45f));
+            // Buttons via HUD system
+            _hud.DrawButtons(_time, _pauseSelection);
         }
 
         /// <summary>Draw a color-coded LOD level label at the given world position, projected to screen.</summary>
