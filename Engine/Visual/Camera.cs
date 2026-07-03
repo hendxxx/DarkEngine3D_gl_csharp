@@ -290,7 +290,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
 
-        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, StaticObjectManager[]? staticManagers = null)
+        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null)
         {
             // Toggle FlyMode
             if (Keyboard.IsKeyPressed(window, Const.GLFW_KEY_G))
@@ -311,7 +311,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 SetCameraThirdPerson(window, position, gameTerrainChunk, dt, staticManagers);
         }
 
-        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, StaticObjectManager[]? staticManagers = null)
+        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null)
         {
             var preset = CurrentPreset;
             if (preset == null) return;

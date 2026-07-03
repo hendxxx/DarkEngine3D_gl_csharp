@@ -615,7 +615,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 if (_objectManager.staticObjectManagers != null)
                 {
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
                         if (mgr == null) continue;
@@ -631,7 +631,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 1B. Register static objects as occluders
                 if (_objectManager.staticObjectManagers != null)
                 {
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
                         if (mgr == null) continue;
@@ -795,7 +795,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     float farSq = _camera.FarDist * _camera.FarDist;
 
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
                         if (mgr == null) continue;
@@ -1045,7 +1045,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 if (_objectManager.staticObjectManagers != null)
                 {
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
                         if (mgr == null) continue;
@@ -1075,7 +1075,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
 
                     var collisionColor = new Vector3(0.6f, 0f, 1f);
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
                         if (mgr == null) continue;
@@ -1090,7 +1090,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (Keyboard.GetShowBVHMesh())
                     {
                         var bvhColor = new Vector3(0f, 1f, 0.5f);
-                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                         {
                             var mgr = _objectManager.staticObjectManagers[mi];
                             if (mgr == null) continue;
@@ -1170,7 +1170,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 int ocStaticCount = 0;
                 if (_objectManager != null && _objectManager.staticObjectManagers != null)
                 {
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Length; mi++)
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
                         if (mgr == null) continue;

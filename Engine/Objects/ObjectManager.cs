@@ -85,7 +85,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public CharacterAgent PlayerAgent;
         public GltfObject PlayerObject;
 
-        public StaticObjectManager[] staticObjectManagers;
+        public List<StaticObjectManager> staticObjectManagers = new();
 
         public ObjectManager()
         {
@@ -195,23 +195,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.15f, "AI: done");            // ─────────────────────────────────────
             // PHASE 2: STATIC OBJECTS (15% → 85%)
             // ─────────────────────────────────────
-            staticObjectManagers =
-            [ 
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [0] — wall
-                new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy=true },  // [1] — LittlestTokyo
-                new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) },  // [2] — trees (unchanged!)
-                new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) },  // [3] — daisies (unchanged!) 
-            ];
+            var wallManager = new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) };
+            var dungeonManager = new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy = true };
+            var treesManager = new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) };
+            var daisiesManager = new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) };
+
+            staticObjectManagers.Add(wallManager);
+            staticObjectManagers.Add(dungeonManager);
+            staticObjectManagers.Add(treesManager);
+            staticObjectManagers.Add(daisiesManager);
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
 
             // Wall occluder
             string wallPath = "Artifacts/objects/damaged_wall.glb";
-            staticObjectManagers[0].AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "root", true, gameTerrainChunk);
-            staticObjectManagers[0].CastShadow = true;
-            staticObjectManagers[0].UseAlpha = true;
-            staticObjectManagers[0].CullAtMaxLOD = true;
-            foreach (var sobj in staticObjectManagers[0].GetObjects())
+            wallManager.AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "root", true, gameTerrainChunk);
+            wallManager.CastShadow = true;
+            wallManager.UseAlpha = true;
+            wallManager.CullAtMaxLOD = true;
+            foreach (var sobj in wallManager.GetObjects())
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
@@ -220,23 +222,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
-            staticObjectManagers[1].AddObject(townPath, new Vector3(40f, 0f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
-            staticObjectManagers[1].CastShadow = true;
-            staticObjectManagers[1].UseAlpha = true;
-            staticObjectManagers[1].CullAtMaxLOD = false ; 
+            dungeonManager.AddObject(townPath, new Vector3(40f, 0f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
+            dungeonManager.CastShadow = true;
+            dungeonManager.UseAlpha = true;
+            dungeonManager.CullAtMaxLOD = false ; 
 
-            foreach (var sobj in staticObjectManagers[1].GetObjects())
+            foreach (var sobj in dungeonManager.GetObjects())
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
                 sobj.ColType = CollisionType.BVH;
             }
-            staticObjectManagers[1].BuildBVHForCollidableObjects();
+            dungeonManager.BuildBVHForCollidableObjects();
 
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            staticObjectManagers[2].AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1500, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
+            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 15, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0" ,
                 //groupName: "Pine_big_1,Pine_large_1,Pine_medium_1,Pine_sapling_1,Pine_small_1",
@@ -245,15 +247,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 overrideCollisionSizeZ: 1.2f
                 );
             //Config.LODConfig.UseHLOD = true;
-            staticObjectManagers[2].CastShadow = true;
-            staticObjectManagers[2].UseAlpha = true;
-            staticObjectManagers[2].CullAtMaxLOD = false;
-            staticObjectManagers[2].EnableSpatialGrid = true; 
-            staticObjectManagers[2].UseTerrainGrid = true; 
-            staticObjectManagers[2].BuildSpatialGrid();
+            treesManager.CastShadow = true;
+            treesManager.UseAlpha = true;
+            treesManager.CullAtMaxLOD = false;
+            treesManager.EnableSpatialGrid = true; 
+            treesManager.UseTerrainGrid = true; 
+            treesManager.BuildSpatialGrid();
 
             // Trees — collidable (player/NPC gak bisa tembus pohon)
-            foreach (var sobj in staticObjectManagers[2].GetObjects())
+            foreach (var sobj in treesManager.GetObjects())
             {
                 sobj.IsCollidable = true;
                 sobj.ColType = CollisionType.Box;  // trees — box collision
@@ -264,22 +266,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            staticObjectManagers[3].AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1_LOD0,Daisy_patch_big_1_LOD0,Daisy_patch_small_1_LOD0");
-            staticObjectManagers[3].CastShadow = false;
-            staticObjectManagers[3].UseAlpha = false;
-            staticObjectManagers[3].CullAtMaxLOD = true;
-            staticObjectManagers[3].SkipTerrainRayMarch = true; // 100rb daisies — skip ray-march
+            daisiesManager.CastShadow = false;
+            daisiesManager.UseAlpha = false;
+            daisiesManager.CullAtMaxLOD = true;
+            daisiesManager.SkipTerrainRayMarch = true; // 100rb daisies — skip ray-march
 
             // Enable spatial grid + HLOD untuk daisies
             // Spatial grid: uses terrain chunk grid (16×16) instead of bounds-based (33×33)
             // HLOD: merged meshes per 64m region for mid-range (35-120m), ~16 draw calls
             //Config.LODConfig.UseHLOD = true;
-            staticObjectManagers[3].EnableSpatialGrid = true;
-            staticObjectManagers[3].UseTerrainGrid = true;
+            daisiesManager.EnableSpatialGrid = true;
+            daisiesManager.UseTerrainGrid = true;
             OnLoadProgress?.Invoke(0.80f, "Static: building spatial grid + HLOD...\n");
-            staticObjectManagers[3].BuildSpatialGrid();
+            daisiesManager.BuildSpatialGrid();
 
             // Set UseHLOD back to false for non-HLOD managers (trees, wall)
             //Config.LODConfig.UseHLOD = false;
@@ -287,7 +289,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
 
             // Daisies — collidable (player/NPC gak bisa tembus pohon)
-            foreach (var sobj in staticObjectManagers[3].GetObjects())
+            foreach (var sobj in daisiesManager.GetObjects())
                 sobj.IsCollidable = false;
 
             OnLoadProgress?.Invoke(0.85f, "Static: all objects done");

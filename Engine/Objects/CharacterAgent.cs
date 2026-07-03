@@ -578,7 +578,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float WalkSpeedPlayer = 1.5f;
         private const float RunSpeedPlayer = 2.0f;
         private const float MaxStepHeight = 0.45f;
-        public StaticObjectManager[]? StaticManagers;
+        public List<StaticObjectManager>? StaticManagers;
 
         // ---- gait blend: smooth walk↔run transition ----
         private float _gaitBlend = 0f;      // 0 = walk, 1 = run (smoothly interpolated)

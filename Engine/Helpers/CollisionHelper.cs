@@ -26,7 +26,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         public static Vector3 PushOutOfStaticObjects(
             Vector3 position,
             float radius,
-            StaticObjectManager[]? managers,
+            List<StaticObjectManager>? managers,
             float capsuleHeight = 0f,
             float maxStepUp = 0.1f,
             float maxBlockHeight = 0.5f)
@@ -190,15 +190,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         }
 
         /// <summary>Character collision — sphere mode (default).</summary>
-        public static Vector3 PushCharacter(Vector3 pos, StaticObjectManager[]? managers)
+        public static Vector3 PushCharacter(Vector3 pos, List<StaticObjectManager>? managers)
             => PushOutOfStaticObjects(pos, CharacterRadius, managers);
 
         /// <summary>Character collision — capsule mode (standing character).</summary>
-        public static Vector3 PushCharacterCapsule(Vector3 pos, StaticObjectManager[]? managers, float? height = null)
+        public static Vector3 PushCharacterCapsule(Vector3 pos, List<StaticObjectManager>? managers, float? height = null)
             => PushOutOfStaticObjects(pos, CharacterRadius, managers, height ?? CharacterHeight);
 
         /// <summary>Camera collision (third person).</summary>
-        public static Vector3 PushCamera(Vector3 pos, StaticObjectManager[]? managers)
+        public static Vector3 PushCamera(Vector3 pos, List<StaticObjectManager>? managers)
             => PushOutOfStaticObjects(pos, CameraRadius, managers);
 
         /// <summary>
@@ -217,7 +217,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             Vector3 cameraPos,
             Vector3 pivotPos,
             float minDist,
-            StaticObjectManager[]? managers)
+            List<StaticObjectManager>? managers)
         {
             if (managers == null) return cameraPos;
 
