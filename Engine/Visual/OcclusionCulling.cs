@@ -1,5 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
@@ -15,6 +16,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // Occluders: world-space AABBs dari object besar (test boxes, nantinya terrain chunk)
         private readonly List<Helpers.ObjectHelpers.AABB> _occluders = [];
 
+        // Mesh occluders: BVH untuk occlusion akurat berbasis mesh (bukan AABB)
+        private readonly List<BVH> _meshOccluders = [];
+
         // Visibility state untuk setiap object (di-set per frame oleh CheckVisibility)
         private readonly List<bool> _visibilityResults = [];
 
@@ -24,6 +28,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void RegisterOccluder(Helpers.ObjectHelpers.AABB worldAABB)
         {
             _occluders.Add(worldAABB);
+        }
+
+        /// <summary>Daftarkan mesh occluder — BVH untuk ray-triangle occlusion test yang akurat.</summary>
+        public void RegisterMeshOccluder(BVH bvh)
+        {
+            _meshOccluders.Add(bvh);
         }
 
         /// <summary>Daftarkan object yang akan dicek occlusion-nya.</summary>
@@ -38,6 +48,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void ClearOccluders()
         {
             _occluders.Clear();
+            _meshOccluders.Clear();
         }
 
         /// <summary>
@@ -75,12 +86,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     dir /= objDist;
 
                     bool cornerOccluded = false;
+
+                    // Check AABB occluders
                     for (int bi = 0; bi < _occluders.Count; bi++)
                     {
                         if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
                         {
                             // Skip occluder if camera is inside it (hitDist <= 0)
                             if (hitDist > 0.001f && hitDist < objDist)
+                            {
+                                cornerOccluded = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check mesh occluders (BVH ray-triangle intersection)
+                    if (!cornerOccluded)
+                    {
+                        for (int mi = 0; mi < _meshOccluders.Count; mi++)
+                        {
+                            if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                             {
                                 cornerOccluded = true;
                                 break;
@@ -141,11 +167,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 dir /= objDist;
 
                 bool cornerOccluded = false;
+
+                // Check AABB occluders
                 for (int bi = 0; bi < _occluders.Count; bi++)
                 {
                     if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
                     {
-                        if (hitDist < objDist)
+                        // Skip occluder if camera is inside it (hitDist <= 0)
+                        if (hitDist > 0.001f && hitDist < objDist)
+                        {
+                            cornerOccluded = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Check mesh occluders (BVH ray-triangle intersection)
+                if (!cornerOccluded)
+                {
+                    for (int mi = 0; mi < _meshOccluders.Count; mi++)
+                    {
+                        if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                         {
                             cornerOccluded = true;
                             break;

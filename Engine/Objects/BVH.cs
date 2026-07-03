@@ -486,6 +486,122 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>
+        /// Check if a ray intersects any triangle in the BVH within maxDist.
+        /// Uses Möller-Trumbore ray-triangle intersection.
+        /// Returns true if the ray hits any triangle before maxDist.
+        /// </summary>
+        public bool RayIntersects(Vector3 origin, Vector3 dir, float maxDist)
+        {
+            if (Root == null) return false;
+            return RayIntersectsNode(Root, origin, dir, maxDist);
+        }
+
+        private bool RayIntersectsNode(Node node, Vector3 origin, Vector3 dir, float maxDist)
+        {
+            // Check node AABB first
+            float tBox;
+            if (!RayIntersectsAABB(origin, dir, node.Bounds, out tBox))
+                return false;
+            if (tBox > maxDist)
+                return false;
+
+            if (node.IsLeaf)
+            {
+                foreach (int triIdx in node.TriangleIndices!)
+                {
+                    int idx0 = _indices![triIdx * 3];
+                    int idx1 = _indices[triIdx * 3 + 1];
+                    int idx2 = _indices[triIdx * 3 + 2];
+
+                    Vector3 v0 = _vertices![idx0];
+                    Vector3 v1 = _vertices[idx1];
+                    Vector3 v2 = _vertices[idx2];
+
+                    float t;
+                    if (RayIntersectsTriangle(origin, dir, v0, v1, v2, out t) && t > 0.001f && t < maxDist)
+                        return true;
+                }
+                return false;
+            }
+
+            // Internal: traverse both children
+            // Check left first (any order is fine since we just need true/false)
+            if (node.Left != null && RayIntersectsNode(node.Left, origin, dir, maxDist))
+                return true;
+            if (node.Right != null && RayIntersectsNode(node.Right, origin, dir, maxDist))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>Möller-Trumbore ray-triangle intersection.</summary>
+        private static bool RayIntersectsTriangle(Vector3 origin, Vector3 dir,
+            Vector3 v0, Vector3 v1, Vector3 v2, out float t)
+        {
+            t = 0f;
+            const float epsilon = 1e-7f;
+
+            Vector3 edge1 = v1 - v0;
+            Vector3 edge2 = v2 - v0;
+            Vector3 h = Vector3.Cross(dir, edge2);
+            float det = Vector3.Dot(edge1, h);
+
+            if (MathF.Abs(det) < epsilon)
+                return false;
+
+            float invDet = 1f / det;
+            Vector3 s = origin - v0;
+            float u = Vector3.Dot(s, h) * invDet;
+
+            if (u < 0f || u > 1f)
+                return false;
+
+            Vector3 q = Vector3.Cross(s, edge1);
+            float v = Vector3.Dot(dir, q) * invDet;
+
+            if (v < 0f || u + v > 1f)
+                return false;
+
+            t = Vector3.Dot(edge2, q) * invDet;
+            return t >= epsilon;
+        }
+
+        /// <summary>Ray-AABB intersection (slabs method).</summary>
+        private static bool RayIntersectsAABB(Vector3 origin, Vector3 dir, AABB box, out float t)
+        {
+            t = 0f;
+            float tmin = 0f;
+            float tmax = float.MaxValue;
+
+            for (int axis = 0; axis < 3; axis++)
+            {
+                float originComp = axis == 0 ? origin.X : axis == 1 ? origin.Y : origin.Z;
+                float dirComp = axis == 0 ? dir.X : axis == 1 ? dir.Y : dir.Z;
+                float minComp = axis == 0 ? box.Min.X : axis == 1 ? box.Min.Y : box.Min.Z;
+                float maxComp = axis == 0 ? box.Max.X : axis == 1 ? box.Max.Y : box.Max.Z;
+
+                if (MathF.Abs(dirComp) < 1e-7f)
+                {
+                    if (originComp < minComp || originComp > maxComp)
+                        return false;
+                }
+                else
+                {
+                    float invD = 1.0f / dirComp;
+                    float t1 = (minComp - originComp) * invD;
+                    float t2 = (maxComp - originComp) * invD;
+                    if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+                    tmin = MathF.Max(tmin, t1);
+                    tmax = MathF.Min(tmax, t2);
+                    if (tmin > tmax) return false;
+                }
+            }
+
+            t = tmin;
+            return true;
+        }
+
+        /// <summary>
         /// Get the closest point on the mesh, but only considering triangles that
         /// actually overlap the sphere. This prevents wrong push directions at
         /// object edges where the absolute closest triangle might be on a different

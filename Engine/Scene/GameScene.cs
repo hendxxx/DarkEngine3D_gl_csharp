@@ -752,22 +752,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             {
                                 if (sobj.CollisionBVH != null)
                                 {
-                                    var bvhAABBs = sobj.CollisionBVH.GetLeafAABBs(minSize: 0.5f, maxCount: 4096);
-                                    if (bvhAABBs.Count > 0)
-                                    {
-                                        foreach (var leafAABB in bvhAABBs)
-                                        {
-                                            _occlusionCulling.RegisterOccluder(leafAABB);
-                                            if (useHiZ)
-                                                _hizOcc!.RegisterOccluder(leafAABB);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        _occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);
-                                        if (useHiZ)
-                                            _hizOcc!.RegisterOccluder(sobj.CachedWorldAABB);
-                                    }
+                                    // Mesh occluder: ray-triangle intersection for accuracy
+                                    _occlusionCulling.RegisterMeshOccluder(sobj.CollisionBVH);
+                                    
+                                    // HiZ fallback: register root AABB
+                                    var rootAABB = sobj.CollisionBVH.Root?.Bounds ?? sobj.CachedWorldAABB;
+                                    if (useHiZ)
+                                        _hizOcc!.RegisterOccluder(rootAABB);
                                 }
                                 else
                                 {
