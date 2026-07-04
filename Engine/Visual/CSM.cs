@@ -163,6 +163,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     maxZ = MathF.Max(maxZ, lp.Z);
                 }
 
+                // Sertakan posisi kamera dalam XY extent agar objek di belakang
+                // kamera (yang shadow-nya terlihat di depan) tidak di-cull.
+                Vector3 camPosLS = Vector3.Transform(camera.Position, lightView);
+                float camMargin = radius * 0.5f;
+                minX = MathF.Min(minX, camPosLS.X - camMargin);
+                maxX = MathF.Max(maxX, camPosLS.X + camMargin);
+                minY = MathF.Min(minY, camPosLS.Y - camMargin);
+                maxY = MathF.Max(maxY, camPosLS.Y + camMargin);
+
                 // Padding XY agar receiver / caster di tepi tidak kepotong.
                 float padXY = MathF.Max(radius * 0.75f, 15.0f);
                 minX -= padXY;

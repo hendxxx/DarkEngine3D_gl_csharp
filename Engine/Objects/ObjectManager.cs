@@ -240,7 +240,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 15, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
+            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1500, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
                 groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0" ,
                 //groupName: "Pine_big_1,Pine_large_1,Pine_medium_1,Pine_sapling_1,Pine_small_1",
@@ -248,7 +248,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 overrideCollisionSizeX: 1.2f,
                 overrideCollisionSizeZ: 1.2f
                 );
-            //Config.LODConfig.UseHLOD = true;
+            treesManager.UseHLOD = true; // Only trees get HLOD
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
@@ -268,25 +268,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1_LOD0,Daisy_patch_big_1_LOD0,Daisy_patch_small_1_LOD0");
             daisiesManager.CastShadow = false;
             daisiesManager.UseAlpha = false;
             daisiesManager.CullAtMaxLOD = true;
             daisiesManager.SkipTerrainRayMarch = true; // 100rb daisies — skip ray-march
-
-            // Enable spatial grid + HLOD untuk daisies
-            // Spatial grid: uses terrain chunk grid (16×16) instead of bounds-based (33×33)
-            // HLOD: merged meshes per 64m region for mid-range (35-120m), ~16 draw calls
-            //Config.LODConfig.UseHLOD = true;
             daisiesManager.EnableSpatialGrid = true;
             daisiesManager.UseTerrainGrid = true;
             OnLoadProgress?.Invoke(0.80f, "Static: building spatial grid + HLOD...\n");
             daisiesManager.BuildSpatialGrid();
 
-            // Set UseHLOD back to false for non-HLOD managers (trees, wall)
-            //Config.LODConfig.UseHLOD = false;
 
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
 

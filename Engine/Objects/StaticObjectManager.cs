@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
@@ -97,16 +98,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         // ── Spatial Grid ──
         private const float _gridCellSize = 16f;       // 16×16m cells
-        private const float _gridVisibleRange = 120f;  // Max visible range (matches LOD3_Distance)
+        private float _gridVisibleRange = LOD3_Dist;  // Max visible range (matches LOD3_Distance)
         private List<int>[,] _gridCells;
         private float _gridOriginX, _gridOriginZ;       // Stored for cell-center distance check in Draw
 
-        // ── HLOD (optional, controlled by Config.LODConfig.UseHLOD) ──
+        // ── HLOD (per-instance, controlled by UseHLOD property) ──
+        /// <summary>Enable HLOD merged meshes for this manager (per-instance, not global).</summary>
+        public bool UseHLOD = false;
         private const float _hlodRegionSize = 64f;     // 64×64m HLOD regions
-        private const float _hlodNearDist = 35f;       // Near range: individual instancing
-        private const float _hlodMidDist = 120f;       // Mid range: HLOD merged meshes
+        private float _hlodNearDist = LOD0_Dist;       // Near range: individual instancing
+        private float _hlodMidDist = LOD3_Dist;       // Mid range: HLOD merged meshes
         private HlodRegion[,] _hlodRegions;
-        private bool _hlodEnabled = false;
+        private bool _hlodEnabled = false ;
 
         // ── HLOD Statistics (populated after BuildHLOD) ──
         private int _hlodTotalIndividualTris = 0;       // Total triangles if ALL objects rendered individually at LOD0
@@ -687,7 +690,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         /// <summary>
         /// Partition objects into a 2D spatial grid for faster per-frame iteration.
-        /// If Config.LODConfig.UseHLOD is true, also builds HLOD merged meshes.
+        /// If UseHLOD is true, also builds HLOD merged meshes.
         /// Must be called after all objects are added.
         /// </summary>
         public void BuildSpatialGrid()
@@ -750,8 +753,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             Console.WriteLine($"[Grid] Built {gridW}×{gridH} grid for {_objects.Count} objects.");
 
-            // ── Optional: Build HLOD merged meshes ──
-            if (DarkEngine3D_gl_csharp.Engine.Config.LODConfig.UseHLOD)
+            // ── Optional: Build HLOD merged meshes (per-instance flag) ──
+            if (UseHLOD)
             {
                 // Reset HLOD stats before building
                 _hlodTotalIndividualTris = 0;

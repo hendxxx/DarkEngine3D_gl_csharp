@@ -349,7 +349,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 IsADS = false;
 
             float targetFov = IsADS ? 45.0f : BaseFoV;
-            FoV = Helpers.OGLMath.Lerp(FoV, targetFov, 8f * dt);
+            FoV = Helpers.OGLMath.Lerp(FoV, targetFov, 1f - MathF.Exp(-8f * dt));
             _projectionDirty = true;
 
             // SHOULDER SWAP
@@ -362,7 +362,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             shoulderOffset = Helpers.OGLMath.Lerp(
                 shoulderOffset,
                 targetShoulderOffset * camScale,
-                CameraConfig.CameraFollowSpeed
+                1f - MathF.Exp(-CameraConfig.CameraFollowSpeed * dt)
             );
 
             float shoulder = shoulderOffset;
@@ -372,18 +372,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             CameraConfig.CameraDistance =
                 Helpers.OGLMath.Lerp(CameraConfig.CameraDistance,
                                      CameraConfig.TargetCameraDistance,
-                                     CameraConfig.CameraFollowSpeed);
+                                     1f - MathF.Exp(-CameraConfig.CameraFollowSpeed * dt));
 
 
             if (IsADS)
             {
-                shoulder = Helpers.OGLMath.Lerp(shoulder, 0.25f * camScale, 10f * dt);
-                camDist = Helpers.OGLMath.Lerp(camDist, 1.2f * camScale, 10f * dt);
+                shoulder = Helpers.OGLMath.Lerp(shoulder, 0.25f * camScale, 1f - MathF.Exp(-10f * dt));
+                camDist = Helpers.OGLMath.Lerp(camDist, 1.2f * camScale, 1f - MathF.Exp(-10f * dt));
             }
             else
             {
-                shoulder = Helpers.OGLMath.Lerp(shoulder, targetShoulderOffset, 6f * dt);
-                camDist = Helpers.OGLMath.Lerp(camDist, CameraConfig.TargetCameraDistance, 6f * dt);
+                shoulder = Helpers.OGLMath.Lerp(shoulder, targetShoulderOffset, 1f - MathF.Exp(-6f * dt));
+                camDist = Helpers.OGLMath.Lerp(camDist, CameraConfig.TargetCameraDistance, 1f - MathF.Exp(-6f * dt));
             }
 
             Vector3 offset = new Vector3(shoulder, 0, -camDist);
@@ -408,8 +408,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // CINEMATIC ROTATION
             float rotSmooth = 10f;
-            smoothYaw = Helpers.OGLMath.LerpAngle(smoothYaw, Yaw, rotSmooth * dt);
-            smoothPitch = Helpers.OGLMath.Lerp(smoothPitch, Pitch, rotSmooth * dt);
+            smoothYaw = Helpers.OGLMath.LerpAngle(smoothYaw, Yaw, 1f - MathF.Exp(-rotSmooth * dt));
+            smoothPitch = Helpers.OGLMath.Lerp(smoothPitch, Pitch, 1f - MathF.Exp(-rotSmooth * dt));
 
             // In TrueOTS mode the camera looks forward parallel to pitch.
             // In orbit/look-at modes the camera position orbits around the pivot.

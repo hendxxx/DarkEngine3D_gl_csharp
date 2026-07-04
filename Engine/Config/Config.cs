@@ -16,8 +16,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
 
         public static float[] CascadeLayer = [ 30.0f, 70.0f, 140.0f ];
         // Semua cascade di 4096 agar tidak ada penurunan kualitas bayangan
-        public static int[] CascadeSizes = [8192, 4096, 2048]; 
-        //public static int[] CascadeSizes = [4096, 2048, 1024]; 
+        //public static int[] CascadeSizes = [8192, 4096, 2048]; 
+        public static int[] CascadeSizes = [4096, 2048, 1024];
 
     }
     // ============================
@@ -58,10 +58,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // OBJECT LOD — distance thresholds untuk static & dynamic object mesh
         // Semua object (pohon, rumput, dll) mengacu ke threshold ini
         // ============================
-        public readonly static float ObjectLOD0_Distance = 35f;
-        public readonly static float ObjectLOD1_Distance = 50f;
-        public readonly static float ObjectLOD2_Distance = 100f;
-        public readonly static float ObjectLOD3_Distance = 120f;
+        public readonly static float ObjectLOD0_Distance = 50f;
+        public readonly static float ObjectLOD1_Distance = 150f;
+        public readonly static float ObjectLOD2_Distance = 250f;
+        public readonly static float ObjectLOD3_Distance = 350f;
 
         // ============================
         // TERRAIN LOD — distance thresholds untuk terrain chunk
@@ -105,12 +105,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // ============================
         public readonly static float SimulatedSpeedMultiplier = 0.85f;
 
-        // ============================
-        // HLOD — Hierarchical LOD untuk dense static objects (daisies, grass, dll)
-        // ============================
-        // Enable: build merged meshes per region untuk mid-range rendering.
-        // Memory: ~80MB GPU untuk 100K daisies. Default OFF karena OOM risk.
-        public static bool UseHLOD = false ;
+        // (HLOD enable/disable moved to per-instance StaticObjectManager.UseHLOD)
 
         // ============================
         // Frustum LOD

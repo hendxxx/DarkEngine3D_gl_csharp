@@ -1237,9 +1237,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     string hlodLine1 = $"HLOD: {hlodObjs:N0} objects  âž”  {hlodRegions} merged regions";
                     string hlodLine2 = $"      Tris: {hlodTotalTris:N0} (indiv) âž” {hlodMergedTris:N0} (merged)  = {trisSavedPct:N1}% saved";
                     string hlodLine3 = $"      Draw calls: {hlodTotalTris:N0} max (indiv) âž” ~{hlodVisible}/{hlodRegions} visible (merged)";
-                    _hud.DrawText(hlodLine1, 10, 60 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine2, 10, 60 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine3, 10, 60 + debugLineH * 10, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine1, 10, 40 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine2, 10, 40 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine3, 10, 40 + debugLineH * 10, new Vector3(0.3f, 0.9f, 0.6f));
                 }
             }
 
