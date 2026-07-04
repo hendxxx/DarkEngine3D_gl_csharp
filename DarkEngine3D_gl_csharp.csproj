@@ -262,13 +262,22 @@
     <None Update="Artifacts\objects\biomes\maple_tree.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\biomes\pine_trees-edit.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\biomes\pine_trees.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\biomes\polygon_tree_pack.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\biomes\realistic_tree.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\biomes\realistic_trees_collection.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\biomes\small_pine.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\objects\biomes\tree00.glb">

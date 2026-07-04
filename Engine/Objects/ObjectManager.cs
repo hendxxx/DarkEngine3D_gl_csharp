@@ -199,7 +199,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ─────────────────────────────────────
             var wallManager = new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) };
             var dungeonManager = new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy = true };
-            var treesManager = new StaticObjectManager { RotationCorrection = new Vector3(180, 0, 0) };
+            var treesManager = new StaticObjectManager { RotationCorrection = new Vector3(-180, 0, 0) };
             var daisiesManager = new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) };
 
             staticObjectManagers.Add(wallManager);
@@ -240,15 +240,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1500, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
-                (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static: loading {treesName}..."),
-                groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0" ,
-                //groupName: "Pine_big_1,Pine_large_1,Pine_medium_1,Pine_sapling_1,Pine_small_1",
+            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1000, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
+                (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static1: loading {treesName}..."),
+                                groupName: "Christmas tree_LOD0,Christmas 1tree_2_LOD0,Christmas tree_3_LOD0",
+                                //groupName: "Pine_big_1_LOD0,Pine_large_1_LOD0,Pine_medium_1_LOD0,Pine_sapling_1_LOD0,Pine_small_1_LOD0",
+                                //groupName: "tree_0"
+
                 collisionPart: "Bark_Mat_0",
                 overrideCollisionSizeX: 1.2f,
                 overrideCollisionSizeZ: 1.2f
                 );
-            treesManager.UseHLOD = true; // Only trees get HLOD
+            //treesManager.UseHLOD = true; // Only trees get HLOD
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;

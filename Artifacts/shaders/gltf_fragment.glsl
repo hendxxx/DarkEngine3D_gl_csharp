@@ -50,6 +50,9 @@ uniform vec3 realSunDir;
 // ── Fog ────────────────────────────────────────────────────────────────────
 uniform int useFog;
 
+// ── HLOD Alpha Fade (set per-frame by HLOD renderer, default 1.0) ──
+uniform float hlodAlpha = 1.0;
+
 const float PI = 3.14159265359;
 
 // ── PBR FUNCTIONS ──────────────────────────────────────────────────────────
@@ -429,5 +432,5 @@ void main()
     result = result / (result + vec3(1.0));
     result = pow(result, vec3(1.0 / 2.2));
 
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(result, hlodAlpha);
 }

@@ -106,8 +106,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>Enable HLOD merged meshes for this manager (per-instance, not global).</summary>
         public bool UseHLOD = false;
         private const float _hlodRegionSize = 64f;     // 64×64m HLOD regions
-        private float _hlodNearDist = LOD0_Dist;       // Near range: individual instancing
-        private float _hlodMidDist = LOD3_Dist;       // Mid range: HLOD merged meshes
+        /// <summary>Near range: individual instancing (HLOD starts rendering & fading beyond this).</summary>
+        public float HLODNearDist = LOD0_Dist;
+        /// <summary>Mid range: HLOD merged meshes fully faded out at this distance.</summary>
+        public float HLODMidDist = LOD3_Dist;
         private HlodRegion[,] _hlodRegions;
         private bool _hlodEnabled = false ;
 
@@ -217,6 +219,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _hasMetallicRoughnessTextureLoc;
         private readonly int _hasOcclusionTextureLoc;
         private readonly int _hasEmissiveTextureLoc;
+        private readonly int _hlodAlphaLoc;
 
         // Instance batching cache: (gpuDataHash, meshIdx) -> instance VBO handle
         private readonly Dictionary<(int, int), uint> _instanceVBOs = [];
@@ -275,6 +278,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _hasMetallicRoughnessTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasMetallicRoughnessTexture");
             _hasOcclusionTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasOcclusionTexture");
             _hasEmissiveTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasEmissiveTexture");
+            _hlodAlphaLoc = GL.GetUniformLocation(_shaderProgram, "hlodAlpha");
         }
 
         private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData)
@@ -1069,6 +1073,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     GL.Uniform1i(shadowFilterLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsHardShadow());
             }
 
+            // Ensure HLOD alpha defaults to opaque for regular objects
+            if (_hlodAlphaLoc != -1)
+                GL.Uniform1f(_hlodAlphaLoc, 1.0f);
+
             ObjectDrawn = 0;
             _renderedTriangles = 0;
 
@@ -1305,10 +1313,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _hlodVisibleRegions = 0;
             if (_hlodEnabled)
             {
+                // Enable alpha blending for HLOD transparency fade
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
                 // Compute visible HLOD regions within mid range
                 int hlodW = _hlodRegions.GetLength(0);
                 int hlodH = _hlodRegions.GetLength(1);
-                float rangeSq = _hlodMidDist * _hlodMidDist;
+                float rangeSq = HLODMidDist * HLODMidDist;
+                float fadeRange = HLODMidDist - HLODNearDist;
+                float invFadeRange = fadeRange > 0.001f ? 1.0f / fadeRange : 1.0f;
 
                 for (int hz = 0; hz < hlodH; hz++)
                 {
@@ -1324,12 +1338,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         // Distance cull
                         float dxc = camera.Position.X - reg.CenterX;
                         float dzc = camera.Position.Z - reg.CenterZ;
-                        if (dxc * dxc + dzc * dzc > rangeSq)
+                        float distSq = dxc * dxc + dzc * dzc;
+                        if (distSq > rangeSq)
                             continue;
 
                         // Skip near-range regions (objects already rendered via grid instancing)
-                        if (dxc * dxc + dzc * dzc < _hlodNearDist * _hlodNearDist)
+                        if (distSq < HLODNearDist * HLODNearDist)
                             continue;
+
+                        // Distance-based alpha fade: 1.0 at nearDist → 0.0 at midDist
+                        float dist = MathF.Sqrt(distSq);
+                        float alpha = 1.0f - (dist - HLODNearDist) * invFadeRange;
+                        alpha = Math.Clamp(alpha, 0.0f, 1.0f);
+                        if (_hlodAlphaLoc != -1)
+                            GL.Uniform1f(_hlodAlphaLoc, alpha);
 
                         _hlodVisibleRegions++;
 
@@ -1349,6 +1371,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         ObjectDrawn++;
                     }
                 }
+
+                // Restore hlodAlpha to opaque for subsequent draws
+                if (_hlodAlphaLoc != -1)
+                    GL.Uniform1f(_hlodAlphaLoc, 1.0f);
+                GL.Disable(Const.GL_BLEND);
             }
 
             GL.BindVertexArray(0);
@@ -1741,8 +1768,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             int hlodW = _hlodRegions.GetLength(0);
             int hlodH = _hlodRegions.GetLength(1);
-            float nearSq = _hlodNearDist * _hlodNearDist;
-            float midSq = _hlodMidDist * _hlodMidDist;
+            float nearSq = HLODNearDist * HLODNearDist;
+            float midSq = HLODMidDist * HLODMidDist;
 
             for (int hz = 0; hz < hlodH; hz++)
             {
