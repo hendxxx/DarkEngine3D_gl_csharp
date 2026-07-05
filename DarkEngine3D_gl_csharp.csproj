@@ -367,6 +367,12 @@
     <None Update="Artifacts\shaders\depth_vertex.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\shaders\impostor_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\shaders\impostor_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\shaders\invertPass_fragment.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

@@ -124,6 +124,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int HLODRegionCount => _hlodRegionCount;
         public int HLODTotalObjects => _hlodTotalObjects;
         public int HLODVisibleRegions => _hlodVisibleRegions;
+        // -- Octahedral Impostors (per-instance, independent of HLOD) --
+        /// <summary>Enable Octahedral Impostors for this manager.</summary>
+        public bool UseImpostors = false;
+        private bool _impostorsBuilt = false;
+        private ImpostorRegion[,] _impostorRegions;
+        /// <summary>Near distance: impostors start fading in beyond this.</summary>
+        public float ImpostorNearDist = 300f;
+        /// <summary>Far distance: impostors culled beyond this.</summary>
+        public float ImpostorFarDist = 600f;
+        private const int IMPOSTOR_ATLAS_W = 512;
+        private const int IMPOSTOR_ATLAS_H = 512;
+        private const int IMPOSTOR_ATLAS_COUNT = 8;
+        private uint _impShaderProgram = 0;
+        // Impostor shader uniform locations — matching impostor_vertex.glsl and impostor_fragment.glsl
+        private int _impViewLoc = -1, _impProjLoc = -1;
+        private int _impCenterLoc = -1, _impRadiusLoc = -1;
+        private int _impCameraRightLoc = -1, _impCameraUpLoc = -1;
+        private int _impAtlasLoc = -1, _impAtlasTilesLoc = -1;
+        private int _impViewPosLoc = -1, _impSunDirLoc = -1;
+        private int _impLightColorLoc = -1, _impFogColorLoc = -1;
+        private int _impUseFogLoc = -1, _impRealSunDirLoc = -1;
+        private static uint _impBillboardVAO = 0;
+        private static bool _impBillboardVAOSetup = false;
 
         // ── Shared identity instance VBO for HLOD meshes ──
         // The static_vertex.glsl shader reads model matrix from instanced attributes
@@ -152,6 +175,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(16 * sizeof(float)), p, Const.GL_STATIC_DRAW);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, 0);
         }
+        private static void SetupImpostorVAO()
+        {
+            if (_impBillboardVAOSetup) return;
+            _impBillboardVAOSetup = true;
+            // Unit quad: vec2 position, vec2 uv (shader expects vec2 aPos at location 0)
+            float[] verts = [
+                -1f, -1f,  0f, 0f,
+                 1f, -1f,  1f, 0f,
+                 1f,  1f,  1f, 1f,
+                -1f,  1f,  0f, 1f
+            ];
+            uint[] idx = [0, 1, 2, 0, 2, 3];
+            uint vao, vbo, ebo;
+            GL.GenVertexArrays(1, &vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            fixed (float* p = verts)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(verts.Length * sizeof(float)), p, Const.GL_STATIC_DRAW);
+            GL.GenBuffers(1, &ebo);
+            GL.BindBuffer(Const.GL_ELEMENT_ARRAY_BUFFER, ebo);
+            fixed (uint* ip = idx)
+                GL.BufferData(Const.GL_ELEMENT_ARRAY_BUFFER, (nuint)(idx.Length * sizeof(uint)), ip, Const.GL_STATIC_DRAW);
+            // Location 0: vec2 aPos (stride = 4 floats = 16 bytes)
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 2, Const.GL_FLOAT, false, 4 * sizeof(float), (void*)0);
+            // Location 1: vec2 UV (stride = 4 floats = 16 bytes)
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+            GL.BindVertexArray(0);
+            _impBillboardVAO = vao;
+        }
 
         private class HlodRegion
         {
@@ -159,6 +214,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             public AABB WorldAABB;
             public int ObjectCount;
             public float CenterX, CenterZ;
+        }
+        private class ImpostorRegion
+        {
+            public uint AtlasTexture;
+            public float CenterX, CenterZ;
+            public float WorldRadius;
+            public AABB WorldAABB;
+            public int ObjectCount;
         }
 
         // Shadow map uniforms
@@ -279,6 +342,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _hasOcclusionTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasOcclusionTexture");
             _hasEmissiveTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasEmissiveTexture");
             _hlodAlphaLoc = GL.GetUniformLocation(_shaderProgram, "hlodAlpha");
+            // -- Octahedral Impostor shader --
+            try
+            {
+                _impShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                    "Artifacts/shaders/impostor_vertex.glsl",
+                    "Artifacts/shaders/impostor_fragment.glsl"
+                );
+                if (_impShaderProgram != 0)
+                {
+                    _impViewLoc = GL.GetUniformLocation(_impShaderProgram, "view");
+                    _impProjLoc = GL.GetUniformLocation(_impShaderProgram, "projection");
+                    _impCenterLoc = GL.GetUniformLocation(_impShaderProgram, "center");
+                    _impRadiusLoc = GL.GetUniformLocation(_impShaderProgram, "radius");
+                    _impCameraRightLoc = GL.GetUniformLocation(_impShaderProgram, "cameraRight");
+                    _impCameraUpLoc = GL.GetUniformLocation(_impShaderProgram, "cameraUp");
+                    _impAtlasLoc = GL.GetUniformLocation(_impShaderProgram, "impostorAtlas");
+                    _impAtlasTilesLoc = GL.GetUniformLocation(_impShaderProgram, "atlasTiles");
+                    _impViewPosLoc = GL.GetUniformLocation(_impShaderProgram, "viewPos");
+                    _impSunDirLoc = GL.GetUniformLocation(_impShaderProgram, "sunDir");
+                    _impLightColorLoc = GL.GetUniformLocation(_impShaderProgram, "lightColor");
+                    _impFogColorLoc = GL.GetUniformLocation(_impShaderProgram, "fogColor");
+                    _impUseFogLoc = GL.GetUniformLocation(_impShaderProgram, "useFog");
+                    _impRealSunDirLoc = GL.GetUniformLocation(_impShaderProgram, "realSunDir");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Console.Error.WriteLine("[Impostor] Failed to load shader: " + ex.Message);
+                _impShaderProgram = 0;
+            }
         }
 
         private void AnalyzeGltfGroups(string path, GltfModelGpuData gpuData)
@@ -784,6 +877,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 BuildHLOD(originX, originZ);
             }
+            // ── Optional: Build Octahedral Impostor atlas from HLOD regions ──
+            if (UseImpostors)
+            {
+                BuildImpostors();
+            }
         }
 
         /// <summary>Build HLOD merged meshes per region. Called after spatial grid is ready.</summary>
@@ -1020,6 +1118,92 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             SetupInstanceAttribs(vao, instanceVBO, stride);
         }
 
+        // ---- Octahedral Impostors: bake atlas from HLOD merged meshes ----
+        private void BuildImpostors()
+        {
+            if (!UseImpostors) return;
+            if (_hlodRegions == null) { Console.WriteLine("[Impostor] HLOD not enabled - cannot bake."); return; }
+            int w = _hlodRegions.GetLength(0);
+            int h = _hlodRegions.GetLength(1);
+            _impostorRegions = new ImpostorRegion[w, h];
+            uint tempFbo;
+            GL.GenFramebuffers(1, &tempFbo);
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, tempFbo);
+            uint depthRb;
+            GL.GenRenderbuffers(1, &depthRb);
+            GL.BindRenderbuffer(Const.GL_RENDERBUFFER, depthRb);
+            GL.RenderbufferStorage(Const.GL_RENDERBUFFER, Const.GL_DEPTH_COMPONENT24, IMPOSTOR_ATLAS_W, IMPOSTOR_ATLAS_H);
+            GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_ATTACHMENT, Const.GL_RENDERBUFFER, depthRb);
+            int atlasW = IMPOSTOR_ATLAS_W;
+            int atlasH = IMPOSTOR_ATLAS_H;
+            int viewW = atlasW / IMPOSTOR_ATLAS_COUNT;
+            int viewH = atlasH;
+            GL.UseProgram(_shaderProgram);
+            int useFogLocBake = GL.GetUniformLocation(_shaderProgram, "useFog");
+            if (useFogLocBake != -1) GL.Uniform1i(useFogLocBake, 0);
+            if (_hlodAlphaLoc != -1) GL.Uniform1f(_hlodAlphaLoc, 1.0f);
+            if (_shadowMap0Loc != -1) GL.Uniform1i(_shadowMap0Loc, 0);
+            if (_shadowMap1Loc != -1) GL.Uniform1i(_shadowMap1Loc, 0);
+            if (_shadowMap2Loc != -1) GL.Uniform1i(_shadowMap2Loc, 0);
+            for (int hx = 0; hx < w; hx++)
+            {
+                for (int hz = 0; hz < h; hz++)
+                {
+                    var reg = _hlodRegions[hx, hz];
+                    if (reg == null || reg.ObjectCount == 0) continue;
+                    var aabb = reg.WorldAABB;
+                    Vector3 center = new Vector3(reg.CenterX, (aabb.Min.Y + aabb.Max.Y) * 0.5f, reg.CenterZ);
+                    float extentX = Math.Max(aabb.Max.X - aabb.Min.X, 0.5f) * 0.6f;
+                    float extentY = Math.Max(aabb.Max.Y - aabb.Min.Y, 0.5f) * 0.6f;
+                    uint atlasTex;
+                    GL.GenTextures(1, &atlasTex);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, atlasTex);
+                    GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA8, atlasW, atlasH, 0, (int)Const.GL_RGBA, (int)Const.GL_UNSIGNED_BYTE, null);
+                    GL.TexParameteri(Const.GL_TEXTURE_2D, (int)Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+                    GL.TexParameteri(Const.GL_TEXTURE_2D, (int)Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+                    GL.TexParameteri(Const.GL_TEXTURE_2D, (int)Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                    GL.TexParameteri(Const.GL_TEXTURE_2D, (int)Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+                    for (int vi = 0; vi < IMPOSTOR_ATLAS_COUNT; vi++)
+                    {
+                        float angle = vi * (360f / IMPOSTOR_ATLAS_COUNT);
+                        float rad = angle * MathF.PI / 180f;
+                        Vector3 eyePos = center + new Vector3(MathF.Sin(rad) * extentX, 0, MathF.Cos(rad) * extentX);
+                        eyePos.Y = center.Y;
+                        Matrix4x4 viewMat = Matrix4x4.CreateLookAt(eyePos, center, Vector3.UnitY);
+                        Matrix4x4 projMat = Matrix4x4.CreateOrthographicOffCenter(-extentX, extentX, -extentY, extentY, 0.1f, extentX * 4f);
+                        int vx = vi * viewW;
+                        GL.Viewport(vx, 0, viewW, viewH);
+                        GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+                        GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)Unsafe.AsPointer(ref viewMat));
+                        GL.UniformMatrix4fv(_projLoc, 1, false, (float*)Unsafe.AsPointer(ref projMat));
+                        var mesh = reg.MergedMesh;
+                        var identity = Matrix4x4.Identity;
+                        GL.UniformMatrix4fv(_modelLoc, 1, false, (float*)Unsafe.AsPointer(ref identity));
+                        SetHLODMaterialUniforms(mesh);
+                        GL.BindVertexArray(mesh.VAO);
+                        if (mesh.IndexCount > 0)
+                            GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                        else
+                            GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+                    }
+                    _impostorRegions[hx, hz] = new ImpostorRegion
+                    {
+                        AtlasTexture = atlasTex,
+                        CenterX = reg.CenterX,
+                        CenterZ = reg.CenterZ,
+                        WorldRadius = MathF.Max(extentX, extentY),
+                        WorldAABB = reg.WorldAABB,
+                        ObjectCount = reg.ObjectCount
+                    };
+                }
+            }
+            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            GL.DeleteFramebuffers(1, &tempFbo);
+            GL.DeleteRenderbuffers(1, &depthRb);
+            _impostorsBuilt = true;
+            Console.WriteLine("[Impostor] Baked " + w + "x" + h + " regions.");
+        }
         // ────────────────────────────────────────────────────────────────
         //  DRAW — main color pass with GPU instancing
         // ────────────────────────────────────────────────────────────────
@@ -1376,6 +1560,71 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (_hlodAlphaLoc != -1)
                     GL.Uniform1f(_hlodAlphaLoc, 1.0f);
                 GL.Disable(Const.GL_BLEND);
+            }
+            // ---- Step 4: render Octahedral Impostor billboards (far range) ----
+            if (_impostorsBuilt && _impostorRegions != null && _impShaderProgram != 0)
+            {
+                GL.UseProgram(_impShaderProgram);
+                GL.Enable(Const.GL_DEPTH_TEST);
+                GL.Enable(Const.GL_CULL_FACE);
+                GL.CullFace(Const.GL_BACK);
+                GL.UniformMatrix4fv(_impViewLoc, 1, false, (float*)Unsafe.AsPointer(ref view));
+                GL.UniformMatrix4fv(_impProjLoc, 1, false, (float*)Unsafe.AsPointer(ref proj));
+                // Fragment shader uniforms
+                GL.Uniform2f(_impAtlasTilesLoc, 4f, 2f); // 4 columns x 2 rows for 8 views
+                if (_impViewPosLoc != -1)
+                    GL.Uniform3f(_impViewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
+                if (_impSunDirLoc != -1)
+                    GL.Uniform3f(_impSunDirLoc, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
+                if (_impLightColorLoc != -1)
+                    GL.Uniform3f(_impLightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
+                if (_impFogColorLoc != -1)
+                    GL.Uniform3f(_impFogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+                if (_impRealSunDirLoc != -1)
+                    GL.Uniform3f(_impRealSunDirLoc, light.RealSunDir.X, light.RealSunDir.Y, light.RealSunDir.Z);
+                if (_impUseFogLoc != -1)
+                    GL.Uniform1i(_impUseFogLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+                // Compute camera right/up from view matrix for billboard orientation
+                Vector3 camRight = new Vector3(view.M11, view.M21, view.M31);
+                Vector3 camUp = new Vector3(view.M12, view.M22, view.M32);
+                int impW = _impostorRegions.GetLength(0);
+                int impH = _impostorRegions.GetLength(1);
+                float impNearSq = ImpostorNearDist * ImpostorNearDist;
+                float impFarSq = ImpostorFarDist * ImpostorFarDist;
+                SetupImpostorVAO();
+                GL.BindVertexArray(_impBillboardVAO);
+                for (int hz = 0; hz < impH; hz++)
+                {
+                    for (int hx = 0; hx < impW; hx++)
+                    {
+                        var imp = _impostorRegions[hx, hz];
+                        if (imp == null || imp.AtlasTexture == 0) continue;
+                        float dxc = camera.Position.X - imp.CenterX;
+                        float dzc = camera.Position.Z - imp.CenterZ;
+                        float distSq = dxc * dxc + dzc * dzc;
+                        if (distSq < impNearSq || distSq > impFarSq) continue;
+                        if (!IsAABBInFrustum(cameraFrustum, imp.WorldAABB, imp.WorldRadius + 5f)) continue;
+                        // Bind atlas texture
+                        GL.ActiveTexture(Const.GL_TEXTURE0);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, imp.AtlasTexture);
+                        GL.Uniform1i(_impAtlasLoc, 0);
+                        // Vertex shader: center + radius + cameraRight + cameraUp -> camera-facing billboard
+                        if (_impCenterLoc != -1)
+                            GL.Uniform3f(_impCenterLoc, imp.CenterX, (imp.WorldAABB.Min.Y + imp.WorldAABB.Max.Y) * 0.5f, imp.CenterZ);
+                        if (_impRadiusLoc != -1)
+                            GL.Uniform1f(_impRadiusLoc, imp.WorldRadius);
+                        if (_impCameraRightLoc != -1)
+                            GL.Uniform3f(_impCameraRightLoc, camRight.X, camRight.Y, camRight.Z);
+                        if (_impCameraUpLoc != -1)
+                            GL.Uniform3f(_impCameraUpLoc, camUp.X, camUp.Y, camUp.Z);
+                        GL.DrawElements(Const.GL_TRIANGLES, 6, Const.GL_UNSIGNED_INT, null);
+                        _renderedTriangles += 2;
+                        ObjectDrawn++;
+                    }
+                }
+                GL.BindVertexArray(0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+                GL.UseProgram(_shaderProgram);
             }
 
             GL.BindVertexArray(0);
@@ -1759,6 +2008,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// Color coding:
         ///   Green (0,1,0):    Near range (< 35m) — individual instancing digunakan
         ///   Yellow (1,1,0):   Mid range (35-120m) — HLOD merged mesh DI-RENDER
+        /// <summary>Render debugging visualization for Octahedral Impostor regions.</summary>
+        public void DrawImpostorDebug(Camera camera, Plane[] cameraFrustum)
+        {
+            if (!_impostorsBuilt || _impostorRegions == null) return;
+            int w = _impostorRegions.GetLength(0);
+            int h = _impostorRegions.GetLength(1);
+            float nearSq = ImpostorNearDist * ImpostorNearDist;
+            float farSq = ImpostorFarDist * ImpostorFarDist;
+            for (int hx = 0; hx < w; hx++)
+            {
+                for (int hz = 0; hz < h; hz++)
+                {
+                    var imp = _impostorRegions[hx, hz];
+                    if (imp == null || imp.AtlasTexture == 0) continue;
+                    Vector3 center = new Vector3(imp.CenterX, (imp.WorldAABB.Min.Y + imp.WorldAABB.Max.Y) * 0.5f, imp.CenterZ);
+                    float dxc = camera.Position.X - imp.CenterX;
+                    float dzc = camera.Position.Z - imp.CenterZ;
+                    float distSq = dxc * dxc + dzc * dzc;
+                    bool visible = distSq >= nearSq && distSq <= farSq && IsAABBInFrustum(cameraFrustum, imp.WorldAABB, imp.WorldRadius + 5f);
+                    TerrainChunk.DrawAABBWireframe(imp.WorldAABB, visible ? new Vector3(0, 1, 0.5f) : new Vector3(0.3f, 0.3f, 0.3f), camera);
+                }
+            }
+        }
         ///   Red (1,0,0):      Far range (> 120m) — HLOD region di-cull
         ///   Dim gray (0.3):   Not in frustum
         /// </summary>
@@ -1834,6 +2106,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _hlodEnabled = false;
         }
 
+        /// <summary>Cleanup GPU resources for Octahedral Impostors.</summary>
+        public void DisposeImpostors()
+        {
+            if (_impostorRegions == null) return;
+            for (int hx = 0; hx < _impostorRegions.GetLength(0); hx++)
+            {
+                for (int hz = 0; hz < _impostorRegions.GetLength(1); hz++)
+                {
+                    var imp = _impostorRegions[hx, hz];
+                    if (imp != null && imp.AtlasTexture != 0)
+                    {
+                        uint tex = imp.AtlasTexture;
+                        GL.DeleteTextures(1, &tex);
+                    }
+                }
+            }
+            _impostorRegions = null;
+            _impostorsBuilt = false;
+        }
         // ────────────────────────────────────────────────────────────────
         //  STATIC HELPERS (unchanged)
         // ────────────────────────────────────────────────────────────────

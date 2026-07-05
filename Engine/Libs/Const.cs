@@ -73,6 +73,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_TEXTURE3 = 0x84C3;
         public const uint GL_TEXTURE4 = 0x84C4;
         public const uint GL_TEXTURE5 = 0x84C5;
+        public const uint GL_TEXTURE6 = 0x84C6;
+        public const uint GL_TEXTURE7 = 0x84C7;
+        public const uint GL_TEXTURE8 = 0x84C8;
 
         public const uint GL_TEXTURE_2D = 0x0DE1;
         public const uint GL_TEXTURE_WRAP_S = 0x2802;

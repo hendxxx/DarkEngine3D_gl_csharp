@@ -242,15 +242,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
             treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1000, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static1: loading {treesName}..."),
-                                groupName: "Christmas tree_LOD0,Christmas 1tree_2_LOD0,Christmas tree_3_LOD0",
-                                //groupName: "Pine_big_1_LOD0,Pine_large_1_LOD0,Pine_medium_1_LOD0,Pine_sapling_1_LOD0,Pine_small_1_LOD0",
-                                //groupName: "tree_0"
+                    groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0",
+                    //groupName: "Pine_big_1_LOD0,Pine_large_1_LOD0,Pine_medium_1_LOD0,Pine_sapling_1_LOD0,Pine_small_1_LOD0",
+                    //groupName: "tree_0"
 
                 collisionPart: "Bark_Mat_0",
                 overrideCollisionSizeX: 1.2f,
                 overrideCollisionSizeZ: 1.2f
                 );
-            //treesManager.UseHLOD = true; // Only trees get HLOD
+            treesManager.UseHLOD = true; // Trees get HLOD
+            treesManager.UseImpostors = true; // Trees get Octahedral Impostors for far distance
+            treesManager.ImpostorNearDist = 100f;
+            treesManager.ImpostorFarDist = 200f;
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
@@ -899,6 +902,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
+        /// <summary>
+        /// Delegate impostor debug visualization to all static managers that have impostors built.
+        /// </summary>
+        public void DrawImpostorDebug(Camera camera, Plane[] cameraFrustum)
+        {
+            if (staticObjectManagers == null) return;
+            foreach (var mgr in staticObjectManagers)
+            {
+                if (mgr != null)
+                    mgr.DrawImpostorDebug(camera, cameraFrustum);
+            }
+        }
+
         public void DrawHealthBars(Camera camera, HUD hud)
         {
             const float headHeight = 2.1f;
@@ -1024,9 +1040,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _objects.Clear();
             _agents.Clear();
 
-            // Cleanup HLOD GPU resources (VAO/VBO/EBO for merged meshes)
+            // Cleanup HLOD + Impostor GPU resources
             foreach (var mgr in staticObjectManagers)
+            {
                 mgr?.DisposeHLOD();
+                mgr?.DisposeImpostors();
+            }
         }
 
         private static Vector4[] ExtractFrustumPlanes(Matrix4x4 vp)

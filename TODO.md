@@ -5,6 +5,7 @@ Pending:
 3. buat debug mode jika T ditekan, terrain nya di kasih overlay sesuai warna biomes nya, tapi transparant 
 4. terrain displacement mapping and tessellation shaders
 5. Octahedral Impostors
+6. buatin editor buat edit biomes, terrain, nanti muncul menu buat pilih biomes apa yang mau di edit, nanti bisa pilih brush size, dan bisa pilih biomes apa yang mau di ganti, misal: hijau tua=pohon mau diganti jadi hijau=rumput, dst. nanti bisa di save ke file biomes.
 
 Done, misc:
 1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
@@ -15,9 +16,9 @@ Done, misc:
 6. buat animasi berjalan dilooping, ketika object bergerak.
 7. nantinya akan ada beberapa state animasi yang bisa di trigger oleh action tertentu.
 8. Implemet Vertex Clustering
-1. 
+
 Done, Shadow:
 1. buatkan shadow untuk object, jadi ketika object berada di atas permukaan, akan ada bayangan yang mengikuti gerakan object tersebut.
 2. buatkan shadow dengan tehnik CSM, di dalam sudah ada LOD untuk Terrain bisa di manfaatkan untuk membuat shadow dengan kualitas yang baik tanpa harus menggunakan banyak resource.
 3. pastikan shadow bisa di render dengan baik di semua jenis terrain, jadi ketika object berada di atas permukaan yang berbeda, shadow tetap bisa terlihat dengan baik. 
-4. Perbaiki filter dishadow
+4. Perbaiki filter dishadow                                                                                            

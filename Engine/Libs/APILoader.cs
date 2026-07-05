@@ -74,6 +74,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr CheckFramebufferStatusPtr = IntPtr.Zero;
         internal static IntPtr DepthMaskPtr = IntPtr.Zero;
         internal static IntPtr DeleteFramebuffersPtr = IntPtr.Zero;
+        internal static IntPtr DeleteRenderbuffersPtr = IntPtr.Zero;
         internal static IntPtr GenRenderbuffersPtr = IntPtr.Zero;
         internal static IntPtr BindRenderbufferPtr = IntPtr.Zero;
         internal static IntPtr RenderbufferStoragePtr = IntPtr.Zero;
@@ -217,8 +218,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GenRenderbuffers(int n, uint* renderbuffers)
-            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenRenderbuffersPtr)(n, renderbuffers);   
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)GenRenderbuffersPtr)(n, renderbuffers);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DeleteRenderbuffers(int n, uint* renderbuffers)
+            => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteRenderbuffersPtr)(n, renderbuffers);
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DeleteFramebuffers(int n, uint* framebuffers)
             => ((delegate* unmanaged[Cdecl]<int, uint*, void>)DeleteFramebuffersPtr)(n, framebuffers);

@@ -1034,6 +1034,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
+            // â”€â”€ Impostor Visualization (toggled with J key) â”€â”€
+            if (Keyboard.GetShowImpostor() && _objectManager != null)
+            {
+                GL.Disable(Const.GL_DEPTH_TEST);
+
+                Plane[] impFrustum = StaticObjectManager.ExtractCameraFrustum(
+                    Matrix4x4.Multiply(_camera.GetViewMatrix(), _camera.GetProjectionMatrix()));
+                _objectManager.DrawImpostorDebug(_camera, impFrustum);
+
+                GL.Enable(Const.GL_DEPTH_TEST);
+            }
+
             // â”€â”€ Debug BBox Wireframe + LOD Labels (toggled with P key) â”€â”€
             if (Keyboard.GetShowBBox() && _objectManager != null)
             {

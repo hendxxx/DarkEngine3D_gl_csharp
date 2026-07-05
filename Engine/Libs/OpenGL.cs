@@ -85,6 +85,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.DepthMaskPtr = GetProcAddress(glLib, "glDepthMask");
             GL.DeleteFramebuffersPtr = GetProcAddress(glLib, "glDeleteFramebuffers");
             GL.GenRenderbuffersPtr = GetProcAddress(glLib, "glGenRenderbuffers");
+            GL.DeleteRenderbuffersPtr = GetProcAddress(glLib, "glDeleteRenderbuffers");
             GL.BindRenderbufferPtr = GetProcAddress(glLib, "glBindRenderbuffer");
             GL.RenderbufferStoragePtr = GetProcAddress(glLib, "glRenderbufferStorage");
             GL.FramebufferRenderbufferPtr = GetProcAddress(glLib, "glFramebufferRenderbuffer");
