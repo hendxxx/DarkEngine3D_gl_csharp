@@ -250,10 +250,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 overrideCollisionSizeX: 1.2f,
                 overrideCollisionSizeZ: 1.2f
                 );
-            treesManager.UseHLOD = true; // Trees get HLOD
-            treesManager.UseImpostors = true; // Trees get Octahedral Impostors for far distance
-            treesManager.ImpostorNearDist = 100f;
-            treesManager.ImpostorFarDist = 200f;
+            treesManager.UseHLOD = false; // Trees get HLOD
+            treesManager.UseImpostors = false; // Trees get Octahedral Impostors for far distance
+            treesManager.ImpostorNearDist = 120f;
+            treesManager.ImpostorFarDist = 300f;
+            treesManager.ImpostorFadeDist = 10f;
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
@@ -266,7 +267,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 sobj.IsCollidable = true;
                 sobj.ColType = CollisionType.Box;  // trees — box collision
-            }
+            }   
 
             OnLoadProgress?.Invoke(0.20f, $"Static: {treesName} done");
 
@@ -902,16 +903,41 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
+        /// <summary>Total baked impostor regions across all static managers.</summary>
+        public int TotalImpostorRegions
+        {
+            get
+            {
+                if (staticObjectManagers == null) return 0;
+                int total = 0;
+                foreach (var mgr in staticObjectManagers)
+                    if (mgr != null) total += mgr.ImpostorRegionCount;
+                return total;
+            }
+        }
+        /// <summary>Total visible impostor regions this frame across all static managers.</summary>
+        public int TotalVisibleImpostors
+        {
+            get
+            {
+                if (staticObjectManagers == null) return 0;
+                int total = 0;
+                foreach (var mgr in staticObjectManagers)
+                    if (mgr != null) total += mgr.ImpVisibleRegions;
+                return total;
+            }
+        }
+
         /// <summary>
         /// Delegate impostor debug visualization to all static managers that have impostors built.
         /// </summary>
-        public void DrawImpostorDebug(Camera camera, Plane[] cameraFrustum)
+        public void DrawImpostorDebug(Camera camera, Plane[] cameraFrustum, HUD hud = null)
         {
             if (staticObjectManagers == null) return;
             foreach (var mgr in staticObjectManagers)
             {
                 if (mgr != null)
-                    mgr.DrawImpostorDebug(camera, cameraFrustum);
+                    mgr.DrawImpostorDebug(camera, cameraFrustum, hud);
             }
         }
 

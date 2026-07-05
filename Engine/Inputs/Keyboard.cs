@@ -51,10 +51,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool kPressed = false;
         public static bool GetShowHLOD() => showHLOD;
 
-        // Variabel kontrol untuk toggle impostor visualization
-        static bool showImpostor = false;
+        // Variabel kontrol untuk toggle impostor visualization (0=off, 1=billboard, 2=aabb)
+        static int showImpostorMode = 0;
         static bool jPressed = false;
-        public static bool GetShowImpostor() => showImpostor;
+        public static bool GetShowImpostor() => showImpostorMode != 0;
+        public static int GetImpostorDebugMode() => showImpostorMode;
 
         // Variabel kontrol untuk toggle kabut
         static bool isFogActive = true;
@@ -239,16 +240,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             }
 
             // =========================================================================
-            // J TOGGLE IMPOSTOR VISUALIZATION (RISING EDGE)
+            // J TOGGLE IMPOSTOR VISUALIZATION (3-state: OFF → Billboard → AABB → OFF)
             // =========================================================================
             int jState = glfwGetKey(window, Const.GLFW_KEY_J);
             if (jState == Const.GLFW_PRESS)
             {
                 if (!jPressed)
                 {
-                    showImpostor = !showImpostor;
+                    showImpostorMode = (showImpostorMode + 1) % 3;
                     jPressed = true;
-                    Console.WriteLine(showImpostor ? "Impostor Visualization: ON" : "Impostor Visualization: OFF");
+                    string modeName = showImpostorMode switch
+                    {
+                        1 => "Impostor Billboard: ON",
+                        2 => "Impostor AABB: ON",
+                        _ => "Impostor Visualization: OFF"
+                    };
+                    Console.WriteLine(modeName);
                 }
             }
             else

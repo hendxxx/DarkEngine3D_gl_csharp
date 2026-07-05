@@ -221,13 +221,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             if (timer >= 1.0f) // Setiap 1 detik
             {
                 lastFPS = frameCount;
-                // Format HUD Premium: 🕒 [ 06:05 ]  |  ⚡ FPS: 60  |  📐 TRIS: 1.2M / 4.0M
-                string title = $"🕒 [ {gameTime} ]    ⚡ FPS: {lastFPS}    📐 TRIS: {renderedTris:N0} / {totalMapTris:N0}";
-
-                fixed (byte* pTitle = Encoding.UTF8.GetBytes(title + "\0"))
-                {
-                    glfwSetWindowTitle(window, pTitle);
-                }
+                 
                 frameCount = 0;
                 timer = 0;
             }

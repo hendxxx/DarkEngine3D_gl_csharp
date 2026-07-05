@@ -1,7 +1,7 @@
 #version 330 core
 
 uniform sampler2D impostorAtlas;
-uniform vec2 atlasTiles;     // e.g. (4, 2) for 4×2 grid
+uniform vec2 atlasTiles;     // e.g. (8, 1) for 8×1 horizontal strip (matches baking)
 uniform vec3 viewPos;
 uniform vec3 center;
 uniform vec3 sunDir;
@@ -9,6 +9,7 @@ uniform vec3 lightColor;
 uniform vec3 fogColor;
 uniform int useFog;
 uniform vec3 realSunDir;
+uniform float debugOpacity;   // 1.0 = opaque (normal), <1.0 = semi-transparent (debug)
 
 in vec2 vUV;
 
@@ -29,17 +30,18 @@ void main()
     int tileB = int(mod(ceil(tileF), 8.0));
     float blend = fract(tileF);
 
-    // 4×2 grid layout: columns first, then rows
+    // Horizontal strip layout: 8 columns × 1 row
+    // Matches how BuildImpostors() renders views side-by-side
     vec2 tileSize = 1.0 / atlasTiles;
 
-    // Tile A
-    int txA = tileA % 4;
-    int tyA = 1 - tileA / 4;  // row 0 at bottom
+    // Tile A — horizontal strip (row 0, column = tile index)
+    int txA = tileA;
+    int tyA = 0;
     vec2 uvA = vUV * tileSize + vec2(txA, tyA) * tileSize;
 
-    // Tile B
-    int txB = tileB % 4;
-    int tyB = 1 - tileB / 4;
+    // Tile B — horizontal strip (row 0, column = tile index)
+    int txB = tileB;
+    int tyB = 0;
     vec2 uvB = vUV * tileSize + vec2(txB, tyB) * tileSize;
 
     // Sample and blend
@@ -62,5 +64,5 @@ void main()
         color.rgb = mix(fogColor, color.rgb, fogFactor);
     }
 
-    FragColor = vec4(color.rgb, color.a);
+    FragColor = vec4(color.rgb, color.a * debugOpacity);
 }

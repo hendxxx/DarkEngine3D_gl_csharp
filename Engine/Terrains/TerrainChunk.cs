@@ -748,6 +748,135 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         /// <summary>
+        /// Draw a prominent red X mark on a camera-facing billboard.
+        /// Used to indicate impostor regions that are in frustum but culled by distance
+        /// (too close or too far for impostor rendering).
+        /// The X extends 1.5x beyond the billboard radius for clear visibility.
+        /// </summary>
+        public static unsafe void DrawXMark(Vector3 center, float radius, Vector3 camRight, Vector3 camUp, Camera camera)
+        {
+            float xr = radius * 1.5f;
+            // Two crossing lines forming an X, bigger than the quad
+            Vector3 p0 = center - xr * camRight - xr * camUp;
+            Vector3 p1 = center + xr * camRight + xr * camUp;
+            Vector3 p2 = center - xr * camRight + xr * camUp;
+            Vector3 p3 = center + xr * camRight - xr * camUp;
+
+            float[] lineData =
+            [
+                p0.X, p0.Y, p0.Z,  p1.X, p1.Y, p1.Z,
+                p2.X, p2.Y, p2.Z,  p3.X, p3.Y, p3.Z,
+            ];
+
+            lock (debugBufferLock)
+            {
+                if (debugVao == 0 || debugVbo == 0)
+                {
+                    fixed (uint* pVao = &debugVao) GL.GenVertexArrays(1, pVao);
+                    fixed (uint* pVbo = &debugVbo) GL.GenBuffers(1, pVbo);
+                }
+            }
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            // Bright red
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, 1.0f, 0.15f, 0.1f);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+
+            GL.BindVertexArray(debugVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
+            fixed (void* ptr = lineData)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+            }
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, 4);
+            GL.BindVertexArray(0);
+        }
+
+        /// <summary>
+        /// Draw a camera-facing billboard quad outline using the shared line shader.
+        /// Shows that an impostor region is rendered as a single quad (2 triangles).
+        /// </summary>
+        public static unsafe void DrawBillboardWireframe(Vector3 center, float radius, Vector3 camRight, Vector3 camUp, Vector3 color, Camera camera)
+        {
+            // 4 corners of the camera-facing billboard:
+            // bl = center - radius*camRight - radius*camUp
+            // br = center + radius*camRight - radius*camUp
+            // tr = center + radius*camRight + radius*camUp
+            // tl = center - radius*camRight + radius*camUp
+            Vector3 bl = center - radius * camRight - radius * camUp;
+            Vector3 br = center + radius * camRight - radius * camUp;
+            Vector3 tr = center + radius * camRight + radius * camUp;
+            Vector3 tl = center - radius * camRight + radius * camUp;
+
+            // Draw quad outline (4 edges) + diagonal cross (2 lines) for visibility
+            float[] lineData =
+            [
+                // Quad outline (4 edges)
+                bl.X, bl.Y, bl.Z,  br.X, br.Y, br.Z,
+                br.X, br.Y, br.Z,  tr.X, tr.Y, tr.Z,
+                tr.X, tr.Y, tr.Z,  tl.X, tl.Y, tl.Z,
+                tl.X, tl.Y, tl.Z,  bl.X, bl.Y, bl.Z,
+                // Diagonal cross (X) to make the quad clearly visible
+                bl.X, bl.Y, bl.Z,  tr.X, tr.Y, tr.Z,
+                tl.X, tl.Y, tl.Z,  br.X, br.Y, br.Z,
+            ];
+
+            lock (debugBufferLock)
+            {
+                if (debugVao == 0 || debugVbo == 0)
+                {
+                    fixed (uint* pVao = &debugVao) GL.GenVertexArrays(1, pVao);
+                    fixed (uint* pVbo = &debugVbo) GL.GenBuffers(1, pVbo);
+                }
+            }
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+
+            GL.BindVertexArray(debugVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
+            fixed (void* ptr = lineData)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineData.Length * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+            }
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, 12);
+            GL.BindVertexArray(0);
+        }
+
+        /// <summary>
         /// Draw a collection of 3D line segments using the line shader.
         /// Used for BVH mesh visualization and debug wireframes.
         /// </summary>

@@ -21,7 +21,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public string Name => "GameScene";
 
-        // â”€â”€ Dependencies â”€â”€
+        //  Dependencies 
         private readonly SceneManager _sceneManager;
         private Camera _camera;
         private Lights _light;
@@ -31,7 +31,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private HUD? _hud;
         private ObjectManager? _objectManager;
 
-        // â”€â”€ Render state (initialized in Enter) â”€â”€
+        //  Render state (initialized in Enter) 
         private PostProcessStack? _ppStack;
         private CSM? _csm;
         private OcclusionCulling? _occlusionCulling;
@@ -61,7 +61,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private uint _shaderProgram;
         private int _projectionLocation, _viewLocation;
 
-        // â”€â”€ Per-frame state â”€â”€
+        //  Per-frame state 
         private float _time = 0f;
         private float _deltaTime = 0f;
         private int _occlusionFrameCount = 0;
@@ -71,7 +71,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private CameraMode _lastCameraMode = CameraMode.FirstPerson;
         private float _lastTargetShoulderOffset;
 
-        // â”€â”€ Pause menu (responsive grid) â”€â”€
+        //  Pause menu (responsive grid) 
         private const int PauseItemCount = 6;
         private const int PauseBtnColStart = 3;
         private const int PauseBtnColEnd = 9;
@@ -87,10 +87,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _pauseDownWasDown = false;
         private bool _pauseEnterWasDown = false;
 
-        // â”€â”€ Input cooldown after unpausing (prevents menu click bleed) â”€â”€
+        //  Input cooldown after unpausing (prevents menu click bleed) 
         private float _inputCooldown = 0f;
 
-        // â”€â”€ Save/Load system â”€â”€
+        //  Save/Load system 
         private bool _saveLoadActive = false;
         private bool _isSaveMode = false; // true=save, false=load
         private bool _saveLoadWasAlreadyPaused = false; // true=opened from pause menu
@@ -106,7 +106,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private float _saveNotificationTimer = 0f;
         private int _pendingScreenshotSlot = -1;
 
-        // â”€â”€ Exit confirmation dialog â”€â”€
+        //  Exit confirmation dialog 
         private const float _confirmDlgScale = 1.4f;
         private bool _confirmingExit = false;
         private int _confirmSelection = 0; // 0 = No, 1 = Yes
@@ -116,7 +116,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _confirmEnterWasDown = false;
         private bool _confirmEscapeWasDown = false;
 
-        // â”€â”€ In-game settings panel (accessed from pause menu) â”€â”€
+        //  In-game settings panel (accessed from pause menu) 
         private bool _settingsActive = false;
         private int _settingsSelection = 0;
         private int _settingsLastHovered = -1;
@@ -147,7 +147,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         // Shadow quality presets shared via ShadowPresets.CascadeSizes (no local field needed)
 
-        // â”€â”€ FPS counter â”€â”€
+        //  FPS counter 
         private int _renderedTris;
 
         public GameScene(SceneManager sceneManager, Camera camera, Lights light)
@@ -186,12 +186,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _projectionLocation = GL.GetUniformLocation(_shaderProgram, "projection");
             _viewLocation = GL.GetUniformLocation(_shaderProgram, "view");
 
-            // â”€â”€ Post-processing â”€â”€
+            //  Post-processing 
             _ppStack = new PostProcessStack(Glfw.WindowWidth, Glfw.WindowHeight);
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram());
             // ppStack.AddPass(invertPass);
 
-            // â”€â”€ CSM â”€â”€
+            //  CSM 
             _csm = new CSM(Config.ShadowConfig.CascadeSizes[0]);
 
             // Cache terrain shader uniform locations
@@ -232,7 +232,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _shadowStaticAlphaModelLoc = GL.GetUniformLocation(_shadowStaticAlphaShader, "model");
             _shadowStaticAlphaLightSpaceLoc = GL.GetUniformLocation(_shadowStaticAlphaShader, "lightSpaceMatrix");
 
-            // â”€â”€ Occlusion Culling â”€â”€
+            //  Occlusion Culling 
             _occlusionCulling = new OcclusionCulling();
             if (Config.OcclusionConfig.Mode == OcclusionMode.HiZ)
             {
@@ -284,7 +284,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _ => 3
             };
 
-            // â”€â”€ Load pending save (set by MainMenuScene Continue/Load Game) â”€â”€
+            //  Load pending save (set by MainMenuScene Continue/Load Game) 
             if (PendingLoadSlot >= 0)
             {
                 int slotToLoad = PendingLoadSlot;
@@ -331,7 +331,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
 
-            // â”€â”€ ESCAPE: always toggle pause (ESC always opens/closes the menu) â”€â”€
+            //  ESCAPE: always toggle pause (ESC always opens/closes the menu) 
             bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
             if (escapeDown && !_escapeWasDown && !_confirmingExit)
             {
@@ -349,7 +349,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
             _escapeWasDown = escapeDown;
 
-            // â”€â”€ F5/F6: Save/Load â”€â”€
+            //  F5/F6: Save/Load 
             bool f5Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F5);
             bool f6Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F6);
 
@@ -364,7 +364,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _f5WasDown = f5Down;
             _f6WasDown = f6Down;
 
-            // â”€â”€ Pause menu overlay input â”€â”€
+            //  Pause menu overlay input 
             if (_paused)
             {
                 if (_saveLoadActive)
@@ -389,10 +389,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             _time += deltaTime;
 
-            // â”€â”€ Player input & camera control â€” only when not paused â”€â”€
+            //  Player input & camera control â€” only when not paused 
             if (!_paused)
             {
-                // â”€â”€ Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed â”€â”€
+                //  Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed 
                 if (_inputCooldown > 0f)
                 {
                     _inputCooldown -= deltaTime;
@@ -400,7 +400,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 else
                 {
-                    // â”€â”€ Camera mode / freelook â”€â”€
+                    //  Camera mode / freelook 
                     if (_camera.CurrentMode == CameraMode.FirstPerson)
                     {
                         _camera.freeLook = false;
@@ -443,7 +443,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (!_paused && _inputCooldown <= 0f)
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
 
-                // â”€â”€ COLLISION: push player out of static objects â”€â”€
+                //  COLLISION: push player out of static objects 
                 var staticMgrs = _objectManager.staticObjectManagers;
                 var playerAgent = _objectManager.PlayerAgent;
                 var playerPos = playerAgent.Position;
@@ -460,7 +460,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
 
-                // â”€â”€ COLLISION: push NPC out of static objects (always runs) â”€â”€
+                //  COLLISION: push NPC out of static objects (always runs) 
                 var allObjs = _objectManager.GetObjects();
                 for (int oi = 0; oi < allObjs.Count; oi++)
                 {
@@ -478,7 +478,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                 }
 
-                // â”€â”€ COLLISION: player vs AI characters (capsule vs capsule) â”€â”€
+                //  COLLISION: player vs AI characters (capsule vs capsule) 
                 {
                     var pAgent = _objectManager.PlayerAgent;
                     var pPos = pAgent.Position;
@@ -522,7 +522,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     pAgent.Position = pPos;
                 }
 
-                // â”€â”€ RE-CHECK: player vs static objects â”€â”€
+                //  RE-CHECK: player vs static objects 
                 {
                     var recheckPos = playerAgent.Position;
                     var recheckPushed = Helpers.CollisionHelper.PushCharacterCapsule(recheckPos, staticMgrs, playerAgent.CollisionHeight);
@@ -549,7 +549,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // 6. Update Light (always runs)
             _light.Update(deltaTime, _camera.Position);
 
-            // â”€â”€ CSM Shadow Pass (always runs for visual updates behind menu) â”€â”€
+            //  CSM Shadow Pass (always runs for visual updates behind menu) 
             if (_csm != null)
             {
                 _csm.UpdateMatrices(_camera, _light.ShadowDirStable);
@@ -596,7 +596,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
             }
 
-            // â”€â”€ Occlusion Culling (always runs for visual updates behind menu) â”€â”€
+            //  Occlusion Culling (always runs for visual updates behind menu) 
             if (Config.OcclusionConfig.UseOcclusion && _objectManager != null && _gameTerrainChunk != null)
             {
                 _occlusionFrameCount++;
@@ -907,7 +907,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             bool wireframeMode = Keyboard.GetIsWireframe();
 
-            // â”€â”€ MAIN RENDER PASS â”€â”€
+            //  MAIN RENDER PASS 
             if (wireframeMode)
             {
                 // Wireframe: render directly to screen, skip postprocess (F1 conflicts with PP)
@@ -926,7 +926,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // 3. Draw Skybox
             _skybox.Draw(_camera, _light, 0f, _skyTextures!, _gameTerrainChunk);
 
-            // â”€â”€ Bind CSM Shadow Maps â”€â”€
+            //  Bind CSM Shadow Maps 
             GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
             GL.BindTexture(Const.GL_TEXTURE_2D, _csm.ShadowTextures[0]);
 
@@ -990,7 +990,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes);
             }
 
-            // â”€â”€ glTF Object Manager â”€â”€
+            //  glTF Object Manager 
             if (_objectManager != null)
             {
                 _objectManager.CullFreezeEnabled = Keyboard.GetCullFreezeMode();
@@ -1000,13 +1000,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _objectManager.DrawHealthBars(_camera, _hud);
             }
 
-            // â”€â”€ Post Process (render SceneFBO to screen) â€” skip in wireframe mode â”€â”€
+            //  Post Process (render SceneFBO to screen) â€” skip in wireframe mode 
             if (!wireframeMode)
                 _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
             else
                 GL.Enable(Const.GL_DEPTH_TEST);
 
-            // â”€â”€ Capture screenshot right after post-process, before any UI overlays â”€â”€
+            //  Capture screenshot right after post-process, before any UI overlays 
             if (_pendingScreenshotSlot >= 0)
             {
                 int slot = _pendingScreenshotSlot;
@@ -1015,14 +1015,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 SaveManager.CaptureScreenshot(slot);
             }
 
-            // â”€â”€ Pause Blur Overlay (skip in wireframe mode) â”€â”€
+            //  Pause Blur Overlay (skip in wireframe mode) 
             if (_paused && !_confirmingExit && !_settingsActive)
             {
                 if (!wireframeMode)
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
             }
 
-            // â”€â”€ HLOD Visualization (toggled with K key) â”€â”€
+            //  HLOD Visualization (toggled with K key) 
             if (Keyboard.GetShowHLOD() && _objectManager != null)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
@@ -1034,7 +1034,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // â”€â”€ Impostor Visualization (toggled with J key) â”€â”€
+            //  Impostor Visualization (toggled with J key) 
             if (Keyboard.GetShowImpostor() && _objectManager != null)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
@@ -1046,7 +1046,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // â”€â”€ Debug BBox Wireframe + LOD Labels (toggled with P key) â”€â”€
+            //  Debug BBox Wireframe + LOD Labels (toggled with P key) 
             if (Keyboard.GetShowBBox() && _objectManager != null)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
@@ -1107,7 +1107,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                     }
 
-                    // â”€â”€ BVH Collision Mesh Debug (toggled with P key) â”€â”€
+                    //  BVH Collision Mesh Debug (toggled with P key) 
                     if (Keyboard.GetShowBVHMesh())
                     {
                         var bvhColor = new Vector3(0f, 1f, 0.5f);
@@ -1129,7 +1129,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // â”€â”€ PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY â”€â”€
+            //  PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY 
             if (_paused)
             {
                 if (_saveLoadActive)
@@ -1152,7 +1152,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     RenderPauseMenu();
             }
 
-            // â”€â”€ HUD â”€â”€
+            // HUD 
             int totalMapTris = TerrainChunk.GetTotalMapTriangles();
             int totalObjTris = _objectManager?.TotalObjectTriangles ?? 0;
             int renderedObjTris = _objectManager?.RenderedTriangles ?? 0;
@@ -1160,11 +1160,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int renderedAllTris = _renderedTris + renderedObjTris;
             string gTime = _light.GetFormattedTime();
 
-            string title1 = $"ðŸ•’ [ {gTime} ]";
-            string title2 = $"âš¡ FPS: {Glfw.GetLastFPS()}";
+            string title1 = $" [ {gTime} ]";
+            string title2 = $" FPS: {Glfw.GetLastFPS()}";
             string freeze = Keyboard.GetCullFreezeMode() ? " [CULL FREEZE]" : "";
-            string title3 = $"ðŸŽ¥ MODE: {_camera.CurrentMode}{freeze}";
-            string title4 = $"ðŸ“ TRIS: {renderedAllTris:N0} / {totalAllTris:N0}  (terrain {_renderedTris:N0} | objects {renderedObjTris:N0})";
+            string title3 = $" MODE: {_camera.CurrentMode}{freeze}";
+            string title4 = $" TRIS: {renderedAllTris:N0} / {totalAllTris:N0}  (terrain {_renderedTris:N0} | objects {renderedObjTris:N0})";
             string title5 = $" POS: X ={_camera.Position.X:N2} Y={_camera.Position.Y:N2} Z={_camera.Position.Z:N2}";
             string title6 = "";
             if (_objectManager != null)
@@ -1174,7 +1174,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 int animOcc = _objectManager.CulledByOcclusion;
                 title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total  (anim: {animFrustum}f {animOcc}occ)";
             }
-            // â”€â”€ Save notification â”€â”€
+            //Save notification
             if (_saveNotificationTimer > 0f)
             {
                 _saveNotificationTimer -= _deltaTime;
@@ -1222,9 +1222,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _hud.DrawText(title7, 10, 60 + debugLineH * 6, new Vector3(0, 1, 1));
             // BVH profiling display (dim cyan)
             if (!string.IsNullOrEmpty(title8))
-                _hud.DrawText(title8, 10, 60 + debugLineH * 8, new Vector3(0.2f, 0.7f, 0.8f));
+                _hud.DrawText(title8, 10, 60 + debugLineH * 7, new Vector3(0.2f, 0.7f, 0.8f));
 
-            // â”€â”€ HLOD Statistics (if any HLOD regions exist) â”€â”€
+            //  HLOD Statistics (if any HLOD regions exist) 
             if (_objectManager != null && _objectManager.staticObjectManagers != null)
             {
                 bool hasHLOD = false;
@@ -1246,17 +1246,55 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     float trisSavedPct = hlodTotalTris > 0
                         ? (1f - (float)hlodMergedTris / hlodTotalTris) * 100f
                         : 0f;
-                    string hlodLine1 = $"HLOD: {hlodObjs:N0} objects  âž”  {hlodRegions} merged regions";
+                    string hlodLine1 = $" HLOD: {hlodObjs:N0} objects  âž”  {hlodRegions} merged regions";
                     string hlodLine2 = $"      Tris: {hlodTotalTris:N0} (indiv) âž” {hlodMergedTris:N0} (merged)  = {trisSavedPct:N1}% saved";
                     string hlodLine3 = $"      Draw calls: {hlodTotalTris:N0} max (indiv) âž” ~{hlodVisible}/{hlodRegions} visible (merged)";
-                    _hud.DrawText(hlodLine1, 10, 40 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine2, 10, 40 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine3, 10, 40 + debugLineH * 10, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine1, 10, 60 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine2, 10, 60 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
+                    _hud.DrawText(hlodLine3, 10, 60 + debugLineH * 10, new Vector3(0.3f, 0.9f, 0.6f));
+                }
+
+                //  Impostor Statistics (shown when impostor visualization is ON via J key) 
+                if (Keyboard.GetShowImpostor())
+                {
+                    int totalImpRegions = _objectManager.TotalImpostorRegions;
+                    int totalImpVisible = _objectManager.TotalVisibleImpostors;
+
+                    // Also collect per-manager NearDist/FarDist from the first manager that has impostors
+                    float nearDist = 0f, farDist = 0f;
+                    foreach (var mgr in _objectManager.staticObjectManagers)
+                    {
+                        if (mgr != null && mgr.ImpostorRegionCount > 0)
+                        {
+                            nearDist = mgr.ImpostorNearDist;
+                            farDist = mgr.ImpostorFarDist;
+                            break;
+                        }
+                    }
+
+                    Vector3 impColor = totalImpVisible > 0
+                        ? new Vector3(0.2f, 1.0f, 0.7f) // cyan-green if visible
+                        : new Vector3(1.0f, 0.6f, 0.2f); // orange if none visible
+
+                    string modeLabel = Keyboard.GetImpostorDebugMode() == 2 ? "AABB" : "Billboard";
+                    string impLine1 = $"IMPOSTOR [{modeLabel}]: {totalImpRegions} regions  |  {totalImpVisible} visible  |  range [{nearDist:F0}-{farDist:F0}]m";
+                    _hud.DrawText(impLine1, 10, 60 + debugLineH * 11, impColor);
+
+                    // Draw a small colored indicator bar at the top-right corner
+                    float indicatorSize = 12f;
+                    float indicatorX = Glfw.WindowWidth - indicatorSize - 10f;
+                    float indicatorY = 65f;
+                    Vector3 indicatorBg = new Vector3(0.05f, 0.05f, 0.08f);
+                    Vector3 indicatorColor = totalImpVisible > 0
+                        ? new Vector3(0.0f, 1.0f, 0.5f)  // bright cyan = some visible
+                        : new Vector3(0.3f, 0.3f, 0.3f); // dim gray = none visible
+                    _hud.DrawBox(indicatorX - 2f, indicatorY - 2f, indicatorSize + 4f, indicatorSize + 4f, indicatorBg);
+                    _hud.DrawBox(indicatorX, indicatorY, indicatorSize, indicatorSize, indicatorColor);
                 }
             }
 
-            // â”€â”€ Update window title (FPS, etc.) â”€â”€
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
+
         }
 
         /// <summary>Handle pause menu input (keyboard + mouse).</summary>
@@ -1338,7 +1376,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             for (int i = 0; i < _hud.ButtonCount; i++)
                 if (_hud.Buttons[i].IsHovered)
                     _saveLoadSelection = i;
-            // â”€â”€ Keyboard navigation â”€â”€
+            //  Keyboard navigation 
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
             bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
@@ -1595,7 +1633,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (hoveredIdx >= 0 && hoveredIdx != _settingsLastHovered)
                 _settingsSelection = hoveredIdx;
             _settingsLastHovered = hoveredIdx;
-            // â”€â”€ Keyboard navigation â”€â”€
+            //  Keyboard navigation 
             bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
             bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
             bool leftDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
