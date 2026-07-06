@@ -98,7 +98,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         // ── Spatial Grid ──
         private const float _gridCellSize = 16f;       // 16×16m cells
-        private float _gridVisibleRange = LOD3_Dist;  // Max visible range (matches LOD3_Distance)
+        private float _gridVisibleRange = LOD3_Dist;  // Max visible range (matches LOD3_Distance by default)
+        /// <summary>Override for grid visible range. Set > 0 to extend beyond LOD3_Dist (e.g. for impostor coverage).</summary>
+        public float GridVisibleRange = -1f;  // -1 = use default (_gridVisibleRange = LOD3_Dist)
         private List<int>[,] _gridCells;
         private float _gridOriginX, _gridOriginZ;       // Stored for cell-center distance check in Draw
 
@@ -604,6 +606,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             int lodLevel = 0;
                             if (meshName.Contains("_LOD3", StringComparison.OrdinalIgnoreCase)) lodLevel = 3;
                             else if (meshName.Contains("_LOD2", StringComparison.OrdinalIgnoreCase)) lodLevel = 2;
+                            else if (meshName.Contains("_LOD1", StringComparison.OrdinalIgnoreCase)) lodLevel = 1;
                             if (!lods.ContainsKey(lodLevel)) lods[lodLevel] = new List<int>();
                             lods[lodLevel].Add(mi);
                         }
@@ -1522,6 +1525,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Use spatial grid if available, otherwise fall back to full iteration
             if (_gridCells != null)
             {
+                // Apply GridVisibleRange override (if set > 0, extends beyond LOD3_Dist for impostor coverage)
+                _gridVisibleRange = GridVisibleRange > 0f ? GridVisibleRange : LOD3_Dist;
+
                 // ── Spatial Grid: only iterate cells within visible range ──
                 // Compute visible cell range based on actual object bounds
                 // Since _gridCells was built from actual object positions, we just

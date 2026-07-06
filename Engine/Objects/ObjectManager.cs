@@ -251,10 +251,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 overrideCollisionSizeZ: 1.2f
                 );
             treesManager.UseHLOD = false; // Trees get HLOD
-            treesManager.UseImpostors = false; // Trees get Octahedral Impostors for far distance
-            treesManager.ImpostorNearDist = 120f;
-            treesManager.ImpostorFarDist = 300f;
-            treesManager.ImpostorFadeDist = 10f;
+            treesManager.UseImpostors = true; // Trees get Octahedral Impostors for far distance
+            treesManager.ImpostorNearDist = 250f; // Matches LOD3 distance — seamless transition from mesh to impostor
+            treesManager.ImpostorFarDist = 600f;  // Extend far so millions of distant trees render as impostors
+            treesManager.ImpostorFadeDist = 20f;  // 20m cross-fade for smooth impostor transition
+            treesManager.GridVisibleRange = 600f;   // Extend grid range to match impostor far distance
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
