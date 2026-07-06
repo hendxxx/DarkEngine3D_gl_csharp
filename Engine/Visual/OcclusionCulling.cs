@@ -27,6 +27,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // Visibility state untuk setiap object (di-set per frame oleh CheckVisibility)
         private readonly List<bool> _visibilityResults = [];
 
+        // ── Hysteresis ──
+        // Distance margin to prevent jitter near occluder edges.
+        // When a corner's distance to the occluder is within this margin of an occlusion
+        // transition (e.g. camera inside AABB and objDist ≈ tmax), the margin prevents
+        // the object from flickering between visible/occluded every frame.
+        private const float HysteresisMargin = 0.5f;
+
         public OcclusionCulling() { }
 
         /// <summary>Daftarkan occluder — object yang bisa menghalangi pandangan.</summary>
@@ -97,10 +104,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     // Check AABB occluders
                     for (int bi = 0; bi < _occluders.Count; bi++)
                     {
-                        if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
+                        if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist, out bool camInside))
                         {
-                            // Skip occluder if camera is inside it (hitDist <= 0)
-                            if (hitDist > 0.001f && hitDist < objDist)
+                            // Hysteresis: when camera is inside the occluder and objDist ≈ tmax
+                            // (object near exit wall), add margin to prevent jitter.
+                            float compareDist = camInside ? hitDist + HysteresisMargin : hitDist;
+                            if (hitDist > 0.001f && compareDist < objDist)
                             {
                                 cornerOccluded = true;
                                 break;
@@ -183,10 +192,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // Check AABB occluders
                 for (int bi = 0; bi < _occluders.Count; bi++)
                 {
-                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
+                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist, out bool camInside))
                     {
-                        // Skip occluder if camera is inside it (hitDist <= 0)
-                        if (hitDist > 0.001f && hitDist < objDist)
+                        float compareDist = camInside ? hitDist + HysteresisMargin : hitDist;
+                        if (hitDist > 0.001f && compareDist < objDist)
                         {
                             cornerOccluded = true;
                             break;
@@ -240,11 +249,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
         }
 
-        /// <summary>Ray-AABB intersection test (slabs method). Returns both entry (t) and exit distance.</summary>
-        private static bool RayIntersectsAABB(Vector3 origin, Vector3 dir, Helpers.ObjectHelpers.AABB box, out float t)
+        /// <summary>Ray-AABB intersection test (slabs method). Returns entry (tmin) or exit (tmax) distance.</summary>
+        /// <remarks>
+        /// Camera-inside-occluder logic: when camera is inside AABB (tmin ≤ 0), we return
+        /// tmax (exit point) as the hit distance. This allows the caller's hitDist < objDist
+        /// check to correctly determine:
+        ///   - Object inside same AABB (objDist < tmax) → visible ✓
+        ///   - Object outside AABB (objDist > tmax) → occluded ✓
+        ///
+        /// Hysteresis: callers add a 0.5m margin (hitDist + HysteresisMargin < objDist) when
+        /// camera is inside, preventing jitter when objDist ≈ tmax at the exit wall.
+        /// </remarks>
+        /// <summary>Ray-AABB intersection test (slabs method). Returns entry/exit distance + inside flag.</summary>
+        /// <param name="cameraInside">True if the ray origin is inside the AABB (tmin ≤ 0).</param>
+        /// <remarks>
+        /// Camera-inside-occluder logic: when origin is inside AABB (tmin ≤ 0), we return
+        /// tmax (exit point) as the hit distance. This allows the caller to correctly determine:
+        ///   - Object inside same AABB (objDist < tmax) → visible ✓
+        ///   - Object outside AABB (objDist > tmax) → occluded ✓
+        ///
+        /// Hysteresis: when cameraInside is true, callers add HysteresisMargin to the comparison
+        /// to prevent jitter when objDist ≈ tmax (object near the exit wall).
+        /// </remarks>
+        private static bool RayIntersectsAABB(Vector3 origin, Vector3 dir, Helpers.ObjectHelpers.AABB box, out float t, out bool cameraInside)
         {
             t = 0f;
-            // exitDist computed inline (not stored separately)
+            cameraInside = false;
             float tmin = 0f;
             float tmax = float.MaxValue;
 
@@ -272,12 +302,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
             }
 
-            // Camera-inside-occluder fix: when camera is inside AABB (tmin <= 0),
-            // use exit point (tmax) as hit distance instead of skipping the occluder.
+            // Camera-inside-occluder: return exit point (tmax) so callers can test objDist < tmax
             if (tmin <= 0f && tmax > 0.001f)
+            {
+                cameraInside = true;
                 t = tmax;
+            }
             else
+            {
                 t = tmin;
+            }
             return true;
         }
     }

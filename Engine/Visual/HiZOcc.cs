@@ -85,10 +85,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 bool cornerOccluded = false;
                 for (int bi = 0; bi < _occluders.Count; bi++)
                 {
-                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist))
+                    const float hysMargin = 0.5f;
+                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist, out bool camInside))
                     {
-                        // Skip occluder if camera is inside it (hitDist <= 0)
-                        if (hitDist > 0.001f && hitDist < objDist)
+                        float compareDist = camInside ? hitDist + hysMargin : hitDist;
+                        if (hitDist > 0.001f && compareDist < objDist)
                         {
                             cornerOccluded = true;
                             break;
@@ -280,9 +281,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // RAY-AABB (slabs method)
         // =====================================================
 
-        private static bool RayIntersectsAABB(Vector3 origin, Vector3 dir, Helpers.ObjectHelpers.AABB box, out float t)
+        /// <summary>Ray-AABB intersection test (slabs method). Returns entry distance (t).</summary>
+        /// <remarks>
+        /// When the camera is INSIDE an AABB occluder (e.g. inside a dungeon), tmin will be ≤ 0.
+        /// The caller (IsOccluded) checks hitDist > 0.001f, so this occluder is automatically
+        /// skipped — correct behavior because AABB is only a coarse approximation of the
+        /// actual geometry. Using the exit point (tmax) would incorrectly occlude objects
+        /// behind the dungeon's exit walls.
+        /// </remarks>
+        /// <summary>Ray-AABB intersection test (slabs method). Returns entry/exit distance + inside flag.</summary>
+        private static bool RayIntersectsAABB(Vector3 origin, Vector3 dir, Helpers.ObjectHelpers.AABB box, out float t, out bool cameraInside)
         {
             t = 0f;
+            cameraInside = false;
             float tmin = 0f;
             float tmax = float.MaxValue;
 
@@ -310,11 +321,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
             }
 
-            // Camera-inside-occluder fix: use exit point (tmax) when camera is inside AABB
             if (tmin <= 0f && tmax > 0.001f)
+            {
+                cameraInside = true;
                 t = tmax;
+            }
             else
+            {
                 t = tmin;
+            }
             return true;
         }
 
