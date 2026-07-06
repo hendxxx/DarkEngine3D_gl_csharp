@@ -4,6 +4,7 @@ using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
+using DarkEngine3D_gl_csharp.Engine.Utils;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing;
 using System.Numerics;
@@ -148,7 +149,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         // Shadow quality presets shared via ShadowPresets.CascadeSizes (no local field needed)
 
         //  FPS counter 
+        //  I key edge detection for physics cube respawn
+        private bool _iWasDown = false;
+
         private int _renderedTris;
+        private readonly List<PhysicsBox> _physicsBoxes = new();
+
+        // Spawn config for physics cubes
+        private const int PhysicsBoxCount = 30;
+        private const float PhysicsBoxSpawnHeight = 40f;
+        private const float PhysicsBoxSpawnRadius = 50f;
 
         public GameScene(SceneManager sceneManager, Camera camera, Lights light)
         {
@@ -315,6 +325,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
 
+            // Spawn physics cubes above terrain so they fall with gravity
+            SpawnPhysicsCubes();
+
             Mouse.ShowMouse(false);
 
             Console.WriteLine("[GameScene] Engine Running...");
@@ -425,6 +438,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // 3. Update keyboard
                     Keyboard.Update(window, _light, _camera, deltaTime, _gameTerrainChunk);
 
+                    // 3B. Check for I key to respawn physics cubes
+                    bool iDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_I);
+                    if (iDown && !_iWasDown)
+                    {
+                        RespawnPhysicsCubes();
+                    }
+                    _iWasDown = iDown;
+
+
                     // 3A. Check if camera mode changed and notify player
                     if (_camera.CurrentMode != _lastCameraMode && _objectManager != null)
                     {
@@ -459,6 +481,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
+
+                //  Update falling physics cubes
+                UpdatePhysicsBoxes(deltaTime);
 
                 //  COLLISION: push NPC out of static objects (always runs) 
                 var allObjs = _objectManager.GetObjects();
@@ -988,6 +1013,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
 
                 _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes);
+
+                //  Physics Boxes (falling cubes) - drawn while main shader is active
+                foreach (var box in _physicsBoxes)
+                    box.Draw();
             }
 
             //  glTF Object Manager 
@@ -2068,6 +2097,60 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             _hud.DrawText(label, sx - _hud.GetTextExtents(label).Width * 0.5f, sy - 18f, color, new Vector3(0f, 0f, 0f), 1.5f);
+        }
+
+        /// <summary>Spawn random colored cubes above terrain so they fall with gravity.</summary>
+        /// <summary>Clear existing physics cubes and respawn new ones above terrain.</summary>
+        private void RespawnPhysicsCubes()
+        {
+            // Dispose old boxes
+            foreach (var box in _physicsBoxes)
+                box.Dispose();
+            _physicsBoxes.Clear();
+
+            SpawnPhysicsCubes();
+            Console.WriteLine("[GameScene] Physics cubes respawned (" + _physicsBoxes.Count + " boxes).");
+        }
+
+
+        private void SpawnPhysicsCubes()
+        {
+            if (_gameTerrainChunk == null) return;
+            var rng = new Random();
+            for (int i = 0; i < PhysicsBoxCount; i++)
+            {
+                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                float dist = rng.NextFloat(5f, PhysicsBoxSpawnRadius);
+                float px = MathF.Cos(angle) * dist;
+                float pz = MathF.Sin(angle) * dist;
+                float terrainY = _gameTerrainChunk.GetHeightAt(px, pz);
+                float py = terrainY + PhysicsBoxSpawnHeight;
+
+                float size = rng.NextFloat(0.5f, 2.5f);
+                var color = new Vector3(
+                    rng.NextFloat(0.2f, 1.0f),
+                    rng.NextFloat(0.2f, 1.0f),
+                    rng.NextFloat(0.2f, 1.0f)
+                );
+
+                var box = new PhysicsBox(
+                    new Vector3(px, py, pz),
+                    new Vector3(size, size, size),
+                    color
+                );
+                _physicsBoxes.Add(box);
+            }
+            Console.WriteLine($"[GameScene] Spawned {_physicsBoxes.Count} physics cubes.");
+        }
+
+        /// <summary>Update all active physics cubes (gravity, terrain collision).</summary>
+        private void UpdatePhysicsBoxes(float dt)
+        {
+            if (_gameTerrainChunk == null) return;
+            for (int i = _physicsBoxes.Count - 1; i >= 0; i--)
+            {
+                _physicsBoxes[i].Update(dt, _gameTerrainChunk);
+            }
         }
 
         public void Exit()

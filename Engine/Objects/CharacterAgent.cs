@@ -548,6 +548,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _obj.PlaybackSpeed = 1f;
             _heading = _targetHeading = RandomAngle();
             _aiTickAccum = 0f;
+            Physics.Reset();
             ChooseWanderAction();
         }
 
@@ -585,11 +586,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float GaitBlendAccel = 6.0f;   // walk→run: ~0.17s to reach 63%
         private const float GaitBlendDecel = 10.0f;   // run→walk: ~0.1s to reach 63%
 
-        private float _verticalVelocity = 0f;
-        private float gravity = -9.81f;
-        private float jumpForce = 60f;
-        private bool _isJumping = false;
-        private bool _jumpCut = false;
+        /// <summary>Physics body for velocity-based movement (gravity, ground state, impulses).</summary>
+        public PhysicsBody Physics = new();
+        private const float JumpVelocity = 8f;          // upward impulse on jump
+        private const float AirControlFactor = 0.4f;    // 40% horizontal control while airborne
+        private const float GroundedEpsilon = 0.05f;    // tolerance for ground detection
+        private bool _isJumping = false;                 // animation state only
         private float headingVelocity = 0f;
         // -----------------------------------------------------------------------
         //  Movement with LOD
@@ -652,12 +654,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A)) inputDir -= right;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D)) inputDir += right;
 
-                // ── Block horizontal movement during jump ──
-                if (_isJumping)
-                {
-                    inputDir = Vector3.Zero;
-                }
-
+                // ── Air control: horizontal movement is NOT blocked during jump!
+                // Velocity-based physics allows reduced control in the air via AirControlFactor.
                 bool hasInput = inputDir.LengthSquared() > 0.0001f;
                 if (hasInput) inputDir = Vector3.Normalize(inputDir);
 
@@ -698,6 +696,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // ── Acceleration / Deceleration (smooth, weighty) ──
                 float accel = hasInput ? Acceleration : Deceleration;
+                // Air control: reduce acceleration when not grounded
+                if (!Physics.IsGrounded)
+                    accel *= AirControlFactor;
                 // Use critically-damped spring for smooth, weighty feel
                 float lerpFactor = 1f - MathF.Exp(-accel * dt);
                 _currentSpeed += (targetSpeed - _currentSpeed) * lerpFactor;
@@ -762,6 +763,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             // Blocked — use collision-pushed position
                             newPos = pushed;
                             _currentSpeed *= 0.85f;
+                            // Dampen horizontal velocity on wall collision to prevent sliding
+                            Physics.Velocity.X *= 0.3f;
+                            Physics.Velocity.Z *= 0.3f;
                         }
                     }
                 }
@@ -787,46 +791,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _oneShotName = "block";
                     _obj.PlayOnce("block", "fightstance");
                 }
-                // --- JUMP ---
-                else if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && !_oneShotPlaying && !_isJumping)
+                // --- JUMP (physics-based) ---
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && Physics.IsGrounded && !_oneShotPlaying && !_isJumping)
                 {
+                    // Apply jump impulse to physics velocity
+                    Physics.Velocity.Y = JumpVelocity;
+                    Physics.IsGrounded = false;
+                    _isJumping = true;
                     _oneShotPlaying = true;
                     _oneShotName = "jump-end";
-                    _isJumping = true;
-                    _verticalVelocity = jumpForce;
-                    _obj.PlayOnce("jump-end","idle");
+                    _obj.PlayOnce("jump-end", "idle");
                 }
 
                 // =====================
-                // GRAVITY / JUMP
+                // PHYSICS: GRAVITY & GROUND
                 // =====================
-                if (_isJumping)
+                // Apply gravity to velocity (consistent, no hacky multipliers)
+                if (Physics.UseGravity)
                 {
-                    if (!_jumpCut && _verticalVelocity > 1f && !Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
-                    {
-                        _verticalVelocity *= 0.15f;
-                        _jumpCut = true;
-                    }
+                    Physics.Velocity.Y += PhysicsBody.GravityAccel * Physics.GravityScale * dt;
+                }
 
-                    float effectiveGravity = _verticalVelocity > 0 ? gravity : gravity * 1.5f;
+                // Apply velocity to position
+                newPos += Physics.Velocity * dt;
 
-                    if (_verticalVelocity > -0.8f && _verticalVelocity < 0.8f && !_jumpCut)
-                        effectiveGravity *= 0.4f;
+                // Ground detection: check if character is at or below terrain level
+                float groundY = terrain.GetHeightAt(newPos.X, newPos.Z);
 
-                    _verticalVelocity += effectiveGravity * dt;
-                    newPos.Y += _verticalVelocity * dt;
-
-                    float groundY = terrain.GetHeightAt(newPos.X, newPos.Z);
-
-                    if (newPos.Y <= groundY)
-                    {
-                        newPos.Y = groundY;
-                        _isJumping = false;
-                        _jumpCut = false;
-                        _verticalVelocity = 0f;
-
-                        // Jump landing — next frame locomotion animation resumes naturally
-                    }
+                if (Physics.Velocity.Y <= 0f && newPos.Y <= groundY + GroundedEpsilon)
+                {
+                    // Landed on ground
+                    newPos.Y = groundY;
+                    Physics.Velocity.Y = 0f;
+                    Physics.IsGrounded = true;
+                    _isJumping = false;
+                }
+                else if (newPos.Y > groundY + GroundedEpsilon)
+                {
+                    // Airborne
+                    Physics.IsGrounded = false;
                 }
 
                 // =====================
@@ -851,13 +854,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     }
                 }
 
-                if (_isJumping)
-                {
-                    Position = newPos;
-                    _obj.Position = newPos;
-                    _obj.SetFacing(_heading);
-                    return;
-                }
+                // ── Jump animation still playing — we don't return early anymore!
+                // Physics allows horizontal air control, so we continue to the
+                // locomotion animation section below to play appropriate animations.
 
                 // =====================
                 // LOCOMOTION ANIMATION (speed + direction)
@@ -995,6 +994,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 ? LODConfig.SimulatedSpeedMultiplier
                 : 1f;
 
+            // ── NPC horizontal movement (existing) ──
             if (_speed > 0f)
             {
                 var f = Forward;
@@ -1013,7 +1013,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 p.Z += f.Z * _speed  * speedMul * moveScaleMul * dt;
             }
 
-            p.Y = terrain.GetHeightAt(p.X, p.Z);
+            // ── NPC Physics: apply gravity ──
+            if (Physics.UseGravity)
+            {
+                Physics.Velocity.Y += PhysicsBody.GravityAccel * Physics.GravityScale * dt;
+            }
+            p.Y += Physics.Velocity.Y * dt;
+
+            // ── NPC ground check ──
+            float npcTerrainY = terrain.GetHeightAt(p.X, p.Z);
+            if (Physics.Velocity.Y <= 0f && p.Y <= npcTerrainY + GroundedEpsilon)
+            {
+                // NPC landed on terrain
+                p.Y = npcTerrainY;
+                Physics.Velocity.Y = 0f;
+                Physics.IsGrounded = true;
+            }
+            else if (p.Y > npcTerrainY + GroundedEpsilon)
+            {
+                Physics.IsGrounded = false;
+            }
+
             _obj.Position = p;
         }
         

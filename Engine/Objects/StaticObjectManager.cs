@@ -1915,14 +1915,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var kv in _shadowInstanceLists)
                 kv.Value.Mats.Clear();
             _shadowInstanceLists.Clear();
-
             foreach (var obj in _objects)
             {
                 if (!obj.CastShadow) continue;
 
-                // Skip occlusion-culled objects (IsVisible=false set by GameScene occlusion pipeline)
-                if (OcclusionCulling.Enabled && !obj.IsVisible)
-                    continue;
+                // Shadow pass uses its own culling (light-space frustum + distance), NOT IsVisible.
+                // Objects outside camera frustum can still cast shadows visible inside the frustum.
+
 
                 if (planes != null)
                 {
