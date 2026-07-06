@@ -61,11 +61,17 @@ void main()
         color.rgb = color.rgb / max(color.a, 0.001);
     color.a = 1.0;  // Fully opaque after reconstruction
 
-    // ── Use baked atlas directly (no dynamic brightness/tint) ──
-    // The atlas was baked with a 45° sun and warm light color (0.95, 0.93, 0.88).
-    // Rendering it as-is preserves the original rich baked shading exactly.
-    // Dynamic brightness/tint adjustments made the impostor look darker than
-    // the original trees, which is the most noticeable artifact at distance.
+    // ── Precise scene lighting adaptation ──
+    // The atlas was baked with a 45° sun and fixed light color (0.95, 0.93, 0.88).
+    // The baked pixels already encode the surface PBR response (diffuse, specular,
+    // ambient occlusion) to that specific light. To adapt to the current scene
+    // lighting precisely, we multiply by the ratio of scene light to baked light.
+    // This preserves the baked shading detail exactly while matching the current
+    // light color and intensity — no heuristic curves or percentages needed.
+    vec3 bakedLightColor = vec3(0.95, 0.93, 0.88);
+    color.rgb *= lightColor / bakedLightColor;
+    // Minimum ambient floor to prevent pure black at night
+    color.rgb = max(color.rgb, vec3(0.04));
 
     // ── Fog ──
     if (useFog == 1)

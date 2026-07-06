@@ -937,10 +937,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                     if (diag < 1e-6f) continue;
 
                     // Generate LOD1, LOD2, and LOD3 (increasingly aggressive simplification)
-                    // LOD1: mild (2% of diagonal — ~50% vertex reduction)
-                    // LOD2: medium (6% of diagonal — ~85% reduction)
-                    // LOD3: heavy (15% of diagonal — ~95% reduction — last mesh level before impostors)
-                    float[] cellSizes = [diag * 0.02f, diag * 0.06f, diag * 0.15f];
+                    // LOD1: gentle (1% of diagonal — ~30% vertex reduction)
+                    // LOD2: moderate (3% of diagonal — ~50% reduction)
+                    // LOD3: medium (8% of diagonal — ~70% reduction — last mesh level before impostors)
+                    float[] cellSizes = [diag * 0.01f, diag * 0.03f, diag * 0.08f];
                     string[] suffixes = ["_LOD1", "_LOD2", "_LOD3"];
 
                     for (int li = 0; li < 3; li++)

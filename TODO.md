@@ -6,6 +6,7 @@ Pending:
 4. terrain displacement mapping and tessellation shaders
 5. Octahedral Impostors
 6. buatin editor buat edit biomes, terrain, nanti muncul menu buat pilih biomes apa yang mau di edit, nanti bisa pilih brush size, dan bisa pilih biomes apa yang mau di ganti, misal: hijau tua=pohon mau diganti jadi hijau=rumput, dst. nanti bisa di save ke file biomes.
+7. eimplemet ECS dan multi-threading untuk rendering, physics, dan animasi.
 
 Done, misc:
 1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
