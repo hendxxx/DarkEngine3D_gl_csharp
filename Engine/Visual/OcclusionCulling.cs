@@ -240,10 +240,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
         }
 
-        /// <summary>Ray-AABB intersection test (slabs method).</summary>
+        /// <summary>Ray-AABB intersection test (slabs method). Returns both entry (t) and exit distance.</summary>
         private static bool RayIntersectsAABB(Vector3 origin, Vector3 dir, Helpers.ObjectHelpers.AABB box, out float t)
         {
             t = 0f;
+            // exitDist computed inline (not stored separately)
             float tmin = 0f;
             float tmax = float.MaxValue;
 
@@ -256,7 +257,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 if (MathF.Abs(dirComp) < 1e-7f)
                 {
-                    // Ray sejajar dengan axis ini — cek apakah origin di dalam slab
                     if (originComp < minComp || originComp > maxComp)
                         return false;
                 }
@@ -272,7 +272,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
             }
 
-            t = tmin;
+            // Camera-inside-occluder fix: when camera is inside AABB (tmin <= 0),
+            // use exit point (tmax) as hit distance instead of skipping the occluder.
+            if (tmin <= 0f && tmax > 0.001f)
+                t = tmax;
+            else
+                t = tmin;
             return true;
         }
     }

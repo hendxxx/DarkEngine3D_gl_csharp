@@ -44,7 +44,7 @@ void main()
     int tyB = 0;
     vec2 uvB = vUV * tileSize + vec2(txB, tyB) * tileSize;
 
-    // Sample and blend
+    // Sample and blend between the two nearest tiles
     vec4 colorA = texture(impostorAtlas, uvA);
     vec4 colorB = texture(impostorAtlas, uvB);
     vec4 color = mix(colorA, colorB, blend);
@@ -52,9 +52,22 @@ void main()
     // Discard fully transparent pixels
     if (color.a < 0.05) discard;
 
-    // Apply simple lighting from pre-rendered albedo
-    // (The impostor atlas stores pre-lit final color)
-    // Just apply fog
+    // ── Alpha un-premultiply: fix dark halos ──
+    // The atlas background is black (0,0,0,0). Bilinear texture filtering blends
+    // tree-edge pixels with the black background, producing a dark translucent edge.
+    // We reconstruct the original color by dividing RGB by alpha.
+    // This eliminates the "dark halo" artifact around tree crowns and leaves.
+    if (color.a < 0.95)
+        color.rgb = color.rgb / max(color.a, 0.001);
+    color.a = 1.0;  // Fully opaque after reconstruction
+
+    // ── Use baked atlas directly (no dynamic brightness/tint) ──
+    // The atlas was baked with a 45° sun and warm light color (0.95, 0.93, 0.88).
+    // Rendering it as-is preserves the original rich baked shading exactly.
+    // Dynamic brightness/tint adjustments made the impostor look darker than
+    // the original trees, which is the most noticeable artifact at distance.
+
+    // ── Fog ──
     if (useFog == 1)
     {
         float dist = length(viewPos - center);
@@ -64,5 +77,5 @@ void main()
         color.rgb = mix(fogColor, color.rgb, fogFactor);
     }
 
-    FragColor = vec4(color.rgb, color.a * debugOpacity);
+    FragColor = vec4(color.rgb, debugOpacity);
 }

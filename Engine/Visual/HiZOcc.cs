@@ -310,7 +310,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
             }
 
-            t = tmin;
+            // Camera-inside-occluder fix: use exit point (tmax) when camera is inside AABB
+            if (tmin <= 0f && tmax > 0.001f)
+                t = tmax;
+            else
+                t = tmin;
             return true;
         }
 
