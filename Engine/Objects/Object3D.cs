@@ -28,6 +28,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int VertexCount => _vertexCount;
         private int useTexture;
 
+        // Flag agar Draw() tidak timpa modelMatrix kalo sudah di-set via UpdateModelMatriC
+        private bool _useCustomModelMatrix = false;
+
         // NEW: joints for skinning (safe default)
         private Matrix4x4[] joints = Array.Empty<Matrix4x4>();
 
@@ -134,6 +137,65 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return obj;
         }
 
+        /// <summary>
+        /// Create simple sphere vertices with proper normals for lighting.
+        /// Uses indexed triangle approach - no degenerate poles.
+        /// </summary>
+        public static Vertex[] CreateSphereVertices(float radius, Vector3 color, int slices = 12, int stacks = 8)
+        {
+            var verts = new List<Vertex>();
+
+            for (int i = 0; i <= stacks; i++)
+            {
+                float stackAngle = MathF.PI * 0.5f - i * MathF.PI / stacks;
+                float xy = radius * MathF.Cos(stackAngle);
+                float z = radius * MathF.Sin(stackAngle);
+
+                for (int j = 0; j <= slices; j++)
+                {
+                    float sliceAngle = j * 2f * MathF.PI / slices;
+                    float x = xy * MathF.Cos(sliceAngle);
+                    float y = xy * MathF.Sin(sliceAngle);
+
+                    Vector3 pos = new(x, y, z);
+                    Vector3 normal = Vector3.Normalize(pos);
+                    float u = (float)j / slices;
+                    float v = (float)i / stacks;
+
+                    verts.Add(new Vertex(pos.X, pos.Y, pos.Z, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u, v));
+                }
+            }
+
+            var triangles = new List<Vertex>();
+            for (int i = 0; i < stacks; i++)
+            {
+                for (int j = 0; j < slices; j++)
+                {
+                    int first = i * (slices + 1) + j;
+                    int second = first + slices + 1;
+
+                    triangles.Add(verts[first]);
+                    triangles.Add(verts[second]);
+                    triangles.Add(verts[first + 1]);
+
+                    triangles.Add(verts[second]);
+                    triangles.Add(verts[second + 1]);
+                    triangles.Add(verts[first + 1]);
+                }
+            }
+
+            return triangles.ToArray();
+        }
+
+        public static Object3D CreateSphereObject(float radius, float px, float py, float pz, Vector3 color)
+        {
+            var obj = new Object3D(0, 0, 0);
+            Vertex[] sphereVerts = CreateSphereVertices(radius, color);
+            obj.Generate(obj.ShaderProgram, sphereVerts);
+            obj.SetPosition(px, py, pz);
+            return obj;
+        }
+
         public static Object3D[] SpawnFourRandomBigBoxes( TerrainChunk terrain, int seed = 12345, float areaRadius = 60f)
         {
             var rng = new Random(seed);
@@ -183,7 +245,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             OpenGL.EnableFaceCulling(false);
              
-            modelMatrix = Matrix4x4.CreateTranslation(objectPosition);
+            if (!_useCustomModelMatrix)
+                modelMatrix = Matrix4x4.CreateTranslation(objectPosition);
+            _useCustomModelMatrix = false; // reset setelah dipakai
 
             fixed (float* ptr = &modelMatrix.M11)
             {
@@ -289,10 +353,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             joints = newJoints ?? Array.Empty<Matrix4x4>();
         }
 
-         public void  UpdateModelMatriC(Matrix4x4 newModel)
-        { 
-                modelMatrix = newModel;
-             
+         public void UpdateModelMatriC(Matrix4x4 newModel)
+        {
+            modelMatrix = newModel;
+            _useCustomModelMatrix = true;
         }
     }
 }

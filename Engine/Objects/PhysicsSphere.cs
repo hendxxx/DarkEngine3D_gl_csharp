@@ -1,21 +1,20 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
-using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
     /// <summary>
-    /// A colored box with physics — falls due to gravity, lands on terrain.
+    /// A colored sphere with physics — falls due to gravity, lands on terrain.
     /// Uses Object3D for rendering and PhysicsBody for velocity/gravity simulation.
     /// </summary>
-    public unsafe class PhysicsBox : IDisposable
+    public unsafe class PhysicsSphere : IDisposable
     {
         public Object3D? Object3D;
         public PhysicsBody Physics;
         public Vector3 Position;
-        public Vector3 Size;
-        public Vector3 BoxColor;
+        public float Radius;
+        public Vector3 SphereColor;
         public bool Active = true;
         public bool IsVisible = true;
 
@@ -25,26 +24,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // Collision & Occlusion flags — mirip StaticObject
         public bool IsOccluder = true;
         public bool IsCollidable = true;
-        public CollisionType ColType = CollisionType.Box;
+        public CollisionType ColType = CollisionType.Sphere;
         public bool CastShadow = true;
 
-        public float HalfHeight => Size.Y * 0.5f;
-        public float HalfWidth => Size.X * 0.5f;
-        public float HalfDepth => Size.Z * 0.5f;
+        // Rolling rotation (radians)
+        public float RotationX, RotationZ;
 
-        // Bounce coefficient
-        private const float BounceCoeff = 0.3f;
+        // Bounce coefficient: 0.5 = moderate bounce
+        private const float BounceCoeff = 0.5f;
         // Ground friction applied on landing
         private const float GroundFriction = 0.95f;
 
-        public PhysicsBox(Vector3 position, Vector3 size, Vector3 color)
+        public PhysicsSphere(Vector3 position, float radius, Vector3 color)
         {
             Position = position;
-            Size = size;
-            BoxColor = color;
+            Radius = radius;
+            SphereColor = color;
 
-            // Create the renderable box Object3D
-            Vertex[] verts = Object3D.CreateBoxVertices(size.X, size.Y, size.Z, color);
+            // Create the renderable sphere Object3D
+            Vertex[] verts = Object3D.CreateSphereVertices(radius, color);
             Object3D = new Object3D(position.X, position.Y, position.Z);
             Object3D.Generate(Object3D.ShaderProgram, verts);
             Object3D.SetPosition(position.X, position.Y, position.Z);
@@ -77,18 +75,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Apply velocity to position
             Position += Physics.Velocity * dt;
 
-            // Ground collision: check box bottom against terrain height
+            // Ground collision: check sphere bottom against terrain height
             float terrainY = terrain.GetHeightAt(Position.X, Position.Z);
-            float boxBottom = Position.Y - HalfHeight;
+            float sphereBottom = Position.Y - Radius;
 
-            if (boxBottom <= terrainY)
+            if (sphereBottom <= terrainY)
             {
                 // Landed on terrain
-                Position.Y = terrainY + HalfHeight;
+                Position.Y = terrainY + Radius;
 
+                // Always bounce with coefficient
                 if (MathF.Abs(Physics.Velocity.Y) > 0.5f)
                 {
                     Physics.Velocity.Y = -Physics.Velocity.Y * BounceCoeff;
+                    // Reduce horizontal speed slightly on bounce
                     Physics.Velocity.X *= 0.9f;
                     Physics.Velocity.Z *= 0.9f;
                 }
@@ -108,18 +108,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 Physics.IsGrounded = false;
             }
 
-            // Sync Object3D position for rendering
+            // Rolling rotation based on horizontal velocity
+            float speed = MathF.Sqrt(Physics.Velocity.X * Physics.Velocity.X + Physics.Velocity.Z * Physics.Velocity.Z);
+            if (speed > 0.01f && Physics.IsGrounded)
+            {
+                // Rotate sphere in direction of movement (roll = distance / radius)
+                float dist = speed * dt;
+                RotationX += (Physics.Velocity.Z / speed) * dist / Radius;
+                RotationZ -= (Physics.Velocity.X / speed) * dist / Radius;
+            }
+
+            // Sync Object3D position + rotation for rendering
             Object3D?.SetPosition(Position.X, Position.Y, Position.Z);
 
             // Update cached AABB
-            Vector3 half = new(HalfWidth, HalfHeight, HalfDepth);
+            Vector3 half = new(Radius, Radius, Radius);
             CachedWorldAABB = new Helpers.ObjectHelpers.AABB(Position - half, Position + half);
         }
 
-        /// <summary>Draw the box using the main shader program.</summary>
+        /// <summary>Draw the sphere using the main shader program.</summary>
         public void Draw()
         {
             if (!Active || Object3D == null) return;
+            // Apply rolling rotation to the model matrix before drawing
+            if (Object3D != null)
+            {
+                var rotMat = Matrix4x4.CreateRotationX(RotationX) * Matrix4x4.CreateRotationZ(RotationZ);
+                var transMat = Matrix4x4.CreateTranslation(Position);
+                Object3D.UpdateModelMatriC(rotMat * transMat);
+            }
             Object3D.Draw(0, nint.Zero, 0);
         }
 

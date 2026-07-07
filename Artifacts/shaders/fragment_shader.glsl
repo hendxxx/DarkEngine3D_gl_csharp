@@ -385,7 +385,15 @@ void main() {
 
     vec3 diffuse = finalDiff * activeLightColor * shadowMask * shadow;
 
-    vec3 result = (ambient + diffuse) * texColor;
+    vec3 result;
+    if (useTexture == 1) {
+        // Textured terrain: per-pixel normal-dependent lighting
+        result = (ambient + diffuse) * texColor;
+    } else {
+        // Vertex-colored: uniform lighting (no normal-dependent shading) with shadows
+        float lit = ambientStrength * (1.0 - shadow) + shadow;
+        result = lit * activeLightColor * texColor;
+    }
 
     // DEBUG CSM COLOR
     if (showCSMCascadeColor == 1) {

@@ -153,12 +153,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _iWasDown = false;
 
         private int _renderedTris;
-        private readonly List<PhysicsBox> _physicsBoxes = new();
-
-        // Spawn config for physics cubes
-        private const int PhysicsBoxCount = 30;
-        private const float PhysicsBoxSpawnHeight = 40f;
-        private const float PhysicsBoxSpawnRadius = 50f;
 
         public GameScene(SceneManager sceneManager, Camera camera, Lights light)
         {
@@ -325,8 +319,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
 
-            // Spawn physics cubes above terrain so they fall with gravity
-            SpawnPhysicsCubes();
+            // Spawn physics cubes and spheres above terrain so they fall with gravity
+            _objectManager.SpawnPhysicsCubes(_gameTerrainChunk);
+            _objectManager.SpawnPhysicsSpheres(_gameTerrainChunk);
 
             Mouse.ShowMouse(false);
 
@@ -442,7 +437,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     bool iDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_I);
                     if (iDown && !_iWasDown)
                     {
-                        RespawnPhysicsCubes();
+                        _objectManager.RespawnPhysicsCubes(_gameTerrainChunk);
                     }
                     _iWasDown = iDown;
 
@@ -482,8 +477,102 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
 
-                //  Update falling physics cubes
-                UpdatePhysicsBoxes(deltaTime);
+                //  Update falling physics cubes and spheres
+                _objectManager.UpdatePhysicsBoxes(deltaTime, _gameTerrainChunk);
+                _objectManager.UpdatePhysicsSpheres(deltaTime, _gameTerrainChunk);
+
+                //  Resolve physics objects vs static objects (bounce off walls)
+                _objectManager.ResolvePhysicsStaticCollisions();
+
+                //  COLLISION: physics objects vs player (sphere vs capsule push-out)
+                {
+                    var pPos = playerAgent.Position;
+                    var pRadius = CharacterAgent.CollisionRadius;
+                    float pSegMin = pPos.Y + pRadius;
+                    float pSegMax = pPos.Y + playerAgent.CollisionHeight - pRadius;
+                    bool playerPushed = false;
+
+                    // Boxes vs player
+                    var omBoxes = _objectManager.PhysicsBoxes;
+                    for (int bi = 0; bi < omBoxes.Count; bi++)
+                    {
+                        var box = omBoxes[bi];
+                        if (!box.Active) continue;
+
+                        float closestX = Math.Clamp(pPos.X, box.Position.X - box.HalfWidth, box.Position.X + box.HalfWidth);
+                        float closestZ = Math.Clamp(pPos.Z, box.Position.Z - box.HalfDepth, box.Position.Z + box.HalfDepth);
+                        float dx = pPos.X - closestX;
+                        float dz = pPos.Z - closestZ;
+                        float distSq = dx * dx + dz * dz;
+
+                        // Quick Y overlap check (capsule vs box)
+                        float boxMinY = box.Position.Y - box.HalfHeight;
+                        float boxMaxY = box.Position.Y + box.HalfHeight;
+                        float overlapY = MathF.Min(pSegMax, boxMaxY) - MathF.Max(pSegMin, boxMinY);
+                        if (overlapY <= 0.001f) continue;
+
+                        float minDist = pRadius;
+                        if (distSq >= minDist * minDist) continue;
+
+                        float dist = MathF.Sqrt(distSq);
+                        float nx, nz;
+                        if (dist > 1e-4f) { nx = dx / dist; nz = dz / dist; }
+                        else { nx = 1f; nz = 0f; }
+
+                        float push = (minDist - dist) * 0.5f;
+                        pPos.X += nx * push;
+                        pPos.Z += nz * push;
+                        box.Position.X -= nx * push;
+                        box.Position.Z -= nz * push;
+                        box.Object3D?.SetPosition(box.Position.X, box.Position.Y, box.Position.Z);
+                        box.Physics.Velocity.X += nx * push * 1.5f;
+                        box.Physics.Velocity.Z += nz * push * 1.5f;
+                        playerPushed = true;
+                    }
+
+                    // Spheres vs player
+                    var omSpheres = _objectManager.PhysicsSpheres;
+                    for (int si = 0; si < omSpheres.Count; si++)
+                    {
+                        var sphere = omSpheres[si];
+                        if (!sphere.Active) continue;
+
+                        float dx = pPos.X - sphere.Position.X;
+                        float dz = pPos.Z - sphere.Position.Z;
+                        float distSq = dx * dx + dz * dz;
+
+                        // Quick Y overlap check (capsule segment vs sphere)
+                        float sphereMaxY = sphere.Position.Y + sphere.Radius;
+                        float sphereMinY = sphere.Position.Y - sphere.Radius;
+                        float overlapY = MathF.Min(pSegMax, sphereMaxY) - MathF.Max(pSegMin, sphereMinY);
+                        if (overlapY <= 0.001f) continue;
+
+                        float minDist = pRadius + sphere.Radius;
+                        if (distSq >= minDist * minDist) continue;
+
+                        float dist = MathF.Sqrt(distSq);
+                        float nx, nz;
+                        if (dist > 1e-4f) { nx = dx / dist; nz = dz / dist; }
+                        else { nx = 1f; nz = 0f; }
+
+                        float push = (minDist - dist) * 0.5f;
+                        pPos.X += nx * push;
+                        pPos.Z += nz * push;
+                        sphere.Position.X -= nx * push;
+                        sphere.Position.Z -= nz * push;
+                        sphere.Object3D?.SetPosition(sphere.Position.X, sphere.Position.Y, sphere.Position.Z);
+                        sphere.Physics.Velocity.X += nx * push * 1.5f;
+                        sphere.Physics.Velocity.Z += nz * push * 1.5f;
+                        playerPushed = true;
+                    }
+
+                    if (playerPushed)
+                    {
+                        float terrainY = _gameTerrainChunk.GetHeightAt(pPos.X, pPos.Z);
+                        if (pPos.Y <= terrainY + 0.01f) pPos.Y = terrainY;
+                    }
+                    playerAgent.Position = pPos;
+                }
 
                 //  COLLISION: push NPC out of static objects (always runs) 
                 var allObjs = _objectManager.GetObjects();
@@ -501,6 +590,90 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             pushedNpc.Y = terrainY;
                         allObjs[oi].Position = pushedNpc;
                     }
+                }
+
+                //  COLLISION: physics objects vs NPC characters (push apart)
+                for (int oi = 0; oi < allObjs.Count; oi++)
+                {
+                    if (allObjs[oi].IsPlayer) continue;
+                    var npcPos2 = allObjs[oi].Position;
+                    float npcRad = CharacterAgent.CollisionRadius;
+                    float nSegMin = npcPos2.Y + npcRad;
+                    float nSegMax = npcPos2.Y + CharacterAgent.CapsuleHeight - npcRad;
+
+                    // Boxes vs NPC
+                    var omBoxes = _objectManager.PhysicsBoxes;
+                    for (int bi = 0; bi < omBoxes.Count; bi++)
+                    {
+                        var box = omBoxes[bi];
+                        if (!box.Active) continue;
+
+                        float closestX = Math.Clamp(npcPos2.X, box.Position.X - box.HalfWidth, box.Position.X + box.HalfWidth);
+                        float closestZ = Math.Clamp(npcPos2.Z, box.Position.Z - box.HalfDepth, box.Position.Z + box.HalfDepth);
+                        float dx = npcPos2.X - closestX;
+                        float dz = npcPos2.Z - closestZ;
+                        float distSq = dx * dx + dz * dz;
+
+                        float boxMinY = box.Position.Y - box.HalfHeight;
+                        float boxMaxY = box.Position.Y + box.HalfHeight;
+                        float overlapY = MathF.Min(nSegMax, boxMaxY) - MathF.Max(nSegMin, boxMinY);
+                        if (overlapY <= 0.001f) continue;
+
+                        float minDist = npcRad;
+                        if (distSq >= minDist * minDist) continue;
+
+                        float dist = MathF.Sqrt(distSq);
+                        float nx, nz;
+                        if (dist > 1e-4f) { nx = dx / dist; nz = dz / dist; }
+                        else { nx = 1f; nz = 0f; }
+
+                        float push = (minDist - dist) * 0.5f;
+                        npcPos2.X += nx * push;
+                        npcPos2.Z += nz * push;
+                        box.Position.X -= nx * push;
+                        box.Position.Z -= nz * push;
+                        box.Object3D?.SetPosition(box.Position.X, box.Position.Y, box.Position.Z);
+                        box.Physics.Velocity.X += nx * push * 1.5f;
+                        box.Physics.Velocity.Z += nz * push * 1.5f;
+                    }
+
+                    // Spheres vs NPC
+                    var omSpheres = _objectManager.PhysicsSpheres;
+                    for (int si = 0; si < omSpheres.Count; si++)
+                    {
+                        var sphere = omSpheres[si];
+                        if (!sphere.Active) continue;
+
+                        float dx = npcPos2.X - sphere.Position.X;
+                        float dz = npcPos2.Z - sphere.Position.Z;
+                        float distSq = dx * dx + dz * dz;
+
+                        float sphereMaxY = sphere.Position.Y + sphere.Radius;
+                        float sphereMinY = sphere.Position.Y - sphere.Radius;
+                        float overlapY = MathF.Min(nSegMax, sphereMaxY) - MathF.Max(nSegMin, sphereMinY);
+                        if (overlapY <= 0.001f) continue;
+
+                        float minDist = npcRad + sphere.Radius;
+                        if (distSq >= minDist * minDist) continue;
+
+                        float dist = MathF.Sqrt(distSq);
+                        float nx, nz;
+                        if (dist > 1e-4f) { nx = dx / dist; nz = dz / dist; }
+                        else { nx = 1f; nz = 0f; }
+
+                        float push = (minDist - dist) * 0.5f;
+                        npcPos2.X += nx * push;
+                        npcPos2.Z += nz * push;
+                        sphere.Position.X -= nx * push;
+                        sphere.Position.Z -= nz * push;
+                        sphere.Object3D?.SetPosition(sphere.Position.X, sphere.Position.Y, sphere.Position.Z);
+                        sphere.Physics.Velocity.X += nx * push * 1.5f;
+                        sphere.Physics.Velocity.Z += nz * push * 1.5f;
+                    }
+
+                    float terrainY2 = _gameTerrainChunk.GetHeightAt(npcPos2.X, npcPos2.Z);
+                    if (npcPos2.Y <= terrainY2 + 0.01f) npcPos2.Y = terrainY2;
+                    allObjs[oi].Position = npcPos2;
                 }
 
                 //  COLLISION: player vs AI characters (capsule vs capsule) 
@@ -613,6 +786,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (_gameTerrainChunk != null)
                     {
                         _gameTerrainChunk.RenderShadow(_camera, _csm, i, _shadowShader, _shadowModelLoc);
+
+                        // Physics boxes — render shadow with current shadow shader
+                        foreach (var box in _objectManager.PhysicsBoxes)
+                        {
+                            if (box.Active && box.Object3D != null)
+                            {
+                                box.Object3D.UpdateModelMatriC(Matrix4x4.CreateTranslation(box.Position));
+                                box.Object3D.RenderShadow(_camera, _csm, i, _shadowShader, _shadowModelLoc);
+                            }
+                        }
+
+                        // Physics spheres — with rolling rotation
+                        foreach (var sphere in _objectManager.PhysicsSpheres)
+                        {
+                            if (sphere.Active && sphere.Object3D != null)
+                            {
+                                var rotMat = Matrix4x4.CreateRotationX(sphere.RotationX) * Matrix4x4.CreateRotationZ(sphere.RotationZ);
+                                var transMat = Matrix4x4.CreateTranslation(sphere.Position);
+                                sphere.Object3D.UpdateModelMatriC(rotMat * transMat);
+                                sphere.Object3D.RenderShadow(_camera, _csm, i, _shadowShader, _shadowModelLoc);
+                            }
+                        }
                     }
                 }
 
@@ -661,11 +856,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     animObjs[oi].IsVisible = true;
 
                 // 1B. Register static objects as occluders
+                var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
+                var frustumPlanes = StaticObjectManager.ExtractCameraFrustum(frustumVP);
                 if (_objectManager.staticObjectManagers != null)
                 {
-                    // Extract frustum planes for frustum culling
-                    var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
-                    var frustumPlanes = StaticObjectManager.ExtractCameraFrustum(frustumVP);
 
                     for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
@@ -879,8 +1073,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         new(aabb.Min.X, aabb.Max.Y, aabb.Max.Z),
                     };
 
-                    float camTerrainH2 = _gameTerrainChunk.GetHeightAt(_camera.Position.X, _camera.Position.Z);
-                    if (_camera.Position.Y < camTerrainH2 - 0.5f) continue;
+                    float physCamTerrainH2 = _gameTerrainChunk.GetHeightAt(_camera.Position.X, _camera.Position.Z);
+                    if (_camera.Position.Y < physCamTerrainH2 - 0.5f) continue;
 
                     bool allCornersBehindTerrain = true;
 
@@ -919,6 +1113,70 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                     if (allCornersBehindTerrain)
                         animObjs[oi].IsVisible = false;
+                }
+
+                // Physics objects — full OC: distance → frustum → terrain → occluders
+                var omBoxes = _objectManager.PhysicsBoxes;
+                var omSpheres = _objectManager.PhysicsSpheres;
+                foreach (var box in omBoxes) box.IsVisible = true;
+                foreach (var sphere in omSpheres) sphere.IsVisible = true;
+
+                float farSqPhysics = _camera.FarDist * _camera.FarDist;
+                float physCamTerrainH = _gameTerrainChunk.GetHeightAt(_camera.Position.X, _camera.Position.Z);
+                bool camAboveTerrain = _camera.Position.Y >= physCamTerrainH - 0.5f;
+
+                // Boxes: distance -> frustum -> terrain ray-march -> occluders
+                foreach (var box in omBoxes)
+                {
+                    if (!box.Active || box.Object3D == null) continue;
+
+                    // Distance cull
+                    float dx = box.Position.X - _camera.Position.X;
+                    float dz = box.Position.Z - _camera.Position.Z;
+                    if (dx * dx + dz * dz > farSqPhysics) { box.IsVisible = false; continue; }
+
+                    // Frustum cull
+                    if (!StaticObjectManager.IsAABBInFrustum(frustumPlanes, box.CachedWorldAABB, 3f))
+                    { box.IsVisible = false; continue; }
+
+                    // Terrain ray-march (simple mid-point check)
+                    if (camAboveTerrain)
+                    {
+                        Vector3 midPoint = _camera.Position + (box.Position - _camera.Position) * 0.5f;
+                        float midTerrainH = _gameTerrainChunk.GetHeightAt(midPoint.X, midPoint.Z);
+                        if (midPoint.Y < midTerrainH - 0.5f)
+                        { box.IsVisible = false; continue; }
+                    }
+
+                    // OC occluder test
+                    box.IsVisible = !_occlusionCulling.IsOccludedByOccluders(_camera.Position, box.CachedWorldAABB);
+                }
+
+                // Spheres: distance -> frustum -> terrain ray-march -> occluders
+                foreach (var sphere in omSpheres)
+                {
+                    if (!sphere.Active || sphere.Object3D == null) continue;
+
+                    // Distance cull
+                    float dx = sphere.Position.X - _camera.Position.X;
+                    float dz = sphere.Position.Z - _camera.Position.Z;
+                    if (dx * dx + dz * dz > farSqPhysics) { sphere.IsVisible = false; continue; }
+
+                    // Frustum cull
+                    if (!StaticObjectManager.IsAABBInFrustum(frustumPlanes, sphere.CachedWorldAABB, 3f))
+                    { sphere.IsVisible = false; continue; }
+
+                    // Terrain ray-march (simple mid-point check)
+                    if (camAboveTerrain)
+                    {
+                        Vector3 midPoint = _camera.Position + (sphere.Position - _camera.Position) * 0.5f;
+                        float midTerrainH = _gameTerrainChunk.GetHeightAt(midPoint.X, midPoint.Z);
+                        if (midPoint.Y < midTerrainH - 0.5f)
+                        { sphere.IsVisible = false; continue; }
+                    }
+
+                    // OC occluder test
+                    sphere.IsVisible = !_occlusionCulling.IsOccludedByOccluders(_camera.Position, sphere.CachedWorldAABB);
                 }
 
                 // Player always visible
@@ -1014,14 +1272,77 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes);
 
-                //  Physics Boxes (falling cubes) - drawn while main shader is active
-                foreach (var box in _physicsBoxes)
-                    box.Draw();
+                //  Physics objects — always-run frustum + distance cull (handles pause state)
+                if (_objectManager != null)
+                {
+                    var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
+                    var frustumPlanes = StaticObjectManager.ExtractCameraFrustum(frustumVP);
+                    float farSq = _camera.FarDist * _camera.FarDist;
+
+                    // Boxes: distance + frustum cull
+                    foreach (var box in _objectManager.PhysicsBoxes)
+                    {
+                        if (!box.Active || box.Object3D == null) continue;
+                        float dx = box.Position.X - _camera.Position.X;
+                        float dz = box.Position.Z - _camera.Position.Z;
+                        if (dx * dx + dz * dz > farSq)
+                            box.IsVisible = false;
+                        else if (!StaticObjectManager.IsAABBInFrustum(frustumPlanes, box.CachedWorldAABB, 3f))
+                            box.IsVisible = false;
+                    }
+
+                    // Spheres: distance + frustum cull
+                    foreach (var sphere in _objectManager.PhysicsSpheres)
+                    {
+                        if (!sphere.Active || sphere.Object3D == null) continue;
+                        float dx = sphere.Position.X - _camera.Position.X;
+                        float dz = sphere.Position.Z - _camera.Position.Z;
+                        if (dx * dx + dz * dz > farSq)
+                            sphere.IsVisible = false;
+                        else if (!StaticObjectManager.IsAABBInFrustum(frustumPlanes, sphere.CachedWorldAABB, 3f))
+                            sphere.IsVisible = false;
+                    }
+                }
+
+                //  Physics Boxes (falling cubes) and Spheres - drawn while main shader is active
+                foreach (var box in _objectManager.PhysicsBoxes)
+                {
+                    if (box.IsVisible)
+                        box.Draw();
+                }
+                foreach (var sphere in _objectManager.PhysicsSpheres)
+                {
+                    if (sphere.IsVisible)
+                        sphere.Draw();
+                }
             }
 
-            //  glTF Object Manager 
+            //  glTF Object Manager — always-run frustum + distance cull for static objects (handles pause state)
             if (_objectManager != null)
             {
+                var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
+                var frustumPlanes = StaticObjectManager.ExtractCameraFrustum(frustumVP);
+                float farSq = _camera.FarDist * _camera.FarDist;
+
+                if (_objectManager.staticObjectManagers != null)
+                {
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
+                    {
+                        var mgr = _objectManager.staticObjectManagers[mi];
+                        if (mgr == null) continue;
+                        foreach (var sobj in mgr.GetObjects())
+                        {
+                            float dx = sobj.Position.X - _camera.Position.X;
+                            float dz = sobj.Position.Z - _camera.Position.Z;
+                            float distSq = dx * dx + dz * dz;
+                            if (distSq > farSq)
+                                sobj.IsVisible = false;
+                            else if (!StaticObjectManager.IsAABBInFrustum(frustumPlanes, sobj.CachedWorldAABB, 3f))
+                                sobj.IsVisible = false;
+                        }
+                    }
+                }
+
                 _objectManager.CullFreezeEnabled = Keyboard.GetCullFreezeMode();
                 _objectManager.CullFreezeViewProj = Keyboard.GetCullFreezeViewProj();
 
@@ -2101,58 +2422,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         /// <summary>Spawn random colored cubes above terrain so they fall with gravity.</summary>
         /// <summary>Clear existing physics cubes and respawn new ones above terrain.</summary>
-        private void RespawnPhysicsCubes()
-        {
-            // Dispose old boxes
-            foreach (var box in _physicsBoxes)
-                box.Dispose();
-            _physicsBoxes.Clear();
-
-            SpawnPhysicsCubes();
-            Console.WriteLine("[GameScene] Physics cubes respawned (" + _physicsBoxes.Count + " boxes).");
-        }
-
-
-        private void SpawnPhysicsCubes()
-        {
-            if (_gameTerrainChunk == null) return;
-            var rng = new Random();
-            for (int i = 0; i < PhysicsBoxCount; i++)
-            {
-                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
-                float dist = rng.NextFloat(5f, PhysicsBoxSpawnRadius);
-                float px = MathF.Cos(angle) * dist;
-                float pz = MathF.Sin(angle) * dist;
-                float terrainY = _gameTerrainChunk.GetHeightAt(px, pz);
-                float py = terrainY + PhysicsBoxSpawnHeight;
-
-                float size = rng.NextFloat(0.5f, 2.5f);
-                var color = new Vector3(
-                    rng.NextFloat(0.2f, 1.0f),
-                    rng.NextFloat(0.2f, 1.0f),
-                    rng.NextFloat(0.2f, 1.0f)
-                );
-
-                var box = new PhysicsBox(
-                    new Vector3(px, py, pz),
-                    new Vector3(size, size, size),
-                    color
-                );
-                _physicsBoxes.Add(box);
-            }
-            Console.WriteLine($"[GameScene] Spawned {_physicsBoxes.Count} physics cubes.");
-        }
-
-        /// <summary>Update all active physics cubes (gravity, terrain collision).</summary>
-        private void UpdatePhysicsBoxes(float dt)
-        {
-            if (_gameTerrainChunk == null) return;
-            for (int i = _physicsBoxes.Count - 1; i >= 0; i--)
-            {
-                _physicsBoxes[i].Update(dt, _gameTerrainChunk);
-            }
-        }
-
         public void Exit()
         {
             Glfw.OnWindowResized -= OnWindowResized;
