@@ -133,11 +133,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             "Mouse Sensitivity",
             "Shadow Quality",
             "VSync",
-            "â¬… BACK",
+            "BACK",
         ];
         private readonly string[][] _inGameSettingOptions = [
-            ["60Â°", "70Â°", "80Â°", "90Â°", "100Â°", "110Â°"],
-            ["0.25Ã—", "0.50Ã—", "0.75Ã—", "1.0Ã—", "1.5Ã—", "2.0Ã—", "3.0Ã—"],
+            ["60", "70", "80", "90", "100", "110"],
+            ["0.25", "0.50", "0.75", "1.0", "1.5", "2.0", "3.0"],
             ["LOW", "MEDIUM", "HIGH", "ULTRA"],
             ["OFF", "ON"],
         ];
@@ -1272,7 +1272,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes);
 
-                //  Physics objects — always-run frustum + distance cull (handles pause state)
+                //  Physics objects — always-run frustum + distance cull
                 if (_objectManager != null)
                 {
                     var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
@@ -1317,7 +1317,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
 
-            //  glTF Object Manager — always-run frustum + distance cull for static objects (handles pause state)
+            //  glTF Object Manager — always-run frustum + distance cull for static objects
             if (_objectManager != null)
             {
                 var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
