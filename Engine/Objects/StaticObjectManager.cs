@@ -134,7 +134,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>Near distance: impostors start fading in beyond this.</summary>
         public float ImpostorNearDist = 300f;
         /// <summary>Distance range for impostor cross-fade (overlap with individual rendering).</summary>
-        public float ImpostorFadeDist = 10f;
+        public float ImpostorFadeDist = 0f;
         /// <summary>Far distance: impostors culled beyond this.</summary>
         public float ImpostorFarDist = 600f;
         /// <summary>Total non-empty impostor entries baked.</summary>

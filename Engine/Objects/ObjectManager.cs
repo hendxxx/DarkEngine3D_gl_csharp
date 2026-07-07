@@ -249,14 +249,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.BVH;
+                sobj.ColType = CollisionType.Box;
             }
-            dungeonManager.BuildBVHForCollidableObjects();
+            //dungeonManager.BuildBVHForCollidableObjects();
 
             // Trees
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 1000, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
+            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 10, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static1: loading {treesName}..."),
                     groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0",
                     //groupName: "Pine_big_1_LOD0,Pine_large_1_LOD0,Pine_medium_1_LOD0,Pine_sapling_1_LOD0,Pine_small_1_LOD0",
@@ -270,7 +270,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             treesManager.UseImpostors = true; // Trees get Octahedral Impostors for far distance
             treesManager.ImpostorNearDist = 301f; // Matches LOD3 distance — seamless transition from mesh to impostor
             treesManager.ImpostorFarDist = 600f;  // Extend far so millions of distant trees render as impostors
-            treesManager.ImpostorFadeDist = 1f;  // 20m cross-fade for smooth impostor transition
+            treesManager.ImpostorFadeDist = 0f;  // 0 = no fadeout (instant impostor transition)
             treesManager.GridVisibleRange = 600f;   // Extend grid range to match impostor far distance
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
@@ -291,7 +291,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 5000, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1_LOD0,Daisy_patch_big_1_LOD0,Daisy_patch_small_1_LOD0");
             daisiesManager.CastShadow = false;

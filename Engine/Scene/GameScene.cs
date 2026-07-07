@@ -154,6 +154,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         private int _renderedTris;
 
+        //  Per-frame render timing (ms) 
+        private System.Diagnostics.Stopwatch _renderTimer = new();
+        private System.Diagnostics.Stopwatch _frameTotalTimer = new();
+        private double _terrainTimeMs;
+        private double _objectsTimeMs;
+        private double _postProcessTimeMs;
+        private double _totalRenderTimeMs;
+
         public GameScene(SceneManager sceneManager, Camera camera, Lights light)
         {
             _sceneManager = sceneManager;
@@ -1190,6 +1198,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             bool wireframeMode = Keyboard.GetIsWireframe();
 
+            //  Start per-frame render timing 
+            _renderTimer.Restart();
+            _frameTotalTimer.Restart();
+
             //  MAIN RENDER PASS 
             if (wireframeMode)
             {
@@ -1260,6 +1272,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // 4. Ensure terrain shader has view/projection uniforms
             _camera.SetViewAndProjection(_viewLocation, _projectionLocation);
 
+            //  Timing: terrain render start
+            _renderTimer.Restart();
             _renderedTris = 0;
             if (_gameTerrainChunk != null)
             {
@@ -1317,6 +1331,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
 
+            //  Record terrain timing, start object timing
+            _terrainTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
+            _renderTimer.Restart();
+
             //  glTF Object Manager — always-run frustum + distance cull for static objects
             if (_objectManager != null)
             {
@@ -1350,11 +1368,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _objectManager.DrawHealthBars(_camera, _hud);
             }
 
+            //  Record objects timing, start post-process timing
+            _objectsTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
+            _renderTimer.Restart();
+
             //  Post Process (render SceneFBO to screen) â€” skip in wireframe mode 
             if (!wireframeMode)
                 _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
             else
                 GL.Enable(Const.GL_DEPTH_TEST);
+
+            //  Record post-process timing
+            _postProcessTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
+            _renderTimer.Restart();
 
             //  Capture screenshot right after post-process, before any UI overlays 
             if (_pendingScreenshotSlot >= 0)
@@ -1502,6 +1528,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     RenderPauseMenu();
             }
 
+            //  Record total render time (from the dedicated total timer, not the section timer)
+            _totalRenderTimeMs = _frameTotalTimer.Elapsed.TotalMilliseconds;
+
             // HUD 
             int totalMapTris = TerrainChunk.GetTotalMapTriangles();
             int totalObjTris = _objectManager?.TotalObjectTriangles ?? 0;
@@ -1511,7 +1540,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             string gTime = _light.GetFormattedTime();
 
             string title1 = $" [ {gTime} ]";
-            string title2 = $" FPS: {Glfw.GetLastFPS()}";
+            float frameMs = _deltaTime * 1000f;
+            string title2 = $" FPS: {Glfw.GetLastFPS()}  ({frameMs:F1}ms)  | t={_terrainTimeMs:N1}ms  o={_objectsTimeMs:N1}ms  fx={_postProcessTimeMs:N1}ms  tot={_totalRenderTimeMs:N1}ms";
             string freeze = Keyboard.GetCullFreezeMode() ? " [CULL FREEZE]" : "";
             string title3 = $" MODE: {_camera.CurrentMode}{freeze}";
             string title4 = $" TRIS: {renderedAllTris:N0} / {totalAllTris:N0}  (terrain {_renderedTris:N0} | objects {renderedObjTris:N0})";
@@ -1573,6 +1603,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // BVH profiling display (dim cyan)
             if (!string.IsNullOrEmpty(title8))
                 _hud.DrawText(title8, 10, 60 + debugLineH * 7, new Vector3(0.2f, 0.7f, 0.8f));
+
+
 
             //  HLOD Statistics (if any HLOD regions exist) 
             if (_objectManager != null && _objectManager.staticObjectManagers != null)
