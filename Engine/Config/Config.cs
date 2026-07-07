@@ -156,7 +156,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static float FirstPersonHeadYawLimit = 85.0f;
         public static float FirstPersonCameraForwardOffset = 0.35f;
 
-        public static float CameraNearDist = 0.01f;
+        public static float CameraNearDist = 0.1f;
         public static float CameraFarDist = 800.0f;
 
         public static float MaxCameraDistance = 15.0f;

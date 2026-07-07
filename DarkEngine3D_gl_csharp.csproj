@@ -331,6 +331,9 @@
     <None Update="Artifacts\objects\LittlestTokyo.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\modern_car_wash__cafe.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\my_dungeon.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

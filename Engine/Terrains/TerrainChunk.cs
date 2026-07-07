@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
@@ -357,15 +358,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                         }
                     }
 
-                    // Determine "insideFrozen" only when frozen frustum exists
-                    if (usingFrozen)
+                    // Draw bounding box only when debug BBox is enabled (P key toggle)
+                    if (Keyboard.GetShowBBox())
                     {
-                        bool insideFrozen = IsAABBInsideFrustum(frozenPlanes, x, z);
-
-                        // Draw bounding box:
-                        // - If frozen frustum exists: blue = insideFrozen, yellow = outsideFrozen
-                        // - If no frozen frustum: yellow if outside camera frustum, blue if inside
-                        DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, camera.GetAspect() );
+                        bool insideFrozen = false;
+                        if (usingFrozen)
+                            insideFrozen = IsAABBInsideFrustum(frozenPlanes, x, z);
+                        DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, camera.GetAspect());
                     }
 
                 }

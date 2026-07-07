@@ -227,7 +227,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // Wall occluder
             string wallPath = "Artifacts/objects/damaged_wall.glb";
-            wallManager.AddObject(wallPath, new Vector3(20f, 5f, 10f), 0f, 0.05f, "root", true, gameTerrainChunk);
+            wallManager.AddObject(wallPath, new Vector3(20f, 0.0f, 10f), 0f, 0.05f, "", true, gameTerrainChunk);
             wallManager.CastShadow = true;
             wallManager.UseAlpha = true;
             wallManager.CullAtMaxLOD = true;
@@ -242,16 +242,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             string townPath = "Artifacts/objects/my_dungeon.glb";
             dungeonManager.AddObject(townPath, new Vector3(40f, 0f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
             dungeonManager.CastShadow = true;
-            dungeonManager.UseAlpha = true;
+            dungeonManager.UseAlpha = true; 
             dungeonManager.CullAtMaxLOD = false ; 
 
             foreach (var sobj in dungeonManager.GetObjects())
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Box;
+                sobj.ColType = CollisionType.BVH;
             }
-            //dungeonManager.BuildBVHForCollidableObjects();
+            dungeonManager.BuildBVHForCollidableObjects();
 
             // Trees
             string treesName = "trees";

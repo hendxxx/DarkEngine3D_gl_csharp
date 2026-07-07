@@ -70,7 +70,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void CheckVisibility(Vector3 cameraPos, Span<Helpers.ObjectHelpers.AABB> objectAABBs)
         {
             if (!Enabled) return;
-            if (_occluders.Count == 0 || objectAABBs.Length == 0) return;
+            if ((_occluders.Count == 0 && _meshOccluders.Count == 0) || objectAABBs.Length == 0) return;
 
             var sw = Stopwatch.StartNew();
 
@@ -163,7 +163,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public bool IsOccludedByOccluders(Vector3 cameraPos, Helpers.ObjectHelpers.AABB objAABB)
         {
             if (!Enabled) return false;
-            if (_occluders.Count == 0) return false;
+            if (_occluders.Count == 0 && _meshOccluders.Count == 0) return false;
 
             var sw = Stopwatch.StartNew();
 

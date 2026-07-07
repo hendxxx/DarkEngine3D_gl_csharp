@@ -676,7 +676,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     snapAABB = selectedGroup.LocalAABB; // fallback to combined
 
                 var rotatedAABB = snapAABB.Transform(noTrans);
-                pos.Y = terrainY - rotatedAABB.Min.Y;
+                pos.Y = terrainY - rotatedAABB.Min.Y;  //+ pos.Y;
 
                 //Console.WriteLine($"[Snap] group='{selectedGroup.BaseName}' lod0AABB.Min.Y={snapAABB.Min.Y:F4} max.Y={snapAABB.Max.Y:F4} " + $"(combined bottom={selectedGroup.LocalAABB.Min.Y:F4}) terrainY={terrainY:F4} -> pos.Y={pos.Y:F4}");
             }
