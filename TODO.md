@@ -7,7 +7,9 @@ Pending:
 5. Octahedral Impostors
 6. buatin editor buat edit biomes, terrain, nanti muncul menu buat pilih biomes apa yang mau di edit, nanti bisa pilih brush size, dan bisa pilih biomes apa yang mau di ganti, misal: hijau tua=pohon mau diganti jadi hijau=rumput, dst. nanti bisa di save ke file biomes.
 7. eimplemet ECS dan multi-threading untuk rendering, physics, dan animasi.
-
+8. optimize BVH: Occluder Mesh,Occlusion BVH
+9. fixing jitter Baumgarte Stabilization, model accumulator fixed timestamp.
+ 
 Done, misc:
 1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
 2. nantinya ada file animasi yamg isinya animasi saja tanpa object yang bisa di load ke engine, dan bisa di apply ke object yang sudah di load sebelumnya. jadi nanti ada 2 file, satu untuk model dan satu untuk animasi. jadi bisa ganti animasi tanpa harus load ulang modelnya.
