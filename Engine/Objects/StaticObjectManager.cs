@@ -47,8 +47,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public float OverrideCollisionSizeX = 0f;
         public float OverrideCollisionSizeZ = 0f;
 
-        // Collision type (Box by default for static objects)
-        public CollisionType ColType = CollisionType.Box;
+        // Collision type (Convex by default for static objects)
+        public CollisionType ColType = CollisionType.Convex;
 
         // Per-instance flags
         public bool CastShadow = true;
@@ -70,6 +70,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // BVH collision: more accurate mesh-based collision detection
         // If null, falls back to AABB collision
         public BVH? CollisionBVH = null;
+
+        // BVH occlusion: mesh-based occlusion culling using ray-triangle intersection.
+        // Built from ALL mesh triangles (not just collision parts) for accurate occlusion.
+        // Separate from CollisionBVH so collision and occlusion can use different mesh data.
+        public BVH? OcclusionBVH = null;
 
         public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
         {
@@ -712,7 +717,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Pakai Transform(CachedBaseWorldMat) biar transform order sama persis dengan rendering
             if (!string.IsNullOrEmpty(collisionPart))
             {
-                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj);
+                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj, UseNodeHierarchy);
                 sobj.CachedCollisionAABB = collLocalAABB.Transform(sobj.CachedBaseWorldMat);
             }
 
@@ -2014,7 +2019,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// Menerapkan node transform GLTF agar AABB sesuai dengan visual rendering.
         /// World transform dilakukan oleh caller via CachedBaseWorldMat.
         /// </summary>
-        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj)
+        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj, bool useNodeHierarchy)
         {
             Vector3 mn = new(float.PositiveInfinity);
             Vector3 mx = new(float.NegativeInfinity);
@@ -2045,7 +2050,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     ? gpuData.MeshToNode[mi] : -1;
                 Matrix4x4 nodeMat = Matrix4x4.Identity;
                 if (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
-                    nodeMat = GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx);
+                    nodeMat = (useNodeHierarchy
+                        ? GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx)
+                        : gpuData.Data.Nodes[nodeIdx].LocalMatrix);
 
                 found = true;
                 for (int vi = 0; vi < verts.Length; vi++)
@@ -2108,7 +2115,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     ? gpuData.MeshToNode[mi] : -1;
                 Matrix4x4 nodeMat = Matrix4x4.Identity;
                 if (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
-                    nodeMat = GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx);
+                    nodeMat = (UseNodeHierarchy
+                        ? GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx)
+                        : gpuData.Data.Nodes[nodeIdx].LocalMatrix);
 
                 // Add vertices (transformed by node matrix, then world matrix)
                 // This puts the BVH in world space so collision checks work directly with world-space coordinates
@@ -2139,22 +2148,132 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>
-        /// Build BVH for all objects whose ColType is set to CollisionType.BVH.
+        /// Build convex hull BVH for an object with ColType.Convex.
+        /// Computes the 3D convex hull from all LOD0 mesh vertices,
+        /// then builds a BVH from the simplified hull triangles.
+        /// More accurate than AABB, much cheaper than full-mesh BVH.
+        /// </summary>
+        private BVH? BuildConvexHullBVHForObject(StaticObject sobj, StaticObjectGroup group)
+        {
+            var gpuData = sobj.GpuData;
+            var meshes = gpuData.Data.Meshes;
+            if (meshes == null || meshes.Length == 0)
+                return null;
+
+            var uniqueVerts = new HashSet<Vector3>();
+            var allVerts = new List<Vector3>();
+
+            if (!group.Lods.TryGetValue(0, out var lodMeshes))
+            {
+                int lowestKey = group.Lods.Keys.Min();
+                group.Lods.TryGetValue(lowestKey, out lodMeshes);
+            }
+
+            if (lodMeshes == null || lodMeshes.Count == 0)
+                return null;
+
+            Matrix4x4 worldMat = sobj.CachedBaseWorldMat;
+            const float vertEps = 0.001f;
+
+            foreach (int mi in lodMeshes)
+            {
+                if (mi < 0 || mi >= meshes.Length) continue;
+                var mesh = meshes[mi];
+                if (mesh.Vertices == null) continue;
+
+                int nodeIdx = (gpuData.MeshToNode != null && mi < gpuData.MeshToNode.Length)
+                    ? gpuData.MeshToNode[mi] : -1;
+                Matrix4x4 nodeMat = Matrix4x4.Identity;
+                if (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
+                    nodeMat = (UseNodeHierarchy
+                        ? GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx)
+                        : gpuData.Data.Nodes[nodeIdx].LocalMatrix);
+
+                foreach (var vert in mesh.Vertices)
+                {
+                    Vector3 transformedPos = Vector3.Transform(vert.Position, nodeMat);
+                    transformedPos = Vector3.Transform(transformedPos, worldMat);
+                    Vector3 quantized = new(
+                        MathF.Round(transformedPos.X / vertEps) * vertEps,
+                        MathF.Round(transformedPos.Y / vertEps) * vertEps,
+                        MathF.Round(transformedPos.Z / vertEps) * vertEps
+                    );
+                    if (uniqueVerts.Add(quantized))
+                        allVerts.Add(transformedPos);
+                }
+            }
+
+            if (allVerts.Count < 4)
+                return BuildBVHForObject(sobj, group);
+
+            var hullResult = Quickhull.ComputeConvexHull(allVerts);
+            if (hullResult == null)
+                return BuildBVHForObject(sobj, group);
+
+            var (hullVerts, hullIndices) = hullResult.Value;
+            if (hullVerts.Length < 3 || hullIndices.Length < 3)
+                return BuildBVHForObject(sobj, group);
+
+            var bvh = new BVH();
+            bvh.Build(hullVerts, hullIndices);
+            Console.WriteLine($"[Convex] Hull BVH for '{group.BaseName}' at {sobj.Position}: {hullVerts.Length} verts, {hullIndices.Length / 3} tris");
+            return bvh;
+        }
+
+        /// <summary>
+        /// Build BVH for all collidable objects.
+        /// ColType.BVH -> full mesh BVH (accurate, expensive).
+        /// ColType.Convex -> convex hull BVH (simplified, efficient).
         /// Must be called after setting ColType on the objects.
         /// </summary>
         public void BuildBVHForCollidableObjects()
         {
             foreach (var sobj in _objects)
             {
-                if (sobj.ColType == CollisionType.BVH && sobj.CollisionBVH == null)
+                if (sobj.CollisionBVH != null) continue;
+
+                if (sobj.ColType == CollisionType.BVH)
                 {
                     sobj.CollisionBVH = BuildBVHForObject(sobj, sobj.Group);
-                    if (sobj.CollisionBVH != null)
-                    {
-                        Console.WriteLine($"[BVH] Built collision BVH for '{sobj.Group.BaseName}' at {sobj.Position}");
-                    }
+                }
+                else if (sobj.ColType == CollisionType.Convex)
+                {
+                    sobj.CollisionBVH = BuildConvexHullBVHForObject(sobj, sobj.Group);
+                }
+
+                if (sobj.CollisionBVH != null)
+                {
+                    Console.WriteLine($"[Collision] Built '{sobj.ColType}' BVH for '{sobj.Group.BaseName}' at {sobj.Position}");
                 }
             }
+        }
+
+        /// Build occlusion BVH from all LOD0 mesh data for all occluder objects.
+        /// Unlike BuildBVHForCollidableObjects (only builds for ColType.BVH),
+        /// this builds BVH for ALL objects with IsOccluder=true.
+        /// The resulting BVH uses complete mesh geometry for accurate occlusion.
+        /// Must be called after setting IsOccluder on objects.
+        /// </summary>
+        public void BuildOccluderBVH()
+        {
+            foreach (var sobj in _objects)
+                if (sobj.IsOccluder && sobj.OcclusionBVH == null)
+                {
+                    // Share CollisionBVH when available — both use same LOD0 mesh data
+                    if (sobj.CollisionBVH != null)
+                    {
+                        sobj.OcclusionBVH = sobj.CollisionBVH;
+                        Console.WriteLine("[OccluderBVH] Shared collision BVH for occluder " + sobj.Group.BaseName + " at " + sobj.Position);
+                    }
+                    else
+                    {
+                        sobj.OcclusionBVH = BuildBVHForObject(sobj, sobj.Group);
+                        if (sobj.OcclusionBVH != null)
+                        {
+                            Console.WriteLine("[OccluderBVH] Built occlusion BVH for " + sobj.Group.BaseName + " at " + sobj.Position);
+                        }
+                    }
+                }
         }
 
         /// <summary>Set material uniforms for an HLOD merged mesh draw call.</summary>

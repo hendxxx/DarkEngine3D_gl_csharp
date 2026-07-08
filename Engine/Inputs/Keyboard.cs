@@ -19,13 +19,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static uint lineShaderProgram;
         static Vector3[]? frozenCorners = null;
 
-        // state untuk tombol P (edge detection) — toggle BBox wireframe
-        static int prevPState = 0;
-        static bool showBBox = false;
-        static bool showBVHMesh = false;  // NEW: Toggle BVH mesh visualization
-        static bool pPressed = false;
-        public static bool GetShowBBox() => showBBox;
-        public static bool GetShowBVHMesh() => showBVHMesh;  // NEW: Get BVH viz state
+        // Debug visualization mode (cycled with N key)
+        // 0=Off, 1=AABB, 2=AABB+Occlusion Mesh, 3=AABB+Convex Hull, 4=All
+        static int debugMode = 0;
+        static bool nPressed = false;
+        public static int GetDebugMode() => debugMode;
+        public static bool GetShowBBox() => debugMode >= 1;
+        /// <summary>Occlusion BVH mesh visible in modes 2 and 4.</summary>
+        public static bool GetShowBVHMesh() => debugMode == 2 || debugMode == 4;
+        /// <summary>Convex hull BVH visible in modes 3 and 4.</summary>
+        public static bool GetShowConvexHull() => debugMode == 3 || debugMode == 4;
         public static bool GetIsWireframe() => isWireframe;
 
         // Shift+P: freeze culling — objects outside the frozen frustum stay hidden while camera moves
@@ -356,42 +359,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             // ← TAMBAHKAN: Travel measurement (tekan T untuk start, atau lagi untuk stop)
             //MeasureTravelTime(window, camera);
              
-            // P: toggle BBox wireframe (debug bounding boxes)
+            // N: cycle debug visualization mode
+            // 0=Off → 1=AABB → 2=AABB+Occlusion Mesh → 3=AABB+Convex Hull → 4=All → 0
+            int nState = glfwGetKey(window, Const.GLFW_KEY_N);
+            if (nState == Const.GLFW_PRESS)
+            {
+                if (!nPressed)
+                {
+                    debugMode = (debugMode + 1) % 5;
+                    nPressed = true;
+                    string modeName = debugMode switch
+                    {
+                        1 => "Debug: AABB",
+                        2 => "Debug: AABB + Occlusion Mesh",
+                        3 => "Debug: AABB + Convex Hull",
+                        4 => "Debug: All",
+                        _ => "Debug: OFF"
+                    };
+                    Console.WriteLine(modeName);
+                }
+            }
+            else
+            {
+                nPressed = false;
+            }
+
+            // Shift+P: freeze culling — captured frustum determines which objects are hidden
             int pState = glfwGetKey(window, Const.GLFW_KEY_P);
             bool shiftHeld = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS ||
                              glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
-
-            if (pState == Const.GLFW_PRESS && !pPressed && !shiftHeld)
-            {
-                // Cycle: OFF → BBox → BBox+BVH Mesh → OFF
-                if (!showBBox)
-                {
-                    showBBox = true;
-                    showBVHMesh = false;
-                    pPressed = true;
-                    Console.WriteLine("BBox Wireframe: ON");
-                }
-                else if (!showBVHMesh)
-                {
-                    showBVHMesh = true;
-                    pPressed = true;
-                    Console.WriteLine("BBox + BVH Collision Mesh: ON");
-                }
-                else
-                {
-                    showBBox = false;
-                    showBVHMesh = false;
-                    pPressed = true;
-                    Console.WriteLine("Debug Wireframe: OFF");
-                }
-            }
-            else if (pState != Const.GLFW_PRESS)
-            {
-                pPressed = false;
-            }
-            prevPState = pState;
-
-            // Shift+P: freeze culling — captured frustum determines which objects are hidden
             if (pState == Const.GLFW_PRESS && prevShiftPState != Const.GLFW_PRESS && shiftHeld)
             {
                 cullFreezeMode = !cullFreezeMode;

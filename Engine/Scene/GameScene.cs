@@ -327,9 +327,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
 
-            // Spawn physics cubes and spheres above terrain so they fall with gravity
-            _objectManager.SpawnPhysicsCubes(_gameTerrainChunk);
-            _objectManager.SpawnPhysicsSpheres(_gameTerrainChunk);
+            //// Spawn physics cubes and spheres above terrain so they fall with gravity
+            //_objectManager.SpawnPhysicsCubes(_gameTerrainChunk);
+            //_objectManager.SpawnPhysicsSpheres(_gameTerrainChunk);
 
             Mouse.ShowMouse(false);
 
@@ -995,13 +995,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                             if (sobj.IsOccluder)
                             {
-                                if (sobj.CollisionBVH != null)
+                                if (sobj.OcclusionBVH != null)
                                 {
                                     // Mesh occluder: ray-triangle intersection for accuracy
-                                    _occlusionCulling.RegisterMeshOccluder(sobj.CollisionBVH);
+                                    _occlusionCulling.RegisterMeshOccluder(sobj.OcclusionBVH);
                                     
                                     // HiZ fallback: register root AABB
-                                    var rootAABB = sobj.CollisionBVH.Root?.Bounds ?? sobj.CachedWorldAABB;
+                                    var rootAABB = sobj.OcclusionBVH.Root?.Bounds ?? sobj.CachedWorldAABB;
                                     if (useHiZ)
                                         _hizOcc!.RegisterOccluder(rootAABB);
                                 }
@@ -1042,8 +1042,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             if (distSq > farSq) continue;
 
                             bool occluded;
-                            var testAABB = sobj.CollisionBVH != null
-                                ? (sobj.CollisionBVH.Root?.Bounds ?? sobj.CachedWorldAABB)
+                            var testAABB = sobj.OcclusionBVH != null
+                                ? (sobj.OcclusionBVH.Root?.Bounds ?? sobj.CachedWorldAABB)
                                 : sobj.CachedWorldAABB;
                             if (useHiZ)
                             {
@@ -1457,10 +1457,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                                 : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
 
                             // When BVH mesh is shown, skip AABB for objects with BVH collision
-                            if (!Keyboard.GetShowBVHMesh() || sobj.CollisionBVH == null)
+                            if (!Keyboard.GetShowBVHMesh() || sobj.OcclusionBVH == null)
                             {
-                                var debugAABB = (sobj.CollisionBVH != null && sobj.CollisionBVH.Root != null)
-                                    ? sobj.CollisionBVH.Root.Bounds
+                                var debugAABB = (sobj.OcclusionBVH != null && sobj.OcclusionBVH.Root != null)
+                                    ? sobj.OcclusionBVH.Root.Bounds
                                     : sobj.CachedWorldAABB;
                                 TerrainChunk.DrawAABBWireframe(debugAABB, debugColor, _camera);
 
@@ -1483,7 +1483,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                     }
 
-                    //  BVH Collision Mesh Debug (toggled with P key) 
+                    //  BVH Collision Mesh Debug (toggled with N key)
+
+                    // Occlusion BVH mesh (full mesh triangles — green-cyan) — modes 2 and 4
                     if (Keyboard.GetShowBVHMesh())
                     {
                         var bvhColor = new Vector3(0f, 1f, 0.5f);
@@ -1493,10 +1495,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             if (mgr == null) continue;
                             foreach (var sobj in mgr.GetObjects())
                             {
-                                if (sobj.CollisionBVH == null) continue;
-                                var verts = sobj.CollisionBVH.GetTriangleLineVertices();
+                                if (sobj.OcclusionBVH == null) continue;
+                                var verts = sobj.OcclusionBVH.GetTriangleLineVertices();
                                 if (verts.Count > 0)
                                     TerrainChunk.DrawLineSegments(verts, bvhColor, _camera);
+                            }
+                        }
+                    }
+
+                    // Convex hull collision BVH (simplified hull — bright orange) — modes 3 and 4
+                    if (Keyboard.GetShowConvexHull())
+                    {
+                        var hullColor = new Vector3(1f, 0.5f, 0f);
+                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
+                        {
+                            var mgr = _objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            foreach (var sobj in mgr.GetObjects())
+                            {
+                                if (sobj.ColType != CollisionType.Convex) continue;
+                                if (sobj.CollisionBVH == null) continue;
+                                if (sobj.CollisionBVH == sobj.OcclusionBVH) continue;
+                                var verts = sobj.CollisionBVH.GetTriangleLineVertices();
+                                if (verts.Count > 0)
+                                    TerrainChunk.DrawLineSegments(verts, hullColor, _camera);
                             }
                         }
                     }

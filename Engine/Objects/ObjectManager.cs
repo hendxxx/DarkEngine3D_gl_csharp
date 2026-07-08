@@ -235,8 +235,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Box;  
+                sobj.ColType = CollisionType.Convex;  
             }
+            wallManager.BuildOccluderBVH();
 
             // ── Non-LOD model tanpa RotationCorrection ──
             string townPath = "Artifacts/objects/my_dungeon.glb";
@@ -252,6 +253,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 sobj.ColType = CollisionType.BVH;
             }
             dungeonManager.BuildBVHForCollidableObjects();
+            dungeonManager.BuildOccluderBVH();
 
             // Trees
             string treesName = "trees";
@@ -283,7 +285,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var sobj in treesManager.GetObjects())
             {
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Box;  // trees — box collision
+                sobj.ColType = CollisionType.Convex;  // trees — box collision
             }   
 
             OnLoadProgress?.Invoke(0.20f, $"Static: {treesName} done");
@@ -291,7 +293,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // Daisies
             string daisiesName = "daises";
             OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 50, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
+            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
                 (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
                 groupName: "Daisy_1_LOD0,Daisy_patch_big_1_LOD0,Daisy_patch_small_1_LOD0");
             daisiesManager.CastShadow = false;
@@ -308,7 +310,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // Daisies — collidable (player/NPC gak bisa tembus pohon)
             foreach (var sobj in daisiesManager.GetObjects())
+            {
                 sobj.IsCollidable = false;
+                sobj.ColType = CollisionType.Convex;  // daisies — box collision
+            }
 
             OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
 
