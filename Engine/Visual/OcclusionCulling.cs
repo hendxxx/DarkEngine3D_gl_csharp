@@ -154,6 +154,81 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public int ObjectCount => _visibilityResults.Count;
         public int OccluderCount => _occluders.Count;
+        public List<Helpers.ObjectHelpers.AABB> GetAABBOccluders() => _occluders;
+        public List<BVH> GetMeshOccluders() => _meshOccluders;
+
+        /// <summary>
+        /// Mesh-aware occludee test: uses the occludee's own BVH leaf nodes for more accurate testing.
+        /// Instead of testing 8 corners of the root AABB, tests ray from camera to each leaf center.
+        /// If all leaf centers are occluded → object is occluded.
+        /// </summary>
+        /// <param name="occludeeBVH">BVH of the object being tested (for leaf sampling).</param>
+        /// <returns>True if the object is occluded by any registered occluder.</returns>
+        public bool IsMeshOccluded(Vector3 cameraPos, BVH occludeeBVH)
+        {
+            if (!Enabled) return false;
+            if (_occluders.Count == 0 && _meshOccluders.Count == 0) return false;
+
+            // Test 8 corners of root AABB — sama seperti IsOccludedByOccluders,
+            // tapi skip occludee's own BVH untuk mencegah self-occlusion
+            var rootBounds = occludeeBVH.Root?.Bounds;
+            if (!rootBounds.HasValue) return false;
+
+            Span<Vector3> corners = stackalloc Vector3[8]
+            {
+                new(rootBounds.Value.Min.X, rootBounds.Value.Min.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Min.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Max.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Min.X, rootBounds.Value.Max.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Min.X, rootBounds.Value.Min.Y, rootBounds.Value.Max.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Min.Y, rootBounds.Value.Max.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Max.Y, rootBounds.Value.Max.Z),
+                new(rootBounds.Value.Min.X, rootBounds.Value.Max.Y, rootBounds.Value.Max.Z),
+            };
+
+            for (int ci = 0; ci < 8; ci++)
+            {
+                Vector3 dir = corners[ci] - cameraPos;
+                float objDist = dir.Length();
+                if (objDist < 0.001f) return false;
+                dir /= objDist;
+
+                bool cornerOccluded = false;
+
+                // Check AABB occluders
+                for (int bi = 0; bi < _occluders.Count; bi++)
+                {
+                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist, out bool camInside))
+                    {
+                        float compareDist = camInside ? hitDist + HysteresisMargin : hitDist;
+                        if (hitDist > 0.001f && compareDist < objDist)
+                        {
+                            cornerOccluded = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Check mesh occluders (skip self BVH)
+                if (!cornerOccluded)
+                {
+                    for (int mi = 0; mi < _meshOccluders.Count; mi++)
+                    {
+                        if (_meshOccluders[mi] == occludeeBVH) continue;
+                        if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
+                        {
+                            cornerOccluded = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!cornerOccluded)
+                    return false; // Found a visible corner → object is visible
+            }
+
+            return true; // All corners occluded
+        }
 
         /// <summary>
         /// Test a single AABB against all registered occluders.

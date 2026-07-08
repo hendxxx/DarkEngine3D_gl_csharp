@@ -1,6 +1,6 @@
 # DarkEngine3D_gl_csharp
 Pending:
-1. Implemnet foot IK
+1. Implemnet GASP and foot IK
 2. Implement biomes generation, misal: putih=salju, hijau=rumput,hijua tua=pohon, coklat=tanah, biru=air, abu = slope atau cliff, dll. buat biomes ini dirender sesuai warnaya bersamaan heightmap dibentuk, tentukan best practise heightnya. nanti tiap region akan di isi object, contoh: hijau tua=pohon= nanti bakal isi random pake glb pohon, dst.
 3. buat debug mode jika T ditekan, terrain nya di kasih overlay sesuai warna biomes nya, tapi transparant 
 4. terrain displacement mapping and tessellation shaders

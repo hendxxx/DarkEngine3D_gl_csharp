@@ -31,6 +31,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         public static bool GetShowConvexHull() => debugMode == 3 || debugMode == 4;
         public static bool GetIsWireframe() => isWireframe;
 
+        // P: toggle frozen frustum debug visualization (freeze 8 corners at capture time)
+        static bool _showFrustumDebug = false;
+        static bool pPressed = false;
+        public static bool GetShowFrustumDebug() => _showFrustumDebug;
+        public static Vector3[]? GetFrozenCorners() => frozenCorners;
+
         // Shift+P: freeze culling — objects outside the frozen frustum stay hidden while camera moves
         static int prevShiftPState = 0;
         static bool cullFreezeMode = false;
@@ -384,7 +390,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 nPressed = false;
             }
 
-            // Shift+P: freeze culling — captured frustum determines which objects are hidden
+            // Shift+P: freeze culling — also freeze frustum corners for visualization
             int pState = glfwGetKey(window, Const.GLFW_KEY_P);
             bool shiftHeld = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS ||
                              glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
@@ -396,15 +402,72 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                     Matrix4x4 view = camera.GetViewMatrix();
                     Matrix4x4 proj = camera.GetProjectionMatrix();
                     cullFreezeViewProj = view * proj;
+
+                    // Also freeze frustum corners for visualization
+                    if (Matrix4x4.Invert(cullFreezeViewProj, out Matrix4x4 invVp))
+                    {
+                        frozenCorners = new Vector3[8];
+                        for (int i = 0; i < 8; i++)
+                        {
+                            float x = (i & 1) != 0 ? 1f : -1f;
+                            float y = (i & 2) != 0 ? 1f : -1f;
+                            float z = (i & 4) != 0 ? 1f : -1f;
+                            Vector4 ndc = new(x, y, z, 1f);
+                            Vector4 world = Vector4.Transform(ndc, invVp);
+                            world /= world.W;
+                            frozenCorners[i] = new Vector3(world.X, world.Y, world.Z);
+                        }
+                    }
+
                     camera.FlyMode = true; // auto freefly
                     Console.WriteLine("Cull Freeze: ON — objects outside frozen frustum will stay hidden");
                 }
                 else
                 {
+                    frozenCorners = null;
                     Console.WriteLine("Cull Freeze: OFF");
                 }
             }
             prevShiftPState = pState;
+
+            // P: toggle frozen frustum debug visualization (only when shift is NOT held)
+            if (pState == Const.GLFW_PRESS && !pPressed && !shiftHeld)
+            {
+                _showFrustumDebug = !_showFrustumDebug;
+                if (_showFrustumDebug)
+                {
+                    // Compute & freeze 8 frustum corners at current camera position
+                    Matrix4x4 view = camera.GetViewMatrix();
+                    Matrix4x4 proj = camera.GetProjectionMatrix();
+                    Matrix4x4 vp = view * proj;
+                    if (Matrix4x4.Invert(vp, out Matrix4x4 invVp))
+                    {
+                        frozenCorners = new Vector3[8];
+                        for (int i = 0; i < 8; i++)
+                        {
+                            float x = (i & 1) != 0 ? 1f : -1f;
+                            float y = (i & 2) != 0 ? 1f : -1f;
+                            float z = (i & 4) != 0 ? 1f : -1f;
+                            Vector4 ndc = new(x, y, z, 1f);
+                            Vector4 world = Vector4.Transform(ndc, invVp);
+                            world /= world.W;
+                            frozenCorners[i] = new Vector3(world.X, world.Y, world.Z);
+                        }
+                    }
+                    camera.FlyMode = true; // auto freefly
+                    Console.WriteLine("Frustum Frozen: ON — fly around to see the frozen frustum");
+                }
+                else
+                {
+                    frozenCorners = null;
+                    Console.WriteLine("Frustum Frozen: OFF");
+                }
+                pPressed = true;
+            }
+            else if (pState != Const.GLFW_PRESS)
+            {
+                pPressed = false;
+            }
 
             // =========================================================================
             // B TOGGLE OCCLUSION MODE: Off → SW → HiZ → Off

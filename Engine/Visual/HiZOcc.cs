@@ -1,5 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
 
@@ -34,6 +35,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // Occluder AABBs untuk Phase 2B (wall occlusion)
         private readonly List<Helpers.ObjectHelpers.AABB> _occluders = [];
 
+        // Mesh occluders: BVH untuk occlusion akurat berbasis mesh (bukan AABB)
+        private readonly List<BVH> _meshOccluders = [];
+
         public HiZOcc()
         {
             float scale = DarkEngine3D_gl_csharp.Engine.Config.OcclusionConfig.HiZResolutionScale;
@@ -49,6 +53,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void ClearOccluders()
         {
             _occluders.Clear();
+            _meshOccluders.Clear();
         }
 
         public void RegisterOccluder(Helpers.ObjectHelpers.AABB aabb)
@@ -56,12 +61,90 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _occluders.Add(aabb);
         }
 
-        public int OccluderCount => _occluders.Count;
+        /// <summary>Daftarkan mesh occluder — BVH untuk ray-triangle occlusion test yang akurat.</summary>
+        public void RegisterMeshOccluder(BVH bvh)
+        {
+            _meshOccluders.Add(bvh);
+        }
 
-        /// <summary>8-corner AABB test terhadap wall occluders.</summary>
+        public int OccluderCount => _occluders.Count + _meshOccluders.Count;
+
+        /// <summary>
+        /// Mesh-aware occludee test: uses the occludee's own BVH leaf nodes for more accurate testing.
+        /// Instead of testing 8 corners of the root AABB, tests ray from camera to each leaf center.
+        /// If all leaf centers are occluded → object is occluded.
+        /// </summary>
+        /// <param name="occludeeBVH">BVH of the object being tested (for leaf sampling).</param>
+        /// <returns>True if the object is occluded by any registered occluder.</returns>
+        public bool IsMeshOccluded(Vector3 cameraPos, BVH occludeeBVH)
+        {
+            if (_occluders.Count == 0 && _meshOccluders.Count == 0) return false;
+
+            // Test 8 corners of root AABB — skip occludee's own BVH untuk mencegah self-occlusion
+            var rootBounds = occludeeBVH.Root?.Bounds;
+            if (!rootBounds.HasValue) return false;
+
+            Span<Vector3> corners = stackalloc Vector3[8]
+            {
+                new(rootBounds.Value.Min.X, rootBounds.Value.Min.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Min.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Max.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Min.X, rootBounds.Value.Max.Y, rootBounds.Value.Min.Z),
+                new(rootBounds.Value.Min.X, rootBounds.Value.Min.Y, rootBounds.Value.Max.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Min.Y, rootBounds.Value.Max.Z),
+                new(rootBounds.Value.Max.X, rootBounds.Value.Max.Y, rootBounds.Value.Max.Z),
+                new(rootBounds.Value.Min.X, rootBounds.Value.Max.Y, rootBounds.Value.Max.Z),
+            };
+
+            for (int ci = 0; ci < 8; ci++)
+            {
+                Vector3 dir = corners[ci] - cameraPos;
+                float objDist = dir.Length();
+                if (objDist < 0.001f) return false;
+                dir /= objDist;
+
+                bool cornerOccluded = false;
+
+                // Check AABB occluders
+                for (int bi = 0; bi < _occluders.Count; bi++)
+                {
+                    const float hysMargin = 0.5f;
+                    if (RayIntersectsAABB(cameraPos, dir, _occluders[bi], out float hitDist, out bool camInside))
+                    {
+                        float compareDist = camInside ? hitDist + hysMargin : hitDist;
+                        if (hitDist > 0.001f && compareDist < objDist)
+                        {
+                            cornerOccluded = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Check mesh occluders (skip self BVH)
+                if (!cornerOccluded)
+                {
+                    for (int mi = 0; mi < _meshOccluders.Count; mi++)
+                    {
+                        if (_meshOccluders[mi] == occludeeBVH) continue;
+                        if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
+                        {
+                            cornerOccluded = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!cornerOccluded)
+                    return false; // Found a visible corner → object is visible
+            }
+
+            return true; // All corners occluded
+        }
+
+        /// <summary>8-corner AABB test terhadap wall occluders (juga cek mesh occluders).</summary>
         public bool IsOccluded(Vector3 cameraPos, Helpers.ObjectHelpers.AABB objAABB)
         {
-            if (_occluders.Count == 0) return false;
+            if (_occluders.Count == 0 && _meshOccluders.Count == 0) return false;
 
             Span<Vector3> corners = stackalloc Vector3[8]
             {
@@ -90,6 +173,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     {
                         float compareDist = camInside ? hitDist + hysMargin : hitDist;
                         if (hitDist > 0.001f && compareDist < objDist)
+                        {
+                            cornerOccluded = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Check mesh occluders (BVH ray-triangle intersection)
+                if (!cornerOccluded)
+                {
+                    for (int mi = 0; mi < _meshOccluders.Count; mi++)
+                    {
+                        if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                         {
                             cornerOccluded = true;
                             break;
@@ -336,6 +432,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void Dispose()
         {
             _occluders.Clear();
+            _meshOccluders.Clear();
         }
     }
 }

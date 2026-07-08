@@ -237,6 +237,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 sobj.IsCollidable = true;
                 sobj.ColType = CollisionType.Convex;  
             }
+            wallManager.UseOctree = true;
+            wallManager.BuildOctree();
             wallManager.BuildOccluderBVH();
 
             // ── Non-LOD model tanpa RotationCorrection ──
@@ -250,10 +252,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.BVH;
+                sobj.ColType = CollisionType.Convex;
             }
-            dungeonManager.BuildBVHForCollidableObjects();
-            dungeonManager.BuildOccluderBVH();
+            dungeonManager.UseOctree = true;
+            dungeonManager.BuildOctree();
+            //dungeonManager.BuildBVHForCollidableObjects();
+            //dungeonManager.BuildOccluderBVH();
 
             // Trees
             string treesName = "trees";
@@ -280,6 +284,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             treesManager.EnableSpatialGrid = true; 
             treesManager.UseTerrainGrid = true; 
             treesManager.BuildSpatialGrid();
+            treesManager.UseOctree = true;
+            treesManager.BuildOctree();
 
             // Trees — collidable (player/NPC gak bisa tembus pohon)
             foreach (var sobj in treesManager.GetObjects())
@@ -304,6 +310,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             daisiesManager.UseTerrainGrid = true;
             OnLoadProgress?.Invoke(0.80f, "Static: building spatial grid + HLOD...\n");
             daisiesManager.BuildSpatialGrid();
+            daisiesManager.UseOctree = true;
+            daisiesManager.BuildOctree();
 
 
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");

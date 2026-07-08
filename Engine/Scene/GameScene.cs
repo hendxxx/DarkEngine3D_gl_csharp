@@ -864,6 +864,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     animObjs[oi].IsVisible = true;
 
                 // 1B. Register static objects as occluders
+                Octree.ResetFrameStats();
                 var frustumVP = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
                 var frustumPlanes = StaticObjectManager.ExtractCameraFrustum(frustumVP);
                 if (_objectManager.staticObjectManagers != null)
@@ -872,9 +873,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
-                        if (mgr == null) continue;
+                                                if (mgr == null) continue;
+
+                        // Octree frustum pre-filter: pre-cull objects outside frustum (saves loop body work)
+                        if (mgr.UseOctree && mgr.SpatialOctree != null)
+                        {
+                            var _octreeIndices = new List<int>();
+                            mgr.SpatialOctree.QueryFrustum(frustumPlanes, _octreeIndices);
+                            var _octreeSet = new HashSet<int>(_octreeIndices);
+                            var _mgrObjs = mgr.GetObjects();
+                            for (int _oi = 0; _oi < _mgrObjs.Count; _oi++)
+                                _mgrObjs[_oi].IsVisible = _octreeSet.Contains(_oi);
+                        }
+
                         foreach (var sobj in mgr.GetObjects())
                         {
+                            // Skip objects pre-culled by Octree frustum test
+                            if (mgr.UseOctree && mgr.SpatialOctree != null && !sobj.IsVisible)
+                                continue;
+
                             float distSq = Vector3.DistanceSquared(_camera.Position, sobj.Position);
                             if (distSq >= _camera.FarDist * _camera.FarDist) { sobj.IsVisible = false; _staticFrustumCulled++; continue; }
                             // Frustum cull: skip objects outside camera frustum
@@ -1034,7 +1051,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
-                        if (mgr == null) continue;
+                                                if (mgr == null) continue;
+
+                        // Octree occlusion pre-filter: skip objects in occluded Octree subtrees
+                        if (mgr.UseOctree && mgr.SpatialOctree != null)
+                        {
+                            var _octreeVisible = new List<int>();
+                            var _mgrObjs = mgr.GetObjects();
+
+                            Func<int, BVH?> _getSelfBVH = (idx) =>
+                                (idx >= 0 && idx < _mgrObjs.Count) ? _mgrObjs[idx].OcclusionBVH : null;
+
+                            mgr.SpatialOctree.QueryOccluded(
+                                frustumPlanes,
+                                _camera.Position,
+                                useHiZ ? null : _occlusionCulling.GetAABBOccluders(),
+                                useHiZ ? null : _occlusionCulling.GetMeshOccluders(),
+                                _getSelfBVH,
+                                _octreeVisible
+                            );
+
+                            var _octreeOcclusionSet = new HashSet<int>(_octreeVisible);
+                            for (int _oi = 0; _oi < _mgrObjs.Count; _oi++)
+                                if (!_octreeOcclusionSet.Contains(_oi))
+                                    _mgrObjs[_oi].IsVisible = false;
+                        }
+
                         foreach (var sobj in mgr.GetObjects())
                         {
                             if (!sobj.IsVisible) continue;
@@ -1550,6 +1592,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     RenderPauseMenu();
             }
 
+            //  Frustum Frozen Debug Visualization (toggled with P key — freezes at capture)
+            var _frozenCorners = Keyboard.GetFrozenCorners();
+            if (_frozenCorners != null && _camera != null)
+            {
+                GL.Disable(Const.GL_DEPTH_TEST);
+
+                // 12 edges of the frozen frustum -> 24 vertices (GL_LINES)
+                var _verts = new List<Vector3>(24);
+                // Near plane (indices 0,1,3,2)
+                _verts.Add(_frozenCorners[0]); _verts.Add(_frozenCorners[1]);
+                _verts.Add(_frozenCorners[1]); _verts.Add(_frozenCorners[3]);
+                _verts.Add(_frozenCorners[3]); _verts.Add(_frozenCorners[2]);
+                _verts.Add(_frozenCorners[2]); _verts.Add(_frozenCorners[0]);
+                // Far plane (indices 4,5,7,6)
+                _verts.Add(_frozenCorners[4]); _verts.Add(_frozenCorners[5]);
+                _verts.Add(_frozenCorners[5]); _verts.Add(_frozenCorners[7]);
+                _verts.Add(_frozenCorners[7]); _verts.Add(_frozenCorners[6]);
+                _verts.Add(_frozenCorners[6]); _verts.Add(_frozenCorners[4]);
+                // Connecting lines: near->far
+                _verts.Add(_frozenCorners[0]); _verts.Add(_frozenCorners[4]);
+                _verts.Add(_frozenCorners[1]); _verts.Add(_frozenCorners[5]);
+                _verts.Add(_frozenCorners[2]); _verts.Add(_frozenCorners[6]);
+                _verts.Add(_frozenCorners[3]); _verts.Add(_frozenCorners[7]);
+
+                // Draw in cyan
+                TerrainChunk.DrawLineSegments(_verts, new Vector3(0f, 1f, 1f), _camera);
+                GL.Enable(Const.GL_DEPTH_TEST);
+            }
+
             //  Record total render time (from the dedicated total timer, not the section timer)
             _totalRenderTimeMs = _frameTotalTimer.Elapsed.TotalMilliseconds;
 
@@ -1606,7 +1677,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
 
                 int staticCulledAll = _staticFrustumCulled + _staticTerrainOccluded + _staticOcclusionCulled;
-                title7 = $" OC [{ocMode}]: {_occlusionCulling!.VisibleCount}v / {_occlusionCulling.OccludedCount}o | static: {staticCulledAll}cld ({_staticFrustumCulled}f {_staticTerrainOccluded}t {_staticOcclusionCulled}o)";
+                int octNodes = Octree.TotalNodesVisited;
+                int octFCulled = Octree.TotalNodesFrustumCulled;
+                int octOccluded = Octree.TotalNodesOcclusionCulled;
+                title7 = $" OC [{ocMode}]: {_occlusionCulling!.VisibleCount}v / {_occlusionCulling.OccludedCount}o | static: {staticCulledAll}cld ({_staticFrustumCulled}f {_staticTerrainOccluded}t {_staticOcclusionCulled}o) | Octree: {octNodes}nd {octFCulled}fc {octOccluded}occ";
             }
             else if (ocActive)
             {

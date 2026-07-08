@@ -273,6 +273,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// </summary>
         public bool UseTerrainGrid = false;
 
+        // -- Octree spatial partitioning for hierarchical culling --
+        /// <summary>Octree for hierarchical frustum + occlusion culling. Built after all objects added.</summary>
+        public Octree? SpatialOctree { get; private set; }
+        public bool UseOctree = false;
+
+
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
 
         public Vector3 RotationCorrection = Vector3.Zero;
@@ -806,7 +812,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// If UseHLOD is true, also builds HLOD merged meshes.
         /// Must be called after all objects are added.
         /// </summary>
-        public void BuildSpatialGrid()
+        
+        /// <summary>
+        /// Build Octree from object world AABBs for hierarchical frustum + occlusion culling.
+        /// Leaf size ~16m (minLeafSize parameter). Must be called after all objects added.
+        /// </summary>
+        public void BuildOctree()
+        {
+            if (!UseOctree || _objects.Count == 0) return;
+
+            // Compute world bounds from all objects' world AABBs
+            var boundsList = new List<(AABB bounds, int index)>(_objects.Count);
+            Vector3 worldMin = new(float.MaxValue), worldMax = new(float.MinValue);
+
+            for (int i = 0; i < _objects.Count; i++)
+            {
+                var aabb = _objects[i].CachedWorldAABB;
+                boundsList.Add((aabb, i));
+                worldMin = Vector3.Min(worldMin, aabb.Min);
+                worldMax = Vector3.Max(worldMax, aabb.Max);
+            }
+
+            var worldBounds = new AABB(worldMin, worldMax);
+            SpatialOctree = new Octree();
+            SpatialOctree.Build(boundsList, worldBounds, 16f);
+            Console.WriteLine($"[Octree] Built for {_objects.Count} objects (bounds: {worldMin.X:F1},{worldMin.Z:F1} -> {worldMax.X:F1},{worldMax.Z:F1})");
+        }
+
+public void BuildSpatialGrid()
         {
             if (!EnableSpatialGrid || _objects.Count == 0) return;
 
