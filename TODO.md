@@ -7,8 +7,32 @@ Pending:
 5. Octahedral Impostors
 6. buatin editor buat edit biomes, terrain, nanti muncul menu buat pilih biomes apa yang mau di edit, nanti bisa pilih brush size, dan bisa pilih biomes apa yang mau di ganti, misal: hijau tua=pohon mau diganti jadi hijau=rumput, dst. nanti bisa di save ke file biomes.
 7. eimplemet ECS dan multi-threading untuk rendering, physics, dan animasi.
-8. optimize BVH: Occluder Mesh,Occlusion BVH
-9. fixing jitter Baumgarte Stabilization, model accumulator fixed timestamp.
+8. revamp load glb:
+	GLB > import nodes > Store Hierarchy > Store Meshes (RemoveWorldTransform) > Store Materials > Store Textures > Scene Instance > Snap To Terrain > Y Offset.
+	scenario 1: obj = loadobj(x, terrainHeight + offset, y, asset)
+	scenario 2: city = loadobj(x, terrainHeight + offset, y, asset); 
+	  CreateInstance(
+	    city.GetMesh("House01")
+	  )
+    scenario 3: cityBig = loadobj(x, terrainHeight + offset, y, scene)
+
+	tipe asset: implement RemoveWorldTransform/ Reset Origin
+	tipe scene: jangan implement RemoveWorldTransform, ikuti world transform dari glb.
+
+
+9. enhance load glb: 
+	Init:
+	GLB > Grid Chunking > LOD Chunking > World BVH Build (bisa pakai chunk terrain punya) > Serialize Level data
+
+	Render (loop):
+	World BVH Traversal> Frustum Culling > Occlusion Culling > LOD Selection > Draw
+
+10. implement physics engine, buat collision detection, buat rigidbody, buat collider, buat trigger, buat constraint, buat joint, buat ragdoll, buat vehicle, buat character controller, buat cloth simulation, buat soft body simulation, buat fluid simulation, buat particle system, buat sound system, buat AI system, buat networking system. 
+Dengan aturan Terrain masih pakai  Heightmap Collision, tetapi untuk object lain pakai BVH Collision, dan buat sistem collision detection yang bisa mendeteksi collision antara object dengan terrain, object dengan object, dan object dengan trigger.
+Dan collationya bisa visible atau invisible, jadi bisa di render atau tidak di render. khusus untuk trigger collationnya tidak perlu di resolve cukup jalan kan triggernya, contoh : jika ada object yang masuk ke trigger, maka pintu terbuka.
+
+
+11. fixing jitter Baumgarte Stabilization, model accumulator fixed timestamp.
  
 Done, misc:
 1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
