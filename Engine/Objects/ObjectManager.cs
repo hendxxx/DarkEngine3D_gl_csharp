@@ -213,10 +213,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.15f, "AI: done");            // ─────────────────────────────────────
             // PHASE 2: STATIC OBJECTS (15% → 85%)
             // ─────────────────────────────────────
-            var wallManager = new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) };
-            var dungeonManager = new StaticObjectManager { RotationCorrection = new Vector3(0, 0, 0), UseNodeHierarchy = true };
-            var treesManager = new StaticObjectManager { RotationCorrection = new Vector3(-180, 0, 0) };
-            var daisiesManager = new StaticObjectManager { RotationCorrection = new Vector3(-90, 0, 0) };
+            var wallManager = new StaticObjectManager {};
+            var dungeonManager = new StaticObjectManager {};
+            var treesManager = new StaticObjectManager {};
+            var daisiesManager = new StaticObjectManager {};
 
             staticObjectManagers.Add(wallManager);
             staticObjectManagers.Add(dungeonManager);
@@ -225,9 +225,39 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
 
-            // Wall occluder
+            // ════════════════════════════════════════════════════════════════
+            //  NEW: Revamped GLB loading with GlbLoader
+            // ════════════════════════════════════════════════════════════════
+            //
+            //  Pipeline: GLB → Import Nodes → Store Hierarchy
+            //    → Store Meshes (RemoveWorldTransform if asset)
+            //    → Store Materials (PBR) → Store Textures
+            //    → Scene Instance → Snap To Terrain → Y Offset
+            //
+            //  Scenario 1 (asset): damaged_wall.glb loaded as single asset
+            //    GlbLoader.Load(manager, path, pos, yaw, scale, false, terrain)
+            //
+            //  Scenario 2 (asset + instance): would load asset then call
+            //    GlbLoader.CreateInstance(manager, asset, "MeshName", pos, ...)
+            //
+            //  Scenario 3 (scene): my_dungeon.glb loaded as scene
+            //    GlbLoader.Load(manager, path, pos, yaw, scale, true, terrain)
+            // ════════════════════════════════════════════════════════════════
+
+            // ── Scenario 1: damaged_wall.glb as ASSET ──
+            // RemoveWorldTransform is applied — node transforms are baked into
+            // vertex positions so the wall sits at origin. The asset container
+            // is returned for optional mesh-level instantiation.
             string wallPath = "Artifacts/objects/damaged_wall.glb";
-            wallManager.AddObject(wallPath, new Vector3(20f, 0.0f, 10f), 0f, 0.05f, "", true, gameTerrainChunk);
+            var wallAsset = GlbLoader.Load(
+                wallManager, wallPath,
+                new Vector3(10f, 0.0f, 0f),  // world position
+                0f,                          // yaw
+                0.05f,                       // scale
+                isScene: false,              // ASSET mode: RemoveWorldTransform ON
+                gameTerrainChunk,            // terrain for snapping
+                yOffset: 0f);                // additional Y offset
+
             wallManager.CastShadow = true;
             wallManager.UseAlpha = true;
             wallManager.CullAtMaxLOD = true;
@@ -235,93 +265,155 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 sobj.IsOccluder = true;
                 sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Convex;  
-            }
-            wallManager.UseOctree = true;
-            wallManager.BuildOctree();
-            wallManager.BuildOccluderBVH();
+                sobj.ColType = CollisionType.Box;
+            } 
 
-            // ── Non-LOD model tanpa RotationCorrection ──
-            string townPath = "Artifacts/objects/my_dungeon.glb";
-            dungeonManager.AddObject(townPath, new Vector3(40f, 0f, 0f), 0f, 1.5f, "root", true, gameTerrainChunk); 
+            //// ── Scenario 3: my_dungeon.glb as SCENE ──
+            //// RemoveWorldTransform is NOT applied — the GLB's original node
+            //// hierarchy and world transforms are preserved. UseNodeHierarchy
+            //// is automatically set to true on the manager.
+            string dungeonPath = "Artifacts/objects/my_dungeon.glb";
+            var dungeonAsset = GlbLoader.Load(
+                dungeonManager, dungeonPath,
+                new Vector3(40f, 0f, 0f),    // world position
+                0f,                          // yaw
+                1.5f,                        // scale
+                isScene: true,               // SCENE mode: RemoveWorldTransform OFF
+                gameTerrainChunk,            // terrain for snapping
+                yOffset: 0f);                // additional Y offset
+
             dungeonManager.CastShadow = true;
             dungeonManager.UseAlpha = true; 
-            dungeonManager.CullAtMaxLOD = false ; 
+            dungeonManager.CullAtMaxLOD = false;   
 
             foreach (var sobj in dungeonManager.GetObjects())
             {
-                sobj.IsOccluder = true;
-                sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Convex;
-            }
-            dungeonManager.UseOctree = true;
-            dungeonManager.BuildOctree();
-            //dungeonManager.BuildBVHForCollidableObjects();
-            //dungeonManager.BuildOccluderBVH();
+                sobj.IsOccluder = false;
+                sobj.IsCollidable = false;
+                sobj.ColType = CollisionType.Box;
+            } 
 
-            // Trees
+            //── Example: Scenario 2 (asset + instance) ──
+            // Debug: list available mesh names from the dungeon
+            if (dungeonAsset != null)
+            {
+                var names = string.Join(", ", dungeonAsset.GetMeshNames());
+                Console.WriteLine($"[Dungeon] Available meshes: {names}");
+            }
+
+            var box = GlbLoader.CreateInstance(
+                dungeonManager, dungeonAsset, "Object_34",
+                new Vector3(5f, 0f, 0f), 0f, 1f, gameTerrainChunk, 0f);
+            
+            box.IsCollidable = true;
+            box.IsOccluder = true;
+            box.ColType = CollisionType.Box;
+
+            //// Trees — loaded via GlbLoader pipeline
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
-            treesManager.AddRandomObjects("Artifacts/objects/biomes/trees.glb", 10, new Vector3(0, 0, 0), 256f, 1f, gameTerrainChunk,
-                (p) => OnLoadProgress?.Invoke(0.18f + p * 0.04f, $"Static1: loading {treesName}..."),
-                    groupName: "Christmas tree_LOD0,Christmas tree_2_LOD0,Christmas tree_3_LOD0",
-                    //groupName: "Pine_big_1_LOD0,Pine_large_1_LOD0,Pine_medium_1_LOD0,Pine_sapling_1_LOD0,Pine_small_1_LOD0",
-                    //groupName: "tree_0"
 
-                collisionPart: "Bark_Mat_0",
-                overrideCollisionSizeX: 1.2f,
-                overrideCollisionSizeZ: 1.2f
-                );
-            treesManager.UseHLOD = true; // Trees get HLOD
-            treesManager.UseImpostors = true; // Trees get Octahedral Impostors for far distance
-            treesManager.ImpostorNearDist = 301f; // Matches LOD3 distance — seamless transition from mesh to impostor
-            treesManager.ImpostorFarDist = 600f;  // Extend far so millions of distant trees render as impostors
-            treesManager.ImpostorFadeDist = 0f;  // 0 = no fadeout (instant impostor transition)
-            treesManager.GridVisibleRange = 600f;   // Extend grid range to match impostor far distance
+            string treesPath = "Artifacts/objects/biomes/trees.glb";
+            string[] treeVariants = ["Christmas tree", "Christmas tree_2", "Christmas tree_3"];
+            const int treeCount = 12;
+            const float treeRadius = 64f;
+
+            // Load the GLB as an asset WITHOUT auto-creating instances.
+            // We'll create individual tree instances manually at random positions.
+            var treesAsset = GlbLoader.Load(
+                treesManager, treesPath,
+                new Vector3(0, 0, 0), 0f, 1f,
+                isScene: false,
+                gameTerrainChunk,
+                yOffset: 0f,
+                autoCreateInstances: false);
+
+            if (treesAsset != null)
+            {
+                GlbLoader.CreateRandomInstances(
+                    treesManager, treesAsset, treeVariants, treeCount, treeRadius,
+                    terrain: gameTerrainChunk,
+                    progressMin: 0.18f, progressMax: 0.22f,
+                    progressLabel: treesName,
+                    configureInstance: sobj =>
+                    {
+                        sobj.IsCollidable = true;
+                        sobj.ColType = CollisionType.Box;
+                    },
+                    onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
+            }
+
+            // Tree rendering configuration 
+            //treesManager.UseImpostors = true;
+            //treesManager.ImpostorNearDist = 301f;
+            //treesManager.ImpostorFarDist = 600f;
+            //treesManager.ImpostorFadeDist = 0f;
+            //treesManager.GridVisibleRange = 600f;
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
-            treesManager.EnableSpatialGrid = true; 
-            treesManager.UseTerrainGrid = true; 
+            treesManager.EnableSpatialGrid = true;
+            treesManager.UseTerrainGrid = true;
             treesManager.BuildSpatialGrid();
-            treesManager.UseOctree = true;
-            treesManager.BuildOctree();
 
-            // Trees — collidable (player/NPC gak bisa tembus pohon)
-            foreach (var sobj in treesManager.GetObjects())
-            {
-                sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Convex;  // trees — box collision
-            }   
+            OnLoadProgress?.Invoke(0.22f, $"Static: {treesName} done");
 
-            OnLoadProgress?.Invoke(0.20f, $"Static: {treesName} done");
-
-            // Daisies
+            //// Daisies — loaded via GlbLoader pipeline
             string daisiesName = "daises";
-            OnLoadProgress?.Invoke(0.20f, $"Static: loading {daisiesName}...");
-            daisiesManager.AddRandomObjects("Artifacts/objects/biomes/daises.glb", 500, new Vector3(0, 0, 0), 256f, 1.0f, gameTerrainChunk,
-                (p) => OnLoadProgress?.Invoke(0.20f + p * 0.65f, $"Static: loading {daisiesName}..."),
-                groupName: "Daisy_1_LOD0,Daisy_patch_big_1_LOD0,Daisy_patch_small_1_LOD0");
+            OnLoadProgress?.Invoke(0.25f, $"Static: loading {daisiesName}...");
+
+            string daisiesPath = "Artifacts/objects/biomes/daises.glb";
+            string[] daisyVariants = ["Daisy_1", "Daisy_patch_big_1", "Daisy_patch_small_1"];
+            const int daisyCount = 64;
+            const float daisyRadius = 64f;
+
+            // Load as asset WITHOUT auto-creating instances
+            var daisiesAsset = GlbLoader.Load(
+                daisiesManager, daisiesPath,
+                new Vector3(0, 0, 0), 0f, 1f,
+                isScene: false,
+                gameTerrainChunk,
+                yOffset: 0f,
+                autoCreateInstances: false);
+
+            if (daisiesAsset != null)
+            {
+                var daisyNames = string.Join(", ", daisiesAsset.GetMeshNames());
+                Console.WriteLine($"[Daisies] Available meshes: {daisyNames}");
+                // Debug: print original mesh names
+                for (int mi = 0; mi < daisiesAsset.GpuData.Data.Meshes.Length; mi++)
+                {
+                    string? mn = daisiesAsset.GpuData.Data.Meshes[mi].Name;
+                    if (!string.IsNullOrEmpty(mn) && mn.Contains("Daisy", StringComparison.OrdinalIgnoreCase))
+                        Console.WriteLine($"[Daisies] Mesh[{mi}] = \"{mn}\"");
+                }
+
+                GlbLoader.CreateRandomInstances(
+                    daisiesManager, daisiesAsset, daisyVariants, daisyCount, daisyRadius,
+                    terrain: gameTerrainChunk,
+                    progressMin: 0.25f, progressMax: 0.75f,
+                    progressLabel: daisiesName,
+                    configureInstance: sobj =>
+                    { 
+                        sobj.IsCollidable = false;
+                        sobj.ColType = CollisionType.Box;
+                    },
+                    onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
+            }
+
+            // Daisies configuration
             daisiesManager.CastShadow = false;
             daisiesManager.UseAlpha = false;
             daisiesManager.CullAtMaxLOD = true;
-            daisiesManager.SkipTerrainRayMarch = true; // 100rb daisies — skip ray-march
+            daisiesManager.SkipTerrainRayMarch = true;
             daisiesManager.EnableSpatialGrid = true;
             daisiesManager.UseTerrainGrid = true;
-            OnLoadProgress?.Invoke(0.80f, "Static: building spatial grid + HLOD...\n");
+            OnLoadProgress?.Invoke(0.77f, $"Static: building {daisiesName} spatial grid...");
             daisiesManager.BuildSpatialGrid();
-            daisiesManager.UseOctree = true;
-            daisiesManager.BuildOctree();
 
+            OnLoadProgress?.Invoke(0.80f, $"Static: {daisiesName} done");
 
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
-
-            // Daisies — collidable (player/NPC gak bisa tembus pohon)
-            foreach (var sobj in daisiesManager.GetObjects())
-            {
-                sobj.IsCollidable = false;
-                sobj.ColType = CollisionType.Convex;  // daisies — box collision
-            }
 
             OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
 
@@ -1188,57 +1280,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         }
 
-        /// <summary>
-        /// Delegate HLOD debug visualization to all static managers that have HLOD enabled.
-        /// </summary>
-        public void DrawHLODDebug(Camera camera, Plane[] cameraFrustum)
-        {
-            if (staticObjectManagers == null) return;
-            foreach (var mgr in staticObjectManagers)
-            {
-                if (mgr != null)
-                    mgr.DrawHLODDebug(camera, cameraFrustum);
-            }
-        }
-
-        /// <summary>Total baked impostor regions across all static managers.</summary>
-        public int TotalImpostorRegions
-        {
-            get
-            {
-                if (staticObjectManagers == null) return 0;
-                int total = 0;
-                foreach (var mgr in staticObjectManagers)
-                    if (mgr != null) total += mgr.ImpostorRegionCount;
-                return total;
-            }
-        }
-        /// <summary>Total visible impostor regions this frame across all static managers.</summary>
-        public int TotalVisibleImpostors
-        {
-            get
-            {
-                if (staticObjectManagers == null) return 0;
-                int total = 0;
-                foreach (var mgr in staticObjectManagers)
-                    if (mgr != null) total += mgr.ImpVisibleRegions;
-                return total;
-            }
-        }
-
-        /// <summary>
-        /// Delegate impostor debug visualization to all static managers that have impostors built.
-        /// </summary>
-        public void DrawImpostorDebug(Camera camera, Plane[] cameraFrustum, HUD hud = null)
-        {
-            if (staticObjectManagers == null) return;
-            foreach (var mgr in staticObjectManagers)
-            {
-                if (mgr != null)
-                    mgr.DrawImpostorDebug(camera, cameraFrustum, hud);
-            }
-        }
-
         public void DrawHealthBars(Camera camera, HUD hud)
         {
             const float headHeight = 2.1f;
@@ -1364,11 +1405,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _objects.Clear();
             _agents.Clear();
 
-            // Cleanup HLOD + Impostor GPU resources
+            // Static managers are owned by the scene
             foreach (var mgr in staticObjectManagers)
             {
-                mgr?.DisposeHLOD();
-                mgr?.DisposeImpostors();
+                // GPU resources cleanup handled by manager disposal
             }
         }
 

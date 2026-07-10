@@ -281,6 +281,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 // Check mesh occluders
+                // Skip occluders whose root AABB fully contains the node bounds
+                // (container mesh should not occlude objects inside it)
                 if (!cornerOccluded && meshOccluders != null)
                 {
                     Vector3 dir = corners[ci] - cameraPos;
@@ -290,6 +292,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                     for (int mi = 0; mi < meshOccluders.Count; mi++)
                     {
+                        if (meshOccluders[mi].Root != null &&
+                            IsAABBContained(nodeBounds, meshOccluders[mi].Root!.Bounds))
+                            continue;
                         if (meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                         {
                             cornerOccluded = true;
@@ -329,12 +334,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
             }
 
-            // Check mesh occluders (skip self)
+            // Check mesh occluders (skip self + skip container occluders)
             if (meshOccluders != null)
             {
                 for (int mi = 0; mi < meshOccluders.Count; mi++)
                 {
                     if (meshOccluders[mi] == selfBVH) continue;
+                    // Skip if object's BVH bounds are inside the occluder's root AABB
+                    // (container mesh should not occlude objects inside it)
+                    if (selfBVH != null && selfBVH.Root != null &&
+                        meshOccluders[mi].Root != null &&
+                        IsAABBContained(selfBVH.Root.Bounds, meshOccluders[mi].Root.Bounds))
+                        continue;
                     if (meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                         return true;
                 }
@@ -347,6 +358,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             // Use node bounds center as approximation (we don't have per-object bounds here)
             return (node.Bounds.Min + node.Bounds.Max) * 0.5f;
+        }
+
+        /// <summary>
+        /// Check if an AABB is fully contained within another AABB.
+        /// Used to detect when an object/node is inside a "container" mesh
+        /// so the container mesh doesn't occlude the contained object.
+        /// </summary>
+        private static bool IsAABBContained(AABB inner, AABB outer)
+        {
+            return inner.Min.X >= outer.Min.X &&
+                   inner.Min.Y >= outer.Min.Y &&
+                   inner.Min.Z >= outer.Min.Z &&
+                   inner.Max.X <= outer.Max.X &&
+                   inner.Max.Y <= outer.Max.Y &&
+                   inner.Max.Z <= outer.Max.Z;
         }
 
         /// <summary>

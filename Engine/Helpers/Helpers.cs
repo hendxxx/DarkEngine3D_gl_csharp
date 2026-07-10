@@ -424,6 +424,59 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             return result;
         }
 
+        /// <summary>
+        /// Remove world transforms from all meshes by baking node world matrices into vertex positions.
+        /// After this operation, mesh vertices are in a unified local space (origin reset),
+        /// and the node hierarchy can be ignored for positioning.
+        /// This is used for loading GLB files as "assets" where individual meshes can be
+        /// instantiated at arbitrary world positions.
+        /// </summary>
+        public static void RemoveWorldTransform(GltfData data, int[]? meshToNode)
+        {
+            if (data.Nodes == null || data.Nodes.Length == 0 || data.Meshes == null) return;
+
+            for (int mi = 0; mi < data.Meshes.Length; mi++)
+            {
+                int nodeIdx = (meshToNode != null && mi < meshToNode.Length) ? meshToNode[mi] : -1;
+                if (nodeIdx < 0 || nodeIdx >= data.Nodes.Length) continue;
+
+                var nodeWorldMat = GetNodeWorldMatrix(data.Nodes, nodeIdx);
+                if (nodeWorldMat == Matrix4x4.Identity) continue;
+
+                // Transform positions by node world matrix (bakes hierarchy into vertex positions)
+                var verts = data.Meshes[mi].Vertices;
+                if (verts == null || verts.Length == 0) continue;
+
+                // Extract rotation+scale (upper 3x3) for normal transformation
+                Matrix4x4 normMat = nodeWorldMat;
+                normMat.M41 = 0; normMat.M42 = 0; normMat.M43 = 0;
+
+                // Per glTF spec, normals must be transformed by inverse(transpose(matrix))
+                // to handle non-uniform scaling correctly.
+                Matrix4x4 invTransposeNorm = Matrix4x4.Identity;
+                if (!Matrix4x4.Invert(normMat, out var invNormMat))
+                    invTransposeNorm = Matrix4x4.Identity;
+                else
+                    invTransposeNorm = Matrix4x4.Transpose(invNormMat);
+
+                for (int vi = 0; vi < verts.Length; vi++)
+                {
+                    verts[vi].Position = Vector3.Transform(verts[vi].Position, nodeWorldMat);
+                    verts[vi].Normal = Vector3.Normalize(Vector3.TransformNormal(verts[vi].Normal, invTransposeNorm));
+                }
+            }
+
+            // After baking transforms, set all node local matrices to identity
+            // (the transforms are now in the vertex positions)
+            for (int ni = 0; ni < data.Nodes.Length; ni++)
+            {
+                data.Nodes[ni].LocalMatrix = Matrix4x4.Identity;
+                data.Nodes[ni].BaseTranslation = Vector3.Zero;
+                data.Nodes[ni].BaseRotation = Quaternion.Identity;
+                data.Nodes[ni].BaseScale = Vector3.One;
+            }
+        }
+
         // ===========================================================================
         //  MeshMaterialGpu — material parameters on the GPU
         // ===========================================================================

@@ -118,10 +118,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     }
 
                     // Check mesh occluders (BVH ray-triangle intersection)
+                    // Skip occluders whose root AABB fully contains the object —
+                    // prevents "container" meshes (e.g. dungeon) from occluding objects inside them.
                     if (!cornerOccluded)
                     {
                         for (int mi = 0; mi < _meshOccluders.Count; mi++)
                         {
+                            if (_meshOccluders[mi].Root != null &&
+                                IsAABBContained(aabb, _meshOccluders[mi].Root!.Bounds))
+                                continue;
                             if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                             {
                                 cornerOccluded = true;
@@ -209,12 +214,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     }
                 }
 
-                // Check mesh occluders (skip self BVH)
+                // Check mesh occluders (skip self BVH + contained BVHs)
                 if (!cornerOccluded)
                 {
                     for (int mi = 0; mi < _meshOccluders.Count; mi++)
                     {
                         if (_meshOccluders[mi] == occludeeBVH) continue;
+                        // Skip if occludee's root AABB is inside the occluder's root AABB
+                        // (container mesh should not occlude contained meshes)
+                        if (_meshOccluders[mi].Root != null &&
+                            occludeeBVH.Root != null &&
+                            IsAABBContained(occludeeBVH.Root.Bounds, _meshOccluders[mi].Root.Bounds))
+                            continue;
                         if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                         {
                             cornerOccluded = true;
@@ -279,10 +290,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
 
                 // Check mesh occluders (BVH ray-triangle intersection)
+                // Skip occluders whose root AABB fully contains the object —
+                // prevents "container" meshes (e.g. dungeon) from occluding objects inside them.
                 if (!cornerOccluded)
                 {
                     for (int mi = 0; mi < _meshOccluders.Count; mi++)
                     {
+                        if (_meshOccluders[mi].Root != null &&
+                            IsAABBContained(objAABB, _meshOccluders[mi].Root!.Bounds))
+                            continue;
                         if (_meshOccluders[mi].RayIntersects(cameraPos, dir, objDist))
                         {
                             cornerOccluded = true;
@@ -300,7 +316,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return true; // all corners occluded
         }
 
-        public int OccludedCount
+    public int OccludedCount
         {
             get
             {
@@ -322,6 +338,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     if (_visibilityResults[i]) c++;
                 return c;
             }
+        }
+
+        /// <summary>
+        /// Check if an AABB is fully contained within another AABB.
+        /// Used to detect when an object is inside a "container" mesh
+        /// (e.g., a prop inside a dungeon) so the container mesh doesn't
+        /// occlude the contained object.
+        /// </summary>
+        private static bool IsAABBContained(Helpers.ObjectHelpers.AABB inner, Helpers.ObjectHelpers.AABB outer)
+        {
+            return inner.Min.X >= outer.Min.X &&
+                   inner.Min.Y >= outer.Min.Y &&
+                   inner.Min.Z >= outer.Min.Z &&
+                   inner.Max.X <= outer.Max.X &&
+                   inner.Max.Y <= outer.Max.Y &&
+                   inner.Max.Z <= outer.Max.Z;
         }
 
         /// <summary>Ray-AABB intersection test (slabs method). Returns entry (tmin) or exit (tmax) distance.</summary>

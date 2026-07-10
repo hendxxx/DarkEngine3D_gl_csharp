@@ -549,7 +549,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Vector3 h = Vector3.Cross(dir, edge2);
             float det = Vector3.Dot(edge1, h);
 
-            if (MathF.Abs(det) < epsilon)
+            // Backface culling: only front-facing triangles (det > 0) occlude.
+            // This prevents inner objects from being occluded by back-face triangles
+            // when the camera is inside a mesh (e.g., objects inside a dungeon).
+            if (det < epsilon)
                 return false;
 
             float invDet = 1f / det;

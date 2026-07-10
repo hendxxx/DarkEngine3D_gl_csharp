@@ -328,6 +328,12 @@
     <None Update="Artifacts\objects\hazmat_guy.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\objects\hospital.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\objects\industrial_warehouse.glb">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\objects\LittlestTokyo.glb">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

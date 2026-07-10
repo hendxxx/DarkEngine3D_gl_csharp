@@ -875,23 +875,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         var mgr = _objectManager.staticObjectManagers[mi];
                                                 if (mgr == null) continue;
 
-                        // Octree frustum pre-filter: pre-cull objects outside frustum (saves loop body work)
-                        if (mgr.UseOctree && mgr.SpatialOctree != null)
-                        {
-                            var _octreeIndices = new List<int>();
-                            mgr.SpatialOctree.QueryFrustum(frustumPlanes, _octreeIndices);
-                            var _octreeSet = new HashSet<int>(_octreeIndices);
-                            var _mgrObjs = mgr.GetObjects();
-                            for (int _oi = 0; _oi < _mgrObjs.Count; _oi++)
-                                _mgrObjs[_oi].IsVisible = _octreeSet.Contains(_oi);
-                        }
-
                         foreach (var sobj in mgr.GetObjects())
                         {
-                            // Skip objects pre-culled by Octree frustum test
-                            if (mgr.UseOctree && mgr.SpatialOctree != null && !sobj.IsVisible)
-                                continue;
-
                             float distSq = Vector3.DistanceSquared(_camera.Position, sobj.Position);
                             if (distSq >= _camera.FarDist * _camera.FarDist) { sobj.IsVisible = false; _staticFrustumCulled++; continue; }
                             // Frustum cull: skip objects outside camera frustum
@@ -1012,22 +997,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                             if (sobj.IsOccluder)
                             {
-                                if (sobj.OcclusionBVH != null)
-                                {
-                                    // Mesh occluder: ray-triangle intersection for accuracy
-                                    _occlusionCulling.RegisterMeshOccluder(sobj.OcclusionBVH);
-                                    
-                                    // HiZ fallback: register root AABB
-                                    var rootAABB = sobj.OcclusionBVH.Root?.Bounds ?? sobj.CachedWorldAABB;
-                                    if (useHiZ)
-                                        _hizOcc!.RegisterOccluder(rootAABB);
-                                }
-                                else
-                                {
-                                    _occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);
-                                    if (useHiZ)
-                                        _hizOcc!.RegisterOccluder(sobj.CachedWorldAABB);
-                                }
+                                _occlusionCulling.RegisterOccluder(sobj.CachedWorldAABB);
+                                if (useHiZ)
+                                    _hizOcc!.RegisterOccluder(sobj.CachedWorldAABB);
                             }
                         }
                     }
@@ -1053,30 +1025,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         var mgr = _objectManager.staticObjectManagers[mi];
                                                 if (mgr == null) continue;
 
-                        // Octree occlusion pre-filter: skip objects in occluded Octree subtrees
-                        if (mgr.UseOctree && mgr.SpatialOctree != null)
-                        {
-                            var _octreeVisible = new List<int>();
-                            var _mgrObjs = mgr.GetObjects();
-
-                            Func<int, BVH?> _getSelfBVH = (idx) =>
-                                (idx >= 0 && idx < _mgrObjs.Count) ? _mgrObjs[idx].OcclusionBVH : null;
-
-                            mgr.SpatialOctree.QueryOccluded(
-                                frustumPlanes,
-                                _camera.Position,
-                                useHiZ ? null : _occlusionCulling.GetAABBOccluders(),
-                                useHiZ ? null : _occlusionCulling.GetMeshOccluders(),
-                                _getSelfBVH,
-                                _octreeVisible
-                            );
-
-                            var _octreeOcclusionSet = new HashSet<int>(_octreeVisible);
-                            for (int _oi = 0; _oi < _mgrObjs.Count; _oi++)
-                                if (!_octreeOcclusionSet.Contains(_oi))
-                                    _mgrObjs[_oi].IsVisible = false;
-                        }
-
                         foreach (var sobj in mgr.GetObjects())
                         {
                             if (!sobj.IsVisible) continue;
@@ -1084,9 +1032,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             if (distSq > farSq) continue;
 
                             bool occluded;
-                            var testAABB = sobj.OcclusionBVH != null
-                                ? (sobj.OcclusionBVH.Root?.Bounds ?? sobj.CachedWorldAABB)
-                                : sobj.CachedWorldAABB;
+                            var testAABB = sobj.CachedWorldAABB;
                             if (useHiZ)
                             {
                                 occluded = _hizOcc!.IsTerrainOccluded(_camera.Position, testAABB);
@@ -1440,30 +1386,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
             }
 
-            //  HLOD Visualization (toggled with K key) 
-            if (Keyboard.GetShowHLOD() && _objectManager != null)
-            {
-                GL.Disable(Const.GL_DEPTH_TEST);
-
-                Plane[] hlodFrustum = StaticObjectManager.ExtractCameraFrustum(
-                    Matrix4x4.Multiply(_camera.GetViewMatrix(), _camera.GetProjectionMatrix()));
-                _objectManager.DrawHLODDebug(_camera, hlodFrustum);
-
-                GL.Enable(Const.GL_DEPTH_TEST);
-            }
-
-            //  Impostor Visualization (toggled with J key) 
-            if (Keyboard.GetShowImpostor() && _objectManager != null)
-            {
-                GL.Disable(Const.GL_DEPTH_TEST);
-
-                Plane[] impFrustum = StaticObjectManager.ExtractCameraFrustum(
-                    Matrix4x4.Multiply(_camera.GetViewMatrix(), _camera.GetProjectionMatrix()));
-                _objectManager.DrawImpostorDebug(_camera, impFrustum);
-
-                GL.Enable(Const.GL_DEPTH_TEST);
-            }
-
             //  Debug BBox Wireframe + LOD Labels (toggled with P key) 
             if (Keyboard.GetShowBBox() && _objectManager != null)
             {
@@ -1498,69 +1420,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             Vector3 debugColor = isCulled ? new Vector3(1f, 0f, 0f)
                                 : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
 
-                            // When BVH mesh is shown, skip AABB for objects with BVH collision
-                            if (!Keyboard.GetShowBVHMesh() || sobj.OcclusionBVH == null)
-                            {
-                                var debugAABB = (sobj.OcclusionBVH != null && sobj.OcclusionBVH.Root != null)
-                                    ? sobj.OcclusionBVH.Root.Bounds
-                                    : sobj.CachedWorldAABB;
-                                TerrainChunk.DrawAABBWireframe(debugAABB, debugColor, _camera);
+                            TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, _camera);
 
-                                // LOD label for static objects
-                                Vector3 sobjCenter = (debugAABB.Min + debugAABB.Max) * 0.5f;
-                                DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
-                            }
+                            // LOD label for static objects
+                            Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
+                            DrawLODLabel(sobjCenter, sobj.CurrentLOD, false);
                         }
                     }
 
                     var collisionColor = new Vector3(0.6f, 0f, 1f);
+                    var convexHullColor = new Vector3(1f, 0.5f, 0f);
                     for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
                     {
                         var mgr = _objectManager.staticObjectManagers[mi];
                         if (mgr == null) continue;
                         foreach (var sobj in mgr.GetObjects())
                         {
-                            if (sobj.CachedCollisionAABB.HasValue)
-                                TerrainChunk.DrawAABBWireframe(sobj.CachedCollisionAABB.Value, collisionColor, _camera);
-                        }
-                    }
-
-                    //  BVH Collision Mesh Debug (toggled with N key)
-
-                    // Occlusion BVH mesh (full mesh triangles — green-cyan) — modes 2 and 4
-                    if (Keyboard.GetShowBVHMesh())
-                    {
-                        var bvhColor = new Vector3(0f, 1f, 0.5f);
-                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
-                        {
-                            var mgr = _objectManager.staticObjectManagers[mi];
-                            if (mgr == null) continue;
-                            foreach (var sobj in mgr.GetObjects())
+                            if (sobj.ColType == CollisionType.Convex)
                             {
-                                if (sobj.OcclusionBVH == null) continue;
-                                var verts = sobj.OcclusionBVH.GetTriangleLineVertices();
-                                if (verts.Count > 0)
-                                    TerrainChunk.DrawLineSegments(verts, bvhColor, _camera);
+                                var aabb = sobj.CachedCollisionAABB ?? sobj.CachedWorldAABB;
+                                TerrainChunk.DrawAABBWireframe(aabb, convexHullColor, _camera);
                             }
-                        }
-                    }
-
-                    // Convex hull collision BVH (simplified hull — bright orange) — modes 3 and 4
-                    if (Keyboard.GetShowConvexHull())
-                    {
-                        var hullColor = new Vector3(1f, 0.5f, 0f);
-                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
-                        {
-                            var mgr = _objectManager.staticObjectManagers[mi];
-                            if (mgr == null) continue;
-                            foreach (var sobj in mgr.GetObjects())
+                            else if (sobj.CachedCollisionAABB.HasValue)
                             {
-                                if (sobj.ColType != CollisionType.Convex) continue;
-                                if (sobj.CollisionBVH == null) continue;
-                                if (sobj.CollisionBVH == sobj.OcclusionBVH) continue;
-                                var verts = sobj.CollisionBVH.GetTriangleLineVertices();
-                                if (verts.Count > 0)
-                                    TerrainChunk.DrawLineSegments(verts, hullColor, _camera);
+                                TerrainChunk.DrawAABBWireframe(sobj.CachedCollisionAABB.Value, collisionColor, _camera);
                             }
                         }
                     }
@@ -1700,76 +1583,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (!string.IsNullOrEmpty(title8))
                 _hud.DrawText(title8, 10, 60 + debugLineH * 7, new Vector3(0.2f, 0.7f, 0.8f));
 
-
-
-            //  HLOD Statistics (if any HLOD regions exist) 
-            if (_objectManager != null && _objectManager.staticObjectManagers != null)
+            // Collision type breakdown
+            string title9 = "";
+            if (_objectManager?.staticObjectManagers != null)
             {
-                bool hasHLOD = false;
-                int hlodTotalTris = 0, hlodMergedTris = 0, hlodRegions = 0, hlodObjs = 0, hlodVisible = 0;
+                int totalBVH = 0, totalConvex = 0, totalBox = 0, totalOther = 0;
+                int visBVH = 0, visConvex = 0, visBox = 0;
                 foreach (var mgr in _objectManager.staticObjectManagers)
                 {
-                    if (mgr != null && mgr.HLODRegionCount > 0)
+                    if (mgr == null) continue;
+                    foreach (var sobj in mgr.GetObjects())
                     {
-                        hasHLOD = true;
-                        hlodTotalTris += mgr.HLODTotalIndividualTris;
-                        hlodMergedTris += mgr.HLODTotalMergedTris;
-                        hlodRegions += mgr.HLODRegionCount;
-                        hlodObjs += mgr.HLODTotalObjects;
-                        hlodVisible += mgr.HLODVisibleRegions;
-                    }
-                }
-                if (hasHLOD)
-                {
-                    float trisSavedPct = hlodTotalTris > 0
-                        ? (1f - (float)hlodMergedTris / hlodTotalTris) * 100f
-                        : 0f;
-                    string hlodLine1 = $" HLOD: {hlodObjs:N0} objects  âž”  {hlodRegions} merged regions";
-                    string hlodLine2 = $"      Tris: {hlodTotalTris:N0} (indiv) âž” {hlodMergedTris:N0} (merged)  = {trisSavedPct:N1}% saved";
-                    string hlodLine3 = $"      Draw calls: {hlodTotalTris:N0} max (indiv) âž” ~{hlodVisible}/{hlodRegions} visible (merged)";
-                    _hud.DrawText(hlodLine1, 10, 60 + debugLineH * 8, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine2, 10, 60 + debugLineH * 9, new Vector3(0.3f, 0.9f, 0.6f));
-                    _hud.DrawText(hlodLine3, 10, 60 + debugLineH * 10, new Vector3(0.3f, 0.9f, 0.6f));
-                }
-
-                //  Impostor Statistics (shown when impostor visualization is ON via J key) 
-                if (Keyboard.GetShowImpostor())
-                {
-                    int totalImpRegions = _objectManager.TotalImpostorRegions;
-                    int totalImpVisible = _objectManager.TotalVisibleImpostors;
-
-                    // Also collect per-manager NearDist/FarDist from the first manager that has impostors
-                    float nearDist = 0f, farDist = 0f;
-                    foreach (var mgr in _objectManager.staticObjectManagers)
-                    {
-                        if (mgr != null && mgr.ImpostorRegionCount > 0)
+                        switch (sobj.ColType)
                         {
-                            nearDist = mgr.ImpostorNearDist;
-                            farDist = mgr.ImpostorFarDist;
-                            break;
+                            case CollisionType.BVH: totalBVH++; if (sobj.IsVisible) visBVH++; break;
+                            case CollisionType.Convex: totalConvex++; if (sobj.IsVisible) visConvex++; break;
+                            case CollisionType.Box: totalBox++; if (sobj.IsVisible) visBox++; break;
+                            default: totalOther++; break;
                         }
                     }
-
-                    Vector3 impColor = totalImpVisible > 0
-                        ? new Vector3(0.2f, 1.0f, 0.7f) // cyan-green if visible
-                        : new Vector3(1.0f, 0.6f, 0.2f); // orange if none visible
-
-                    string modeLabel = Keyboard.GetImpostorDebugMode() == 2 ? "AABB" : "Billboard";
-                    string impLine1 = $"IMPOSTOR [{modeLabel}]: {totalImpRegions} regions  |  {totalImpVisible} visible  |  range [{nearDist:F0}-{farDist:F0}]m";
-                    _hud.DrawText(impLine1, 10, 60 + debugLineH * 11, impColor);
-
-                    // Draw a small colored indicator bar at the top-right corner
-                    float indicatorSize = 12f;
-                    float indicatorX = Glfw.WindowWidth - indicatorSize - 10f;
-                    float indicatorY = 65f;
-                    Vector3 indicatorBg = new Vector3(0.05f, 0.05f, 0.08f);
-                    Vector3 indicatorColor = totalImpVisible > 0
-                        ? new Vector3(0.0f, 1.0f, 0.5f)  // bright cyan = some visible
-                        : new Vector3(0.3f, 0.3f, 0.3f); // dim gray = none visible
-                    _hud.DrawBox(indicatorX - 2f, indicatorY - 2f, indicatorSize + 4f, indicatorSize + 4f, indicatorBg);
-                    _hud.DrawBox(indicatorX, indicatorY, indicatorSize, indicatorSize, indicatorColor);
                 }
+                if (totalConvex > 0 || totalBVH > 0 || totalBox > 0)
+                    title9 = $"Coll: BVH={visBVH}/{totalBVH} Convex={visConvex}/{totalConvex} Box={visBox}/{totalBox} Other={totalOther}";
             }
+            if (!string.IsNullOrEmpty(title9))
+                _hud.DrawText(title9, 10, 60 + debugLineH * 8, new Vector3(1f, 0.7f, 0.2f));
 
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
 

@@ -8,7 +8,7 @@ Pending:
 6. buatin editor buat edit biomes, terrain, nanti muncul menu buat pilih biomes apa yang mau di edit, nanti bisa pilih brush size, dan bisa pilih biomes apa yang mau di ganti, misal: hijau tua=pohon mau diganti jadi hijau=rumput, dst. nanti bisa di save ke file biomes.
 7. eimplemet ECS dan multi-threading untuk rendering, physics, dan animasi.
 8. revamp load glb:
-	GLB > import nodes > Store Hierarchy > Store Meshes (RemoveWorldTransform) > Store Materials > Store Textures > Scene Instance > Snap To Terrain > Y Offset.
+	GLB > import nodes > Store Hierarchy > Store Meshes (RemoveWorldTransform) > Store Materials (PBR) > Store Textures > Scene Instance > Snap To Terrain > Y Offset.
 	scenario 1: obj = loadobj(x, terrainHeight + offset, y, asset)
 	scenario 2: city = loadobj(x, terrainHeight + offset, y, asset); 
 	  CreateInstance(
