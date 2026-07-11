@@ -55,6 +55,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     _pixels[idx + 2] = upsampledValue; // B
                     _pixels[idx + 3] = 65535;          // A
                 }
+
+                Console.WriteLine($"[MapLoader] Loaded RAW {path}: {Width}×{Height} (fileSize={rawDataBytes.Length}B, pixels={totalPixels})");
             }
             else
             {
@@ -65,11 +67,50 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 Width = image16.Width;
                 Height = image16.Height;
 
-                _pixels = new ushort[Width * Height * 4];
+                // Check if image decoded successfully
+                // image16.Data could be null (decode failed) or empty (decode partially failed)
+                // Also check if decoded dimensions are unreasonably small compared to file size
+                // (raw heightmap files are 1 byte/pixel, so Width*Height should be close to buffer.Length)
+                bool decodeFailed = Width <= 0 || Height <= 0 ||
+                    image16.Data == null || image16.Data.Length == 0 ||
+                    (long)Width * Height < buffer.Length / 4; // expected pixels << file size → decode failure
 
-                for (int i = 0; i < Width * Height * 4; i++)
+                if (decodeFailed)
                 {
-                    _pixels[i] = (ushort)(image16.Data[i] << 8);
+                    Console.WriteLine($"[MapLoader] ERROR: Failed to decode image '{path}' (Width={Width}, Height={Height}, fileSize={buffer.Length}B). Falling back to RAW interpretation...");
+
+                    // Fallback: treat as RAW 8-bit
+                    int totalPixels = buffer.Length;
+                    Width = (int)Math.Sqrt(totalPixels);
+                    Height = Width;
+
+                    _pixels = new ushort[Width * Height * 4];
+                    int maxSafePixels = Width * Height;
+                    for (int i = 0; i < maxSafePixels; i++)
+                    {
+                        byte grayValue = i < buffer.Length ? buffer[i] : (byte)0;
+                        ushort upsampledValue = (ushort)(grayValue << 8);
+                        int idx = i * 4;
+                        _pixels[idx] = upsampledValue;
+                        _pixels[idx + 1] = upsampledValue;
+                        _pixels[idx + 2] = upsampledValue;
+                        _pixels[idx + 3] = 65535;
+                    }
+
+                    Console.WriteLine($"[MapLoader] Loaded RAW (fallback) '{path}': {Width}×{Height}");
+                }
+                else
+                {
+                    // Decode was successful — read pixels from image16.Data
+                    _pixels = new ushort[Width * Height * 4];
+                    for (int i = 0; i < Width * Height * 4; i++)
+                    {
+                        _pixels[i] = i < image16.Data.Length
+                            ? (ushort)(image16.Data[i] << 8)
+                            : (ushort)0;
+                    }
+
+                    Console.WriteLine($"[MapLoader] Loaded image '{path}': {Width}×{Height} (fileSize={buffer.Length}B)");
                 }
             }
 

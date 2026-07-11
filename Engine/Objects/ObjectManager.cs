@@ -244,70 +244,70 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             //    GlbLoader.Load(manager, path, pos, yaw, scale, true, terrain)
             // ════════════════════════════════════════════════════════════════
 
-            // ── Scenario 1: damaged_wall.glb as ASSET ──
-            // RemoveWorldTransform is applied — node transforms are baked into
-            // vertex positions so the wall sits at origin. The asset container
-            // is returned for optional mesh-level instantiation.
-            string wallPath = "Artifacts/objects/damaged_wall.glb";
-            var wallAsset = GlbLoader.Load(
-                wallManager, wallPath,
-                new Vector3(10f, 0.0f, 0f),  // world position
-                0f,                          // yaw
-                0.05f,                       // scale
-                isScene: false,              // ASSET mode: RemoveWorldTransform ON
-                gameTerrainChunk,            // terrain for snapping
-                yOffset: 0f);                // additional Y offset
+            //// ── Scenario 1: damaged_wall.glb as ASSET ──
+            //// RemoveWorldTransform is applied — node transforms are baked into
+            //// vertex positions so the wall sits at origin. The asset container
+            //// is returned for optional mesh-level instantiation.
+            //string wallPath = "Artifacts/objects/damaged_wall.glb";
+            //var wallAsset = GlbLoader.Load(
+            //    wallManager, wallPath,
+            //    new Vector3(10f, 0.0f, 0f),  // world position
+            //    0f,                          // yaw
+            //    0.05f,                       // scale
+            //    isScene: false,              // ASSET mode: RemoveWorldTransform ON
+            //    gameTerrainChunk,            // terrain for snapping
+            //    yOffset: 0f);                // additional Y offset
 
-            wallManager.CastShadow = true;
-            wallManager.UseAlpha = true;
-            wallManager.CullAtMaxLOD = true;
-            foreach (var sobj in wallManager.GetObjects())
-            {
-                sobj.IsOccluder = true;
-                sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Box;
-            } 
+            //wallManager.CastShadow = true;
+            //wallManager.UseAlpha = true;
+            //wallManager.CullAtMaxLOD = true;
+            //foreach (var sobj in wallManager.GetObjects())
+            //{
+            //    sobj.IsOccluder = true;
+            //    sobj.IsCollidable = true;
+            //    sobj.ColType = CollisionType.Box;
+            //} 
 
-            //// ── Scenario 3: my_dungeon.glb as SCENE ──
-            //// RemoveWorldTransform is NOT applied — the GLB's original node
-            //// hierarchy and world transforms are preserved. UseNodeHierarchy
-            //// is automatically set to true on the manager.
-            string dungeonPath = "Artifacts/objects/my_dungeon.glb";
-            var dungeonAsset = GlbLoader.Load(
-                dungeonManager, dungeonPath,
-                new Vector3(40f, 0f, 0f),    // world position
-                0f,                          // yaw
-                1.5f,                        // scale
-                isScene: true,               // SCENE mode: RemoveWorldTransform OFF
-                gameTerrainChunk,            // terrain for snapping
-                yOffset: 0f);                // additional Y offset
+            ////// ── Scenario 3: my_dungeon.glb as SCENE ──
+            ////// RemoveWorldTransform is NOT applied — the GLB's original node
+            ////// hierarchy and world transforms are preserved. UseNodeHierarchy
+            ////// is automatically set to true on the manager.
+            //string dungeonPath = "Artifacts/objects/my_dungeon.glb";
+            //var dungeonAsset = GlbLoader.Load(
+            //    dungeonManager, dungeonPath,
+            //    new Vector3(40f, 0f, 0f),    // world position
+            //    0f,                          // yaw
+            //    1.5f,                        // scale
+            //    isScene: true,               // SCENE mode: RemoveWorldTransform OFF
+            //    gameTerrainChunk,            // terrain for snapping
+            //    yOffset: 0f);                // additional Y offset
 
-            dungeonManager.CastShadow = true;
-            dungeonManager.UseAlpha = true; 
-            dungeonManager.CullAtMaxLOD = false;   
+            //dungeonManager.CastShadow = true;
+            //dungeonManager.UseAlpha = true; 
+            //dungeonManager.CullAtMaxLOD = false;   
 
-            foreach (var sobj in dungeonManager.GetObjects())
-            {
-                sobj.IsOccluder = false;
-                sobj.IsCollidable = false;
-                sobj.ColType = CollisionType.Box;
-            } 
+            //foreach (var sobj in dungeonManager.GetObjects())
+            //{
+            //    sobj.IsOccluder = false;
+            //    sobj.IsCollidable = false;
+            //    sobj.ColType = CollisionType.Box;
+            //} 
 
-            //── Example: Scenario 2 (asset + instance) ──
-            // Debug: list available mesh names from the dungeon
-            if (dungeonAsset != null)
-            {
-                var names = string.Join(", ", dungeonAsset.GetMeshNames());
-                Console.WriteLine($"[Dungeon] Available meshes: {names}");
-            }
+            ////── Example: Scenario 2 (asset + instance) ──
+            //// Debug: list available mesh names from the dungeon
+            //if (dungeonAsset != null)
+            //{
+            //    var names = string.Join(", ", dungeonAsset.GetMeshNames());
+            //    Console.WriteLine($"[Dungeon] Available meshes: {names}");
+            //}
 
-            var box = GlbLoader.CreateInstance(
-                dungeonManager, dungeonAsset, "Object_34",
-                new Vector3(5f, 0f, 0f), 0f, 1f, gameTerrainChunk, 0f);
+            //var box = GlbLoader.CreateInstance(
+            //    dungeonManager, dungeonAsset, "Object_34",
+            //    new Vector3(5f, 0f, 0f), 0f, 1f, gameTerrainChunk, 0f);
             
-            box.IsCollidable = true;
-            box.IsOccluder = true;
-            box.ColType = CollisionType.Box;
+            //box.IsCollidable = true;
+            //box.IsOccluder = true;
+            //box.ColType = CollisionType.Box;
 
             //// Trees — loaded via GlbLoader pipeline
             string treesName = "trees";
@@ -315,8 +315,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             string treesPath = "Artifacts/objects/biomes/trees.glb";
             string[] treeVariants = ["Christmas tree", "Christmas tree_2", "Christmas tree_3"];
-            const int treeCount = 12;
-            const float treeRadius = 64f;
+            const int treeCount = 1000;
+            const float treeRadius = 250.0f;
 
             // Load the GLB as an asset WITHOUT auto-creating instances.
             // We'll create individual tree instances manually at random positions.
@@ -340,78 +340,81 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         sobj.IsCollidable = true;
                         sobj.ColType = CollisionType.Box;
                     },
+                    collisionSizeX: 1.2f,
+                    collisionSizeZ: 1.2f,
                     onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
             }
 
-            // Tree rendering configuration 
-            //treesManager.UseImpostors = true;
-            //treesManager.ImpostorNearDist = 301f;
-            //treesManager.ImpostorFarDist = 600f;
-            //treesManager.ImpostorFadeDist = 0f;
-            //treesManager.GridVisibleRange = 600f;
+            // Tree rendering configuration — enable billboards for LOD3+
+            treesManager.UseBillboards = true;
+            treesManager.BillboardMgr = new BillboardManager();
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
             treesManager.EnableSpatialGrid = true;
             treesManager.UseTerrainGrid = true;
             treesManager.BuildSpatialGrid();
+            treesManager.BakeAllBillboards();
 
             OnLoadProgress?.Invoke(0.22f, $"Static: {treesName} done");
 
-            //// Daisies — loaded via GlbLoader pipeline
-            string daisiesName = "daises";
-            OnLoadProgress?.Invoke(0.25f, $"Static: loading {daisiesName}...");
+            ////// Daisies — loaded via GlbLoader pipeline
+            //string daisiesName = "daises";
+            //OnLoadProgress?.Invoke(0.25f, $"Static: loading {daisiesName}...");
 
-            string daisiesPath = "Artifacts/objects/biomes/daises.glb";
-            string[] daisyVariants = ["Daisy_1", "Daisy_patch_big_1", "Daisy_patch_small_1"];
-            const int daisyCount = 64;
-            const float daisyRadius = 64f;
+            //string daisiesPath = "Artifacts/objects/biomes/daises.glb";
+            //string[] daisyVariants = ["Daisy_1", "Daisy_patch_big_1", "Daisy_patch_small_1"];
+            //const int daisyCount = 64;
+            //const float daisyRadius = 64f;
 
-            // Load as asset WITHOUT auto-creating instances
-            var daisiesAsset = GlbLoader.Load(
-                daisiesManager, daisiesPath,
-                new Vector3(0, 0, 0), 0f, 1f,
-                isScene: false,
-                gameTerrainChunk,
-                yOffset: 0f,
-                autoCreateInstances: false);
+            //// Load as asset WITHOUT auto-creating instances
+            //var daisiesAsset = GlbLoader.Load(
+            //    daisiesManager, daisiesPath,
+            //    new Vector3(0, 0, 0), 0f, 1f,
+            //    isScene: false,
+            //    gameTerrainChunk,
+            //    yOffset: 0f,
+            //    autoCreateInstances: false);
 
-            if (daisiesAsset != null)
-            {
-                var daisyNames = string.Join(", ", daisiesAsset.GetMeshNames());
-                Console.WriteLine($"[Daisies] Available meshes: {daisyNames}");
-                // Debug: print original mesh names
-                for (int mi = 0; mi < daisiesAsset.GpuData.Data.Meshes.Length; mi++)
-                {
-                    string? mn = daisiesAsset.GpuData.Data.Meshes[mi].Name;
-                    if (!string.IsNullOrEmpty(mn) && mn.Contains("Daisy", StringComparison.OrdinalIgnoreCase))
-                        Console.WriteLine($"[Daisies] Mesh[{mi}] = \"{mn}\"");
-                }
+            //if (daisiesAsset != null)
+            //{
+            //    var daisyNames = string.Join(", ", daisiesAsset.GetMeshNames());
+            //    Console.WriteLine($"[Daisies] Available meshes: {daisyNames}");
+            //    // Debug: print original mesh names
+            //    for (int mi = 0; mi < daisiesAsset.GpuData.Data.Meshes.Length; mi++)
+            //    {
+            //        string? mn = daisiesAsset.GpuData.Data.Meshes[mi].Name;
+            //        if (!string.IsNullOrEmpty(mn) && mn.Contains("Daisy", StringComparison.OrdinalIgnoreCase))
+            //            Console.WriteLine($"[Daisies] Mesh[{mi}] = \"{mn}\"");
+            //    }
 
-                GlbLoader.CreateRandomInstances(
-                    daisiesManager, daisiesAsset, daisyVariants, daisyCount, daisyRadius,
-                    terrain: gameTerrainChunk,
-                    progressMin: 0.25f, progressMax: 0.75f,
-                    progressLabel: daisiesName,
-                    configureInstance: sobj =>
-                    { 
-                        sobj.IsCollidable = false;
-                        sobj.ColType = CollisionType.Box;
-                    },
-                    onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
-            }
+            //    GlbLoader.CreateRandomInstances(
+            //        daisiesManager, daisiesAsset, daisyVariants, daisyCount, daisyRadius,
+            //        terrain: gameTerrainChunk,
+            //        progressMin: 0.25f, progressMax: 0.75f,
+            //        progressLabel: daisiesName,
+            //        configureInstance: sobj =>
+            //        { 
+            //            sobj.IsCollidable = false;
+            //            sobj.ColType = CollisionType.Box;
+            //        },
+            //        onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
+            //}
 
-            // Daisies configuration
-            daisiesManager.CastShadow = false;
-            daisiesManager.UseAlpha = false;
-            daisiesManager.CullAtMaxLOD = true;
-            daisiesManager.SkipTerrainRayMarch = true;
-            daisiesManager.EnableSpatialGrid = true;
-            daisiesManager.UseTerrainGrid = true;
-            OnLoadProgress?.Invoke(0.77f, $"Static: building {daisiesName} spatial grid...");
-            daisiesManager.BuildSpatialGrid();
+            //// Daisies configuration — enable billboards for LOD3+
+            //daisiesManager.UseBillboards = true;
+            //daisiesManager.BillboardMgr = new BillboardManager();
+            //daisiesManager.CastShadow = false;
+            //daisiesManager.UseAlpha = false;
+            //daisiesManager.CullAtMaxLOD = true;
+            //daisiesManager.SkipTerrainRayMarch = true;
+            //daisiesManager.EnableSpatialGrid = true;
+            //daisiesManager.UseTerrainGrid = true;
+            //daisiesManager.BakeAllBillboards();
+            //OnLoadProgress?.Invoke(0.77f, $"Static: building {daisiesName} spatial grid...");
+            //daisiesManager.BuildSpatialGrid();
 
-            OnLoadProgress?.Invoke(0.80f, $"Static: {daisiesName} done");
+            //OnLoadProgress?.Invoke(0.80f, $"Static: {daisiesName} done");
 
             OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
 
@@ -854,14 +857,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var spawned = new List<Vector3>();
             float minDistance = 2.0f;
 
+            // Compute terrain map bounds using the same formula as TerrainChunk.
+            float halfMapWorld = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize / 2f) * TerrainChunk.TerrainScale;
+            float margin = halfMapWorld * 0.01f;
+            float boundMin = -halfMapWorld + margin;
+            float boundMax = halfMapWorld - margin;
+
             for (int i = 0; i < count; i++)
             {
                 for (int attempts = 0; attempts < 50; attempts++)
                 {
-                    float ang = (float)(rng.NextDouble() * MathF.PI * 2.0);
-                    float dist = (float)(rng.NextDouble() * radius);
-                    Vector3 pos = center + new Vector3(MathF.Cos(ang) * dist, 0, MathF.Sin(ang) * dist);
-                    
+                    // Retry up to 32 times to find a position inside map bounds
+                    // (sama dengan pola di CreateRandomInstances)
+                    float x, z;
+                    int boundAttempts = 0;
+                    do
+                    {
+                        float a = (float)(rng.NextDouble() * MathF.PI * 2.0);
+                        float d = (float)(rng.NextDouble() * radius);
+                        x = center.X + MathF.Cos(a) * d;
+                        z = center.Z + MathF.Sin(a) * d;
+                        boundAttempts++;
+                    } while (boundAttempts < 32 && (x < boundMin || x > boundMax || z < boundMin || z > boundMax));
+
+                    // Fallback: clamp to map bounds if all attempts failed
+                    x = Math.Clamp(x, boundMin, boundMax);
+                    z = Math.Clamp(z, boundMin, boundMax);
+
+                    Vector3 pos = new Vector3(x, 0, z);
+
                     bool overlap = spawned.Any(s => Vector3.Distance(s, pos) < minDistance);
                     if (!overlap)
                     {

@@ -104,8 +104,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Update static MapSize dari image
             MapSize = mapLoader.Width;
 
+            // Recalculate ChunkSize based on actual map dimensions
+            ChunkSize = (int)Math.Sqrt(MapSize);
+            if (ChunkSize < 2) ChunkSize = 2;
+
             ChunksPerSide = MapSize / ChunkSize;
             _halfMapSize = (ChunksPerSide * ChunkSize) / 2;
+
+            Console.WriteLine($"[TerrainChunk] Init: MapSize={MapSize}, ChunkSize={ChunkSize}, ChunksPerSide={ChunksPerSide}, halfMapSize={_halfMapSize}");
 
             uint _shaderProgram = Shader.GetShaderProgram();
             worldMap = new TerrainData[ChunksPerSide, ChunksPerSide];

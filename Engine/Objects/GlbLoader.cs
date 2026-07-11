@@ -165,6 +165,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // Bake world transforms into vertex positions
                 RemoveWorldTransform(data, meshToNode);
                 Console.WriteLine($"[GlbLoader] RemoveWorldTransform applied to '{System.IO.Path.GetFileName(path)}' ({data.Meshes.Length} meshes)");
+
+                // Center each variant's mesh vertices around origin so that instance
+                // positions become actual world positions (no offset compensation needed).
+                CenterVariantGroups(data);
             }
 
             // 3. Upload to GPU
@@ -232,13 +236,40 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (manager == null || asset == null) return null;
 
             // Look up the mesh by name
-            var meshIndices = asset.GetMesh(meshName);
-            if (meshIndices == null || meshIndices.Length == 0)
+            var allVariantIndices = asset.GetMesh(meshName);
+            if (allVariantIndices == null || allVariantIndices.Length == 0)
             {
                 var names = string.Join(", ", asset.GetMeshNames());
                 Console.WriteLine($"[GlbLoader] Mesh '{meshName}' not found in '{System.IO.Path.GetFileName(asset.Path)}'. Available: {names}");
                 return null;
             }
+
+            // ── Only use the FIRST mesh and its LOD chain ──
+            // Some GLBs have multiple instances of the same variant at different world
+            // positions.  Using ALL variant meshes in a single StaticObject would cause
+            // the AABB to span the full GLB extent (thousands of units).
+            //
+            // Instead, we pick the first mesh and find all its LOD variants by matching
+            // the unique base name (before '_LOD') across ALL meshes in the asset.
+            var meshes = asset.GpuData.Data.Meshes;
+            if (meshes == null) return null;
+
+            int primaryIdx = allVariantIndices[0];
+            string? primaryName = meshes[primaryIdx].Name ?? "";
+            string primaryBase = Regex.Replace(primaryName, @"_LOD\d+.*$", "", RegexOptions.IgnoreCase);
+
+            var filtered = new List<int>();
+            for (int mi = 0; mi < meshes.Length; mi++)
+            {
+                string? mName = meshes[mi].Name ?? "";
+                string mBase = Regex.Replace(mName, @"_LOD\d+.*$", "", RegexOptions.IgnoreCase);
+                if (mBase.Equals(primaryBase, StringComparison.OrdinalIgnoreCase))
+                    filtered.Add(mi);
+            }
+
+            var meshIndices = filtered.ToArray();
+            if (meshIndices.Length == 0)
+                meshIndices = [primaryIdx];
 
             // Create a single-mesh group for this instance
             // Sort mesh indices into proper LOD levels so only one LOD renders
@@ -248,7 +279,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 BaseName = meshName
             };
             var lods = new Dictionary<int, List<int>>();
-            var meshes = asset.GpuData.Data.Meshes;
             if (meshes != null)
             {
                 foreach (int mi in meshIndices)
@@ -282,29 +312,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 group.LodFallback[t] = Math.Max(nearest, 0);
             }
 
-            // Compute local AABB from LOD0 meshes only (original detail mesh).
-            // Pass manager.UseNodeHierarchy so AABB matches rendering:
-            //   - asset mode (false): uses LocalMatrix (all Identity after RWT)
-            //   - scene mode (true):  uses GetNodeWorldMatrix (walks parent chain)
+            // Compute local AABB from ALL mesh indices of this variant (not just LOD0).
+            // CenterVariantGroups computed the center from ALL variant meshes (original GLB meshes
+            // before _LOD suffix stripping). Using only LOD0 would give a different center if the
+            // original meshes are at different spatial positions, causing the AABB to NOT be
+            // centered at origin — which would make world AABB wrong (e.g. Z=1500 instead of Z=0).
             bool useHierarchy = manager.UseNodeHierarchy;
-            if (group.Lods.TryGetValue(0, out var lod0) && lod0.Count > 0)
-                group.LocalAABB = ComputeLocalAABB([.. lod0], asset.GpuData.MeshToNode, asset.GpuData.Data.Nodes, asset.GpuData.Data.Meshes, useHierarchy);
-            else
-                group.LocalAABB = ComputeLocalAABB(meshIndices, asset.GpuData.MeshToNode, asset.GpuData.Data.Nodes, asset.GpuData.Data.Meshes, useHierarchy);
+            group.LocalAABB = ComputeLocalAABB(meshIndices, asset.GpuData.MeshToNode, asset.GpuData.Data.Nodes, asset.GpuData.Data.Meshes, useHierarchy);
 
-            // ── Compute terrain snap using the ROOT group's AABB ──
+            // DEBUG: print variant group AABB vs root AABB
+            var rootGroup = asset.Groups.FirstOrDefault(g => g.BaseName.Equals("root", StringComparison.OrdinalIgnoreCase));
+            if (rootGroup != null)
+            {
+                Console.WriteLine($"[CreateInstance] '{meshName}': " +
+                    $"groupAABB=({group.LocalAABB.Min.X:F2},{group.LocalAABB.Min.Y:F2},{group.LocalAABB.Min.Z:F2})->({group.LocalAABB.Max.X:F2},{group.LocalAABB.Max.Y:F2},{group.LocalAABB.Max.Z:F2}) | " +
+                    $"rootAABB=({rootGroup.LocalAABB.Min.X:F2},{rootGroup.LocalAABB.Min.Y:F2},{rootGroup.LocalAABB.Min.Z:F2})->({rootGroup.LocalAABB.Max.X:F2},{rootGroup.LocalAABB.Max.Y:F2},{rootGroup.LocalAABB.Max.Z:F2})");
+            }
+
+            // ── Compute terrain snap using the VARIANT's group AABB ──
+            // Using the ROOT group's AABB (which spans ALL variants) would give a Min.Y
+            // lower than the actual variant's bottom, making the instance float above terrain.
+            // Each variant has its own centered AABB — use that for accurate ground contact.
             Vector3 finalPos = position;
             if (terrain != null)
             {
                 float terrainY = terrain.GetHeightAt(finalPos.X, finalPos.Z);
-                var rootGroup = asset.Groups.FirstOrDefault(g => g.BaseName.Equals("root", StringComparison.OrdinalIgnoreCase));
-                if (rootGroup != null)
-                {
-                    var noTrans = Matrix4x4.CreateScale(scale)
+
+                var snapNoTrans = Matrix4x4.CreateScale(scale)
                                 * Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f));
-                    var rotatedAABB = rootGroup.LocalAABB.Transform(noTrans);
-                    finalPos.Y = terrainY - rotatedAABB.Min.Y + yOffset;
-                }
+                var snapRotatedAABB = group.LocalAABB.Transform(snapNoTrans);
+                finalPos.Y = terrainY - snapRotatedAABB.Min.Y + yOffset;
+
+                // DEBUG: print terrain snap details
+                Console.WriteLine($"[CreateInstance] '{meshName}' snap: " +
+                    $"inputPos=({position.X:F2},{position.Y:F2},{position.Z:F2}), " +
+                    $"terrainY={terrainY:F2}, " +
+                    $"groupAABB.Min.Y={group.LocalAABB.Min.Y:F2}, " +
+                    $"snapRotatedAABB.Min.Y={snapRotatedAABB.Min.Y:F2}, " +
+                    $"yOffset={yOffset:F2} -> " +
+                    $"finalPos=({finalPos.X:F2},{finalPos.Y:F2},{finalPos.Z:F2})");
             }
 
             // Create via StaticObjectManager's AddObject (reuse the existing API)
@@ -313,8 +359,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                        Matrix4x4.CreateFromQuaternion(sobj.Rotation) *
                                        Matrix4x4.CreateTranslation(sobj.Position);
             sobj.CachedWorldAABB = group.LocalAABB.Transform(sobj.CachedBaseWorldMat);
-
-
 
             manager.AddObject(sobj);
 
@@ -508,6 +552,110 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>
+        /// After RemoveWorldTransform, center each variant's mesh vertices around origin
+        /// so that instance positions become actual world positions.
+        ///
+        /// Without this, variant meshes retain their original GLB world positions (e.g.
+        /// Christmas tree at X=1550). CreateInstance at (0,19,0) would render at X=1550.
+        ///
+        /// IMPORTANT: Each mesh is centered INDEPENDENTLY (by its own AABB), not as a group.
+        /// GLB files often contain MULTIPLE COPIES of the same variant (e.g. 3 Christmas
+        /// trees at different world positions). If we center them ALL together, the copies
+        /// remain spread out (e.g. Z=-1500 to Z=+1500), making the AABB HUGE.
+        ///
+        /// Centering each mesh individually moves every copy to origin, so the combined
+        /// AABB becomes just the extent of ONE tree copy (small).
+        /// </summary>
+        private static void CenterVariantGroups(GltfData data)
+        {
+            if (data.Meshes == null || data.Meshes.Length == 0) return;
+
+            // Group meshes by variant name (same logic as GlbAsset constructor)
+            var variantMeshes = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+            for (int mi = 0; mi < data.Meshes.Length; mi++)
+            {
+                string? meshName = data.Meshes[mi].Name;
+                if (string.IsNullOrEmpty(meshName)) continue;
+                string baseName = Regex.Replace(meshName, @"_LOD\d+.*$", "", RegexOptions.IgnoreCase);
+                if (!variantMeshes.ContainsKey(baseName))
+                    variantMeshes[baseName] = new List<int>();
+                variantMeshes[baseName].Add(mi);
+            }
+
+            foreach (var kv in variantMeshes)
+            {
+                var meshIndices = kv.Value;
+                string variantName = kv.Key;
+
+                int totalVerts = 0;
+
+                // ── Center EACH mesh individually ──
+                // Each copy of the same variant at a different world position gets centered
+                // by its OWN AABB, so they all end up at origin instead of spreading out.
+                for (int ii = 0; ii < meshIndices.Count; ii++)
+                {
+                    int mi = meshIndices[ii];
+                    if (mi < 0 || mi >= data.Meshes.Length) continue;
+                    var verts = data.Meshes[mi].Vertices;
+                    if (verts == null || verts.Length == 0) continue;
+                    totalVerts += verts.Length;
+
+                    // DEBUG: print pre-center info for each mesh copy
+                    Vector3 preMn = verts[0].Position;
+                    Vector3 preMx = verts[0].Position;
+                    for (int vi = 1; vi < verts.Length; vi++)
+                    {
+                        preMn = Vector3.Min(preMn, verts[vi].Position);
+                        preMx = Vector3.Max(preMx, verts[vi].Position);
+                    }
+                    Vector3 meshCenter = (preMn + preMx) * 0.5f;
+
+                    // DEBUG: print pre-center mesh bounds
+                    Console.WriteLine($"[CenterVariantGroups] '{variantName}' mesh[{ii}]: verts={verts.Length}, " +
+                        $"preAABB=({preMn.X:F2},{preMn.Y:F2},{preMn.Z:F2})->({preMx.X:F2},{preMx.Y:F2},{preMx.Z:F2}), " +
+                        $"center=({meshCenter.X:F2},{meshCenter.Y:F2},{meshCenter.Z:F2})");
+
+                    // Center this single mesh by its own AABB center
+                    for (int vi = 0; vi < verts.Length; vi++)
+                        verts[vi].Position -= meshCenter;
+
+                    // DEBUG: print post-center mesh AABB
+                    Vector3 postMn = verts[0].Position;
+                    Vector3 postMx = verts[0].Position;
+                    for (int vi = 1; vi < verts.Length; vi++)
+                    {
+                        postMn = Vector3.Min(postMn, verts[vi].Position);
+                        postMx = Vector3.Max(postMx, verts[vi].Position);
+                    }
+                    Console.WriteLine($"[CenterVariantGroups] '{variantName}' mesh[{ii}] POST: " +
+                        $"AABB=({postMn.X:F2},{postMn.Y:F2},{postMn.Z:F2})->({postMx.X:F2},{postMx.Y:F2},{postMx.Z:F2})");
+                }
+
+                // DEBUG: print combined post-center AABB for the whole variant
+                Vector3 mnComb = new(float.PositiveInfinity);
+                Vector3 mxComb = new(float.NegativeInfinity);
+                bool anyComb = false;
+                for (int ii = 0; ii < meshIndices.Count; ii++)
+                {
+                    int mi = meshIndices[ii];
+                    if (mi < 0 || mi >= data.Meshes.Length) continue;
+                    var verts = data.Meshes[mi].Vertices;
+                    if (verts == null || verts.Length == 0) continue;
+                    foreach (var v in verts)
+                    {
+                        if (!anyComb) { mnComb = v.Position; mxComb = v.Position; anyComb = true; }
+                        else { mnComb = Vector3.Min(mnComb, v.Position); mxComb = Vector3.Max(mxComb, v.Position); }
+                    }
+                }
+                if (anyComb)
+                {
+                    Console.WriteLine($"[CenterVariantGroups] '{variantName}' COMBINED POST-center (all {meshIndices.Count} meshes): " +
+                        $"AABB=({mnComb.X:F2},{mnComb.Y:F2},{mnComb.Z:F2})->({mxComb.X:F2},{mxComb.Y:F2},{mxComb.Z:F2})");
+                }
+            }
+        }
+
+        /// <summary>
         /// Create multiple random instances of named meshes from a loaded asset.
         /// Each instance is placed at a random position within a circular radius,
         /// with a random yaw rotation. Progress is reported as instances are created.
@@ -526,6 +674,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <param name="rng">Optional Random instance. A new one is created if omitted.</param>
         /// <param name="configureInstance">Optional callback to configure each created instance (collision, etc.).</param>
         /// <param name="onProgress">Optional progress callback (progress 0-1, status message).</param>
+        /// <param name="minOverlapDist">
+        ///   Minimum distance between instance centers (XZ plane) to prevent overlap.
+        ///   If ≤ 0, auto-computed from the variant's local AABB diagonal.
+        ///   When auto-compute is active, instances are separated by at least the
+        ///   combined radii of both instances' AABB XZ diagonals.
+        /// </param>
+        /// <param name="overlapRetries">
+        ///   Max retries per instance when overlap detected. Default 8.
+        ///   If no valid position found after all retries, the instance is skipped.
+        /// </param>
+        /// <param name="collisionSizeX">
+        ///   Override collision box width (X axis). 0 = use full mesh AABB.
+        ///   Set to e.g. 1.2f for narrow trunk-only collision (trees).
+        /// </param>
+        /// <param name="collisionSizeZ">
+        ///   Override collision box depth (Z axis). 0 = use full mesh AABB.
+        /// </param>
         public static void CreateRandomInstances(
             StaticObjectManager manager,
             GlbAsset asset,
@@ -540,7 +705,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             string progressLabel = "",
             Random? rng = null,
             Action<StaticObject>? configureInstance = null,
-            Action<float, string>? onProgress = null)
+            Action<float, string>? onProgress = null,
+            float minOverlapDist = 0f,
+            int overlapRetries = 3,
+            float collisionSizeX = 0f,
+            float collisionSizeZ = 0f)
         {
             if (manager == null || asset == null || meshVariants == null || meshVariants.Length == 0)
                 return;
@@ -548,22 +717,139 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             rng ??= new Random();
             Vector3 ctr = center ?? Vector3.Zero;
 
+            // Compute terrain map bounds in world space to prevent spawning outside the map.
+            // Uses the same formula as TerrainChunk.IsChunkInFrustum:
+            //   halfMapSize = (ChunksPerSide * ChunkSize) / 2
+            //   world extent = ±halfMapSize * TerrainScale
+            float halfMapWorld = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize / 2f) * TerrainChunk.TerrainScale;
+            float mapMargin = halfMapWorld * 0.01f;
+            float boundMin = -halfMapWorld + mapMargin;
+            float boundMax = halfMapWorld - mapMargin;
+
+            // Debug: print actual map bounds for troubleshooting
+            Console.WriteLine($"[CreateRandomInstances] MapBounds: halfMapWorld={halfMapWorld:F1}, ChunksPerSide={TerrainChunk.ChunksPerSide}, ChunkSize={TerrainChunk.ChunkSize}, TerrainScale={TerrainChunk.TerrainScale}, MapSize={TerrainChunk.MapSize}, bounds=[{boundMin:F1}, {boundMax:F1}], radius={radius}, center=({ctr.X}, {ctr.Z}), count={count}");
+
+            // Pre-compute collision radius for each variant from its local AABB.
+            // After per-mesh centering, AABB should be small (one object's extent).
+            var variantRadii = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            foreach (string vn in meshVariants)
+            {
+                int[]? idxs = asset.GetMesh(vn);
+                if (idxs == null || idxs.Length == 0) continue;
+
+                var groupAABB = ComputeLocalAABB(idxs,
+                    asset.GpuData.MeshToNode, asset.GpuData.Data.Nodes,
+                    asset.GpuData.Data.Meshes, false);
+
+                float halfX = (groupAABB.Max.X - groupAABB.Min.X) * 0.5f;
+                float halfZ = (groupAABB.Max.Z - groupAABB.Min.Z) * 0.5f;
+                float radius2D = MathF.Sqrt(halfX * halfX + halfZ * halfZ);
+                variantRadii[vn] = radius2D;
+
+                Console.WriteLine($"[CreateRandomInstances] Variant '{vn}' radius2D={radius2D:F2} (AABB X={halfX*2:F1} Z={halfZ*2:F1})");
+            }
+
+            // Track placed instances (center + radius) for overlap detection
+            var placed = new List<(float cx, float cz, float r)>();
+            int totalAttempted = 0;
+
             for (int i = 0; i < count; i++)
             {
-                float a = (float)(rng.NextDouble() * Math.PI * 2);
-                float d = (float)(rng.NextDouble() * radius);
-                float x = ctr.X + MathF.Cos(a) * d;
-                float z = ctr.Z + MathF.Sin(a) * d;
+                // Pick a random variant for this instance
                 string variant = meshVariants[rng.Next(meshVariants.Length)];
 
-                var sobj = CreateInstance(
-                    manager, asset, variant,
-                    new Vector3(x, 0, z),
-                    (float)(rng.NextDouble() * 360),
-                    1f, terrain, yOffset);
+                // Get collision radius for this variant
+                float vRadius = 0f;
+                if (!variantRadii.TryGetValue(variant, out vRadius))
+                    vRadius = 1f;
+                float neededSeparation = minOverlapDist > 0f ? minOverlapDist : vRadius * 2.2f;
 
-                if (sobj != null)
-                    configureInstance?.Invoke(sobj);
+                // Try to find a non-overlapping position
+                bool placedOk = false;
+                int mapAttempt = 0;
+                const int maxMapAttempts = 32;
+
+                while (!placedOk && mapAttempt < maxMapAttempts * (1 + overlapRetries))
+                {
+                    // Generate random position within radius
+                    float a = (float)(rng.NextDouble() * Math.PI * 2);
+                    float d = (float)(rng.NextDouble() * radius);
+                    float px = ctr.X + MathF.Cos(a) * d;
+                    float pz = ctr.Z + MathF.Sin(a) * d;
+                    mapAttempt++;
+
+                    // Clamp to map bounds
+                    px = Math.Clamp(px, boundMin, boundMax);
+                    pz = Math.Clamp(pz, boundMin, boundMax);
+
+                    // Check overlap with all previously placed instances
+                    bool overlap = false;
+                    foreach (var (cx, cz, r) in placed)
+                    {
+                        float dx = px - cx;
+                        float dz = pz - cz;
+                        float distSq = dx * dx + dz * dz;
+                        float minDist = neededSeparation + r;
+                        if (distSq < minDist * minDist)
+                        {
+                            overlap = true;
+                            break;
+                        }
+                    }
+
+                    if (!overlap)
+                    {
+                        // Position is valid — create the instance
+                        var sobj = CreateInstance(
+                            manager, asset, variant,
+                            new Vector3(px, 0, pz),
+                            (float)(rng.NextDouble() * 360),
+                            1f, terrain, yOffset);
+
+                        if (sobj != null)
+                        {
+                            // Use the actual world AABB radius for future overlap checks
+                            var waabb = sobj.CachedWorldAABB;
+                            float whalfX = (waabb.Max.X - waabb.Min.X) * 0.5f;
+                            float whalfZ = (waabb.Max.Z - waabb.Min.Z) * 0.5f;
+                            float wRadius = MathF.Sqrt(whalfX * whalfX + whalfZ * whalfZ);
+
+                            placed.Add((sobj.Position.X, sobj.Position.Z, wRadius));
+                            configureInstance?.Invoke(sobj);
+
+                            // ── Apply narrow collision box override ──
+                            // If collisionSizeX/Z > 0, override the collision AABB with
+                            // a tight box at the center (trunk-only for trees).
+                            // Y remains full height so the object touches ground properly.
+                            if (collisionSizeX > 0f || collisionSizeZ > 0f)
+                            {
+                                Vector3 colCtr = (waabb.Min + waabb.Max) * 0.5f;
+                                Vector3 halfSz = (waabb.Max - waabb.Min) * 0.5f;
+                                if (collisionSizeX > 0f) halfSz.X = collisionSizeX * 0.5f;
+                                if (collisionSizeZ > 0f) halfSz.Z = collisionSizeZ * 0.5f;
+                                sobj.CachedCollisionAABB = new AABB(colCtr - halfSz, colCtr + halfSz);
+                            }
+
+                            placedOk = true;
+
+                            Console.WriteLine($"[CreateRandomInstances] Tree[{i}] placed at ({px:F2},{pz:F2}) variant='{variant}' radius={wRadius:F2}");
+                            totalAttempted++;
+                        }
+                        else
+                        {
+                            placedOk = true; // creation failed but don't retry infinitely
+                        }
+                        break;
+                    }
+
+                    // If we've exhausted attempts without finding a non-overlapping spot,
+                    // skip this instance (don't place it). The caller can increase
+                    // overlapRetries or radius if this happens frequently.
+                    if (mapAttempt >= maxMapAttempts * (1 + overlapRetries) && !placedOk)
+                    {
+                        Console.WriteLine($"[CreateRandomInstances] Tree[{i}] SKIPPED — no valid non-overlapping position found after {mapAttempt} attempts");
+                    }
+                }
 
                 if (onProgress != null)
                 {
@@ -571,6 +857,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     onProgress(p, $"Static: loading {progressLabel} ({i + 1}/{count})");
                 }
             }
+
+            Console.WriteLine($"[CreateRandomInstances] Placed {placed.Count}/{count} instances ({(totalAttempted > count ? totalAttempted - count : 0)} overlap retries)");
         }
 
 
