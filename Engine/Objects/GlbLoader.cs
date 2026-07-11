@@ -43,6 +43,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>World position this asset was loaded at.</summary>
         public Vector3 LoadPosition { get; set; }
 
+        /// <summary>Uniform scale used when this asset was loaded.</summary>
+        public float LoadScale { get; set; } = 1f;
+
         public GlbAsset(string path, GltfModelGpuData gpuData, bool isScene)
         {
             Path = path;
@@ -167,7 +170,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // Bake world transforms into vertex positions
                 RemoveWorldTransform(data, meshToNode);
-                Console.WriteLine($"[GlbLoader] RemoveWorldTransform applied to '{System.IO.Path.GetFileName(path)}' ({data.Meshes.Length} meshes)");
 
                 // Center each variant's mesh vertices around origin so that instance
                 // positions become actual world positions (no offset compensation needed).
@@ -187,7 +189,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // 4. Create GlbAsset
             var asset = new GlbAsset(path, gpuData, isScene)
             {
-                LoadPosition = position
+                LoadPosition = position,
+                LoadScale = scale
             };
 
             // 5. Build groups from mesh names
@@ -210,7 +213,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
             }
 
-            Console.WriteLine($"[GlbLoader] Loaded '{System.IO.Path.GetFileName(path)}' as {(isScene ? "scene" : "asset")} ({data.Meshes.Length} meshes, {data.Nodes?.Length ?? 0} nodes, {asset.MeshesByName.Count} named parts)");
             return asset;
         }
 
@@ -361,7 +363,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             manager.AddObject(sobj);
 
-            Console.WriteLine($"[GlbLoader] Created instance '{meshName}' from '{System.IO.Path.GetFileName(asset.Path)}' at ({finalPos.X:F1}, {finalPos.Y:F1}, {finalPos.Z:F1})");
             return sobj;
         }
 
@@ -401,7 +402,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             manager.AddObject(sobj);
 
-            Console.WriteLine($"[GlbLoader] Created asset instance from '{System.IO.Path.GetFileName(asset.Path)}' at ({finalPos.X:F1}, {finalPos.Y:F1}, {finalPos.Z:F1})");
         }
 
         /// <summary>
@@ -458,7 +458,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 manager.AddObject(sobj);
             }
 
-            Console.WriteLine($"[GlbLoader] Created scene with {asset.Groups.Count - 1} objects from '{System.IO.Path.GetFileName(asset.Path)}' at Y={snapY:F2}");
         }
 
         /// <summary>
@@ -659,7 +658,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>
         /// Create multiple random instances of named meshes from a loaded asset.
         /// Each instance is placed at a random position within a circular radius,
-        /// with a random yaw rotation. Progress is reported as instances are created.
+        /// with a random yaw rotation. Uses a spatial grid (terrain chunk dimensions)
+        /// for O(n) overlap detection + Parallel.For for multi-threaded position generation.
         /// </summary>
         /// <param name="manager">The StaticObjectManager to add objects to.</param>
         /// <param name="asset">The loaded asset containing the meshes.</param>
@@ -710,25 +710,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float minOverlapDist = 0f,
             int overlapRetries = 3,
             float collisionSizeX = 0f,
-            float collisionSizeZ = 0f)
+            float collisionSizeZ = 0f,
+            bool allowOverlap = false,
+            float scale = 1f)
         {
             if (manager == null || asset == null || meshVariants == null || meshVariants.Length == 0)
                 return;
 
-            rng ??= new Random();
             Vector3 ctr = center ?? Vector3.Zero;
 
-            // Compute terrain map bounds in world space to prevent spawning outside the map.
-            // Uses the same formula as TerrainChunk.IsChunkInFrustum:
-            //   halfMapSize = (ChunksPerSide * ChunkSize) / 2
-            //   world extent = ±halfMapSize * TerrainScale
+            // Compute terrain map bounds
             float halfMapWorld = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize / 2f) * TerrainChunk.TerrainScale;
             float mapMargin = halfMapWorld * 0.01f;
             float boundMin = -halfMapWorld + mapMargin;
             float boundMax = halfMapWorld - mapMargin;
 
-            // Pre-compute collision radius for each variant from its local AABB.
-            // After per-mesh centering, AABB should be small (one object's extent).
+            // Pre-compute collision radius for each variant from its local AABB
             var variantRadii = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
             foreach (string vn in meshVariants)
             {
@@ -741,111 +738,178 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 float halfX = (groupAABB.Max.X - groupAABB.Min.X) * 0.5f;
                 float halfZ = (groupAABB.Max.Z - groupAABB.Min.Z) * 0.5f;
-                float radius2D = MathF.Sqrt(halfX * halfX + halfZ * halfZ);
-                variantRadii[vn] = radius2D;
+                variantRadii[vn] = MathF.Sqrt(halfX * halfX + halfZ * halfZ);
             }
 
-            // Track placed instances (center + radius) for overlap detection
-            var placed = new List<(float cx, float cz, float r)>();
-            int totalAttempted = 0;
+            // ── Phase 1: Parallel position generation with spatial grid ──
+            // Build grid matching terrain chunk dimensions
+            int gridCells = TerrainChunk.ChunksPerSide;
+            float cellSize = TerrainChunk.ChunkSize * TerrainChunk.TerrainScale;
+            int halfMapSize = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize) / 2;
+            float originX = -halfMapSize * TerrainChunk.TerrainScale;
+            float originZ = -halfMapSize * TerrainChunk.TerrainScale;
+            float invCellSize = 1f / cellSize;
 
-            for (int i = 0; i < count; i++)
+            var grid = new List<int>[gridCells, gridCells];
+            for (int gx = 0; gx < gridCells; gx++)
+                for (int gz = 0; gz < gridCells; gz++)
+                    grid[gx, gz] = new List<int>();
+
+            // Pre-allocate result arrays
+            var resultVariants = new string[count];
+            var resultPosX = new float[count];
+            var resultPosZ = new float[count];
+            var resultYaw = new float[count];
+            var resultValid = new bool[count];
+
+            var gridLock = new object();
+            int maxMapAttempts = 32;
+            int progressInterval = Math.Max(count / 10000, 1); // report every ~1k objects
+
+            var parallelOptions = new ParallelOptions
             {
-                // Pick a random variant for this instance
-                string variant = meshVariants[rng.Next(meshVariants.Length)];
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            };
 
-                // Get collision radius for this variant
-                float vRadius = 0f;
-                if (!variantRadii.TryGetValue(variant, out vRadius))
-                    vRadius = 1f;
-                float neededSeparation = minOverlapDist > 0f ? minOverlapDist : vRadius * 2.2f;
+            // Thread-safe counter for Phase 1 progress
+            int phase1Generated = 0;
 
-                // Try to find a non-overlapping position
-                bool placedOk = false;
-                int mapAttempt = 0;
-                const int maxMapAttempts = 32;
-
-                while (!placedOk && mapAttempt < maxMapAttempts * (1 + overlapRetries))
+            Parallel.For(0, count, parallelOptions,
+                () => new Random(),
+                (i, loop, localRng) =>
                 {
-                    // Generate random position within radius
-                    float a = (float)(rng.NextDouble() * Math.PI * 2);
-                    float d = (float)(rng.NextDouble() * radius);
-                    float px = ctr.X + MathF.Cos(a) * d;
-                    float pz = ctr.Z + MathF.Sin(a) * d;
-                    mapAttempt++;
-
-                    // Clamp to map bounds
-                    px = Math.Clamp(px, boundMin, boundMax);
-                    pz = Math.Clamp(pz, boundMin, boundMax);
-
-                    // Check overlap with all previously placed instances
-                    bool overlap = false;
-                    foreach (var (cx, cz, r) in placed)
+                    for (int attempt = 0; attempt < maxMapAttempts * (1 + overlapRetries); attempt++)
                     {
-                        float dx = px - cx;
-                        float dz = pz - cz;
-                        float distSq = dx * dx + dz * dz;
-                        float minDist = neededSeparation + r;
-                        if (distSq < minDist * minDist)
+                        string variant = meshVariants[localRng.Next(meshVariants.Length)];
+
+                        float a = (float)(localRng.NextDouble() * Math.PI * 2);
+                        float d = (float)(localRng.NextDouble() * radius);
+                        float px = ctr.X + MathF.Cos(a) * d;
+                        float pz = ctr.Z + MathF.Sin(a) * d;
+
+                        px = Math.Clamp(px, boundMin, boundMax);
+                        pz = Math.Clamp(pz, boundMin, boundMax);
+
+                        // Compute grid cell
+                        int gx = (int)((px - originX) * invCellSize);
+                        int gz = (int)((pz - originZ) * invCellSize);
+                        gx = Math.Clamp(gx, 0, gridCells - 1);
+                        gz = Math.Clamp(gz, 0, gridCells - 1);
+
+                        // When allowOverlap=true, skip overlap check entirely
+                        if (allowOverlap)
                         {
-                            overlap = true;
+                            resultVariants[i] = variant;
+                            resultPosX[i] = px;
+                            resultPosZ[i] = pz;
+                            resultYaw[i] = (float)(localRng.NextDouble() * 360);
+                            resultValid[i] = true;
+
+                            int gen = Interlocked.Increment(ref phase1Generated);
+                            if (gen % progressInterval == 0)
+                                Console.WriteLine($"[Phase1] Generated {gen} / {count} positions...");
+                            break;
+                        }
+
+                        float vRadius = variantRadii.GetValueOrDefault(variant, 1f);
+                        float neededSep = minOverlapDist > 0f ? minOverlapDist : vRadius * 2.2f;
+
+                        // Check overlap against neighbour cells (thread-safe via lock)
+                        bool overlap;
+                        lock (gridLock)
+                        {
+                            overlap = false;
+                            for (int nx = -1; nx <= 1 && !overlap; nx++)
+                            {
+                                for (int nz = -1; nz <= 1 && !overlap; nz++)
+                                {
+                                    int cx = gx + nx;
+                                    int cz = gz + nz;
+                                    if (cx < 0 || cx >= gridCells || cz < 0 || cz >= gridCells) continue;
+                                    foreach (int idx in grid[cx, cz])
+                                    {
+                                        float dx = px - resultPosX[idx];
+                                        float dz = pz - resultPosZ[idx];
+                                        float existRadius = variantRadii.GetValueOrDefault(resultVariants[idx], 1f);
+                                        float minDist = neededSep + existRadius * 2.2f;
+                                        if (dx * dx + dz * dz < minDist * minDist)
+                                        {
+                                            overlap = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!overlap)
+                            {
+                                grid[gx, gz].Add(i);
+                                resultVariants[i] = variant;
+                                resultPosX[i] = px;
+                                resultPosZ[i] = pz;
+                                resultYaw[i] = (float)(localRng.NextDouble() * 360);
+                                resultValid[i] = true;
+                            }
+                        }
+
+                        if (!overlap)
+                        {
+                            int gen = Interlocked.Increment(ref phase1Generated);
+                            if (gen % progressInterval == 0)
+                                Console.WriteLine($"[Phase1] Generated {gen} / {count} positions...");
                             break;
                         }
                     }
 
-                    if (!overlap)
-                    {
-                        // Position is valid — create the instance
-                        var sobj = CreateInstance(
-                            manager, asset, variant,
-                            new Vector3(px, 0, pz),
-                            (float)(rng.NextDouble() * 360),
-                            1f, terrain, yOffset);
+                    return localRng;
+                },
+                localRng => { }
+            );
 
-                        if (sobj != null)
-                        {
-                            // Use the actual world AABB radius for future overlap checks
-                            var waabb = sobj.CachedWorldAABB;
-                            float whalfX = (waabb.Max.X - waabb.Min.X) * 0.5f;
-                            float whalfZ = (waabb.Max.Z - waabb.Min.Z) * 0.5f;
-                            float wRadius = MathF.Sqrt(whalfX * whalfX + whalfZ * whalfZ);
-
-                            placed.Add((sobj.Position.X, sobj.Position.Z, wRadius));
-                            configureInstance?.Invoke(sobj);
-
-                            // ── Apply narrow collision box override ──
-                            // If collisionSizeX/Z > 0, override the collision AABB with
-                            // a tight box at the center (trunk-only for trees).
-                            // Y remains full height so the object touches ground properly.
-                            if (collisionSizeX > 0f || collisionSizeZ > 0f)
-                            {
-                                Vector3 colCtr = (waabb.Min + waabb.Max) * 0.5f;
-                                Vector3 halfSz = (waabb.Max - waabb.Min) * 0.5f;
-                                if (collisionSizeX > 0f) halfSz.X = collisionSizeX * 0.5f;
-                                if (collisionSizeZ > 0f) halfSz.Z = collisionSizeZ * 0.5f;
-                                sobj.CachedCollisionAABB = new AABB(colCtr - halfSz, colCtr + halfSz);
-                            }
-
-                            placedOk = true;
-                            totalAttempted++;
-                        }
-                        else
-                        {
-                            placedOk = true; // creation failed but don't retry infinitely
-                        }
-                        break;
-                    }
-
-
-                }
-
-                if (onProgress != null)
-                {
-                    float p = progressMin + ((i + 1f) / count) * (progressMax - progressMin);
-                    onProgress(p, $"Static: loading {progressLabel} ({i + 1}/{count})");
-                }
+            // Report Phase 1 completion
+            if (onProgress != null)
+            {
+                float phase1P = progressMin + ((float)phase1Generated / count) * (progressMax - progressMin);
+                onProgress(phase1P, $"Static: generating {progressLabel} positions done ({phase1Generated} valid)");
             }
 
+            // ── Phase 2: Create instances, set up collision, report progress (main thread) ──
+            int createdCount = 0;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!resultValid[i]) continue;
+
+                var sobj = CreateInstance(
+                    manager, asset, resultVariants[i],
+                    new Vector3(resultPosX[i], 0, resultPosZ[i]),
+                    resultYaw[i], scale, terrain, yOffset);
+
+                if (sobj != null)
+                {
+                    createdCount++;
+                    configureInstance?.Invoke(sobj);
+
+                    // Collision box override (scaled by instance scale)
+                    if (collisionSizeX > 0f || collisionSizeZ > 0f)
+                    {
+                        var waabb = sobj.CachedWorldAABB;
+                        Vector3 colCtr = (waabb.Min + waabb.Max) * 0.5f;
+                        Vector3 halfSz = (waabb.Max - waabb.Min) * 0.5f;
+                        float scaledCX = collisionSizeX * scale;
+                        float scaledCZ = collisionSizeZ * scale;
+                        if (collisionSizeX > 0f) halfSz.X = scaledCX * 0.5f;
+                        if (collisionSizeZ > 0f) halfSz.Z = scaledCZ * 0.5f;
+                        sobj.CachedCollisionAABB = new AABB(colCtr - halfSz, colCtr + halfSz);
+                    }
+                }
+
+                if (onProgress != null && (i % progressInterval == 0 || i == count - 1))
+                {
+                    float p = progressMin + ((i + 1f) / count) * (progressMax - progressMin);
+                    onProgress(p, $"Static: loading {progressLabel} ({createdCount} trees)");
+                }
+            }
         }
 
 

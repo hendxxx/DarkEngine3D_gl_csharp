@@ -74,6 +74,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         // Variabel kontrol untuk toggle kabut
         static bool isFogActive = true;
         static int shadowFilterMode = 0;
+        // 0=PCF 16, 1=Hard, 2=PCF 16, 3=PCF 16 soft, 4=PCF 32, 5=PCF 32 Soft,
+        // 6=PCSS 16, 7=PCSS 16 Soft, 8=PCSS 32, 9=PCSS 32 Soft
         static bool fPressed = false;
 
         // Variabel kontrol untuk toggle LOD color

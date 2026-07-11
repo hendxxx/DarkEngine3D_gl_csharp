@@ -25,8 +25,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float BlendTime = 0.22f;
         private const float Radius = 0.45f;
         private const float CharacterHeight = 1.8f; // typical human height
-
-        public CollisionType ColType = CollisionType.Capsule;
+         
         public float CollisionHeight = CharacterHeight;
 
         // ---- perception / engagement ------------------------------------------
@@ -213,8 +212,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             _strafeLeftClips = First(clips, "strafeleft") ?? "strafeleft";
             _strafeRightClips = First(clips, "straferight") ?? "straferight";
-
-
+             
             ChooseWanderAction();
         }
 
@@ -994,7 +992,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 ? LODConfig.SimulatedSpeedMultiplier
                 : 1f;
 
-            // ── NPC horizontal movement (existing) ──
+            // ── NPC horizontal movement with obstacle avoidance ──
             if (_speed > 0f)
             {
                 var f = Forward;
@@ -1009,8 +1007,52 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     );
                 }
 
-                p.X += f.X * _speed  * speedMul * moveScaleMul * dt;
-                p.Z += f.Z * _speed  * speedMul * moveScaleMul * dt;
+                float stepX = f.X * _speed * speedMul * moveScaleMul * dt;
+                float stepZ = f.Z * _speed * speedMul * moveScaleMul * dt;
+
+                // Simple obstacle avoidance: check ahead, side-step around trees
+                if (StaticManagers != null)
+                {
+                    Vector3 newPos = new(p.X + stepX, p.Y, p.Z + stepZ);
+                    if (IsBlockedByStatic(newPos, StaticManagers))
+                    {
+                        // Try side-stepping right, then left
+                        Vector3 rightDir = new(-f.Z, 0, f.X); // perpendicular right
+                        float sideStep = 0.4f;
+
+                        Vector3 rightPos = new(p.X + rightDir.X * sideStep + stepX, p.Y, p.Z + rightDir.Z * sideStep + stepZ);
+                        Vector3 leftPos  = new(p.X - rightDir.X * sideStep + stepX, p.Y, p.Z - rightDir.Z * sideStep + stepZ);
+
+                        if (!IsBlockedByStatic(rightPos, StaticManagers))
+                        {
+                            p.X = rightPos.X;
+                            p.Z = rightPos.Z;
+                        }
+                        else if (!IsBlockedByStatic(leftPos, StaticManagers))
+                        {
+                            p.X = leftPos.X;
+                            p.Z = leftPos.Z;
+                        }
+                        else
+                        {
+                            // Both sides blocked — nudge heading & slow down
+                            _targetHeading += 0.15f;
+                            _speed *= 0.5f;
+                            p.X += stepX * 0.3f;
+                            p.Z += stepZ * 0.3f;
+                        }
+                    }
+                    else
+                    {
+                        p.X += stepX;
+                        p.Z += stepZ;
+                    }
+                }
+                else
+                {
+                    p.X += stepX;
+                    p.Z += stepZ;
+                }
             }
 
             // ── NPC Physics: apply gravity ──
@@ -1067,6 +1109,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private void PlayerMovement(nint window, float dt)
         {
             
+        }
+
+        /// <summary>
+        /// Check if a position overlaps with any collidable static object's AABB
+        /// (expanded by character radius in XZ). Used for simple tree avoidance.
+        /// </summary>
+        private bool IsBlockedByStatic(Vector3 pos, List<StaticObjectManager>? managers)
+        {
+            if (managers == null) return false;
+            float r = Radius;
+            foreach (var mgr in managers)
+            {
+                if (mgr == null) continue;
+                foreach (var obj in mgr.GetObjects())
+                {
+                    if (!obj.IsCollidable) continue;
+                    var aabb = obj.CachedCollisionAABB ?? obj.CachedWorldAABB;
+
+                    // Quick XZ distance check against expanded AABB
+                    float closestX = Math.Clamp(pos.X, aabb.Min.X, aabb.Max.X);
+                    float closestZ = Math.Clamp(pos.Z, aabb.Min.Z, aabb.Max.Z);
+                    float dx = pos.X - closestX;
+                    float dz = pos.Z - closestZ;
+                    if (dx * dx + dz * dz < r * r)
+                        return true;
+                }
+            }
+            return false;
         }
 
         public void AvoidFrom(Vector3 other)

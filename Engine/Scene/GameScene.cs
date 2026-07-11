@@ -1538,7 +1538,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 int culledTotal = _objectManager.TotalObjects - _objectManager.DrawnObjects;
                 int animFrustum = _objectManager.CulledByFrustum;
                 int animOcc = _objectManager.CulledByOcclusion;
-                title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total  (anim: {animFrustum}f {animOcc}occ)";
+                int animCount = _objectManager.GetObjects().Count;
+                int staticCount = _objectManager.staticObjectManagers.Sum(m => m?.GetTotalObject ?? 0);
+                // Debug: log actual values once
+                //Console.WriteLine($"[HUD Debug] staticObjectManagers.Count={_objectManager.staticObjectManagers.Count} staticCount={staticCount} TotalObjects={_objectManager.TotalObjects} DrawnObjects={_objectManager.DrawnObjects} animCount={animCount}");
+                title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total  ({animCount} chars + {staticCount:N0} static)";
             }
             //Save notification
             if (_saveNotificationTimer > 0f)

@@ -160,7 +160,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             float spawnCX = 0f;
             float spawnCZ = 0f;
-            float minDist = 1.6f;
+            float minDist = 1.5f;
             float spawnRadius = 10f;
 
             var spawnedPositions = new List<Vector2>();
@@ -173,7 +173,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ─────────────────────────────────────
             OnLoadProgress?.Invoke(0f, "AI: spawning characters...");
             
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 15; i++)
             {
                 float px, pz;
                 int tries = 0;
@@ -210,7 +210,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             OnLoadProgress?.Invoke(0.10f, "AI: initializing wandering...");
             WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
-            WanderRadius = 38f;
+            WanderRadius = 50f;
+             
             InitWanderingAgents();
 
             OnLoadProgress?.Invoke(0.15f, "AI: done");            // ─────────────────────────────────────
@@ -228,14 +229,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             string treesPath = "Artifacts/objects/biomes/trees.glb";
             string[] treeVariants = ["Christmas tree", "Christmas tree_2", "Christmas tree_3"];
-            const int treeCount = 5000;
-            const float treeRadius = 251.0f;
+            const int treeCount = 512;
+            const float treeRadius = 1024.0f;
 
             // Load the GLB as an asset WITHOUT auto-creating instances.
             // We'll create individual tree instances manually at random positions.
             var treesAsset = GlbLoader.Load(
                 treesManager, treesPath,
-                new Vector3(0, 0, 0), 0f, 1f,
+                new Vector3(0, 0, 0), 0f, 1.0f,
                 isScene: false,
                 gameTerrainChunk,
                 yOffset: 0f,
@@ -258,8 +259,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         sobj.IsCollidable = true;
                         sobj.ColType = CollisionType.Box;
                     },
-                    collisionSizeX: 1.2f,
-                    collisionSizeZ: 1.2f,
+                    collisionSizeX: 0.8f,
+                    collisionSizeZ: 0.8f,
+                    allowOverlap: true, // skip overlap check — place randomly
+                    scale: treesAsset.LoadScale, // scale stored from Load() call
                     onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
             }
 
@@ -300,56 +303,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             OnLoadProgress?.Invoke(0.87f, "Player: loading animations...");
 
-            // Load animation files dan apply ke semua object (AI + Player)
-            string[] animFiles =
-            [
-                "Artifacts\\objects\\Xbot.glb",
-                //"Artifacts\\objects\\Ybot.glb",
-                "Artifacts\\objects\\anim\\Fighting-idle.glb", "Artifacts\\objects\\anim\\fist-fight.glb",
-                "Artifacts\\objects\\anim\\punching-bag.glb", "Artifacts\\objects\\anim\\hook.glb",
-                "Artifacts\\objects\\anim\\body-block.glb", "Artifacts\\objects\\anim\\taking-punch.glb",
-                "Artifacts\\objects\\anim\\dying.glb", "Artifacts\\objects\\anim\\looking-around.glb",
-                "Artifacts\\objects\\anim\\entry.glb",
-                "Artifacts\\objects\\anim\\walk-strafe-left.glb", "Artifacts\\objects\\anim\\walk-strafe-right.glb",
-                "Artifacts\\objects\\anim\\walking-backwards.glb", "Artifacts\\objects\\anim\\walking-backwards2.glb",
-                "Artifacts\\objects\\anim\\walk-happy.glb", "Artifacts\\objects\\anim\\walk-standard.glb",
-                "Artifacts\\objects\\anim\\jump-start.glb", "Artifacts\\objects\\anim\\jump-loop.glb", "Artifacts\\objects\\anim\\jump-end.glb",
-                "Artifacts\\objects\\anim\\zombie-walk.glb","Artifacts\\objects\\anim\\jumping.glb"
-            ];
-
-            string?[] animClipNames =
-            [
-                null, // Xbot.glb -> base anim
-                //null, // UEPerson.glb -> base anim
-                "fightstance", "fistfight", "punchbag", "hook", "block", "hurt",
-                "dying",
-                "lookaround", "entry",
-                "strafeleft", "straferight", "backward", "backward2",
-                "walk-happy", "walk-standard" ,
-                "jump-start", "jump-loop", "jump-end",
-                "zombie-walk","jumping"
-
-            ];
-            bool[] retargetRoot =
-            [
-                false,
-                //false, 
-                false, false, false, false, false, false,false,
-                true,   // dying
-                false, false, 
-                false, false, false, false,
-                false, false, 
-                false, false, false,
-                false, false
-            ];
-
-            for (int i = 0; i < animFiles.Length; i++)
-            {
-                string clipName = animClipNames[i] ?? "base";
-                ApplyAnimationFileToAll(animFiles[i], animClipNames[i], retargetRoot[i]);
-                float p = 0.87f + ((i + 1) / (float)animFiles.Length) * 0.13f;
-                OnLoadProgress?.Invoke(p, $"Player: anim {clipName} ({i+1}/{animFiles.Length})");
-            }
 
             // ── Compute total available object triangles (LOD0) ──
             TotalObjectTriangles = 0;
@@ -754,10 +707,66 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void InitWanderingAgents()
         {
+            // Load animation files dan apply ke semua object (AI + Player)
+            string[] animFiles =
+            [
+                "Artifacts\\objects\\Xbot.glb",
+                "Artifacts\\objects\\Ybot.glb",
+                "Artifacts\\objects\\anim\\Fighting-idle.glb", "Artifacts\\objects\\anim\\fist-fight.glb",
+                "Artifacts\\objects\\anim\\punching-bag.glb", "Artifacts\\objects\\anim\\hook.glb",
+                "Artifacts\\objects\\anim\\body-block.glb", "Artifacts\\objects\\anim\\taking-punch.glb",
+                "Artifacts\\objects\\anim\\dying.glb", "Artifacts\\objects\\anim\\looking-around.glb",
+                "Artifacts\\objects\\anim\\entry.glb",
+                "Artifacts\\objects\\anim\\walk-strafe-left.glb", "Artifacts\\objects\\anim\\walk-strafe-right.glb",
+                "Artifacts\\objects\\anim\\walking-backwards.glb", "Artifacts\\objects\\anim\\walking-backwards2.glb",
+                "Artifacts\\objects\\anim\\walk-happy.glb", "Artifacts\\objects\\anim\\walk-standard.glb",
+                "Artifacts\\objects\\anim\\jump-start.glb", "Artifacts\\objects\\anim\\jump-loop.glb", "Artifacts\\objects\\anim\\jump-end.glb",
+                "Artifacts\\objects\\anim\\zombie-walk.glb","Artifacts\\objects\\anim\\jumping.glb"
+            ];
+
+            string?[] animClipNames =
+            [
+                null, // Xbot.glb -> base anim
+                null, // UEPerson.glb -> base anim
+                "fightstance", "fistfight", "punchbag", "hook", "block", "hurt",
+                "dying",
+                "lookaround", "entry",
+                "strafeleft", "straferight", "backward", "backward2",
+                "walk-happy", "walk-standard" ,
+                "jump-start", "jump-loop", "jump-end",
+                "zombie-walk","jumping"
+
+            ];
+            bool[] retargetRoot =
+            [
+                false,
+                //false, 
+                false, false, false, false, false, false,false,
+                true,   // dying
+                false, false,
+                false, false, false, false,
+                false, false,
+                false, false, false,
+                false, false
+            ];
+
+            for (int i = 0; i < animFiles.Length; i++)
+            {
+                string clipName = animClipNames[i] ?? "base";
+                ApplyAnimationFileToAll(animFiles[i], animClipNames[i], retargetRoot[i]);
+                float p = 0.87f + ((i + 1) / (float)animFiles.Length) * 0.13f;
+                //Console.WriteLine($"Player: anim {clipName} ({i+1}/{animFiles.Length})");
+                OnLoadProgress?.Invoke(p, $"Player: anim {clipName} ({i + 1}/{animFiles.Length})");
+            }
+
             foreach (var obj in _objects)
             {
-                if (!obj.IsPlayer )
-                    _agents.Add(new CharacterAgent(obj, _agentRng));
+                if (!obj.IsPlayer)
+                {
+                    var agent = new CharacterAgent(obj, _agentRng);
+                    agent.StaticManagers = staticObjectManagers;
+                    _agents.Add(agent);
+                }
             }
         }
 

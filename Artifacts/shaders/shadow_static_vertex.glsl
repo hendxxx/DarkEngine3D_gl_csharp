@@ -1,5 +1,6 @@
 #version 330 core
 layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoord;
 
 // Instanced model matrix (4 rows)
@@ -16,5 +17,9 @@ void main()
 {
     mat4 model = mat4(aModelRow0, aModelRow1, aModelRow2, aModelRow3);
     TexCoord = aTexCoord;
-    gl_Position = lightSpaceMatrix * model * vec4(aPos, 1.0);
+
+    // Fix Projection artefacts — push vertex slightly along normal to prevent self-shadowing
+    float normalBias = 0.02;
+    vec3 extrudedPos = aPos + aNormal * normalBias;
+    gl_Position = lightSpaceMatrix * model * vec4(extrudedPos, 1.0);
 }
