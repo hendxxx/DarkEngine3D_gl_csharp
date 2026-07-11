@@ -49,22 +49,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // We'll pack our byte data and cast via fixed pointer
 
         // ── Baking shaders ─────────────────────────────────────────────────
-        private readonly uint _bakeShader;              // final-lit color (kept for compatibility)
         private readonly uint _bakeGbufferShader;        // G-buffer (albedo, roughness, normal, metallic)
         private readonly int _bakeGbufferModeLoc;
-        private readonly int _bakeModelLoc, _bakeViewLoc, _bakeProjLoc;
-        private readonly int _bakeSunDirLoc, _bakeRealSunDirLoc, _bakeLightColorLoc;
-        private readonly int _bakeViewPosLoc;
-        private readonly int _bakeBaseColorLoc, _bakeUseAlbedoLoc, _bakeAlbedoMapLoc;
-        private readonly int _bakeMetallicFactorLoc, _bakeRoughnessFactorLoc;
-        private readonly int _bakeEmissiveFactorLoc, _bakeNormalScaleLoc;
-        private readonly int _bakeOcclusionStrengthLoc;
-        private readonly int _bakeHasNormalTexLoc, _bakeHasMetallicRoughnessTexLoc;
-        private readonly int _bakeHasOcclusionTexLoc, _bakeHasEmissiveTexLoc;
-        private readonly int _bakeUseFogLoc;
-        // PBR sampler unit uniforms (must be set to correct texture units!)
-        private readonly int _bakeNormalMapLoc, _bakeMetallicRoughnessMapLoc;
-        private readonly int _bakeOcclusionMapLoc, _bakeEmissiveMapLoc;
 
         // ── Unit quad for billboard rendering ──────────────────────────────
         private uint _quadVAO, _quadVBO;
@@ -151,42 +137,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _bbShadowFilterLoc = GL.GetUniformLocation(_impostorShader, "shadowFilterMode");
             _bbShadowOffsetYLoc = GL.GetUniformLocation(_impostorShader, "shadowOffsetY");
 
-            _bakeShader = ShaderHelpers.LoadShader(
-                "Artifacts/shaders/bake_vertex.glsl",
-                "Artifacts/shaders/bake_fragment.glsl"
-            );
-
-            _bakeModelLoc = GL.GetUniformLocation(_bakeShader, "model");
-            _bakeViewLoc = GL.GetUniformLocation(_bakeShader, "view");
-            _bakeProjLoc = GL.GetUniformLocation(_bakeShader, "projection");
-            _bakeSunDirLoc = GL.GetUniformLocation(_bakeShader, "sunDir");
-            _bakeRealSunDirLoc = GL.GetUniformLocation(_bakeShader, "realSunDir");
-            _bakeLightColorLoc = GL.GetUniformLocation(_bakeShader, "lightColor");
-            _bakeViewPosLoc = GL.GetUniformLocation(_bakeShader, "viewPos");
-            _bakeBaseColorLoc = GL.GetUniformLocation(_bakeShader, "baseColorFactor");
-            _bakeUseAlbedoLoc = GL.GetUniformLocation(_bakeShader, "useAlbedo");
-            _bakeAlbedoMapLoc = GL.GetUniformLocation(_bakeShader, "albedoMap");
-            _bakeMetallicFactorLoc = GL.GetUniformLocation(_bakeShader, "metallicFactor");
-            _bakeRoughnessFactorLoc = GL.GetUniformLocation(_bakeShader, "roughnessFactor");
-            _bakeEmissiveFactorLoc = GL.GetUniformLocation(_bakeShader, "emissiveFactor");
-            _bakeNormalScaleLoc = GL.GetUniformLocation(_bakeShader, "normalScale");
-            _bakeOcclusionStrengthLoc = GL.GetUniformLocation(_bakeShader, "occlusionStrength");
-            _bakeHasNormalTexLoc = GL.GetUniformLocation(_bakeShader, "hasNormalTexture");
-            _bakeHasMetallicRoughnessTexLoc = GL.GetUniformLocation(_bakeShader, "hasMetallicRoughnessTexture");
-            _bakeHasOcclusionTexLoc = GL.GetUniformLocation(_bakeShader, "hasOcclusionTexture");
-            _bakeHasEmissiveTexLoc = GL.GetUniformLocation(_bakeShader, "hasEmissiveTexture");
-            _bakeUseFogLoc = GL.GetUniformLocation(_bakeShader, "useFog");
-
             // Load G-buffer bake shader for deferred impostor
             _bakeGbufferShader = ShaderHelpers.LoadShader(
                 "Artifacts/shaders/bake_vertex.glsl",
                 "Artifacts/shaders/bake_gbuffer_fragment.glsl"
             );
             _bakeGbufferModeLoc = GL.GetUniformLocation(_bakeGbufferShader, "gbufferMode");
-            _bakeNormalMapLoc = GL.GetUniformLocation(_bakeShader, "normalMap");
-            _bakeMetallicRoughnessMapLoc = GL.GetUniformLocation(_bakeShader, "metallicRoughnessMap");
-            _bakeOcclusionMapLoc = GL.GetUniformLocation(_bakeShader, "occlusionMap");
-            _bakeEmissiveMapLoc = GL.GetUniformLocation(_bakeShader, "emissiveMap");
 
             SetupQuad();
             SetupBakeFBO();
@@ -860,7 +816,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (_quadVBO != 0) { fixed (uint* p = &_quadVBO) GL.DeleteBuffers(1, p); _quadVBO = 0; }
 
             GL.DeleteProgram(_impostorShader);
-            GL.DeleteProgram(_bakeShader);
             GL.DeleteProgram(_bakeGbufferShader);
         }
     }

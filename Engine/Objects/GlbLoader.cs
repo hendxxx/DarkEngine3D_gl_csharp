@@ -533,12 +533,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             rootGroup.LocalAABB = gpuData.LocalAABB;
             asset.Groups.Insert(0, rootGroup);
 
-            // ── Debug print variant groups ──
-            foreach (var g in asset.Groups)
-            {
-                string lodInfo = string.Join(", ", g.Lods.OrderBy(kv => kv.Key).Select(kv => $"LOD{kv.Key}=[{string.Join(",", kv.Value)}]"));
-                Console.WriteLine("[BuildAssetGroups] Group '" + g.BaseName + "': " + lodInfo + ", MaxLOD=" + g.MaxLOD + ", verts={" + g.LocalAABB.Min.X.ToString("F2") + "," + g.LocalAABB.Min.Y.ToString("F2") + "," + g.LocalAABB.Min.Z.ToString("F2") + "}..{" + g.LocalAABB.Max.X.ToString("F2") + "," + g.LocalAABB.Max.Y.ToString("F2") + "," + g.LocalAABB.Max.Z.ToString("F2") + "}");
-            }
+
         }
 
         /// <summary>

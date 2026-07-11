@@ -216,103 +216,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.15f, "AI: done");            // ─────────────────────────────────────
             // PHASE 2: STATIC OBJECTS (15% → 85%)
             // ─────────────────────────────────────
-            var wallManager = new StaticObjectManager {};
-            var dungeonManager = new StaticObjectManager {};
             var treesManager = new StaticObjectManager {};
-            var daisiesManager = new StaticObjectManager {};
 
-            staticObjectManagers.Add(wallManager);
-            staticObjectManagers.Add(dungeonManager);
             staticObjectManagers.Add(treesManager);
-            staticObjectManagers.Add(daisiesManager);
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
 
-            // ════════════════════════════════════════════════════════════════
-            //  NEW: Revamped GLB loading with GlbLoader
-            // ════════════════════════════════════════════════════════════════
-            //
-            //  Pipeline: GLB → Import Nodes → Store Hierarchy
-            //    → Store Meshes (RemoveWorldTransform if asset)
-            //    → Store Materials (PBR) → Store Textures
-            //    → Scene Instance → Snap To Terrain → Y Offset
-            //
-            //  Scenario 1 (asset): damaged_wall.glb loaded as single asset
-            //    GlbLoader.Load(manager, path, pos, yaw, scale, false, terrain)
-            //
-            //  Scenario 2 (asset + instance): would load asset then call
-            //    GlbLoader.CreateInstance(manager, asset, "MeshName", pos, ...)
-            //
-            //  Scenario 3 (scene): my_dungeon.glb loaded as scene
-            //    GlbLoader.Load(manager, path, pos, yaw, scale, true, terrain)
-            // ════════════════════════════════════════════════════════════════
-
-            //// ── Scenario 1: damaged_wall.glb as ASSET ──
-            //// RemoveWorldTransform is applied — node transforms are baked into
-            //// vertex positions so the wall sits at origin. The asset container
-            //// is returned for optional mesh-level instantiation.
-            //string wallPath = "Artifacts/objects/damaged_wall.glb";
-            //var wallAsset = GlbLoader.Load(
-            //    wallManager, wallPath,
-            //    new Vector3(10f, 0.0f, 0f),  // world position
-            //    0f,                          // yaw
-            //    0.05f,                       // scale
-            //    isScene: false,              // ASSET mode: RemoveWorldTransform ON
-            //    gameTerrainChunk,            // terrain for snapping
-            //    yOffset: 0f);                // additional Y offset
-
-            //wallManager.CastShadow = true;
-            //wallManager.UseAlpha = true;
-            //wallManager.CullAtMaxLOD = true;
-            //foreach (var sobj in wallManager.GetObjects())
-            //{
-            //    sobj.IsOccluder = true;
-            //    sobj.IsCollidable = true;
-            //    sobj.ColType = CollisionType.Box;
-            //} 
-
-            ////// ── Scenario 3: my_dungeon.glb as SCENE ──
-            ////// RemoveWorldTransform is NOT applied — the GLB's original node
-            ////// hierarchy and world transforms are preserved. UseNodeHierarchy
-            ////// is automatically set to true on the manager.
-            //string dungeonPath = "Artifacts/objects/my_dungeon.glb";
-            //var dungeonAsset = GlbLoader.Load(
-            //    dungeonManager, dungeonPath,
-            //    new Vector3(40f, 0f, 0f),    // world position
-            //    0f,                          // yaw
-            //    1.5f,                        // scale
-            //    isScene: true,               // SCENE mode: RemoveWorldTransform OFF
-            //    gameTerrainChunk,            // terrain for snapping
-            //    yOffset: 0f);                // additional Y offset
-
-            //dungeonManager.CastShadow = true;
-            //dungeonManager.UseAlpha = true; 
-            //dungeonManager.CullAtMaxLOD = false;   
-
-            //foreach (var sobj in dungeonManager.GetObjects())
-            //{
-            //    sobj.IsOccluder = false;
-            //    sobj.IsCollidable = false;
-            //    sobj.ColType = CollisionType.Box;
-            //} 
-
-            ////── Example: Scenario 2 (asset + instance) ──
-            //// Debug: list available mesh names from the dungeon
-            //if (dungeonAsset != null)
-            //{
-            //    var names = string.Join(", ", dungeonAsset.GetMeshNames());
-            //    Console.WriteLine($"[Dungeon] Available meshes: {names}");
-            //}
-
-            //var box = GlbLoader.CreateInstance(
-            //    dungeonManager, dungeonAsset, "Object_34",
-            //    new Vector3(5f, 0f, 0f), 0f, 1f, gameTerrainChunk, 0f);
-            
-            //box.IsCollidable = true;
-            //box.IsOccluder = true;
-            //box.ColType = CollisionType.Box;
-
-            //// Trees — loaded via GlbLoader pipeline
+            // Trees — loaded via GlbLoader pipeline
             string treesName = "trees";
             OnLoadProgress?.Invoke(0.16f, $"Static: loading {treesName}...");
 
@@ -330,21 +240,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 gameTerrainChunk,
                 yOffset: 0f,
                 autoCreateInstances: false);
-
-            // ── Debug: print variant names and their mesh indices ──
-            Console.WriteLine($"[Trees] GLB loaded. MeshesByName keys: {string.Join(", ", treesAsset != null ? treesAsset.GetMeshNames() : new string[0])}");
-            if (treesAsset != null)
-            {
-                foreach (var kv in treesAsset.MeshesByName)
-                {
-                    Console.WriteLine($"[Trees]   Variant '{kv.Key}': mesh indices [{string.Join(",", kv.Value)}]");
-                    foreach (int mi in kv.Value)
-                    {
-                        if (mi >= 0 && mi < treesAsset.GpuData.Data.Meshes.Length)
-                            Console.WriteLine($"[Trees]     Mesh[{mi}] = \"{treesAsset.GpuData.Data.Meshes[mi].Name}\" {treesAsset.GpuData.Data.Meshes[mi].Vertices.Length} verts");
-                    }
-                }
-            }
 
             // Set up billboard system BEFORE CreateRandomInstances so that
             // CreateInstance can register variant groups for billboard baking.
@@ -377,69 +272,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             treesManager.BuildSpatialGrid();
             treesManager.BakeAllBillboards();
 
-            OnLoadProgress?.Invoke(0.22f, $"Static: {treesName} done");
-
-            ////// Daisies — loaded via GlbLoader pipeline
-            //string daisiesName = "daises";
-            //OnLoadProgress?.Invoke(0.25f, $"Static: loading {daisiesName}...");
-
-            //string daisiesPath = "Artifacts/objects/biomes/daises.glb";
-            //string[] daisyVariants = ["Daisy_1", "Daisy_patch_big_1", "Daisy_patch_small_1"];
-            //const int daisyCount = 64;
-            //const float daisyRadius = 64f;
-
-            //// Load as asset WITHOUT auto-creating instances
-            //var daisiesAsset = GlbLoader.Load(
-            //    daisiesManager, daisiesPath,
-            //    new Vector3(0, 0, 0), 0f, 1f,
-            //    isScene: false,
-            //    gameTerrainChunk,
-            //    yOffset: 0f,
-            //    autoCreateInstances: false);
-
-            //if (daisiesAsset != null)
-            //{
-            //    var daisyNames = string.Join(", ", daisiesAsset.GetMeshNames());
-            //    Console.WriteLine($"[Daisies] Available meshes: {daisyNames}");
-            //    // Debug: print original mesh names
-            //    for (int mi = 0; mi < daisiesAsset.GpuData.Data.Meshes.Length; mi++)
-            //    {
-            //        string? mn = daisiesAsset.GpuData.Data.Meshes[mi].Name;
-            //        if (!string.IsNullOrEmpty(mn) && mn.Contains("Daisy", StringComparison.OrdinalIgnoreCase))
-            //            Console.WriteLine($"[Daisies] Mesh[{mi}] = \"{mn}\"");
-            //    }
-
-            //    GlbLoader.CreateRandomInstances(
-            //        daisiesManager, daisiesAsset, daisyVariants, daisyCount, daisyRadius,
-            //        terrain: gameTerrainChunk,
-            //        progressMin: 0.25f, progressMax: 0.75f,
-            //        progressLabel: daisiesName,
-            //        configureInstance: sobj =>
-            //        { 
-            //            sobj.IsCollidable = false;
-            //            sobj.ColType = CollisionType.Box;
-            //        },
-            //        onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
-            //}
-
-            //// Daisies configuration — enable billboards for LOD3+
-            //daisiesManager.UseBillboards = true;
-            //daisiesManager.BillboardMgr = new BillboardManager();
-            //daisiesManager.CastShadow = false;
-            //daisiesManager.UseAlpha = false;
-            //daisiesManager.CullAtMaxLOD = true;
-            //daisiesManager.SkipTerrainRayMarch = true;
-            //daisiesManager.EnableSpatialGrid = true;
-            //daisiesManager.UseTerrainGrid = true;
-            //daisiesManager.BakeAllBillboards();
-            //OnLoadProgress?.Invoke(0.77f, $"Static: building {daisiesName} spatial grid...");
-            //daisiesManager.BuildSpatialGrid();
-
-            //OnLoadProgress?.Invoke(0.80f, $"Static: {daisiesName} done");
-
-            OnLoadProgress?.Invoke(0.82f, "Static: loading wall occluder...");
-
-            OnLoadProgress?.Invoke(0.85f, "Static: all objects done");
+            OnLoadProgress?.Invoke(0.85f, $"Static: {treesName} done — {treeCount} trees");
 
             // ─────────────────────────────────────
             // PHASE 3: PLAYER + ANIMATIONS (85% → 100%)
