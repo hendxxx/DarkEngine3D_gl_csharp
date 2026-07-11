@@ -9,11 +9,13 @@ uniform mat4 view;
 uniform mat4 projection;
 
 out vec2 vUV;
+out vec3 vWorldPos;        // world-space position for PBR view direction
 
 void main()
 {
     // Expand unit quad into a camera-facing billboard
     vec3 worldPos = center + aPos.x * radius * cameraRight + aPos.y * radius * cameraUp;
     vUV = aPos * 0.5 + 0.5; // map [-1,1] to [0,1]
+    vWorldPos = worldPos;
     gl_Position = projection * view * vec4(worldPos, 1.0);
 }

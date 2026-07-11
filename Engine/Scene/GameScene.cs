@@ -1452,6 +1452,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
+            //  Billboad Atlas Debug Overlay (M key toggle — independent from AABB debug)
+            if (Keyboard.GetShowBillboardAtlas() && _objectManager != null)
+            {
+                GL.Disable(Const.GL_DEPTH_TEST);
+                GL.DepthMask(false);
+                _objectManager.DrawBillboardAtlasDebug();
+                GL.DepthMask(true);
+                GL.Enable(Const.GL_DEPTH_TEST);
+            }
+
             //  PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY 
             if (_paused)
             {

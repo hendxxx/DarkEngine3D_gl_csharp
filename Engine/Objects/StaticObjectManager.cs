@@ -29,6 +29,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public float BillboardRadius = 1f;
         // Whether this group has a valid billboard atlas.
         public bool HasBillboard => BillboardAtlasTexture != 0;
+
+        // (removed PreCenterGroupCenter — BakeOne now computes group center on the fly
+        //  from gpuData.MeshOriginalCenters)
     }
 
     public class StaticObject
@@ -168,7 +171,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _hasEmissiveTextureLoc;
 
         // ── Billboard System ──
-        // Master switch: when true, objects at LOD 3+ use camera-facing billboards
+        // Master switch: when true, objects at LOD 2+ use camera-facing billboards
         // instead of mesh rendering. Billboards use the impostor vertex/fragment shaders
         // with a pre-baked 8-view texture atlas for each group.
         public bool UseBillboards = false;
@@ -920,7 +923,13 @@ public void BuildSpatialGrid()
             // Use spatial grid if available, otherwise fall back to full iteration
             if (_gridCells != null)
             {
-                _gridVisibleRange = LOD3_Dist;
+                // ── Billboard distance: if billboards are available, don't cull ──
+                // Billboards are cheap (single quad), so they should be visible from
+                // any distance. Only frustum culling should hide them.
+                if (UseBillboards && BillboardMgr != null)
+                    _gridVisibleRange = float.MaxValue; // billboards are always visible
+                else
+                    _gridVisibleRange = LOD3_Dist;
 
                 // ── Spatial Grid: only iterate cells within visible range ──
                 // Compute visible cell range based on actual object bounds
@@ -969,9 +978,10 @@ public void BuildSpatialGrid()
                             if (CullAtMaxLOD && targetLOD >= group.MaxLOD && (!UseBillboards || !group.HasBillboard))
                                 continue;
 
-                            // ── Billboard LOD3: check BEFORE MaxLOD cap (group.MaxLOD may be 1) ──
-                            // Use distance check directly instead of targetLOD >= 3 because
-                            // targetLOD gets capped to group.MaxLOD below.
+                            // ── Billboard LOD2+: activate at LOD2 distance ──
+                            // At LOD2 (200m), the mesh is already simplified.
+                            // Billboards replace mesh rendering here, with smooth
+                            // alpha fade over FadeRange meters.
                             bool useBillboard = UseBillboards && group.HasBillboard && BillboardMgr != null
                                                 && dist >= LOD2_Dist;
 
@@ -1246,7 +1256,7 @@ public void BuildSpatialGrid()
             // ── Step 3: render billboards (if any) ──
             if (UseBillboards && BillboardMgr != null && BillboardMgr.InstanceCount > 0)
             {
-                BillboardMgr.Flush(camera, light);
+                BillboardMgr.Flush(camera, light, csm);
             }
         }
 

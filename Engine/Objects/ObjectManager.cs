@@ -7,6 +7,9 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
+
+
+
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
     // =======================================================================
@@ -315,8 +318,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             string treesPath = "Artifacts/objects/biomes/trees.glb";
             string[] treeVariants = ["Christmas tree", "Christmas tree_2", "Christmas tree_3"];
-            const int treeCount = 1000;
-            const float treeRadius = 250.0f;
+            const int treeCount = 5000;
+            const float treeRadius = 251.0f;
 
             // Load the GLB as an asset WITHOUT auto-creating instances.
             // We'll create individual tree instances manually at random positions.
@@ -327,6 +330,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 gameTerrainChunk,
                 yOffset: 0f,
                 autoCreateInstances: false);
+
+            // ── Debug: print variant names and their mesh indices ──
+            Console.WriteLine($"[Trees] GLB loaded. MeshesByName keys: {string.Join(", ", treesAsset != null ? treesAsset.GetMeshNames() : new string[0])}");
+            if (treesAsset != null)
+            {
+                foreach (var kv in treesAsset.MeshesByName)
+                {
+                    Console.WriteLine($"[Trees]   Variant '{kv.Key}': mesh indices [{string.Join(",", kv.Value)}]");
+                    foreach (int mi in kv.Value)
+                    {
+                        if (mi >= 0 && mi < treesAsset.GpuData.Data.Meshes.Length)
+                            Console.WriteLine($"[Trees]     Mesh[{mi}] = \"{treesAsset.GpuData.Data.Meshes[mi].Name}\" {treesAsset.GpuData.Data.Meshes[mi].Vertices.Length} verts");
+                    }
+                }
+            }
+
+            // Set up billboard system BEFORE CreateRandomInstances so that
+            // CreateInstance can register variant groups for billboard baking.
+            treesManager.UseBillboards = true;
+            treesManager.BillboardMgr = new BillboardManager();
 
             if (treesAsset != null)
             {
@@ -345,9 +368,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     onProgress: (p, msg) => OnLoadProgress?.Invoke(p, msg));
             }
 
-            // Tree rendering configuration — enable billboards for LOD3+
-            treesManager.UseBillboards = true;
-            treesManager.BillboardMgr = new BillboardManager();
+            // Tree rendering configuration
             treesManager.CastShadow = true;
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
@@ -1363,6 +1384,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// back to the current camera frustum.
         /// Inside frustum → blue; outside frustum → yellow.
         /// </summary>
+        // ── Billboard atlas debug viewer ──
+        private FramebufferViewer _fbv = new();
+
         public void DrawDebugAABBs(Camera camera, Plane[]? frozenPlanes = null)
         {
             Vector4[] frustum;
@@ -1420,6 +1444,53 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     }
                 }
             }
+
+        }
+
+        private bool _atlasesDumped = false;
+
+        /// <summary>
+        /// Render billboard atlas debug overlay (top-left corner).
+        /// Also dumps atlas textures to PNG files on first call.
+        /// Toggle with M key.
+        /// </summary>
+        public void DrawBillboardAtlasDebug()
+        {
+            if (_fbv == null) return;
+
+            // One-time PNG dump when atlas debug is first toggled ON
+            if (!_atlasesDumped)
+            {
+                _atlasesDumped = true;
+                string dumpDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug", "atlases");
+                foreach (var mgr in staticObjectManagers)
+                {
+                    if (mgr?.BillboardMgr == null) continue;
+                    mgr.BillboardMgr.DumpAllAtlasesToPng(dumpDir);
+                }
+            }
+
+            int x = 10, y = 10;
+            int atlasW = 512, atlasH = 64;
+            int sw = Glfw.WindowWidth;
+            int sh = Glfw.WindowHeight;
+            int glY = sh - y - atlasH;
+
+            foreach (var mgr in staticObjectManagers)
+            {
+                if (mgr?.BillboardMgr == null) continue;
+                foreach (uint atlasTex in mgr.BillboardMgr.DebugBakedAtlases)
+                {
+                    if (atlasTex == 0) continue;
+                    _fbv.RenderColorTexture(atlasTex, sw, sh, x, glY, atlasW, atlasH);
+                    x += atlasW + 10;
+                    if (x + atlasW > sw)
+                    {
+                        x = 10;
+                        glY -= atlasH + 10;
+                    }
+                }
+            }
         }
 
         public void Dispose()
@@ -1434,6 +1505,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 // GPU resources cleanup handled by manager disposal
             }
+
+            _fbv?.Dispose();
         }
 
         private static Vector4[] ExtractFrustumPlanes(Matrix4x4 vp)

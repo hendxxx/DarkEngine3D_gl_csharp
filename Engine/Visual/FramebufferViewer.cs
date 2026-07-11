@@ -98,31 +98,74 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             float LinearizeDepth(float depth)
             {
-                // Untuk perspective projection biasanya perlu ini.
-                // Tapi shadow map directional light + ortho sering cukup pakai raw depth.
                 float z = depth * 2.0 - 1.0;
                 return (2.0 * uNearPlane * uFarPlane) / (uFarPlane + uNearPlane - z * (uFarPlane - uNearPlane));
             }
 
             void main()
             {
-                float depthValue = texture(uDepthMap, TexCoord).r;
+                vec4 texel = texture(uDepthMap, TexCoord);
 
-                float c = depthValue;
+                // uVisualizeLinear:
+                //   0 = raw red channel (depth / monochrome)
+                //   1 = linearized depth
+                //   2 = full RGBA color passthrough (for color textures / billboard atlas)
+                if (uVisualizeLinear == 2)
+                {
+                    FragColor = texel;
+                    return;
+                }
 
+                float c = texel.r;
                 if (uVisualizeLinear == 1)
                 {
-                    float linear = LinearizeDepth(depthValue) / uFarPlane;
+                    float linear = LinearizeDepth(c) / uFarPlane;
                     c = linear;
                 }
 
-                // Supaya lebih enak dilihat, depth dekat biasanya gelap.
-                // Kalau mau dibalik, gunakan 1.0 - c
                 FragColor = vec4(vec3(c), 1.0);
             }
             """;
 
             _shader = new Shader(vs, fs); // sesuaikan dengan class Shader punyamu
+        }
+
+        /// <summary>
+        /// Render a color texture (RGBA) to a screen overlay area.
+        /// x,y,width,height in screen pixels, origin = bottom-left OpenGL viewport.
+        /// </summary>
+        public void RenderColorTexture(uint texture, int screenWidth, int screenHeight, int x, int y, int width, int height)
+        {
+            float ndcX = ((x + width * 0.5f) / (float)screenWidth) * 2.0f - 1.0f;
+            float ndcY = ((y + height * 0.5f) / (float)screenHeight) * 2.0f - 1.0f;
+            float ndcW = width / (float)screenWidth;
+            float ndcH = height / (float)screenHeight;
+
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            GL.Disable(Const.GL_DEPTH_TEST);
+            GL.DepthMask(false);
+
+            // Use a simple passthrough color shader (same shader as depth viewer,
+            // but sample red channel + show as gray isn't right for color).
+            // We override the shader program with a color-sampling one.
+            _shader.Use();
+            _shader.SetInt("uDepthMap", 0);
+            _shader.SetVec2("uOffset", ndcX, ndcY);
+            _shader.SetVec2("uScale", ndcW, ndcH);
+            _shader.SetFloat("uNearPlane", 0.1f);
+            _shader.SetFloat("uFarPlane", 300.0f);
+            _shader.SetInt("uVisualizeLinear", 2); // mode 2 = full RGBA color passthrough
+
+            GL.ActiveTexture(Const.GL_TEXTURE0);
+            GL.BindTexture(Const.GL_TEXTURE_2D, texture);
+
+            GL.BindVertexArray(_vao);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+            GL.BindVertexArray(0);
+
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            GL.DepthMask(true);
+            GL.Enable(Const.GL_DEPTH_TEST);
         }
 
         /// <summary>

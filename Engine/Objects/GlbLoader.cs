@@ -153,6 +153,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // 2. Apply RemoveWorldTransform if this is an asset (not a scene)
             bool useNodeHierarchy = isScene;
 
+            // Local dict for billboard bake offsets (null for scene mode).
+            Dictionary<int, Vector3>? meshCenters = null;
+
             if (!isScene && data.Nodes != null && data.Nodes.Length > 0)
             {
                 // Build temporary mesh-to-node mapping
@@ -168,11 +171,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // Center each variant's mesh vertices around origin so that instance
                 // positions become actual world positions (no offset compensation needed).
-                CenterVariantGroups(data);
+                // Returns a dict of meshIndex → originalMeshCenter (before centering).
+                meshCenters = CenterVariantGroups(data);
             }
 
             // 3. Upload to GPU
             var gpuData = new GltfModelGpuData(data, useNodeHierarchy);
+
+            // Store original mesh centers on gpuData for BakeOne offset computation.
+            // BakeOne computes the group center from these and applies per-mesh offsets
+            // to restore relative sub-mesh positions during atlas baking.
+            if (meshCenters != null)
+                gpuData.MeshOriginalCenters = new Dictionary<int, Vector3>(meshCenters);
 
             // 4. Create GlbAsset
             var asset = new GlbAsset(path, gpuData, isScene)
@@ -271,63 +281,61 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (meshIndices.Length == 0)
                 meshIndices = [primaryIdx];
 
-            // Create a single-mesh group for this instance
-            // Sort mesh indices into proper LOD levels so only one LOD renders
-            // at a time based on distance, rather than all LODs simultaneously.
-            var group = new StaticObjectGroup
-            {
-                BaseName = meshName
-            };
-            var lods = new Dictionary<int, List<int>>();
-            if (meshes != null)
-            {
-                foreach (int mi in meshIndices)
-                {
-                    if (mi < 0 || mi >= meshes.Length) continue;
-                    string? mName = meshes[mi].Name ?? "";
-                    int lodLevel = 0;
-                    if (mName.Contains("_LOD3", StringComparison.OrdinalIgnoreCase)) lodLevel = 3;
-                    else if (mName.Contains("_LOD2", StringComparison.OrdinalIgnoreCase)) lodLevel = 2;
-                    else if (mName.Contains("_LOD1", StringComparison.OrdinalIgnoreCase)) lodLevel = 1;
-                    if (!lods.ContainsKey(lodLevel)) lods[lodLevel] = new List<int>();
-                    lods[lodLevel].Add(mi);
-                }
-            }
-            // Fallback: if no _LOD suffix found, put all in LOD 1
-            if (lods.Count == 0)
-                lods[1] = [.. meshIndices];
-
-            int maxLod = 0;
-            foreach (var kv in lods)
-            {
-                group.Lods[kv.Key] = kv.Value;
-                if (kv.Key > maxLod) maxLod = kv.Key;
-            }
-            group.MaxLOD = maxLod;
-            for (int t = 0; t < 4; t++)
-            {
-                int nearest = Math.Min(t, maxLod);
-                while (nearest >= 0 && !group.Lods.ContainsKey(nearest))
-                    nearest--;
-                group.LodFallback[t] = Math.Max(nearest, 0);
-            }
-
-            // Compute local AABB from ALL mesh indices of this variant (not just LOD0).
-            // CenterVariantGroups computed the center from ALL variant meshes (original GLB meshes
-            // before _LOD suffix stripping). Using only LOD0 would give a different center if the
-            // original meshes are at different spatial positions, causing the AABB to NOT be
-            // centered at origin — which would make world AABB wrong (e.g. Z=1500 instead of Z=0).
             bool useHierarchy = manager.UseNodeHierarchy;
-            group.LocalAABB = ComputeLocalAABB(meshIndices, asset.GpuData.MeshToNode, asset.GpuData.Data.Nodes, asset.GpuData.Data.Meshes, useHierarchy);
 
-            // DEBUG: print variant group AABB vs root AABB
-            var rootGroup = asset.Groups.FirstOrDefault(g => g.BaseName.Equals("root", StringComparison.OrdinalIgnoreCase));
-            if (rootGroup != null)
+            // ── Reuse the asset variant group for this instance ──
+            // BuildAssetGroups already created variant groups with proper LOD sorting.
+            // Reusing the SAME group object across instances means billboard data
+            // (BillboardAtlasTexture, BillboardRadius) is shared without duplication.
+            var group = asset.Groups.FirstOrDefault(g => g.BaseName.Equals(meshName, StringComparison.OrdinalIgnoreCase));
+            if (group == null)
             {
-                Console.WriteLine($"[CreateInstance] '{meshName}': " +
-                    $"groupAABB=({group.LocalAABB.Min.X:F2},{group.LocalAABB.Min.Y:F2},{group.LocalAABB.Min.Z:F2})->({group.LocalAABB.Max.X:F2},{group.LocalAABB.Max.Y:F2},{group.LocalAABB.Max.Z:F2}) | " +
-                    $"rootAABB=({rootGroup.LocalAABB.Min.X:F2},{rootGroup.LocalAABB.Min.Y:F2},{rootGroup.LocalAABB.Min.Z:F2})->({rootGroup.LocalAABB.Max.X:F2},{rootGroup.LocalAABB.Max.Y:F2},{rootGroup.LocalAABB.Max.Z:F2})");
+                // Fallback: create a new group (shouldn't normally happen)
+                group = new StaticObjectGroup
+                {
+                    BaseName = meshName
+                };
+                var lods = new Dictionary<int, List<int>>();
+                if (meshes != null)
+                {
+                    foreach (int mi in meshIndices)
+                    {
+                        if (mi < 0 || mi >= meshes.Length) continue;
+                        string? mName = meshes[mi].Name ?? "";
+                        int lodLevel = 0;
+                        if (mName.Contains("_LOD3", StringComparison.OrdinalIgnoreCase)) lodLevel = 3;
+                        else if (mName.Contains("_LOD2", StringComparison.OrdinalIgnoreCase)) lodLevel = 2;
+                        else if (mName.Contains("_LOD1", StringComparison.OrdinalIgnoreCase)) lodLevel = 1;
+                        if (!lods.ContainsKey(lodLevel)) lods[lodLevel] = new List<int>();
+                        lods[lodLevel].Add(mi);
+                    }
+                }
+                if (lods.Count == 0)
+                    lods[1] = [.. meshIndices];
+
+                int maxLod = 0;
+                foreach (var kv in lods)
+                {
+                    group.Lods[kv.Key] = kv.Value;
+                    if (kv.Key > maxLod) maxLod = kv.Key;
+                }
+                group.MaxLOD = maxLod;
+                for (int t = 0; t < 4; t++)
+                {
+                    int nearest = Math.Min(t, maxLod);
+                    while (nearest >= 0 && !group.Lods.ContainsKey(nearest))
+                        nearest--;
+                    group.LodFallback[t] = Math.Max(nearest, 0);
+                }
+                group.LocalAABB = ComputeLocalAABB(meshIndices, asset.GpuData.MeshToNode, asset.GpuData.Data.Nodes, asset.GpuData.Data.Meshes, useHierarchy);
             }
+
+            // Register for billboard baking if billboards are enabled
+            // (BillboardMgr must be set up BEFORE calling CreateInstance)
+            if (manager.UseBillboards && manager.BillboardMgr != null && !group.HasBillboard)
+                manager.BillboardMgr.RegisterForBaking(asset.GpuData, group, manager.UseNodeHierarchy);
+
+
 
             // ── Compute terrain snap using the VARIANT's group AABB ──
             // Using the ROOT group's AABB (which spans ALL variants) would give a Min.Y
@@ -342,15 +350,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                 * Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f));
                 var snapRotatedAABB = group.LocalAABB.Transform(snapNoTrans);
                 finalPos.Y = terrainY - snapRotatedAABB.Min.Y + yOffset;
-
-                // DEBUG: print terrain snap details
-                Console.WriteLine($"[CreateInstance] '{meshName}' snap: " +
-                    $"inputPos=({position.X:F2},{position.Y:F2},{position.Z:F2}), " +
-                    $"terrainY={terrainY:F2}, " +
-                    $"groupAABB.Min.Y={group.LocalAABB.Min.Y:F2}, " +
-                    $"snapRotatedAABB.Min.Y={snapRotatedAABB.Min.Y:F2}, " +
-                    $"yOffset={yOffset:F2} -> " +
-                    $"finalPos=({finalPos.X:F2},{finalPos.Y:F2},{finalPos.Z:F2})");
             }
 
             // Create via StaticObjectManager's AddObject (reuse the existing API)
@@ -464,6 +463,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         /// <summary>
         /// Build groups for the asset from mesh names.
+        /// Each variant group gets detailed LOD sorting (same logic as CreateInstance)
+        /// so that billboard data baked on these groups can be shared across instances.
+        ///
+        /// Note: BakeOne now computes per-mesh centering offsets on the fly from
+        /// gpuData.MeshOriginalCenters, so no pre-computed offsets are needed here.
         /// </summary>
         private static void BuildAssetGroups(GlbAsset asset, GltfData data, GltfModelGpuData gpuData)
         {
@@ -472,14 +476,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 if (kv.Value.Length == 0) continue;
 
+                // ── Same LOD sorting as CreateInstance ──
+                // Sort meshes by _LOD suffix first, so that the group's LOD fallback
+                // structure matches what Draw() expects._
                 var group = new StaticObjectGroup
                 {
                     BaseName = kv.Key,
-                    MaxLOD = 1
+                    MaxLOD = 0
                 };
-                group.Lods[1] = [.. kv.Value];
+                var lods = new Dictionary<int, List<int>>();
+                foreach (int mi in kv.Value)
+                {
+                    string? mName = data.Meshes[mi].Name ?? "";
+                    int lodLevel = 0;
+                    if (mName.Contains("_LOD3", StringComparison.OrdinalIgnoreCase)) lodLevel = 3;
+                    else if (mName.Contains("_LOD2", StringComparison.OrdinalIgnoreCase)) lodLevel = 2;
+                    else if (mName.Contains("_LOD1", StringComparison.OrdinalIgnoreCase)) lodLevel = 1;
+                    if (!lods.ContainsKey(lodLevel)) lods[lodLevel] = new List<int>();
+                    lods[lodLevel].Add(mi);
+                }
+                // Fallback: if no _LOD suffix found, put all in LOD 1
+                if (lods.Count == 0)
+                    lods[1] = [.. kv.Value];
+
+                int maxLod = 0;
+                foreach (var lkv in lods)
+                {
+                    group.Lods[lkv.Key] = lkv.Value;
+                    if (lkv.Key > maxLod) maxLod = lkv.Key;
+                }
+                group.MaxLOD = maxLod;
                 for (int t = 0; t < 4; t++)
-                    group.LodFallback[t] = 1;
+                {
+                    int nearest = Math.Min(t, maxLod);
+                    while (nearest >= 0 && !group.Lods.ContainsKey(nearest))
+                        nearest--;
+                    group.LodFallback[t] = Math.Max(nearest, 0);
+                }
 
                 group.LocalAABB = ComputeLocalAABB(kv.Value, gpuData.MeshToNode, data.Nodes, data.Meshes, asset.IsScene);
                 asset.Groups.Add(group);
@@ -499,6 +532,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 rootGroup.LodFallback[t] = 1;
             rootGroup.LocalAABB = gpuData.LocalAABB;
             asset.Groups.Insert(0, rootGroup);
+
+            // ── Debug print variant groups ──
+            foreach (var g in asset.Groups)
+            {
+                string lodInfo = string.Join(", ", g.Lods.OrderBy(kv => kv.Key).Select(kv => $"LOD{kv.Key}=[{string.Join(",", kv.Value)}]"));
+                Console.WriteLine("[BuildAssetGroups] Group '" + g.BaseName + "': " + lodInfo + ", MaxLOD=" + g.MaxLOD + ", verts={" + g.LocalAABB.Min.X.ToString("F2") + "," + g.LocalAABB.Min.Y.ToString("F2") + "," + g.LocalAABB.Min.Z.ToString("F2") + "}..{" + g.LocalAABB.Max.X.ToString("F2") + "," + g.LocalAABB.Max.Y.ToString("F2") + "," + g.LocalAABB.Max.Z.ToString("F2") + "}");
+            }
         }
 
         /// <summary>
@@ -551,8 +591,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return new AABB(mn, mx);
         }
 
-        /// <summary>
-        /// After RemoveWorldTransform, center each variant's mesh vertices around origin
+        /// <summary>        /// After RemoveWorldTransform, center each variant's mesh vertices around origin
         /// so that instance positions become actual world positions.
         ///
         /// Without this, variant meshes retain their original GLB world positions (e.g.
@@ -565,10 +604,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         ///
         /// Centering each mesh individually moves every copy to origin, so the combined
         /// AABB becomes just the extent of ONE tree copy (small).
+        ///
+        /// RETURNS a dict mapping meshIndex → originalMeshCenter (before centering).
+        /// Used by BuildAssetGroups → BakeOne to compute bake offsets.
         /// </summary>
-        private static void CenterVariantGroups(GltfData data)
+        private static Dictionary<int, Vector3> CenterVariantGroups(GltfData data)
         {
-            if (data.Meshes == null || data.Meshes.Length == 0) return;
+            var meshCenters = new Dictionary<int, Vector3>();
+            if (data.Meshes == null || data.Meshes.Length == 0) return meshCenters;
 
             // Group meshes by variant name (same logic as GlbAsset constructor)
             var variantMeshes = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
@@ -585,9 +628,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var kv in variantMeshes)
             {
                 var meshIndices = kv.Value;
-                string variantName = kv.Key;
-
-                int totalVerts = 0;
 
                 // ── Center EACH mesh individually ──
                 // Each copy of the same variant at a different world position gets centered
@@ -598,61 +638,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     if (mi < 0 || mi >= data.Meshes.Length) continue;
                     var verts = data.Meshes[mi].Vertices;
                     if (verts == null || verts.Length == 0) continue;
-                    totalVerts += verts.Length;
 
-                    // DEBUG: print pre-center info for each mesh copy
-                    Vector3 preMn = verts[0].Position;
-                    Vector3 preMx = verts[0].Position;
+                    // Compute AABB center for this single mesh
+                    Vector3 mn = verts[0].Position;
+                    Vector3 mx = verts[0].Position;
                     for (int vi = 1; vi < verts.Length; vi++)
                     {
-                        preMn = Vector3.Min(preMn, verts[vi].Position);
-                        preMx = Vector3.Max(preMx, verts[vi].Position);
+                        mn = Vector3.Min(mn, verts[vi].Position);
+                        mx = Vector3.Max(mx, verts[vi].Position);
                     }
-                    Vector3 meshCenter = (preMn + preMx) * 0.5f;
+                    Vector3 meshCenter = (mn + mx) * 0.5f;
 
-                    // DEBUG: print pre-center mesh bounds
-                    Console.WriteLine($"[CenterVariantGroups] '{variantName}' mesh[{ii}]: verts={verts.Length}, " +
-                        $"preAABB=({preMn.X:F2},{preMn.Y:F2},{preMn.Z:F2})->({preMx.X:F2},{preMx.Y:F2},{preMx.Z:F2}), " +
-                        $"center=({meshCenter.X:F2},{meshCenter.Y:F2},{meshCenter.Z:F2})");
+                    // Store the original mesh center for BakeOne offset computation
+                    meshCenters[mi] = meshCenter;
 
                     // Center this single mesh by its own AABB center
                     for (int vi = 0; vi < verts.Length; vi++)
                         verts[vi].Position -= meshCenter;
-
-                    // DEBUG: print post-center mesh AABB
-                    Vector3 postMn = verts[0].Position;
-                    Vector3 postMx = verts[0].Position;
-                    for (int vi = 1; vi < verts.Length; vi++)
-                    {
-                        postMn = Vector3.Min(postMn, verts[vi].Position);
-                        postMx = Vector3.Max(postMx, verts[vi].Position);
-                    }
-                    Console.WriteLine($"[CenterVariantGroups] '{variantName}' mesh[{ii}] POST: " +
-                        $"AABB=({postMn.X:F2},{postMn.Y:F2},{postMn.Z:F2})->({postMx.X:F2},{postMx.Y:F2},{postMx.Z:F2})");
-                }
-
-                // DEBUG: print combined post-center AABB for the whole variant
-                Vector3 mnComb = new(float.PositiveInfinity);
-                Vector3 mxComb = new(float.NegativeInfinity);
-                bool anyComb = false;
-                for (int ii = 0; ii < meshIndices.Count; ii++)
-                {
-                    int mi = meshIndices[ii];
-                    if (mi < 0 || mi >= data.Meshes.Length) continue;
-                    var verts = data.Meshes[mi].Vertices;
-                    if (verts == null || verts.Length == 0) continue;
-                    foreach (var v in verts)
-                    {
-                        if (!anyComb) { mnComb = v.Position; mxComb = v.Position; anyComb = true; }
-                        else { mnComb = Vector3.Min(mnComb, v.Position); mxComb = Vector3.Max(mxComb, v.Position); }
-                    }
-                }
-                if (anyComb)
-                {
-                    Console.WriteLine($"[CenterVariantGroups] '{variantName}' COMBINED POST-center (all {meshIndices.Count} meshes): " +
-                        $"AABB=({mnComb.X:F2},{mnComb.Y:F2},{mnComb.Z:F2})->({mxComb.X:F2},{mxComb.Y:F2},{mxComb.Z:F2})");
                 }
             }
+
+            return meshCenters;
         }
 
         /// <summary>
@@ -726,9 +732,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float boundMin = -halfMapWorld + mapMargin;
             float boundMax = halfMapWorld - mapMargin;
 
-            // Debug: print actual map bounds for troubleshooting
-            Console.WriteLine($"[CreateRandomInstances] MapBounds: halfMapWorld={halfMapWorld:F1}, ChunksPerSide={TerrainChunk.ChunksPerSide}, ChunkSize={TerrainChunk.ChunkSize}, TerrainScale={TerrainChunk.TerrainScale}, MapSize={TerrainChunk.MapSize}, bounds=[{boundMin:F1}, {boundMax:F1}], radius={radius}, center=({ctr.X}, {ctr.Z}), count={count}");
-
             // Pre-compute collision radius for each variant from its local AABB.
             // After per-mesh centering, AABB should be small (one object's extent).
             var variantRadii = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
@@ -745,8 +748,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float halfZ = (groupAABB.Max.Z - groupAABB.Min.Z) * 0.5f;
                 float radius2D = MathF.Sqrt(halfX * halfX + halfZ * halfZ);
                 variantRadii[vn] = radius2D;
-
-                Console.WriteLine($"[CreateRandomInstances] Variant '{vn}' radius2D={radius2D:F2} (AABB X={halfX*2:F1} Z={halfZ*2:F1})");
             }
 
             // Track placed instances (center + radius) for overlap detection
@@ -831,8 +832,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                             }
 
                             placedOk = true;
-
-                            Console.WriteLine($"[CreateRandomInstances] Tree[{i}] placed at ({px:F2},{pz:F2}) variant='{variant}' radius={wRadius:F2}");
                             totalAttempted++;
                         }
                         else
@@ -842,13 +841,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         break;
                     }
 
-                    // If we've exhausted attempts without finding a non-overlapping spot,
-                    // skip this instance (don't place it). The caller can increase
-                    // overlapRetries or radius if this happens frequently.
-                    if (mapAttempt >= maxMapAttempts * (1 + overlapRetries) && !placedOk)
-                    {
-                        Console.WriteLine($"[CreateRandomInstances] Tree[{i}] SKIPPED — no valid non-overlapping position found after {mapAttempt} attempts");
-                    }
+
                 }
 
                 if (onProgress != null)
@@ -858,7 +851,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
             }
 
-            Console.WriteLine($"[CreateRandomInstances] Placed {placed.Count}/{count} instances ({(totalAttempted > count ? totalAttempted - count : 0)} overlap retries)");
         }
 
 

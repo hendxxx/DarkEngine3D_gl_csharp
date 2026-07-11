@@ -167,6 +167,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const int GLFW_KEY_J = 74;
         public const int GLFW_KEY_K = 75;
         public const int GLFW_KEY_L = 76;
+        public const int GLFW_KEY_M = 77;
         public const int GLFW_KEY_O = 79;
         public const int GLFW_KEY_G = 71;
         public const int GLFW_KEY_H = 72;

@@ -60,6 +60,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static bool kPressed = false;
         public static bool GetShowHLOD() => showHLOD;
 
+        // M toggle: billboard atlas debug overlay
+        static bool showBillboardAtlas = false;
+        static bool mPressed = false;
+        public static bool GetShowBillboardAtlas() => showBillboardAtlas;
+
         // Variabel kontrol untuk toggle impostor visualization (0=off, 1=billboard, 2=aabb)
         static int showImpostorMode = 0;
         static bool jPressed = false;
@@ -309,6 +314,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             }
 
 
+
+            // =========================================================================
+            // M TOGGLE BILLBOARD ATLAS DEBUG (RISING EDGE)
+            // =========================================================================
+            int mState = glfwGetKey(window, Const.GLFW_KEY_M);
+            if (mState == Const.GLFW_PRESS)
+            {
+                if (!mPressed)
+                {
+                    showBillboardAtlas = !showBillboardAtlas;
+                    mPressed = true;
+                    Console.WriteLine(showBillboardAtlas ? "Billboard Atlas Debug: ON" : "Billboard Atlas Debug: OFF");
+                }
+            }
+            else
+            {
+                mPressed = false;
+            }
 
             // =========================================================================
             // < AND > TOGGLE CAMERA MODE

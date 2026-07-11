@@ -1,6 +1,7 @@
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
+using DarkEngine3D_gl_csharp.Engine.Scene;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
@@ -26,7 +27,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private const int NumViews = 8;
         private const int ViewSize = 128;
         private const int AtlasW = NumViews * ViewSize; // 1024
-        private const int AtlasH = ViewSize;            // 128
+        private const int AtlasH = ViewSize * 2;        // 256 (2 rows: albedo+roughness, normal+metallic)
 
         // ── Impostor (rendering) shader ─────────────────────────────────────
         private readonly uint _impostorShader;
@@ -37,12 +38,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private readonly int _bbViewPosLoc, _bbSunDirLoc;
         private readonly int _bbLightColorLoc, _bbFogColorLoc, _bbUseFogLoc;
         private readonly int _bbDebugOpacityLoc;
+        // CSM shadow uniforms (used for real-time shadow on billboard quads)
+        private readonly int _bbShadowMap0Loc, _bbShadowMap1Loc, _bbShadowMap2Loc;
+        private readonly int _bbShadowOffsetYLoc;
+        private readonly int _bbLightSpace0Loc, _bbLightSpace1Loc, _bbLightSpace2Loc;
+        private readonly int _bbCascade0Loc, _bbCascade1Loc, _bbCascade2Loc;
+        private readonly int _bbShadowFilterLoc;
 
         // ── GL.ReadPixels uses float* for pixel data ───────────────────────
         // We'll pack our byte data and cast via fixed pointer
 
-        // ── Baking shader ──────────────────────────────────────────────────
-        private readonly uint _bakeShader;
+        // ── Baking shaders ─────────────────────────────────────────────────
+        private readonly uint _bakeShader;              // final-lit color (kept for compatibility)
+        private readonly uint _bakeGbufferShader;        // G-buffer (albedo, roughness, normal, metallic)
+        private readonly int _bakeGbufferModeLoc;
         private readonly int _bakeModelLoc, _bakeViewLoc, _bakeProjLoc;
         private readonly int _bakeSunDirLoc, _bakeRealSunDirLoc, _bakeLightColorLoc;
         private readonly int _bakeViewPosLoc;
@@ -53,6 +62,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private readonly int _bakeHasNormalTexLoc, _bakeHasMetallicRoughnessTexLoc;
         private readonly int _bakeHasOcclusionTexLoc, _bakeHasEmissiveTexLoc;
         private readonly int _bakeUseFogLoc;
+        // PBR sampler unit uniforms (must be set to correct texture units!)
+        private readonly int _bakeNormalMapLoc, _bakeMetallicRoughnessMapLoc;
+        private readonly int _bakeOcclusionMapLoc, _bakeEmissiveMapLoc;
 
         // ── Unit quad for billboard rendering ──────────────────────────────
         private uint _quadVAO, _quadVBO;
@@ -70,10 +82,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // ── All created atlas textures (for cleanup in Dispose) ────────────
         private readonly List<uint> _allAtlases = [];
 
+        /// <summary>Baked atlas texture IDs, exposed for debug rendering.</summary>
+        public IReadOnlyList<uint> DebugBakedAtlases => _allAtlases;
+
+        /// <summary>Save all baked atlas textures as PNG files to the specified directory.</summary>
+        public void DumpAllAtlasesToPng(string dumpDir)
+        {
+            if (string.IsNullOrEmpty(dumpDir))
+                dumpDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug");
+            Directory.CreateDirectory(dumpDir);
+
+            for (int i = 0; i < _allAtlases.Count; i++)
+            {
+                uint tex = _allAtlases[i];
+                if (tex == 0) continue;
+                string path = Path.Combine(dumpDir, $"atlas_{i}_{tex}.png");
+                SaveManager.SaveTextureAsPng(path, tex, AtlasW, AtlasH);
+            }
+
+            Console.WriteLine($"[Billboard] Dumped {_allAtlases.Count} atlas textures to {dumpDir}");
+        }
+
         // ── LOD fade configuration ─────────────────────────────────────────
-        private static float LOD2_Dist =>
+        // Billboard activates at LOD2_Distance (200m). Fade starts there and
+        // completes after FadeRange meters for a smooth mesh→billboard transition.
+        private static float LODStart =>
             DarkEngine3D_gl_csharp.Engine.Config.LODConfig.ObjectLOD2_Distance;
-        private const float FadeRange = 30f;
+        private const float FadeRange = 20f;
 
         // ── Per-frame billboard instances ──────────────────────────────────
         private readonly List<(StaticObject obj, float opacity)> _instances = [];
@@ -103,9 +138,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _bbUseFogLoc = GL.GetUniformLocation(_impostorShader, "useFog");
             _bbDebugOpacityLoc = GL.GetUniformLocation(_impostorShader, "debugOpacity");
 
+            // CSM shadow uniforms for impostor shader
+            _bbShadowMap0Loc = GL.GetUniformLocation(_impostorShader, "shadowMap0");
+            _bbShadowMap1Loc = GL.GetUniformLocation(_impostorShader, "shadowMap1");
+            _bbShadowMap2Loc = GL.GetUniformLocation(_impostorShader, "shadowMap2");
+            _bbLightSpace0Loc = GL.GetUniformLocation(_impostorShader, "lightSpaceMatrices[0]");
+            _bbLightSpace1Loc = GL.GetUniformLocation(_impostorShader, "lightSpaceMatrices[1]");
+            _bbLightSpace2Loc = GL.GetUniformLocation(_impostorShader, "lightSpaceMatrices[2]");
+            _bbCascade0Loc = GL.GetUniformLocation(_impostorShader, "cascadeEnds[0]");
+            _bbCascade1Loc = GL.GetUniformLocation(_impostorShader, "cascadeEnds[1]");
+            _bbCascade2Loc = GL.GetUniformLocation(_impostorShader, "cascadeEnds[2]");
+            _bbShadowFilterLoc = GL.GetUniformLocation(_impostorShader, "shadowFilterMode");
+            _bbShadowOffsetYLoc = GL.GetUniformLocation(_impostorShader, "shadowOffsetY");
+
             _bakeShader = ShaderHelpers.LoadShader(
-                "Artifacts/shaders/static_vertex.glsl",
-                "Artifacts/shaders/gltf_fragment.glsl"
+                "Artifacts/shaders/bake_vertex.glsl",
+                "Artifacts/shaders/bake_fragment.glsl"
             );
 
             _bakeModelLoc = GL.GetUniformLocation(_bakeShader, "model");
@@ -128,6 +176,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _bakeHasOcclusionTexLoc = GL.GetUniformLocation(_bakeShader, "hasOcclusionTexture");
             _bakeHasEmissiveTexLoc = GL.GetUniformLocation(_bakeShader, "hasEmissiveTexture");
             _bakeUseFogLoc = GL.GetUniformLocation(_bakeShader, "useFog");
+
+            // Load G-buffer bake shader for deferred impostor
+            _bakeGbufferShader = ShaderHelpers.LoadShader(
+                "Artifacts/shaders/bake_vertex.glsl",
+                "Artifacts/shaders/bake_gbuffer_fragment.glsl"
+            );
+            _bakeGbufferModeLoc = GL.GetUniformLocation(_bakeGbufferShader, "gbufferMode");
+            _bakeNormalMapLoc = GL.GetUniformLocation(_bakeShader, "normalMap");
+            _bakeMetallicRoughnessMapLoc = GL.GetUniformLocation(_bakeShader, "metallicRoughnessMap");
+            _bakeOcclusionMapLoc = GL.GetUniformLocation(_bakeShader, "occlusionMap");
+            _bakeEmissiveMapLoc = GL.GetUniformLocation(_bakeShader, "emissiveMap");
 
             SetupQuad();
             SetupBakeFBO();
@@ -167,7 +226,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             fixed (uint* p = &_bakeColorRBO) GL.GenRenderbuffers(1, p);
             GL.BindRenderbuffer(Const.GL_RENDERBUFFER, _bakeColorRBO);
-            GL.RenderbufferStorage(Const.GL_RENDERBUFFER, (int)Const.GL_RGBA, ViewSize, ViewSize);
+            GL.RenderbufferStorage(Const.GL_RENDERBUFFER, (int)Const.GL_RGBA8, ViewSize, ViewSize);
             GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
                 Const.GL_RENDERBUFFER, _bakeColorRBO);
 
@@ -204,6 +263,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 list = [];
                 _pendingBakes[gpuData] = list;
             }
+
+            // Dedup: skip if this exact group reference is already pending
+            foreach (var (g, _) in list)
+                if (g == group) return;
+
             list.Add((group, useNodeHierarchy));
         }
 
@@ -252,8 +316,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             if (group.Lods.Count == 0) return false;
 
-            // Use the coarsest available mesh for faster baking
-            int bakeLOD = group.Lods.Keys.Max();
+            // Use the most detailed available mesh for best quality atlas.
+            // With detailed LOD sorting (BuildAssetGroups), Lods.Keys.Max() would
+            // pick LOD3 (simplified) — baking from that gives a blurry atlas.
+            int bakeLOD = group.Lods.ContainsKey(0) ? 0 : group.Lods.Keys.Min();
             var meshIndices = group.Lods[bakeLOD];
             if (meshIndices == null || meshIndices.Count == 0) return false;
 
@@ -296,7 +362,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float radius = maxExtent * 0.6f;
             Vector3 centerOffset = (mn + mx) * 0.5f;
 
-            // Allocate atlas pixel buffer
+            // Allocate atlas pixel buffer (2 rows: row 0 = albedo+roughness, row 1 = normal+metallic)
             byte[] atlasPixels = new byte[AtlasW * AtlasH * 4];
             Array.Fill<byte>(atlasPixels, 0);
 
@@ -304,16 +370,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _savedViewX = 0; _savedViewY = 0;
             _savedViewW = Glfw.WindowWidth;
             _savedViewH = Glfw.WindowHeight;
-            // Note: no GL.GetIntegerv available in this wrapper — we use Glfw window dimensions
-            // FBO binding: we save it via a different approach — just store it before change
-            _savedFBO = 0; // We'll restore to screen (FBO 0)
+            _savedFBO = 0;
 
             GL.Viewport(0, 0, ViewSize, ViewSize);
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _bakeFBO);
 
             float orthoSize = MathF.Max(maxExtent * 0.7f, 0.01f);
-            float nearP = -orthoSize * 2f;
-            float farP = orthoSize * 2f;
+            float camDist = orthoSize * 2f;
+            float nearP = 0.5f;
+            float farP = camDist * 3f;
             Matrix4x4 bakeProj = Matrix4x4.CreateOrthographic(orthoSize * 2f, orthoSize * 2f, nearP, farP);
 
             Vector3 bakeSunDir = Vector3.Normalize(new Vector3(0.707f, 0.707f, 0.0f));
@@ -324,43 +389,62 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.CullFace(Const.GL_BACK);
             GL.FrontFace(Const.GL_CCW);
 
-            GL.UseProgram(_bakeShader);
-
-            // Set fixed bake uniforms
-            GL.Uniform3f(_bakeSunDirLoc, bakeSunDir.X, bakeSunDir.Y, bakeSunDir.Z);
-            if (_bakeRealSunDirLoc != -1)
-                GL.Uniform3f(_bakeRealSunDirLoc, bakeSunDir.X, bakeSunDir.Y, bakeSunDir.Z);
-            GL.Uniform3f(_bakeLightColorLoc, bakeLightColor.X, bakeLightColor.Y, bakeLightColor.Z);
-            if (_bakeUseFogLoc != -1) GL.Uniform1i(_bakeUseFogLoc, 0);
-            if (_bakeMetallicFactorLoc != -1) GL.Uniform1f(_bakeMetallicFactorLoc, 0.0f);
-            if (_bakeRoughnessFactorLoc != -1) GL.Uniform1f(_bakeRoughnessFactorLoc, 1.0f);
-            if (_bakeNormalScaleLoc != -1) GL.Uniform1f(_bakeNormalScaleLoc, 1.0f);
-            if (_bakeOcclusionStrengthLoc != -1) GL.Uniform1f(_bakeOcclusionStrengthLoc, 1.0f);
-            if (_bakeEmissiveFactorLoc != -1) GL.Uniform3f(_bakeEmissiveFactorLoc, 0f, 0f, 0f);
-
-            // Upload ortho projection
-            GL.UniformMatrix4fv(_bakeProjLoc, 1, false, &bakeProj.M11);
-
-            for (int vi = 0; vi < NumViews; vi++)
+            // ── Compute group center from MeshOriginalCenters ──
+            Vector3 bakedGroupCenter = Vector3.Zero;
+            int bakedGcCount = 0;
+            bool hasOriginalCenters = gpuData.MeshOriginalCenters.Count > 0;
+            if (hasOriginalCenters)
             {
-                float angleRad = vi * (MathF.PI * 2f / NumViews);
-                float camDist = orthoSize * 2f;
+                foreach (int gmi in meshIndices)
+                {
+                    if (gpuData.MeshOriginalCenters.TryGetValue(gmi, out var c))
+                    { bakedGroupCenter += c; bakedGcCount++; }
+                }
+                if (bakedGcCount > 0)
+                    bakedGroupCenter /= bakedGcCount;
+            }
 
-                Vector3 camPos = new(
-                    centerOffset.X + camDist * MathF.Sin(angleRad),
-                    centerOffset.Y,
-                    centerOffset.Z + camDist * MathF.Cos(angleRad)
-                );
+            // ── Set PBR sampler units (used by both bake passes) ──
+            uint bakeProg = _bakeGbufferShader;
+            GL.UseProgram(bakeProg);
+            int bmLoc = GL.GetUniformLocation(bakeProg, "model");
+            int bvLoc = GL.GetUniformLocation(bakeProg, "view");
+            int bpLoc = GL.GetUniformLocation(bakeProg, "projection");
+            int bSunDirLoc = GL.GetUniformLocation(bakeProg, "sunDir");
+            int bLightColorLoc = GL.GetUniformLocation(bakeProg, "lightColor");
+            int bViewPosLoc = GL.GetUniformLocation(bakeProg, "viewPos");
+            int bBaseColorLoc = GL.GetUniformLocation(bakeProg, "baseColorFactor");
+            int bUseAlbedoLoc = GL.GetUniformLocation(bakeProg, "useAlbedo");
+            int bAlbedoMapLoc = GL.GetUniformLocation(bakeProg, "albedoMap");
+            int bMetalLoc = GL.GetUniformLocation(bakeProg, "metallicFactor");
+            int bRoughLoc = GL.GetUniformLocation(bakeProg, "roughnessFactor");
+            int bNormScaleLoc = GL.GetUniformLocation(bakeProg, "normalScale");
+            int bOccStrengthLoc = GL.GetUniformLocation(bakeProg, "occlusionStrength");
+            int bHasNormLoc = GL.GetUniformLocation(bakeProg, "hasNormalTexture");
+            int bHasMRLoc = GL.GetUniformLocation(bakeProg, "hasMetallicRoughnessTexture");
+            int bHasOccLoc = GL.GetUniformLocation(bakeProg, "hasOcclusionTexture");
+            int bHasEmissLoc = GL.GetUniformLocation(bakeProg, "hasEmissiveTexture");
+            int bEmissFactorLoc = GL.GetUniformLocation(bakeProg, "emissiveFactor");
+            int bNormMapLoc = GL.GetUniformLocation(bakeProg, "normalMap");
+            int bMRMapLoc = GL.GetUniformLocation(bakeProg, "metallicRoughnessMap");
+            int bOccMapLoc = GL.GetUniformLocation(bakeProg, "occlusionMap");
+            int bEmissMapLoc = GL.GetUniformLocation(bakeProg, "emissiveMap");
 
-                Matrix4x4 bakeView = Matrix4x4.CreateLookAt(camPos, centerOffset, Vector3.UnitY);
+            // Set fixed uniforms
+            GL.Uniform3f(bSunDirLoc, bakeSunDir.X, bakeSunDir.Y, bakeSunDir.Z);
+            GL.Uniform3f(bLightColorLoc, bakeLightColor.X, bakeLightColor.Y, bakeLightColor.Z);
+            GL.UniformMatrix4fv(bpLoc, 1, false, &bakeProj.M11);
 
-                GL.ClearColor(0f, 0f, 0f, 0f);
-                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+            // Set PBR sampler units
+            if (bNormMapLoc != -1) GL.Uniform1i(bNormMapLoc, 3);
+            if (bMRMapLoc != -1) GL.Uniform1i(bMRMapLoc, 4);
+            if (bOccMapLoc != -1) GL.Uniform1i(bOccMapLoc, 5);
+            if (bEmissMapLoc != -1) GL.Uniform1i(bEmissMapLoc, 6);
 
-                GL.UniformMatrix4fv(_bakeViewLoc, 1, false, &bakeView.M11);
-                GL.Uniform3f(_bakeViewPosLoc, camPos.X, camPos.Y, camPos.Z);
-
-                // Render each mesh in the group
+            // Helper: render all meshes for current view with current gbufferMode
+            void RenderMeshes(int gbufferMode)
+            {
+                GL.Uniform1i(_bakeGbufferModeLoc, gbufferMode);
                 foreach (int mi in meshIndices)
                 {
                     if (mi < 0 || mi >= gpuData.Meshes.Length) continue;
@@ -374,10 +458,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                             ? GetNodeWorldMatrix(nodes, nodeIdx)
                             : nodes[nodeIdx].LocalMatrix;
 
-                    GL.UniformMatrix4fv(_bakeModelLoc, 1, false, &nodeMat.M11);
+                    Vector3 bakeOffset = Vector3.Zero;
+                    if (hasOriginalCenters && bakedGcCount > 0)
+                    {
+                        if (gpuData.MeshOriginalCenters.TryGetValue(mi, out var mc))
+                            bakeOffset = mc - bakedGroupCenter;
+                    }
+                    Matrix4x4 bakeModel = Matrix4x4.CreateTranslation(bakeOffset) * nodeMat;
+                    GL.UniformMatrix4fv(bmLoc, 1, false, &bakeModel.M11);
 
                     // Base color
-                    GL.Uniform4f(_bakeBaseColorLoc, mesh.Material.BaseColorFactor.X,
+                    GL.Uniform4f(bBaseColorLoc, mesh.Material.BaseColorFactor.X,
                         mesh.Material.BaseColorFactor.Y, mesh.Material.BaseColorFactor.Z,
                         mesh.Material.BaseColorFactor.W);
 
@@ -385,23 +476,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     {
                         GL.ActiveTexture(Const.GL_TEXTURE0);
                         GL.BindTexture(Const.GL_TEXTURE_2D, mesh.Material.BaseColorTextureID);
-                        if (_bakeUseAlbedoLoc != -1) { GL.Uniform1i(_bakeUseAlbedoLoc, 1); }
-                        if (_bakeAlbedoMapLoc != -1) { GL.Uniform1i(_bakeAlbedoMapLoc, 0); }
+                        if (bUseAlbedoLoc != -1) { GL.Uniform1i(bUseAlbedoLoc, 1); }
+                        if (bAlbedoMapLoc != -1) { GL.Uniform1i(bAlbedoMapLoc, 0); }
                     }
                     else
                     {
-                        if (_bakeUseAlbedoLoc != -1) GL.Uniform1i(_bakeUseAlbedoLoc, 0);
+                        if (bUseAlbedoLoc != -1) GL.Uniform1i(bUseAlbedoLoc, 0);
                     }
 
                     // PBR flags
-                    if (_bakeHasNormalTexLoc != -1)
-                        GL.Uniform1i(_bakeHasNormalTexLoc, mesh.Material.HasNormalTexture ? 1 : 0);
-                    if (_bakeHasMetallicRoughnessTexLoc != -1)
-                        GL.Uniform1i(_bakeHasMetallicRoughnessTexLoc, mesh.Material.HasMetallicRoughnessTexture ? 1 : 0);
-                    if (_bakeHasOcclusionTexLoc != -1)
-                        GL.Uniform1i(_bakeHasOcclusionTexLoc, mesh.Material.HasOcclusionTexture ? 1 : 0);
-                    if (_bakeHasEmissiveTexLoc != -1)
-                        GL.Uniform1i(_bakeHasEmissiveTexLoc, mesh.Material.HasEmissiveTexture ? 1 : 0);
+                    if (bHasNormLoc != -1)
+                        GL.Uniform1i(bHasNormLoc, mesh.Material.HasNormalTexture ? 1 : 0);
+                    if (bHasMRLoc != -1)
+                        GL.Uniform1i(bHasMRLoc, mesh.Material.HasMetallicRoughnessTexture ? 1 : 0);
+                    if (bHasOccLoc != -1)
+                        GL.Uniform1i(bHasOccLoc, mesh.Material.HasOcclusionTexture ? 1 : 0);
+                    if (bHasEmissLoc != -1)
+                        GL.Uniform1i(bHasEmissLoc, mesh.Material.HasEmissiveTexture ? 1 : 0);
+
+                    // PBR factors
+                    if (bMetalLoc != -1) GL.Uniform1f(bMetalLoc, mesh.Material.MetallicFactor);
+                    if (bRoughLoc != -1) GL.Uniform1f(bRoughLoc, mesh.Material.RoughnessFactor);
+                    if (bNormScaleLoc != -1) GL.Uniform1f(bNormScaleLoc, mesh.Material.NormalScale);
+                    if (bOccStrengthLoc != -1) GL.Uniform1f(bOccStrengthLoc, mesh.Material.OcclusionStrength);
+                    if (bEmissFactorLoc != -1) GL.Uniform3f(bEmissFactorLoc,
+                        mesh.Material.EmissiveFactor.X, mesh.Material.EmissiveFactor.Y, mesh.Material.EmissiveFactor.Z);
 
                     // Bind PBR textures
                     if (mesh.Material.HasNormalTexture && mesh.Material.NormalTextureID != 0)
@@ -434,39 +533,73 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     else
                         GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
                 }
+            }
 
-                // Read pixels for this tile into atlas at (tileX, 0)
-                // GL.ReadPixels in this wrapper takes float* — we cast via void* intermediate
+            for (int vi = 0; vi < NumViews; vi++)
+            {
+                float angleRad = vi * (MathF.PI * 2f / NumViews);
+
+                Vector3 camPos = new(
+                    centerOffset.X + camDist * MathF.Sin(angleRad),
+                    centerOffset.Y,
+                    centerOffset.Z + camDist * MathF.Cos(angleRad)
+                );
+
+                Matrix4x4 bakeView = Matrix4x4.CreateLookAt(camPos, centerOffset, Vector3.UnitY);
+
+                GL.ClearColor(0f, 0f, 0f, 0f);
+                GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+                GL.UniformMatrix4fv(bvLoc, 1, false, &bakeView.M11);
+                GL.Uniform3f(bViewPosLoc, camPos.X, camPos.Y, camPos.Z);
+
+                // ── Pass 1: Albedo + Roughness (gbufferMode = 0) ──
+                RenderMeshes(0);
+
+                // Read row 0 pixels into atlas (rows 0..127)
                 int tileX = vi * ViewSize;
-                fixed (byte* pRow = &atlasPixels[tileX * 4])
+                byte[] tileRowBuf = new byte[ViewSize * 4];
+                for (int srcRow = 0; srcRow < ViewSize; srcRow++)
                 {
-                    GL.ReadPixels(0, 0, ViewSize, ViewSize, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (float*)pRow);
+                    fixed (byte* pRowBuf = tileRowBuf)
+                        GL.ReadPixels(0, srcRow, ViewSize, 1, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (float*)pRowBuf);
+
+                    int dstOff = srcRow * AtlasW * 4 + tileX * 4;
+                    Buffer.BlockCopy(tileRowBuf, 0, atlasPixels, dstOff, ViewSize * 4);
+                }
+
+                // ── Alpha dilation: expand tree edge colors into background ──
+                // Prevents dark edges from GL_LINEAR filtering blending tree
+                // colors with black (0,0,0) background pixels.
+                DilateRow0(atlasPixels, tileX, ViewSize, AtlasW);
+
+                // ── Pass 2: Normal + Metallic (gbufferMode = 1) ──
+                // No need to clear depth — same geometry at same position
+                RenderMeshes(1);
+
+                // Read row 1 pixels into atlas (rows 128..255)
+                for (int srcRow = 0; srcRow < ViewSize; srcRow++)
+                {
+                    fixed (byte* pRowBuf = tileRowBuf)
+                        GL.ReadPixels(0, srcRow, ViewSize, 1, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (float*)pRowBuf);
+
+                    int dstOff = (srcRow + ViewSize) * AtlasW * 4 + tileX * 4;
+                    Buffer.BlockCopy(tileRowBuf, 0, atlasPixels, dstOff, ViewSize * 4);
                 }
             }
 
-            // ── Upload atlas as OpenGL texture ──
+            // ── Upload atlas as OpenGL texture (1024×256) ──
             uint atlasTexture;
             GL.GenTextures(1, &atlasTexture);
             GL.BindTexture(Const.GL_TEXTURE_2D, atlasTexture);
 
-            // Flip vertically (OpenGL reads bottom-up)
-            byte[] flippedAtlas = new byte[AtlasW * AtlasH * 4];
-            int rowBytes = AtlasW * 4;
-            for (int row = 0; row < AtlasH; row++)
-            {
-                int srcRow = (AtlasH - 1 - row) * rowBytes;
-                int dstRow = row * rowBytes;
-                Buffer.BlockCopy(atlasPixels, srcRow, flippedAtlas, dstRow, rowBytes);
-            }
-
-            fixed (byte* pData = flippedAtlas)
+            fixed (byte* pData = atlasPixels)
             {
                 GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
                     AtlasW, AtlasH, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, pData);
             }
 
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
@@ -475,7 +608,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             group.BillboardAtlasTexture = atlasTexture;
             group.BillboardRadius = radius;
 
-            // Track for cleanup
+            Console.WriteLine($"[BakeOne] Group '{group.BaseName}': G-buffer atlas baked ({AtlasW}×{AtlasH})");
+
             _allAtlases.Add(atlasTexture);
 
             // Restore GL state
@@ -489,6 +623,97 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         // ───────────────────────────────────────────────────────────────────
+        //  Alpha dilation: expand tree edge colors into background pixels
+        // ───────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Dilate row 0 (albedo+roughness) in the given tile: for each background
+        /// pixel (roughness < threshold), copy the average RGB from neighboring
+        /// foreground pixels. This prevents GL_LINEAR filtering from blending
+        /// tree edge colors into black (0,0,0,0) background, which causes dark
+        /// outlines around the billboard.
+        ///
+        /// Threshold: roughness byte < 5 (float 0.02 * 255). The bake shader
+        /// clamps roughness to min 0.04, so anything below 0.02 is background.
+        /// </summary>
+        private static void DilateRow0(byte[] pixels, int tileX, int tileSize, int atlasW)
+        {
+            const byte threshold = 5; // roughness < 0.02 (float) → byte < 5
+
+            // Work on a copy of the tile to avoid cascading (dilated pixels
+            // influencing neighbors in the same pass)
+            int tileByteSize = tileSize * tileSize * 4;
+            byte[] tileCopy = new byte[tileByteSize];
+
+            // Run 3 passes for a ~3-pixel dilation border (thicker = less dark edge)
+            for (int pass = 0; pass < 3; pass++)
+            {
+                // Copy current tile state (in atlas) into temp buffer
+                for (int ty = 0; ty < tileSize; ty++)
+                {
+                    int srcOff = ty * atlasW * 4 + tileX * 4;
+                    int dstOff = ty * tileSize * 4;
+                    Buffer.BlockCopy(pixels, srcOff, tileCopy, dstOff, tileSize * 4);
+                }
+
+                // Iterate over each pixel in the tile
+            for (int ty = 0; ty < tileSize; ty++)
+            {
+                for (int tx = 0; tx < tileSize; tx++)
+                {
+                    int pixelOff = ty * tileSize * 4 + tx * 4;
+
+                    // Check if this pixel is background (roughness < threshold)
+                    if (tileCopy[pixelOff + 3] >= threshold)
+                        continue; // foreground pixel, skip
+
+                    // Check if any of the 4 neighbors are non-background
+                    int rSum = 0, gSum = 0, bSum = 0, count = 0;
+
+                    // Up
+                    if (ty > 0)
+                    {
+                        int nOff = (ty - 1) * tileSize * 4 + tx * 4;
+                        if (tileCopy[nOff + 3] >= threshold)
+                        { rSum += tileCopy[nOff]; gSum += tileCopy[nOff + 1]; bSum += tileCopy[nOff + 2]; count++; }
+                    }
+                    // Down
+                    if (ty < tileSize - 1)
+                    {
+                        int nOff = (ty + 1) * tileSize * 4 + tx * 4;
+                        if (tileCopy[nOff + 3] >= threshold)
+                        { rSum += tileCopy[nOff]; gSum += tileCopy[nOff + 1]; bSum += tileCopy[nOff + 2]; count++; }
+                    }
+                    // Left
+                    if (tx > 0)
+                    {
+                        int nOff = ty * tileSize * 4 + (tx - 1) * 4;
+                        if (tileCopy[nOff + 3] >= threshold)
+                        { rSum += tileCopy[nOff]; gSum += tileCopy[nOff + 1]; bSum += tileCopy[nOff + 2]; count++; }
+                    }
+                    // Right
+                    if (tx < tileSize - 1)
+                    {
+                        int nOff = ty * tileSize * 4 + (tx + 1) * 4;
+                        if (tileCopy[nOff + 3] >= threshold)
+                        { rSum += tileCopy[nOff]; gSum += tileCopy[nOff + 1]; bSum += tileCopy[nOff + 2]; count++; }
+                    }
+
+                    if (count > 0)
+                    {
+                        // Write dilated color back to the ATLAS (not the copy)
+                        int dstOff = ty * atlasW * 4 + tileX * 4 + tx * 4;
+                        pixels[dstOff]     = (byte)(rSum / count); // R
+                        pixels[dstOff + 1] = (byte)(gSum / count); // G
+                        pixels[dstOff + 2] = (byte)(bSum / count); // B
+                        // Alpha (roughness) stays 0 — background
+                    }
+                }
+            }
+            } // end pass loop
+        }
+
+        // ───────────────────────────────────────────────────────────────────
         //  Per-frame: collect and render billboard instances
         // ───────────────────────────────────────────────────────────────────
 
@@ -498,7 +723,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _instances.Add((obj, Math.Clamp(opacity, 0f, 1f)));
         }
 
-        public void Flush(Camera camera, Lights light)
+        public void Flush(Camera camera, Lights light, CSM csm = null)
         {
             if (_instances.Count == 0) return;
 
@@ -526,7 +751,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (_bbUseFogLoc != -1)
                 GL.Uniform1i(_bbUseFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
 
-            GL.Uniform2f(_bbAtlasTilesLoc, NumViews, 1);
+            // ── CSM Shadow uniforms ────────────────────────────────────────
+            // Shadow textures are bound by GameScene.Render at units 6, 7, 8
+            // before Draw() is called. We only need to tell our shader which
+            // texture units to sample from.
+            if (csm != null)
+            {
+                if (_bbShadowMap0Loc != -1) GL.Uniform1i(_bbShadowMap0Loc, 6);
+                if (_bbShadowMap1Loc != -1) GL.Uniform1i(_bbShadowMap1Loc, 7);
+                if (_bbShadowMap2Loc != -1) GL.Uniform1i(_bbShadowMap2Loc, 8);
+
+                unsafe
+                {
+                    fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                        GL.UniformMatrix4fv(_bbLightSpace0Loc, 1, false, p0);
+                    fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                        GL.UniformMatrix4fv(_bbLightSpace1Loc, 1, false, p1);
+                    fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                        GL.UniformMatrix4fv(_bbLightSpace2Loc, 1, false, p2);
+                }
+
+                if (_bbCascade0Loc != -1) GL.Uniform1f(_bbCascade0Loc, csm.CascadeEnds[0]);
+                if (_bbCascade1Loc != -1) GL.Uniform1f(_bbCascade1Loc, csm.CascadeEnds[1]);
+                if (_bbCascade2Loc != -1) GL.Uniform1f(_bbCascade2Loc, csm.CascadeEnds[2]);
+
+                if (_bbShadowFilterLoc != -1)
+                    GL.Uniform1i(_bbShadowFilterLoc, Inputs.Keyboard.GetIsHardShadow());
+            }
+
+            GL.Uniform2f(_bbAtlasTilesLoc, NumViews, 2); // 2 rows: row 0=albedo+roughness, row 1=normal+metallic
             GL.Uniform1i(_bbAtlasLoc, 0);
 
             GL.BindVertexArray(_quadVAO);
@@ -545,6 +798,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.Uniform3f(_bbCenterLoc, center.X, center.Y, center.Z);
                 GL.Uniform1f(_bbRadiusLoc, radius);
                 GL.Uniform1f(_bbDebugOpacityLoc, opacity);
+
+                // Shadow sample offset: place the shadow sample at ~half the
+                // billboard extent above ground so it detects canopy/trunk
+                // shadows instead of comparing against the terrain surface.
+                // Minimum 1m ensures even small objects (bushes, rocks) stay
+                // clear of the terrain self-shadow issue.
+                if (_bbShadowOffsetYLoc != -1)
+                    GL.Uniform1f(_bbShadowOffsetYLoc, MathF.Max(radius * 0.5f, 1.0f));
 
                 GL.ActiveTexture(Const.GL_TEXTURE0);
                 GL.BindTexture(Const.GL_TEXTURE_2D, atlasTex);
@@ -568,7 +829,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public static float ComputeBillboardOpacity(float dist)
         {
-            float fadeStart = LOD2_Dist;
+            float fadeStart = LODStart;
             float fadeEnd = fadeStart + FadeRange;
 
             if (dist <= fadeStart) return 0f;
@@ -600,6 +861,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.DeleteProgram(_impostorShader);
             GL.DeleteProgram(_bakeShader);
+            GL.DeleteProgram(_bakeGbufferShader);
         }
     }
 }

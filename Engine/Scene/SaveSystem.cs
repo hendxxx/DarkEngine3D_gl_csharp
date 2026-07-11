@@ -320,9 +320,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
         }
 
-        /// <summary>Save raw RGB24 pixels as a PNG file using built-in DeflateStream.</summary>
-        private static void SaveAsPng(string path, byte[] rgb, int width, int height)
+        /// <summary>Save raw RGB24 or RGBA32 pixels as a PNG file using built-in DeflateStream.</summary>
+        private static void SaveAsPng(string path, byte[] pixels, int width, int height, bool hasAlpha = false)
         {
+            int channels = hasAlpha ? 4 : 3;
+            int colorType = hasAlpha ? 6 : 2; // PNG color type: 2=RGB, 6=RGBA
+            int rowSize = width * channels;
+
             using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
             using var bw = new BinaryWriter(fs);
 
@@ -330,25 +334,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bw.Write(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
 
             // IHDR chunk
-            int ihdrW = width, ihdrH = height; // capture locals for lambda
             WriteChunk(bw, "IHDR", delegate (BinaryWriter writer)
             {
-                writer.Write(BigEndian(ihdrW));
-                writer.Write(BigEndian(ihdrH));
+                writer.Write(BigEndian(width));
+                writer.Write(BigEndian(height));
                 writer.Write((byte)8);  // bit depth
-                writer.Write((byte)2);  // color type: RGB
+                writer.Write((byte)colorType);
                 writer.Write((byte)0);  // compression
                 writer.Write((byte)0);  // filter
                 writer.Write((byte)0);  // interlace
             });
 
             // IDAT chunk: filter rows (filter byte 0 = None per row) + deflate compress
-            byte[] filtered = new byte[(width * 3 + 1) * height];
-            int rowSize = width * 3;
+            byte[] filtered = new byte[(rowSize + 1) * height];
             for (int y = 0; y < height; y++)
             {
                 filtered[y * (rowSize + 1)] = 0; // filter byte = None
-                Buffer.BlockCopy(rgb, y * rowSize, filtered, y * (rowSize + 1) + 1, rowSize);
+                Buffer.BlockCopy(pixels, y * rowSize, filtered, y * (rowSize + 1) + 1, rowSize);
             }
 
             byte[] compressed = DeflateCompress(filtered);
@@ -356,6 +358,71 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // IEND chunk
             WriteChunk(bw, "IEND", delegate { });
+        }
+
+        /// <summary>
+        /// Read an OpenGL RGBA texture and save it as a PNG file.
+        /// Creates a temporary FBO to read back GPU pixels to CPU memory.
+        /// </summary>
+        public static void SaveTextureAsPng(string path, uint textureId, int width, int height)
+        {
+            if (textureId == 0 || width <= 0 || height <= 0) return;
+
+            byte[] rgba;
+            unsafe
+            {
+                // Create temporary FBO, attach the texture, read pixels
+                uint fbo;
+                GL.GenFramebuffers(1, &fbo);
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, fbo);
+                GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
+                    Const.GL_TEXTURE_2D, textureId, 0);
+
+                // Explicitly set read buffer to color attachment 0
+                GL.ReadBuffer(Const.GL_COLOR_ATTACHMENT0);
+
+                int status = GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
+                if (status != Const.GL_FRAMEBUFFER_COMPLETE)
+                {
+                    Console.WriteLine($"[SaveManager] WARN: FBO incomplete (status={status}) for texture {textureId}");
+                    GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                    GL.DeleteFramebuffers(1, &fbo);
+                    return;
+                }
+
+                // Save current viewport
+                int origVpX, origVpY, origVpW, origVpH;
+                origVpX = 0; origVpY = 0;
+                origVpW = Glfw.WindowWidth;
+                origVpH = Glfw.WindowHeight;
+
+                GL.Viewport(0, 0, width, height);
+
+                rgba = new byte[width * height * 4];
+                fixed (byte* p = rgba)
+                {
+                    GL.ReadPixels(0, 0, width, height, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (float*)p);
+                }
+
+                // Restore viewport
+                GL.Viewport(origVpX, origVpY, origVpW, origVpH);
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                GL.DeleteFramebuffers(1, &fbo);
+            }
+
+            // Flip Y: OpenGL bottom-up → PNG top-down
+            int rowBytes = width * 4;
+            byte[] flipped = new byte[rgba.Length];
+            for (int y = 0; y < height; y++)
+            {
+                int srcRow = (height - 1 - y) * rowBytes;
+                int dstRow = y * rowBytes;
+                Buffer.BlockCopy(rgba, srcRow, flipped, dstRow, rowBytes);
+            }
+
+            // Save as RGBA PNG
+            SaveAsPng(path, flipped, width, height, hasAlpha: true);
+            Console.WriteLine($"[SaveManager] Saved texture {textureId} as PNG: {path} ({width}x{height})");
         }
 
         /// <summary>Write a PNG chunk: length (big-endian) + type + data + CRC32.</summary>

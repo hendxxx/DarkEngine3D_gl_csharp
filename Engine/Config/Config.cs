@@ -58,10 +58,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // OBJECT LOD — distance thresholds untuk static & dynamic object mesh
         // Semua object (pohon, rumput, dll) mengacu ke threshold ini
         // ============================
-        public readonly static float ObjectLOD0_Distance = 150f;
-        public readonly static float ObjectLOD1_Distance = 200f;
-        public readonly static float ObjectLOD2_Distance = 250f;
-        public readonly static float ObjectLOD3_Distance = 300f;
+        public readonly static float ObjectLOD0_Distance = 100f;
+        public readonly static float ObjectLOD1_Distance = 150f;
+        public readonly static float ObjectLOD2_Distance = 200f;
+        public readonly static float ObjectLOD3_Distance = 250f;
 
         // ============================
         // TERRAIN LOD — distance thresholds untuk terrain chunk
@@ -157,7 +157,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static float FirstPersonCameraForwardOffset = 0.35f;
 
         public static float CameraNearDist = 0.1f;
-        public static float CameraFarDist = 800.0f;
+        public static float CameraFarDist = 1000.0f;
 
         public static float MaxCameraDistance = 15.0f;
         public readonly static Dictionary<CameraMode, CameraPreset> Presets = new()

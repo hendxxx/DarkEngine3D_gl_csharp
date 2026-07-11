@@ -548,6 +548,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             // map mesh index -> node index (-1 if none)
             public readonly int[] MeshToNode;
 
+            // Original mesh center BEFORE individual centering (CenterVariantGroups).
+            // Keyed by mesh index.  Populated by GlbLoader.Load() after gpuData creation.
+            // Used by BillboardManager.BakeOne to restore relative sub-mesh positions.
+            public Dictionary<int, Vector3> MeshOriginalCenters { get; set; } = [];
+
 
             public GltfModelGpuData(GltfData data, bool useNodeHierarchy = false)
             {
