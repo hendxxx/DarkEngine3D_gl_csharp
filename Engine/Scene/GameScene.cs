@@ -1207,7 +1207,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             // 3. Draw Skybox
-            _skybox.Draw(_camera, _light, 0f, _skyTextures!, _gameTerrainChunk);
+            _skybox.Draw(_camera, _light, _deltaTime, _skyTextures!, _gameTerrainChunk);
 
             //  Bind CSM Shadow Maps 
             GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
