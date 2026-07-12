@@ -124,7 +124,7 @@ vec3 GetSkyColorAtDirection(vec3 dir)
 
     float up = max(dir.y, 0.0);
 
-    vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
+    vec3 skyBase = mix(fogColor, mix(atmosphereSky, horizonTint, 0.35), up);
     
     return skyBase;
 } 
@@ -297,7 +297,7 @@ void main()
     float boltFlash = bolt * 1.0;         // bloom ikut flash
 
 
-    vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.35), up);
+    vec3 skyBase = mix(fogColor, mix(atmosphereSky, horizonTint, 0.35), up);
     
     //add petir di langit
     skyBase += vec3(1.0, 1.0, 1.2) * lightning * 3.0;

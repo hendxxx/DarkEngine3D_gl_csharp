@@ -113,10 +113,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Vector3 duskLight = new(1.00f, 0.55f, 0.25f);
             Vector3 nightLight = new(0.05f, 0.07f, 0.14f);
 
-            Vector3 dayFog = new(0.70f, 0.80f, 1.00f);
-            Vector3 duskFog = new(0.55f, 0.30f, 0.18f);
-            Vector3 nightFog = new(0.02f, 0.03f, 0.06f);
-
             const float dayBrightness = 0.85f;
             const float duskBrightness = 0.65f;
             const float nightBrightness = 0.55f;
@@ -126,10 +122,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 duskLight * (duskBrightness * tDusk) +
                 nightLight * (nightBrightness * tNight);
 
-            Vector3 fogColor =
-                dayFog * tDay +
-                duskFog * tDusk +
-                nightFog * tNight;
+            // ── Horizon fog color (sama persis dengan GetHorizonFogColor di shader) ──
+            Vector3 horizonFogColor = ComputeHorizonFogColor(sunDir);
 
             // ── Weather dimming — pow curve for more dramatic overcast effect ──
             float w = Keyboard.GetCurrentWeather();
@@ -137,7 +131,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             RealSunDir = sunDir;
             SunDir = ShadowDirStable;
-            FogColor = fogColor * weatherDim;
+            FogColor = horizonFogColor * weatherDim;
             LightColor = lightColor * weatherDim;
 
             // kirim arah matahari asli (realSunDir) ke terrain shader
@@ -171,6 +165,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (MathF.Abs(denom) < 1e-6f) return x < edge0 ? 0.0f : 1.0f;
             float t = Math.Clamp((x - edge0) / denom, 0.0f, 1.0f);
             return t * t * (3.0f - 2.0f * t);
+        }
+
+        /// <summary>Compute horizon fog color — sama persis dengan fungsi GetHorizonFogColor() di shader.</summary>
+        private static Vector3 ComputeHorizonFogColor(Vector3 sd)
+        {
+            float sunY = sd.Y;
+            float sunIntensity = Math.Clamp(sunY * 1.5f + 0.5f, 0.0f, 2.0f);
+
+            // Simplified Mie scattering at horizon
+            float mu = Math.Clamp(Vector3.Dot(new Vector3(0.0f, 0.0f, 1.0f), sd), -1.0f, 1.0f);
+            float g = 0.76f;
+            float phaseMie = (1.0f - g * g) / MathF.Pow(1.0f + g * g - 2.0f * g * mu, 1.5f);
+
+            Vector3 scattering = new Vector3(1.0f, 0.85f, 0.65f) * phaseMie * sunIntensity * 0.008f;
+
+            // Day / dusk / night blend (thresholds identik dengan GetHorizonFogColor di shader)
+            float tDay = Smoothstep01(0.05f, 0.30f, sunY);
+            float tNight = 1.0f - Smoothstep01(-0.20f, 0.05f, sunY);
+            float tDusk = MathF.Max(0.0f, 1.0f - tDay - tNight);
+
+            Vector3 dayColor   = new(0.55f, 0.72f, 0.90f);
+            Vector3 duskColor  = new(0.85f, 0.40f, 0.22f);
+            Vector3 nightColor = new(0.02f, 0.03f, 0.06f);
+
+            Vector3 color = dayColor * tDay + duskColor * tDusk + nightColor * tNight;
+            color += scattering * 0.5f;
+
+            return color;
         }
 
         public string GetFormattedTime()

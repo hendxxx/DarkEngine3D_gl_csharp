@@ -257,11 +257,7 @@ void main()
     // ── Combine ────────────────────────────────────────────────────────────
     vec3 result = ambient + Lo;
 
-    // ── Tone mapping + gamma ──────────────────────────────────────────────
-    result = result / (result + vec3(1.0));
-    result = pow(result, vec3(1.0 / 2.2));
-
-    // ── Fog ──
+    // ── Fog (pre-tonemap, matching gltf_fragment & terrain order) ──────────
     if (useFog == 1)
     {
         float dist = length(viewPos - center);
@@ -270,6 +266,10 @@ void main()
         fogFactor = clamp(fogFactor, 0.0, 1.0);
         result = mix(fogColor, result, fogFactor);
     }
+
+    // ── Tone mapping + gamma ──────────────────────────────────────────────
+    result = result / (result + vec3(1.0));
+    result = pow(result, vec3(1.0 / 2.2));
 
     FragColor = vec4(result, debugOpacity);
 }

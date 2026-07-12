@@ -45,7 +45,6 @@ uniform int hasEmissiveTexture;
 
 // ── Shadow Filter Mode (0-9: PCF 16, Hard, PCF 16, PCF 16 Soft, PCF 32, PCF 32 Soft, PCSS 16, PCSS 16 Soft, PCSS 32, PCSS 32 Soft) ──
 uniform int shadowFilterMode;
-uniform vec3 realSunDir;
 
 // ── Fog ────────────────────────────────────────────────────────────────────
 uniform int useFog;
@@ -280,35 +279,6 @@ float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
     return poisson16(fragPosLightSpace, shadowMap, bias, 5.0); // default mode 0  
 }
 
-// ── Horizon fog color (dynamic, matches sky shader) ──
-vec3 GetHorizonFogColor(vec3 sunDir)
-{
-    vec3 sd = normalize(sunDir);
-    float sunY = sd.y;
-    float sunIntensity = clamp(sunY * 1.5 + 0.5, 0.0, 2.0);
-
-    // Simplified Mie scattering at horizon
-    float mu = clamp(dot(vec3(0.0, 0.0, 1.0), sd), -1.0, 1.0);
-    float g = 0.76;
-    float phaseMie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*mu, 1.5);
-
-    vec3 scattering = vec3(1.0, 0.85, 0.65) * phaseMie * sunIntensity * 0.008;
-
-    // Day / dusk / night blend
-    float tDay = smoothstep(0.05, 0.30, sunY);
-    float tNight = 1.0 - smoothstep(-0.20, 0.05, sunY);
-    float tDusk = max(0.0, 1.0 - tDay - tNight);
-
-    vec3 dayColor   = vec3(0.55, 0.72, 0.90);
-    vec3 duskColor  = vec3(0.85, 0.40, 0.22);
-    vec3 nightColor = vec3(0.02, 0.03, 0.06);
-
-    vec3 color = dayColor * tDay + duskColor * tDusk + nightColor * tNight;
-    color += scattering * 0.5;
-
-    return color;
-}
-
 void main()
 {
     // ── Base Color ─────────────────────────────────────────────────────────
@@ -424,8 +394,7 @@ void main()
         float fogDensity = 0.01;
         float fogFactor = exp(-pow(dist * fogDensity, 2.0));
         fogFactor = clamp(fogFactor, 0.0, 1.0);
-        vec3 horizonFog = GetHorizonFogColor(realSunDir);
-        result = mix(horizonFog, result, fogFactor);
+        result = mix(fogColor, result, fogFactor);
     }
 
     // ── Tone mapping + gamma ──────────────────────────────────────────────────

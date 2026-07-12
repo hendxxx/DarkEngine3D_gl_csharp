@@ -161,7 +161,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float spawnCX = 0f;
             float spawnCZ = 0f;
             float minDist = 1.5f;
-            float spawnRadius = 10f;
+            float spawnRadius = 253;
 
             var spawnedPositions = new List<Vector2>();
 
@@ -172,8 +172,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // PHASE 1: AI CHARACTERS (0% → 15%)
             // ─────────────────────────────────────
             OnLoadProgress?.Invoke(0f, "AI: spawning characters...");
-            
-            for (int i = 0; i < 15; i++)
+            int NumberOfAI = 250;
+            for (int i = 0; i < NumberOfAI; i++)
             {
                 float px, pz;
                 int tries = 0;
@@ -204,8 +204,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 obj.CastShadow = true;
                 SnapToTerrain(obj, gameTerrainChunk);
 
-                float phase = (i + 1) / 5f;
-                OnLoadProgress?.Invoke(phase * 0.10f, $"AI: spawning character {i+1}/5");
+                float phase = (i + 1) / (float)NumberOfAI;
+                OnLoadProgress?.Invoke(phase * 0.10f, $"AI: spawning character {i+1}/{NumberOfAI}");
             }
 
             OnLoadProgress?.Invoke(0.10f, "AI: initializing wandering...");
