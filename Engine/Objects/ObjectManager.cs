@@ -218,10 +218,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // PHASE 2: STATIC OBJECTS (15% → 85%)
             // ─────────────────────────────────────
             var treesManager = new StaticObjectManager {};
+            var wallManager = new StaticObjectManager {};
 
             staticObjectManagers.Add(treesManager);
+            staticObjectManagers.Add(wallManager);
 
             OnLoadProgress?.Invoke(0.15f, "Static: initializing managers...");
+
+            string wallPath = "Artifacts/objects/damaged_wall.glb";
+            var wallAsset = GlbLoader.Load(
+                wallManager, wallPath,
+                new Vector3(45f, 0.0f, 0f),  // world position
+                0f,                          // yaw
+                0.05f,                       // scale
+                isScene: false,              // ASSET mode: RemoveWorldTransform ON
+                gameTerrainChunk,            // terrain for snapping
+                yOffset: 0f);                // additional Y offset
+
+            wallManager.UseBillboards = true;
+            wallManager.BillboardMgr = new BillboardManager();
+            foreach (var sobj in wallManager.GetObjects())
+            {
+                sobj.IsOccluder = true;
+                sobj.IsCollidable = true;
+                sobj.ColType = CollisionType.Box;
+            }
+            wallManager.CastShadow = true;
+            wallManager.UseAlpha = true;
+            wallManager.CullAtMaxLOD = false;
+            wallManager.EnableSpatialGrid = true;
+            wallManager.UseTerrainGrid = true;
+            wallManager.BuildSpatialGrid();
+            wallManager.BakeAllBillboards();
 
             // Trees — loaded via GlbLoader pipeline
             string treesName = "trees";
@@ -301,6 +329,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 StaticManagers = staticObjectManagers
             };
 
+            AddAddtionalAnimation();
+            
             OnLoadProgress?.Invoke(0.87f, "Player: loading animations...");
 
 
@@ -384,8 +414,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // ── Physics object management ──
-
-        /// <summary>Spawn physics boxes above terrain.</summary>
         public void SpawnPhysicsCubes(TerrainChunk terrain)
         {
             foreach (var box in _physicsBoxes) box.Dispose();
@@ -705,7 +733,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public void InitWanderingAgents()
+        private void AddAddtionalAnimation()
         {
             // Load animation files dan apply ke semua object (AI + Player)
             string[] animFiles =
@@ -758,6 +786,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 //Console.WriteLine($"Player: anim {clipName} ({i+1}/{animFiles.Length})");
                 OnLoadProgress?.Invoke(p, $"Player: anim {clipName} ({i + 1}/{animFiles.Length})");
             }
+        }
+
+        public void InitWanderingAgents()
+        {
+            AddAddtionalAnimation();
 
             foreach (var obj in _objects)
             {

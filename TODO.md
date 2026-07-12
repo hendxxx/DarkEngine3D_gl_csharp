@@ -7,19 +7,6 @@ Pending:
 5. Octahedral Impostors
 6. buatin editor buat edit biomes, terrain, nanti muncul menu buat pilih biomes apa yang mau di edit, nanti bisa pilih brush size, dan bisa pilih biomes apa yang mau di ganti, misal: hijau tua=pohon mau diganti jadi hijau=rumput, dst. nanti bisa di save ke file biomes.
 7. eimplemet ECS dan multi-threading untuk rendering, physics, dan animasi.
-8. revamp load glb:
-	GLB > import nodes > Store Hierarchy > Store Meshes (RemoveWorldTransform) > Store Materials (PBR) > Store Textures > Scene Instance > Snap To Terrain > Y Offset.
-	scenario 1: obj = loadobj(x, terrainHeight + offset, y, asset)
-	scenario 2: city = loadobj(x, terrainHeight + offset, y, asset); 
-	  CreateInstance(
-	    city.GetMesh("House01")
-	  )
-    scenario 3: cityBig = loadobj(x, terrainHeight + offset, y, scene)
-
-	tipe asset: implement RemoveWorldTransform/ Reset Origin
-	tipe scene: jangan implement RemoveWorldTransform, ikuti world transform dari glb.
-
-
 9. enhance load glb: 
 	Init:
 	GLB > Grid Chunking > LOD Chunking > World BVH Build (bisa pakai chunk terrain punya) > Serialize Level data
@@ -43,6 +30,17 @@ Done, misc:
 6. buat animasi berjalan dilooping, ketika object bergerak.
 7. nantinya akan ada beberapa state animasi yang bisa di trigger oleh action tertentu.
 8. Implemet Vertex Clustering
+9. revamp load glb:
+	GLB > import nodes > Store Hierarchy > Store Meshes (RemoveWorldTransform) > Store Materials (PBR) > Store Textures > Scene Instance > Snap To Terrain > Y Offset.
+	scenario 1: obj = loadobj(x, terrainHeight + offset, y, asset)
+	scenario 2: city = loadobj(x, terrainHeight + offset, y, asset); 
+	  CreateInstance(
+	    city.GetMesh("House01")
+	  )
+    scenario 3: cityBig = loadobj(x, terrainHeight + offset, y, scene)
+
+	tipe asset: implement RemoveWorldTransform/ Reset Origin
+	tipe scene: jangan implement RemoveWorldTransform, ikuti world transform dari glb.
 
 Done, Shadow:
 1. buatkan shadow untuk object, jadi ketika object berada di atas permukaan, akan ada bayangan yang mengikuti gerakan object tersebut.
