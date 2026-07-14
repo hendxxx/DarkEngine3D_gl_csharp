@@ -47,36 +47,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public AABB CachedWorldAABB;
         public Matrix4x4 CachedBaseWorldMat;
 
-        // Collision: nama mesh part yang dipakai untuk collision AABB (misal "bark")
-        // Null/kosong = pakai full AABB (semua mesh)
-        public string? CollisionPart = null;
-        // Cached collision AABB (hanya dari mesh yang namanya mengandung CollisionPart)
-        // Null = pakai CachedWorldAABB
-        public AABB? CachedCollisionAABB = null;
-
-        // Manual override ukuran collision AABB (0 = tidak di-override, pakai computed AABB)
-        // OverrideSizeX = lebar (sumbu X), OverrideSizeZ = panjang/depth (sumbu Z)
-        // Tinggi (sumbu Y) tetap menggunakan hasil compute dari mesh.
-        public float OverrideCollisionSizeX = 0f;
-        public float OverrideCollisionSizeZ = 0f;
-
-        // Collision type (Convex by default for static objects)
-        public CollisionType ColType = CollisionType.Convex;
-
         // Per-instance flags
         public bool CastShadow = true;
         public bool UseAlphaTest = true;
         // Current LOD level being rendered (set every frame by StaticObjectManager.Draw)
         public int CurrentLOD = 0;
 
-        // Occlusion culling flag (di-set oleh OC system setiap frame)
+        // Visibility flag
         public bool IsVisible = true;
-
-        // Apakah object ini bisa menjadi occluder (menghalangi object lain)
-        public bool IsOccluder = false;
-
-        // Apakah object ini bisa ditabrak (collision untuk player/NPC/camera)
-        public bool IsCollidable = false;
 
         public StaticObject(GltfModelGpuData gpuData, StaticObjectGroup group, Vector3 pos, float yaw, float scale)
         {
@@ -289,10 +267,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     int ni = kv.Key;
                     var meshes = kv.Value;
 
-                    // Skip if parent has the exact same mesh set (duplicate / already covered)
-                    int parent = nodes[ni].Parent;
-                    if (parent >= 0 && nodeMeshes.TryGetValue(parent, out var parentMeshes))
-                    {
+            // Skip if parent has the exact same mesh set (duplicate / already covered)
+            int parent = nodes[ni].Parent;
+            if (parent >= 0 && nodeMeshes.TryGetValue(parent, out var parentMeshes))
+            {
                         if (parentMeshes.Length == meshes.Length &&
                             parentMeshes.OrderBy(m => m).SequenceEqual(meshes.OrderBy(m => m)))
                             continue;
@@ -549,8 +527,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var localAABB = selectedGroup.LocalAABB.Min != selectedGroup.LocalAABB.Max
                 ? selectedGroup.LocalAABB
                 : sobj.GpuData.LocalAABB;
-            sobj.CollisionPart = collisionPart;
-
             // IMPORTANT: CachedBaseWorldMat must match how vertices are transformed in Draw().
             // In particular, if UseNodeHierarchy=true, the per-mesh instance model matrix becomes:
             //   modelMat = (nodeWorldMatrix * baseWorldMat)
@@ -569,37 +545,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             sobj.CachedWorldAABB = localAABB.Transform(sobj.CachedBaseWorldMat);
 
 
-            // Compute per-mesh collision AABB jika CollisionPart di-set
-            // Pakai Transform(CachedBaseWorldMat) biar transform order sama persis dengan rendering
-            if (!string.IsNullOrEmpty(collisionPart))
-            {
-                var collLocalAABB = ComputeCollisionLocalAABB(gpuData, collisionPart, sobj, UseNodeHierarchy);
-                sobj.CachedCollisionAABB = collLocalAABB.Transform(sobj.CachedBaseWorldMat);
-            }
 
-            // Apply manual override size untuk collision AABB (X dan Z saja, Y tetap)
-            // Hanya berlaku jika CachedCollisionAABB != null dan override > 0
-            if (sobj.CachedCollisionAABB.HasValue && (overrideCollisionSizeX > 0f || overrideCollisionSizeZ > 0f))
-            {
-                var ca = sobj.CachedCollisionAABB.Value;
-                Vector3 center = (ca.Min + ca.Max) * 0.5f;
-                Vector3 halfSize = (ca.Max - ca.Min) * 0.5f;
-                if (overrideCollisionSizeX > 0f) halfSize.X = overrideCollisionSizeX * 0.5f;
-                if (overrideCollisionSizeZ > 0f) halfSize.Z = overrideCollisionSizeZ * 0.5f;
-                // Y tetap dari hasil compute mesh
-                sobj.CachedCollisionAABB = new AABB(center - halfSize, center + halfSize);
-            }
-            // Copy Y dari CachedWorldAABB (tinggi sudah benar dari OC/frustum —
-            // mencakup semua mesh group, bukan cuma mesh "bark")
-            // Ini penting karena mesh "bark" mungkin tidak mencakup tinggi penuh pohon,
-            // dan random rotation/position membuat AABB collision Y tidak akurat.
-            if (sobj.CachedCollisionAABB.HasValue)
-            {
-                var ca = sobj.CachedCollisionAABB.Value;
-                ca.Min.Y = sobj.CachedWorldAABB.Min.Y;
-                ca.Max.Y = sobj.CachedWorldAABB.Max.Y;
-                sobj.CachedCollisionAABB = ca;
-            }
 
             // ── Count total triangles for this instance (LOD0 / most detailed) ──
             int instanceTriangles = 0;
@@ -627,9 +573,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
             }
             _totalTriangles += instanceTriangles;
-
-            sobj.OverrideCollisionSizeX = overrideCollisionSizeX;
-            sobj.OverrideCollisionSizeZ = overrideCollisionSizeZ;
 
             _objects.Add(sobj);
             TotalObject++;
@@ -957,10 +900,6 @@ public void BuildSpatialGrid()
                         {
                             var obj = _objects[objIdx];
 
-                            // Occlusion culling
-                            if (OcclusionCulling.Enabled && !obj.IsVisible)
-                                continue;
-
                             if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
                                 continue;
 
@@ -1072,10 +1011,6 @@ public void BuildSpatialGrid()
                 // ── Original: iterate all objects (no spatial grid) ──
                 foreach (var obj in _objects)
                 {
-                    // Occlusion culling: skip jika di belakang terrain
-                    if (OcclusionCulling.Enabled && !obj.IsVisible)
-                        continue;
-
                     if (!IsAABBInFrustum(cameraFrustum, obj.CachedWorldAABB, 5f))
                         continue;
 

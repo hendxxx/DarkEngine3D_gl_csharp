@@ -477,11 +477,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
             }
 
-            // ── Wall collision: slide finalPos ke arah pivot (player) SEBELUM smoothing ──
-            // Pakai SlideCameraToPivot bukan PushCamera — jadi camera maju ke player saat
-            // kena wall, bukan didorong ke samping/tembus ke belakang tembok.
-            finalPos = CollisionHelper.SlideCameraToPivot(finalPos, pivotPos, minDist, staticManagers);
-
             // Smooth camera movement
             float lag = 6f;
             smoothCamPos = Vector3.Lerp(smoothCamPos, finalPos, 1f - MathF.Exp(-lag * dt));

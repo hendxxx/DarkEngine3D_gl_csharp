@@ -1468,24 +1468,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             );
         }
 
-        /// <summary>Daftarkan semua terrain chunk AABBs sebagai occluders untuk occlusion culling.</summary>
-        public static void RegisterChunkOccluders(Visual.OcclusionCulling occlusionCulling, Vector3 cameraPos, float farDist)
-        {
-            if (worldMap == null) return;
-            float farSq = farDist * farDist;
-            for (int x = 0; x < ChunksPerSide; x++)
-            {
-                for (int z = 0; z < ChunksPerSide; z++)
-                {
-                    // Skip chunks too far from camera
-                    var aabb = GetChunkWorldAABB(x, z);
-                    Vector3 center = (aabb.Min + aabb.Max) * 0.5f;
-                    if (Vector3.DistanceSquared(center, cameraPos) > farSq)
-                        continue;
-                    occlusionCulling.RegisterOccluder(aabb);
-                }
-            }
-        }
+
 
     }
 }

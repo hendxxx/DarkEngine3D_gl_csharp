@@ -546,7 +546,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _obj.PlaybackSpeed = 1f;
             _heading = _targetHeading = RandomAngle();
             _aiTickAccum = 0f;
-            Physics.Reset();
             ChooseWanderAction();
         }
 
@@ -585,12 +584,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float GaitBlendDecel = 10.0f;   // run→walk: ~0.1s to reach 63%
 
         /// <summary>Physics body for velocity-based movement (gravity, ground state, impulses).</summary>
-        public PhysicsBody Physics = new();
-        private const float JumpVelocity = 8f;          // upward impulse on jump
-        private const float AirControlFactor = 0.4f;    // 40% horizontal control while airborne
-        private const float GroundedEpsilon = 0.05f;    // tolerance for ground detection
-        private bool _isJumping = false;                 // animation state only
         private float headingVelocity = 0f;
+        private bool _isJumping = false;
         // -----------------------------------------------------------------------
         //  Movement with LOD
         // -----------------------------------------------------------------------
@@ -694,10 +689,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // ── Acceleration / Deceleration (smooth, weighty) ──
                 float accel = hasInput ? Acceleration : Deceleration;
-                // Air control: reduce acceleration when not grounded
-                if (!Physics.IsGrounded)
-                    accel *= AirControlFactor;
-                // Use critically-damped spring for smooth, weighty feel
                 float lerpFactor = 1f - MathF.Exp(-accel * dt);
                 _currentSpeed += (targetSpeed - _currentSpeed) * lerpFactor;
                 
@@ -738,36 +729,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     newPos.Y = newTerrainY;
                 }
 
-                // ── Static object collision + step up ──
-                if (StaticManagers != null && hasInput)
-                {
-                    Vector3 pushed = CollisionHelper.PushCharacter(newPos, StaticManagers);
-                    bool blocked = (pushed - newPos).LengthSquared() > 0.001f;
-
-                    if (blocked)
-                    {
-                        // Try stepping up onto the object
-                        Vector3 stepUpPos = newPos + new Vector3(0, MaxStepHeight, 0);
-                        Vector3 stepUpPushed = CollisionHelper.PushCharacter(stepUpPos, StaticManagers);
-                        bool stepCleared = (stepUpPushed - stepUpPos).LengthSquared() < 0.001f;
-
-                        if (stepCleared && stepUpPushed.Y > newPos.Y + 0.05f)
-                        {
-                            // Step-up successful — use the higher position
-                            newPos = stepUpPushed;
-                        }
-                        else
-                        {
-                            // Blocked — use collision-pushed position
-                            newPos = pushed;
-                            _currentSpeed *= 0.85f;
-                            // Dampen horizontal velocity on wall collision to prevent sliding
-                            Physics.Velocity.X *= 0.3f;
-                            Physics.Velocity.Z *= 0.3f;
-                        }
-                    }
-                }
-
                 // Ensure Y is on terrain
                 newPos.Y = MathF.Max(newPos.Y, terrain.GetHeightAt(newPos.X, newPos.Z));
 
@@ -789,46 +750,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _oneShotName = "block";
                     _obj.PlayOnce("block", "fightstance");
                 }
-                // --- JUMP (physics-based) ---
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE) && Physics.IsGrounded && !_oneShotPlaying && !_isJumping)
-                {
-                    // Apply jump impulse to physics velocity
-                    Physics.Velocity.Y = JumpVelocity;
-                    Physics.IsGrounded = false;
-                    _isJumping = true;
-                    _oneShotPlaying = true;
-                    _oneShotName = "jump-end";
-                    _obj.PlayOnce("jump-end", "idle");
-                }
-
-                // =====================
-                // PHYSICS: GRAVITY & GROUND
-                // =====================
-                // Apply gravity to velocity (consistent, no hacky multipliers)
-                if (Physics.UseGravity)
-                {
-                    Physics.Velocity.Y += PhysicsBody.GravityAccel * Physics.GravityScale * dt;
-                }
-
-                // Apply velocity to position
-                newPos += Physics.Velocity * dt;
-
-                // Ground detection: check if character is at or below terrain level
-                float groundY = terrain.GetHeightAt(newPos.X, newPos.Z);
-
-                if (Physics.Velocity.Y <= 0f && newPos.Y <= groundY + GroundedEpsilon)
-                {
-                    // Landed on ground
-                    newPos.Y = groundY;
-                    Physics.Velocity.Y = 0f;
-                    Physics.IsGrounded = true;
-                    _isJumping = false;
-                }
-                else if (newPos.Y > groundY + GroundedEpsilon)
-                {
-                    // Airborne
-                    Physics.IsGrounded = false;
-                }
+                // Ensure Y is always on terrain height
+                newPos.Y = terrain.GetHeightAt(newPos.X, newPos.Z);
 
                 // =====================
                 // ONE-SHOT CHECK
@@ -1010,71 +933,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float stepX = f.X * _speed * speedMul * moveScaleMul * dt;
                 float stepZ = f.Z * _speed * speedMul * moveScaleMul * dt;
 
-                // Simple obstacle avoidance: check ahead, side-step around trees
-                if (StaticManagers != null)
-                {
-                    Vector3 newPos = new(p.X + stepX, p.Y, p.Z + stepZ);
-                    if (IsBlockedByStatic(newPos, StaticManagers))
-                    {
-                        // Try side-stepping right, then left
-                        Vector3 rightDir = new(-f.Z, 0, f.X); // perpendicular right
-                        float sideStep = 0.4f;
-
-                        Vector3 rightPos = new(p.X + rightDir.X * sideStep + stepX, p.Y, p.Z + rightDir.Z * sideStep + stepZ);
-                        Vector3 leftPos  = new(p.X - rightDir.X * sideStep + stepX, p.Y, p.Z - rightDir.Z * sideStep + stepZ);
-
-                        if (!IsBlockedByStatic(rightPos, StaticManagers))
-                        {
-                            p.X = rightPos.X;
-                            p.Z = rightPos.Z;
-                        }
-                        else if (!IsBlockedByStatic(leftPos, StaticManagers))
-                        {
-                            p.X = leftPos.X;
-                            p.Z = leftPos.Z;
-                        }
-                        else
-                        {
-                            // Both sides blocked — nudge heading & slow down
-                            _targetHeading += 0.15f;
-                            _speed *= 0.5f;
-                            p.X += stepX * 0.3f;
-                            p.Z += stepZ * 0.3f;
-                        }
-                    }
-                    else
-                    {
-                        p.X += stepX;
-                        p.Z += stepZ;
-                    }
-                }
-                else
-                {
-                    p.X += stepX;
-                    p.Z += stepZ;
-                }
-            }
-
-            // ── NPC Physics: apply gravity ──
-            if (Physics.UseGravity)
-            {
-                Physics.Velocity.Y += PhysicsBody.GravityAccel * Physics.GravityScale * dt;
-            }
-            p.Y += Physics.Velocity.Y * dt;
-
-            // ── NPC ground check ──
-            float npcTerrainY = terrain.GetHeightAt(p.X, p.Z);
-            if (Physics.Velocity.Y <= 0f && p.Y <= npcTerrainY + GroundedEpsilon)
-            {
-                // NPC landed on terrain
-                p.Y = npcTerrainY;
-                Physics.Velocity.Y = 0f;
-                Physics.IsGrounded = true;
-            }
-            else if (p.Y > npcTerrainY + GroundedEpsilon)
-            {
-                Physics.IsGrounded = false;
-            }
+    p.X += stepX;
+                p.Z += stepZ;
+            }            // ── NPC clamp to terrain height ──
+            p.Y = terrain.GetHeightAt(p.X, p.Z);
 
             _obj.Position = p;
         }
@@ -1111,33 +973,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             
         }
 
-        /// <summary>
-        /// Check if a position overlaps with any collidable static object's AABB
-        /// (expanded by character radius in XZ). Used for simple tree avoidance.
-        /// </summary>
-        private bool IsBlockedByStatic(Vector3 pos, List<StaticObjectManager>? managers)
-        {
-            if (managers == null) return false;
-            float r = Radius;
-            foreach (var mgr in managers)
-            {
-                if (mgr == null) continue;
-                foreach (var obj in mgr.GetObjects())
-                {
-                    if (!obj.IsCollidable) continue;
-                    var aabb = obj.CachedCollisionAABB ?? obj.CachedWorldAABB;
 
-                    // Quick XZ distance check against expanded AABB
-                    float closestX = Math.Clamp(pos.X, aabb.Min.X, aabb.Max.X);
-                    float closestZ = Math.Clamp(pos.Z, aabb.Min.Z, aabb.Max.Z);
-                    float dx = pos.X - closestX;
-                    float dz = pos.Z - closestZ;
-                    if (dx * dx + dz * dz < r * r)
-                        return true;
-                }
-            }
-            return false;
-        }
 
         public void AvoidFrom(Vector3 other)
         {

@@ -93,21 +93,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public List<StaticObjectManager> staticObjectManagers = new();
 
-        // ── Physics objects (boxes + spheres) ──
-        private readonly List<PhysicsBox> _physicsBoxes = new();
-        private readonly List<PhysicsSphere> _physicsSpheres = new();
-
-        public const int PhysicsBoxCount = 30;
-        public const float PhysicsBoxSpawnHeight = 40f;
-        public const float PhysicsBoxSpawnRadius = 50f;
-
-        public const int PhysicsSphereCount = 30;
-        public const float PhysicsSphereSpawnHeight = 40f;
-        public const float PhysicsSphereSpawnRadius = 50f;
-
-        public IReadOnlyList<PhysicsBox> PhysicsBoxes => _physicsBoxes;
-        public IReadOnlyList<PhysicsSphere> PhysicsSpheres => _physicsSpheres;
-
         public ObjectManager()
         {
             _shaderProgram = GltfShader.GetShaderProgram();
@@ -237,12 +222,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             wallManager.UseBillboards = true;
             wallManager.BillboardMgr = new BillboardManager();
-            foreach (var sobj in wallManager.GetObjects())
-            {
-                sobj.IsOccluder = true;
-                sobj.IsCollidable = true;
-                sobj.ColType = CollisionType.Box;
-            }
+
             wallManager.CastShadow = true;
             wallManager.UseAlpha = true;
             wallManager.CullAtMaxLOD = false;
@@ -282,11 +262,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     terrain: gameTerrainChunk,
                     progressMin: 0.18f, progressMax: 0.22f,
                     progressLabel: treesName,
-                    configureInstance: sobj =>
-                    {
-                        sobj.IsCollidable = true;
-                        sobj.ColType = CollisionType.Box;
-                    },
+
                     collisionSizeX: 0.8f,
                     collisionSizeZ: 0.8f,
                     allowOverlap: true, // skip overlap check — place randomly
@@ -413,271 +389,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var obj in _objects) obj.Update(dt);
         }
 
-        // ── Physics object management ──
-        public void SpawnPhysicsCubes(TerrainChunk terrain)
-        {
-            foreach (var box in _physicsBoxes) box.Dispose();
-            _physicsBoxes.Clear();
 
-            var rng = new Random();
-            for (int i = 0; i < PhysicsBoxCount; i++)
-            {
-                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
-                float dist = rng.NextFloat(5f, PhysicsBoxSpawnRadius);
-                float px = MathF.Cos(angle) * dist;
-                float pz = MathF.Sin(angle) * dist;
-                float terrainY = terrain.GetHeightAt(px, pz);
-                float py = terrainY + PhysicsBoxSpawnHeight;
-
-                float sx = rng.NextFloat(0.5f, 2.0f);
-                float sy = rng.NextFloat(0.5f, 2.0f);
-                float sz = rng.NextFloat(0.5f, 2.0f);
-                var color = new Vector3(
-                    rng.NextFloat(0.2f, 1.0f),
-                    rng.NextFloat(0.2f, 1.0f),
-                    rng.NextFloat(0.2f, 1.0f)
-                );
-
-                var box = new PhysicsBox(new Vector3(px, py, pz), new Vector3(sx, sy, sz), color);
-                // Large boxes become occluders
-                if (sx > 1.5f || sy > 1.5f || sz > 1.5f)
-                    box.IsOccluder = true;
-                box.IsCollidable = true;
-                _physicsBoxes.Add(box);
-            }
-            Console.WriteLine($"[ObjectManager] Spawned {_physicsBoxes.Count} physics boxes.");
-        }
-
-        /// <summary>Spawn physics spheres above terrain.</summary>
-        public void SpawnPhysicsSpheres(TerrainChunk terrain)
-        {
-            foreach (var sphere in _physicsSpheres) sphere.Dispose();
-            _physicsSpheres.Clear();
-
-            var rng = new Random();
-            for (int i = 0; i < PhysicsSphereCount; i++)
-            {
-                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
-                float dist = rng.NextFloat(5f, PhysicsSphereSpawnRadius);
-                float px = MathF.Cos(angle) * dist;
-                float pz = MathF.Sin(angle) * dist;
-                float terrainY = terrain.GetHeightAt(px, pz);
-                float py = terrainY + PhysicsSphereSpawnHeight;
-
-                float radius = rng.NextFloat(0.3f, 1.5f);
-                var color = new Vector3(
-                    rng.NextFloat(0.2f, 1.0f),
-                    rng.NextFloat(0.2f, 1.0f),
-                    rng.NextFloat(0.2f, 1.0f)
-                );
-
-                var sphere = new PhysicsSphere(new Vector3(px, py, pz), radius, color);
-                _physicsSpheres.Add(sphere);
-            }
-            Console.WriteLine($"[ObjectManager] Spawned {_physicsSpheres.Count} physics spheres.");
-        }
-
-        /// <summary>Update all physics boxes (gravity, terrain collision).</summary>
-        public void UpdatePhysicsBoxes(float dt, TerrainChunk terrain)
-        {
-            for (int i = _physicsBoxes.Count - 1; i >= 0; i--)
-                _physicsBoxes[i].Update(dt, terrain);
-        }
-
-        /// <summary>Update all physics spheres (gravity, terrain collision).</summary>
-        public void UpdatePhysicsSpheres(float dt, TerrainChunk terrain)
-        {
-            for (int i = _physicsSpheres.Count - 1; i >= 0; i--)
-                _physicsSpheres[i].Update(dt, terrain);
-        }
-
-        /// <summary>Respawn all physics cubes and spheres.</summary>
-        public void RespawnPhysicsCubes(TerrainChunk terrain)
-        {
-            foreach (var box in _physicsBoxes) box.Dispose();
-            _physicsBoxes.Clear();
-            foreach (var sphere in _physicsSpheres) sphere.Dispose();
-            _physicsSpheres.Clear();
-
-            SpawnPhysicsCubes(terrain);
-            SpawnPhysicsSpheres(terrain);
-            Console.WriteLine($"[ObjectManager] Physics objects respawned ({_physicsBoxes.Count} boxes + {_physicsSpheres.Count} spheres).");
-        }
-
-        /// <summary>Resolve physics box/sphere collisions against collidable static objects.</summary>
-        public void ResolvePhysicsStaticCollisions()
-        {
-            if (staticObjectManagers == null) return;
-
-            // Collect all collidable static AABBs first
-            // Also pre-compute half-diagonal (squared + actual) for distance-based early-out
-            var staticAABBs = new List<(AABB aabb, Vector3 center, float halfDiagSq, float halfDiag)>();
-            foreach (var mgr in staticObjectManagers)
-            {
-                if (mgr == null) continue;
-                foreach (var sobj in mgr.GetObjects())
-                {
-                    if (!sobj.IsCollidable) continue;
-                    var aabb = sobj.CachedCollisionAABB ?? sobj.CachedWorldAABB;
-                    Vector3 halfExt = (aabb.Max - aabb.Min) * 0.5f;
-                    float halfDiagSq = halfExt.X * halfExt.X + halfExt.Y * halfExt.Y + halfExt.Z * halfExt.Z;
-                    float halfDiag = MathF.Sqrt(halfDiagSq);
-                    staticAABBs.Add((aabb, (aabb.Min + aabb.Max) * 0.5f, halfDiagSq, halfDiag));
-                }
-            }
-            if (staticAABBs.Count == 0) return;
-
-            // Boxes vs static AABB
-            foreach (var box in _physicsBoxes)
-            {
-                if (!box.Active) continue;
-
-                float boxMinX = box.Position.X - box.HalfWidth;
-                float boxMaxX = box.Position.X + box.HalfWidth;
-                float boxMinY = box.Position.Y - box.HalfHeight;
-                float boxMaxY = box.Position.Y + box.HalfHeight;
-                float boxMinZ = box.Position.Z - box.HalfDepth;
-                float boxMaxZ = box.Position.Z + box.HalfDepth;
-
-                // Pre-compute box half-diagonal for distance early-out
-                float boxHalfDiagSq = box.HalfWidth * box.HalfWidth + box.HalfHeight * box.HalfHeight + box.HalfDepth * box.HalfDepth;
-
-                foreach (var (saabb, sCenter, sHalfDiagSq, _) in staticAABBs)
-                {
-                    // Distance early-out: skip if centers are too far apart
-                    float ddx = box.Position.X - sCenter.X;
-                    float ddz = box.Position.Z - sCenter.Z;
-                    float ddy = box.Position.Y - sCenter.Y;
-                    if (ddx * ddx + ddy * ddy + ddz * ddz > boxHalfDiagSq + sHalfDiagSq + 4f)
-                        continue; // beyond worst-case overlap distance + 2m buffer
-
-                    if (boxMaxX <= saabb.Min.X || boxMinX >= saabb.Max.X) continue;
-                    if (boxMaxY <= saabb.Min.Y || boxMinY >= saabb.Max.Y) continue;
-                    if (boxMaxZ <= saabb.Min.Z || boxMinZ >= saabb.Max.Z) continue;
-
-                    // Overlap detected — find minimum overlap axis
-                    float overlapX = MathF.Min(boxMaxX - saabb.Min.X, saabb.Max.X - boxMinX);
-                    float overlapY = MathF.Min(boxMaxY - saabb.Min.Y, saabb.Max.Y - boxMinY);
-                    float overlapZ = MathF.Min(boxMaxZ - saabb.Min.Z, saabb.Max.Z - boxMinZ);
-
-                    Vector3 pushDir;
-                    float pushDist;
-                    if (overlapX <= overlapY && overlapX <= overlapZ)
-                    {
-                        pushDist = overlapX;
-                        pushDir = new Vector3(box.Position.X < saabb.Min.X ? -1f : 1f, 0f, 0f);
-                    }
-                    else if (overlapY <= overlapZ)
-                    {
-                        pushDist = overlapY;
-                        pushDir = new Vector3(0f, box.Position.Y < saabb.Min.Y ? -1f : 1f, 0f);
-                    }
-                    else
-                    {
-                        pushDist = overlapZ;
-                        pushDir = new Vector3(0f, 0f, box.Position.Z < saabb.Min.Z ? -1f : 1f);
-                    }
-
-                    box.Position += pushDir * pushDist;
-                    box.Object3D?.SetPosition(box.Position.X, box.Position.Y, box.Position.Z);
-
-                    // Bounce: reflect velocity along push axis, with damping
-                    float velAlong = Vector3.Dot(box.Physics.Velocity, pushDir);
-                    if (velAlong < 0f)
-                    {
-                        box.Physics.Velocity -= pushDir * (2f * velAlong) * 0.5f; // 50% bounce
-                        box.Physics.Velocity.X *= 0.8f;
-                        box.Physics.Velocity.Z *= 0.8f;
-                    }
-                }
-            }
-
-            // Spheres vs static AABB
-            foreach (var sphere in _physicsSpheres)
-            {
-                if (!sphere.Active) continue;
-
-                float sphereRadPlusBuf = sphere.Radius + 2f;
-
-                foreach (var (saabb, sCenter, _, sHalfDiag) in staticAABBs)
-                {
-                    // Distance early-out: skip if centers are too far apart
-                    float ddx = sphere.Position.X - sCenter.X;
-                    float ddz = sphere.Position.Z - sCenter.Z;
-                    float ddy = sphere.Position.Y - sCenter.Y;
-                    float maxSphereDist = sphereRadPlusBuf + sHalfDiag;
-                    if (ddx * ddx + ddy * ddy + ddz * ddz > maxSphereDist * maxSphereDist)
-                        continue;
-
-                    // Closest point on AABB to sphere center
-                    float closestX = Math.Clamp(sphere.Position.X, saabb.Min.X, saabb.Max.X);
-                    float closestY = Math.Clamp(sphere.Position.Y, saabb.Min.Y, saabb.Max.Y);
-                    float closestZ = Math.Clamp(sphere.Position.Z, saabb.Min.Z, saabb.Max.Z);
-
-                    float dx = sphere.Position.X - closestX;
-                    float dy = sphere.Position.Y - closestY;
-                    float dz = sphere.Position.Z - closestZ;
-                    float distSq = dx * dx + dy * dy + dz * dz;
-
-                    if (distSq >= sphere.Radius * sphere.Radius) continue;
-
-                    float dist = MathF.Sqrt(distSq);
-                    if (dist < 0.0001f)
-                    {
-                        // Sphere center inside AABB — push along shortest axis
-                        float ex = MathF.Min(sphere.Position.X - saabb.Min.X, saabb.Max.X - sphere.Position.X);
-                        float ey = MathF.Min(sphere.Position.Y - saabb.Min.Y, saabb.Max.Y - sphere.Position.Y);
-                        float ez = MathF.Min(sphere.Position.Z - saabb.Min.Z, saabb.Max.Z - sphere.Position.Z);
-
-                        Vector3 pushDir;
-                        float pushDist;
-                        if (ex <= ey && ex <= ez)
-                        {
-                            pushDist = sphere.Radius + ex;
-                            pushDir = new Vector3(sphere.Position.X <= saabb.Min.X + ex ? -1f : 1f, 0f, 0f);
-                        }
-                        else if (ey <= ez)
-                        {
-                            pushDist = sphere.Radius + ey;
-                            pushDir = new Vector3(0f, sphere.Position.Y <= saabb.Min.Y + ey ? -1f : 1f, 0f);
-                        }
-                        else
-                        {
-                            pushDist = sphere.Radius + ez;
-                            pushDir = new Vector3(0f, 0f, sphere.Position.Z <= saabb.Min.Z + ez ? -1f : 1f);
-                        }
-
-                        sphere.Position += pushDir * pushDist;
-                        sphere.Object3D?.SetPosition(sphere.Position.X, sphere.Position.Y, sphere.Position.Z);
-
-                        float velAlong = Vector3.Dot(sphere.Physics.Velocity, pushDir);
-                        if (velAlong < 0f)
-                        {
-                            sphere.Physics.Velocity -= pushDir * (2f * velAlong) * 0.5f;
-                            sphere.Physics.Velocity.X *= 0.8f;
-                            sphere.Physics.Velocity.Z *= 0.8f;
-                        }
-                    }
-                    else
-                    {
-                        // Push sphere out along direction from closest point
-                        float penetration = sphere.Radius - dist;
-                        Vector3 pushDir = new(dx / dist, dy / dist, dz / dist);
-
-                        sphere.Position += pushDir * penetration;
-                        sphere.Object3D?.SetPosition(sphere.Position.X, sphere.Position.Y, sphere.Position.Z);
-
-                        float velAlong = Vector3.Dot(sphere.Physics.Velocity, pushDir);
-                        if (velAlong < 0f)
-                        {
-                            sphere.Physics.Velocity -= pushDir * (2f * velAlong) * 0.5f;
-                            sphere.Physics.Velocity.X *= 0.8f;
-                            sphere.Physics.Velocity.Z *= 0.8f;
-                        }
-                    }
-                }
-            }
-        }
 
         public GltfObject AddStaticObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f)
         {
@@ -1070,13 +782,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     continue;
                 }
 
-                // Occlusion culling: jika IsVisible=false (di-set oleh OcclusionCulling), skip render
-                if (!obj.IsVisible && OcclusionCulling.Enabled)
-                {
-                    CulledObjects++;
-                    CulledByOcclusion++;
-                    continue;
-                }
+
 
                 // SKINNED → ENABLE SKINNING
                 GL.Uniform1i(_useSkinningLoc, 1);

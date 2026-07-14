@@ -890,18 +890,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     createdCount++;
                     configureInstance?.Invoke(sobj);
 
-                    // Collision box override (scaled by instance scale)
-                    if (collisionSizeX > 0f || collisionSizeZ > 0f)
-                    {
-                        var waabb = sobj.CachedWorldAABB;
-                        Vector3 colCtr = (waabb.Min + waabb.Max) * 0.5f;
-                        Vector3 halfSz = (waabb.Max - waabb.Min) * 0.5f;
-                        float scaledCX = collisionSizeX * scale;
-                        float scaledCZ = collisionSizeZ * scale;
-                        if (collisionSizeX > 0f) halfSz.X = scaledCX * 0.5f;
-                        if (collisionSizeZ > 0f) halfSz.Z = scaledCZ * 0.5f;
-                        sobj.CachedCollisionAABB = new AABB(colCtr - halfSz, colCtr + halfSz);
-                    }
+
                 }
 
                 if (onProgress != null && (i % progressInterval == 0 || i == count - 1))
