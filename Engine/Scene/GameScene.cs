@@ -34,7 +34,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         //  Render state (initialized in Enter) 
         private PostProcessStack? _ppStack;
         private CSM? _csm;
-                // Shader uniform locations (terrain)
+        // Shader uniform locations (terrain)
         private uint _terrainShader;
         private int _terrainShadowMap0Loc, _terrainShadowMap1Loc, _terrainShadowMap2Loc;
         private int _terrainLightSpaceLoc0, _terrainLightSpaceLoc1, _terrainLightSpaceLoc2;
@@ -192,7 +192,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var invertPass = new InvertPass(Shader.GetInvertPassShaderProgram());
             // ppStack.AddPass(invertPass);
 
-            //  CSM 
+            //  CSM
             _csm = new CSM(Config.ShadowConfig.CascadeSizes[0]);
 
             // Cache terrain shader uniform locations
@@ -432,19 +432,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 // 4A. Update player movement â€” only when not paused (skip during input cooldown)
                 if (!_paused && _inputCooldown <= 0f)
+                {
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
-
+                }
 
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
 
-
-
-
-
-
-
-                // 5. Set Camera orbital (with terrain + wall collision) â€” always runs
+                // 5. Set Camera orbital (with terrain collision) â€” always runs
                 _camera.SetCamera(window, _objectManager.PlayerAgent.Position, _gameTerrainChunk, deltaTime, null);
 
             }
@@ -733,6 +728,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 else if (_settingsActive)
                 {
+                    if (!wireframeMode)
+                        _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
                     RenderSettingsPanel();
                 }
                 else
@@ -1324,18 +1321,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 Mouse.ShowMouse(false);
                 Mouse.ResetState();
             }
-            else if (index == 1) // Save Game
+            else if (index == 1 || index == 2)
             {
-                OpenSaveLoadUI(true);
-            }
-            else if (index == 2) // Load Game
-            {
-                OpenSaveLoadUI(false);
+                _hud?.ClearButtons();
+                OpenSaveLoadUI(index == 1);
             }
             else if (index == 3) // Settings â€” save snapshot for cancel
             {
                 // Save snapshot of current values for cancel/revert
                 Array.Copy(_inGameSettingValues, _settingsSnapshot, _inGameSettingValues.Length);
+                _hud?.ClearButtons();
                 _settingsActive = true;
                 _settingsSelection = 0;
                 // Sync edge-tracking flags to prevent input bleed/flickering
@@ -1354,6 +1349,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
             else // Back to Main Menu (index 5) â†’ show confirmation
             {
+                _hud?.ClearButtons();
                 _confirmingExit = true;
                 _confirmSelection = 0;
                 // Sync edge-tracking flags to prevent input bleed/flickering

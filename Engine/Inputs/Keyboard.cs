@@ -20,7 +20,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         static Vector3[]? frozenCorners = null;
 
         // Debug visualization mode (cycled with N key)
-        // 0=Off, 1=AABB, 2=AABB+Occlusion Mesh, 3=AABB+Convex Hull, 4=All
+        // 0=Off, 1=AABB, 2=All
         static int debugMode = 0;
         static bool nPressed = false;
         public static int GetDebugMode() => debugMode;
@@ -374,20 +374,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             //MeasureTravelTime(window, camera);
              
             // N: cycle debug visualization mode
-            // 0=Off → 1=AABB → 2=AABB+Occlusion Mesh → 3=AABB+Convex Hull → 4=All → 0
+            // 0=Off → 1=AABB → 2=All → 0
             int nState = glfwGetKey(window, Const.GLFW_KEY_N);
             if (nState == Const.GLFW_PRESS)
             {
                 if (!nPressed)
                 {
-                    debugMode = (debugMode + 1) % 5;
+                    debugMode = (debugMode + 1) % 3;
                     nPressed = true;
                     string modeName = debugMode switch
                     {
                         1 => "Debug: AABB",
-                        2 => "Debug: AABB + Occlusion Mesh",
-                        3 => "Debug: AABB + Convex Hull",
-                        4 => "Debug: All",
+                        2 => "Debug: All",
                         _ => "Debug: OFF"
                     };
                     Console.WriteLine(modeName);

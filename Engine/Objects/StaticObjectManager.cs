@@ -1410,60 +1410,6 @@ public void BuildSpatialGrid()
             return hasVerts ? new AABB(mn, mx) : new AABB(Vector3.Zero, Vector3.One);
         }
 
-        /// <summary>
-        /// Compute LOCAL AABB dari mesh-mesh yang namanya mengandung partName (case-insensitive).
-        /// Menerapkan node transform GLTF agar AABB sesuai dengan visual rendering.
-        /// World transform dilakukan oleh caller via CachedBaseWorldMat.
-        /// </summary>
-        private static AABB ComputeCollisionLocalAABB(GltfModelGpuData gpuData, string partName, StaticObject sobj, bool useNodeHierarchy)
-        {
-            Vector3 mn = new(float.PositiveInfinity);
-            Vector3 mx = new(float.NegativeInfinity);
-            bool found = false;
 
-            var meshes = gpuData.Data.Meshes;
-            if (meshes == null) return sobj.Group.LocalAABB;
-
-            // Only search meshes that belong to this object's group (its children),
-            // not meshes from other groups/variants.
-            var groupMeshSet = new HashSet<int>();
-            foreach (var lodKv in sobj.Group.Lods)
-                foreach (int mi in lodKv.Value)
-                    groupMeshSet.Add(mi);
-
-            foreach (int mi in groupMeshSet)
-            {
-                if (mi < 0 || mi >= meshes.Length) continue;
-                string? meshName = meshes[mi].Name;
-                if (string.IsNullOrEmpty(meshName)) continue;
-                if (!meshName.Contains(partName, StringComparison.OrdinalIgnoreCase)) continue;
-
-                var verts = meshes[mi].Vertices;
-                if (verts == null || verts.Length == 0) continue;
-
-                // Cari node transform untuk mesh ini (sama seperti rendering: nodeMatrix * baseWorldMat)
-                int nodeIdx = (gpuData.MeshToNode != null && mi < gpuData.MeshToNode.Length)
-                    ? gpuData.MeshToNode[mi] : -1;
-                Matrix4x4 nodeMat = Matrix4x4.Identity;
-                if (nodeIdx >= 0 && gpuData.Data.Nodes != null && nodeIdx < gpuData.Data.Nodes.Length)
-                    nodeMat = (useNodeHierarchy
-                        ? GetNodeWorldMatrix(gpuData.Data.Nodes, nodeIdx)
-                        : gpuData.Data.Nodes[nodeIdx].LocalMatrix);
-
-                found = true;
-                for (int vi = 0; vi < verts.Length; vi++)
-                {
-                    // Transform vertex ke model-local space pakai node matrix
-                    Vector3 modelLocal = Vector3.Transform(verts[vi].Position, nodeMat);
-                    mn = Vector3.Min(mn, modelLocal);
-                    mx = Vector3.Max(mx, modelLocal);
-                }
-            }
-
-            if (!found)
-                return sobj.Group.LocalAABB; // fallback ke group local AABB jika tidak ada mesh yang cocok
-
-            return new AABB(mn, mx); // LOCAL AABB (belum di-transform ke world)
-        }
     }
 }

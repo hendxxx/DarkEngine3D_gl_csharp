@@ -20,12 +20,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly Dictionary<string, GltfModelGpuData> _modelCache = [];
         private readonly List<GltfObject> _objects = [];
         private readonly List<CharacterAgent> _agents = [];
+        public IReadOnlyList<CharacterAgent> Agents => _agents;
         private readonly Random _agentRng = new(1982);
 
         public Vector3 WanderCenter = Vector3.Zero;
         public float WanderRadius = 30f;
         private const float RespawnDelay = 10f;
-        private const float FightSpacing = 0.7f;
 
         private readonly uint _shaderProgram;
         private readonly int _modelLoc;
@@ -146,7 +146,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float spawnCX = 0f;
             float spawnCZ = 0f;
             float minDist = 1.5f;
-            float spawnRadius = 253;
+            float spawnRadius = 100.0f;
 
             var spawnedPositions = new List<Vector2>();
 
@@ -157,7 +157,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // PHASE 1: AI CHARACTERS (0% → 15%)
             // ─────────────────────────────────────
             OnLoadProgress?.Invoke(0f, "AI: spawning characters...");
-            int NumberOfAI = 250;
+            int NumberOfAI = 5;
             for (int i = 0; i < NumberOfAI; i++)
             {
                 float px, pz;
@@ -196,8 +196,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.10f, "AI: initializing wandering...");
             WanderCenter = new Vector3(spawnCX, 0f, spawnCZ);
             WanderRadius = 50f;
-             
-            InitWanderingAgents();
 
             OnLoadProgress?.Invoke(0.15f, "AI: done");            // ─────────────────────────────────────
             // PHASE 2: STATIC OBJECTS (15% → 85%)
@@ -305,8 +303,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 StaticManagers = staticObjectManagers
             };
 
+            // ── Load additional animations ONCE (after all objects created) ──
             AddAddtionalAnimation();
-            
+
+            // ── Create agents for ALL NPCs (must happen after animations are loaded) ──
+            InitWanderingAgents();
+
             OnLoadProgress?.Invoke(0.87f, "Player: loading animations...");
 
 
@@ -502,8 +504,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void InitWanderingAgents()
         {
-            AddAddtionalAnimation();
-
             foreach (var obj in _objects)
             {
                 if (!obj.IsPlayer)
@@ -579,91 +579,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var a in _agents)
                 a.Move(window, camera, dt, terrain, WanderCenter, WanderRadius);
 
-            // 3) Collision (LOD-aware)
-            ResolveCollisions(terrain);
-
-            // 4) Respawn
-            foreach (var a in _agents)
+            // 3) Respawn — use for-loop to track index for Jolt physics sync
+            for (int i = 0; i < _agents.Count; i++)
             {
+                var a = _agents[i];
                 if (a.Dead && a.DeadElapsed >= RespawnDelay)
                 {
                     float ang = (float)(_agentRng.NextDouble() * MathF.PI * 2.0);
                     float dist = (float)(_agentRng.NextDouble() * WanderRadius);
                     float x = WanderCenter.X + MathF.Cos(ang) * dist;
                     float z = WanderCenter.Z + MathF.Sin(ang) * dist;
-                    a.Respawn(new Vector3(x, terrain.GetHeightAt(x, z), z));
+                    var newPos = new Vector3(x, terrain.GetHeightAt(x, z), z);
+                    a.Respawn(newPos);
                 }
             }
         }
 
-
-        // Collision LOD-aware
-        private void ResolveCollisions(TerrainChunk terrain)
-        {
-            int count = _agents.Count;
-            if (count <= 1) return;
-
-            for (int i = 0; i < count; i++)
-            {
-                var a = _agents[i];
-                if (a.Dead || a.AiLOD == CharacterAgent.AiLodLevel.Frozen) continue;
-
-                for (int j = i + 1; j < count; j++)
-                {
-                    var b = _agents[j];
-                    if (b.Dead || b.AiLOD == CharacterAgent.AiLodLevel.Frozen) continue;
-
-                    if ((a.AiLOD == CharacterAgent.AiLodLevel.Simulated && LODConfig.SkipCollisionForLOD2) ||
-                        (a.AiLOD == CharacterAgent.AiLodLevel.Frozen && LODConfig.SkipCollisionForLOD3) ||
-                        (b.AiLOD == CharacterAgent.AiLodLevel.Simulated && LODConfig.SkipCollisionForLOD2) ||
-                        (b.AiLOD == CharacterAgent.AiLodLevel.Frozen && LODConfig.SkipCollisionForLOD3))
-                    continue;
-
-
-                    var pa = a.Position;
-                    var pb = b.Position;
-
-                    // Capsule Y-overlap check
-                    float aSegMin = pa.Y + CharacterAgent.CollisionRadius;
-                    float aSegMax = pa.Y + a.CollisionHeight - CharacterAgent.CollisionRadius;
-                    float bSegMin = pb.Y + CharacterAgent.CollisionRadius;
-                    float bSegMax = pb.Y + b.CollisionHeight - CharacterAgent.CollisionRadius;
-                    float overlapY = MathF.Min(aSegMax, bSegMax) - MathF.Max(aSegMin, bSegMin);
-                    if (overlapY <= 0.001f) continue;
-
-                    float dx = pa.X - pb.X;
-                    float dz = pa.Z - pb.Z;
-                    float distSq = dx * dx + dz * dz;
-
-                    bool engaged =
-                        ((a.Mode == CharacterAgent.Behavior.Fight || a.Mode == CharacterAgent.Behavior.Chase) && ReferenceEquals(a.Target, b)) ||
-                        ((b.Mode == CharacterAgent.Behavior.Fight || b.Mode == CharacterAgent.Behavior.Chase) && ReferenceEquals(b.Target, a));
-
-                    float minDist = engaged ? FightSpacing : (CharacterAgent.CollisionRadius + CharacterAgent.CollisionRadius);
-                    if (distSq >= minDist * minDist) continue;
-
-                    float dist = MathF.Sqrt(distSq);
-                    float nx, nz;
-                    if (dist > 1e-4f) { nx = dx / dist; nz = dz / dist; }
-                    else
-                    {
-                        float ang = (float)(_agentRng.NextDouble() * MathF.PI * 2.0);
-                        nx = MathF.Sin(ang); nz = MathF.Cos(ang); dist = 0f;
-                    }
-
-                    float push = (minDist - dist) * 0.5f;
-                    pa.X += nx * push; pa.Z += nz * push;
-                    pb.X -= nx * push; pb.Z -= nz * push;
-                    pa.Y = terrain.GetHeightAt(pa.X, pa.Z);
-                    pb.Y = terrain.GetHeightAt(pb.X, pb.Z);
-                    a.Position = pa;
-                    b.Position = pb;
-
-                    a.AvoidFrom(pb);
-                    b.AvoidFrom(pa);
-                }
-            }
-        }
 
 
         public void ApplyAnimationFileToAll(string animPath, string? clipNameOverride = null, bool retargetRoot = false)

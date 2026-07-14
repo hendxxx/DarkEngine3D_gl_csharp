@@ -583,7 +583,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private const float GaitBlendAccel = 6.0f;   // walk→run: ~0.17s to reach 63%
         private const float GaitBlendDecel = 10.0f;   // run→walk: ~0.1s to reach 63%
 
-        /// <summary>Physics body for velocity-based movement (gravity, ground state, impulses).</summary>
+        /// <summary>Desired horizontal velocity for Jolt physics (set by Move(), consumed by GameScene).</summary>
+        public Vector3 DesiredVelocity = Vector3.Zero;
+
         private float headingVelocity = 0f;
         private bool _isJumping = false;
         // -----------------------------------------------------------------------
@@ -703,34 +705,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // When no input, _moveDirection stays from last frame so
                 // backward deceleration stays backward (not snap to forward)
 
-                // ── Calculate new position ──
-                var pos = Position;
-                Vector3 newPos = pos + _moveDirection * _currentSpeed * dt;
-
-                // ── Terrain height (with step-up) ──
-                float currentTerrainY = terrain.GetHeightAt(pos.X, pos.Z);
-                float newTerrainY = terrain.GetHeightAt(newPos.X, newPos.Z);
-                float terrainStep = newTerrainY - currentTerrainY;
-
-                if (terrainStep > 0f && terrainStep <= MaxStepHeight)
+                // ── Apply movement to player position directly (no Jolt) ──
+                if (_currentSpeed > 0.01f && terrain != null)
                 {
-                    // Step up onto small terrain rise
-                    newPos.Y = newTerrainY;
+                    var pos = _obj.Position;
+                    pos.X += _moveDirection.X * _currentSpeed * dt;
+                    pos.Z += _moveDirection.Z * _currentSpeed * dt;
+                    pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
+                    _obj.Position = pos;
                 }
-                else if (terrainStep > MaxStepHeight)
+                else if (terrain != null)
                 {
-                    // Too steep — don't move up, just stay in place
-                    newPos = pos;
-                    _currentSpeed *= 0.3f;
+                    // Still snap Y to terrain when standing still
+                    var pos = _obj.Position;
+                    pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
+                    _obj.Position = pos;
                 }
-                else
-                {
-                    // Downhill or flat — follow terrain
-                    newPos.Y = newTerrainY;
-                }
-
-                // Ensure Y is on terrain
-                newPos.Y = MathF.Max(newPos.Y, terrain.GetHeightAt(newPos.X, newPos.Z));
 
                 // =====================
                 // ACTION INPUTS
@@ -750,8 +740,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _oneShotName = "block";
                     _obj.PlayOnce("block", "fightstance");
                 }
-                // Ensure Y is always on terrain height
-                newPos.Y = terrain.GetHeightAt(newPos.X, newPos.Z);
 
                 // =====================
                 // ONE-SHOT CHECK
@@ -763,13 +751,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         _oneShotPlaying = false;
                         _oneShotName = "";
                         _obj.PlaybackSpeed = 1f;
-
-
                     }
                     else
                     {
-                        Position = newPos;
-                        _obj.Position = newPos;
+                        // One-shot plays in place — Jolt handles position via velocity
                         _obj.SetFacing(_heading);
                         return;
                     }
@@ -867,9 +852,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _obj.Play(animClip, blend);
                 }
 
-                // ── Apply final position + rotation ──
-                Position = newPos;
-                _obj.Position = newPos;
+                // ── Apply rotation only (Jolt handles position via velocity) ──
                 _obj.SetFacing(_heading);
                 return;
             }

@@ -86,11 +86,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // Camera sway
         private float swayTimer = 0f;
 
-        // Collision parameters
-        private const float CameraCollisionRadius = 0.5f;
-        private const float CollisionResponseSpeed = 8.0f;
-        private const float CollisionDistance = 0.3f;
-
         // First person head bobbing
         private float headBobTimer = 0f;
         private const float HeadBobFrequency = 5.0f;
