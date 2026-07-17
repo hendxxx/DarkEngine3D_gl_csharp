@@ -92,6 +92,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr GetQueryObjectivPtr = IntPtr.Zero;
         internal static IntPtr GetQueryObjectuivPtr = IntPtr.Zero;
         internal static IntPtr ColorMaskPtr = IntPtr.Zero;
+        internal static IntPtr ScissorPtr = IntPtr.Zero;
+        internal static IntPtr GetIntegervPtr = IntPtr.Zero;
+        internal static IntPtr IsEnabledPtr = IntPtr.Zero;
+        internal static IntPtr DrawElementsBaseVertexPtr = IntPtr.Zero;
 
         // Buat properti pembungkus agar pemanggilan tetap bersih
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -445,6 +449,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static void ColorMask(bool red, bool green, bool blue, bool alpha)
             => ((delegate* unmanaged[Cdecl]<byte, byte, byte, byte, void>)ColorMaskPtr)(
                 (byte)(red ? 1 : 0), (byte)(green ? 1 : 0), (byte)(blue ? 1 : 0), (byte)(alpha ? 1 : 0));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Scissor(int x, int y, int width, int height)
+            => ((delegate* unmanaged[Cdecl]<int, int, int, int, void>)ScissorPtr)(x, y, width, height);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GetIntegerv(uint pname, int* data)
+            => ((delegate* unmanaged[Cdecl]<uint, int*, void>)GetIntegervPtr)(pname, data);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsEnabled(uint cap)
+            => ((delegate* unmanaged[Cdecl]<uint, byte>)IsEnabledPtr)(cap) != 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DrawElementsBaseVertex(uint mode, int count, uint type, void* indices, int baseVertex)
+            => ((delegate* unmanaged[Cdecl]<uint, int, uint, void*, int, void>)DrawElementsBaseVertexPtr)(mode, count, type, indices, baseVertex);
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

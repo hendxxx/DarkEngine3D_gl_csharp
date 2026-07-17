@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Scene;
@@ -110,8 +111,12 @@ public unsafe class Program
         // PHASE 2: SCENE SYSTEM
         // ═══════════════════════════════════════════════════
 
+        // ── Initialize IDE ──
+        IDE ide = new(window);
+
         SceneManager sceneManager = new();
-        
+        sceneManager.AttachIde(ide);
+
         // Create MainMenuScene first — user chooses Start Game to load the game
         MainMenuScene mainMenu = new(sceneManager, camera, light);
 

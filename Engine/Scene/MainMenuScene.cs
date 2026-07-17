@@ -105,6 +105,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _exitConfirmLeftWasDown = false;
         private bool _exitConfirmRightWasDown = false;
         private bool _exitConfirmEnterWasDown = false;
+        private bool _exitConfirmUpWasDown = false;
+        private bool _exitConfirmDownWasDown = false;
         private bool _exitConfirmEscapeWasDown = false;
         private bool _exitConfirmMouseWasDown = false;
 
@@ -350,6 +352,59 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _gridOffsetX -= 40f;
 
             nint window = Glfw.GetWindow();
+
+            // ── Skip scene input when IDE is active (mouse/keyboard control the IDE, not the main menu) ──
+            // Without this guard, clicking on IDE panels could accidentally trigger menu actions
+            // because both MainMenuScene and ImGui read from the same raw GLFW mouse state.
+            if (_sceneManager.IsIdeActive)
+            {
+                // Still update edge-tracking flags to prevent input bleed when IDE is toggled off
+                _upWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+                _downWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+                _enterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+                _escapeWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+                _leftWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+                _rightWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+                _mouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
+
+                _settingsUpWasDown = _upWasDown;
+                _settingsDownWasDown = _downWasDown;
+                _settingsEnterWasDown = _enterWasDown;
+                _settingsEscapeWasDown = _escapeWasDown;
+                _settingsLeftWasDown = _leftWasDown;
+                _settingsRightWasDown = _rightWasDown;
+                _settingsMouseWasDown = _mouseWasDown;
+
+                _loadGameUpWasDown = _upWasDown;
+                _loadGameDownWasDown = _downWasDown;
+                _loadGameEnterWasDown = _enterWasDown;
+                _loadGameEscapeWasDown = _escapeWasDown;
+                _loadGameLeftWasDown = _leftWasDown;
+                _loadGameRightWasDown = _rightWasDown;
+                _loadGameMouseWasDown = _mouseWasDown;
+
+                _confirmUpWasDown = _upWasDown;
+                _confirmDownWasDown = _downWasDown;
+                _confirmEnterWasDown = _enterWasDown;
+                _confirmEscapeWasDown = _escapeWasDown;
+                _confirmLeftWasDown = _leftWasDown;
+                _confirmRightWasDown = _rightWasDown;
+                _confirmMouseWasDown = _mouseWasDown;
+
+                _exitConfirmUpWasDown = _upWasDown;
+                _exitConfirmDownWasDown = _downWasDown;
+                _exitConfirmEnterWasDown = _enterWasDown;
+                _exitConfirmEscapeWasDown = _escapeWasDown;
+                _exitConfirmLeftWasDown = _leftWasDown;
+                _exitConfirmRightWasDown = _rightWasDown;
+                _exitConfirmMouseWasDown = _mouseWasDown;
+
+                _menuLastHovered = -1;
+                _settingsLastHoveredRow = -1;
+                _confirmLastHovered = -1;
+                _exitConfirmLastHovered = -1;
+                return;
+            }
 
             // ── Mouse position tracking ──
             Mouse.GetCursorPosition(out double mouseX, out double mouseY);

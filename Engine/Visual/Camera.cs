@@ -220,18 +220,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
-        private void SetCameraFlyMode(nint window, float dt)
+        private void SetCameraFlyMode(nint window, float dt, bool processInput = true)
         {
-            // Mouse look (FPS style)
-            smoothYaw += Mouse.DeltaX * 0.1f;
-            smoothPitch -= Mouse.DeltaY * 0.1f;
+            if (processInput)
+            {
+                // Mouse look (FPS style)
+                smoothYaw += Mouse.DeltaX * 0.1f;
+                smoothPitch -= Mouse.DeltaY * 0.1f;
 
-            smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
+                smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
 
-            Yaw = smoothYaw;
-            Pitch = smoothPitch;
+                Yaw = smoothYaw;
+                Pitch = smoothPitch;
 
-            // Update camera vectors (FPS)
+                // Movement
+                Vector3 move = Vector3.Zero;
+
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                    move += Front;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+                    move -= Front;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
+                    move -= Right;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                    move += Right;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
+                    move += Vector3.UnitY;
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL))
+                    move -= Vector3.UnitY;
+
+                if (move.LengthSquared() > 0)
+                    move = Vector3.Normalize(move);
+
+                Position += move * FlySpeed * dt;
+            }
+
+            // Update camera vectors (FPS) — always keep Front/Right/Up synced with current yaw/pitch
             Front.X = MathF.Cos(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
             Front.Y = MathF.Sin(Helpers.OGLMath.ToRadians(Pitch));
             Front.Z = MathF.Sin(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
@@ -239,29 +263,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
-
-            // Movement
-            Vector3 move = Vector3.Zero;
-
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                move += Front;
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
-                move -= Front;
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                move -= Right;
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                move += Right;
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
-                move += Vector3.UnitY;
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL))
-                move -= Vector3.UnitY;
-
-            if (move.LengthSquared() > 0)
-                move = Vector3.Normalize(move);
-
-            Position += move * FlySpeed * dt;
-
-            // No gravity, no terrain clamp, no collision
         }
 
 
@@ -285,10 +286,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
         }
 
-        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null)
+        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null, bool processInput = true)
         {
-            // Toggle FlyMode
-            if (Keyboard.IsKeyPressed(window, Const.GLFW_KEY_G))
+            // Prevent scroll accumulation when viewport is not focused (applies to all camera modes)
+            if (!processInput)
+                Mouse.ResetScroll();
+
+            // Toggle FlyMode — only when input is allowed
+            if (processInput && Keyboard.IsKeyPressed(window, Const.GLFW_KEY_G))
                 FlyMode = !FlyMode;
             
             IsFlyMode = FlyMode; 
@@ -296,17 +301,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (FlyMode)
             {
                 IsFlyMode = true; 
-                SetCameraFlyMode(window, dt);
+                SetCameraFlyMode(window, dt, processInput);
                 return;
             } 
 
             if (_cameraMode == CameraMode.FirstPerson)
-                SetCameraFirstPerson(window, position, gameTerrainChunk, dt);
+                SetCameraFirstPerson(window, position, gameTerrainChunk, dt, processInput);
             else
-                SetCameraThirdPerson(window, position, gameTerrainChunk, dt, staticManagers);
+                SetCameraThirdPerson(window, position, gameTerrainChunk, dt, staticManagers, processInput);
         }
 
-        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null)
+        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null, bool processInput = true)
         {
             var preset = CurrentPreset;
             if (preset == null) return;
@@ -337,22 +342,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // Pivot is at the character's upper body / head
             Vector3 pivotPos = position + new Vector3(0, heightOffset, 0);
 
-            // AIM MODE (ADS)
-            if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_RIGHT))
-                IsADS = true;
-            else
-                IsADS = false;
+            if (processInput)
+            {
+                // AIM MODE (ADS)
+                if (Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_RIGHT))
+                    IsADS = true;
+                else
+                    IsADS = false;
+
+                // SHOULDER SWAP
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_Q))
+                    targetShoulderOffset = -MathF.Abs(targetShoulderOffset);
+
+                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_E))
+                    targetShoulderOffset = MathF.Abs(targetShoulderOffset);
+            }
 
             float targetFov = IsADS ? 45.0f : BaseFoV;
             FoV = Helpers.OGLMath.Lerp(FoV, targetFov, 1f - MathF.Exp(-8f * dt));
             _projectionDirty = true;
-
-            // SHOULDER SWAP
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_Q))
-                targetShoulderOffset = -MathF.Abs(targetShoulderOffset);
-
-            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_E))
-                targetShoulderOffset = MathF.Abs(targetShoulderOffset);
 
             shoulderOffset = Helpers.OGLMath.Lerp(
                 shoulderOffset,
@@ -383,18 +391,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             Vector3 offset = new Vector3(shoulder, 0, -camDist);
 
-            // CAMERA SWAY
-            bool isMoving =
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_W) ||
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_A) ||
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_S) ||
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
-
-            if (isMoving)
+            // CAMERA SWAY — only when input is allowed (moving key detection requires keyboard)
+            if (processInput)
             {
-                swayTimer += dt * 6f;
-                float sway = MathF.Sin(swayTimer) * 0.05f;
-                offset.X += sway;
+                bool isMoving =
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_W) ||
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_A) ||
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_S) ||
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+
+                if (isMoving)
+                {
+                    swayTimer += dt * 6f;
+                    float sway = MathF.Sin(swayTimer) * 0.05f;
+                    offset.X += sway;
+                }
+                else
+                {
+                    swayTimer = 0f;
+                }
             }
             else
             {
@@ -419,8 +434,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 0
             );
 
-            // SCROLL ZOOM
-            if (preset.AllowZoom && Mouse.ScrollY != 0)
+            // SCROLL ZOOM — only when input is allowed
+            if (processInput && preset.AllowZoom && Mouse.ScrollY != 0)
             {
                 CameraConfig.TargetCameraDistance -= Mouse.ScrollY * (CameraConfig.ZoomSpeed * camScale);
                 CameraConfig.TargetCameraDistance = Math.Clamp(
@@ -431,6 +446,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 Mouse.ResetScroll();
             }
+
+            // Prevent scroll accumulation when viewport is not focused
+            if (!processInput)
+                Mouse.ResetScroll();
 
             Vector3 camOffset = Vector3.TransformNormal(offset, rot);
             Vector3 idealPos = pivotPos + camOffset;
@@ -501,7 +520,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }
          
-        private void SetCameraFirstPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt)
+        private void SetCameraFirstPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, bool processInput = true)
         {
             float camScale = 1.0f;
             if (ScaleConfig.ScaleCamera)
@@ -517,18 +536,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // First person: camera at head height above player center
             Vector3 headPos = position + new Vector3(0, FirstPersonHeadHeight * camScale, 0);
 
-            // Head bobbing when moving
-            bool isMoving =
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_W) ||
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_A) ||
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_S) ||
-                Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
-
-            if (isMoving)
+            if (processInput)
             {
-                headBobTimer += dt * HeadBobFrequency;
-                float bobY = MathF.Sin(headBobTimer) * HeadBobAmount;
-                headPos.Y += bobY;
+                // Head bobbing when moving
+                bool isMoving =
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_W) ||
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_A) ||
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_S) ||
+                    Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+
+                if (isMoving)
+                {
+                    headBobTimer += dt * HeadBobFrequency;
+                    float bobY = MathF.Sin(headBobTimer) * HeadBobAmount;
+                    headPos.Y += bobY;
+                }
+                else
+                {
+                    headBobTimer = 0f;
+                }
             }
             else
             {

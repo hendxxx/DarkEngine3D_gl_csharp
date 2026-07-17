@@ -64,6 +64,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void SetHealth(float health) => Health = Math.Clamp(health, 0f, MaxHealth);
         public bool Dead { get; private set; }
         public float DeadElapsed => _deadTime;
+        public GltfObject GameObject => _obj;
         public Vector3 Position { get => _obj.Position; set => _obj.Position = value; }
         public Vector3 Forward
         {

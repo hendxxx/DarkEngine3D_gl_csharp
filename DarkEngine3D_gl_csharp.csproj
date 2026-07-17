@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ImGui.NET" Version="1.91.6.1" />
     <PackageReference Include="StbImageSharp" Version="2.30.15" />
     <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
   </ItemGroup>

@@ -2,7 +2,6 @@ using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DarkEngine3D_gl_csharp.Engine.Inputs
 {
@@ -23,6 +22,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         private static nint window = 0;
         public static float ScrollY => (float)scrollY;
         public static float ScrollX => (float)scrollX;
+
+        /// <summary>Get mouse position as screen coordinates.</summary>
+        public static (float X, float Y) GetPosition()
+        {
+            double x = 0, y = 0;
+            GetCursorPosition(out x, out y);
+            return ((float)x, (float)y);
+        }
+
+        /// <summary>Check if a mouse button is currently down.</summary>
+        public static bool IsButtonDown(int button)
+        {
+            if (window == 0) return false;
+            return glfwGetMouseButton(window, button) == Const.GLFW_PRESS;
+        }
+
+        /// <summary>Get vertical scroll delta since last call, then reset.</summary>
+        public static float GetScrollDeltaY()
+        {
+            float val = (float)scrollY;
+            scrollY = 0;
+            return val;
+        }
 
         public static void ResetScroll()
         {

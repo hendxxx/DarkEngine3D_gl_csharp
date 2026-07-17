@@ -143,6 +143,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         private int _renderedTris;
 
+        //  IDE focus-camera state
+        private Vector3? _cameraFocusPivot = null;
+        private float _focusHoldTimer = 0f;
+
         //  Per-frame render timing (ms) 
         private System.Diagnostics.Stopwatch _renderTimer = new();
         private System.Diagnostics.Stopwatch _frameTotalTimer = new();
@@ -156,6 +160,104 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _sceneManager = sceneManager;
             _camera = camera;
             _light = light;
+        }
+
+        /// <summary>Populate IDEBridge with the latest frame's data for IDE panels.</summary>
+        private void UpdateBridgeData(float deltaTime)
+        {
+            var bridge = _sceneManager.Bridge;
+            if (bridge == null) return;
+
+            // Performance
+            bridge.Fps = Glfw.GetLastFPS();
+            bridge.FrameMs = deltaTime * 1000f;
+
+            // Camera
+            bridge.Camera = _camera;
+            bridge.CameraPosition = _camera.Position;
+            bridge.CameraYaw = _camera.Yaw * 180f / MathF.PI;
+            bridge.CameraPitch = _camera.Pitch * 180f / MathF.PI;
+
+            // Scene name
+            bridge.SceneName = "GameScene";
+
+            // Object counts
+            if (_objectManager != null)
+            {
+                bridge.AnimatedObjectCount = _objectManager.GetObjects().Count;
+                bridge.StaticObjectCount = _objectManager.staticObjectManagers?.Sum(m => m?.GetTotalObject ?? 0) ?? 0;
+                bridge.TotalObjects = _objectManager.TotalObjects;
+                bridge.DrawnObjects = _objectManager.DrawnObjects;
+                bridge.TotalTriangles = (_objectManager.TotalObjectTriangles) + (TerrainChunk.GetTotalMapTriangles());
+                bridge.RenderedTriangles = (_objectManager.RenderedTriangles) + (_renderedTris);
+                bridge.AllAgents = _objectManager.Agents;
+                bridge.AllObjects = _objectManager.GetObjects();
+
+                // Wire select-by-index: maps hierarchy list index to agent or object
+                bridge.SelectObjectByIndex = (int idx) =>
+                {
+                    var agents = _objectManager.Agents;
+                    var objects = _objectManager.GetObjects();
+
+                    if (idx >= 0 && idx < agents.Count)
+                    {
+                        // Select agent
+                        bridge.SelectedAgent = agents[idx];
+                        bridge.SelectedObject = agents[idx].GameObject;
+                    }
+                    else
+                    {
+                        // Find the (idx - agents.Count)-th non-agent object
+                        int nonAgentIdx = idx - agents.Count;
+                        int found = 0;
+                        for (int oi = 0; oi < objects.Count; oi++)
+                        {
+                            bool isAgent = false;
+                            for (int ai = 0; ai < agents.Count; ai++)
+                            {
+                                if (ReferenceEquals(agents[ai].GameObject, objects[oi]))
+                                { isAgent = true; break; }
+                            }
+                            if (!isAgent)
+                            {
+                                if (found == nonAgentIdx)
+                                {
+                                    bridge.SelectedObject = objects[oi];
+                                    bridge.SelectedAgent = null;
+                                    return;
+                                }
+                                found++;
+                            }
+                        }
+                    }
+                };
+
+                // Wire focus-camera action: sets pivot + timer so camera stays focused for ~2s
+                bridge.FocusCameraOnSelected = () =>
+                {
+                    var obj = bridge.SelectedObject;
+                    if (obj == null) return;
+
+                    Vector3 targetPos = obj.Position;
+                    _cameraFocusPivot = targetPos;
+                    _focusHoldTimer = 2f;
+
+                    // Place camera a few units behind, looking at the object
+                    Vector3 camOffset = new Vector3(0f, 2.5f, 5f);
+                    _camera.Position = targetPos + camOffset;
+                    _camera.PushPosition(_camera.Position);
+
+                    // Calculate yaw/pitch to look at object center
+                    Vector3 dir = Vector3.Normalize(targetPos - _camera.Position);
+                    _camera.Yaw = MathF.Atan2(dir.X, dir.Z) * 180f / MathF.PI;
+                    _camera.Pitch = -MathF.Asin(dir.Y) * 180f / MathF.PI;
+                    _camera.UpdateVectors();
+
+                    // Adjust camera distance for the focus
+                    float dist = Vector3.Distance(_camera.Position, targetPos);
+                    CameraConfig.TargetCameraDistance = Math.Clamp(dist, 1f, 20f);
+                };
+            }
         }
 
         /// <summary>
@@ -320,66 +422,100 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
 
-            //  ESCAPE: always toggle pause (ESC always opens/closes the menu) 
-            bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
-            if (escapeDown && !_escapeWasDown && !_confirmingExit)
+            // ── Viewport input gate: when IDE is active, only process game input if the Viewport panel is focused (unless manually locked via F9) ──
+            bool inputLocked = _sceneManager.Bridge?.InputLocked ?? false;
+            bool viewportFocused = _sceneManager.Bridge?.IsViewportFocused ?? true;
+            bool viewportAllowsInput = !_sceneManager.IsIdeActive || (!inputLocked && viewportFocused);
+
+            if (viewportAllowsInput)
             {
-                _paused = !_paused;
+                //  ESCAPE: always toggle pause (ESC always opens/closes the menu) 
+                bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+                if (escapeDown && !_escapeWasDown && !_confirmingExit)
+                {
+                    _paused = !_paused;
+                    if (_paused)
+                    {
+                        _pauseSelection = 0;
+                        Mouse.ShowMouse(true);
+                    }
+                    else
+                    {
+                        Mouse.ShowMouse(false);
+                        Mouse.ResetState();
+                    }
+                }
+                _escapeWasDown = escapeDown;
+
+                //  F5/F6: Save/Load 
+                bool f5Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F5);
+                bool f6Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F6);
+
+                if (f5Down && !_f5WasDown && !_saveLoadActive)
+                {
+                    OpenSaveLoadUI(true); // Save mode
+                }
+                if (f6Down && !_f6WasDown && !_saveLoadActive)
+                {
+                    OpenSaveLoadUI(false); // Load mode
+                }
+                _f5WasDown = f5Down;
+                _f6WasDown = f6Down;
+
+                //  Pause menu overlay input 
                 if (_paused)
                 {
-                    _pauseSelection = 0;
-                    Mouse.ShowMouse(true);
+                    if (_saveLoadActive)
+                        HandleSaveLoadInput(window);
+                    else if (_confirmingExit)
+                        HandleConfirmInput(window);
+                    else if (_settingsActive)
+                        HandleSettingsInput(window);
+                    else
+                        HandlePauseInput(window);
+
+                    if (!Config.GameplayConfig.PauseOnEsc)
+                        return;
                 }
                 else
                 {
-                    Mouse.ShowMouse(false);
-                    Mouse.ResetState();
+                    _pauseUpWasDown = false;
+                    _pauseDownWasDown = false;
+                    _pauseEnterWasDown = false;
+                    _settingsActive = false;
                 }
-            }
-            _escapeWasDown = escapeDown;
-
-            //  F5/F6: Save/Load 
-            bool f5Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F5);
-            bool f6Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F6);
-
-            if (f5Down && !_f5WasDown && !_saveLoadActive)
-            {
-                OpenSaveLoadUI(true); // Save mode
-            }
-            if (f6Down && !_f6WasDown && !_saveLoadActive)
-            {
-                OpenSaveLoadUI(false); // Load mode
-            }
-            _f5WasDown = f5Down;
-            _f6WasDown = f6Down;
-
-            //  Pause menu overlay input 
-            if (_paused)
-            {
-                if (_saveLoadActive)
-                    HandleSaveLoadInput(window);
-                else if (_confirmingExit)
-                    HandleConfirmInput(window);
-                else if (_settingsActive)
-                    HandleSettingsInput(window);
-                else
-                    HandlePauseInput(window);
-
-                if (!Config.GameplayConfig.PauseOnEsc)
-                    return;
             }
             else
             {
-                _pauseUpWasDown = false;
-                _pauseDownWasDown = false;
-                _pauseEnterWasDown = false;
-                _settingsActive = false;
+                // ── Viewport NOT focused: sync all edge-tracking flags to prevent input bleed when re-entering ──
+                _escapeWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+                _f5WasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F5);
+                _f6WasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F6);
+                _pauseUpWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
+                _pauseDownWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
+                _pauseEnterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+                _saveLoadUpWasDown = _pauseUpWasDown;
+                _saveLoadDownWasDown = _pauseDownWasDown;
+                _saveLoadEnterWasDown = _pauseEnterWasDown;
+                _saveLoadEscapeWasDown = _escapeWasDown;
+                _saveLoadLeftWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+                _saveLoadRightWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+                _settingsUpWasDown = _pauseUpWasDown;
+                _settingsDownWasDown = _pauseDownWasDown;
+                _settingsLeftWasDown = _saveLoadLeftWasDown;
+                _settingsRightWasDown = _saveLoadRightWasDown;
+                _settingsEnterWasDown = _pauseEnterWasDown;
+                _settingsEscapeWasDown = _escapeWasDown;
+                _confirmLeftWasDown = _saveLoadLeftWasDown;
+                _confirmRightWasDown = _saveLoadRightWasDown;
+                _confirmEnterWasDown = _pauseEnterWasDown;
+                _confirmEscapeWasDown = _escapeWasDown;
             }
 
             _time += deltaTime;
 
-            //  Player input & camera control â€” only when not paused 
-            if (!_paused)
+            //  Player input & camera control — only when not paused AND viewport allows input
+            if (!_paused && viewportAllowsInput)
             {
                 //  Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed 
                 if (_inputCooldown > 0f)
@@ -401,7 +537,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                              Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
                     }
 
-                    // 1. Mouse â†’ yaw/pitch â†’ vectors
+                    // 1. Mouse → yaw/pitch → vectors
                     Mouse.Update(window, _camera);
                     _camera.UpdateVectors();
 
@@ -430,8 +566,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4. Update agents (AI, physics, animations) â€” always runs
                 _objectManager.Update(deltaTime);
 
-                // 4A. Update player movement â€” only when not paused (skip during input cooldown)
-                if (!_paused && _inputCooldown <= 0f)
+                // 4A. Update player movement — only when not paused, input cooldown passed, AND viewport focused
+                if (!_paused && _inputCooldown <= 0f && viewportAllowsInput)
                 {
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
                 }
@@ -439,9 +575,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
 
-                // 5. Set Camera orbital (with terrain collision) â€” always runs
-                _camera.SetCamera(window, _objectManager.PlayerAgent.Position, _gameTerrainChunk, deltaTime, null);
+                // 5. Set Camera orbital (with terrain collision) — always runs, but skip input when viewport not focused
+                Vector3 camPivot = _cameraFocusPivot ?? _objectManager.PlayerAgent.Position;
+                _camera.SetCamera(window, camPivot, _gameTerrainChunk, deltaTime, null, viewportAllowsInput);
 
+                // 5A. Focus hold timer: decrement and release back to player
+                if (_focusHoldTimer > 0f)
+                {
+                    _focusHoldTimer -= deltaTime;
+                    if (_focusHoldTimer <= 0f)
+                    {
+                        _cameraFocusPivot = null;
+                        _focusHoldTimer = 0f;
+                    }
+                }
             }
 
             // 6. Update Light (always runs)
@@ -496,13 +643,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (_ppStack == null || _csm == null || _skybox == null || _hud == null) return;
 
             bool wireframeMode = Keyboard.GetIsWireframe();
+            bool ideActive = _sceneManager.IsIdeActive;
 
             //  Start per-frame render timing 
             _renderTimer.Restart();
             _frameTotalTimer.Restart();
 
-            //  MAIN RENDER PASS 
-            if (wireframeMode)
+            //  MAIN RENDER PASS — always use FBO when IDE is active so Viewport has a texture
+            if (wireframeMode && !ideActive)
             {
                 // Wireframe: render directly to screen, skip postprocess (F1 conflicts with PP)
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
@@ -628,11 +776,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _objectsTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
             _renderTimer.Restart();
 
-            //  Post Process (render SceneFBO to screen) â€” skip in wireframe mode 
-            if (!wireframeMode)
+            //  Post Process (render SceneFBO to screen) — skip when IDE is active (scene stays in FBO for Viewport panel)
+            if (wireframeMode)
+            {
+                if (!ideActive) GL.Enable(Const.GL_DEPTH_TEST);
+            }
+            else if (!ideActive)
+            {
                 _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
-            else
-                GL.Enable(Const.GL_DEPTH_TEST);
+            }
+            // When IDE active, SceneManager binds framebuffer 0 after scene render for ImGui.
 
             //  Record post-process timing
             _postProcessTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
@@ -647,8 +800,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 SaveManager.CaptureScreenshot(slot);
             }
 
-            //  Pause Blur Overlay (skip in wireframe mode) 
-            if (_paused && !_confirmingExit && !_settingsActive)
+            //  When IDE is active, scene renders to FBO only — expose texture for Viewport panel
+            if (ideActive && _ppStack != null)
+            {
+                var bridge = _sceneManager.Bridge;
+                if (bridge != null)
+                {
+                    bridge.SceneTextureID = _ppStack.SceneColorTex;
+                    bridge.SceneTextureWidth = Glfw.WindowWidth;
+                    bridge.SceneTextureHeight = Glfw.WindowHeight;
+                }
+            }
+
+            //  Pause blur overlay (skip in wireframe mode or IDE active)
+            if (!ideActive && _paused && !_confirmingExit && !_settingsActive)
             {
                 if (!wireframeMode)
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
@@ -711,8 +876,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            //  PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY 
-            if (_paused)
+            //  PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY — skip when IDE is active
+            if (!ideActive && _paused)
             {
                 if (_saveLoadActive)
                 {
@@ -795,8 +960,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 //Console.WriteLine($"[HUD Debug] staticObjectManagers.Count={_objectManager.staticObjectManagers.Count} staticCount={staticCount} TotalObjects={_objectManager.TotalObjects} DrawnObjects={_objectManager.DrawnObjects} animCount={animCount}");
                 title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total  ({animCount} chars + {staticCount:N0} static)";
             }
-            //Save notification
-            if (_saveNotificationTimer > 0f)
+            //Save notification — skip when IDE is active (shown in Console panel instead)
+            if (!ideActive && _saveNotificationTimer > 0f)
             {
                 _saveNotificationTimer -= _deltaTime;
                 float fade = Math.Min(1f, _saveNotificationTimer);
@@ -804,17 +969,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float notifX = Glfw.WindowWidth * 0.5f - notifExt.Width * 0.5f;
                 float notifY = Glfw.WindowHeight * 0.15f;
                 _hud.DrawText(_saveNotification, notifX, notifY, new Vector3(0.3f, 0.9f, 0.4f) * fade);
+            }            //  Skip HUD overlay when IDE is active (SceneView panel shows this data)
+            if (!ideActive)
+            {
+                _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
+                float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
+                _hud.DrawText(title2, 10, 60 + debugLineH, new Vector3(1, 0, 0));
+                _hud.DrawText(title3, 10, 60 + debugLineH * 2, new Vector3(1, 1, 0));
+                _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
+                _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
+                _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
             }
-             
-            _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
-            float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
-            _hud.DrawText(title2, 10, 60 + debugLineH, new Vector3(1, 0, 0));
-            _hud.DrawText(title3, 10, 60 + debugLineH * 2, new Vector3(1, 1, 0));
-            _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
-            _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
-            _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
-             
+            
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
+
+            //  Populate IDEBridge AFTER rendering, so DrawnObjects/RenderedTriangles are current-frame
+            UpdateBridgeData(_deltaTime);
+
 
         }
 
