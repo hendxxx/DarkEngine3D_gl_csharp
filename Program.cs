@@ -60,8 +60,11 @@ public unsafe class Program
         // PHASE 1: ENGINE BOOTSTRAP (minimal initialization)
         // ═══════════════════════════════════════════════════
 
-        // Init GLFW and Create Window (fullscreen from settings)
-        Glfw.Init("My Native C# Engine", settings.Fullscreen);
+        // Init GLFW and Create Window (exclusive fullscreen or borderless fullscreen windowed from settings)
+        // If BorderlessFullscreen is active, use borderless windowed mode sized to monitor work area
+        // (work area excludes the taskbar so content isn't cut off).
+        bool useBorderless = !settings.Fullscreen && settings.BorderlessFullscreen;
+        Glfw.Init("My Native C# Engine", settings.Fullscreen, useBorderless);
 
         // Load Library GLFW
         IntPtr glfwLib = Glfw.GetglfwLib();
@@ -113,6 +116,9 @@ public unsafe class Program
 
         // ── Initialize IDE ──
         IDE ide = new(window);
+
+        // Restore persisted input lock state from settings
+        ide.Bridge.InGameActive = settings.InGameActive;
 
         SceneManager sceneManager = new();
         sceneManager.AttachIde(ide);

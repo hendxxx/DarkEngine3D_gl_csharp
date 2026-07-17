@@ -186,6 +186,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return Matrix4x4.CreateLookAt(Position, Position + Front, Up);
         }
 
+        /// <summary>
+        /// Convert viewport pixel coordinates (0..screenW, 0..screenH) to a world-space ray.
+        /// The viewport coordinates are scene-space pixels matching the render target size.
+        /// </summary>
+        public void ScreenToRay(float screenX, float screenY, int screenW, int screenH,
+            out Vector3 rayOrigin, out Vector3 rayDir)
+        {
+            // Convert to NDC (-1 to 1)
+            float ndcX = (screenX / screenW) * 2f - 1f;
+            float ndcY = (screenY / screenH) * 2f - 1f;
+
+            Matrix4x4 view = GetViewMatrix();
+            Matrix4x4 projection = GetProjectionMatrix();
+
+            // Row-vector: clipPos = worldPos * view * projection
+            // worldPos = clipPos * (view * projection)^-1
+            Matrix4x4 vp = view * projection;
+            if (!Matrix4x4.Invert(vp, out Matrix4x4 invVp))
+            {
+                rayOrigin = Position;
+                rayDir = Front;
+                return;
+            }
+
+            // Near plane (z=0) and far plane (z=1) in clip space
+            Vector4 nearPt = new Vector4(ndcX, ndcY, 0f, 1f);
+            Vector4 farPt = new Vector4(ndcX, ndcY, 1f, 1f);
+
+            nearPt = Vector4.Transform(nearPt, invVp);
+            farPt = Vector4.Transform(farPt, invVp);
+
+            if (nearPt.W != 0f) nearPt /= nearPt.W;
+            if (farPt.W != 0f) farPt /= farPt.W;
+
+            rayOrigin = new Vector3(nearPt.X, nearPt.Y, nearPt.Z);
+            Vector3 farPos = new Vector3(farPt.X, farPt.Y, farPt.Z);
+            rayDir = Vector3.Normalize(farPos - rayOrigin);
+        }
+
     public Matrix4x4 GetProjectionMatrix()
 {
     if (_projectionDirty)

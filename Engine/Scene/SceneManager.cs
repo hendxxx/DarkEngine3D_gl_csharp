@@ -71,6 +71,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         public void AttachIde(IDE.IDE ide)
         {
             _ide = ide;
+            // Give IDE panels access to the SceneManager for scene switching
+            ide.Bridge.SceneManager = this;
             // Recreate shared FBO when window is resized
             Glfw.OnWindowResized += OnSharedFboResized;
         }
@@ -88,6 +90,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         /// <summary>Whether the IDE is currently active (F2 toggled on).</summary>
         public bool IsIdeActive => _ide?.IsActive ?? false;
+
+        /// <summary>Shared FBO handles (for scenes that need to render into the viewport during IDE mode).</summary>
+        public uint SharedFBO => _sharedFBO;
+        public uint SharedColorTex => _sharedColorTex;
+
+        /// <summary>Ensure the shared FBO exists. Safe to call multiple times.</summary>
+        public void EnsureSharedFBOExists() => EnsureSharedFBO();
 
         /// <summary>
         /// Start the main loop with the given initial scene.
@@ -111,6 +120,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     SwitchToScene(_nextScene, false);
                 }
 
+                // ── Scene Update: always runs, even in IDE mode ──
+                // In AAA editor style, all game systems (physics, animation, AI)
+                // continue running so they can be edited/observed live.
+                // Only mouse/keyboard input is diverted to the IDE panels.
                 _currentScene?.Update(dt);
 
                 // ── IDE: F2 toggle ──
@@ -134,12 +147,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         _ide.Update(dt);
                     }
 
-                    // ── F9: toggle manual input lock for viewport ──
+                    // ── F9: toggle manual input lock for viewport — saved to settings.json ──
                     bool f9Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F9);
                     if (f9Down && !_f9WasDown && _ide.IsActive)
                     {
-                        _ide.Bridge.InputLocked = !_ide.Bridge.InputLocked;
-                        Console.WriteLine($"[SceneManager] Toggle InputLock: {_ide.Bridge.InputLocked}");
+                        _ide.Bridge.InGameActive = !_ide.Bridge.InGameActive;
+                        Console.WriteLine($"[SceneManager] Toggle InGameActive: {_ide.Bridge.InGameActive}");
+
+                        // Persist to settings.json
+                        var settings = Config.SettingsSave.Load();
+                        settings.InGameActive = _ide.Bridge.InGameActive;
+                        Config.SettingsSave.Save(settings);
                     }
                     _f9WasDown = f9Down;
                 }
@@ -165,6 +183,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
                     GL.ClearColor(0f, 0f, 0f, 1f);
                     GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+
+                    // Reset bridge texture ID before render so the post-render code
+                    // always assigns the correct frame's texture (handles FBO recreation
+                    // and scene switches where the new scene uses the shared FBO).
+                    var bridge = _ide.Bridge;
+                    if (bridge != null)
+                        bridge.SceneTextureID = 0;
                 }
 
                 _currentScene?.Render();

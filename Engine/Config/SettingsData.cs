@@ -7,11 +7,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     {
         public int Resolution { get; set; } = 0;       // 0=1920x1080, 1=1280x720, 2=2560x1440
         public bool Fullscreen { get; set; } = true;
+        public bool BorderlessFullscreen { get; set; } = false;   // true = fullscreen windowed (borderless, uses work area)
         public bool VSync { get; set; } = false;
         public int ShadowQuality { get; set; } = 3;    // 0=Low, 1=Medium, 2=High, 3=Ultra
         public int OcclusionMode { get; set; } = 1;    // 0=Software, 1=HiZ, 2=OFF
         public int Fov { get; set; } = 60;
         public int MouseSensitivity { get; set; } = 3;  // 0=0.25×, 1=0.50×, 2=0.75×, 3=1.0×, 4=1.5×, 5=2.0×, 6=3.0×
+        public bool InGameActive { get; set; } = false;   // F9 toggle — persists IDE input lock state
     }
 
     /// <summary>Loads/saves SettingsData to a JSON file next to the executable.</summary>

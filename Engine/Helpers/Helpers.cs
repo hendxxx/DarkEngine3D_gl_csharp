@@ -377,6 +377,53 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
                 point.Y >= Min.Y && point.Y <= Max.Y &&
                 point.Z >= Min.Z && point.Z <= Max.Z;
 
+            /// <summary>
+            /// Slab-method ray vs AABB intersection test.
+            /// Returns true if the ray hits the AABB, with tMin/tMax giving entry/exit distances.
+            /// Only counts hits in front of the ray (t > 0).
+            /// </summary>
+            public static bool RayIntersectsAABB(Vector3 rayOrigin, Vector3 rayDir, AABB aabb, out float tMin, out float tMax)
+            {
+                tMin = float.NegativeInfinity;
+                tMax = float.PositiveInfinity;
+
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    float origin = axis == 0 ? rayOrigin.X : (axis == 1 ? rayOrigin.Y : rayOrigin.Z);
+                    float dir = axis == 0 ? rayDir.X : (axis == 1 ? rayDir.Y : rayDir.Z);
+                    float min = axis == 0 ? aabb.Min.X : (axis == 1 ? aabb.Min.Y : aabb.Min.Z);
+                    float max = axis == 0 ? aabb.Max.X : (axis == 1 ? aabb.Max.Y : aabb.Max.Z);
+
+                    if (Math.Abs(dir) < 1e-10f)
+                    {
+                        // Ray is parallel to this slab
+                        if (origin < min || origin > max)
+                            return false;
+                    }
+                    else
+                    {
+                        float invDir = 1.0f / dir;
+                        float t1 = (min - origin) * invDir;
+                        float t2 = (max - origin) * invDir;
+
+                        if (t1 > t2)
+                        {
+                            float temp = t1;
+                            t1 = t2;
+                            t2 = temp;
+                        }
+
+                        tMin = Math.Max(tMin, t1);
+                        tMax = Math.Min(tMax, t2);
+
+                        if (tMin > tMax)
+                            return false;
+                    }
+                }
+
+                return tMax > 0f;
+            }
+
             public static AABB FromVertices(SkinnedVertex[] verts)
             {
                 if (verts.Length == 0) return new AABB(Vector3.Zero, Vector3.Zero);

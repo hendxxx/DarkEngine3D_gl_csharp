@@ -1,8 +1,12 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Scene
 {
@@ -25,6 +29,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private HUD? _hudSmall;
         private float _deltaTime;
         private float _totalTime;
+
+        // ── Scene root element (holds the UI hierarchy tree) ──
+        private readonly UIElement _sceneRoot = new()
+        {
+            Name = "MainMenu",
+            Type = UIElementType.Scene,
+            IsVisible = false, // Scene root is invisible
+        };
+
+        // ── Hierarchy sub-panel references (for position syncing) ──
+        private UIElement? _settingsPanelElement;
+        private UIElement? _loadGamePanelElement;
+        private UIElement? _toastElement;
+        private UIElement? _hintElement;
+
+        // ── UI Button Data (legacy flat list, kept for backward compat) ──
+        private readonly List<UIButtonData> _uiButtons = [];
 
         // ── Menu state ──
         private enum MenuAction { Continue, LoadGame, StartGame, Settings, Exit }
@@ -113,7 +134,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private readonly string[] _settingLabels =
         [
             "Resolution",
-            "Fullscreen",
+            "Display Mode",
             "VSync",
             "Shadow Quality",
             "OC Mode",
@@ -126,7 +147,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private readonly string[][] _settingOptions =
         [
             [Resolutions[0].Label, Resolutions[1].Label, Resolutions[2].Label],
-            ["OFF", "ON"],
+            ["EXCLUSIVE", "BORDERLESS", "WINDOWED"],
             ["OFF", "ON"],
             ["LOW", "MEDIUM", "HIGH", "ULTRA"],
             ["Software", "HiZ", "OFF"],
@@ -137,8 +158,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         ];
 
         // Current value index for each setting (last 2 = 0 always for Apply/Cancel)
+        // 0=Res,1=DisplayMode,2=VSync,3=Shadow,4=OC,5=FOV,6=Mouse,7=Apply,8=Cancel
+        // DisplayMode: 0=Exclusive, 1=Borderless, 2=Windowed
         private readonly int[] _settingValues = [0, 0, 0, 3, 1, 0, 3, 0, 0];
-        // 0=Res,1=FS,2=VSync,3=Shadow,4=OC,5=FOV,6=Mouse,7=Apply,8=Cancel
 
         // ── Shared lookup tables (avoid duplication) ──
         private readonly struct ResInfo
@@ -209,6 +231,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             public float AlphaSpeed;
             public Vector3 Color;
         }
+
+        // ── 3D Background Objects ──
+        private readonly List<GltfObject> _bgObjects = [];
+        private readonly Dictionary<string, GltfModelGpuData> _bgModelCache = [];
+        private List<BackgroundObjectData> _bgObjectDataList = [];
+        // Cached gltf shader uniform locations (set once in LoadBgObjects)
+        private int _bgModelLoc = -1;
+        private int _bgViewLoc = -1;
+        private int _bgProjLoc = -1;
 
         public MainMenuScene(SceneManager sceneManager, Camera camera, Lights light,
             string startupNotification = "")
@@ -281,7 +312,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Load saved settings from JSON ──
             var saved = SettingsSave.Load();
             _settingValues[0] = saved.Resolution;
-            _settingValues[1] = saved.Fullscreen ? 1 : 0;
+            // DisplayMode: 0=Exclusive, 1=Borderless, 2=Windowed
+            // Map legacy Fullscreen bool: true→Exclusive(0), false→Windowed(2)
+            _settingValues[1] = saved.BorderlessFullscreen ? 1 : (saved.Fullscreen ? 0 : 2);
             _settingValues[2] = saved.VSync ? 1 : 0;
             _settingValues[3] = saved.ShadowQuality;
             _settingValues[4] = saved.OcclusionMode;
@@ -321,6 +354,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Build menu based on existing saves ──
             BuildMenu();
 
+            // ── Register scene root + background objects for IDE Save All ──
+            SceneAssetSerializer.RegisterSceneRoot("MainMenu", _sceneRoot);
+            SceneAssetSerializer.RegisterBgObjects("MainMenu", _bgObjectDataList);
+
+            // ── Load or create .ing scene file ──
+            LoadOrCreateSceneFile();
+
+            // ── Load 3D background objects from scene data ──
+            LoadBgObjects();
+
             Console.WriteLine("[MainMenu] Entered.");
         }
 
@@ -353,59 +396,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             nint window = Glfw.GetWindow();
 
-            // ── Skip scene input when IDE is active (mouse/keyboard control the IDE, not the main menu) ──
-            // Without this guard, clicking on IDE panels could accidentally trigger menu actions
-            // because both MainMenuScene and ImGui read from the same raw GLFW mouse state.
-            if (_sceneManager.IsIdeActive)
+            // ── Input gate: when InGameActive=false, block ALL keyboard + mouse ──
+            bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
+            if (!ingameActive)
             {
-                // Still update edge-tracking flags to prevent input bleed when IDE is toggled off
-                _upWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
-                _downWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
-                _enterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
-                _escapeWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
-                _leftWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
-                _rightWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
-                _mouseWasDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
-
-                _settingsUpWasDown = _upWasDown;
-                _settingsDownWasDown = _downWasDown;
-                _settingsEnterWasDown = _enterWasDown;
-                _settingsEscapeWasDown = _escapeWasDown;
-                _settingsLeftWasDown = _leftWasDown;
-                _settingsRightWasDown = _rightWasDown;
-                _settingsMouseWasDown = _mouseWasDown;
-
-                _loadGameUpWasDown = _upWasDown;
-                _loadGameDownWasDown = _downWasDown;
-                _loadGameEnterWasDown = _enterWasDown;
-                _loadGameEscapeWasDown = _escapeWasDown;
-                _loadGameLeftWasDown = _leftWasDown;
-                _loadGameRightWasDown = _rightWasDown;
-                _loadGameMouseWasDown = _mouseWasDown;
-
-                _confirmUpWasDown = _upWasDown;
-                _confirmDownWasDown = _downWasDown;
-                _confirmEnterWasDown = _enterWasDown;
-                _confirmEscapeWasDown = _escapeWasDown;
-                _confirmLeftWasDown = _leftWasDown;
-                _confirmRightWasDown = _rightWasDown;
-                _confirmMouseWasDown = _mouseWasDown;
-
-                _exitConfirmUpWasDown = _upWasDown;
-                _exitConfirmDownWasDown = _downWasDown;
-                _exitConfirmEnterWasDown = _enterWasDown;
-                _exitConfirmEscapeWasDown = _escapeWasDown;
-                _exitConfirmLeftWasDown = _leftWasDown;
-                _exitConfirmRightWasDown = _rightWasDown;
-                _exitConfirmMouseWasDown = _mouseWasDown;
-
-                _menuLastHovered = -1;
-                _settingsLastHoveredRow = -1;
-                _confirmLastHovered = -1;
-                _exitConfirmLastHovered = -1;
+                // Skip all input processing (particles/animations already updated above)
                 return;
             }
-
+              
             // ── Mouse position tracking ──
             Mouse.GetCursorPosition(out double mouseX, out double mouseY);
             bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
@@ -416,17 +414,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float totalHeight = _menuItems.Length * ButtonHeight + (_menuItems.Length - 1) * ButtonSpacing;
             float startY = (Glfw.WindowHeight - totalHeight) * 0.5f;
 
-            // ── HUD Button System — replaces manual mouse hover/click for main menu ──
-            _hud.ClearButtons();
+            // ── Sync UIButtonData positions with responsive layout (in case of window resize) ──
             float menuBx = (Glfw.WindowWidth - btnWidth) * 0.5f;
-            for (int i = 0; i < _menuItems.Length; i++)
+            for (int i = 0; i < _uiButtons.Count; i++)
             {
-                int captured = i;
-                float menuBy = startY + i * (ButtonHeight + ButtonSpacing);
-                var action = _menuItems[captured];
-                _hud.AddButton(_menuLabels[i], menuBx, menuBy, btnWidth, ButtonHeight,
-                    () => ExecuteMenuAction(action));
+                _uiButtons[i].X = menuBx;
+                _uiButtons[i].Y = startY + i * (ButtonHeight + ButtonSpacing);
+                _uiButtons[i].Width = btnWidth;
+                _uiButtons[i].Height = ButtonHeight;
             }
+
+            // ── Sync UIElement hierarchy positions for the IDE tree ──
+            SyncHierarchyPositions();
+
+            // ── HUD Button System — uses UIButtonData for data-driven buttons ──
+            _hud.ClearButtons();
+            for (int i = 0; i < _uiButtons.Count; i++)
+            {
+                var uiBtn = _uiButtons[i];
+                if (!uiBtn.IsVisible) continue;
+                _hud.AddButton(uiBtn.Text, uiBtn.X, uiBtn.Y, uiBtn.Width, uiBtn.Height,
+                    () => uiBtn.OnClick?.Invoke());
+            }
+             
             if (!_exitConfirmActive)
             {
                 _hud.UpdateButtons();
@@ -775,20 +785,587 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
         }
 
-        /// <summary>Build the main menu item list — NEW GAME always shown.</summary>
+        /// <summary>Build the main menu item list — NEW GAME always shown.
+        /// Also creates UIButtonData instances for each menu button so they
+        /// can be inspected and edited from the IDE Inspector panel.</summary>
         private void BuildMenu()
         {
+            MenuAction[] actions;
+            string[] labels;
+
             if (SaveManager.HasAnySave())
             {
-                _menuItems = [MenuAction.Continue, MenuAction.StartGame, MenuAction.LoadGame, MenuAction.Settings, MenuAction.Exit];
-                _menuLabels = ["CONTINUE", "NEW GAME", "LOAD GAME", "SETTINGS", "EXIT"];
+                actions = [MenuAction.Continue, MenuAction.StartGame, MenuAction.LoadGame, MenuAction.Settings, MenuAction.Exit];
+                labels = ["CONTINUE", "NEW GAME", "LOAD GAME", "SETTINGS", "EXIT"];
             }
             else
             {
-                _menuItems = [MenuAction.StartGame, MenuAction.Settings, MenuAction.Exit];
-                _menuLabels = ["NEW GAME", "SETTINGS", "EXIT"];
+                actions = [MenuAction.StartGame, MenuAction.Settings, MenuAction.Exit];
+                labels = ["NEW GAME", "SETTINGS", "EXIT"];
             }
+            _menuItems = actions;
+            _menuLabels = labels;
             _selectedIndex = 0;
+
+            // ── Rebuild UI hierarchy and flat list for IDE Inspector ──
+            _sceneRoot.ClearChildren();
+            _uiButtons.Clear();
+            var grid = new GridLayout(Glfw.WindowWidth, Glfw.WindowHeight);
+            float btnWidth = grid.SpanW(BtnColStart, BtnColEnd);
+            float totalHeight = _menuItems.Length * ButtonHeight + (_menuItems.Length - 1) * ButtonSpacing;
+            float startY = (Glfw.WindowHeight - totalHeight) * 0.5f;
+            float menuBx = (Glfw.WindowWidth - btnWidth) * 0.5f;
+
+            for (int i = 0; i < _menuItems.Length; i++)
+            {
+                int capturedIdx = i; // capture for closure
+                var action = _menuItems[capturedIdx];
+
+                // Create both UIElement (for hierarchy) and UIButtonData (for rendering)
+                var btnName = labels[i];
+                var behaviorLabel = action switch
+                {
+                    MenuAction.StartGame => "Switch to LoadingScene (new game)",
+                    MenuAction.Continue => "Continue from latest save",
+                    MenuAction.LoadGame => "Open Load Game overlay",
+                    MenuAction.Settings => "Open Settings panel",
+                    MenuAction.Exit => "Show exit confirmation",
+                    _ => "None"
+                };
+
+                var uiBtn = new UIButtonData
+                {
+                    Name = btnName,
+                    Text = btnName,
+                    X = menuBx,
+                    Y = startY + i * (ButtonHeight + ButtonSpacing),
+                    Width = btnWidth,
+                    Height = ButtonHeight,
+                    FontPath = "Artifacts\\\\fonts\\\\Worldstar.ttf",
+                    FontSize = 28f,
+                    TextColor = new System.Numerics.Vector3(0.95f, 0.95f, 1f),
+                    BgColor = new System.Numerics.Vector3(0.10f, 0.12f, 0.18f),
+                    HoverBgColor = new System.Numerics.Vector3(0.22f, 0.28f, 0.45f),
+                    BorderColor = new System.Numerics.Vector3(0.15f, 0.18f, 0.25f),
+                    HoverBorderColor = new System.Numerics.Vector3(0.5f, 0.6f, 1f),
+                    Alignment = TextAlignment.Center,
+                    ClickBehaviorLabel = behaviorLabel,
+                    OnClick = () => ExecuteMenuAction(_menuItems[capturedIdx]),
+                };
+                _uiButtons.Add(uiBtn);
+
+                // Add to hierarchy as UIElement child of scene root
+                var element = new UIElement
+                {
+                    Name = btnName,
+                    Text = btnName,
+                    Type = UIElementType.Button,
+                    X = menuBx,
+                    Y = startY + i * (ButtonHeight + ButtonSpacing),
+                    Width = btnWidth,
+                    Height = ButtonHeight,
+                    FontSize = 28f,
+                    TextColor = new System.Numerics.Vector3(0.95f, 0.95f, 1f),
+                    BgColor = new System.Numerics.Vector3(0.10f, 0.12f, 0.18f),
+                    HoverBgColor = new System.Numerics.Vector3(0.22f, 0.28f, 0.45f),
+                    ClickBehaviorLabel = behaviorLabel,
+                    OnClick = () => ExecuteMenuAction(_menuItems[capturedIdx]),
+                };
+                _sceneRoot.AddChild(element);
+            }
+
+            // ── Add exit confirm dialog to hierarchy (only when exit action exists) ──
+            if (_menuItems.Contains(MenuAction.Exit))
+            {
+                var exitDialog = new UIElement
+                {
+                    Name = "ExitConfirm",
+                    Text = "Exit Confirm",
+                    Type = UIElementType.Dialog,
+                    IsVisible = false, // hidden by default, shown by _exitConfirmActive
+                };
+                exitDialog.AddChild(new UIElement
+                {
+                    Name = "CANCEL", Text = "CANCEL", Type = UIElementType.Button,
+                    X = 0, Y = 0, Width = 120, Height = 40, FontSize = 22f,
+                });
+                exitDialog.AddChild(new UIElement
+                {
+                    Name = "YES", Text = "YES", Type = UIElementType.Button,
+                    X = 140, Y = 0, Width = 120, Height = 40, FontSize = 22f,
+                });
+                _sceneRoot.AddChild(exitDialog);
+            }
+
+            // ── Add SettingsPanel container (always in hierarchy, visibility toggled by _settingsOpen) ──
+            _settingsPanelElement = new UIElement
+            {
+                Name = "SettingsPanel",
+                Text = "Settings",
+                Type = UIElementType.Container,
+                IsVisible = false, // hidden until Settings is clicked
+            };
+            // Title label as first child
+            _settingsPanelElement.AddChild(new UIElement
+            {
+                Name = "SettingsTitle", Text = "SETTINGS", Type = UIElementType.Label,
+                FontSize = 26f, TextColor = new Vector3(0.9f, 0.9f, 1.0f),
+            });
+            // Setting rows
+            for (int si = 0; si < _settingLabels.Length; si++)
+            {
+                _settingsPanelElement.AddChild(new UIElement
+                {
+                    Name = _settingLabels[si],
+                    Text = _settingLabels[si],
+                    Type = UIElementType.Button,
+                    FontSize = 22f,
+                    FontPath = "Artifacts\\\\fonts\\\\Worldstar.ttf",
+                });
+            }
+            // UnsavedChanges confirm dialog inside settings
+            var unsavedDlg = new UIElement
+            {
+                Name = "UnsavedChanges",
+                Text = "Discard Changes?",
+                Type = UIElementType.Dialog,
+                IsVisible = false, // shown by _confirmActive
+            };
+            unsavedDlg.AddChild(new UIElement
+            {
+                Name = "DISCARD", Text = "DISCARD", Type = UIElementType.Button,
+                FontSize = 22f,
+                TextColor = new Vector3(1f, 0.4f, 0.3f),
+                BgColor = new Vector3(0.6f, 0.2f, 0.15f),
+            });
+            unsavedDlg.AddChild(new UIElement
+            {
+                Name = "KEEP EDITING", Text = "KEEP EDITING", Type = UIElementType.Button,
+                FontSize = 22f,
+                TextColor = new Vector3(0.4f, 1.0f, 0.4f),
+                BgColor = new Vector3(0.15f, 0.35f, 0.15f),
+            });
+            _settingsPanelElement.AddChild(unsavedDlg);
+            _sceneRoot.AddChild(_settingsPanelElement);
+
+            // ── Add LoadGamePanel container ──
+            _loadGamePanelElement = new UIElement
+            {
+                Name = "LoadGamePanel",
+                Text = "Load Game",
+                Type = UIElementType.Container,
+                IsVisible = false, // hidden until Load Game is clicked
+            };
+            _loadGamePanelElement.AddChild(new UIElement
+            {
+                Name = "LoadTitle", Text = "LOAD GAME", Type = UIElementType.Label,
+                FontSize = 26f,
+            });
+            // Save slots
+            for (int si = 0; si < SaveManager.NumSlots; si++)
+            {
+                _loadGamePanelElement.AddChild(new UIElement
+                {
+                    Name = $"Slot {si + 1}",
+                    Text = $"Slot {si + 1}",
+                    Type = UIElementType.Button,
+                    FontSize = 20f,
+                });
+            }
+            // Hint label
+            _loadGamePanelElement.AddChild(new UIElement
+            {
+                Name = "LoadHint",
+                Text = "Select a slot to load  -  Enter to confirm  -  Esc to go back",
+                Type = UIElementType.Label,
+                FontSize = 16f,
+            });
+            _sceneRoot.AddChild(_loadGamePanelElement);
+
+            // ── Toast notification label ──
+            _toastElement = new UIElement
+            {
+                Name = "Notification",
+                Text = "",
+                Type = UIElementType.Label,
+                IsVisible = false, // shown when _notificationTimer > 0
+                FontSize = 24f,
+            };
+            _sceneRoot.AddChild(_toastElement);
+
+            // ── Bottom hint text ──
+            _hintElement = new UIElement
+            {
+                Name = "Hint",
+                Text = "Arrow keys or mouse to navigate - Enter to select",
+                Type = UIElementType.Label,
+                FontSize = 16f,
+                TextColor = new Vector3(0.35f, 0.35f, 0.45f),
+            };
+            _sceneRoot.AddChild(_hintElement);
+        }
+
+        /// <summary>
+        /// Sync all UIElement positions in the hierarchy tree with the actual
+        /// layout calculations (responsive to window size). Also syncs visibility
+        /// states based on current overlay flags (_settingsOpen, _loadGameActive, etc.).
+        /// Called every frame from Update().
+        /// </summary>
+        private void SyncHierarchyPositions()
+        {
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            if (_hud == null) return;
+
+            // ── Main menu buttons ──
+            var grid = new GridLayout(w, h);
+            float btnWidth = grid.SpanW(BtnColStart, BtnColEnd);
+            float totalHeight = _menuItems.Length * ButtonHeight + (_menuItems.Length - 1) * ButtonSpacing;
+            float startY = (h - totalHeight) * 0.5f;
+            float menuBx = (w - btnWidth) * 0.5f;
+
+            int btnIdx = 0;
+            foreach (var child in _sceneRoot.Children)
+            {
+                if (child.Type == UIElementType.Button && btnIdx < _menuItems.Length)
+                {
+                    child.X = menuBx;
+                    child.Y = startY + btnIdx * (ButtonHeight + ButtonSpacing);
+                    child.Width = btnWidth;
+                    child.Height = ButtonHeight;
+                    btnIdx++;
+                }
+            }
+
+            // ── Settings panel ──
+            if (_settingsPanelElement != null)
+            {
+                _settingsPanelElement.IsVisible = _settingsOpen;
+
+                var lay = new SettingsLayout(w, h, _hud);
+                _settingsPanelElement.X = lay.PanelX;
+                _settingsPanelElement.Y = lay.PanelY;
+                _settingsPanelElement.Width = lay.PanelW;
+                _settingsPanelElement.Height = lay.PanelH;
+
+                int settingIdx = 0;
+                foreach (var child in _settingsPanelElement.Children)
+                {
+                    if (child.Type == UIElementType.Button)
+                    {
+                        float itemY = lay.ListStartY + settingIdx * (lay.LineH + lay.LineGap);
+                        float btnPadX = 20f;
+                        child.X = lay.PanelX + btnPadX;
+                        child.Y = itemY + (lay.LineGap - 10f) * 0.5f; // approx vertical center
+                        child.Width = lay.PanelW - btnPadX * 2f;
+                        child.Height = lay.LineH + lay.LineGap;
+                        settingIdx++;
+                    }
+                    else if (child.Type == UIElementType.Dialog)
+                    {
+                        // UnsavedChanges confirm dialog inside settings
+                        child.IsVisible = _confirmActive;
+                        if (_hud != null)
+                        {
+                            float dlgCenterX = w * 0.5f;
+                            float dlgCenterY = h * 0.5f;
+                            child.X = dlgCenterX - ConfirmDialog.BaseDlgW * 0.5f;
+                            child.Y = dlgCenterY - ConfirmDialog.BaseDlgH * 0.5f;
+                            child.Width = ConfirmDialog.BaseDlgW;
+                            child.Height = ConfirmDialog.BaseDlgH;
+
+                            int btnDlgIdx = 0;
+                            foreach (var dlgChild in child.Children)
+                            {
+                                if (dlgChild.Type == UIElementType.Button)
+                                {
+                                    ConfirmDialog.GetButtonRect(w, h, 1.0f, btnDlgIdx,
+                                        out float bx, out float by, out float bw, out float bh);
+                                    dlgChild.X = bx;
+                                    dlgChild.Y = by;
+                                    dlgChild.Width = bw;
+                                    dlgChild.Height = bh;
+                                    btnDlgIdx++;
+                                }
+                            }
+                        }
+                    }
+                    else if (child.Type == UIElementType.Label)
+                    {
+                        // Title — centered in panel
+                        float titleY = lay.PanelY + 40f;
+                        child.X = lay.PanelX + 20f;
+                        child.Y = titleY;
+                    }
+                }
+            }
+
+            // ── Load Game panel ──
+            if (_loadGamePanelElement != null)
+            {
+                _loadGamePanelElement.IsVisible = _loadGameActive;
+
+                SaveSlotUI.GetPanelRect(w, h, out float panelX, out float panelW,
+                    out float panelY, out float panelH, out float slotStartY);
+
+                _loadGamePanelElement.X = panelX;
+                _loadGamePanelElement.Y = panelY;
+                _loadGamePanelElement.Width = panelW;
+                _loadGamePanelElement.Height = panelH;
+
+                int slotChildIdx = 0;
+                foreach (var child in _loadGamePanelElement.Children)
+                {
+                    if (child.Type == UIElementType.Button && slotChildIdx < SaveManager.NumSlots)
+                    {
+                        float bx = panelX + GridLayout.Gutter * 0.5f;
+                        float bw = panelW - GridLayout.Gutter;
+                        float sy = slotStartY + slotChildIdx * (SaveSlotUI.SlotRowH + SaveSlotUI.SlotGap);
+                        child.X = bx;
+                        child.Y = sy;
+                        child.Width = bw;
+                        child.Height = SaveSlotUI.SlotRowH;
+                        slotChildIdx++;
+                    }
+                    else if (child.Type == UIElementType.Label)
+                    {
+                        // Title or Hint
+                        if (child.Name == "LoadTitle")
+                        {
+                            // Title positioned at panel top
+                            child.X = panelX + 20f;
+                            child.Y = panelY + 20f;
+                        }
+                        else if (child.Name == "LoadHint")
+                        {
+                            var hintExt = _hud?.GetTextExtents(child.Text) ?? default;
+                            float hintY = panelY + panelH - 24f;
+                            float hintCenterX = grid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
+                            child.X = hintCenterX - hintExt.Width * 0.5f;
+                            child.Y = hintY;
+                        }
+                    }
+                }
+            }
+
+            // ── Exit confirm dialog ──
+            foreach (var child in _sceneRoot.Children)
+            {
+                if (child.Type == UIElementType.Dialog && child.Name == "ExitConfirm")
+                {
+                    child.IsVisible = _exitConfirmActive;
+                    child.X = (w - ConfirmDialog.BaseDlgW) * 0.5f;
+                    child.Y = (h - ConfirmDialog.BaseDlgH) * 0.5f;
+                    child.Width = ConfirmDialog.BaseDlgW;
+                    child.Height = ConfirmDialog.BaseDlgH;
+
+                    int exitBtnIdx = 0;
+                    foreach (var dlgChild in child.Children)
+                    {
+                        if (dlgChild.Type == UIElementType.Button)
+                        {
+                            ConfirmDialog.GetButtonRect(w, h, 1.0f, exitBtnIdx,
+                                out float bx, out float by, out float bw, out float bh);
+                            dlgChild.X = bx;
+                            dlgChild.Y = by;
+                            dlgChild.Width = bw;
+                            dlgChild.Height = bh;
+                            exitBtnIdx++;
+                        }
+                    }
+                }
+            }
+
+            // ── Toast notification ──
+            if (_toastElement != null)
+            {
+                bool hasText = _notificationTimer > 0f && !string.IsNullOrEmpty(_notificationText);
+                _toastElement.IsVisible = hasText && !_settingsOpen;
+                if (hasText)
+                {
+                    _toastElement.Text = _notificationText;
+                    var notifExt = _hud?.GetTextExtents(_notificationText) ?? default;
+                    _toastElement.X = w * 0.5f - notifExt.Width * 0.5f;
+                    _toastElement.Y = h * 0.20f;
+                }
+            }
+
+            // ── Bottom hint ──
+            if (_hintElement != null)
+            {
+                bool showHint = !_loadGameActive && !_exitConfirmActive && !_settingsOpen;
+                _hintElement.IsVisible = showHint;
+                if (showHint)
+                {
+                    float hintY = h - 45f;
+                    float hintCenterX = grid.CenterX(2, 10);
+                    var hintExt = _hud?.GetTextExtents(_hintElement.Text) ?? default;
+                    _hintElement.X = hintCenterX - hintExt.Width * 0.5f;
+                    _hintElement.Y = hintY;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Load scene hierarchy from .ing file if it exists, otherwise save
+        /// the current BuildMenu() output as the default .ing file.
+        /// After loading, maps behavior strings to actual Action delegates.
+        /// </summary>
+        private void LoadOrCreateSceneFile()
+        {
+            SceneAssetSerializer.EnsureScenesDirectory();
+            string scenePath = SceneAssetSerializer.GetScenePath("MainMenu");
+
+            if (File.Exists(scenePath))
+            {
+                // Load from .ing file
+                var asset = SceneAssetSerializer.LoadScene(scenePath);
+                if (asset != null && asset.Elements.Count > 0)
+                {
+                    // Replace scene root with loaded data
+                    _sceneRoot.ClearChildren();
+                    _sceneRoot.Children.Clear();
+
+                    foreach (var elemData in asset.Elements)
+                    {
+                        var loadedElem = SceneAssetSerializer.ToUIElement(elemData);
+                        _sceneRoot.AddChild(loadedElem);
+                    }
+
+                    // Map behavior strings to actual delegates
+                    MapBehaviors(_sceneRoot.Children);
+
+                    // ── Rebuild _uiButtons from loaded hierarchy so HUD matches ──
+                    _uiButtons.Clear();
+                    RebuildUiButtonsFromHierarchy(_sceneRoot.Children);
+
+                    // ── Capture background object data ──
+                    _bgObjectDataList = asset.BackgroundObjects ?? [];
+
+                    Console.WriteLine($"[MainMenu] Loaded scene from: {scenePath} ({_bgObjectDataList.Count} bg objects)");
+                    return;
+                }
+            }
+
+            // No .ing file exists yet — save the current BuildMenu() as the default
+            SceneAssetSerializer.SaveScene(_sceneRoot, scenePath, _bgObjectDataList);
+
+            // Also save to game.ing (combined file)
+            SceneAssetSerializer.SaveGameIng(("MainMenu", _sceneRoot));
+
+            Console.WriteLine($"[MainMenu] Created default scene file: {scenePath}");
+        }
+
+        /// <summary>Rebuild the legacy _uiButtons flat list from the loaded UIElement hierarchy.</summary>
+        private void RebuildUiButtonsFromHierarchy(List<UIElement> elements)
+        {
+            foreach (var elem in elements)
+            {
+                if (elem.Type == UIElementType.Button && !string.IsNullOrEmpty(elem.Text))
+                {
+                    _uiButtons.Add(new UIButtonData
+                    {
+                        Name = elem.Name,
+                        Text = elem.Text,
+                        X = elem.X,
+                        Y = elem.Y,
+                        Width = elem.Width,
+                        Height = elem.Height,
+                        FontSize = elem.FontSize,
+                        FontPath = elem.FontPath,
+                        TextColor = elem.TextColor,
+                        BgColor = elem.BgColor,
+                        HoverBgColor = elem.HoverBgColor,
+                        BorderColor = elem.BorderColor,
+                        HoverBorderColor = elem.HoverBorderColor,
+                        Alignment = elem.Alignment,
+                        IsVisible = elem.IsVisible,
+                        ClickBehaviorLabel = elem.ClickBehaviorLabel,
+                        OnClick = elem.OnClick,
+                    });
+                }
+
+                // Recurse into children
+                if (elem.Children.Count > 0)
+                    RebuildUiButtonsFromHierarchy(elem.Children);
+            }
+        }
+
+        /// <summary>Recursively map ClickBehavior strings to Action delegates on loaded elements.</summary>
+        private void MapBehaviors(List<UIElement> elements)
+        {
+            foreach (var elem in elements)
+            {
+                // Map click behavior
+                if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel))
+                {
+                    elem.OnClick = MapBehaviorAction(elem.ClickBehaviorLabel);
+                }
+
+                // Recursively map children
+                if (elem.Children.Count > 0)
+                    MapBehaviors(elem.Children);
+            }
+        }
+
+        /// <summary>Convert a behavior string to an Action delegate.</summary>
+        private Action? MapBehaviorAction(string behavior)
+        {
+            var lower = behavior.ToLowerInvariant();
+
+            // ── Cycle setting: "cycleSetting:N" where N is the setting index (0..8) ──
+            if (lower.StartsWith("cyclesetting:"))
+            {
+                if (int.TryParse(lower["cyclesetting:".Length..], out int settingIdx)
+                    && settingIdx >= 0 && settingIdx < _settingLabels.Length)
+                {
+                    int captured = settingIdx;
+                    return () => CycleSetting(captured, 1); // cycle forward
+                }
+                return null;
+            }
+
+            // ── Load slot: "loadSlot:N" where N is the slot index (0..4) ──
+            if (lower.StartsWith("loadslot:"))
+            {
+                if (int.TryParse(lower["loadslot:".Length..], out int slotIdx)
+                    && slotIdx >= 0 && slotIdx < SaveManager.NumSlots)
+                {
+                    int captured = slotIdx;
+                    return () => StartGameWithLoad(captured);
+                }
+                return null;
+            }
+
+            return lower switch
+            {
+                "startgame" => () => ExecuteMenuAction(MenuAction.StartGame),
+                "continue" => () => ExecuteMenuAction(MenuAction.Continue),
+                "loadgame" => () => ExecuteMenuAction(MenuAction.LoadGame),
+                "opensettings" => () => ExecuteMenuAction(MenuAction.Settings),
+                "showexitconfirm" => () => ExecuteMenuAction(MenuAction.Exit),
+                "canceleexit" or "cancel" => () => { _exitConfirmActive = false; },
+                "confirmexit" or "yes" => () => { Console.WriteLine("[MainMenu] Exiting..."); _sceneManager.Stop(); },
+                "applysettings" => () =>
+                {
+                    ApplySettings();
+                    Array.Copy(_settingValues, _savedSettingValues, _settingValues.Length);
+                    _hasUnsavedChanges = false;
+                    ShowNotification("Settings applied!");
+                },
+                "cancelsettings" => CancelSettings,
+                "discardchanges" => () =>
+                {
+                    Array.Copy(_savedSettingValues, _settingValues, _settingValues.Length);
+                    _hasUnsavedChanges = false;
+                    _confirmActive = false;
+                    _settingsOpen = false;
+                    ApplyCurrentSettingsImmediate();
+                },
+                "keepediting" => () => { _confirmActive = false; },
+                _ => null
+            };
         }
 
         private void ExecuteMenuAction(MenuAction action)
@@ -916,7 +1493,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private void ApplySettings()
         {
             int res = _settingValues[0];
-            bool fs = _settingValues[1] == 1;
+            int displayMode = _settingValues[1]; // 0=Exclusive, 1=Borderless, 2=Windowed
             bool vs = _settingValues[2] == 1;
             int sq = _settingValues[3];
             int oc = _settingValues[4];
@@ -926,7 +1503,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var data = new SettingsData
             {
                 Resolution = res,
-                Fullscreen = fs,
+                Fullscreen = displayMode != 2,   // true for Exclusive(0) or Borderless(1)
+                BorderlessFullscreen = displayMode == 1,
                 VSync = vs,
                 ShadowQuality = sq,
                 OcclusionMode = oc,
@@ -948,14 +1526,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Live apply Mouse Sensitivity ──
             ApplyMouseSensitivity(_settingValues[6]);
 
-            // ── Live apply Resolution, VSync, Fullscreen ──
+            // ── Live apply Resolution, VSync, Display Mode ──
 
             Glfw.SetWindowSize(Resolutions[res].Width, Resolutions[res].Height);
             Glfw.SetSwapInterval(vs ? 1 : 0);
-            Glfw.SetFullscreen(fs);
-            Glfw.SetWindowPosition(0,0);
 
-            Console.WriteLine($"[Settings] Applied: Resolution={Resolutions[res].CompactLabel}, Fullscreen={fs}, VSync={vs}, ShadowQuality={sq}, OC={oc}, FOV={fovVal}, MouseSens={_settingOptions[6][_settingValues[6]]}");
+            // Apply display mode
+            ApplyDisplayMode(displayMode);
+
+            Console.WriteLine($"[Settings] Applied: Resolution={Resolutions[res].CompactLabel}, DisplayMode={_settingOptions[1][displayMode]}, VSync={vs}, ShadowQuality={sq}, OC={oc}, FOV={fovVal}, MouseSens={_settingOptions[6][_settingValues[6]]}");
+        }
+
+        /// <summary>Apply the display mode: 0=Exclusive, 1=Borderless (windowed, no taskbar overlap), 2=Windowed.</summary>
+        private static void ApplyDisplayMode(int mode)
+        {
+            switch (mode)
+            {
+                case 0:
+                    Glfw.SetFullscreen(true);
+                    break;
+                case 1:
+                    Glfw.SetBorderlessFullscreen();
+                    break;
+                case 2:
+                    Glfw.SetFullscreen(false);
+                    break;
+            }
+            Console.WriteLine($"[Settings] Display mode: {mode}");
         }
 
         /// <summary>Re-apply the current _settingValues to render state (no save to JSON).
@@ -963,7 +1560,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private void ApplyCurrentSettingsImmediate()
         {
             int res = _settingValues[0];
-            bool fs = _settingValues[1] == 1;
+            int displayMode = _settingValues[1]; // 0=Exclusive, 1=Borderless, 2=Windowed
             bool vs = _settingValues[2] == 1;
             int sq = _settingValues[3];
             int oc = _settingValues[4];
@@ -976,8 +1573,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ApplyMouseSensitivity(_settingValues[6]);
             Glfw.SetWindowSize(Resolutions[res].Width, Resolutions[res].Height);
             Glfw.SetSwapInterval(vs ? 1 : 0);
-            Glfw.SetFullscreen(fs);
-            Glfw.SetWindowPosition(0, 0);
+            ApplyDisplayMode(displayMode);
         }
 
         /// <summary>Cycle the given setting forward or backward — no live apply.
@@ -1132,6 +1728,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             int h = Glfw.WindowHeight;
 
             // ==========================================
+            //  LAYER 0: 3D Background Objects
+            // ==========================================
+            if (_bgObjects.Count > 0)
+            {
+                RenderBgObjects(w, h);
+            }
+
+            // ==========================================
             //  LAYER 1: Procedural Background
             // ==========================================
 
@@ -1217,6 +1821,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var hintExt = _hud.GetTextExtents(hint);
             _hud.DrawText(hint, hintCenterX - hintExt.Width * 0.5f, hintY, new Vector3(0.35f, 0.35f, 0.45f));
 
+            // ── Populate IDEBridge with UI buttons for Inspector editing ──
+            // Only in IDE mode, so the Inspector panel can edit button properties.
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null && _sceneManager.IsIdeActive)
+            {
+                bridge.SceneRootElements = [_sceneRoot];
+
+                // ── Viewport click → select element in hierarchy ──
+                if (bridge.IsViewportClicked)
+                {
+                    var hit = UIElement.HitTestPoint(_sceneRoot.Children,
+                        bridge.ViewportClickX, bridge.ViewportClickY);
+                    if (hit != null)
+                    {
+                        bridge.SelectedUIElement = hit;
+                    }
+                }
+
+                // If no UI element is selected, select the first menu button
+                if (bridge.SelectedUIElement == null && _sceneRoot.Children.Count > 0)
+                    bridge.SelectedUIElement = _sceneRoot.Children[0];
+            }
         }
 
         // =====================================================
@@ -1574,15 +2200,142 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud.DrawText(hintText, hintX, hintY, new Vector3(0.35f, 0.35f, 0.45f));
         }
 
+        /// <summary>Render 3D background objects (GltfObject instances) behind the UI.</summary>
+        private void RenderBgObjects(int w, int h)
+        {
+            if (_bgObjects.Count == 0) return;
+
+            uint shader = GltfShader.GetShaderProgram();
+            GL.UseProgram(shader);
+
+            // Cache uniform locations (once)
+            if (_bgViewLoc < 0)
+            {
+                _bgViewLoc = GL.GetUniformLocation(shader, "view");
+                _bgProjLoc = GL.GetUniformLocation(shader, "projection");
+                _bgModelLoc = GL.GetUniformLocation(shader, "model");
+            }
+
+            var view = _camera.GetViewMatrix();
+            var proj = _camera.GetProjectionMatrix();
+            GL.UniformMatrix4fv(_bgViewLoc, 1, false, (float*)Unsafe.AsPointer(ref view));
+            GL.UniformMatrix4fv(_bgProjLoc, 1, false, (float*)Unsafe.AsPointer(ref proj));
+
+            // Set sun/light uniforms for the shader
+            int sunDirLoc = GL.GetUniformLocation(shader, "sunDir");
+            int lightColorLoc = GL.GetUniformLocation(shader, "lightColor");
+            int viewPosLoc = GL.GetUniformLocation(shader, "viewPos");
+            if (sunDirLoc >= 0) GL.Uniform3f(sunDirLoc, _light.SunDir.X, _light.SunDir.Y, _light.SunDir.Z);
+            if (lightColorLoc >= 0) GL.Uniform3f(lightColorLoc, _light.LightColor.X, _light.LightColor.Y, _light.LightColor.Z);
+            if (viewPosLoc >= 0) GL.Uniform3f(viewPosLoc, _camera.Position.X, _camera.Position.Y, _camera.Position.Z);
+
+            // Fog off
+            int useFogLoc = GL.GetUniformLocation(shader, "useFog");
+            if (useFogLoc >= 0) GL.Uniform1i(useFogLoc, 0);
+
+            GL.Enable(Const.GL_DEPTH_TEST);
+            GL.Enable(Const.GL_CULL_FACE);
+            OpenGL.EnableFaceCulling(true);
+
+            foreach (var obj in _bgObjects)
+            {
+                var modelMat = Matrix4x4.CreateScale(obj.Scale)
+                             * Matrix4x4.CreateFromQuaternion(obj.Rotation)
+                             * Matrix4x4.CreateTranslation(obj.Position);
+                GL.UniformMatrix4fv(_bgModelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
+
+                // Set skinning off for static background objects
+                int useSkinningLoc = GL.GetUniformLocation(shader, "useSkinning");
+                if (useSkinningLoc >= 0) GL.Uniform1i(useSkinningLoc, 0);
+
+                int baseColorLoc = GL.GetUniformLocation(shader, "baseColorFactor");
+                int useAlbedoLoc = GL.GetUniformLocation(shader, "useAlbedo");
+                int albedoMapLoc = GL.GetUniformLocation(shader, "albedoMap");
+                obj.Draw(_bgModelLoc, baseColorLoc, useAlbedoLoc, albedoMapLoc);
+            }
+
+            GL.Disable(Const.GL_CULL_FACE);
+            GL.Disable(Const.GL_DEPTH_TEST);
+        }
+
+        /// <summary>Load .glb models from background object data and create GltfObject instances.</summary>
+        private void LoadBgObjects()
+        {
+            // Clear previous objects
+            foreach (var obj in _bgObjects)
+                obj.IsVisible = false;
+            _bgObjects.Clear();
+
+            if (_bgObjectDataList.Count == 0) return;
+
+            // Ensure gltf shader is initialized
+            GltfShader.Init();
+
+            int created = 0;
+            foreach (var bgd in _bgObjectDataList)
+            {
+                if (!bgd.IsVisible || string.IsNullOrEmpty(bgd.ModelPath)) continue;
+                if (!File.Exists(bgd.ModelPath))
+                {
+                    Console.WriteLine($"[MainMenu] BG model not found: {bgd.ModelPath}");
+                    continue;
+                }
+
+                try
+                {
+                    // Load/cache model GPU data
+                    if (!_bgModelCache.TryGetValue(bgd.ModelPath, out var gpuData))
+                    {
+                        var data = GltfLoader.Load(bgd.ModelPath);
+                        gpuData = new GltfModelGpuData(data);
+                        _bgModelCache[bgd.ModelPath] = gpuData;
+                    }
+
+                    var pos = new Vector3(bgd.PosX, bgd.PosY, bgd.PosZ);
+                    var rot = Quaternion.CreateFromAxisAngle(Vector3.UnitY, bgd.RotationYaw * MathF.PI / 180f);
+                    var obj = new GltfObject(gpuData, pos, rot, bgd.Scale);
+                    obj.IsStatic = true;
+                    _bgObjects.Add(obj);
+                    created++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MainMenu] Failed to load BG model '{bgd.ModelPath}': {ex.Message}");
+                }
+            }
+
+            Console.WriteLine($"[MainMenu] Loaded {created}/{_bgObjectDataList.Count} background 3D objects");
+        }
+
         public void Exit()
         {
             Glfw.OnWindowResized -= OnWindowResized;
+
+            // ── Clear IDE bridge references ──
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null)
+            {
+                bridge.SelectedUIElement = null;
+                bridge.SceneRootElements = null;
+            }
+            _uiButtons.Clear();
+            _sceneRoot.ClearChildren();
+
+            // Clear background objects
+            foreach (var obj in _bgObjects)
+                obj.IsVisible = false;
+            _bgObjects.Clear();
+
             Console.WriteLine("[MainMenu] Exited.");
         }
 
         public void Dispose()
         {
             _hud = null;
+            foreach (var (_, gpu) in _bgModelCache)
+                gpu.Dispose();
+            _bgModelCache.Clear();
+            _bgObjects.Clear();
             Console.WriteLine("[MainMenu] Disposed.");
         }
     }

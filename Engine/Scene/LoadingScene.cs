@@ -10,18 +10,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     /// <summary>
     /// Loading screen scene. Handles all synchronous resource loading (terrain, objects, etc.)
     /// while rendering a loading animation with progress feedback each frame.
-    /// When loading completes, switches to the GameScene.
+    /// When loading completes, switches to the GameScene on the next frame's Render()
+    /// so the Viewport panel gets a chance to display the loading screen.
     /// </summary>
     public class LoadingScene : IScene
     {
         private readonly SceneManager _sceneManager;
         private readonly GameScene _gameScene;
 
+        // ── Scene root element for IDE hierarchy ──
+        private readonly UIElement _sceneRoot = new()
+        {
+            Name = "LoadingScene",
+            Type = UIElementType.Scene,
+            IsVisible = false,
+        };
+
         // Loading UI
         private HUD? _hud;
         private Texture[]? _images;
         private string _status = "Loading...";
         private float _deltaTime = 0f;
+
+        // When true, synchronous loading is done and we should switch to GameScene
+        private bool _loadingComplete = false;
 
         // Game resources that will be created during loading
         private Camera? _camera;
@@ -45,17 +57,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public void Enter()
         {
-            nint window = Glfw.GetWindow();
-
             // ── Loading screen UI assets ──
             Texture[] images =
             [
-                new("Artifacts\\images\\loading01_image.png"),
-                new("Artifacts\\images\\spinner01_image.png"),
+                new("Artifacts\\\\images\\\\loading01_image.png"),
+                new("Artifacts\\\\images\\\\spinner01_image.png"),
             ];
             _images = images;
 
-            HUD hud = new("Artifacts\\fonts\\Ngaco.ttf", 28.0f);
+            HUD hud = new("Artifacts\\\\fonts\\\\Ngaco.ttf", 28.0f);
             _hud = hud;
 
             RenderFrame("Loading engine ...");
@@ -64,16 +74,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Terrain textures ──
             Texture[] TerrainTextures =
             [
-                new("Artifacts\\textures\\aerial grass\\aerial_grass_rock_diff_4k.jpg"),
-                new("Artifacts\\textures\\aerial rock\\aerial_rocks_04_diff_4k.jpg"),
-                new("Artifacts\\textures\\snow\\snow_01_diff_4k.jpg"),
-                new("Artifacts\\textures\\cliff side\\cliff_side_diff_4k.jpg"),
+                new("Artifacts\\\\textures\\\\aerial grass\\\\aerial_grass_rock_diff_4k.jpg"),
+                new("Artifacts\\\\textures\\\\aerial rock\\\\aerial_rocks_04_diff_4k.jpg"),
+                new("Artifacts\\\\textures\\\\snow\\\\snow_01_diff_4k.jpg"),
+                new("Artifacts\\\\textures\\\\cliff side\\\\cliff_side_diff_4k.jpg"),
             ];
 
             // ── Sky textures ──
             Texture[] SkyTextures =
             [
-                new("Artifacts\\textures\\moon.png"),
+                new("Artifacts\\\\textures\\\\moon.png"),
             ];
             _skyTextures = SkyTextures;
 
@@ -95,7 +105,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             };
 
             // Generate heightmap if it doesn't exist
-            string mapPath = "Artifacts\\maps\\map.png";
+            string mapPath = "Artifacts\\\\maps\\\\map.png";
             if (!File.Exists(mapPath))
             {
                 MapLoader.GeneratePhotorealHeightmap(mapPath, 513);
@@ -131,9 +141,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Finalize: set up GameScene with loaded resources ──
             _gameScene.SetResources(_skyTextures, _gameTerrainChunk, _skybox, _hud, _objectManager);
 
-            // ── Switch to GameScene ──
-            Console.WriteLine("[LoadingScene] Loading complete — switching to GameScene.");
-            _sceneManager.SwitchScene(_gameScene);
+            // ── Build hierarchy and save to .ing ──
+            BuildHierarchy();
+            SceneAssetSerializer.EnsureScenesDirectory();
+            string loadingScenePath = SceneAssetSerializer.GetScenePath("LoadingScene");
+            if (!File.Exists(loadingScenePath))
+            {
+                SceneAssetSerializer.SaveScene(_sceneRoot, loadingScenePath);
+                Console.WriteLine($"[LoadingScene] Created default scene file: {loadingScenePath}");
+            }
+
+            // ── Save to game.ing (combined file) ──
+            SceneAssetSerializer.SaveGameIng(("LoadingScene", _sceneRoot));
+
+            // ── Register scene root for IDE Save All ──
+            SceneAssetSerializer.RegisterSceneRoot("LoadingScene", _sceneRoot);
+
+            // ── Mark loading complete — actual scene switch happens in Render() ──
+            // This gives the main loop one frame to display the loading screen
+            // in the Viewport panel before switching to GameScene.
+            Console.WriteLine("[LoadingScene] Loading complete — switching on next render frame.");
+            _loadingComplete = true;
+        }
+
+        /// <summary>Build the UI hierarchy for IDE display. Called from Enter().</summary>
+        private void BuildHierarchy()
+        {
+            _sceneRoot.ClearChildren();
+
+            _sceneRoot.AddChild(new UIElement
+            {
+                Name = "LoadingLabel",
+                Text = "Loading...",
+                Type = UIElementType.Label,
+                X = 20,
+                Y = Glfw.WindowHeight - 50,
+                FontSize = 28f,
+                TextColor = new Vector3(0.85f, 0.85f, 0.9f),
+            });
         }
 
         public void Update(float deltaTime)
@@ -143,14 +188,40 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public void Render()
         {
-            // If for some reason we're still rendering while waiting for switch,
-            // show the last frame of the loading screen
+            bool ingameActive = _sceneManager.Bridge?.InGameActive ?? false;
+
+            // ── Render one more loading frame so the Viewport panel displays it ──
             RenderFrame(_status);
+
+            // ── Ensure bridge texture is set for Viewport panel ──
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null && _sceneManager.IsIdeActive)
+            {
+                _sceneManager.EnsureSharedFBOExists();
+                bridge.SceneTextureID = _sceneManager.SharedColorTex;
+                bridge.SceneTextureWidth = Glfw.WindowWidth;
+                bridge.SceneTextureHeight = Glfw.WindowHeight;
+            }
+
+            // ── Switch to GameScene on the NEXT frame (after IDE has rendered this frame) ──
+            if (_loadingComplete)
+            {
+                _loadingComplete = false;
+                _sceneManager.SwitchScene(_gameScene);
+            }
         }
 
         public void Exit()
         {
             // Resources are handed off to GameScene, so don't dispose them here
+
+            // ── Clear IDE bridge references ──
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null)
+            {
+                bridge.SelectedUIElement = null;
+                bridge.SceneRootElements = null;
+            }
         }
 
         public void Dispose()
@@ -163,6 +234,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// <summary>
         /// Render a single frame of the loading screen (Clear, draw image, text, spinner, swap, poll).
         /// Called inline during synchronous loading so the window stays responsive.
+        /// When IDE is active, renders into the shared FBO so the loading screen appears in the
+        /// Viewport panel instead of taking over the full screen.
         /// </summary>
         private void RenderFrame(string text)
         {
@@ -172,6 +245,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             nint window = Glfw.GetWindow();
             float dt = Glfw.GetDeltaTime();
+            bool ideActive = _sceneManager.IsIdeActive;
+
+            // ── When IDE is active, render into the shared FBO so Viewport panel shows loading progress ──
+            if (ideActive)
+            {
+                // Ensure shared FBO exists (creates it on first call)
+                _sceneManager.EnsureSharedFBOExists();
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sceneManager.SharedFBO);
+            }
 
             GL.ClearColor(0, 0, 0, 1);
             GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
@@ -193,8 +275,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float textY = spinnerCenterY - (extents.MinY + extents.Height * 0.5f);
             _hud.DrawText(text, textX, textY, new Vector3(0.85f, 0.85f, 0.9f), new Vector3(0f, 0f, 0f), 1.5f);
 
-            OpenGL.SwapBuffer(window);
-            OpenGL.PollEvents();
+            // ── Update bridge texture so Viewport panel shows loading screen ──
+            if (ideActive)
+            {
+                var bridge = _sceneManager.Bridge;
+                if (bridge != null)
+                {
+                    bridge.SceneTextureID = _sceneManager.SharedColorTex;
+                    bridge.SceneTextureWidth = Glfw.WindowWidth;
+                    bridge.SceneTextureHeight = Glfw.WindowHeight;
+                }
+
+                // Restore framebuffer 0 for the IDE's render pass (SceneManager handles swapping)
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+
+                // Still poll events to keep the window responsive during long loading
+                OpenGL.PollEvents();
+            }
+            else
+            {
+                // Normal: swap buffer + poll events to show loading progress on screen
+                OpenGL.SwapBuffer(window);
+                OpenGL.PollEvents();
+            }
         }
     }
 }

@@ -25,8 +25,7 @@ public class ViewportPanel
         ImGui.Begin("Viewport", ref _visible, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.PopStyleVar();
 
-        // Track whether the viewport is focused — used by GameScene to gate input processing
-        // Only when the viewport has keyboard focus (user clicked on it) will game input be processed.
+        // Track whether the viewport is focused — used by GameScene to manage cursor visibility
         _bridge.IsViewportFocused = ImGui.IsWindowFocused();
 
         var avail = ImGui.GetContentRegionAvail();
@@ -59,6 +58,51 @@ public class ViewportPanel
             var uv0 = new Vector2(0, 1); // top-left of ImGui = bottom-left of OpenGL
             var uv1 = new Vector2(1, 0); // bottom-right of ImGui = top-right of OpenGL
             ImGui.Image((nint)(nint)_bridge.SceneTextureID, imageSize, uv0, uv1);
+
+            // ── Viewport click/hover detection for click-to-select ──
+            // Calculate scene-space mouse coordinates
+            var imageMin = ImGui.GetItemRectMin();
+            var imageMax = ImGui.GetItemRectMax();
+            var mouseScreen = ImGui.GetMousePos();
+
+            // Check if mouse is inside the image rect
+            bool mouseOverImage = mouseScreen.X >= imageMin.X && mouseScreen.X <= imageMax.X &&
+                                  mouseScreen.Y >= imageMin.Y && mouseScreen.Y <= imageMax.Y;
+
+            if (mouseOverImage)
+            {
+                // Get mouse position relative to the image top-left
+                float relX = mouseScreen.X - imageMin.X;
+                float relY = mouseScreen.Y - imageMin.Y;
+
+                // Map to scene texture coordinates (accounting for UV flip: ImGui Y flipped)
+                float sceneU = relX / imageSize.X;
+                float sceneV = 1f - (relY / imageSize.Y); // UV flip: OpenGL bottom-left = ImGui top-left
+
+                float sceneX = sceneU * _bridge.SceneTextureWidth;
+                float sceneY = sceneV * _bridge.SceneTextureHeight;
+
+                _bridge.ViewportMouseX = sceneX;
+                _bridge.ViewportMouseY = sceneY;
+
+                // Detect click (mouse press on the image)
+                if (ImGui.IsItemClicked())
+                {
+                    _bridge.IsViewportClicked = true;
+                    _bridge.ViewportClickX = sceneX;
+                    _bridge.ViewportClickY = sceneY;
+                }
+                else
+                {
+                    _bridge.IsViewportClicked = false;
+                }
+            }
+            else
+            {
+                _bridge.ViewportMouseX = -1;
+                _bridge.ViewportMouseY = -1;
+                _bridge.IsViewportClicked = false;
+            }
         }
         else
         {

@@ -532,7 +532,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 if (hovered && mouseDown && !_btnMouseWasDown)
                     btn.OnClick?.Invoke();
 
-                _buttons[i] = btn;
+                if (_buttons.Count>0)
+                    _buttons[i] = btn;
             }
 
             _btnMouseWasDown = mouseDown;

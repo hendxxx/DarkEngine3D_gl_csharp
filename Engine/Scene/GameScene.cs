@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
@@ -141,12 +142,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         // Shadow quality presets shared via ShadowPresets.CascadeSizes (no local field needed)
 
 
+        // ── Scene root element (holds the UI hierarchy tree) ──
+        private readonly UIElement _sceneRoot = new()
+        {
+            Name = "GameScene",
+            Type = UIElementType.Scene,
+            IsVisible = false,
+        };
+
+        // ── Hierarchy sub-panel references ──
+        private UIElement? _pauseMenuElement;
+        private UIElement? _saveLoadPanelElement;
+        private UIElement? _settingsPanelElement;
+        private UIElement? _exitConfirmElement;
+        private UIElement? _saveNotificationElement;
+
         private int _renderedTris;
 
         //  IDE focus-camera state
         private Vector3? _cameraFocusPivot = null;
         private float _focusHoldTimer = 0f;
-
+        //  Cursor visibility tracking (avoid redundant GLFW calls)
+        private bool _prevCursorShown = true;
         //  Per-frame render timing (ms) 
         private System.Diagnostics.Stopwatch _renderTimer = new();
         private System.Diagnostics.Stopwatch _frameTotalTimer = new();
@@ -180,6 +197,114 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Scene name
             bridge.SceneName = "GameScene";
+
+            // ── UI Hierarchy ──
+            bridge.SceneRootElements = [_sceneRoot];
+
+            // ── Viewport click → select element ──
+            if (bridge.IsViewportClicked)
+            {
+                // First try UI elements (pause menu, settings, etc.)
+                var uiHit = UIElement.HitTestPoint(_sceneRoot.Children,
+                    bridge.ViewportClickX, bridge.ViewportClickY);
+                if (uiHit != null)
+                {
+                    bridge.SelectedUIElement = uiHit;
+                    bridge.SelectedObject = null;
+                    bridge.SelectedAgent = null;
+                }
+                else if (_objectManager != null && _camera != null)
+                {
+                    // No UI hit → raycast against 3D objects
+                    _camera.ScreenToRay(bridge.ViewportClickX, bridge.ViewportClickY,
+                        bridge.SceneTextureWidth, bridge.SceneTextureHeight,
+                        out Vector3 rayOrigin, out Vector3 rayDir);
+
+                    float closestHit = float.MaxValue;
+                    GltfObject? hitObject = null;
+                    CharacterAgent? hitAgent = null;
+
+                    // Check animated objects (characters)
+                    var animObjs = _objectManager.GetObjects();
+                    for (int i = 0; i < animObjs.Count; i++)
+                    {
+                        var obj = animObjs[i];
+                        if (!obj.IsVisible) continue;
+                        var aabb = obj.WorldAABB;
+
+                        if (Helpers.ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir, aabb,
+                                out float tMin, out float _) && tMin > 0f && tMin < closestHit)
+                        {
+                            closestHit = tMin;
+                            hitObject = obj;
+                            hitAgent = null;
+                        }
+                    }
+
+                    // Find agent for hit object
+                    if (hitObject != null)
+                    {
+                        var agents = _objectManager.Agents;
+                        for (int ai = 0; ai < agents.Count; ai++)
+                        {
+                            if (ReferenceEquals(agents[ai].GameObject, hitObject))
+                            {
+                                hitAgent = agents[ai];
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check static objects (trees, walls, rocks) — compete equally with animated
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
+                    {
+                        var mgr = _objectManager.staticObjectManagers[mi];
+                        if (mgr == null) continue;
+                        var staticObjs = mgr.GetObjects();
+                        for (int si = 0; si < staticObjs.Count; si++)
+                        {
+                            var sobj = staticObjs[si];
+                            if (!sobj.IsVisible) continue;
+
+                            if (ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir,
+                                    sobj.CachedWorldAABB, out float tMin, out float _) &&
+                                tMin > 0f && tMin < closestHit)
+                            {
+                                closestHit = tMin;
+                                hitObject = null; // static object, not animated
+                                hitAgent = null;
+                            }
+                        }
+                    }
+
+                    // Log if a static object was hit (closest but no animated match)
+                    if (hitObject == null && closestHit < float.MaxValue)
+                    {
+                        Console.WriteLine("[Raycast] Hit static object");
+                    }
+
+                    // Set selection
+                    if (hitObject != null)
+                    {
+                        bridge.SelectedObject = hitObject;
+                        bridge.SelectedAgent = hitAgent;
+                        bridge.SelectedUIElement = null;
+                        Console.WriteLine($"[Raycast] Selected: {hitObject.GetHashCode():X8}");
+                    }
+                    else
+                    {
+                        // Static object or nothing — clear selection
+                        bridge.SelectedObject = null;
+                        bridge.SelectedAgent = null;
+                    }
+                }
+            }
+
+            // Auto-select first child if nothing selected
+            if (bridge.SelectedUIElement == null && _sceneRoot.Children.Count > 0)
+                bridge.SelectedUIElement = _sceneRoot.Children[0];
+            else if (bridge.SelectedUIElement == null && _pauseMenuElement != null)
+                bridge.SelectedUIElement = _pauseMenuElement;
 
             // Object counts
             if (_objectManager != null)
@@ -257,6 +382,280 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     float dist = Vector3.Distance(_camera.Position, targetPos);
                     CameraConfig.TargetCameraDistance = Math.Clamp(dist, 1f, 20f);
                 };
+            }
+        }
+
+        /// <summary>Build the UI hierarchy tree for the IDE. Called from Enter().</summary>
+        private void BuildHierarchy()
+        {
+            _sceneRoot.ClearChildren();
+
+            // ── Pause Menu ──
+            string[] pauseItems = ["RESUME", "SAVE GAME", "LOAD GAME", "SETTINGS", "World: [RUNNING]", "BACK TO MAIN MENU"];
+            _pauseMenuElement = new UIElement
+            {
+                Name = "PauseMenu", Text = "Pause Menu", Type = UIElementType.Container,
+                IsVisible = false,
+            };
+            _pauseMenuElement.AddChild(new UIElement
+            {
+                Name = "PauseTitle", Text = "PAUSED", Type = UIElementType.Label,
+                FontSize = 28f,
+            });
+            for (int i = 0; i < PauseItemCount; i++)
+            {
+                _pauseMenuElement.AddChild(new UIElement
+                {
+                    Name = pauseItems[i], Text = pauseItems[i], Type = UIElementType.Button,
+                    FontSize = 22f,
+                });
+            }
+            _sceneRoot.AddChild(_pauseMenuElement);
+
+            // ── Save/Load Panel ──
+            _saveLoadPanelElement = new UIElement
+            {
+                Name = "SaveLoadPanel", Text = "Save/Load", Type = UIElementType.Container,
+                IsVisible = false,
+            };
+            _saveLoadPanelElement.AddChild(new UIElement
+            {
+                Name = "SaveLoadTitle", Text = "SAVE/LOAD GAME", Type = UIElementType.Label,
+                FontSize = 26f,
+            });
+            for (int i = 0; i < SaveManager.NumSlots; i++)
+            {
+                _saveLoadPanelElement.AddChild(new UIElement
+                {
+                    Name = $"Slot {i + 1}", Text = $"Slot {i + 1}", Type = UIElementType.Button,
+                    FontSize = 20f,
+                });
+            }
+            _saveLoadPanelElement.AddChild(new UIElement
+            {
+                Name = "SaveLoadHint", Text = "Select a slot - Enter to confirm - Esc to cancel",
+                Type = UIElementType.Label, FontSize = 16f,
+            });
+            _sceneRoot.AddChild(_saveLoadPanelElement);
+
+            // ── Settings Panel ──
+            _settingsPanelElement = new UIElement
+            {
+                Name = "SettingsPanel", Text = "Settings", Type = UIElementType.Container,
+                IsVisible = false,
+            };
+            _settingsPanelElement.AddChild(new UIElement
+            {
+                Name = "SettingsTitle", Text = "SETTINGS", Type = UIElementType.Label,
+                FontSize = 26f,
+            });
+            for (int i = 0; i < _inGameSettingLabels.Length; i++)
+            {
+                _settingsPanelElement.AddChild(new UIElement
+                {
+                    Name = _inGameSettingLabels[i], Text = _inGameSettingLabels[i],
+                    Type = (i == _inGameSettingLabels.Length - 1) ? UIElementType.Button : UIElementType.Button,
+                    FontSize = 22f,
+                });
+            }
+            _sceneRoot.AddChild(_settingsPanelElement);
+
+            // ── Exit Confirm Dialog ──
+            _exitConfirmElement = new UIElement
+            {
+                Name = "ExitConfirm", Text = "Exit to Main Menu?", Type = UIElementType.Dialog,
+                IsVisible = false,
+            };
+            _exitConfirmElement.AddChild(new UIElement
+            {
+                Name = "NO", Text = "NO", Type = UIElementType.Button, FontSize = 22f,
+            });
+            _exitConfirmElement.AddChild(new UIElement
+            {
+                Name = "YES", Text = "YES", Type = UIElementType.Button, FontSize = 22f,
+            });
+            _sceneRoot.AddChild(_exitConfirmElement);
+
+            // ── Save notification ──
+            _saveNotificationElement = new UIElement
+            {
+                Name = "SaveNotification", Text = "", Type = UIElementType.Label,
+                IsVisible = false, FontSize = 24f,
+            };
+            _sceneRoot.AddChild(_saveNotificationElement);
+        }
+
+        /// <summary>Sync UIElement hierarchy positions and visibility every frame.</summary>
+        private void SyncHierarchyPositions()
+        {
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            // ── Pause Menu ──
+            if (_pauseMenuElement != null)
+            {
+                _pauseMenuElement.IsVisible = _paused && !_saveLoadActive && !_confirmingExit && !_settingsActive;
+
+                var pgGrid = new GridLayout(w, h);
+                float pauseBtnW = pgGrid.SpanW(PauseBtnColStart, PauseBtnColEnd);
+                float pauseBx = (w - pauseBtnW) * 0.5f;
+                float titleY = h * 0.28f;
+                float startY = titleY + 70f;
+
+                _pauseMenuElement.X = pauseBx;
+                _pauseMenuElement.Y = titleY;
+                _pauseMenuElement.Width = pauseBtnW;
+                _pauseMenuElement.Height = h - titleY;
+
+                int btnIdx = 0;
+                foreach (var child in _pauseMenuElement.Children)
+                {
+                    if (child.Type == UIElementType.Label)
+                    {
+                        // Title: centered in window
+                        float pauseCenterX = pgGrid.CenterX(2, 10);
+                        var titleExt = _hud?.GetTextExtents(child.Text) ?? default;
+                        child.X = pauseCenterX - titleExt.Width * 0.5f;
+                        child.Y = titleY;
+                    }
+                    else if (child.Type == UIElementType.Button && btnIdx < PauseItemCount)
+                    {
+                        child.X = pauseBx;
+                        child.Y = startY + btnIdx * (PauseBtnH + PauseBtnSpacing);
+                        child.Width = pauseBtnW;
+                        child.Height = PauseBtnH;
+                        btnIdx++;
+                    }
+                }
+            }
+
+            // ── Save/Load Panel ──
+            if (_saveLoadPanelElement != null)
+            {
+                _saveLoadPanelElement.IsVisible = _saveLoadActive;
+
+                SaveSlotUI.GetPanelRect(w, h, out float panelX, out float panelW,
+                    out float panelY, out float panelH, out float slotStartY);
+
+                _saveLoadPanelElement.X = panelX;
+                _saveLoadPanelElement.Y = panelY;
+                _saveLoadPanelElement.Width = panelW;
+                _saveLoadPanelElement.Height = panelH;
+
+                var slGrid = new GridLayout(w, h);
+                int slotIdx = 0;
+                foreach (var child in _saveLoadPanelElement.Children)
+                {
+                    if (child.Type == UIElementType.Button && slotIdx < SaveManager.NumSlots)
+                    {
+                        float bx = panelX + GridLayout.Gutter * 0.5f;
+                        float bw = panelW - GridLayout.Gutter;
+                        float sy = slotStartY + slotIdx * (SaveSlotUI.SlotRowH + SaveSlotUI.SlotGap);
+                        child.X = bx;
+                        child.Y = sy;
+                        child.Width = bw;
+                        child.Height = SaveSlotUI.SlotRowH;
+                        slotIdx++;
+                    }
+                    else if (child.Type == UIElementType.Label)
+                    {
+                        if (child.Name == "SaveLoadTitle")
+                        {
+                            float centerX = slGrid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
+                            var ext = _hud?.GetTextExtents(child.Text) ?? default;
+                            child.X = centerX - ext.Width * 0.5f;
+                            child.Y = panelY + 40f;
+                        }
+                        else if (child.Name == "SaveLoadHint")
+                        {
+                            float hintY = panelY + panelH - 24f;
+                            float hintCenterX = slGrid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
+                            var ext = _hud?.GetTextExtents(child.Text) ?? default;
+                            child.X = hintCenterX - ext.Width * 0.5f;
+                            child.Y = hintY;
+                        }
+                    }
+                }
+            }
+
+            // ── Settings Panel ──
+            if (_settingsPanelElement != null)
+            {
+                _settingsPanelElement.IsVisible = _settingsActive;
+
+                float panelX = w * 0.25f, panelW = w * 0.5f;
+                float rowH = 42f, rowGap = 8f;
+                float titleY = h * 0.28f;
+                float startY = titleY + 70f;
+
+                _settingsPanelElement.X = panelX;
+                _settingsPanelElement.Y = titleY;
+                _settingsPanelElement.Width = panelW;
+                _settingsPanelElement.Height = (h - titleY);
+
+                int btnIdx = 0;
+                foreach (var child in _settingsPanelElement.Children)
+                {
+                    if (child.Type == UIElementType.Button && btnIdx < _inGameSettingLabels.Length)
+                    {
+                        float ry = startY + btnIdx * (rowH + rowGap);
+                        child.X = panelX;
+                        child.Y = ry;
+                        child.Width = panelW;
+                        child.Height = rowH;
+                        btnIdx++;
+                    }
+                    else if (child.Type == UIElementType.Label)
+                    {
+                        // Title: centered
+                        float setCenterX = new GridLayout(w, h).CenterX(2, 10);
+                        var ext = _hud?.GetTextExtents(child.Text) ?? default;
+                        child.X = setCenterX - ext.Width * 0.5f;
+                        child.Y = titleY;
+                    }
+                }
+            }
+
+            // ── Exit Confirm Dialog ──
+            if (_exitConfirmElement != null)
+            {
+                _exitConfirmElement.IsVisible = _confirmingExit;
+
+                float dlgW = ConfirmDialog.BaseDlgW * _confirmDlgScale;
+                float dlgH = ConfirmDialog.BaseDlgH * _confirmDlgScale;
+                _exitConfirmElement.X = (w - dlgW) * 0.5f;
+                _exitConfirmElement.Y = (h - dlgH) * 0.5f;
+                _exitConfirmElement.Width = dlgW;
+                _exitConfirmElement.Height = dlgH;
+
+                int btnIdx = 0;
+                foreach (var child in _exitConfirmElement.Children)
+                {
+                    if (child.Type == UIElementType.Button)
+                    {
+                        ConfirmDialog.GetButtonRect(w, h, _confirmDlgScale, btnIdx,
+                            out float bx, out float by, out float bw, out float bh);
+                        child.X = bx;
+                        child.Y = by;
+                        child.Width = bw;
+                        child.Height = bh;
+                        btnIdx++;
+                    }
+                }
+            }
+
+            // ── Save notification ──
+            if (_saveNotificationElement != null)
+            {
+                bool hasNotif = _saveNotificationTimer > 0f && !string.IsNullOrEmpty(_saveNotification);
+                _saveNotificationElement.IsVisible = hasNotif;
+                if (hasNotif)
+                {
+                    _saveNotificationElement.Text = _saveNotification;
+                    var ext = _hud?.GetTextExtents(_saveNotification) ?? default;
+                    _saveNotificationElement.X = w * 0.5f - ext.Width * 0.5f;
+                    _saveNotificationElement.Y = h * 0.15f;
+                }
             }
         }
 
@@ -406,7 +805,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
 
+            // ── Build UI hierarchy for IDE ──
+            BuildHierarchy();
+
+            // ── Save to .ing scene file (create default if not exists) ──
+            SceneAssetSerializer.EnsureScenesDirectory();
+            string gameScenePath = SceneAssetSerializer.GetScenePath("GameScene");
+            if (!File.Exists(gameScenePath))
+            {
+                SceneAssetSerializer.SaveScene(_sceneRoot, gameScenePath);
+                Console.WriteLine($"[GameScene] Created default scene file: {gameScenePath}");
+            }
+            // Always update game.ing
+            SceneAssetSerializer.SaveGameIng(("GameScene", _sceneRoot));
+
+            // ── Register scene root for IDE Save All ──
+            SceneAssetSerializer.RegisterSceneRoot("GameScene", _sceneRoot);
+
             Mouse.ShowMouse(false);
+            _prevCursorShown = false;
 
             Console.WriteLine("[GameScene] Engine Running...");
         }
@@ -421,14 +838,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
-
-            // ── Viewport input gate: when IDE is active, only process game input if the Viewport panel is focused (unless manually locked via F9) ──
-            bool inputLocked = _sceneManager.Bridge?.InputLocked ?? false;
+             
+            // ── Cursor visibility: show when locked, viewport not focused, or paused ──
             bool viewportFocused = _sceneManager.Bridge?.IsViewportFocused ?? true;
-            bool viewportAllowsInput = !_sceneManager.IsIdeActive || (!inputLocked && viewportFocused);
-
-            if (viewportAllowsInput)
+            bool shouldShowCursor =  !viewportFocused || _paused;
+            if (shouldShowCursor != _prevCursorShown)
             {
+                Mouse.ShowMouse(shouldShowCursor);
+                _prevCursorShown = shouldShowCursor;
+            }
+
+            // ── Input gate: when InGameActive=false, block ALL keyboard + mouse ──
+            // The IDE F9 button is the only way to re-enable ingame input.
+            bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
+            if (!ingameActive)
+            {
+                // Skip ALL keyboard/mouse input processing, but still run game logic below
+                goto SkipInput;
+            }
+
                 //  ESCAPE: always toggle pause (ESC always opens/closes the menu) 
                 bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
                 if (escapeDown && !_escapeWasDown && !_confirmingExit)
@@ -484,38 +912,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _pauseEnterWasDown = false;
                     _settingsActive = false;
                 }
-            }
-            else
-            {
-                // ── Viewport NOT focused: sync all edge-tracking flags to prevent input bleed when re-entering ──
-                _escapeWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
-                _f5WasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F5);
-                _f6WasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F6);
-                _pauseUpWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W);
-                _pauseDownWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S);
-                _pauseEnterWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
-                _saveLoadUpWasDown = _pauseUpWasDown;
-                _saveLoadDownWasDown = _pauseDownWasDown;
-                _saveLoadEnterWasDown = _pauseEnterWasDown;
-                _saveLoadEscapeWasDown = _escapeWasDown;
-                _saveLoadLeftWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
-                _saveLoadRightWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
-                _settingsUpWasDown = _pauseUpWasDown;
-                _settingsDownWasDown = _pauseDownWasDown;
-                _settingsLeftWasDown = _saveLoadLeftWasDown;
-                _settingsRightWasDown = _saveLoadRightWasDown;
-                _settingsEnterWasDown = _pauseEnterWasDown;
-                _settingsEscapeWasDown = _escapeWasDown;
-                _confirmLeftWasDown = _saveLoadLeftWasDown;
-                _confirmRightWasDown = _saveLoadRightWasDown;
-                _confirmEnterWasDown = _pauseEnterWasDown;
-                _confirmEscapeWasDown = _escapeWasDown;
-            }
-
+            
             _time += deltaTime;
 
-            //  Player input & camera control — only when not paused AND viewport allows input
-            if (!_paused && viewportAllowsInput)
+            //  Player input & camera control — only when not paused AND input not locked
+            if (!_paused)
             {
                 //  Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed 
                 if (_inputCooldown > 0f)
@@ -561,13 +962,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
 
+        SkipInput:
+            // ── Sync UIElement hierarchy positions for the IDE tree ──
+            SyncHierarchyPositions();
+
             if (_objectManager != null)
             {
                 // 4. Update agents (AI, physics, animations) â€” always runs
                 _objectManager.Update(deltaTime);
 
                 // 4A. Update player movement — only when not paused, input cooldown passed, AND viewport focused
-                if (!_paused && _inputCooldown <= 0f && viewportAllowsInput)
+                if (!_paused && _inputCooldown <= 0f)
                 {
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
                 }
@@ -575,9 +980,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4B. Update NPC AI + movement
                 _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
 
-                // 5. Set Camera orbital (with terrain collision) — always runs, but skip input when viewport not focused
+                // 5. Set Camera orbital (with terrain collision) — always runs, but skip input when locked
                 Vector3 camPivot = _cameraFocusPivot ?? _objectManager.PlayerAgent.Position;
-                _camera.SetCamera(window, camPivot, _gameTerrainChunk, deltaTime, null, viewportAllowsInput);
+                _camera.SetCamera(window, camPivot, _gameTerrainChunk, deltaTime, null);
 
                 // 5A. Focus hold timer: decrement and release back to player
                 if (_focusHoldTimer > 0f)
@@ -649,8 +1054,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _renderTimer.Restart();
             _frameTotalTimer.Restart();
 
-            //  MAIN RENDER PASS — always use FBO when IDE is active so Viewport has a texture
-            if (wireframeMode && !ideActive)
+            //  MAIN RENDER PASS — always use FBO so Viewport has a texture when IDE is active
+            if (wireframeMode)
             {
                 // Wireframe: render directly to screen, skip postprocess (F1 conflicts with PP)
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
@@ -776,16 +1181,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _objectsTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
             _renderTimer.Restart();
 
-            //  Post Process (render SceneFBO to screen) — skip when IDE is active (scene stays in FBO for Viewport panel)
+            //  Post Process (render SceneFBO to screen) — run always; IDE scene stays in FBO for Viewport panel
             if (wireframeMode)
             {
-                if (!ideActive) GL.Enable(Const.GL_DEPTH_TEST);
+                GL.Enable(Const.GL_DEPTH_TEST);
             }
-            else if (!ideActive)
+            else
             {
                 _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
             }
-            // When IDE active, SceneManager binds framebuffer 0 after scene render for ImGui.
 
             //  Record post-process timing
             _postProcessTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
@@ -812,8 +1216,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
             }
 
-            //  Pause blur overlay (skip in wireframe mode or IDE active)
-            if (!ideActive && _paused && !_confirmingExit && !_settingsActive)
+            //  Pause blur overlay (skip in wireframe mode)
+            if (_paused && !_confirmingExit && !_settingsActive)
             {
                 if (!wireframeMode)
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
@@ -876,8 +1280,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            //  PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY — skip when IDE is active
-            if (!ideActive && _paused)
+            //  PAUSE MENU / SETTINGS / CONFIRM / SAVE-LOAD OVERLAY
+            if (_paused)
             {
                 if (_saveLoadActive)
                 {
@@ -930,6 +1334,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
+            // ── Selection wireframe highlight (IDE mode) ──
+            // Draws a pulsing gold AABB around the selected 3D object.
+            if (_sceneManager.IsIdeActive && _sceneManager.Bridge != null)
+            {
+                var selObj = _sceneManager.Bridge.SelectedObject;
+                if (selObj != null)
+                {
+                    // Pulsing gold color
+                    float pulse = 0.6f + 0.4f * MathF.Sin(_time * 4f);
+                    Vector3 selColor = new Vector3(1f, 0.8f, 0.1f) * pulse;
+
+                    GL.Disable(Const.GL_DEPTH_TEST);
+                    TerrainChunk.DrawAABBWireframe(selObj.WorldAABB, selColor, _camera);
+                    GL.Enable(Const.GL_DEPTH_TEST);
+                }
+            }
+
             //  Record total render time (from the dedicated total timer, not the section timer)
             _totalRenderTimeMs = _frameTotalTimer.Elapsed.TotalMilliseconds;
 
@@ -960,8 +1381,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 //Console.WriteLine($"[HUD Debug] staticObjectManagers.Count={_objectManager.staticObjectManagers.Count} staticCount={staticCount} TotalObjects={_objectManager.TotalObjects} DrawnObjects={_objectManager.DrawnObjects} animCount={animCount}");
                 title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total  ({animCount} chars + {staticCount:N0} static)";
             }
-            //Save notification — skip when IDE is active (shown in Console panel instead)
-            if (!ideActive && _saveNotificationTimer > 0f)
+            //Save notification
+            if (_saveNotificationTimer > 0f)
             {
                 _saveNotificationTimer -= _deltaTime;
                 float fade = Math.Min(1f, _saveNotificationTimer);
@@ -969,17 +1390,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float notifX = Glfw.WindowWidth * 0.5f - notifExt.Width * 0.5f;
                 float notifY = Glfw.WindowHeight * 0.15f;
                 _hud.DrawText(_saveNotification, notifX, notifY, new Vector3(0.3f, 0.9f, 0.4f) * fade);
-            }            //  Skip HUD overlay when IDE is active (SceneView panel shows this data)
-            if (!ideActive)
-            {
-                _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
-                float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
-                _hud.DrawText(title2, 10, 60 + debugLineH, new Vector3(1, 0, 0));
-                _hud.DrawText(title3, 10, 60 + debugLineH * 2, new Vector3(1, 1, 0));
-                _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
-                _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
-                _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
-            }
+            }            //  HUD debug overlay — always visible
+            _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
+            float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
+            _hud.DrawText(title2, 10, 60 + debugLineH, new Vector3(1, 0, 0));
+            _hud.DrawText(title3, 10, 60 + debugLineH * 2, new Vector3(1, 1, 0));
+            _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
+            _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
+            _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
             
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
 
@@ -1765,7 +2183,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// <summary>Clear existing physics cubes and respawn new ones above terrain.</summary>
         public void Exit()
         {
-            Glfw.OnWindowResized -= OnWindowResized; 
+            Glfw.OnWindowResized -= OnWindowResized;
+
+            // ── Clear IDE bridge references ──
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null)
+            {
+                bridge.SelectedUIElement = null;
+                bridge.SceneRootElements = null;
+            }
+
             _csm?.Dispose();
             Console.WriteLine("[GameScene] Exited.");
         }

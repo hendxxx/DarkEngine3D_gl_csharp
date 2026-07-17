@@ -27,9 +27,24 @@ public class ConsolePanel
     {
         _bridge = bridge;
 
-        // Capture Console output
+        // Capture both Console.Out and Console.Error
         _captureWriter = new StringWriter();
         Console.SetOut(_captureWriter);
+        Console.SetError(_captureWriter);
+
+        // Hook AppDomain unhandled exceptions to log full stack trace
+        AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
+        {
+            var ex = args.ExceptionObject as Exception;
+            Console.Error.WriteLine($"[FATAL] Unhandled exception: {ex}\nStack: {ex?.StackTrace}");
+        };
+
+        // Hook TaskScheduler unobserved task exceptions
+        TaskScheduler.UnobservedTaskException += (sender, args) =>
+        {
+            Console.Error.WriteLine($"[FATAL] Unobserved task exception: {args.Exception}\nStack: {args.Exception.StackTrace}");
+            args.SetObserved();
+        };
 
         // Start background reader
         var thread = new Thread(ReadConsoleLoop)
@@ -46,28 +61,53 @@ public class ConsolePanel
     {
         while (true)
         {
-            Thread.Sleep(50);
-            var text = _captureWriter.ToString();
-            if (text.Length > 0)
+            try
             {
+                Thread.Sleep(50);
+
+                string text;
                 lock (_lock)
                 {
-                    // Split by newlines and add each line
-                    var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var line in lines)
-                    {
-                        var trimmed = line.TrimEnd('\r');
-                        if (trimmed.Length > 0)
-                            _entries.Add(new LogEntry(trimmed, Classify(trimmed)));
-                    }
-
-                    // Limit entries to prevent memory leak
-                    if (_entries.Count > 5000)
-                        _entries.RemoveRange(0, _entries.Count - 5000);
-
-                    // Clear the StringWriter
+                    // Read and clear under lock to prevent race with Console.Write
+                    text = _captureWriter.ToString();
                     _captureWriter.GetStringBuilder().Clear();
                 }
+
+                if (text.Length > 0)
+                {
+                    // Split by newlines and add each line (no lock needed — _entries is only accessed here and in Render under _lock)
+                    var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    lock (_lock)
+                    {
+                        foreach (var line in lines)
+                        {
+                            var trimmed = line.TrimEnd('\r');
+                            if (trimmed.Length > 0)
+                                _entries.Add(new LogEntry(trimmed, Classify(trimmed)));
+                        }
+
+                        // Limit entries to prevent memory leak
+                        if (_entries.Count > 5000)
+                            _entries.RemoveRange(0, _entries.Count - 5000);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Critical: swallow any exception so the background thread never dies.
+                // If the thread dies, the StringWriter never gets cleared → memory leak.
+                // Log full stack trace to file for debugging.
+                try
+                {
+                    System.IO.File.AppendAllText("console_capture_error.log",
+                        $"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} ===\n" +
+                        $"Type: {ex.GetType().FullName}\n" +
+                        $"Message: {ex.Message}\n" +
+                        $"Source: {ex.Source}\n" +
+                        $"Stack:\n{ex.StackTrace}\n" +
+                        $"Inner: {ex.InnerException}\n\n");
+                }
+                catch { }
             }
         }
     }

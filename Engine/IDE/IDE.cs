@@ -1,6 +1,7 @@
 using DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using ImGuiNET;
+using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE;
 
@@ -19,6 +20,8 @@ public class IDE : IDisposable
     private readonly InspectorPanel _inspector;
     private readonly AssetBrowserPanel _assetBrowser;
     private readonly ConsolePanel _console;
+    private readonly SceneManagerPanel _sceneManagerPanel;
+    private readonly HierarchyPanel _hierarchy;
 
     private bool _showDemoWindow = false;
 
@@ -37,6 +40,8 @@ public class IDE : IDisposable
             _inspector = new InspectorPanel(Bridge);
             _assetBrowser = new AssetBrowserPanel(Bridge);
             _console = new ConsolePanel(Bridge);
+            _sceneManagerPanel = new SceneManagerPanel(Bridge);
+            _hierarchy = new HierarchyPanel(Bridge);
 
             IsHealthy = true;
 
@@ -52,6 +57,8 @@ public class IDE : IDisposable
             _inspector = null!;
             _assetBrowser = null!;
             _console = null!;
+            _sceneManagerPanel = null!;
+            _hierarchy = null!;
         }
     }
 
@@ -84,6 +91,9 @@ public class IDE : IDisposable
                 _inspector.ShowInMenu();
                 _assetBrowser.ShowInMenu();
                 _console.ShowInMenu();
+                _hierarchy.ShowInMenu();
+                ImGui.Separator();
+                _sceneManagerPanel.ShowInMenu();
                 ImGui.EndMenu();
             }
             if (ImGui.BeginMenu("Help"))
@@ -92,6 +102,27 @@ public class IDE : IDisposable
                 ImGui.Text("F2 to toggle IDE overlay");
                 ImGui.EndMenu();
             }
+
+            // ── Input lock toggle button (right side of menu bar) ──
+            ImGui.SameLine(ImGui.GetWindowWidth() - 150f);
+            bool isInGameActive = Bridge.InGameActive;
+            Vector4 btnColor = isInGameActive
+                ? new Vector4(0.20f, 0.65f, 0.25f, 1f) // red = active
+                : new Vector4(0.85f, 0.25f, 0.20f, 1f); // green = inactive
+            ImGui.PushStyleColor(ImGuiCol.Button, btnColor);
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, btnColor * 1.2f);
+            string label = isInGameActive ? "[INGAME ACTIVE YES] (F9)" : "[INGAME ACTIVE NO] (F9)";
+            if (ImGui.Button(label))
+            {
+                Bridge.InGameActive = !isInGameActive;
+                // Persist to settings.json
+                var settings = Config.SettingsSave.Load();
+                settings.InGameActive = Bridge.InGameActive;
+                Config.SettingsSave.Save(settings);
+                Console.WriteLine($"[IDE] Toggle InGameActive: {Bridge.InGameActive}");
+            }
+            ImGui.PopStyleColor(2);
+
             ImGui.EndMainMenuBar();
         }
 
@@ -103,7 +134,9 @@ public class IDE : IDisposable
         _sceneView.Render();
         _inspector.Render();
         _assetBrowser.Render();
+        _hierarchy.Render();
         _console.Render();
+        _sceneManagerPanel.Render();
 
         // ── Demo window ──
         if (_showDemoWindow)

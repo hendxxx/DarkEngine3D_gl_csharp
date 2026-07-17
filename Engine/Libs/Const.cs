@@ -288,6 +288,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_QUERY_RESULT_AVAILABLE = 0x8867;
 
         // ======================
+        // GLFW HINTS / ATTRIBS
+        // ======================
+        public const int GLFW_DONT_CARE = -1;
+        public const int GLFW_FALSE = 0;
+        public const int GLFW_TRUE = 1;
+        public const int GLFW_DECORATED = 0x00020004;
+
+        // ======================
         // MOUSE BUTTONS
         // ======================
         public const int GLFW_CURSOR = 0x00033001;
