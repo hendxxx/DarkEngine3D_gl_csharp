@@ -89,26 +89,11 @@ public unsafe class Program
         // Init Shader
         Shader.Init();
 
-        // Init Camera
-        Camera camera = new(0, 0, 0, PlayerConfig.InitialHeading, 10,
-            (float)Glfw.WindowWidth / Glfw.WindowHeight, (float)Math.PI / 4, CameraConfig.CameraNearDist, CameraConfig.CameraFarDist);
-        camera.CurrentMode = CameraMode.Orbit;
-
         Keyboard.IsFogActive = false;
-
-        // Init Light
-        Vector3 sunDirLoc = new(1.0f, 0.5f, 0.0f);
-        Vector3 sunColorLoc = new(1.0f, 0.95f, 0.8f);
-        Vector3 viewPosLoc = new(camera.Position.X, camera.Position.Y, camera.Position.Z);
-        Lights light = new(sunDirLoc, sunColorLoc, viewPosLoc, "16:00");
 
         // Init Keyboard and Mouse
         Keyboard.Init(glfwLib);
         Mouse.Init(glfwLib, window);
-
-        // Subscribe to resize event for camera aspect updates
-        Glfw.OnWindowResized += (w, h) => camera.UpdateAspectRatio(w, h);
-        Glfw.FireInitialResize();
 
         // ═══════════════════════════════════════════════════
         // PHASE 2: SCENE SYSTEM
@@ -123,16 +108,16 @@ public unsafe class Program
         SceneManager sceneManager = new();
         sceneManager.AttachIde(ide);
 
-        // Create MainMenuScene first — user chooses Start Game to load the game
-        MainMenuScene mainMenu = new(sceneManager, camera, light);
-
         // ═══════════════════════════════════════════════════
-        // PHASE 3: MAIN LOOP (starts with MainMenuScene)
+        // PHASE 3: MAIN LOOP (starts with no scene — UI Editor mode)
         // ═══════════════════════════════════════════════════
 
-        // MainMenuScene renders the menu. "Start Game" switches to LoadingScene,
-        // which loads assets and then switches to GameScene.
-        sceneManager.Run(mainMenu);
+        // Start with no scene running — the IDE's UI Editor is the main interface.
+        // User creates/edits scenes via Scene Manager panel.
+        // When user wants to test/play, they can switch to a game scene.
+        // MainMenuScene, LoadingScene, and GameScene are available as examples
+        // via the Scene Manager panel's Load button.
+        sceneManager.Run(/* startScene = null — blank UI Editor mode */);
 
         // Shutdown
         Console.WriteLine("Program Shutdown.");

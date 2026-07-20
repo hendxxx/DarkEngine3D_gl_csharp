@@ -150,13 +150,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             IsVisible = false,
         };
 
-        // ── Hierarchy sub-panel references ──
-        private UIElement? _pauseMenuElement;
-        private UIElement? _saveLoadPanelElement;
-        private UIElement? _settingsPanelElement;
-        private UIElement? _exitConfirmElement;
-        private UIElement? _saveNotificationElement;
-
         private int _renderedTris;
 
         //  IDE focus-camera state
@@ -199,6 +192,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bridge.SceneName = "GameScene";
 
             // ── UI Hierarchy ──
+            bridge.SceneRoot = _sceneRoot;
             bridge.SceneRootElements = [_sceneRoot];
 
             // ── Viewport click → select element ──
@@ -303,8 +297,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Auto-select first child if nothing selected
             if (bridge.SelectedUIElement == null && _sceneRoot.Children.Count > 0)
                 bridge.SelectedUIElement = _sceneRoot.Children[0];
-            else if (bridge.SelectedUIElement == null && _pauseMenuElement != null)
-                bridge.SelectedUIElement = _pauseMenuElement;
 
             // Object counts
             if (_objectManager != null)
@@ -382,280 +374,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     float dist = Vector3.Distance(_camera.Position, targetPos);
                     CameraConfig.TargetCameraDistance = Math.Clamp(dist, 1f, 20f);
                 };
-            }
-        }
-
-        /// <summary>Build the UI hierarchy tree for the IDE. Called from Enter().</summary>
-        private void BuildHierarchy()
-        {
-            _sceneRoot.ClearChildren();
-
-            // ── Pause Menu ──
-            string[] pauseItems = ["RESUME", "SAVE GAME", "LOAD GAME", "SETTINGS", "World: [RUNNING]", "BACK TO MAIN MENU"];
-            _pauseMenuElement = new UIElement
-            {
-                Name = "PauseMenu", Text = "Pause Menu", Type = UIElementType.Container,
-                IsVisible = false,
-            };
-            _pauseMenuElement.AddChild(new UIElement
-            {
-                Name = "PauseTitle", Text = "PAUSED", Type = UIElementType.Label,
-                FontSize = 28f,
-            });
-            for (int i = 0; i < PauseItemCount; i++)
-            {
-                _pauseMenuElement.AddChild(new UIElement
-                {
-                    Name = pauseItems[i], Text = pauseItems[i], Type = UIElementType.Button,
-                    FontSize = 22f,
-                });
-            }
-            _sceneRoot.AddChild(_pauseMenuElement);
-
-            // ── Save/Load Panel ──
-            _saveLoadPanelElement = new UIElement
-            {
-                Name = "SaveLoadPanel", Text = "Save/Load", Type = UIElementType.Container,
-                IsVisible = false,
-            };
-            _saveLoadPanelElement.AddChild(new UIElement
-            {
-                Name = "SaveLoadTitle", Text = "SAVE/LOAD GAME", Type = UIElementType.Label,
-                FontSize = 26f,
-            });
-            for (int i = 0; i < SaveManager.NumSlots; i++)
-            {
-                _saveLoadPanelElement.AddChild(new UIElement
-                {
-                    Name = $"Slot {i + 1}", Text = $"Slot {i + 1}", Type = UIElementType.Button,
-                    FontSize = 20f,
-                });
-            }
-            _saveLoadPanelElement.AddChild(new UIElement
-            {
-                Name = "SaveLoadHint", Text = "Select a slot - Enter to confirm - Esc to cancel",
-                Type = UIElementType.Label, FontSize = 16f,
-            });
-            _sceneRoot.AddChild(_saveLoadPanelElement);
-
-            // ── Settings Panel ──
-            _settingsPanelElement = new UIElement
-            {
-                Name = "SettingsPanel", Text = "Settings", Type = UIElementType.Container,
-                IsVisible = false,
-            };
-            _settingsPanelElement.AddChild(new UIElement
-            {
-                Name = "SettingsTitle", Text = "SETTINGS", Type = UIElementType.Label,
-                FontSize = 26f,
-            });
-            for (int i = 0; i < _inGameSettingLabels.Length; i++)
-            {
-                _settingsPanelElement.AddChild(new UIElement
-                {
-                    Name = _inGameSettingLabels[i], Text = _inGameSettingLabels[i],
-                    Type = (i == _inGameSettingLabels.Length - 1) ? UIElementType.Button : UIElementType.Button,
-                    FontSize = 22f,
-                });
-            }
-            _sceneRoot.AddChild(_settingsPanelElement);
-
-            // ── Exit Confirm Dialog ──
-            _exitConfirmElement = new UIElement
-            {
-                Name = "ExitConfirm", Text = "Exit to Main Menu?", Type = UIElementType.Dialog,
-                IsVisible = false,
-            };
-            _exitConfirmElement.AddChild(new UIElement
-            {
-                Name = "NO", Text = "NO", Type = UIElementType.Button, FontSize = 22f,
-            });
-            _exitConfirmElement.AddChild(new UIElement
-            {
-                Name = "YES", Text = "YES", Type = UIElementType.Button, FontSize = 22f,
-            });
-            _sceneRoot.AddChild(_exitConfirmElement);
-
-            // ── Save notification ──
-            _saveNotificationElement = new UIElement
-            {
-                Name = "SaveNotification", Text = "", Type = UIElementType.Label,
-                IsVisible = false, FontSize = 24f,
-            };
-            _sceneRoot.AddChild(_saveNotificationElement);
-        }
-
-        /// <summary>Sync UIElement hierarchy positions and visibility every frame.</summary>
-        private void SyncHierarchyPositions()
-        {
-            int w = Glfw.WindowWidth;
-            int h = Glfw.WindowHeight;
-
-            // ── Pause Menu ──
-            if (_pauseMenuElement != null)
-            {
-                _pauseMenuElement.IsVisible = _paused && !_saveLoadActive && !_confirmingExit && !_settingsActive;
-
-                var pgGrid = new GridLayout(w, h);
-                float pauseBtnW = pgGrid.SpanW(PauseBtnColStart, PauseBtnColEnd);
-                float pauseBx = (w - pauseBtnW) * 0.5f;
-                float titleY = h * 0.28f;
-                float startY = titleY + 70f;
-
-                _pauseMenuElement.X = pauseBx;
-                _pauseMenuElement.Y = titleY;
-                _pauseMenuElement.Width = pauseBtnW;
-                _pauseMenuElement.Height = h - titleY;
-
-                int btnIdx = 0;
-                foreach (var child in _pauseMenuElement.Children)
-                {
-                    if (child.Type == UIElementType.Label)
-                    {
-                        // Title: centered in window
-                        float pauseCenterX = pgGrid.CenterX(2, 10);
-                        var titleExt = _hud?.GetTextExtents(child.Text) ?? default;
-                        child.X = pauseCenterX - titleExt.Width * 0.5f;
-                        child.Y = titleY;
-                    }
-                    else if (child.Type == UIElementType.Button && btnIdx < PauseItemCount)
-                    {
-                        child.X = pauseBx;
-                        child.Y = startY + btnIdx * (PauseBtnH + PauseBtnSpacing);
-                        child.Width = pauseBtnW;
-                        child.Height = PauseBtnH;
-                        btnIdx++;
-                    }
-                }
-            }
-
-            // ── Save/Load Panel ──
-            if (_saveLoadPanelElement != null)
-            {
-                _saveLoadPanelElement.IsVisible = _saveLoadActive;
-
-                SaveSlotUI.GetPanelRect(w, h, out float panelX, out float panelW,
-                    out float panelY, out float panelH, out float slotStartY);
-
-                _saveLoadPanelElement.X = panelX;
-                _saveLoadPanelElement.Y = panelY;
-                _saveLoadPanelElement.Width = panelW;
-                _saveLoadPanelElement.Height = panelH;
-
-                var slGrid = new GridLayout(w, h);
-                int slotIdx = 0;
-                foreach (var child in _saveLoadPanelElement.Children)
-                {
-                    if (child.Type == UIElementType.Button && slotIdx < SaveManager.NumSlots)
-                    {
-                        float bx = panelX + GridLayout.Gutter * 0.5f;
-                        float bw = panelW - GridLayout.Gutter;
-                        float sy = slotStartY + slotIdx * (SaveSlotUI.SlotRowH + SaveSlotUI.SlotGap);
-                        child.X = bx;
-                        child.Y = sy;
-                        child.Width = bw;
-                        child.Height = SaveSlotUI.SlotRowH;
-                        slotIdx++;
-                    }
-                    else if (child.Type == UIElementType.Label)
-                    {
-                        if (child.Name == "SaveLoadTitle")
-                        {
-                            float centerX = slGrid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
-                            var ext = _hud?.GetTextExtents(child.Text) ?? default;
-                            child.X = centerX - ext.Width * 0.5f;
-                            child.Y = panelY + 40f;
-                        }
-                        else if (child.Name == "SaveLoadHint")
-                        {
-                            float hintY = panelY + panelH - 24f;
-                            float hintCenterX = slGrid.CenterX(SaveSlotUI.PanelColStart, SaveSlotUI.PanelColEnd);
-                            var ext = _hud?.GetTextExtents(child.Text) ?? default;
-                            child.X = hintCenterX - ext.Width * 0.5f;
-                            child.Y = hintY;
-                        }
-                    }
-                }
-            }
-
-            // ── Settings Panel ──
-            if (_settingsPanelElement != null)
-            {
-                _settingsPanelElement.IsVisible = _settingsActive;
-
-                float panelX = w * 0.25f, panelW = w * 0.5f;
-                float rowH = 42f, rowGap = 8f;
-                float titleY = h * 0.28f;
-                float startY = titleY + 70f;
-
-                _settingsPanelElement.X = panelX;
-                _settingsPanelElement.Y = titleY;
-                _settingsPanelElement.Width = panelW;
-                _settingsPanelElement.Height = (h - titleY);
-
-                int btnIdx = 0;
-                foreach (var child in _settingsPanelElement.Children)
-                {
-                    if (child.Type == UIElementType.Button && btnIdx < _inGameSettingLabels.Length)
-                    {
-                        float ry = startY + btnIdx * (rowH + rowGap);
-                        child.X = panelX;
-                        child.Y = ry;
-                        child.Width = panelW;
-                        child.Height = rowH;
-                        btnIdx++;
-                    }
-                    else if (child.Type == UIElementType.Label)
-                    {
-                        // Title: centered
-                        float setCenterX = new GridLayout(w, h).CenterX(2, 10);
-                        var ext = _hud?.GetTextExtents(child.Text) ?? default;
-                        child.X = setCenterX - ext.Width * 0.5f;
-                        child.Y = titleY;
-                    }
-                }
-            }
-
-            // ── Exit Confirm Dialog ──
-            if (_exitConfirmElement != null)
-            {
-                _exitConfirmElement.IsVisible = _confirmingExit;
-
-                float dlgW = ConfirmDialog.BaseDlgW * _confirmDlgScale;
-                float dlgH = ConfirmDialog.BaseDlgH * _confirmDlgScale;
-                _exitConfirmElement.X = (w - dlgW) * 0.5f;
-                _exitConfirmElement.Y = (h - dlgH) * 0.5f;
-                _exitConfirmElement.Width = dlgW;
-                _exitConfirmElement.Height = dlgH;
-
-                int btnIdx = 0;
-                foreach (var child in _exitConfirmElement.Children)
-                {
-                    if (child.Type == UIElementType.Button)
-                    {
-                        ConfirmDialog.GetButtonRect(w, h, _confirmDlgScale, btnIdx,
-                            out float bx, out float by, out float bw, out float bh);
-                        child.X = bx;
-                        child.Y = by;
-                        child.Width = bw;
-                        child.Height = bh;
-                        btnIdx++;
-                    }
-                }
-            }
-
-            // ── Save notification ──
-            if (_saveNotificationElement != null)
-            {
-                bool hasNotif = _saveNotificationTimer > 0f && !string.IsNullOrEmpty(_saveNotification);
-                _saveNotificationElement.IsVisible = hasNotif;
-                if (hasNotif)
-                {
-                    _saveNotificationElement.Text = _saveNotification;
-                    var ext = _hud?.GetTextExtents(_saveNotification) ?? default;
-                    _saveNotificationElement.X = w * 0.5f - ext.Width * 0.5f;
-                    _saveNotificationElement.Y = h * 0.15f;
-                }
             }
         }
 
@@ -805,19 +523,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
 
-            // ── Build UI hierarchy for IDE ──
-            BuildHierarchy();
-
-            // ── Save to .ing scene file (create default if not exists) ──
-            SceneAssetSerializer.EnsureScenesDirectory();
-            string gameScenePath = SceneAssetSerializer.GetScenePath("GameScene");
-            if (!File.Exists(gameScenePath))
-            {
-                SceneAssetSerializer.SaveScene(_sceneRoot, gameScenePath);
-                Console.WriteLine($"[GameScene] Created default scene file: {gameScenePath}");
-            }
-            // Always update game.ing
-            SceneAssetSerializer.SaveGameIng(("GameScene", _sceneRoot));
+            // ── Scene starts blank! No .ing file is loaded automatically. ──
+            // User can create UI via the IDE SceneDetail panel (+ Add button),
+            // or use the "↻ Reload" button to load from a previously saved .ing file.
+            _sceneRoot.ClearChildren();
 
             // ── Register scene root for IDE Save All ──
             SceneAssetSerializer.RegisterSceneRoot("GameScene", _sceneRoot);
@@ -963,9 +672,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
         SkipInput:
-            // ── Sync UIElement hierarchy positions for the IDE tree ──
-            SyncHierarchyPositions();
-
             if (_objectManager != null)
             {
                 // 4. Update agents (AI, physics, animations) â€” always runs
@@ -1969,7 +1675,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 SaveInGameSettingsToJson();
                 Console.WriteLine("[GameScene] Returning to Main Menu...");
-                MainMenuScene mainMenu = new(_sceneManager, _camera, _light, "In-game settings saved!");
+                MainMenuScene mainMenu = new(_sceneManager, _camera, _light);
                 _sceneManager.SwitchScene(mainMenu);
             }
             else // No â†’ go back to pause menu
@@ -2191,6 +1897,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 bridge.SelectedUIElement = null;
                 bridge.SceneRootElements = null;
+                bridge.SceneRoot = null;
             }
 
             _csm?.Dispose();

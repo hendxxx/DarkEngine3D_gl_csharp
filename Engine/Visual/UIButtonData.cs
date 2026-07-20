@@ -33,7 +33,15 @@ public enum UIElementType
 public class UIElement
 {
     // ── Identity ──
+    /// <summary>Unique instance ID (for debugging object recreation). Increments with each new instance.</summary>
+    private static int _nextInstanceId = 1;
+    public readonly int InstanceId;
     public string Name { get; set; } = "Element";
+
+    public UIElement()
+    {
+        InstanceId = _nextInstanceId++;
+    }
     public UIElementType Type { get; set; } = UIElementType.Button;
 
     // ── Visual ──

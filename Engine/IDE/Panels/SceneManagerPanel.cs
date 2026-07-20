@@ -23,6 +23,9 @@ public class SceneManagerPanel
     private double _lastClickTime = 0;
     private const double DoubleClickInterval = 0.3;
 
+    // ── File dialog for Load/Save As ──
+    private readonly ImGuiFileDialog _fileDialog = new();
+
     // ── Popup state ──
     private bool _showAddPopup = false;
     private bool _showEditPopup = false;
@@ -159,7 +162,7 @@ public class SceneManagerPanel
                     double now = ImGui.GetTime();
                     if (now - _lastClickTime < DoubleClickInterval)
                     {
-                        LoadScene(i);
+                        SelectOrLoadScene(i);
                     }
                     _lastClickTime = now;
                 }
@@ -196,7 +199,7 @@ public class SceneManagerPanel
                 var stateCol = isActive ? ColActive : (entry.HasInitializedEntry ? ColInactive : ColDim);
                 ImGui.TextColored(stateCol, state);
 
-                // ── Column 3: Load button ──
+                // ── Column 3: Select/Edit button ──
                 ImGui.TableNextColumn();
                 if (isActive)
                 {
@@ -204,12 +207,14 @@ public class SceneManagerPanel
                 }
                 else
                 {
+                    // For editor scenes, show "Select"; for game scenes, show "Load"
+                    string actionLabel = _bridge.EditorScenes.ContainsKey(entry.Name) ? "Select" : "Load";
                     ImGui.PushStyleColor(ImGuiCol.Button, ColButton);
                     ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColButtonHov);
-                    if (ImGui.Button("Load", new Vector2(-1, 0)))
+                    if (ImGui.Button(actionLabel, new Vector2(-1, 0)))
                     {
                         _selectedIdx = i;
-                        LoadScene(i);
+                        SelectOrLoadScene(i);
                     }
                     ImGui.PopStyleColor(2);
                 }
@@ -220,33 +225,56 @@ public class SceneManagerPanel
 
         // ── Bottom hint ──
         ImGui.Separator();
-        ImGui.TextDisabled("Double-click or click Load to switch scenes");
+        ImGui.TextDisabled("Double-click or click Select/Load to switch scenes");
 
-        // ── Save All Scenes to game.ing ──
+        // ── File operations: Save All / Save As / Load from file ──
         ImGui.Separator();
         {
-            int count = SceneAssetSerializer.GetRegisteredSceneNames().Count;
-            bool canSave = count > 0;
+            bool canSave = _bridge.EditorScenes.Count > 0;
+            float btnW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 2f) / 3f;
 
+            // Save All button (green) — saves to default game.ing
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.15f, 0.50f, 0.25f, 1f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.25f, 0.70f, 0.35f, 1f));
             ImGui.BeginDisabled(!canSave);
-            if (ImGui.Button("Save All Scenes to game.ing", new Vector2(-1, 32)))
+            if (ImGui.Button("Save All", new Vector2(btnW, 28)))
             {
-                SceneAssetSerializer.SaveAllRegisteredScenes();
+                SaveAllEditorScenes();
             }
             ImGui.EndDisabled();
             ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered() && canSave)
+                ImGui.SetTooltip($"Save {_bridge.EditorScenes.Count} scene(s) to {SceneAssetSerializer.GameIngPath}");
 
-            if (ImGui.IsItemHovered())
+            ImGui.SameLine();
+
+            // Save As button (teal) — opens file dialog to choose location
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.10f, 0.45f, 0.50f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.20f, 0.60f, 0.65f, 1f));
+            ImGui.BeginDisabled(!canSave);
+            if (ImGui.Button("Save As...", new Vector2(btnW, 28)))
             {
-                string tooltip = canSave
-                    ? $"Save {count} registered scene(s) to game.ing\n{string.Join(", ", SceneAssetSerializer.GetRegisteredSceneNames())}"
-                    : "No scenes have been registered yet (enter a scene first)";
-                ImGui.SetTooltip(tooltip);
+                _fileDialog.OpenForSave("game.ing");
             }
+            ImGui.EndDisabled();
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Save scenes to a custom .ing file location");
 
-            ImGui.TextDisabled($"Registered: {count} scene(s)");
+            ImGui.SameLine();
+
+            // Load from file button (blue) — opens file dialog to pick .ing file
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.12f, 0.30f, 0.50f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.18f, 0.40f, 0.65f, 1f));
+            if (ImGui.Button("Load File...", new Vector2(btnW, 28)))
+            {
+                _fileDialog.OpenForLoad();
+            }
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Open a .ing file and load its scenes");
+
+            ImGui.TextDisabled($"Editor scenes: {_bridge.EditorScenes.Count}");
         }
 
         // ── Reload current scene button ──
@@ -299,14 +327,36 @@ public class SceneManagerPanel
 
             if (ImGui.Button("Create", new Vector2(120, 0)) && nameValid)
             {
+                string sceneName = _editNameBuffer.Trim();
+
                 // Add new scene entry with user-chosen type
                 _bridge.AvailableScenes.Add(new IDEBridge.SceneEntry(
-                    _editNameBuffer.Trim(),
+                    sceneName,
                     string.IsNullOrWhiteSpace(_editDescBuffer) ? "Custom scene" : _editDescBuffer.Trim(),
                     false,
                     (IDEBridge.SceneType)_selectedNewSceneTypeIdx));
                 _selectedIdx = _bridge.AvailableScenes.Count - 1;
-                Console.WriteLine($"[SceneManager] Added scene: {_editNameBuffer.Trim()} (type={IDEBridge.SceneTypeLabels[_selectedNewSceneTypeIdx]})");
+                Console.WriteLine($"[SceneManager] Added scene: {sceneName} (type={IDEBridge.SceneTypeLabels[_selectedNewSceneTypeIdx]})");
+
+                // Create an EditorScene (UIElement root) for this scene so it can be edited in SceneDetail
+                if (!_bridge.EditorScenes.ContainsKey(sceneName))
+                {
+                    var sceneRoot = new UIElement
+                    {
+                        Name = sceneName,
+                        Type = UIElementType.Scene,
+                        IsVisible = false,
+                    };
+                    _bridge.EditorScenes[sceneName] = new IDEBridge.EditorScene(
+                        sceneName,
+                        (IDEBridge.SceneType)_selectedNewSceneTypeIdx,
+                        sceneRoot);
+                    Console.WriteLine($"[SceneManager] Created EditorScene root for '{sceneName}'");
+                }
+
+                // Select the new scene in the editor
+                SelectEditorScene(sceneName);
+
                 ImGui.CloseCurrentPopup();
             }
 
@@ -353,13 +403,41 @@ public class SceneManagerPanel
                 if (_selectedIdx >= 0 && _selectedIdx < _bridge.AvailableScenes.Count)
                 {
                     var old = _bridge.AvailableScenes[_selectedIdx];
+                    string newName = string.IsNullOrWhiteSpace(_editNameBuffer) ? old.Name : _editNameBuffer.Trim();
+                    string oldName = old.Name;
+
                     _bridge.AvailableScenes[_selectedIdx] = old with
                     {
-                        Name = string.IsNullOrWhiteSpace(_editNameBuffer) ? old.Name : _editNameBuffer.Trim(),
+                        Name = newName,
                         Description = string.IsNullOrWhiteSpace(_editDescBuffer) ? old.Description : _editDescBuffer.Trim(),
                         Type = (IDEBridge.SceneType)_selectedEditSceneTypeIdx,
                     };
-                    Console.WriteLine($"[SceneManager] Updated scene: {_bridge.AvailableScenes[_selectedIdx].Name}");
+
+                    // If name changed, update EditorScenes dictionary key too
+                    if (!string.Equals(newName, oldName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (_bridge.EditorScenes.TryGetValue(oldName, out var oldEditorScene))
+                        {
+                            _bridge.EditorScenes.Remove(oldName);
+                            var renamedRoot = oldEditorScene.Root;
+                            renamedRoot.Name = newName;
+                            _bridge.EditorScenes[newName] = oldEditorScene with
+                            {
+                                Name = newName,
+                                Root = renamedRoot,
+                                Type = (IDEBridge.SceneType)_selectedEditSceneTypeIdx
+                            };
+
+                            // If the renamed scene was selected, update selection
+                            if (_bridge.SelectedEditorScene == oldName)
+                            {
+                                _bridge.SelectedEditorScene = newName;
+                                _bridge.SceneRoot = renamedRoot;
+                            }
+                        }
+                    }
+
+                    Console.WriteLine($"[SceneManager] Updated scene: '{oldName}' → '{newName}'");
                 }
                 ImGui.CloseCurrentPopup();
             }
@@ -400,8 +478,42 @@ public class SceneManagerPanel
                 {
                     string deletedName = _bridge.AvailableScenes[_selectedIdx].Name;
                     _bridge.AvailableScenes.RemoveAt(_selectedIdx);
+
+                    // Also remove from editor scenes if present
+                    if (_bridge.EditorScenes.ContainsKey(deletedName))
+                    {
+                        _bridge.EditorScenes.Remove(deletedName);
+                        if (_bridge.SelectedEditorScene == deletedName)
+                        {
+                            _bridge.SelectedEditorScene = null;
+                            _bridge.SceneRoot = null;
+                            _bridge.SceneRootElements = null;
+                            _bridge.SelectedUIElement = null;
+                            _bridge.SelectedUIElements?.Clear();
+                        }
+                    }
+
                     _selectedIdx = -1;
                     Console.WriteLine($"[SceneManager] Deleted scene: {deletedName}");
+
+                    // Auto-save to game.ing so deletion is permanent (not just in memory)
+                    if (_bridge.EditorScenes.Count > 0)
+                    {
+                        SaveAllEditorScenes();
+                        Console.WriteLine($"[SceneManager] Auto-saved after deleting '{deletedName}'");
+                    }
+                    else
+                    {
+                        // No scenes left — write empty manifest to clear game.ing
+                        // (SaveGameIng() with no args would preserve old data, so write fresh)
+                        Console.WriteLine($"[SceneManager] No scenes left, writing empty manifest");
+                        var emptyManifest = new SceneManifest();
+                        string json = System.Text.Json.JsonSerializer.Serialize(
+                            emptyManifest, SceneAssetSerializer.GetJsonOptions());
+                        Directory.CreateDirectory(
+                            Path.GetDirectoryName(SceneAssetSerializer.GameIngPath)!);
+                        File.WriteAllText(SceneAssetSerializer.GameIngPath, json);
+                    }
                 }
                 ImGui.CloseCurrentPopup();
             }
@@ -415,37 +527,118 @@ public class SceneManagerPanel
 
             ImGui.EndPopup();
         }
+
+        // ── File dialog (Load / Save As) ──
+        _fileDialog.Render();
+        if (_fileDialog.IsConfirmed && _fileDialog.SelectedPath != null)
+        {
+            string path = _fileDialog.SelectedPath;
+
+            if (_fileDialog.IsSaveMode)
+            {
+                // Save As: write editor scenes to chosen path
+                SaveToIngFile(path);
+            }
+            else
+            {
+                // Load: read from chosen path
+                LoadFromIngFile(path);
+            }
+            _fileDialog.Close();
+        }
     }
 
-    /// <summary>Switch to the scene at the given index.
-    /// Uses the entry's SceneType (set by user) — no auto-detection from name.</summary>
-    private void LoadScene(int idx)
-    {
-        var sm = _bridge.SceneManager;
-        if (sm == null) return;
+    /// <summary>Public wrapper so IDE can wire it to IDEBridge.SaveAllScenes delegate.</summary>
+    public void SaveAllEditorScenesPublic() => SaveAllEditorScenes();
 
+    /// <summary>Public wrapper so IDE can wire it to IDEBridge.RequestSaveAsDialog delegate.</summary>
+    public void OpenSaveAsDialog() => _fileDialog.OpenForSave("game.ing");
+
+    /// <summary>Save ALL editor scenes to game.ing file by reusing existing save logic.</summary>
+    private void SaveAllEditorScenes()
+    {
+        if (_bridge.EditorScenes.Count == 0)
+        {
+            Console.WriteLine("[SceneManagerPanel] No editor scenes to save.");
+            return;
+        }
+
+        // Convert editor scenes to the format SaveGameIng expects
+        var scenes = _bridge.EditorScenes
+            .Select(kv => (kv.Key, kv.Value.Root))
+            .ToArray();
+
+        SceneAssetSerializer.SaveGameIng(scenes);
+        Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} editor scenes to game.ing");
+    }
+
+    /// <summary>Select an editor scene to display in SceneDetail. Does NOT switch game scene.</summary>
+    private void SelectEditorScene(string sceneName)
+    {
+        if (!_bridge.EditorScenes.ContainsKey(sceneName))
+        {
+            Console.WriteLine($"[SceneManagerPanel] Editor scene '{sceneName}' not found");
+            return;
+        }
+
+        // Set the selected editor scene on the bridge
+        _bridge.SelectedEditorScene = sceneName;
+        var editorScene = _bridge.EditorScenes[sceneName];
+
+        // Update bridge SceneRoot/SceneRootElements for HierarchyPanel to display
+        // Show the scene root itself in the tree (not its children directly)
+        _bridge.SceneRoot = editorScene.Root;
+        _bridge.SceneRootElements = new List<UIElement> { editorScene.Root }.AsReadOnly();
+
+        // Select the first visible child so wireframe/handles appear in the viewport
+        _bridge.SelectedUIElements?.Clear();
+        if (editorScene.Root.Children.Count > 0)
+        {
+            _bridge.SelectedUIElement = editorScene.Root.Children[0];
+        }
+        else
+        {
+            _bridge.SelectedUIElement = editorScene.Root;
+        }
+        if (_bridge.SelectedUIElement != null)
+            _bridge.SelectedUIElements?.Add(_bridge.SelectedUIElement);
+
+        _bridge.MarkSceneInitialized(sceneName);
+        Console.WriteLine($"[SceneManagerPanel] Selected editor scene: {sceneName}");
+    }
+
+    /// <summary>Handle click on a scene entry: select in editor or load game scene.
+    /// For editor scenes → select for editing. For game scenes → load as active scene.</summary>
+    private void SelectOrLoadScene(int idx)
+    {
         var entries = _bridge.AvailableScenes;
         if (idx < 0 || idx >= entries.Count) return;
 
         var entry = entries[idx];
-        string currentName = sm.CurrentScene?.Name ?? "";
+        string sceneName = entry.Name;
 
-        // Don't switch to the same scene (use Reload instead)
-        if (string.Equals(entry.Name, currentName, StringComparison.OrdinalIgnoreCase))
+        // If this scene has an EditorScene entry, select it in the editor (not load from file)
+        if (_bridge.EditorScenes.ContainsKey(sceneName))
+        {
+            SelectEditorScene(sceneName);
+            return;
+        }
+
+        // Otherwise: fallback to loading a game scene (for existing game scenes)
+        var sm = _bridge.SceneManager;
+        if (sm == null) return;
+
+        string currentName = sm.CurrentScene?.Name ?? "";
+        if (string.Equals(sceneName, currentName, StringComparison.OrdinalIgnoreCase))
             return;
 
-        Console.WriteLine($"[SceneManagerPanel] Switching to scene: {entry.Name} (type={entry.Type})");
+        Console.WriteLine($"[SceneManagerPanel] Loading game scene: {sceneName} (type={entry.Type})");
 
         IScene? newScene = CreateSceneByType(entry.Type, sm);
-
         if (newScene != null)
         {
             _bridge.MarkSceneInitialized(entry.Name);
             sm.SwitchScene(newScene);
-        }
-        else
-        {
-            Console.WriteLine($"[SceneManagerPanel] Cannot load scene '{entry.Name}' — unsupported type: {entry.Type}");
         }
     }
 
@@ -472,6 +665,134 @@ public class SceneManagerPanel
         }
 
         Console.WriteLine($"[SceneManagerPanel] No AvailableScenes entry matches '{name}' — cannot reload");
+    }
+
+    // ──────────────────────────────────────────────
+    //  File Dialog — Load / Save As
+    // ──────────────────────────────────────────────
+
+    /// <summary>Load all scenes from a .ing file and populate EditorScenes.
+    /// Clears any existing editor scenes and replaces with the loaded data.</summary>
+    private void LoadFromIngFile(string filePath)
+    {
+        try
+        {
+            var manifest = SceneAssetSerializer.LoadManifestFromPath(filePath);
+            if (manifest == null || manifest.Scenes.Count == 0)
+            {
+                Console.WriteLine($"[SceneManagerPanel] No scenes found in: {filePath}");
+                return;
+            }
+
+            // Clear existing editor scenes — we're replacing with loaded data
+            _bridge.EditorScenes.Clear();
+
+            string? firstLoadedScene = null;
+            int sceneCount = 0;
+
+            foreach (var asset in manifest.Scenes)
+            {
+                string sceneName = asset.SceneName ?? $"Scene_{sceneCount}";
+
+                // Add to AvailableScenes if not already present
+                bool exists = _bridge.AvailableScenes.Any(e =>
+                    e.Name.Equals(sceneName, StringComparison.OrdinalIgnoreCase));
+                if (!exists)
+                {
+                    _bridge.AvailableScenes.Add(new IDEBridge.SceneEntry(
+                        sceneName,
+                        $"Loaded from {Path.GetFileName(filePath)}",
+                        false,
+                        IDEBridge.SceneType.MainMenu));
+                }
+
+                // Build a tree root from the elements
+                UIElement sceneRoot;
+                if (asset.Elements.Count == 1)
+                {
+                    // Single element — use directly as the root
+                    sceneRoot = SceneAssetSerializer.ToUIElement(asset.Elements[0]);
+                }
+                else if (asset.Elements.Count > 1)
+                {
+                    // Multiple top-level elements — wrap them under a Scene-type root
+                    sceneRoot = new UIElement
+                    {
+                        Name = sceneName,
+                        Type = UIElementType.Scene,
+                        IsVisible = true,
+                    };
+                    foreach (var elemData in asset.Elements)
+                    {
+                        var child = SceneAssetSerializer.ToUIElement(elemData);
+                        sceneRoot.AddChild(child);
+                    }
+                    Console.WriteLine($"[SceneManagerPanel] Wrapped {asset.Elements.Count} elements under root for '{sceneName}'");
+                }
+                else
+                {
+                    // No elements — skip this scene
+                    Console.WriteLine($"[SceneManagerPanel] Skipping scene '{sceneName}' (0 elements)");
+                    continue;
+                }
+
+                _bridge.EditorScenes[sceneName] = new IDEBridge.EditorScene(
+                    sceneName, IDEBridge.SceneType.MainMenu, sceneRoot);
+
+                // Track the first loaded scene for auto-selection
+                firstLoadedScene ??= sceneName;
+                sceneCount++;
+                Console.WriteLine($"[SceneManagerPanel] Loaded scene '{sceneName}' from {filePath}");
+            }
+
+            // Select the first loaded scene
+            if (sceneCount > 0 && firstLoadedScene != null)
+            {
+                SelectEditorScene(firstLoadedScene);
+                Console.WriteLine($"[SceneManagerPanel] Loaded {sceneCount} scene(s) from {filePath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SceneManagerPanel] Failed to load {filePath}: {ex.Message}");
+        }
+    }
+
+    /// <summary>Save all editor scenes to a specific .ing file path (Save As).</summary>
+    private void SaveToIngFile(string filePath)
+    {
+        if (_bridge.EditorScenes.Count == 0)
+        {
+            Console.WriteLine("[SceneManagerPanel] No editor scenes to save.");
+            return;
+        }
+
+        try
+        {
+            // Build manifest from editor scenes
+            var manifest = new SceneManifest();
+            foreach (var (name, editorScene) in _bridge.EditorScenes)
+            {
+                manifest.Scenes.Add(new SceneAsset
+                {
+                    SceneName = name,
+                    Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
+                    BackgroundObjects = []
+                });
+            }
+
+            // Serialize and write
+            string json = System.Text.Json.JsonSerializer.Serialize(manifest,
+                SceneAssetSerializer.GetJsonOptions());
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+            File.WriteAllText(filePath, json);
+
+            Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} scene(s) to {filePath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SceneManagerPanel] Failed to save to {filePath}: {ex.Message}");
+        }
     }
 
     // ── Scene factory helpers ──

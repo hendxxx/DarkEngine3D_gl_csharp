@@ -141,44 +141,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Finalize: set up GameScene with loaded resources ──
             _gameScene.SetResources(_skyTextures, _gameTerrainChunk, _skybox, _hud, _objectManager);
 
-            // ── Build hierarchy and save to .ing ──
-            BuildHierarchy();
-            SceneAssetSerializer.EnsureScenesDirectory();
-            string loadingScenePath = SceneAssetSerializer.GetScenePath("LoadingScene");
-            if (!File.Exists(loadingScenePath))
-            {
-                SceneAssetSerializer.SaveScene(_sceneRoot, loadingScenePath);
-                Console.WriteLine($"[LoadingScene] Created default scene file: {loadingScenePath}");
-            }
-
-            // ── Save to game.ing (combined file) ──
-            SceneAssetSerializer.SaveGameIng(("LoadingScene", _sceneRoot));
+            // ── Scene starts blank! No .ing file is loaded automatically. ──
+            // User can create UI via the IDE SceneDetail panel or use reload from .ing.
+            _sceneRoot.ClearChildren();
 
             // ── Register scene root for IDE Save All ──
             SceneAssetSerializer.RegisterSceneRoot("LoadingScene", _sceneRoot);
+
+            // ── Expose scene root to IDE bridge so HierarchyPanel can add elements ──
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null)
+            {
+                bridge.SceneRoot = _sceneRoot;
+                bridge.SceneRootElements = _sceneRoot.Children.AsReadOnly();
+            }
 
             // ── Mark loading complete — actual scene switch happens in Render() ──
             // This gives the main loop one frame to display the loading screen
             // in the Viewport panel before switching to GameScene.
             Console.WriteLine("[LoadingScene] Loading complete — switching on next render frame.");
             _loadingComplete = true;
-        }
-
-        /// <summary>Build the UI hierarchy for IDE display. Called from Enter().</summary>
-        private void BuildHierarchy()
-        {
-            _sceneRoot.ClearChildren();
-
-            _sceneRoot.AddChild(new UIElement
-            {
-                Name = "LoadingLabel",
-                Text = "Loading...",
-                Type = UIElementType.Label,
-                X = 20,
-                Y = Glfw.WindowHeight - 50,
-                FontSize = 28f,
-                TextColor = new Vector3(0.85f, 0.85f, 0.9f),
-            });
         }
 
         public void Update(float deltaTime)
@@ -221,6 +203,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 bridge.SelectedUIElement = null;
                 bridge.SceneRootElements = null;
+                bridge.SceneRoot = null;
             }
         }
 

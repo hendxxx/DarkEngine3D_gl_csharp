@@ -1,5 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
 using System.Numerics;
 
@@ -43,6 +44,10 @@ public class IDE : IDisposable
             _sceneManagerPanel = new SceneManagerPanel(Bridge);
             _hierarchy = new HierarchyPanel(Bridge);
 
+            // Wire save integration: HierarchyPanel can trigger SceneManager's Save All / Save As
+            Bridge.SaveAllScenes = () => _sceneManagerPanel.SaveAllEditorScenesPublic();
+            Bridge.RequestSaveAsDialog = () => _sceneManagerPanel.OpenSaveAsDialog();
+
             IsHealthy = true;
 
             Console.WriteLine("[IDE] Initialized.");
@@ -73,6 +78,17 @@ public class IDE : IDisposable
     public void Render()
     {
         if (!IsHealthy) return;
+
+        // ── Restore editor scene root (game scenes overwrite bridge.SceneRoot each frame) ──
+        // Without this, ViewportPanel, HierarchyPanel, and InspectorPanel would see the
+        // game scene's empty _sceneRoot instead of the loaded editor scene's UI elements.
+        if (Bridge.SelectedEditorScene != null &&
+            Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var activeEditorScene))
+        {
+            Bridge.SceneRoot = activeEditorScene.Root;
+            Bridge.SceneRootElements = new List<UIElement> { activeEditorScene.Root }.AsReadOnly();
+        }
+
         // ── Build main menu bar ──
         if (ImGui.BeginMainMenuBar())
         {

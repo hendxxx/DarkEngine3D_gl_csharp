@@ -1,0 +1,240 @@
+using ImGuiNET;
+using System.Numerics;
+
+namespace DarkEngine3D_gl_csharp.Engine.IDE;
+
+/// <summary>
+/// Simple ImGui-based file dialog for opening/saving .ing files.
+/// Usage:
+///   _fileDialog.OpenForLoad();  // or OpenForSave(defaultName)
+///   // In Render():
+///   _fileDialog.Render();
+///   if (_fileDialog.IsConfirmed) { string path = _fileDialog.SelectedPath; ... }
+/// </summary>
+public class ImGuiFileDialog
+{
+    private enum DialogMode { None, Open, Save }
+    private DialogMode _mode = DialogMode.None;
+
+    private string _currentDir;
+    private string _filter = "*.ing";
+    private string _fileNameBuffer = "";
+    private string[] _files = [];
+    private string[] _dirs = [];
+    private int _selectedIdx = -1;
+
+    private const int InputBufSize = 256;
+
+    /// <summary>The full path the user selected (null if cancelled).</summary>
+    public string? SelectedPath { get; private set; }
+
+    /// <summary>True when the user confirmed a selection this frame. Check SelectedPath after.</summary>
+    public bool IsConfirmed { get; private set; }
+
+    /// <summary>The title shown in the dialog window.</summary>
+    public string Title { get; set; } = "Select .ing file";
+
+    public ImGuiFileDialog()
+    {
+        _currentDir = AppDomain.CurrentDomain.BaseDirectory;
+        Refresh();
+    }
+
+    /// <summary>True if the dialog is in Save mode (vs Open mode).</summary>
+    public bool IsSaveMode => _mode == DialogMode.Save;
+
+    public void OpenForLoad()
+    {
+        _mode = DialogMode.Open;
+        Title = "Open .ing file";
+        _fileNameBuffer = "";
+        _selectedIdx = -1;
+        SelectedPath = null;
+        IsConfirmed = false;
+        Refresh();
+    }
+
+    public void OpenForSave(string defaultName = "game.ing")
+    {
+        _mode = DialogMode.Save;
+        Title = "Save .ing file";
+        _fileNameBuffer = defaultName;
+        _selectedIdx = -1;
+        SelectedPath = null;
+        IsConfirmed = false;
+        Refresh();
+    }
+
+    public void Close()
+    {
+        _mode = DialogMode.None;
+        IsConfirmed = false;
+        SelectedPath = null;
+    }
+
+    private void Refresh()
+    {
+        try
+        {
+            var di = new DirectoryInfo(_currentDir);
+            _dirs = di.GetDirectories()
+                .Select(d => d.Name)
+                .OrderBy(n => n)
+                .ToArray();
+
+            _files = di.GetFiles(_filter)
+                .Select(f => f.Name)
+                .OrderBy(n => n)
+                .ToArray();
+        }
+        catch
+        {
+            _dirs = [];
+            _files = [];
+        }
+    }
+
+    /// <summary>Call this each frame to render the dialog if open. Returns true while open.</summary>
+    public bool Render()
+    {
+        if (_mode == DialogMode.None) return false;
+
+        // Reset one-shot flags at start of frame
+        IsConfirmed = false;
+
+        ImGui.OpenPopup(Title);
+        bool open = true;
+
+        Vector2 windowSize = new(600, 400);
+        ImGui.SetNextWindowSize(windowSize, ImGuiCond.Once);
+        ImGui.SetNextWindowPos(ImGui.GetMainViewport().GetCenter(), ImGuiCond.Once, new Vector2(0.5f, 0.5f));
+
+        if (ImGui.BeginPopupModal(Title, ref open, ImGuiWindowFlags.NoDocking))
+        {
+            // ── Breadcrumb + parent navigation ──
+            {
+                if (_currentDir.Length > 3)
+                {
+                    if (ImGui.Button("⬆ .."))
+                    {
+                        _currentDir = Directory.GetParent(_currentDir)?.FullName ?? _currentDir;
+                        Refresh();
+                    }
+                    ImGui.SameLine();
+                }
+
+                string shortDir = _currentDir.Length > 60 ? "..." + _currentDir[^60..] : _currentDir;
+                ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), shortDir);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(_currentDir);
+            }
+
+            // ── Filter ──
+            ImGui.SetNextItemWidth(120);
+            if (ImGui.BeginCombo("##filter", _filter))
+            {
+                string[] filters = ["*.ing", "*.*"];
+                foreach (var f in filters)
+                {
+                    if (ImGui.Selectable(f, _filter == f))
+                    {
+                        _filter = f;
+                        Refresh();
+                    }
+                }
+                ImGui.EndCombo();
+            }
+
+            ImGui.Separator();
+
+            // ── File list ──
+            ImGui.BeginChild("##file_list", new Vector2(0, -60), ImGuiChildFlags.None, ImGuiWindowFlags.None);
+
+            // Directories
+            foreach (var dir in _dirs)
+            {
+                bool isSel = false;
+                if (ImGui.Selectable($"📁 {dir}", ref isSel))
+                {
+                    _currentDir = Path.Combine(_currentDir, dir);
+                    _selectedIdx = -1;
+                    Refresh();
+                }
+                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                {
+                    _currentDir = Path.Combine(_currentDir, dir);
+                    _selectedIdx = -1;
+                    Refresh();
+                }
+            }
+
+            // Files
+            ImGui.Separator();
+            for (int i = 0; i < _files.Length; i++)
+            {
+                bool isSel = i == _selectedIdx;
+                if (ImGui.Selectable($"📄 {_files[i]}", ref isSel))
+                {
+                    _selectedIdx = i;
+                    _fileNameBuffer = _files[i];
+                }
+                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                {
+                    _selectedIdx = i;
+                    _fileNameBuffer = _files[i];
+                    ConfirmSelection();
+                }
+            }
+
+            ImGui.EndChild();
+
+            // ── File name input ──
+            if (_mode == DialogMode.Save)
+            {
+                ImGui.Text("File name:");
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(300);
+                ImGui.InputText("##filename", ref _fileNameBuffer, InputBufSize);
+            }
+
+            // ── Action buttons ──
+            string confirmLabel = _mode == DialogMode.Open ? "Open" : "Save";
+            if (ImGui.Button(confirmLabel, new Vector2(100, 0)))
+            {
+                ConfirmSelection();
+            }
+
+            ImGui.SameLine();
+
+            if (ImGui.Button("Cancel", new Vector2(100, 0)))
+            {
+                SelectedPath = null;
+                _mode = DialogMode.None;
+            }
+
+            ImGui.EndPopup();
+        }
+
+        return _mode != DialogMode.None;
+    }
+
+    private void ConfirmSelection()
+    {
+        string fileName = _fileNameBuffer.Trim();
+        if (string.IsNullOrEmpty(fileName))
+        {
+            SelectedPath = null;
+            return;
+        }
+
+        // Add .ing extension if missing
+        if (!fileName.EndsWith(".ing", StringComparison.OrdinalIgnoreCase))
+            fileName += ".ing";
+
+        SelectedPath = Path.Combine(_currentDir, fileName);
+        IsConfirmed = true;
+        _mode = DialogMode.None;
+
+        Console.WriteLine($"[FileDialog] Selected: {SelectedPath}");
+    }
+}

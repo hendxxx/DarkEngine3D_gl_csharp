@@ -99,14 +99,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         public void EnsureSharedFBOExists() => EnsureSharedFBO();
 
         /// <summary>
-        /// Start the main loop with the given initial scene.
+        /// Start the main loop with the given initial scene (can be null for UI Editor mode).
         /// The initial scene's Enter() is called first (may contain synchronous loading),
         /// then the render loop runs until the window closes or Stop() is called.
         /// </summary>
-        public void Run(IScene startScene)
+        public void Run(IScene? startScene = null)
         {
             _running = true;
-            SwitchToScene(startScene, true);
+            if (startScene != null)
+                SwitchToScene(startScene, true);
 
             nint window = Glfw.GetWindow();
 

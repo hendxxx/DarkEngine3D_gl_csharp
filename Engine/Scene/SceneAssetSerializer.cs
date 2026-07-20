@@ -19,6 +19,9 @@ public static class SceneAssetSerializer
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    /// <summary>Expose JsonOptions for use by other components (e.g., SceneManagerPanel Save).</summary>
+    public static JsonSerializerOptions GetJsonOptions() => JsonOptions;
+
     /// <summary>Directory where .ing scene files are stored.</summary>
     public static string ScenesDirectory =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scenes");
@@ -30,6 +33,43 @@ public static class SceneAssetSerializer
     /// <summary>Full path for the combined game.ing file.</summary>
     public static string GameIngPath =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "game.ing");
+
+    /// <summary>Load a SceneManifest from an arbitrary .ing file path.
+    /// Supports both manifest files (multiple scenes) and single scene files.
+    /// Returns null if not found or invalid.</summary>
+    public static SceneManifest? LoadManifestFromPath(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            Console.WriteLine($"[SceneAsset] File not found: {filePath}");
+            return null;
+        }
+
+        try
+        {
+            string json = File.ReadAllText(filePath);
+
+            // Try parsing as SceneManifest first (game.ing format, multiple scenes)
+            var manifest = JsonSerializer.Deserialize<SceneManifest>(json, JsonOptions);
+            if (manifest != null && manifest.Scenes.Count > 0)
+                return manifest;
+
+            // Fallback: try as single SceneAsset file
+            var asset = JsonSerializer.Deserialize<SceneAsset>(json, JsonOptions);
+            if (asset != null && !string.IsNullOrEmpty(asset.SceneName))
+            {
+                return new SceneManifest { Scenes = [asset] };
+            }
+
+            Console.WriteLine($"[SceneAsset] Unknown format in: {filePath}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SceneAsset] Failed to parse {filePath}: {ex.Message}");
+            return null;
+        }
+    }
 
     // ── Save ──
 
@@ -51,37 +91,27 @@ public static class SceneAssetSerializer
 
     /// <summary>
     /// Save/replace one or more scenes in game.ing (combined file).
-    /// Background objects are included in the saved scene data.
+    /// Creates a fresh manifest from the supplied data — does NOT load existing file.
     /// </summary>
     public static void SaveGameIng(params (string name, UIElement root)[] scenes)
     {
-        // Load existing manifest if present
-        var manifest = LoadGameIng() ?? new SceneManifest();
+        // Build fresh manifest from supplied scenes only
+        var manifest = new SceneManifest();
 
         foreach (var (name, root) in scenes)
         {
-            // Remove any existing scene with the same name (replace)
-            manifest.Scenes.RemoveAll(s =>
-                s.SceneName.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-            // Try to preserve background objects from previous save
-            var existingBg = manifest.Scenes.Find(s =>
-                s.SceneName.Equals(name, StringComparison.OrdinalIgnoreCase));
-            var bgObjects = existingBg?.BackgroundObjects ?? [];
-
-            // Add the new version
             manifest.Scenes.Add(new SceneAsset
             {
                 SceneName = name,
                 Elements = [ToData(root)],
-                BackgroundObjects = bgObjects
+                BackgroundObjects = []
             });
         }
 
         string json = JsonSerializer.Serialize(manifest, JsonOptions);
         Directory.CreateDirectory(Path.GetDirectoryName(GameIngPath)!);
         File.WriteAllText(GameIngPath, json);
-        Console.WriteLine($"[SceneAsset] Saved game.ing with {manifest.Scenes.Count} scenes");
+        Console.WriteLine($"[SceneAsset] Saved game.ing with {manifest.Scenes.Count} scenes (fresh write)");
     }
 
     // ── Load ──
@@ -256,7 +286,8 @@ public static class SceneAssetSerializer
         _registeredBgObjects[sceneName] = bgObjects;
     }
 
-    /// <summary>Save ALL registered scene roots to game.ing at once, including background objects.</summary>
+    /// <summary>Save ALL registered scene roots to game.ing at once, including background objects.
+    /// Creates a fresh manifest — does NOT load existing file.</summary>
     public static void SaveAllRegisteredScenes()
     {
         if (_registeredSceneRoots.Count == 0)
@@ -265,16 +296,11 @@ public static class SceneAssetSerializer
             return;
         }
 
-        // Load existing manifest
-        var manifest = LoadGameIng() ?? new SceneManifest();
+        // Build fresh manifest from registered scenes only
+        var manifest = new SceneManifest();
 
         foreach (var (name, root) in _registeredSceneRoots)
         {
-            // Remove any existing scene with the same name
-            manifest.Scenes.RemoveAll(s =>
-                s.SceneName.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-            // Use registered bg objects if available, otherwise fall back to existing manifest data
             var bgObjects = _registeredBgObjects.TryGetValue(name, out var registered)
                 ? registered
                 : [];
@@ -290,7 +316,7 @@ public static class SceneAssetSerializer
         string json = JsonSerializer.Serialize(manifest, JsonOptions);
         Directory.CreateDirectory(Path.GetDirectoryName(GameIngPath)!);
         File.WriteAllText(GameIngPath, json);
-        Console.WriteLine($"[SceneAsset] Saved {_registeredSceneRoots.Count} registered scenes to {GameIngPath}");
+        Console.WriteLine($"[SceneAsset] Saved {_registeredSceneRoots.Count} registered scenes to {GameIngPath} (fresh write)");
     }
 
     /// <summary>Get the list of registered scene names (for IDE display).</summary>
