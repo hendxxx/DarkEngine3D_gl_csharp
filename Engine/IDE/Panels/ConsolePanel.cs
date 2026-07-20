@@ -1,5 +1,6 @@
 using ImGuiNET;
 using System.Numerics;
+using System.Text;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -17,6 +18,8 @@ public class ConsolePanel
     private readonly List<LogEntry> _entries = [];
     private readonly object _lock = new();
     private readonly StringWriter _captureWriter;
+    private readonly TextWriter _originalOut;
+    private readonly TextWriter _originalError;
 
     private static readonly Vector4 ColorInfo = new(0.8f, 0.8f, 0.8f, 1f);
     private static readonly Vector4 ColorWarning = new(1f, 0.8f, 0.2f, 1f);
@@ -27,10 +30,16 @@ public class ConsolePanel
     {
         _bridge = bridge;
 
-        // Capture both Console.Out and Console.Error
+        // Save original console writers so we can still output to the system terminal
+        _originalOut = Console.Out;
+        _originalError = Console.Error;
+
+        // Create a dual writer that writes to both the system console AND the capture buffer
         _captureWriter = new StringWriter();
-        Console.SetOut(_captureWriter);
-        Console.SetError(_captureWriter);
+        var dualOut = new DualTextWriter(_originalOut, _captureWriter);
+        var dualError = new DualTextWriter(_originalError, _captureWriter);
+        Console.SetOut(dualOut);
+        Console.SetError(dualError);
 
         // Hook AppDomain unhandled exceptions to log full stack trace
         AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
@@ -180,4 +189,56 @@ public class ConsolePanel
     }
 
     private enum LogLevel { Info, Warning, Error, Debug }
+}
+
+/// <summary>
+/// A TextWriter that duplicates output to two underlying writers.
+/// Used so Console output goes to BOTH the system terminal and the capture buffer.
+/// </summary>
+internal class DualTextWriter : TextWriter
+{
+    private readonly TextWriter _first;
+    private readonly TextWriter _second;
+
+    public DualTextWriter(TextWriter first, TextWriter second)
+    {
+        _first = first;
+        _second = second;
+    }
+
+    public override Encoding Encoding => _first.Encoding;
+
+    public override void Write(char value)
+    {
+        _first.Write(value);
+        _second.Write(value);
+    }
+
+    public override void Write(string? value)
+    {
+        _first.Write(value);
+        _second.Write(value);
+    }
+
+    public override void WriteLine(string? value)
+    {
+        _first.WriteLine(value);
+        _second.WriteLine(value);
+    }
+
+    public override void Flush()
+    {
+        _first.Flush();
+        _second.Flush();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _first.Dispose();
+            _second.Dispose();
+        }
+        base.Dispose(disposing);
+    }
 }
