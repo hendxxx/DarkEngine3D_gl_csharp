@@ -488,7 +488,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
             }
 
-            OpenGL.EnableFaceCulling(true);
+            // Restore standard 3D rendering state: cull back faces, CCW winding order.
+            // Note: using explicit GL calls ensures a clean restore regardless of any
+            // prior state corruption (e.g., from other subsystems).
+            GL.Enable(Const.GL_CULL_FACE);
+            GL.CullFace(Const.GL_BACK);
+            GL.FrontFace(Const.GL_CCW);
             GL.Disable(Const.GL_BLEND);
             GL.Enable(Const.GL_DEPTH_TEST);
 

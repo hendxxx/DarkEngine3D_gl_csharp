@@ -155,6 +155,7 @@ public class IDEBridge
         new("Cancel Settings",                "cancelsettings"),
         new("Discard Changes",                "discardchanges"),
         new("Keep Editing",                   "keepediting"),
+        new("Fit to Window (auto-resize)",     "fittowindow"),
     ];
 
     /// <summary>Mark a scene as initialized (has been entered at least once).</summary>

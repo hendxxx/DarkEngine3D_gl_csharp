@@ -218,6 +218,13 @@ public static class SceneAssetSerializer
             Y = data.Y,
             Width = data.Width,
             Height = data.Height,
+            ImagePath = ResolveImagePath(data.ImagePath),
+            ImageMode = data.ImageMode.ToLowerInvariant() switch
+            {
+                "zoom" => ImageMode.Zoom,
+                "fill" => ImageMode.Fill,
+                _ => ImageMode.Stretch,
+            },
             FontSize = data.FontSize,
             FontPath = data.FontPath,
             TextColor = ArrayToVec3(data.TextColor, new Vector3(0.95f, 0.95f, 1f)),
@@ -266,6 +273,13 @@ public static class SceneAssetSerializer
             Y = elem.Y,
             Width = elem.Width,
             Height = elem.Height,
+            ImagePath = MakeRelativePath(elem.ImagePath),
+            ImageMode = elem.ImageMode switch
+            {
+                ImageMode.Zoom => "Zoom",
+                ImageMode.Fill => "Fill",
+                _ => "Stretch",
+            },
             FontSize = elem.FontSize,
             FontPath = elem.FontPath,
             TextColor = Vec3ToArray(elem.TextColor),
@@ -301,6 +315,45 @@ public static class SceneAssetSerializer
     }
 
     private static float[] Vec3ToArray(Vector3 v) => [v.X, v.Y, v.Z];
+
+    /// <summary>Base directory used for relative image paths (so .ing files are portable).</summary>
+    private static string AppBaseDir => AppDomain.CurrentDomain.BaseDirectory;
+
+    /// <summary>
+    /// Convert an absolute image path to a relative path (for saving to .ing).
+    /// If the path is empty or already relative, return as-is.
+    /// </summary>
+    private static string MakeRelativePath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        if (!Path.IsPathRooted(path)) return path; // already relative
+        try
+        {
+            return Path.GetRelativePath(AppBaseDir, path);
+        }
+        catch
+        {
+            return path; // fallback: keep original
+        }
+    }
+
+    /// <summary>
+    /// Resolve a possibly-relative image path to an absolute path (for runtime use).
+    /// If the path is empty or already absolute, return as-is.
+    /// </summary>
+    private static string ResolveImagePath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        if (Path.IsPathRooted(path)) return path; // already absolute
+        try
+        {
+            return Path.GetFullPath(Path.Combine(AppBaseDir, path));
+        }
+        catch
+        {
+            return path; // fallback: keep original
+        }
+    }
 
     // ── Registered scene roots (for IDE Save All) ──
 

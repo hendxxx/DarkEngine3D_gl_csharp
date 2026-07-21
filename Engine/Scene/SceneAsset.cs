@@ -19,6 +19,11 @@ public class SceneElementData
     public float Y { get; set; }
     public float Width { get; set; } = 200f;
     public float Height { get; set; } = 50f;
+
+    // ── Image (replaces Text/Font when set) ──
+    public string ImagePath { get; set; } = "";
+    public string ImageMode { get; set; } = "Stretch"; // Stretch, Zoom, Fill
+
     public float FontSize { get; set; } = 13f;
     public string FontPath { get; set; } = "Artifacts\\\\\\\\fonts\\\\\\\\Worldstar.ttf";
 

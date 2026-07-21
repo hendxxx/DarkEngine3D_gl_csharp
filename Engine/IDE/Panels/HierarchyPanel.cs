@@ -737,9 +737,12 @@ public class HierarchyPanel
         HandleDropTarget(element);
 
         // Recursively render only visible children
+        // IMPORTANT: snapshot to array before iterating — drag-drop reorder (ExecuteMove)
+        // can modify element.Children during recursive RenderTreeNode calls, which would
+        // throw "Collection was modified; enumeration operation may not execute."
         if (visibleChildCount > 0 && nodeOpen)
         {
-            foreach (var child in element.Children)
+            foreach (var child in element.Children.ToArray())
             {
                 if (child.IsVisible)
                     RenderTreeNode(child);
@@ -852,46 +855,71 @@ public class HierarchyPanel
         var rootElements = _bridge.SceneRootElements;
         if (rootElements == null) return;
 
-        // 1. Find source and target positions (before any changes, include scene root for top-level)
+        // 1. Find source and target positions (before any changes)
         var (sourceParent, sourceIndex) = FindParentAndIndex(rootElements, source, _bridge.SceneRoot);
-        if (sourceParent == null || sourceIndex < 0) return;
+        if (sourceParent == null || sourceIndex < 0 || sourceIndex >= sourceParent.Children.Count)
+        {
+            Console.WriteLine($"[SceneDetail] ExecuteMove FAIL: source '{source.Name}' not found (parent={sourceParent?.Name}, idx={sourceIndex}, count={sourceParent?.Children.Count})");
+            return;
+        }
 
         var (targetParent, targetIndex) = FindParentAndIndex(rootElements, target, _bridge.SceneRoot);
-        if (targetParent == null || targetIndex < 0) return;
+
+        // For Before/After placement, we need the target's parent.
+        // For AsChild placement, the target itself becomes the parent (root elements are valid).
+        if (dropPos != DropPosition.AsChild && (targetParent == null || targetIndex < 0))
+        {
+            Console.WriteLine($"[SceneDetail] ExecuteMove FAIL: target '{target.Name}' parent not found");
+            return;
+        }
 
         // 2. Remove source from old parent
         sourceParent.Children.RemoveAt(sourceIndex);
 
-        // 3. Compute new parent and index after removal
         UIElement newParent;
         int newIndex;
 
-        bool sameParent = sourceParent == targetParent;
-        // If source was before target in the same parent, target's index shifted down by 1
-        int adjustedTargetIdx = (sameParent && sourceIndex < targetIndex) ? targetIndex - 1 : targetIndex;
-
-        switch (dropPos)
+        try
         {
-            case DropPosition.Before:
-                newParent = targetParent;
-                newIndex = adjustedTargetIdx;
-                break;
-            case DropPosition.After:
-                newParent = targetParent;
-                newIndex = adjustedTargetIdx + 1;
-                break;
-            case DropPosition.AsChild:
-                newParent = target;
-                newIndex = target.Children.Count; // append at end
-                break;
-            default:
-                return;
-        }
+            // 3. Compute new parent and index after removal
+            bool sameParent = sourceParent == targetParent;
+            int adjustedTargetIdx = (sameParent && sourceIndex < targetIndex) ? targetIndex - 1 : targetIndex;
 
-        // 4. Clamp and insert
-        newIndex = Math.Clamp(newIndex, 0, newParent.Children.Count);
-        source.Parent = newParent;
-        newParent.Children.Insert(newIndex, source);
+            switch (dropPos)
+            {
+                case DropPosition.Before:
+                    newParent = targetParent!;
+                    newIndex = adjustedTargetIdx;
+                    break;
+                case DropPosition.After:
+                    newParent = targetParent!;
+                    newIndex = adjustedTargetIdx + 1;
+                    break;
+                case DropPosition.AsChild:
+                    newParent = target;
+                    newIndex = target.Children.Count;
+                    break;
+                default:
+                    // Restore source before returning
+                    source.Parent = sourceParent;
+                    sourceParent.Children.Insert(Math.Min(sourceIndex, sourceParent.Children.Count), source);
+                    return;
+            }
+
+            // 4. Clamp and insert
+            newIndex = Math.Clamp(newIndex, 0, newParent.Children.Count);
+            source.Parent = newParent;
+            newParent.Children.Insert(newIndex, source);
+        }
+        catch (Exception ex)
+        {
+            // Restore source to original position to avoid orphaned element
+            Console.WriteLine($"[SceneDetail] ExecuteMove CRASH: {ex.GetType().Name}: {ex.Message}");
+            Console.WriteLine($"[SceneDetail]   source='{source?.Name}' target='{target?.Name}' dropPos={dropPos}");
+            source.Parent = sourceParent;
+            sourceParent.Children.Insert(Math.Min(sourceIndex, sourceParent.Children.Count), source);
+            return;
+        }
 
         // 5. Record undo for move
         PushUndo(new UndoRedoAction
@@ -1426,6 +1454,8 @@ public class HierarchyPanel
     /// Searches the individual scene file first (scenes/{SceneName}.ing),
     /// then falls back to game.ing manifest.
     /// Uses either the active game scene or the selected editor scene.
+    /// Reloads INTO the existing scene root (if available) instead of creating a new
+    /// root object, preserving the reference chain with the game scene (_sceneRoot).
     /// </summary>
     private void ReloadSceneHierarchy()
     {
@@ -1453,68 +1483,57 @@ public class HierarchyPanel
             }
 
             // 3. Convert serialized data back to live UIElement objects
-            var loadedRoots = new List<UIElement>();
-            foreach (var elementData in asset.Elements)
-            {
-                var root = SceneAssetSerializer.ToUIElement(elementData);
-                loadedRoots.Add(root);
-            }
+            //    Keep the existing scene root REFERENCE (if any) so that the game scene
+            //    (_sceneRoot field) continues pointing to the same object. This prevents
+            //    the loaded data from being lost on the next frame's bridge.SceneRoot overwrite.
+            UIElement? sceneRoot = _bridge.SceneRoot;
+            bool reuseExisting = sceneRoot != null;
 
-            // 4. Replace the bridge's root elements
-            _bridge.SceneRootElements = loadedRoots;
-
-            // 5. If first root is a Scene-type element, use it as SceneRoot; otherwise wrap it.
-            UIElement? sceneRoot = null;
-            if (loadedRoots.Count > 0)
+            if (!reuseExisting)
             {
-                if (loadedRoots[0].Type == UIElementType.Scene)
+                // No existing root — create a new one and load into it
+                sceneRoot = new UIElement
                 {
-                    sceneRoot = loadedRoots[0];
-                }
-                else
-                {
-                    // Wrap loaded root(s) in a Scene-type container
-                    sceneRoot = new UIElement
-                    {
-                        Name = sceneName,
-                        Type = UIElementType.Scene,
-                        IsVisible = false,
-                    };
-                    foreach (var root in loadedRoots)
-                        sceneRoot.AddChild(root);
-                    _bridge.SceneRootElements = new List<UIElement> { sceneRoot }.AsReadOnly();
-                }
-                _bridge.SceneRoot = sceneRoot;
-                SceneAssetSerializer.RegisterSceneRoot(sceneName, sceneRoot);
+                    Name = sceneName,
+                    Type = UIElementType.Scene,
+                    IsVisible = false,
+                };
             }
 
-            // 6. Sync EditorScenes dictionary so SceneManager has the latest data
-            if (sceneRoot != null)
+            // Clear existing children and load from asset
+            sceneRoot.ClearChildren();
+            foreach (var elemData in asset.Elements)
             {
-                _bridge.EditorScenes[sceneName] = new IDEBridge.EditorScene(
-                    sceneName,
-                    IDEBridge.SceneType.MainMenu,
-                    sceneRoot);
-                _bridge.SelectedEditorScene = sceneName;
+                var child = SceneAssetSerializer.ToUIElement(elemData);
+                sceneRoot.AddChild(child);
             }
 
-            // 7. Select first child so wireframe/handles appear in the viewport
+            // 4. Set bridge references
+            _bridge.SceneRoot = sceneRoot;
+            _bridge.SceneRootElements = new List<UIElement> { sceneRoot }.AsReadOnly();
+            SceneAssetSerializer.RegisterSceneRoot(sceneName, sceneRoot);
+
+            // 5. Sync EditorScenes dictionary so SceneManager has the latest data
+            _bridge.EditorScenes[sceneName] = new IDEBridge.EditorScene(
+                sceneName,
+                IDEBridge.SceneType.MainMenu,
+                sceneRoot);
+            _bridge.SelectedEditorScene = sceneName;
+
+            // 6. Select first child so wireframe/handles appear in the viewport
             _bridge.SelectedUIElements?.Clear();
-            if (sceneRoot != null && sceneRoot.Children.Count > 0)
-            {
+            if (sceneRoot.Children.Count > 0)
                 _bridge.SelectedUIElement = sceneRoot.Children[0];
-            }
             else
-            {
                 _bridge.SelectedUIElement = sceneRoot;
-            }
             if (_bridge.SelectedUIElement != null)
                 _bridge.SelectedUIElements?.Add(_bridge.SelectedUIElement);
 
             _undoStack.Clear();
             _redoStack.Clear();
 
-            Console.WriteLine($"[SceneDetail] Reloaded hierarchy for '{sceneName}' from .ing ({loadedRoots.Count} roots)");
+            int loadedCount = sceneRoot.Children.Count;
+            Console.WriteLine($"[SceneDetail] Reloaded hierarchy for '{sceneName}' from .ing ({loadedCount} top-level elements) — reused existing root: {reuseExisting}");
             ShowSaveNotification($"Reloaded '{sceneName}' from .ing");
         }
         catch (Exception ex)

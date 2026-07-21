@@ -123,6 +123,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float dt = Glfw.GetDeltaTime();
 
                 // ═══════════════════════════════════════════════════════
+                // FRAME-START VALIDATION: detect OpenGL state corruption
+                // ═══════════════════════════════════════════════════════
+                OpenGL.CheckFrontFaceState();
+
+                // ═══════════════════════════════════════════════════════
                 // PHASE 1: UPDATE (scene logic runs)
                 // ═══════════════════════════════════════════════════════
                 // 🛠️ FIX #1: Update runs BEFORE scene switch so that

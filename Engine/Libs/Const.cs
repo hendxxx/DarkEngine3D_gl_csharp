@@ -24,6 +24,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_LINE = 0x1B01;
         public const uint GL_FILL = 0x1B02;
 
+        public const uint GL_FRONT_FACE = 0x0B46;
         public const uint GL_DEPTH_TEST = 0x0B71;
         public const uint GL_CULL_FACE = 0x0B44;
         public const uint GL_CCW = 0x0901;

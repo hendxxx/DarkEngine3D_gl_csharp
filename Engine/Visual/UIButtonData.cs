@@ -10,6 +10,17 @@ public enum TextAlignment
     Right
 }
 
+/// <summary>Image sizing mode for image elements.</summary>
+public enum ImageMode
+{
+    /// <summary>Stretch image to fill element bounds (default).</summary>
+    Stretch,
+    /// <summary>Fit image within element bounds maintaining aspect ratio (letterbox).</summary>
+    Zoom,
+    /// <summary>Cover element bounds maintaining aspect ratio (crop overflow).</summary>
+    Fill,
+}
+
 /// <summary>Type of UI element — determines how it's rendered and displayed in the hierarchy.</summary>
 public enum UIElementType
 {
@@ -50,6 +61,10 @@ public class UIElement
     public float Y { get; set; }
     public float Width { get; set; } = 200f;
     public float Height { get; set; } = 50f;
+
+    // ── Image (replaces Text/Font when set) ──
+    public string ImagePath { get; set; } = "";
+    public ImageMode ImageMode { get; set; } = ImageMode.Stretch;
 
     // ── Font ──
     public string FontPath { get; set; } = "Artifacts\\\\fonts\\\\Worldstar.ttf";
@@ -120,6 +135,8 @@ public class UIElement
             Height = Height,
             FontPath = FontPath,
             FontSize = FontSize,
+            ImagePath = ImagePath,
+            ImageMode = ImageMode,
             TextColor = TextColor,
             BgColor = BgColor,
             BorderColor = BorderColor,
@@ -216,6 +233,11 @@ public class UIButtonData
     public float Y { get; set; }
     public float Width { get; set; } = 200f;
     public float Height { get; set; } = 50f;
+
+    // ── Image (replaces Text/Font when set) ──
+    public string ImagePath { get; set; } = "";
+    public ImageMode ImageMode { get; set; } = ImageMode.Stretch;
+
     public string FontPath { get; set; } = "Artifacts\\\\fonts\\\\Worldstar.ttf";
     public float FontSize { get; set; } = 13f;
     public Vector3 TextColor { get; set; } = new(0.95f, 0.95f, 1f);

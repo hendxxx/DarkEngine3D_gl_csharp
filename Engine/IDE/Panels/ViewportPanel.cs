@@ -1,5 +1,7 @@
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
+using StbImageSharp;
 using System.Numerics;
 using System.IO;
 
@@ -10,7 +12,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 /// Supports aspect-ratio-correct scaling and click-to-select.
 /// Includes interactive UI element editing: drag to move, resize from corners.
 /// </summary>
-public class ViewportPanel
+public unsafe class ViewportPanel
 {
     private readonly IDEBridge _bridge;
     private bool _visible = true;
@@ -77,7 +79,7 @@ public class ViewportPanel
     }
 
     /// <summary>Draw a live preview of editor scene UI elements using ImGui draw list.
-    /// Renders backgrounds, borders, text with hover effects — click to select.</summary>
+    /// Renders backgrounds, borders, text/images with hover effects — click to select.</summary>
     private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked)
     {
         for (int ei = 0; ei < elements.Count; ei++)
@@ -108,32 +110,112 @@ public class ViewportPanel
             // Pick colors: hover or normal
             var bgColor = isHovered ? elem.HoverBgColor : elem.BgColor;
             var borderColor = isHovered ? elem.HoverBorderColor : elem.BorderColor;
-            var textColor = isHovered ? elem.HoverTextColor : elem.TextColor;
 
-            // Draw background (filled rect)
+            // ── Draw background (filled rect) — always drawn first as backdrop ──
             drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
                 ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, 0.85f)),
-                4f); // rounded corners
+                4f);
 
-            // Draw border
-            drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
-                4f, ImDrawFlags.None, 1.5f);
+            // ── Draw image element on top of background ──
+            bool hasImage = !string.IsNullOrEmpty(elem.ImagePath);
+            if (hasImage)
+            {
+                // Try to load and cache the image texture for preview
+                uint texId = LoadOrGetPreviewTexture(elem.ImagePath);
+                if (texId != 0)
+                {
+                    // Get image dimensions for aspect ratio
+                    var dims = GetPreviewTextureDimensions(elem.ImagePath);
+                    float imgW = dims.Item1 > 0 ? dims.Item1 : 1f;
+                    float imgH = dims.Item2 > 0 ? dims.Item2 : 1f;
 
-            // Draw text label with element's FontSize
+                    // Calculate draw rect based on ImageMode
+                    float drawX, drawY, drawW, drawH;
+                    float elemW = sx1 - sx0;
+                    float elemH = sy1 - sy0;
+
+                    switch (elem.ImageMode)
+                    {
+                        case ImageMode.Zoom:
+                            {
+                                float aspect = imgW / imgH;
+                                float elemAspect = elemW / elemH;
+                                if (aspect > elemAspect)
+                                {
+                                    drawW = elemW;
+                                    drawH = elemW / aspect;
+                                }
+                                else
+                                {
+                                    drawH = elemH;
+                                    drawW = elemH * aspect;
+                                }
+                                drawX = sx0 + (elemW - drawW) * 0.5f;
+                                drawY = sy0 + (elemH - drawH) * 0.5f;
+                                break;
+                            }
+                        case ImageMode.Fill:
+                            {
+                                float aspect = imgW / imgH;
+                                float elemAspect = elemW / elemH;
+                                if (aspect > elemAspect)
+                                {
+                                    drawH = elemH;
+                                    drawW = elemH * aspect;
+                                }
+                                else
+                                {
+                                    drawW = elemW;
+                                    drawH = elemW / aspect;
+                                }
+                                drawX = sx0 + (elemW - drawW) * 0.5f;
+                                drawY = sy0 + (elemH - drawH) * 0.5f;
+                                break;
+                            }
+                        default: // Stretch
+                            drawX = sx0;
+                            drawY = sy0;
+                            drawW = elemW;
+                            drawH = elemH;
+                            break;
+                    }
+
+                    // Draw image
+                    drawList.AddImage((nint)texId,
+                        new Vector2(drawX, drawY),
+                        new Vector2(drawX + drawW, drawY + drawH));
+
+                    // Overlay subtle hover tint
+                    if (isHovered)
+                    {
+                        drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
+                            ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.08f)));
+                    }
+                }
+                else
+                {
+                    // Image not loaded — show placeholder
+                    drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.2f, 0.2f, 0.6f)));
+                    drawList.AddText(new Vector2(csx0 + 4f, csy0 + 4f),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.6f, 0.3f, 1f)),
+                        "[Missing]");
+                }
+            }
+
+            // ── Draw text label with element's FontSize ──
             if (!string.IsNullOrEmpty(elem.Text))
             {
                 string label = elem.Text;
                 float previewFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var textColor = isHovered ? elem.HoverTextColor : elem.TextColor;
 
-                // Approximate scaled text size (ImGui default is ~13px)
                 float baseFontSize = 13f;
                 float fontSizeScale = previewFontSize / baseFontSize;
                 var baseSize = ImGui.CalcTextSize(label);
                 float scaledW = baseSize.X * fontSizeScale;
                 float scaledH = baseSize.Y * fontSizeScale;
 
-                // Position text based on alignment
                 float textX, textY;
                 float textPad = 8f;
                 float availW = (csx1 - csx0) - textPad * 2f;
@@ -147,14 +229,11 @@ public class ViewportPanel
                     case TextAlignment.Right:
                         textX = csx1 - textPad - textW;
                         break;
-                    default: // Center
+                    default:
                         textX = csx0 + (csx1 - csx0) * 0.5f - textW * 0.5f;
                         break;
                 }
-
                 textY = csy0 + (csy1 - csy0) * 0.5f - scaledH * 0.5f;
-
-                // Clamp text position
                 textX = Math.Max(csx0 + 2f, Math.Min(textX, csx1 - textW - 2f));
 
                 drawList.AddText(ImGui.GetFont(), previewFontSize, new Vector2(textX, textY),
@@ -162,19 +241,88 @@ public class ViewportPanel
                     label);
             }
 
+            // Draw border
+            drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
+                4f, ImDrawFlags.None, 1.5f);
+
             // Click to select element in the preview — only take the LAST (top-most) element
             if (isHovered && leftClicked && _dragMode == DragMode.None)
             {
                 _bridge.SelectedUIElements?.Clear();
                 _bridge.SelectedUIElements?.Add(elem);
                 _bridge.SelectedUIElement = elem;
-                // DON'T set _dragMode — wireframe section handles drag initiation
             }
 
             // Recursively render children
             if (elem.Children.Count > 0)
                 DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked);
         }
+    }
+
+    // ── Preview texture cache for viewport editor ──
+    private readonly Dictionary<string, uint> _previewTextureCache = [];
+    private readonly Dictionary<string, (int w, int h)> _previewTextureDims = [];
+    // Tracks the last scene root to detect scene switches and clear the cache
+    private UIElement? _lastSceneRoot = null;
+
+    /// <summary>Delete all cached preview textures and clear caches to prevent GPU leaks on scene switch.</summary>
+    private void ClearPreviewTextures()
+    {
+        foreach (var kvp in _previewTextureCache)
+        {
+            uint tex = kvp.Value;
+            if (tex != 0)
+                GL.DeleteTextures(1, &tex);
+        }
+        _previewTextureCache.Clear();
+        _previewTextureDims.Clear();
+    }
+
+    private unsafe uint LoadOrGetPreviewTexture(string path)
+    {
+        if (_previewTextureCache.TryGetValue(path, out uint cached))
+            return cached;
+
+        if (!File.Exists(path))
+            return 0;
+
+        try
+        {
+            uint texID;
+            GL.GenTextures(1, &texID);
+            GL.BindTexture(Const.GL_TEXTURE_2D, texID);
+
+            using var stream = File.OpenRead(path);
+            var image = StbImageSharp.ImageResult.FromStream(stream, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+
+            fixed (byte* ptr = image.Data)
+            {
+                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
+                              image.Width, image.Height, 0,
+                              Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, ptr);
+            }
+
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+
+            _previewTextureCache[path] = texID;
+            _previewTextureDims[path] = (image.Width, image.Height);
+            return texID;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private (int w, int h) GetPreviewTextureDimensions(string path)
+    {
+        if (_previewTextureDims.TryGetValue(path, out var dims))
+            return dims;
+        return (0, 0);
     }
 
     public ViewportPanel(IDEBridge bridge) => _bridge = bridge;
@@ -233,7 +381,7 @@ public class ViewportPanel
         bool hasSceneTexture = avail.X > 0 && avail.Y > 0 && _bridge.SceneTextureID != 0;
         bool hasGameScene = _bridge.SceneManager?.CurrentScene != null;
 
-        if (hasSceneTexture || (!hasGameScene && _bridge.SelectedEditorScene != null))
+        if (hasSceneTexture || _bridge.SceneRoot != null)
         {
             // ── Canvas area (fill available space) ──
             float canvasW = avail.X;
@@ -294,8 +442,32 @@ public class ViewportPanel
             bool cachedLeftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
             bool cachedLeftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
 
-            // ── Live Editor Scene Preview ──
-            if (!hasGameScene && _bridge.SelectedEditorScene != null && _bridge.SceneRoot != null)
+            // ── Detect editor scene switch → clear preview texture cache ──
+            if (!hasGameScene && _bridge.SceneRoot != null)
+            {
+                if (_bridge.SceneRoot != _lastSceneRoot)
+                {
+                    if (_previewTextureCache.Count > 0)
+                    {
+                        int cleared = _previewTextureCache.Count;
+                        ClearPreviewTextures();
+                        Console.WriteLine($"[Viewport] Scene root changed — cleared {cleared} preview textures");
+                    }
+                    _lastSceneRoot = _bridge.SceneRoot;
+                }
+            }
+            else if (_lastSceneRoot != null)
+            {
+                // Game scene started → clear any remaining editor preview textures
+                if (_previewTextureCache.Count > 0)
+                    ClearPreviewTextures();
+                _lastSceneRoot = null;
+            }
+
+            // ── Live Editor Scene Preview (draws UI elements on top of the scene texture or dark canvas) ──
+            // Uses SceneRoot directly (not SelectedEditorScene) so the preview works even when
+            // no editor scene is explicitly selected — the active game scene's root is sufficient.
+            if (_bridge.SceneRoot != null && _bridge.SceneRoot.Children.Count > 0)
             {
                 var drawList = ImGui.GetWindowDrawList();
                 DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked);
@@ -336,6 +508,7 @@ public class ViewportPanel
                     float csx1 = Math.Clamp(sx1, _imageMin.X, _imageMax.X);
                     float csy1 = Math.Clamp(sy1, _imageMin.Y, _imageMax.Y);
                     bool fullyVis = csx0 == sx0 && csy0 == sy0 && csx1 == sx1 && csy1 == sy1;
+                    bool isFitToWindow = isPrimary && elem.ClickBehaviorLabel == "fittowindow";
 
                     uint wireColor, fillColor, handleColor, handleBorder, bracketColor;
 
@@ -372,7 +545,7 @@ public class ViewportPanel
                         drawList.AddLine(new Vector2(csx1, csy1), new Vector2(csx1, csy1 - bracketLen), bracketColor, 2f);
 
                         float handleSz = 12f, handleHalf = handleSz * 0.5f;
-                        if (fullyVis)
+                        if (!isFitToWindow && fullyVis)
                         {
                             Vector2[] corners = [
                                 new(sx0, sy0), new(sx1, sy0),
@@ -458,11 +631,17 @@ public class ViewportPanel
                         }
 
                         // ── Info label at top-left corner of element ──
+                        //    Uses hardcoded colors (not element colors) so tooltip stays readable.
                         {
-                            string fontPart = !string.IsNullOrEmpty(elem.FontPath)
+                            string imagePart = !string.IsNullOrEmpty(elem.ImagePath)
+                                ? $" IMG:{Path.GetFileName(elem.ImagePath)} M:{elem.ImageMode}"
+                                : "";
+                            string fontPart = !string.IsNullOrEmpty(elem.FontPath) && string.IsNullOrEmpty(elem.ImagePath)
                                 ? $" F:{Path.GetFileNameWithoutExtension(elem.FontPath)}"
                                 : "";
-                            string info = $"{elem.GetIcon()} {elem.Name}  [{elem.Width:F0}×{elem.Height:F0}] @ ({elem.X:F0},{elem.Y:F0}) S:{elem.FontSize:F0}{fontPart}";
+                            string info = isFitToWindow
+                                ? $"FULLSCREEN  [{_texW:F0}×{_texH:F0}]{imagePart}"
+                                : $"{elem.GetIcon()} {elem.Name}  [{elem.Width:F0}×{elem.Height:F0}] @ ({elem.X:F0},{elem.Y:F0}){fontPart}{imagePart}";
                             var infoSize = ImGui.CalcTextSize(info);
                             float infoPad = 5f;
                             float ix = csx0 - 5f;
@@ -480,8 +659,8 @@ public class ViewportPanel
                                 iborder, 3f, ImDrawFlags.None, 1f);
                             drawList.AddText(new Vector2(ix, iy), itext, info);
 
-                            // ── FontPath tooltip when hovering over the info label ──
-                            if (!string.IsNullOrEmpty(elem.FontPath))
+                            // ── Image tooltip when hovering over the info label ──
+                            if (!string.IsNullOrEmpty(elem.ImagePath) || !string.IsNullOrEmpty(elem.FontPath))
                             {
                                 Vector2 lblMin = new Vector2(ix - infoPad, iy - 2f);
                                 Vector2 lblMax = new Vector2(ix + infoSize.X + infoPad, iy + infoSize.Y + 2f);
@@ -491,7 +670,10 @@ public class ViewportPanel
                                 {
                                     ImGui.SetNextWindowPos(viewportTopLeft + new Vector2(8, 8), ImGuiCond.Always);
                                     ImGui.BeginTooltip();
-                                    ImGui.Text($"Font: {elem.FontPath}");
+                                    if (!string.IsNullOrEmpty(elem.ImagePath))
+                                        ImGui.Text($"Image: {elem.ImagePath}\nMode: {elem.ImageMode}");
+                                    else
+                                        ImGui.Text($"Font: {elem.FontPath}");
                                     ImGui.EndTooltip();
                                 }
                             }
@@ -500,15 +682,39 @@ public class ViewportPanel
                     }
                 }
 
-                if (allSelected != null)
+                bool isSceneElem = selUiElem.Type == UIElementType.Scene;
+
+                // ── Scene-type elements: NO wireframe, no helper, no resize/move ──
+                if (!isSceneElem)
                 {
-                    foreach (var elem in allSelected)
-                        if (elem != selUiElem)
-                            DrawElemWireframe(elem, false);
+                    if (allSelected != null)
+                    {
+                        foreach (var elem in allSelected)
+                            if (elem != selUiElem)
+                                DrawElemWireframe(elem, false);
+                    }
+
+                    DrawElemWireframe(selUiElem, true);
                 }
 
-                DrawElemWireframe(selUiElem, true);
+                // ── Fit-to-window: auto-size element to viewport, disable drag/resize ──
+                bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
+                if (isFitToWindowElem)
+                {
+                    selUiElem.X = 0;
+                    selUiElem.Y = 0;
+                    selUiElem.Width = _texW;
+                    selUiElem.Height = _texH;
+                }
 
+                // ── Scene-type elements: NO resize/move handlers ──
+                if (isSceneElem)
+                {
+                    // Ensure any lingering drag mode from a previously-selected element is cleared
+                    _dragMode = DragMode.None;
+                }
+                else
+                {
                 // ── Interactive drag handling ──
                 float psx0 = _imageMin.X + (selUiElem.X / _texW) * _imageSize.X;
                 float psy0 = _imageMin.Y + (selUiElem.Y / _texH) * _imageSize.Y;
@@ -525,7 +731,7 @@ public class ViewportPanel
                 float elemScreenH = psy1 - psy0;
                 float cornerRadius = Math.Max(6f, Math.Min(10f, Math.Min(elemScreenW, elemScreenH) * 0.25f));
 
-                // Normal drag end — always process even if selUiElem became null
+                // Normal drag end
                 if (cachedLeftReleased && _dragMode != DragMode.None)
                 {
                     if (selUiElem != null && _bridge.RecordTransformUndo != null)
@@ -556,72 +762,78 @@ public class ViewportPanel
                                 viewportMouseScreen.Y >= pcsy0 && viewportMouseScreen.Y <= pcsy1 &&
                                 !overTL && !overTR && !overBL && !overBR && !overMoveHandle;
 
-                if (overMoveHandle && _dragMode == DragMode.None)
+                if (!isFitToWindowElem)
                 {
-                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
-                    ImGui.BeginTooltip();
-                    ImGui.Text("Drag to move");
-                    ImGui.EndTooltip();
-                }
-                else if (overTL || overBR)
-                {
-                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNWSE);
-                    if (_dragMode == DragMode.None)
+                    if (overMoveHandle && _dragMode == DragMode.None)
                     {
+                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
                         ImGui.BeginTooltip();
-                        ImGui.Text("Drag corner to resize");
+                        ImGui.Text("Drag to move");
                         ImGui.EndTooltip();
                     }
-                }
-                else if (overTR || overBL)
-                {
-                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNESW);
-                    if (_dragMode == DragMode.None)
+                    else if (overTL || overBR)
                     {
-                        ImGui.BeginTooltip();
-                        ImGui.Text("Drag corner to resize");
-                        ImGui.EndTooltip();
-                    }
-                }
-                else if (overBody && _dragMode == DragMode.None)
-                {
-                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
-                    ImGui.BeginTooltip();
-                    ImGui.Text("Drag body to move");
-                    ImGui.EndTooltip();
-                }
-
-                // Click handling: move handle > corner > body
-                if (_dragMode == DragMode.None && cachedLeftClicked)
-                {
-                    if (overMoveHandle)
-                    {
-                        _dragMode = DragMode.Move;
-                        WriteDebugLog($"DRAG START Move (handle) on '{selUiElem.Name}' at ({selUiElem.X:F1},{selUiElem.Y:F1})");
-                    }
-                    else
-                    {
-                        bool anyCorner = primaryFullyVisible && (overTL || overTR || overBL || overBR);
-                        if (anyCorner)
+                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNWSE);
+                        if (_dragMode == DragMode.None)
                         {
-                            if (overTL) { _dragMode = DragMode.ResizeTL; WriteDebugLog($"DRAG START ResizeTL on '{selUiElem.Name}'"); }
-                            else if (overTR) { _dragMode = DragMode.ResizeTR; WriteDebugLog($"DRAG START ResizeTR on '{selUiElem.Name}'"); }
-                            else if (overBL) { _dragMode = DragMode.ResizeBL; WriteDebugLog($"DRAG START ResizeBL on '{selUiElem.Name}'"); }
-                            else { _dragMode = DragMode.ResizeBR; WriteDebugLog($"DRAG START ResizeBR on '{selUiElem.Name}'"); }
+                            ImGui.BeginTooltip();
+                            ImGui.Text("Drag corner to resize");
+                            ImGui.EndTooltip();
                         }
-                        else if (overBody)
+                    }
+                    else if (overTR || overBL)
+                    {
+                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNESW);
+                        if (_dragMode == DragMode.None)
+                        {
+                            ImGui.BeginTooltip();
+                            ImGui.Text("Drag corner to resize");
+                            ImGui.EndTooltip();
+                        }
+                    }
+                    else if (overBody && _dragMode == DragMode.None)
+                    {
+                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
+                        ImGui.BeginTooltip();
+                        ImGui.Text("Drag body to move");
+                        ImGui.EndTooltip();
+                    }
+
+                    // Click handling: move handle > corner > body
+                    if (_dragMode == DragMode.None && cachedLeftClicked)
+                    {
+                        bool dragStarted = false;
+                        if (overMoveHandle)
                         {
                             _dragMode = DragMode.Move;
-                            WriteDebugLog($"DRAG START Move (body) on '{selUiElem.Name}' at ({selUiElem.X:F1},{selUiElem.Y:F1})");
+                            dragStarted = true;
+                            WriteDebugLog($"DRAG START Move (handle) on '{selUiElem.Name}' at ({selUiElem.X:F1},{selUiElem.Y:F1})");
                         }
-                    }
+                        else
+                        {
+                            bool anyCorner = primaryFullyVisible && (overTL || overTR || overBL || overBR);
+                            if (anyCorner)
+                            {
+                                if (overTL) { _dragMode = DragMode.ResizeTL; dragStarted = true; WriteDebugLog($"DRAG START ResizeTL on '{selUiElem.Name}'"); }
+                                else if (overTR) { _dragMode = DragMode.ResizeTR; dragStarted = true; WriteDebugLog($"DRAG START ResizeTR on '{selUiElem.Name}'"); }
+                                else if (overBL) { _dragMode = DragMode.ResizeBL; dragStarted = true; WriteDebugLog($"DRAG START ResizeBL on '{selUiElem.Name}'"); }
+                                else { _dragMode = DragMode.ResizeBR; dragStarted = true; WriteDebugLog($"DRAG START ResizeBR on '{selUiElem.Name}'"); }
+                            }
+                            else if (overBody)
+                            {
+                                _dragMode = DragMode.Move;
+                                dragStarted = true;
+                                WriteDebugLog($"DRAG START Move (body) on '{selUiElem.Name}' at ({selUiElem.X:F1},{selUiElem.Y:F1})");
+                            }
+                        }
 
-                    if (_dragMode != DragMode.None)
-                    {
-                        _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
-                        _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
-                        _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
-                        WriteDebugLog($"Drag start state: pos=({_dragStartX:F1},{_dragStartY:F1}) size=({_dragStartW:F1}×{_dragStartH:F1}) mouseScene=({_dragStartMouseScene.X:F1},{_dragStartMouseScene.Y:F1})");
+                        if (dragStarted)
+                        {
+                            _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
+                            _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
+                            _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
+                            WriteDebugLog($"Drag start state: pos=({_dragStartX:F1},{_dragStartY:F1}) size=({_dragStartW:F1}×{_dragStartH:F1}) mouseScene=({_dragStartMouseScene.X:F1},{_dragStartMouseScene.Y:F1})");
+                        }
                     }
                 }
 
@@ -630,8 +842,6 @@ public class ViewportPanel
                     WriteDebugLog($"DRAG_FRAME: mode={_dragMode} clicked={cachedLeftClicked} down={cachedLeftDown} released={cachedLeftReleased} mouse=({viewportMouseScreen.X:F0},{viewportMouseScreen.Y:F0})");
 
                 // Apply drag movement/resize while mouse is held
-                // Note: using !cachedLeftReleased instead of cachedLeftDown for robustness,
-                // because IsMouseDown may return false on some frames during fast drags.
                 if (_dragMode != DragMode.None && !cachedLeftReleased)
                 {
                     var currentMouseScene = ScreenToScene(viewportMouseScreen);
@@ -683,12 +893,12 @@ public class ViewportPanel
                 }
 
                 // ── Post-apply safety: reset if mouse is neither down nor being released ──
-                // (This runs AFTER apply so apply always fires; prevents runaway drags)
                 if (_dragMode != DragMode.None && !cachedLeftDown && !cachedLeftReleased)
                 {
                     _dragMode = DragMode.None;
                     WriteDebugLog("Drag mode reset (post-apply)");
                 }
+                } // end if (!isSceneElem)
             }
 
             // ── Safety reset: handle interrupted drag even when selUiElem became null ──
@@ -701,6 +911,20 @@ public class ViewportPanel
                     _dragMode = DragMode.None;
                     Console.WriteLine("[Viewport] Drag mode reset (interrupted, no element)");
                 }
+            }
+
+            // ── Drag-drop target: Asset Browser image → selected element ──
+            if (_bridge.SelectedUIElement != null && ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                {
+                    string imgPath = AssetBrowserPanel._dragImagePath;
+                    _bridge.SelectedUIElement.ImagePath = imgPath;
+                    Console.WriteLine($"[Viewport] Set ImagePath on '{_bridge.SelectedUIElement.Name}' → {imgPath}");
+                    AssetBrowserPanel._dragImagePath = null;
+                }
+                ImGui.EndDragDropTarget();
             }
 
             // ── Viewport click/hover detection ──

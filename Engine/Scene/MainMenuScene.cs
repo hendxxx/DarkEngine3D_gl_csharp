@@ -4,6 +4,7 @@ using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
+using StbImageSharp;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Scene;
@@ -39,6 +40,10 @@ public unsafe class MainMenuScene : IScene
 
     // ── UI Button Data (rebuilt from loaded hierarchy each frame) ──
     private readonly List<UIButtonData> _uiButtons = [];
+
+    // ── Image texture cache (path → OpenGL texture ID + dimensions) ──
+    private readonly Dictionary<string, uint> _imageTextureCache = [];
+    private readonly Dictionary<string, (int w, int h)> _imageTextureDims = [];
 
     // ── Random ──
     private readonly Random _rng = new();
@@ -128,6 +133,33 @@ public unsafe class MainMenuScene : IScene
         _light = light;
     }
 
+    /// <summary>Load UI hierarchy from .ing file into the given root element.
+    /// Tries individual scene file first, then falls back to game.ing manifest.
+    /// Returns true if data was loaded.</summary>
+    private bool LoadHierarchyFromIng(UIElement root)
+    {
+        string scenePath = SceneAssetSerializer.GetScenePath("MainMenu");
+        var asset = SceneAssetSerializer.LoadScene(scenePath)
+                 ?? SceneAssetSerializer.FindScene("MainMenu");
+
+        if (asset == null || asset.Elements.Count == 0)
+        {
+            Console.WriteLine("[MainMenu] No .ing file found — starting with empty hierarchy.");
+            return false;
+        }
+
+        // Clear existing children and load from asset
+        root.ClearChildren();
+        foreach (var elemData in asset.Elements)
+        {
+            var child = SceneAssetSerializer.ToUIElement(elemData);
+            root.AddChild(child);
+        }
+
+        Console.WriteLine($"[MainMenu] Loaded hierarchy from .ing ({root.Children.Count} top-level elements)");
+        return true;
+    }
+
     public void Enter()
     {
         _hud = new HUD("Artifacts\\fonts\\Worldstar.ttf", 13.0f);
@@ -184,18 +216,19 @@ public unsafe class MainMenuScene : IScene
         _hasUnsavedChanges = false;
         ResetOverlays();
 
-        // ── Scene starts blank! No .ing file is loaded automatically. ──
-        // User can create UI via the IDE SceneDetail panel (+ Add button),
-        // or use the "↻ Reload" button to load from a previously saved .ing file.
+        // ── Load UI hierarchy from .ing file ──
+        // This populates _sceneRoot with saved elements so both IDE editing
+        // and game runtime have the same content.
         _sceneRoot.ClearChildren();
         _uiButtons.Clear();
         _bgObjectDataList = [];
+        LoadHierarchyFromIng(_sceneRoot);
 
         // ── Register for IDE Save All ──
         SceneAssetSerializer.RegisterSceneRoot("MainMenu", _sceneRoot);
         SceneAssetSerializer.RegisterBgObjects("MainMenu", _bgObjectDataList);
 
-        Console.WriteLine("[MainMenu] Entered — blank start (no .ing file loaded).");
+        Console.WriteLine("[MainMenu] Entered.");
     }
 
     private void ResetOverlays()
@@ -214,6 +247,23 @@ public unsafe class MainMenuScene : IScene
     private void OnWindowResized(int width, int height)
     {
         _camera.UpdateAspectRatio(width, height);
+        // Update fit-to-window elements to match new window size
+        UpdateFitToWindowElements();
+    }
+
+    /// <summary>Find all elements with "FitToWindow" behavior and resize them to current window dimensions.</summary>
+    private void UpdateFitToWindowElements()
+    {
+        foreach (var child in _sceneRoot.Children)
+        {
+            if (child.Name == "Background" || child.ClickBehaviorLabel == "fittowindow")
+            {
+                child.X = 0;
+                child.Y = 0;
+                child.Width = Glfw.WindowWidth;
+                child.Height = Glfw.WindowHeight;
+            }
+        }
     }
 
     public void Update(float deltaTime)
@@ -248,12 +298,22 @@ public unsafe class MainMenuScene : IScene
         _uiButtons.Clear();
         RebuildUiButtonsFromHierarchy(_sceneRoot.Children);
 
+        // ── Update fit-to-window elements ──
+        UpdateFitToWindowElements();
+
+        // ── Load image textures for elements with ImagePath ──
+        LoadImageTexturesFromHierarchy(_sceneRoot.Children);
+
         // ── HUD Button System: always rebuild buttons for rendering ──
         _hud.ClearButtons();
         for (int i = 0; i < _uiButtons.Count; i++)
         {
             var uiBtn = _uiButtons[i];
             if (!uiBtn.IsVisible) continue;
+
+            // Skip elements with ImagePath — they're rendered as images, not buttons
+            if (!string.IsNullOrEmpty(uiBtn.ImagePath))
+                continue;
 
             // Determine font slot for this button (each can have its own size)
             string btnFontPath = !string.IsNullOrEmpty(uiBtn.FontPath) ? uiBtn.FontPath : "Artifacts\\fonts\\Worldstar.ttf";
@@ -784,9 +844,155 @@ public unsafe class MainMenuScene : IScene
         }
     }
 
+    /// <summary>Load OpenGL textures for elements with ImagePath.</summary>
+    private void LoadImageTexturesFromHierarchy(List<UIElement> elements)
+    {
+        foreach (var elem in elements)
+        {
+            if (!string.IsNullOrEmpty(elem.ImagePath))
+                LoadImageTexture(elem.ImagePath);
+            if (elem.Children.Count > 0)
+                LoadImageTexturesFromHierarchy(elem.Children);
+        }
+    }
+
+    private unsafe void LoadImageTexture(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        if (_imageTextureCache.ContainsKey(path)) return;
+
+        if (!File.Exists(path))
+        {
+            Console.WriteLine($"[MainMenu] Image not found: {path}");
+            return;
+        }
+
+        try
+        {
+            uint texID;
+            GL.GenTextures(1, &texID);
+            GL.BindTexture(Const.GL_TEXTURE_2D, texID);
+
+            using var stream = File.OpenRead(path);
+            var image = StbImageSharp.ImageResult.FromStream(stream, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+
+            fixed (byte* ptr = image.Data)
+            {
+                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
+                              image.Width, image.Height, 0,
+                              Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, ptr);
+            }
+
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+
+            _imageTextureCache[path] = texID;
+            _imageTextureDims[path] = (image.Width, image.Height);
+            Console.WriteLine($"[MainMenu] Loaded image: {path} ({image.Width}×{image.Height})");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainMenu] Failed to load image {path}: {ex.Message}");
+        }
+    }
+
+    /// <summary>Calculate draw rectangle based on image mode.</summary>
+    private static (float x, float y, float w, float h) CalcImageRect(
+        float elemX, float elemY, float elemW, float elemH,
+        float imgW, float imgH, ImageMode mode)
+    {
+        if (imgW <= 0 || imgH <= 0)
+            return (elemX, elemY, elemW, elemH);
+
+        switch (mode)
+        {
+            case ImageMode.Zoom:
+                {
+                    float aspect = imgW / imgH;
+                    float elemAspect = elemW / elemH;
+                    if (aspect > elemAspect)
+                    {
+                        float drawW = elemW;
+                        float drawH = elemW / aspect;
+                        return (elemX, elemY + (elemH - drawH) * 0.5f, drawW, drawH);
+                    }
+                    else
+                    {
+                        float drawH = elemH;
+                        float drawW = elemH * aspect;
+                        return (elemX + (elemW - drawW) * 0.5f, elemY, drawW, drawH);
+                    }
+                }
+            case ImageMode.Fill:
+                {
+                    float aspect = imgW / imgH;
+                    float elemAspect = elemW / elemH;
+                    if (aspect > elemAspect)
+                    {
+                        float drawH = elemH;
+                        float drawW = elemH * aspect;
+                        return (elemX + (elemW - drawW) * 0.5f, elemY, drawW, drawH);
+                    }
+                    else
+                    {
+                        float drawW = elemW;
+                        float drawH = elemW / aspect;
+                        return (elemX, elemY + (elemH - drawH) * 0.5f, drawW, drawH);
+                    }
+                }
+            default: // Stretch
+                return (elemX, elemY, elemW, elemH);
+        }
+    }
+
+    /// <summary>Render image elements from the hierarchy (elements with ImagePath set).</summary>
+    private void RenderImageElements(List<UIElement> elements)
+    {
+        if (_hud == null) return;
+
+        foreach (var elem in elements)
+        {
+            if (!elem.IsVisible) continue;
+
+            if (!string.IsNullOrEmpty(elem.ImagePath))
+            {
+                if (_imageTextureCache.TryGetValue(elem.ImagePath, out uint texID) && texID != 0)
+                {
+                    int imgW = 1, imgH = 1;
+                    if (_imageTextureDims.TryGetValue(elem.ImagePath, out var d))
+                    {
+                        imgW = d.w;
+                        imgH = d.h;
+                    }
+                    var (drawX, drawY, drawW, drawH) = CalcImageRect(
+                        elem.X, elem.Y, elem.Width, elem.Height,
+                        imgW, imgH, elem.ImageMode);
+
+                    _hud.DrawImage(drawX, drawY, drawW, drawH, texID);
+                }
+                else
+                {
+                    // Image not loaded — draw fallback text
+                    if (!string.IsNullOrEmpty(elem.Text))
+                    {
+                        _hud.DrawText(elem.Text, elem.X, elem.Y, elem.TextColor);
+                    }
+                }
+            }
+
+            if (elem.Children.Count > 0)
+                RenderImageElements(elem.Children);
+        }
+    }
+
     private void RenderUI()
     {
         if (_hud == null) return;
+
+        // Render image elements first (with ImagePath set)
+        RenderImageElements(_sceneRoot.Children);
 
         // Render all registered buttons from the loaded hierarchy
         _hud.DrawButtons(_totalTime, -1);
@@ -829,16 +1035,25 @@ public unsafe class MainMenuScene : IScene
         }
     }
 
+    private void CleanupImageTextures()
+    {
+        foreach (var kvp in _imageTextureCache)
+        {
+            uint tex = kvp.Value;
+            if (tex != 0)
+                GL.DeleteTextures(1, &tex);
+        }
+        _imageTextureCache.Clear();
+        _imageTextureDims.Clear();
+    }
+
     public void Exit()
     {
         Glfw.OnWindowResized -= OnWindowResized;
 
-        // 🛠️ FIX #4: Clean up GPU resources (scratch textures) on scene exit
-        // Without this, cached scratch textures from GetOrCreateScratchTexture
-        // accumulate in GPU memory across scene re-entries, causing a leak.
+        // Clean up GPU resources
         _hud?.Cleanup();
-
-        // Background objects are lightweight data; no GPU cleanup needed
+        CleanupImageTextures();
 
         // Clear IDE bridge references
         var bridge = _sceneManager.Bridge;
@@ -856,10 +1071,8 @@ public unsafe class MainMenuScene : IScene
 
     public void Dispose()
     {
-        // 🛠️ FIX #4: Cleanup GPU resources in Dispose as well (defensive — in case
-        // Exit() is skipped or called out of order). Guard with null check since
-        // Dispose() can be called even if Enter() was never called.
         _hud?.Cleanup();
         _hud = null;
+        CleanupImageTextures();
     }
 }

@@ -66,8 +66,10 @@ public class InspectorPanel
         ImGui.End();
     }
 
-    private void RenderUIElementInspector(UIElement elem)
+    private unsafe void RenderUIElementInspector(UIElement elem)
     {
+        bool isSceneType = elem.Type == UIElementType.Scene;
+
         // ════════════════════════════════════════════
         //  Element Identity
         // ════════════════════════════════════════════
@@ -83,14 +85,119 @@ public class InspectorPanel
             if (ImGui.Combo("Type", ref typeIdx, ElementTypeNames, ElementTypeNames.Length))
                 elem.Type = (UIElementType)typeIdx;
 
-            ImGui.Text($"Children: {elem.Children.Count}");
+            if (!isSceneType)
+            {
+                ImGui.Text($"Children: {elem.Children.Count}");
+            }
             ImGui.Separator();
         }
 
+        // ── For Scene type, ONLY show Element + Children, skip everything else ──
+        if (isSceneType)
+        {
+            // Children list (only section shown for Scene type)
+            if (elem.Children.Count > 0 && ImGui.CollapsingHeader($"Children ({elem.Children.Count})", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                for (int i = 0; i < elem.Children.Count; i++)
+                {
+                    var child = elem.Children[i];
+                    ImGui.BulletText($"{child.GetIcon()} {child.Name}");
+                    if (ImGui.IsItemClicked())
+                        _bridge.SelectedUIElement = child;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip($"Type: {child.Type} | Click to select");
+                }
+            }
+            return; // Scene type: nothing else to show
+        }
+
         // ════════════════════════════════════════════
-        //  Text & Font
+        //  Image (replaces Text & Font when ImagePath is set)
         // ════════════════════════════════════════════
-        if (ImGui.CollapsingHeader("Text & Font", ImGuiTreeNodeFlags.DefaultOpen))
+        bool hasImage = !string.IsNullOrEmpty(elem.ImagePath);
+        if (ImGui.CollapsingHeader("Image", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            // Image path with drag-drop target
+            string imgPath = elem.ImagePath;
+            ImGui.Text("Image Path:");
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputText("##img_path", ref imgPath, 512))
+                elem.ImagePath = imgPath;
+
+            // ── Drag-drop target for Asset Browser ──
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                {
+                    elem.ImagePath = AssetBrowserPanel._dragImagePath;
+                    Console.WriteLine($"[Inspector] Set ImagePath on '{elem.Name}' → {elem.ImagePath}");
+                    AssetBrowserPanel._dragImagePath = null;
+                }
+                ImGui.EndDragDropTarget();
+            }
+
+            // Clear image button
+            ImGui.SameLine();
+            if (ImGui.Button("X", new Vector2(24, 0)) && hasImage)
+            {
+                elem.ImagePath = "";
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Clear image");
+
+            // ── Image sizing mode ──
+            string[] imgModes = ["Stretch", "Zoom", "Fill"];
+            int imgModeIdx = (int)elem.ImageMode;
+            if (ImGui.Combo("Image Mode", ref imgModeIdx, imgModes, imgModes.Length))
+                elem.ImageMode = (ImageMode)imgModeIdx;
+
+            // Image preview indicator
+            if (hasImage)
+            {
+                ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $"✓ Image: {Path.GetFileName(elem.ImagePath)}");
+                ImGui.TextDisabled($"Mode: {elem.ImageMode}");
+            }
+            else
+            {
+                ImGui.TextDisabled("Drop image from Asset Browser");
+                ImGui.TextDisabled("or type path above.");
+            }
+
+            ImGui.Separator();
+
+            // ── Fit to Window button ──
+            if (ImGui.Button("⬜ Fit to Window", new Vector2(-1, 30)))
+            {
+                elem.X = 0;
+                elem.Y = 0;
+                elem.Width = 1920;
+                elem.Height = 1080;
+                Console.WriteLine($"[Inspector] Fit to Window: '{elem.Name}' → (0,0) [1920×1080]");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Resize element to fill the entire window (1920×1080)");
+
+            // ── Label (text shown when image can't be loaded) ──
+            ImGui.Spacing();
+            string labelText = elem.Text;
+            ImGui.Text("Fallback Label:");
+            if (ImGui.InputText("##fallback_label", ref labelText, 256))
+                elem.Text = labelText;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Displayed when image fails to load");
+
+            // Alignment
+            string[] alignItems = ["Left", "Center", "Right"];
+            int alignIdx = (int)elem.Alignment;
+            if (ImGui.Combo("Alignment", ref alignIdx, alignItems, alignItems.Length))
+                elem.Alignment = (TextAlignment)alignIdx;
+        }
+
+        // ════════════════════════════════════════════
+        //  Text & Font (shown only when no image)
+        // ════════════════════════════════════════════
+        if (!hasImage && ImGui.CollapsingHeader("Text & Font", ImGuiTreeNodeFlags.DefaultOpen))
         {
             string text = elem.Text;
             if (ImGui.InputText("Label", ref text, 256))
@@ -105,7 +212,6 @@ public class InspectorPanel
             ScanFontsOnce();
             if (_availableFonts != null && _availableFonts.Length > 0)
             {
-                // Find current font index
                 int fontIdx = 0;
                 string currentFontName = Path.GetFileName(elem.FontPath);
                 for (int i = 0; i < _availableFonts.Length; i++)
@@ -116,14 +222,12 @@ public class InspectorPanel
 
                 if (ImGui.Combo("Font", ref fontIdx, _availableFonts, _availableFonts.Length))
                 {
-                    // Reconstruct font path
                     string fontsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
                     elem.FontPath = Path.Combine(fontsDir, _availableFonts[fontIdx]);
                 }
             }
             else
             {
-                // Fallback: raw path input
                 string font = elem.FontPath;
                 ImGui.InputText("Font Path", ref font, 256);
                 if (font != elem.FontPath)
@@ -166,15 +270,15 @@ public class InspectorPanel
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Normal");
             ImGui.Indent();
             var cNormal = elem.TextColor;
-            if (ImGui.ColorEdit3("Text", ref cNormal, ImGuiColorEditFlags.NoInputs))
+            if (ImGui.ColorEdit3("TextNormal", ref cNormal, ImGuiColorEditFlags.NoInputs))
                 elem.TextColor = cNormal;
 
             cNormal = elem.BgColor;
-            if (ImGui.ColorEdit3("Background", ref cNormal, ImGuiColorEditFlags.NoInputs))
+            if (ImGui.ColorEdit3("BackgroundNormal", ref cNormal, ImGuiColorEditFlags.NoInputs))
                 elem.BgColor = cNormal;
 
             cNormal = elem.BorderColor;
-            if (ImGui.ColorEdit3("Border", ref cNormal, ImGuiColorEditFlags.NoInputs))
+            if (ImGui.ColorEdit3("BorderNormal", ref cNormal, ImGuiColorEditFlags.NoInputs))
                 elem.BorderColor = cNormal;
             ImGui.Unindent();
 
@@ -200,37 +304,34 @@ public class InspectorPanel
         }
 
         // ════════════════════════════════════════════
-        //  Behaviors (Click + Hover)
+        //  Behaviors (Click + Hover) — kept for backward compat, hidden by default
         // ════════════════════════════════════════════
-        if (ImGui.CollapsingHeader("Behaviors", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.CollapsingHeader("Behaviors", ImGuiTreeNodeFlags.None))
         {
             var behaviors = IDEBridge.AvailableBehaviors;
             string[] behaviorLabels = new string[behaviors.Length];
             for (int i = 0; i < behaviors.Length; i++)
                 behaviorLabels[i] = behaviors[i].Label;
 
-            // ── Helper: render a behavior combo ──
             static int FindBehaviorIdx(string value, IDEBridge.BehaviorOption[] opts)
             {
                 for (int i = 0; i < opts.Length; i++)
                     if (string.Equals(opts[i].Value, value, StringComparison.OrdinalIgnoreCase))
                         return i;
-                return 0; // default to (none)
+                return 0;
             }
 
-            // On Click
             int clickIdx = FindBehaviorIdx(elem.ClickBehaviorLabel, behaviors);
             ImGui.Text("On Click:");
             ImGui.SetNextItemWidth(-1);
             if (ImGui.Combo("##click_bhv", ref clickIdx, behaviorLabels, behaviorLabels.Length))
             {
                 elem.ClickBehaviorLabel = behaviors[clickIdx].Value;
-                elem.OnClick = null; // Force re-map on next .ing reload
+                elem.OnClick = null;
             }
 
             ImGui.Spacing();
 
-            // Hover Enter
             int hoverEnterIdx = FindBehaviorIdx(elem.HoverEnterLabel, behaviors);
             ImGui.Text("On Hover Enter:");
             ImGui.SetNextItemWidth(-1);
@@ -242,7 +343,6 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // Hover Exit
             int hoverExitIdx = FindBehaviorIdx(elem.HoverExitLabel, behaviors);
             ImGui.Text("On Hover Exit:");
             ImGui.SetNextItemWidth(-1);
@@ -253,7 +353,7 @@ public class InspectorPanel
             }
 
             ImGui.Spacing();
-            ImGui.TextDisabled("Save to .ing and reload to apply behavior changes");
+            ImGui.TextDisabled("Save to .ing and reload to apply");
         }
 
         // ════════════════════════════════════════════

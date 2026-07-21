@@ -112,24 +112,58 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return glLib;
         }
 
+        /// <summary>
+        /// Enable/disable face culling. When active, uses CullFace(GL_BACK)
+        /// and FrontFace(CCW ? GL_CCW : GL_CW) — standard 3D rendering state.
+        /// When disabling, only calls GL.Disable (no FrontFace modification).
+        /// </summary>
+        /// <param name="active">True to enable culling, false to disable.</param>
+        /// <param name="CCW">When true, FrontFace=GL_CCW (standard). When false, FrontFace=GL_CW.</param>
         public static unsafe void EnableFaceCulling(bool active, bool CCW = true)
         {
             if (active)
             {
                 GL.Enable(Const.GL_CULL_FACE);
-                GL.CullFace(Const.GL_FRONT);
-                GL.FrontFace(CCW ? Const.GL_CW : Const.GL_CCW);
+                GL.CullFace(Const.GL_BACK);
+                GL.FrontFace(CCW ? Const.GL_CCW : Const.GL_CW);
             }
             else
             {
-                // 🛠️ FIX #6: Do NOT call GL.FrontFace when disabling culling.
-                // The old code set FrontFace(GL_CW) on every disable, which
-                // corrupted the OpenGL state machine — subsequent 3D rendering
-                // that calls EnableFaceCulling(true) with CCW=false would get
-                // the wrong winding, causing back-face culling issues.
                 GL.Disable(Const.GL_CULL_FACE);
             }
         } 
+
+        /// <summary>
+        /// Query GL_FRONT_FACE and GL_CULL_FACE state, log a warning if winding is not GL_CCW.
+        /// Call once per frame at the start of the render loop to detect state corruption.
+        /// Only logs on state change (not every frame) to avoid spam.
+        /// </summary>
+        private static int _lastFrontFaceWarn = -1;
+
+        public static unsafe void CheckFrontFaceState()
+        {
+            int frontFace = 0;
+            GL.GetIntegerv(Const.GL_FRONT_FACE, &frontFace);
+
+            if (frontFace != Const.GL_CCW && frontFace != _lastFrontFaceWarn)
+            {
+                _lastFrontFaceWarn = frontFace;
+                string windingName = frontFace switch
+                {
+                    0x0900 => "GL_CW (Clockwise)",
+                    0x0901 => "GL_CCW (Counter-Clockwise)",
+                    _ => $"0x{frontFace:X}",
+                };
+                string expected = Const.GL_CCW == 0x0901 ? "GL_CCW (0x0901)" : "?";
+                Console.WriteLine($"[OpenGL] ⚠️ FrontFace state corruption detected! Current={windingName}, Expected={expected}");
+                Console.WriteLine($"[OpenGL]   Call stack hint: something set FrontFace(GL_CW) without restoring to GL_CCW.");
+            }
+            else if (frontFace == Const.GL_CCW)
+            {
+                // Reset warning so a subsequent corruption re-triggers the log
+                _lastFrontFaceWarn = -1;
+            }
+        }
 
         public static unsafe void EnableDepthTest(bool active)
         {
