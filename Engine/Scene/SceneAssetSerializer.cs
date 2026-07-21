@@ -22,6 +22,20 @@ public static class SceneAssetSerializer
     /// <summary>Expose JsonOptions for use by other components (e.g., SceneManagerPanel Save).</summary>
     public static JsonSerializerOptions GetJsonOptions() => JsonOptions;
 
+    // 🛠️ FIX #8: Cache the parsed game.ing manifest to avoid full re-parse on every call.
+    // The manifest is invalidated (set to null) whenever SaveGameIng or SaveAllRegisteredScenes
+    // writes to game.ing, so subsequent reads get fresh data.
+    private static SceneManifest? _cachedGameIngManifest = null;
+    private static DateTime _gameIngLastWriteTime = DateTime.MinValue;
+    private static bool _gameIngCacheValid = false;
+
+    /// <summary>Invalidate the game.ing cache so the next read re-parses the file.</summary>
+    private static void InvalidateGameIngCache()
+    {
+        _cachedGameIngManifest = null;
+        _gameIngCacheValid = false;
+    }
+
     /// <summary>Directory where .ing scene files are stored.</summary>
     public static string ScenesDirectory =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scenes");
@@ -45,6 +59,28 @@ public static class SceneAssetSerializer
             return null;
         }
 
+        // 🛠️ FIX #8: Use caching for game.ing path specifically.
+        // Check if the file was modified since last cache.
+        bool isGameIng = string.Equals(
+            filePath, GameIngPath, StringComparison.OrdinalIgnoreCase);
+
+        if (isGameIng && _gameIngCacheValid)
+        {
+            try
+            {
+                DateTime lastWrite = File.GetLastWriteTimeUtc(filePath);
+                if (lastWrite <= _gameIngLastWriteTime && _cachedGameIngManifest != null)
+                {
+                    Console.WriteLine($"[SceneAsset] Using cached game.ing manifest ({_cachedGameIngManifest.Scenes.Count} scenes)");
+                    return _cachedGameIngManifest;
+                }
+            }
+            catch
+            {
+                // If we can't check last write time, fall through to re-parse
+            }
+        }
+
         try
         {
             string json = File.ReadAllText(filePath);
@@ -52,7 +88,18 @@ public static class SceneAssetSerializer
             // Try parsing as SceneManifest first (game.ing format, multiple scenes)
             var manifest = JsonSerializer.Deserialize<SceneManifest>(json, JsonOptions);
             if (manifest != null && manifest.Scenes.Count > 0)
+            {
+                // 🛠️ FIX #8: Cache the parsed manifest for game.ing
+                if (isGameIng)
+                {
+                    _cachedGameIngManifest = manifest;
+                    _gameIngCacheValid = true;
+                    try { _gameIngLastWriteTime = File.GetLastWriteTimeUtc(filePath); }
+                    catch { /* ignore */ }
+                    Console.WriteLine($"[SceneAsset] Parsed & cached game.ing ({manifest.Scenes.Count} scenes)");
+                }
                 return manifest;
+            }
 
             // Fallback: try as single SceneAsset file
             var asset = JsonSerializer.Deserialize<SceneAsset>(json, JsonOptions);
@@ -129,25 +176,20 @@ public static class SceneAssetSerializer
         return JsonSerializer.Deserialize<SceneAsset>(json, JsonOptions);
     }
 
-    /// <summary>Load the combined game.ing file. Returns null if not found.</summary>
+    /// <summary>Load the combined game.ing file. Returns null if not found.
+    /// 🛠️ FIX #8: Now routes through LoadManifestFromPath to use the cache.</summary>
     public static SceneManifest? LoadGameIng()
     {
-        if (!File.Exists(GameIngPath))
-        {
-            Console.WriteLine($"[SceneAsset] game.ing not found at: {GameIngPath}");
-            return null;
-        }
-
-        string json = File.ReadAllText(GameIngPath);
-        return JsonSerializer.Deserialize<SceneManifest>(json, JsonOptions);
+        return LoadManifestFromPath(GameIngPath);
     }
 
     /// <summary>
     /// Find a scene by name in the game.ing manifest.
+    /// 🛠️ FIX #8: Now routes through LoadManifestFromPath to use the cache.
     /// </summary>
     public static SceneAsset? FindScene(string sceneName)
     {
-        var manifest = LoadGameIng();
+        var manifest = LoadManifestFromPath(GameIngPath);
         return manifest?.Scenes.Find(s =>
             s.SceneName.Equals(sceneName, StringComparison.OrdinalIgnoreCase));
     }

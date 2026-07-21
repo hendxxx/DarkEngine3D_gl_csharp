@@ -94,24 +94,9 @@ public unsafe class MainMenuScene : IScene
     private int _settingsSelection = 0;
     private int _settingsLastHoveredRow = -1;
 
-    // ── Shared lookup tables ──
-    private readonly struct ResInfo
-    {
-        public readonly int Width, Height;
-        public readonly string Label, CompactLabel;
-        public ResInfo(int w, int h, string label)
-        {
-            Width = w; Height = h;
-            Label = label;
-            CompactLabel = $"{w}x{h}";
-        }
-    }
-    private static readonly ResInfo[] Resolutions =
-    [
-        new(1920, 1080, "1920 x 1080"),
-        new(1280, 720,  "1280 x 720"),
-        new(2560, 1440, "2560 x 1440"),
-    ];
+    // 🛠️ FIX #9: Use shared ResolutionConfig instead of local ResInfo struct.
+    // This eliminates the duplicate definition between Program.cs and MainMenuScene.cs.
+    private static readonly Config.ResolutionConfig.ResInfo[] Resolutions = Config.ResolutionConfig.Resolutions;
 
     // ══════════════════════════════════════════════
     //  ANIMATED BACKGROUND — Particles & Effects
@@ -840,6 +825,11 @@ public unsafe class MainMenuScene : IScene
     {
         Glfw.OnWindowResized -= OnWindowResized;
 
+        // 🛠️ FIX #4: Clean up GPU resources (scratch textures) on scene exit
+        // Without this, cached scratch textures from GetOrCreateScratchTexture
+        // accumulate in GPU memory across scene re-entries, causing a leak.
+        _hud?.Cleanup();
+
         // Background objects are lightweight data; no GPU cleanup needed
 
         // Clear IDE bridge references
@@ -858,6 +848,10 @@ public unsafe class MainMenuScene : IScene
 
     public void Dispose()
     {
+        // 🛠️ FIX #4: Cleanup GPU resources in Dispose as well (defensive — in case
+        // Exit() is skipped or called out of order). Guard with null check since
+        // Dispose() can be called even if Enter() was never called.
+        _hud?.Cleanup();
         _hud = null;
     }
 }

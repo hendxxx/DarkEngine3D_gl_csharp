@@ -330,7 +330,7 @@ public class SceneManagerPanel
                 string sceneName = _editNameBuffer.Trim();
 
                 // Add new scene entry with user-chosen type
-                _bridge.AvailableScenes.Add(new IDEBridge.SceneEntry(
+                _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
                     sceneName,
                     string.IsNullOrWhiteSpace(_editDescBuffer) ? "Custom scene" : _editDescBuffer.Trim(),
                     false,
@@ -406,7 +406,7 @@ public class SceneManagerPanel
                     string newName = string.IsNullOrWhiteSpace(_editNameBuffer) ? old.Name : _editNameBuffer.Trim();
                     string oldName = old.Name;
 
-                    _bridge.AvailableScenes[_selectedIdx] = old with
+                    _bridge.AvailableScenesInternal[_selectedIdx] = old with
                     {
                         Name = newName,
                         Description = string.IsNullOrWhiteSpace(_editDescBuffer) ? old.Description : _editDescBuffer.Trim(),
@@ -477,7 +477,7 @@ public class SceneManagerPanel
                 if (_selectedIdx >= 0 && _selectedIdx < _bridge.AvailableScenes.Count)
                 {
                     string deletedName = _bridge.AvailableScenes[_selectedIdx].Name;
-                    _bridge.AvailableScenes.RemoveAt(_selectedIdx);
+                    _bridge.AvailableScenesInternal.RemoveAt(_selectedIdx);
 
                     // Also remove from editor scenes if present
                     if (_bridge.EditorScenes.ContainsKey(deletedName))
@@ -699,7 +699,7 @@ public class SceneManagerPanel
                     e.Name.Equals(sceneName, StringComparison.OrdinalIgnoreCase));
                 if (!exists)
                 {
-                    _bridge.AvailableScenes.Add(new IDEBridge.SceneEntry(
+                    _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
                         sceneName,
                         $"Loaded from {Path.GetFileName(filePath)}",
                         false,

@@ -543,45 +543,51 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         /// <summary>Call once per frame BEFORE DrawButtons(). Detects hover + click for all buttons.
-        /// Updates _buttons[i].IsHovered and fires OnClick on mouse-press.</summary>
+        /// Updates _buttons[i].IsHovered and fires OnClick on mouse-press.
+        /// 🛠️ FIX #3: Uses a snapshot copy for iteration so callbacks that clear or modify
+        /// _buttons (e.g., AddButton/RemoveButton/ClearButtons) don't corrupt the loop.
+        /// Hover state is written back to the live list only for indices that still exist.</summary>
         public void UpdateButtons()
         {
             Mouse.GetCursorPosition(out double mx, out double my);
             bool mouseDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
 
-            // 🛠️ FIX #3: Snapshot by index — no defensive copy of structs needed.
-            // Iterate by index so we can detect if the list was modified by callbacks.
-            // Use a snapshot count to know how many items existed before iteration.
-            int snapshotCount = _buttons.Count;
+            // 🛠️ FIX #3: Take a snapshot of ButtonDef structs (value types = independent copy).
+            // This ensures callbacks that modify _buttons (Clear/Add/Remove) don't corrupt
+            // the iteration. Hover state is written back to the live list after processing.
+            ButtonDef[] snapshot = [.. _buttons];
+            int liveCount = _buttons.Count;
 
-            for (int i = 0; i < snapshotCount; i++)
+            for (int i = 0; i < snapshot.Length; i++)
             {
-                // Guard: if the list was cleared/rebuilt (Count changed), stop iterating
-                if (i >= _buttons.Count)
-                    break;
-
-                var btn = _buttons[i]; // read fresh — if list was rebuilt, this is a new struct
+                var btn = snapshot[i]; // working on snapshot copy — safe from list mutation
                 bool hovered = mx >= btn.X && mx <= btn.X + btn.W &&
                                my >= btn.Y && my <= btn.Y + btn.H;
 
-                // Hover enter/exit callbacks
-                if (hovered && !btn.IsHovered)
-                    btn.OnHoverEnter?.Invoke();
-                else if (!hovered && btn.IsHovered)
-                    btn.OnHoverExit?.Invoke();
+                // Hover enter/exit callbacks (only fire for live buttons that still exist)
+                if (i < liveCount)
+                {
+                    var liveBtn = _buttons[i];
+                    if (hovered && !liveBtn.IsHovered)
+                        btn.OnHoverEnter?.Invoke();
+                    else if (!hovered && liveBtn.IsHovered)
+                        btn.OnHoverExit?.Invoke();
+                }
 
                 btn.IsHovered = hovered;
 
-                // Click detection (edge-triggered)
+                // Click detection (edge-triggered) — fire on snapshot, safe from list mutation
                 if (hovered && mouseDown && !_btnMouseWasDown)
                     btn.OnClick?.Invoke();
 
-                // Write back only if the index is still valid (list wasn't modified)
+                // Write back hover state to live list only if the index is still valid
+                // (list wasn't cleared or shrunk below this index)
                 if (i < _buttons.Count)
-                    _buttons[i] = btn;
-                // If the list was modified, the loop breaks on next iteration
-                // since snapshotCount no longer matches _buttons.Count.
-                // This prevents corrupting indices after callbacks modify the list.
+                {
+                    var live = _buttons[i];
+                    live.IsHovered = hovered;
+                    _buttons[i] = live;
+                }
             }
 
             _btnMouseWasDown = mouseDown;

@@ -108,7 +108,10 @@ public class IDEBridge
 
     /// <summary>List of all registered scenes and whether they have been initialized (current or next).
     /// Starts empty — user adds scenes via the Scene Manager panel.</summary>
-    public List<SceneEntry> AvailableScenes { get; } = [];
+    public IReadOnlyList<SceneEntry> AvailableScenes => _availableScenes;
+    internal List<SceneEntry> _availableScenes = [];
+    /// <summary>Internal mutable list for adding/removing scenes (SceneManagerPanel uses this).</summary>
+    public List<SceneEntry> AvailableScenesInternal => _availableScenes;
 
     // ── UI Editor scene data (managed by IDE, not by game scenes) ──
 
@@ -157,11 +160,11 @@ public class IDEBridge
     /// <summary>Mark a scene as initialized (has been entered at least once).</summary>
     public void MarkSceneInitialized(string name)
     {
-        for (int i = 0; i < AvailableScenes.Count; i++)
+        for (int i = 0; i < _availableScenes.Count; i++)
         {
-            if (AvailableScenes[i].Name == name)
+            if (_availableScenes[i].Name == name)
             {
-                AvailableScenes[i] = AvailableScenes[i] with { HasInitializedEntry = true };
+                _availableScenes[i] = _availableScenes[i] with { HasInitializedEntry = true };
                 return;
             }
         }

@@ -20,20 +20,10 @@ public unsafe class Program
         // Initialize save system directories
         SaveManager.Init();
 
-        // Apply resolution to window size
+        // 🛠️ FIX #9: Use shared ResolutionConfig instead of magic numbers.
         // 0=1920x1080, 1=1280x720, 2=2560x1440
-        Glfw.WindowWidth = settings.Resolution switch
-        {
-            1 => 1280,
-            2 => 2560,
-            _ => 1920,
-        };
-        Glfw.WindowHeight = settings.Resolution switch
-        {
-            1 => 720,
-            2 => 1440,
-            _ => 1080,
-        };
+        Glfw.WindowWidth = ResolutionConfig.GetWidth(settings.Resolution);
+        Glfw.WindowHeight = ResolutionConfig.GetHeight(settings.Resolution);
 
         // Apply Shadow Quality to config immediately
         // 0=Low, 1=Medium, 2=High, 3=Ultra
