@@ -1,49 +1,19 @@
-# DarkEngine3D_gl_csharp
-Pending:
-1. Implemnet GASP and foot IK
-2. Implement biomes generation, misal: putih=salju, hijau=rumput,hijua tua=pohon, coklat=tanah, biru=air, abu = slope atau cliff, dll. buat biomes ini dirender sesuai warnaya bersamaan heightmap dibentuk, tentukan best practise heightnya. nanti tiap region akan di isi object, contoh: hijau tua=pohon= nanti bakal isi random pake glb pohon, dst.
-3. buat debug mode jika T ditekan, terrain nya di kasih overlay sesuai warna biomes nya, tapi transparant 
-4. terrain displacement mapping and tessellation shaders
-5. Octahedral Impostors
-6. buatin editor buat edit biomes, terrain, nanti muncul menu buat pilih biomes apa yang mau di edit, nanti bisa pilih brush size, dan bisa pilih biomes apa yang mau di ganti, misal: hijau tua=pohon mau diganti jadi hijau=rumput, dst. nanti bisa di save ke file biomes.
-7. eimplemet ECS dan multi-threading untuk rendering, physics, dan animasi.
-9. enhance load glb: 
-	Init:
-	GLB > Grid Chunking > LOD Chunking > World BVH Build (bisa pakai chunk terrain punya) > Serialize Level data
+# Bug Fix Plan — DarkEngine3D Main Menu Editor
 
-	Render (loop):
-	World BVH Traversal> Frustum Culling > Occlusion Culling > LOD Selection > Draw
+## 🔴 CRITICAL
+- [ ] #1 SceneManager.cs: Fix render-after-exit crash
+- [ ] #2 MainMenuScene.cs: Call MapBehaviors after IDE edits
+- [ ] #3 HUD.cs: Fix button mutation during iteration (defensive copy)
+- [ ] #4 HUD.cs: Fix GPU memory leak (cache + delete scratch textures)
 
-10. implement physics engine, buat collision detection, buat rigidbody, buat collider, buat trigger, buat constraint, buat joint, buat ragdoll, buat vehicle, buat character controller, buat cloth simulation, buat soft body simulation, buat fluid simulation, buat particle system, buat sound system, buat AI system, buat networking system. 
-Dengan aturan Terrain masih pakai  Heightmap Collision, tetapi untuk object lain pakai BVH Collision, dan buat sistem collision detection yang bisa mendeteksi collision antara object dengan terrain, object dengan object, dan object dengan trigger.
-Dan collationya bisa visible atau invisible, jadi bisa di render atau tidak di render. khusus untuk trigger collationnya tidak perlu di resolve cukup jalan kan triggernya, contoh : jika ada object yang masuk ke trigger, maka pintu terbuka.
+## 🟡 MODERATE
+- [ ] #6 HUD.cs: Fix OpenGL state machine corruption in DrawBox
+- [ ] #7 SceneManager.cs: Clean up FBO resources on incomplete status
+- [ ] #8 SceneAssetSerializer.cs: Cache game.ing manifest to avoid full re-parse
 
-
-11. fixing jitter Baumgarte Stabilization, model accumulator fixed timestamp.
- 
-Done, misc:
-1. object sudah di load menggunakan file glb, dan sudah bisa di render menggunakan opengl, namun belum bisa di animasi. sekarang objectnya numpuk di tengah dan masih diam.
-2. nantinya ada file animasi yamg isinya animasi saja tanpa object yang bisa di load ke engine, dan bisa di apply ke object yang sudah di load sebelumnya. jadi nanti ada 2 file, satu untuk model dan satu untuk animasi. jadi bisa ganti animasi tanpa harus load ulang modelnya.
-3. default objecnya adalah animasi idle atau animasi pertama yang ada di file animasi, jadi ketika modelnya sudah di load, langsung tampil dengan animasi idle atau animasi pertama yang ada di file animasi.
-4. buat semua gerakan animasi idle dilooping, jadi ketika animasi idle sudah selesai, langsung mulai lagi dari awal tanpa jeda.
-5. jika ada garakan lain misal animasi berjalan, animasi berjalan akan menggantikan animasi idle, jadi ketika animasi berjalan sudah selesai, langsung kembali ke animasi idle, dengan menggunakan tehnik animasi blending, jadi ketika animasi berjalan sudah selesai, langsung kembali ke animasi idle dengan transisi yang halus tanpa jeda.
-6. buat animasi berjalan dilooping, ketika object bergerak.
-7. nantinya akan ada beberapa state animasi yang bisa di trigger oleh action tertentu.
-8. Implemet Vertex Clustering
-9. revamp load glb:
-	GLB > import nodes > Store Hierarchy > Store Meshes (RemoveWorldTransform) > Store Materials (PBR) > Store Textures > Scene Instance > Snap To Terrain > Y Offset.
-	scenario 1: obj = loadobj(x, terrainHeight + offset, y, asset)
-	scenario 2: city = loadobj(x, terrainHeight + offset, y, asset); 
-	  CreateInstance(
-	    city.GetMesh("House01")
-	  )
-    scenario 3: cityBig = loadobj(x, terrainHeight + offset, y, scene)
-
-	tipe asset: implement RemoveWorldTransform/ Reset Origin
-	tipe scene: jangan implement RemoveWorldTransform, ikuti world transform dari glb.
-
-Done, Shadow:
-1. buatkan shadow untuk object, jadi ketika object berada di atas permukaan, akan ada bayangan yang mengikuti gerakan object tersebut.
-2. buatkan shadow dengan tehnik CSM, di dalam sudah ada LOD untuk Terrain bisa di manfaatkan untuk membuat shadow dengan kualitas yang baik tanpa harus menggunakan banyak resource.
-3. pastikan shadow bisa di render dengan baik di semua jenis terrain, jadi ketika object berada di atas permukaan yang berbeda, shadow tetap bisa terlihat dengan baik. 
-4. Perbaiki filter dishadow                                                                                            
+## 🔵 MINOR
+- [ ] #9 Program.cs + MainMenuScene.cs: Extract resolution constants to shared location
+- [ ] #11 HierarchyPanel.cs: Guard undo against null parent / -1 index
+- [ ] #12 OpenGL.cs: Fix face culling CW/CCW logic
+- [ ] #13 HUD.cs: Dynamic VBO buffer sizing
+- [ ] #14 IDEBridge.cs: Make AvailableScenes safer with IReadOnlyList exposure

@@ -1172,19 +1172,36 @@ public class HierarchyPanel
                     // Select the parent since the added element is gone
                     _bridge.SelectedUIElement = action.Parent;
                 }
+                else
+                {
+                    // 🛠️ FIX #11: Guard against null parent — this can happen if the
+                    // element was pending re-parent (SceneRoot wasn't available when added).
+                    // Just clear selection and skip removal.
+                    Console.WriteLine($"[SceneDetail] Undo Add: parent was null — element '{action.Element?.Name ?? "unknown"}' may have been pending");
+                    _bridge.SelectedUIElement = null;
+                }
                 break;
 
             case UndoRedoAction.ActionType.Delete:
                 // Re-insert the deleted element at its original position
                 if (action.Parent != null && action.Element != null)
                 {
-                    int insertIdx = Math.Min(action.ChildIndex, action.Parent.Children.Count);
+                    // 🛠️ FIX #11: Guard against ChildIndex == -1 (invalid/unset index).
+                    // Use Math.Max to ensure we never attempt Insert(-1, elem).
+                    int safeIdx = Math.Max(0, action.ChildIndex);
+                    int insertIdx = Math.Min(safeIdx, action.Parent.Children.Count);
                     action.Element.Parent = action.Parent; // restore parent reference
                     action.Parent.Children.Insert(insertIdx, action.Element);
-                    Console.WriteLine($"[SceneDetail] Undo Delete: restored '{action.Element.Name}'");
+                    Console.WriteLine($"[SceneDetail] Undo Delete: restored '{action.Element.Name}' at index {insertIdx}");
 
                     // Re-select the restored element
                     _bridge.SelectedUIElement = action.Element;
+                }
+                else
+                {
+                    // 🛠️ FIX #11: Guard against null parent — this shouldn't happen for delete
+                    // since the element was definitely in the tree, but be defensive.
+                    Console.WriteLine($"[SceneDetail] Undo Delete: parent was null for '{action.Element?.Name ?? "unknown"}' — cannot restore");
                 }
                 break;
 

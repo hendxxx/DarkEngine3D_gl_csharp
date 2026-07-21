@@ -112,7 +112,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return glLib;
         }
 
-        public static unsafe void EnableFaceCulling(bool active,bool CCW = true)
+        public static unsafe void EnableFaceCulling(bool active, bool CCW = true)
         {
             if (active)
             {
@@ -122,7 +122,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
             else
             {
-                GL.FrontFace(CCW ? Const.GL_CW : Const.GL_CCW);
+                // 🛠️ FIX #6: Do NOT call GL.FrontFace when disabling culling.
+                // The old code set FrontFace(GL_CW) on every disable, which
+                // corrupted the OpenGL state machine — subsequent 3D rendering
+                // that calls EnableFaceCulling(true) with CCW=false would get
+                // the wrong winding, causing back-face culling issues.
                 GL.Disable(Const.GL_CULL_FACE);
             }
         } 

@@ -56,6 +56,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private readonly uint vbo;
         private readonly uint shaderProgram;
         private readonly int posLoc, sizeLoc, colorLoc, uvOffsetLoc, uvScaleLoc, texLoc;
+        // 🛠️ FIX #13: Track allocated VBO size for dynamic resizing
+        private nuint _vboAllocatedSize = 0;
 
         private readonly StbTrueType.stbtt_bakedchar[] bakedChars = new StbTrueType.stbtt_bakedchar[96]; // ASCII 32..126
         readonly uint fontTexture = 0;
@@ -90,7 +92,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             fixed (uint* pVao = &vao) GL.GenVertexArrays(1, pVao);
             fixed (uint* pVbo = &vbo) GL.GenBuffers(1, pVbo);
 
-            nuint maxSize = 1000 * 6 * 4 * sizeof(float);
+            // 🛠️ FIX #13: Start with a reasonable initial VBO size.
+            // The EnsureVBOSize() method will dynamically resize when needed.
+            _vboAllocatedSize = 1000 * 6 * 4 * sizeof(float);
             int stride = 4 * sizeof(float); // Karena satu baris data kita adalah: X, Y, U, V
 
             GL.BindVertexArray(vao);
@@ -98,7 +102,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             fixed (float* p = vertices)
             {
-                GL.BufferData(Const.GL_ARRAY_BUFFER, maxSize, (void*)0, Const.GL_DYNAMIC_DRAW);
+                GL.BufferData(Const.GL_ARRAY_BUFFER, _vboAllocatedSize, (void*)0, Const.GL_DYNAMIC_DRAW);
             }
             // Atribut 0: Posisi (X, Y) -> Ambil 2 float, mulai dari index 0
             GL.EnableVertexAttribArray(0);
@@ -239,7 +243,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         { 
             GL.UseProgram(shaderProgram);
             GL.BindVertexArray(vao);
-            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo); // WAJIB: Ikat kembali buffer
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
 
             GL.Disable(Const.GL_DEPTH_TEST);
             OpenGL.EnableFaceCulling(false);
@@ -259,6 +263,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 x0, y0, 0, 0,   x1, y0, 0, 0,   x1, y1, 0, 0
             };
 
+            // 🛠️ FIX #13: Ensure VBO is large enough for this draw call
+            nuint neededSize = (nuint)(boxVertices.Length * sizeof(float));
+            EnsureVBOSize(neededSize);
 
             // 3. Kirim data ke VBO
             fixed (float* p = boxVertices)
@@ -266,7 +273,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.BufferSubData(Const.GL_ARRAY_BUFFER, 0, (nuint)(boxVertices.Length * sizeof(float)), p);
             }
 
-            // 4. RESET POINTER (PENTING: Pastikan shader tahu cara baca X,Y dan U,V)
+            // 4. RESET POINTER
             int stride = 4 * sizeof(float);
             GL.VertexAttribPointer(0, 2, Const.GL_FLOAT, false, stride, (void*)0);
             GL.EnableVertexAttribArray(0);
@@ -275,25 +282,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // 5. Set Uniform & Draw
             GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
-            GL.Uniform3f(uvScaleLoc, 0, 0, 0); // Masuk ke mode IF di shader
+            GL.Uniform3f(uvScaleLoc, 0, 0, 0);
 
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0); // Pastikan tidak ada tekstur
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
 
-            OpenGL.EnableFaceCulling(true);
-
+            // Restore OpenGL state: depth=on, culling=off, blend=off
+            // NOTE: The rest of the HUD pipeline expects culling to be DISABLED
+            // after DrawBox (the old code's final state). With culling enabled,
+            // subsequent DrawTextBatched calls would have their CW triangles culled,
+            // causing inverted/half-rendered borders.
             GL.Enable(Const.GL_DEPTH_TEST);
             OpenGL.EnableFaceCulling(false);
             GL.Disable(Const.GL_BLEND);
         }
-        public uint CreateScratchTexture(int width, int height, Vector3 color)
+        /// <summary>Cache of scratch textures keyed by color hash, to avoid GPU memory leaks.</summary>
+        private readonly Dictionary<ulong, uint> _scratchTextureCache = [];
+
+        /// <summary>Get or create a scratch texture of the given size and solid color.
+        /// Textures are cached by color + size so repeated DrawImage calls with the same
+        /// color and dimensions reuse the same GPU texture instead of leaking.</summary>
+        public uint GetOrCreateScratchTexture(int width, int height, Vector3 color)
         {
+            // 🛠️ FIX #4: Include width and height in the cache key.
+            // Without this, different-sized textures with the same color would
+            // return the wrong cached texture (e.g. a 200x50 box would get a
+            // 100x100 texture from a previous call, causing wrong UV coverage).
             byte r = (byte)(color.X * 255);
             byte g = (byte)(color.Y * 255);
             byte b = (byte)(color.Z * 255);
+            ulong key = ((ulong)(uint)r << 48) | ((ulong)(uint)g << 40) | ((ulong)(uint)b << 32)
+                      | ((ulong)(uint)width << 16) | (ulong)(uint)height;
 
+            if (_scratchTextureCache.TryGetValue(key, out uint existing))
+                return existing;
+
+            // Create new texture
             byte[] pixels = new byte[width * height * 4];
-
             for (int i = 0; i < width * height; i++)
             {
                 pixels[i * 4 + 0] = r;
@@ -311,12 +336,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA, width, height, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, p);
             }
 
-
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
-             
 
+            _scratchTextureCache[key] = tex;
             return tex;
+        }
+
+        /// <summary>Clean up all cached scratch textures (call on scene exit).</summary>
+        public void ClearScratchTextureCache()
+        {
+            foreach (var kvp in _scratchTextureCache)
+            {
+                uint tex = kvp.Value;
+                GL.DeleteTextures(1, &tex);
+            }
+            _scratchTextureCache.Clear();
         }
 
         public unsafe void DrawImage( float x, float y, float w, float h, uint textureId = 0, float rotation = 0f, Vector3? scratchColor = null)
@@ -358,10 +393,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             uint finalTex = textureId;
 
-            // 3. If scratchColor requested → generate scratch texture
+            // 3. If scratchColor requested → get cached scratch texture (no leak)
             if (textureId == 0 && scratchColor != null)
             {
-                finalTex = CreateScratchTexture((int)w, (int)h, scratchColor.Value);
+                finalTex = GetOrCreateScratchTexture((int)w, (int)h, scratchColor.Value);
             }
 
             // 4. If still no texture → solid color mode
@@ -514,9 +549,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Mouse.GetCursorPosition(out double mx, out double my);
             bool mouseDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
 
-            for (int i = 0; i < _buttons.Count; i++)
+            // 🛠️ FIX #3: Snapshot by index — no defensive copy of structs needed.
+            // Iterate by index so we can detect if the list was modified by callbacks.
+            // Use a snapshot count to know how many items existed before iteration.
+            int snapshotCount = _buttons.Count;
+
+            for (int i = 0; i < snapshotCount; i++)
             {
-                var btn = _buttons[i];
+                // Guard: if the list was cleared/rebuilt (Count changed), stop iterating
+                if (i >= _buttons.Count)
+                    break;
+
+                var btn = _buttons[i]; // read fresh — if list was rebuilt, this is a new struct
                 bool hovered = mx >= btn.X && mx <= btn.X + btn.W &&
                                my >= btn.Y && my <= btn.Y + btn.H;
 
@@ -532,8 +576,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 if (hovered && mouseDown && !_btnMouseWasDown)
                     btn.OnClick?.Invoke();
 
-                if (_buttons.Count>0)
+                // Write back only if the index is still valid (list wasn't modified)
+                if (i < _buttons.Count)
                     _buttons[i] = btn;
+                // If the list was modified, the loop breaks on next iteration
+                // since snapshotCount no longer matches _buttons.Count.
+                // This prevents corrupting indices after callbacks modify the list.
             }
 
             _btnMouseWasDown = mouseDown;
@@ -612,10 +660,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
         }
 
-        /// <summary>Remove all registered buttons.</summary>
+    /// <summary>Remove all registered buttons.</summary>
         public void ClearButtons()
         {
             _buttons.Clear();
+        }
+
+        // 🛠️ FIX #13: Dynamically resize VBO when more space is needed
+        private void EnsureVBOSize(nuint neededSize)
+        {
+            if (neededSize <= _vboAllocatedSize)
+                return;
+
+            // Round up to next power of 2 (or at least 2x needed)
+            nuint newSize = _vboAllocatedSize;
+            while (newSize < neededSize)
+                newSize = (newSize == 0) ? (nuint)(64 * 1024) : newSize * 2; // start at 64KB, double each time
+
+            Console.WriteLine($"[HUD] Resizing VBO from {_vboAllocatedSize} to {newSize} bytes");
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            GL.BufferData(Const.GL_ARRAY_BUFFER, newSize, (void*)0, Const.GL_DYNAMIC_DRAW);
+            _vboAllocatedSize = newSize;
         }
 
         /// <summary>Access registered buttons for custom rendering or keyboard navigation.</summary>
@@ -626,5 +691,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         /// <summary>Get the bounding rect of a registered button (for keyboard nav indicators).</summary>
         public ButtonDef GetButton(int index) => index >= 0 && index < _buttons.Count ? _buttons[index] : default;
+
+        /// <summary>Clean up GPU resources (call on scene exit).</summary>
+        public void Cleanup()
+        {
+            ClearScratchTextureCache();
+        }
     }
 }

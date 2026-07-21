@@ -55,7 +55,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             uint status = (uint)GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
             if (status != Const.GL_FRAMEBUFFER_COMPLETE)
-                Console.WriteLine($"[SceneManager] Shared FBO incomplete: 0x{status:X}");
+            {
+                Console.WriteLine($"[SceneManager] Shared FBO incomplete: 0x{status:X} — cleaning up");
+                // 🛠️ FIX #7: Clean up resources on incomplete status instead of leaking them
+                GL.DeleteFramebuffers(1, &fbo);
+                GL.DeleteTextures(1, &color);
+                GL.DeleteRenderbuffers(1, &rbo);
+                return;
+            }
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
 
@@ -115,24 +122,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 float dt = Glfw.GetDeltaTime();
 
-                // Handle deferred scene switch (from the previous frame's Update)
-                if (_nextScene != null && _nextScene != _currentScene)
-                {
-                    SwitchToScene(_nextScene, false);
-                }
-
-                // ── Scene Update: always runs, even in IDE mode ──
-                // In AAA editor style, all game systems (physics, animation, AI)
-                // continue running so they can be edited/observed live.
-                // Only mouse/keyboard input is diverted to the IDE panels.
+                // ═══════════════════════════════════════════════════════
+                // PHASE 1: UPDATE (scene logic runs)
+                // ═══════════════════════════════════════════════════════
+                // 🛠️ FIX #1: Update runs BEFORE scene switch so that
+                // scene.Exit()/Dispose() do NOT leave a stale _currentScene
+                // that could be accessed by Render() below.
+                // The deferred scene switch (_nextScene) is applied AFTER render.
                 _currentScene?.Update(dt);
 
                 // ── IDE: F2 toggle ──
                 if (_ide != null)
                 {
                     bool f2Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F2);
-                    if (f2Down != _f2WasDown)
-                        Console.WriteLine($"[SceneManager] F2 state changed: f2Down={f2Down}, _f2WasDown={_f2WasDown}");
                     if (f2Down && !_f2WasDown)
                     {
                         _ide.IsActive = !_ide.IsActive;
@@ -174,16 +176,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 _altEnterWasDown = altEnterNow;
 
-                // ── Scene Render ──
+                // ═══════════════════════════════════════════════════════
+                // PHASE 2: RENDER
+                // ═══════════════════════════════════════════════════════
                 // When IDE is active, render scene to shared FBO (fallback for scenes without their own FBO)
                 // so the Viewport panel can display it. GameScene overrides this with its own SceneFBO.
                 if (_ide != null && _ide.IsActive)
                 {
                     EnsureSharedFBO();
-                    GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
-                    GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
-                    GL.ClearColor(0f, 0f, 0f, 1f);
-                    GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+                    if (_sharedFBOCreated)
+                    {
+                        GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
+                        GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        GL.ClearColor(0f, 0f, 0f, 1f);
+                        GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
+                    }
 
                     // Reset bridge texture ID before render so the post-render code
                     // always assigns the correct frame's texture (handles FBO recreation
@@ -217,6 +224,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_ide != null && _ide.IsActive)
                     _ide.Render();
 
+                // ═══════════════════════════════════════════════════════
+                // PHASE 3: DEFERRED SCENE SWITCH (applied AFTER render)
+                // ═══════════════════════════════════════════════════════
+                // 🛠️ FIX #1: Scene switch happens AFTER this frame's Render
+                // so the old scene isn't destroyed before its render pass.
+                // If SwitchScene() was called during Update(), _nextScene
+                // is set here and applied before the next Update().
+                if (_nextScene != null && _nextScene != _currentScene)
+                {
+                    SwitchToScene(_nextScene, false);
+                }
+
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();
             }
@@ -239,7 +258,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
         /// <summary>
-        /// Request a scene switch. The switch happens at the start of the next frame.
+        /// Request a scene switch. The switch happens at the end of the current frame (after Render).
         /// </summary>
         public void SwitchScene(IScene scene)
         {

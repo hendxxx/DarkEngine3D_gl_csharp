@@ -64,7 +64,7 @@ public class ViewportPanel
         float relX = screenPos.X - _imageMin.X;
         float relY = screenPos.Y - _imageMin.Y;
         float u = relX / _imageSize.X;
-        float v = 1f - (relY / _imageSize.Y); // UV flip
+        float v = relY / _imageSize.Y; // No Y-flip — scene Y=0 is top, same as ImGui
         return new Vector2(u * _texW, v * _texH);
     }
 
@@ -72,7 +72,7 @@ public class ViewportPanel
     private Vector2 SceneToScreen(float sceneX, float sceneY)
     {
         float u = sceneX / _texW;
-        float v = 1f - (sceneY / _texH);
+        float v = sceneY / _texH; // No Y-flip — scene Y=0 is top, same as ImGui
         return new Vector2(_imageMin.X + u * _imageSize.X, _imageMin.Y + v * _imageSize.Y);
     }
 
@@ -85,11 +85,11 @@ public class ViewportPanel
             var elem = elements[ei];
             if (!elem.IsVisible) continue;
 
-            // Convert scene coords to screen coords (with UV flip for Y)
+            // Convert scene coords to screen coords (no Y-flip — scene Y=0 is top)
             float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
-            float sy0 = _imageMin.Y + (1f - (elem.Y / _texH)) * _imageSize.Y;
+            float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
             float sx1 = _imageMin.X + ((elem.X + elem.Width) / _texW) * _imageSize.X;
-            float sy1 = _imageMin.Y + (1f - ((elem.Y + elem.Height) / _texH)) * _imageSize.Y;
+            float sy1 = _imageMin.Y + ((elem.Y + elem.Height) / _texH) * _imageSize.Y;
 
             // Skip elements completely outside the image bounds
             if (sx1 < _imageMin.X || sx0 > _imageMax.X || sy1 < _imageMin.Y || sy0 > _imageMax.Y)
@@ -317,9 +317,9 @@ public class ViewportPanel
                 void DrawElemWireframe(UIElement elem, bool isPrimary)
                 {
                     float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
-                    float sy0 = _imageMin.Y + (1f - (elem.Y / _texH)) * _imageSize.Y;
+                    float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
                     float sx1 = _imageMin.X + ((elem.X + elem.Width) / _texW) * _imageSize.X;
-                    float sy1 = _imageMin.Y + (1f - ((elem.Y + elem.Height) / _texH)) * _imageSize.Y;
+                    float sy1 = _imageMin.Y + ((elem.Y + elem.Height) / _texH) * _imageSize.Y;
 
                     float csx0 = Math.Clamp(sx0, _imageMin.X, _imageMax.X);
                     float csy0 = Math.Clamp(sy0, _imageMin.Y, _imageMax.Y);
@@ -507,9 +507,9 @@ public class ViewportPanel
 
                 // ── Interactive drag handling ──
                 float psx0 = _imageMin.X + (selUiElem.X / _texW) * _imageSize.X;
-                float psy0 = _imageMin.Y + (1f - (selUiElem.Y / _texH)) * _imageSize.Y;
+                float psy0 = _imageMin.Y + (selUiElem.Y / _texH) * _imageSize.Y;
                 float psx1 = _imageMin.X + ((selUiElem.X + selUiElem.Width) / _texW) * _imageSize.X;
-                float psy1 = _imageMin.Y + (1f - ((selUiElem.Y + selUiElem.Height) / _texH)) * _imageSize.Y;
+                float psy1 = _imageMin.Y + ((selUiElem.Y + selUiElem.Height) / _texH) * _imageSize.Y;
                 float pcsx0 = Math.Clamp(psx0, _imageMin.X, _imageMax.X);
                 float pcsy0 = Math.Clamp(psy0, _imageMin.Y, _imageMax.Y);
                 float pcsx1 = Math.Clamp(psx1, _imageMin.X, _imageMax.X);
@@ -708,7 +708,7 @@ public class ViewportPanel
                 float relX = viewportMouseScreen.X - _imageMin.X;
                 float relY = viewportMouseScreen.Y - _imageMin.Y;
                 float sceneU = relX / _imageSize.X;
-                float sceneV = 1f - (relY / _imageSize.Y);
+                float sceneV = relY / _imageSize.Y;
 
                 _bridge.ViewportMouseX = sceneU * _texW;
                 _bridge.ViewportMouseY = sceneV * _texH;

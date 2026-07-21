@@ -252,6 +252,13 @@ public unsafe class MainMenuScene : IScene
         // ── Sync UIElement positions from hierarchy (always, even when input locked) ──
         SyncHierarchyPositions();
 
+        // 🛠️ FIX #2: Map behavior strings to Action delegates BEFORE rebuilding _uiButtons.
+        // This ensures elements added/modified via the IDE HierarchyPanel
+        // (which set ClickBehaviorLabel but never wire OnClick) have their
+        // behaviors activated immediately, and the OnClick delegates are
+        // captured in the _uiButtons snapshot below.
+        MapBehaviors(_sceneRoot.Children);
+
         // ── Rebuild _uiButtons from loaded hierarchy so HUD renders them (always, for live preview in IDE) ──
         _uiButtons.Clear();
         RebuildUiButtonsFromHierarchy(_sceneRoot.Children);
