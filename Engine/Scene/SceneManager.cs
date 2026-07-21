@@ -18,8 +18,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         // ── IDE integration ──
         private IDE.IDE? _ide;
-        private bool _f2WasDown = false;
-        private bool _f9WasDown = false;
 
         // ── Shared scene FBO (for scenes without their own, e.g. MainMenuScene) ──
         private uint _sharedFBO = 0;
@@ -136,39 +134,48 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // The deferred scene switch (_nextScene) is applied AFTER render.
                 _currentScene?.Update(dt);
 
-                // ── IDE: F2 toggle ──
+                // ── IDE: F2 toggle ── [DISABLED — replaced by Viewport preview mode]
+                // if (_ide != null)
+                // {
+                //     bool f2Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F2);
+                //     if (f2Down && !_f2WasDown)
+                //     {
+                //         _ide.IsActive = !_ide.IsActive;
+                //         Console.WriteLine($"[SceneManager] Toggle IDE: IsActive={_ide.IsActive}, IsHealthy={_ide.IsHealthy}");
+                //         if (_ide.IsActive)
+                //         {
+                //             Mouse.ShowMouse(true);
+                //             Mouse.ResetState();
+                //         }
+                //         else
+                //         {
+                //             _ide.Bridge.InGameActive = true;
+                //             UpdateInGameCursor();
+                //         }
+                //     }
+                //     _f2WasDown = f2Down;
+
+                //     if (_ide.IsActive)
+                //     {
+                //         _ide.Update(dt);
+                //     }
+                // }
+
+                // IDE always active — keep update running
                 if (_ide != null)
-                {
-                    bool f2Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F2);
-                    if (f2Down && !_f2WasDown)
-                    {
-                        _ide.IsActive = !_ide.IsActive;
-                        Console.WriteLine($"[SceneManager] Toggle IDE: IsActive={_ide.IsActive}, IsHealthy={_ide.IsHealthy}");
-                        Mouse.ShowMouse(_ide.IsActive);
-                        if (_ide.IsActive)
-                            Mouse.ResetState();
-                    }
-                    _f2WasDown = f2Down;
+                    _ide.Update(dt);
 
-                    if (_ide.IsActive)
-                    {
-                        _ide.Update(dt);
-                    }
-
-                    // ── F9: toggle manual input lock for viewport — saved to settings.json ──
-                    bool f9Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F9);
-                    if (f9Down && !_f9WasDown && _ide.IsActive)
-                    {
-                        _ide.Bridge.InGameActive = !_ide.Bridge.InGameActive;
-                        Console.WriteLine($"[SceneManager] Toggle InGameActive: {_ide.Bridge.InGameActive}");
-
-                        // Persist to settings.json
-                        var settings = Config.SettingsSave.Load();
-                        settings.InGameActive = _ide.Bridge.InGameActive;
-                        Config.SettingsSave.Save(settings);
-                    }
-                    _f9WasDown = f9Down;
-                }
+                // ── F9: toggle manual input lock [DISABLED]
+                    // bool f9Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F9);
+                    // if (f9Down && !_f9WasDown && _ide.IsActive)
+                    // {
+                    //     _ide.Bridge.InGameActive = !_ide.Bridge.InGameActive;
+                    //     Console.WriteLine($"[SceneManager] Toggle InGameActive: {_ide.Bridge.InGameActive}");
+                    //     var settings = Config.SettingsSave.Load();
+                    //     settings.InGameActive = _ide.Bridge.InGameActive;
+                    //     Config.SettingsSave.Save(settings);
+                    // }
+                    // _f9WasDown = f9Down;
 
                 // ── Alt+Enter: toggle fullscreen globally ──
                 bool altHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
@@ -239,6 +246,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_nextScene != null && _nextScene != _currentScene)
                 {
                     SwitchToScene(_nextScene, false);
+
+                    // When InGame mode (IDE off), update cursor for the new scene
+                    if (_ide != null && !_ide.IsActive)
+                        UpdateInGameCursor();
                 }
 
                 OpenGL.SwapBuffer(window);
@@ -299,6 +310,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _sharedColorTex = 0;
             _sharedDepthRBO = 0;
             _sharedFBOCreated = false;
+        }
+
+        /// <summary>Update cursor visibility based on current scene when in InGame mode (IDE off).
+        /// MainMenu → show cursor, GameScene → hide cursor.</summary>
+        private void UpdateInGameCursor()
+        {
+            string? sceneName = _currentScene?.Name;
+            bool showMouse = sceneName == "MainMenuScene" || sceneName == null;
+            Mouse.ShowMouse(showMouse);
+            if (showMouse)
+                Mouse.ResetState();
         }
 
         /// <summary>Stop the main loop gracefully.</summary>

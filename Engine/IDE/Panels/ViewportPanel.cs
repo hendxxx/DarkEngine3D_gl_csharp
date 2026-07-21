@@ -26,6 +26,9 @@ public unsafe class ViewportPanel
     private float SnapToGrid(float value) =>
         _snapEnabled ? MathF.Round(value / _snapGridSize) * _snapGridSize : value;
 
+    // ── Preview mode: hides all editor helpers, shows scene as-in-game ──
+    private bool _previewMode = false;
+
     // ── Drag state for UI element editing ──
     private enum DragMode { None, Move, ResizeTL, ResizeTR, ResizeBL, ResizeBR }
     private DragMode _dragMode = DragMode.None;
@@ -79,8 +82,10 @@ public unsafe class ViewportPanel
     }
 
     /// <summary>Draw a live preview of editor scene UI elements using ImGui draw list.
-    /// Renders backgrounds, borders, text/images with hover effects — click to select.</summary>
-    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked)
+    /// Renders backgrounds, borders, text/images with hover effects.
+    /// When isPreview=true: click triggers element's OnClick behavior (game-like).
+    /// When isPreview=false: click selects element in the editor.</summary>
+    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false)
     {
         for (int ei = 0; ei < elements.Count; ei++)
         {
@@ -246,12 +251,30 @@ public unsafe class ViewportPanel
                 ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
                 4f, ImDrawFlags.None, 1.5f);
 
-            // Click to select element in the preview — only take the LAST (top-most) element
+            // Click: in preview mode, trigger OnClick behavior; in editor mode, select element
             if (isHovered && leftClicked && _dragMode == DragMode.None)
             {
-                _bridge.SelectedUIElements?.Clear();
-                _bridge.SelectedUIElements?.Add(elem);
-                _bridge.SelectedUIElement = elem;
+                if (isPreview)
+                {
+                    // Game-like interaction: trigger element's behavior
+                    if (elem.OnClick != null)
+                    {
+                        try { elem.OnClick.Invoke(); }
+                        catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
+                    }
+                    else if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel))
+                    {
+                        // Fallback: no game scene running — handle common behaviors directly
+                        HandlePreviewBehavior(elem);
+                    }
+                }
+                else
+                {
+                    // Editor: select element in hierarchy
+                    _bridge.SelectedUIElements?.Clear();
+                    _bridge.SelectedUIElements?.Add(elem);
+                    _bridge.SelectedUIElement = elem;
+                }
             }
 
             // Recursively render children
@@ -325,6 +348,77 @@ public unsafe class ViewportPanel
         return (0, 0);
     }
 
+    /// <summary>Handle a UI element click in preview mode when OnClick is null.
+    /// Maps common behavior strings to direct actions so preview works even without a game scene.</summary>
+    private void HandlePreviewBehavior(UIElement elem)
+    {
+        if (string.IsNullOrEmpty(elem.ClickBehaviorLabel))
+            return;
+
+        var lower = elem.ClickBehaviorLabel.ToLowerInvariant();
+
+        // ── Scene-level actions (via SceneManager) ──
+        if (lower == "confirmexit" || lower == "yes")
+        {
+            Console.WriteLine($"[Viewport] Preview behavior: {lower} → stopping app");
+            _bridge.SceneManager?.Stop();
+            return;
+        }
+
+        // ── Dialog visibility toggles ──
+        // These mirror MainMenuScene.SyncHierarchyPositions() logic
+        bool setVisible = lower switch
+        {
+            "showexitconfirm" => true,
+            "opensettings" => true,
+            "loadgame" => true,
+            "cancel" or "canceleexit" => false,
+            "cancelsettings" or "discardchanges" => false,
+            "keepediting" => false,
+            _ => false
+        };
+
+        // Map behavior → dialog element name
+        string? dialogName = lower switch
+        {
+            "showexitconfirm" or "cancel" or "canceleexit" => "ExitConfirm",
+            "opensettings" or "cancelsettings" or "discardchanges" => "Settings",
+            "keepediting" => "ConfirmUnsaved",
+            "loadgame" => "LoadGame",
+            _ => null
+        };
+
+        if (dialogName != null && _bridge.SceneRoot != null)
+        {
+            bool found = FindAndToggleDialog(_bridge.SceneRoot.Children, dialogName, setVisible);
+            Console.WriteLine($"[Viewport] Preview behavior: '{lower}' → {dialogName}.IsVisible={setVisible} (found={found})");
+        }
+        else if (dialogName == null)
+        {
+            Console.WriteLine($"[Viewport] Preview behavior: '{lower}' — no dialog mapping");
+        }
+    }
+
+    /// <summary>Recursively find a dialog element by name and set its visibility.</summary>
+    private static bool FindAndToggleDialog(List<UIElement> elements, string name, bool visible)
+    {
+        foreach (var child in elements)
+        {
+            if ((child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+                && child.Name == name)
+            {
+                child.IsVisible = visible;
+                return true;
+            }
+            if (child.Children.Count > 0)
+            {
+                if (FindAndToggleDialog(child.Children, name, visible))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     public ViewportPanel(IDEBridge bridge) => _bridge = bridge;
 
     public void ShowInMenu() => ImGui.MenuItem("Viewport", null, ref _visible);
@@ -345,6 +439,24 @@ public unsafe class ViewportPanel
 
         // ── Snap-to-grid toggle + grid size selector ──
         {
+            // ── Preview mode toggle ──
+            bool previewNow = _previewMode;
+            ImGui.PushStyleColor(ImGuiCol.Button, previewNow
+                ? new Vector4(0.15f, 0.55f, 0.25f, 1f)    // green = preview ON
+                : new Vector4(0.35f, 0.35f, 0.35f, 1f)); // grey = editor
+            if (ImGui.Button(previewNow ? "▶ Preview" : "◼ Edit"))
+                _previewMode = !_previewMode;
+            ImGui.PopStyleColor(1);
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(_previewMode
+                    ? "Preview mode: hides editor helpers — shows scene as in-game"
+                    : "Edit mode: shows wireframes, handles, and info labels");
+            }
+            ImGui.SameLine();
+            ImGui.TextDisabled("|");
+            ImGui.SameLine();
+
             ImGui.Checkbox("Snap", ref _snapEnabled);
             ImGui.SameLine();
 
@@ -467,13 +579,56 @@ public unsafe class ViewportPanel
             // ── Live Editor Scene Preview (draws UI elements on top of the scene texture or dark canvas) ──
             // Uses SceneRoot directly (not SelectedEditorScene) so the preview works even when
             // no editor scene is explicitly selected — the active game scene's root is sufficient.
+            // ── Render UI elements in both editor and preview mode ──
+            // In editor mode: elements are rendered with click-to-select behavior.
+            // In preview mode: elements are rendered with click-to-interact behavior (game-like).
             if (_bridge.SceneRoot != null && _bridge.SceneRoot.Children.Count > 0)
             {
                 var drawList = ImGui.GetWindowDrawList();
-                DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked);
+                DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked, isPreview: _previewMode);
             }
 
+            // ── Preview mode indicator badge (bottom-right corner) ──
+            if (_previewMode)
+            {
+                var drawList = ImGui.GetWindowDrawList();
+                string badge = "PREVIEW MODE";
+                var badgeSize = ImGui.CalcTextSize(badge);
+                float badgePad = 8f;
+                float bx = _imageMax.X - badgeSize.X - badgePad * 2f - 6f;
+                float by = _imageMax.Y - badgeSize.Y - badgePad * 2f - 6f;
+                uint badgeBg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.06f, 0.40f, 0.15f, 0.80f));
+                uint badgeText = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 1.0f, 0.5f, 1f));
+                uint badgeBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.7f, 0.2f, 0.50f));
+                drawList.AddRectFilled(new Vector2(bx, by),
+                    new Vector2(bx + badgeSize.X + badgePad * 2f, by + badgeSize.Y + badgePad * 2f),
+                    badgeBg, 5f);
+                drawList.AddRect(new Vector2(bx, by),
+                    new Vector2(bx + badgeSize.X + badgePad * 2f, by + badgeSize.Y + badgePad * 2f),
+                    badgeBorder, 5f, ImDrawFlags.None, 1.5f);
+                drawList.AddText(new Vector2(bx + badgePad, by + badgePad), badgeText, badge);
+
+                // ── Clickable invisible button over badge → exit preview mode ──
+                ImGui.SetCursorScreenPos(new Vector2(bx, by));
+                float badgeTotalW = badgeSize.X + badgePad * 2f;
+                float badgeTotalH = badgeSize.Y + badgePad * 2f;
+                ImGui.InvisibleButton("##preview_exit", new Vector2(badgeTotalW, badgeTotalH));
+                if (ImGui.IsItemHovered())
+                {
+                    ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                    ImGui.SetTooltip("Click to exit preview mode");
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+                {
+                    _previewMode = false;
+                    Console.WriteLine("[Viewport] Exited preview mode via badge click");
+                }
+            } // end if (_previewMode) badge block
+
             // ── UI Element Wireframe & Interactive Editing ──
+            // In Preview mode, skip ALL editor overlays (wireframe, handles, info labels, drag)
+            if (!_previewMode)
+            {
             var selUiElem = _bridge.SelectedUIElement;
             var allSelected = _bridge.SelectedUIElements;
 
@@ -899,7 +1054,8 @@ public unsafe class ViewportPanel
                     WriteDebugLog("Drag mode reset (post-apply)");
                 }
                 } // end if (!isSceneElem)
-            }
+                } // end if (selUiElem != null)
+            } // end if (!_previewMode)
 
             // ── Safety reset: handle interrupted drag even when selUiElem became null ──
             if (_dragMode != DragMode.None)
