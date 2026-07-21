@@ -295,7 +295,7 @@ public class InspectorPanel
     {
         if (ImGui.CollapsingHeader("Scene Info", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f), $"📁 {editorScene.Name}");
+            ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f), $"Scene: {editorScene.Name}");
             ImGui.Separator();
 
             // Count elements recursively

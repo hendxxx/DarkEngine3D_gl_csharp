@@ -194,12 +194,12 @@ public class UIElement
     {
         return Type switch
         {
-            UIElementType.Scene => "📁",
-            UIElementType.Container => "📦",
-            UIElementType.Button => "🔘",
-            UIElementType.Label => "📝",
-            UIElementType.Dialog => "💬",
-            _ => "❓",
+            UIElementType.Scene => "[Scene]",
+            UIElementType.Container => "[Box]",
+            UIElementType.Button => "[Btn]",
+            UIElementType.Label => "[Note]",
+            UIElementType.Dialog => "[Chat]",
+            _ => "[?]",
         };
     }
 }

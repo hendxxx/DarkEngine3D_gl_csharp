@@ -185,12 +185,15 @@ public class ViewportPanel
         // Track whether the viewport is focused — used by GameScene to manage cursor visibility
         _bridge.IsViewportFocused = ImGui.IsWindowFocused();
 
+        // Cache viewport window position for tooltip positioning (top-left)
+        var viewportTopLeft = ImGui.GetWindowPos();
+
         // ── Snap-to-grid toggle + grid size selector ──
         {
             ImGui.Checkbox("Snap", ref _snapEnabled);
             ImGui.SameLine();
 
-            string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "—";
+            string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "-";
             ImGui.SetNextItemWidth(70f);
             if (ImGui.BeginCombo("##grid_size", gridLabel))
             {
@@ -452,8 +455,8 @@ public class ViewportPanel
                             string info = $"{elem.GetIcon()} {elem.Name}  [{elem.Width:F0}×{elem.Height:F0}] @ ({elem.X:F0}, {elem.Y:F0})";
                             var infoSize = ImGui.CalcTextSize(info);
                             float infoPad = 5f;
-                            float ix = csx0 + 4f;
-                            float iy = csy0 + 4f;
+                            float ix = csx0 - 5f;
+                            float iy = csy0 - 15f;
                             uint ibg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.1f, 0.15f, 0.85f));
                             uint iborder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 0.5f));
                             uint itext = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.9f, 1.0f, 1f));
@@ -467,32 +470,7 @@ public class ViewportPanel
                                 iborder, 3f, ImDrawFlags.None, 1f);
                             drawList.AddText(new Vector2(ix, iy), itext, info);
                         }
-
-                        // ── Top-center move handle ──
-                        if (fullyVis)
-                        {
-                            float mhx = (sx0 + sx1) * 0.5f;
-                            float mhy = sy0; // top edge
-                            float mHandleSz = 12f, mHandleHalf = mHandleSz * 0.5f;
-                            // Glow
-                            uint mGlow = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, pulse * 0.25f));
-                            drawList.AddCircleFilled(new Vector2(mhx, mhy - mHandleHalf), mHandleSz * 0.7f, mGlow, 12);
-                            // Square extending upward from top edge
-                            drawList.AddRectFilled(
-                                new Vector2(mhx - mHandleHalf, mhy - mHandleSz),
-                                new Vector2(mhx + mHandleHalf, mhy),
-                                handleColor, 3f);
-                            drawList.AddRect(
-                                new Vector2(mhx - mHandleHalf, mhy - mHandleSz),
-                                new Vector2(mhx + mHandleHalf, mhy),
-                                handleBorder, 3f, ImDrawFlags.None, 2f);
-                            // Cross icon (4 arms)
-                            uint xColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.15f, 0.2f, 0.9f));
-                            float xArm = mHandleHalf * 0.5f;
-                            float xcx = mhx, xcy = mhy - mHandleHalf;
-                            drawList.AddLine(new Vector2(xcx - xArm, xcy), new Vector2(xcx + xArm, xcy), xColor, 1.8f);
-                            drawList.AddLine(new Vector2(xcx, xcy - xArm), new Vector2(xcx, xcy + xArm), xColor, 1.8f);
-                        }
+ 
                     }
                 }
 
@@ -556,7 +534,7 @@ public class ViewportPanel
                 {
                     ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
                     ImGui.BeginTooltip();
-                    ImGui.Text("✥ Drag to move");
+                    ImGui.Text("Drag to move");
                     ImGui.EndTooltip();
                 }
                 else if (overTL || overBR)
@@ -565,7 +543,7 @@ public class ViewportPanel
                     if (_dragMode == DragMode.None)
                     {
                         ImGui.BeginTooltip();
-                        ImGui.Text("↔ Drag corner to resize");
+                        ImGui.Text("Drag corner to resize");
                         ImGui.EndTooltip();
                     }
                 }
@@ -575,7 +553,7 @@ public class ViewportPanel
                     if (_dragMode == DragMode.None)
                     {
                         ImGui.BeginTooltip();
-                        ImGui.Text("↕ Drag corner to resize");
+                        ImGui.Text("Drag corner to resize");
                         ImGui.EndTooltip();
                     }
                 }
@@ -583,7 +561,7 @@ public class ViewportPanel
                 {
                     ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
                     ImGui.BeginTooltip();
-                    ImGui.Text("✥ Drag body to move");
+                    ImGui.Text("Drag body to move");
                     ImGui.EndTooltip();
                 }
 

@@ -115,7 +115,7 @@ public class ImGuiFileDialog
             {
                 if (_currentDir.Length > 3)
                 {
-                    if (ImGui.Button("⬆ .."))
+                    if (ImGui.Button("^ .."))
                     {
                         _currentDir = Directory.GetParent(_currentDir)?.FullName ?? _currentDir;
                         Refresh();
@@ -154,7 +154,7 @@ public class ImGuiFileDialog
             foreach (var dir in _dirs)
             {
                 bool isSel = false;
-                if (ImGui.Selectable($"📁 {dir}", ref isSel))
+                if (ImGui.Selectable($"[Dir] {dir}", ref isSel))
                 {
                     _currentDir = Path.Combine(_currentDir, dir);
                     _selectedIdx = -1;
@@ -173,7 +173,7 @@ public class ImGuiFileDialog
             for (int i = 0; i < _files.Length; i++)
             {
                 bool isSel = i == _selectedIdx;
-                if (ImGui.Selectable($"📄 {_files[i]}", ref isSel))
+                if (ImGui.Selectable(_files[i], ref isSel))
                 {
                     _selectedIdx = i;
                     _fileNameBuffer = _files[i];
