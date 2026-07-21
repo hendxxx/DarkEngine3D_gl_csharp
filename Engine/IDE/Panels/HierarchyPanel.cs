@@ -161,7 +161,7 @@ public class HierarchyPanel
             ImGui.PushStyleColor(ImGuiCol.Button, ColUndoBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColUndoBtnHov);
             ImGui.BeginDisabled(!canUndo);
-            if (ImGui.Button("Undo", new Vector2(btnWidth, 26)))
+            if (ImGui.Button("↩ Undo", new Vector2(btnWidth, 26)))
             {
                 ExecuteUndo();
             }
@@ -176,7 +176,7 @@ public class HierarchyPanel
             ImGui.PushStyleColor(ImGuiCol.Button, ColUndoBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColUndoBtnHov);
             ImGui.BeginDisabled(!canRedo);
-            if (ImGui.Button("Redo", new Vector2(btnWidth, 26)))
+            if (ImGui.Button("↪ Redo", new Vector2(btnWidth, 26)))
             {
                 ExecuteRedo();
             }
@@ -261,7 +261,7 @@ public class HierarchyPanel
             // Reload button (purple) — always enabled so user can recover from empty state
             ImGui.PushStyleColor(ImGuiCol.Button, ColReloadBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColReloadBtnHov);
-            if (ImGui.Button("Reload", new Vector2(btnWidth, 26)))
+            if (ImGui.Button("↻ Reload", new Vector2(btnWidth, 26)))
             {
                 if (_undoStack.Count > 0 || _redoStack.Count > 0 || hasSelection)
                     _showReloadConfirm = true;
@@ -302,7 +302,7 @@ public class HierarchyPanel
         {
             float alpha = Math.Min(1f, _saveNotificationTimer);
             var notifCol = new Vector4(0.3f, 0.85f, 0.4f, alpha);
-            ImGui.TextColored(notifCol, $"> {_saveNotificationText}");
+            ImGui.TextColored(notifCol, $"✓ {_saveNotificationText}");
         }
 
         // ── Undo/Redo hint ──
@@ -540,7 +540,7 @@ public class HierarchyPanel
         bool reloadPopupOpen = true;
         if (ImGui.BeginPopupModal("Reload from .ing?", ref reloadPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextColored(ColWarn, "All unsaved changes will be lost!");
+            ImGui.TextColored(ColWarn, "⚠ All unsaved changes will be lost!");
             ImGui.Separator();
             ImGui.Text("This will revert the hierarchy to the last");
             ImGui.Text("saved .ing file on disk.");
@@ -697,7 +697,7 @@ public class HierarchyPanel
             ImGui.Separator();
 
             // ── Assign Behavior submenu ──
-            if (ImGui.BeginMenu("Assign Behavior"))
+            if (ImGui.BeginMenu("⚡ Assign Behavior"))
             {
                 var behaviors = IDEBridge.AvailableBehaviors;
                 string currentLabel = element.ClickBehaviorLabel;

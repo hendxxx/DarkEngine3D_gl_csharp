@@ -10,6 +10,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// </summary>
     public static class ConfirmDialog
     {
+        /// <summary>Cache for GetTextExtents — text is static while dialog is shown, avoids recomputation every frame.</summary>
+        private static readonly Dictionary<string, HUD.TextExtents> _textExtentsCache = [];
+
+        private static HUD.TextExtents GetCachedExtents(HUD hud, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return new HUD.TextExtents(0f, 0f, 0f);
+            if (_textExtentsCache.TryGetValue(text, out var cached))
+                return cached;
+            var ext = hud.GetTextExtents(text);
+            _textExtentsCache[text] = ext;
+            return ext;
+        }
         /// <summary>
         /// Base dialog size for scale = 1.0.
         /// Public so hit-testing code can reference without duplicating literals.
@@ -54,13 +66,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             hud.DrawBox(dlgX, dlgY, dlgW, 3f * scale, new Vector3(1.0f, 0.3f, 0.2f));
             hud.DrawBox(dlgX, dlgY + dlgH - 3f * scale, dlgW, 3f * scale, new Vector3(1.0f, 0.3f, 0.2f) * 0.6f);
 
-            // Title
-            var titleExt = hud.GetTextExtents(title);
+            // Title (cached)
+            var titleExt = GetCachedExtents(hud, title);
             hud.DrawText(title, dlgX + (dlgW - titleExt.Width) * 0.5f, dlgY + 35f * scale,
                 new Vector3(1.0f, 1.0f, 1.0f));
 
-            // Message
-            var msgExt = hud.GetTextExtents(message);
+            // Message (cached)
+            var msgExt = GetCachedExtents(hud, message);
             hud.DrawText(message, dlgX + (dlgW - msgExt.Width) * 0.5f, dlgY + 60f * scale,
                 new Vector3(0.85f, 0.85f, 0.9f));
 
@@ -83,12 +95,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 if (isSel)
                 {
                     hud.DrawBox(bx + 2f * scale, btnY + 3f * scale, 2f * scale, btnH - 6f * scale, btnSideColors[b]);
-                    hud.DrawBox(bx, btnY, btnW, 1f * scale, btnSideColors[b] * 0.5f);
-                    hud.DrawBox(bx, btnY + btnH - 1f * scale, btnW, 1f * scale, btnSideColors[b] * 0.5f);
+                    hud.DrawBoxHorizontalBorders(bx, btnY, btnW, btnH, 1f * scale, btnSideColors[b] * 0.5f);
                 }
 
                 string label = isSel ? btnLabels[b] : btnLabels[b];
-                var ext = hud.GetTextExtents(label);
+                var ext = GetCachedExtents(hud, label);
                 hud.DrawText(label, bx + (btnW - ext.Width) * 0.5f,
                     ext.GetCenteredBaselineY(btnY, btnH),
                     isSel ? btnTextColors[b] : unselectedText);

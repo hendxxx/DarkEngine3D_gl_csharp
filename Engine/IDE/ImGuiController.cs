@@ -3,6 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Libs;
 using ImGuiNET;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.IO;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE;
 
@@ -54,6 +55,64 @@ public unsafe class ImGuiController : IDisposable
             io.BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset;
 
         io.ConfigWindowsMoveFromTitleBarOnly = true;
+
+        // ── Load Unicode symbol font (Windows Segoe UI Symbol) for emoji/symbol support ──
+        try
+        {
+            string[] symbolFontPaths = [
+                @"C:\Windows\Fonts\seguisym.ttf",
+                @"C:\Windows\Fonts\segoeui.ttf",
+            ];
+
+            string? symFontPath = null;
+            foreach (var fp in symbolFontPaths)
+            {
+                if (File.Exists(fp))
+                {
+                    symFontPath = fp;
+                    break;
+                }
+            }
+
+            if (symFontPath != null)
+            {
+                Console.WriteLine($"[ImGui] Loading symbol font: {symFontPath}");
+
+                // Add default font first
+                io.Fonts.AddFontDefault();
+
+                // Configure merge mode for the symbol font
+                var config = new ImFontConfigPtr(ImGuiNative.ImFontConfig_ImFontConfig());
+                config.MergeMode = true;
+
+                // Glyph ranges: arrows, dingbats, misc symbols, punctuation
+                ushort[] ranges = [
+                    0x2000, 0x206F,   // General Punctuation (em dash, etc.)
+                    0x2100, 0x214F,   // Letterlike Symbols
+                    0x2190, 0x21FF,   // Arrows (↩ ↪ ↻)
+                    0x2600, 0x26FF,   // Misc Symbols (⚠ ⚡)
+                    0x2700, 0x27BF,   // Dingbats (✓ ❓ ✥)
+                    0x2B00, 0x2BFF,   // Misc Symbols and Arrows (⬆)
+                    0
+                ];
+
+                fixed (ushort* pRanges = ranges)
+                {
+                    io.Fonts.AddFontFromFileTTF(symFontPath, 16f, config, (nint)pRanges);
+                }
+
+                config.Destroy();
+                Console.WriteLine("[ImGui] Symbol font loaded successfully.");
+            }
+            else
+            {
+                Console.WriteLine("[ImGui] No symbol font found, using default.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ImGui] Failed to load symbol font: {ex.Message}");
+        }
 
         Console.WriteLine("[ImGui] Step 2: BuildKeyMap...");
         BuildKeyMap();

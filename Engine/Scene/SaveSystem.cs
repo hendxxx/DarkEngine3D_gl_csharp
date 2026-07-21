@@ -547,6 +547,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
     public static class SaveSlotUI
     {
+        /// <summary>Cache for GetTextExtents — title text is static while panel is shown, avoids recomputation every frame.</summary>
+        private static readonly Dictionary<string, HUD.TextExtents> _textExtentsCache = [];
+
+        private static HUD.TextExtents GetCachedExtents(HUD hud, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return new HUD.TextExtents(0f, 0f, 0f);
+            if (_textExtentsCache.TryGetValue(text, out var cached))
+                return cached;
+            var ext = hud.GetTextExtents(text);
+            _textExtentsCache[text] = ext;
+            return ext;
+        }
         public const int PanelColStart = 2;
         public const int PanelColEnd = 10;
         public const int SlotRowH = 60;
@@ -661,13 +673,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Title — centered using grid, matching main menu style
             float titleCenterX = grid.CenterX(PanelColStart, PanelColEnd);
-            var titleExt = hud.GetTextExtents(title);
+            var titleExt = GetCachedExtents(hud, title);
             float titleX = titleCenterX - titleExt.Width * 0.5f;
             float titleY = panelY + 40f;
             hud.DrawText(title, titleX, titleY, new Vector3(0.9f, 0.9f, 1.0f));
 
             // Divider — centered under title
-            float titleH = hud.MeasureTextHeight(title);
+            float titleH = titleExt.Height;
             float divY = titleY + titleH ;
             float divW = panelW * 0.6f;
             float divX = titleCenterX - divW * 0.5f;

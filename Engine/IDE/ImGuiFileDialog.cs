@@ -115,7 +115,7 @@ public class ImGuiFileDialog
             {
                 if (_currentDir.Length > 3)
                 {
-                    if (ImGui.Button("^ .."))
+                    if (ImGui.Button("⬆ .."))
                     {
                         _currentDir = Directory.GetParent(_currentDir)?.FullName ?? _currentDir;
                         Refresh();

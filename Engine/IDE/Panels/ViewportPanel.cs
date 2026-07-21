@@ -120,17 +120,24 @@ public class ViewportPanel
                 ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
                 4f, ImDrawFlags.None, 1.5f);
 
-            // Draw text label
+            // Draw text label with element's FontSize
             if (!string.IsNullOrEmpty(elem.Text))
             {
                 string label = elem.Text;
-                var labelSize = ImGui.CalcTextSize(label);
+                float previewFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+
+                // Approximate scaled text size (ImGui default is ~13px)
+                float baseFontSize = 13f;
+                float fontSizeScale = previewFontSize / baseFontSize;
+                var baseSize = ImGui.CalcTextSize(label);
+                float scaledW = baseSize.X * fontSizeScale;
+                float scaledH = baseSize.Y * fontSizeScale;
 
                 // Position text based on alignment
                 float textX, textY;
                 float textPad = 8f;
                 float availW = (csx1 - csx0) - textPad * 2f;
-                float textW = Math.Min(labelSize.X, availW);
+                float textW = Math.Min(scaledW, availW);
 
                 switch (elem.Alignment)
                 {
@@ -145,12 +152,12 @@ public class ViewportPanel
                         break;
                 }
 
-                textY = csy0 + (csy1 - csy0) * 0.5f - labelSize.Y * 0.5f;
+                textY = csy0 + (csy1 - csy0) * 0.5f - scaledH * 0.5f;
 
                 // Clamp text position
                 textX = Math.Max(csx0 + 2f, Math.Min(textX, csx1 - textW - 2f));
 
-                drawList.AddText(new Vector2(textX, textY),
+                drawList.AddText(ImGui.GetFont(), previewFontSize, new Vector2(textX, textY),
                     ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f)),
                     label);
             }
@@ -193,7 +200,7 @@ public class ViewportPanel
             ImGui.Checkbox("Snap", ref _snapEnabled);
             ImGui.SameLine();
 
-            string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "-";
+            string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "—";
             ImGui.SetNextItemWidth(70f);
             if (ImGui.BeginCombo("##grid_size", gridLabel))
             {
@@ -218,7 +225,7 @@ public class ViewportPanel
             {
                 ImGui.SameLine();
                 ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
-                    $"{selReadout.GetIcon()} ({selReadout.X:F0}, {selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}]");
+                    $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
             }
         }
 
@@ -452,7 +459,10 @@ public class ViewportPanel
 
                         // ── Info label at top-left corner of element ──
                         {
-                            string info = $"{elem.GetIcon()} {elem.Name}  [{elem.Width:F0}×{elem.Height:F0}] @ ({elem.X:F0}, {elem.Y:F0})";
+                            string fontPart = !string.IsNullOrEmpty(elem.FontPath)
+                                ? $" F:{Path.GetFileNameWithoutExtension(elem.FontPath)}"
+                                : "";
+                            string info = $"{elem.GetIcon()} {elem.Name}  [{elem.Width:F0}×{elem.Height:F0}] @ ({elem.X:F0},{elem.Y:F0}) S:{elem.FontSize:F0}{fontPart}";
                             var infoSize = ImGui.CalcTextSize(info);
                             float infoPad = 5f;
                             float ix = csx0 - 5f;
@@ -469,6 +479,22 @@ public class ViewportPanel
                                 new Vector2(ix + infoSize.X + infoPad, iy + infoSize.Y + 2f),
                                 iborder, 3f, ImDrawFlags.None, 1f);
                             drawList.AddText(new Vector2(ix, iy), itext, info);
+
+                            // ── FontPath tooltip when hovering over the info label ──
+                            if (!string.IsNullOrEmpty(elem.FontPath))
+                            {
+                                Vector2 lblMin = new Vector2(ix - infoPad, iy - 2f);
+                                Vector2 lblMax = new Vector2(ix + infoSize.X + infoPad, iy + infoSize.Y + 2f);
+                                bool hoverInfo = viewportMouseScreen.X >= lblMin.X && viewportMouseScreen.X <= lblMax.X &&
+                                                 viewportMouseScreen.Y >= lblMin.Y && viewportMouseScreen.Y <= lblMax.Y;
+                                if (hoverInfo)
+                                {
+                                    ImGui.SetNextWindowPos(viewportTopLeft + new Vector2(8, 8), ImGuiCond.Always);
+                                    ImGui.BeginTooltip();
+                                    ImGui.Text($"Font: {elem.FontPath}");
+                                    ImGui.EndTooltip();
+                                }
+                            }
                         }
  
                     }

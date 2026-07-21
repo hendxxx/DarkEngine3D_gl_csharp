@@ -1104,7 +1104,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
             _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
             _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
-            
+
+            // ── Flush all queued HUD commands ──
+            _hud.Flush();
+
             Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
 
             //  Populate IDEBridge AFTER rendering, so DrawnObjects/RenderedTriangles are current-frame
@@ -1891,6 +1894,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             Glfw.OnWindowResized -= OnWindowResized;
 
+            // ── Free HUD GPU resources (font atlases, scratch textures) ──
+            _hud?.Cleanup();
+
             // ── Clear IDE bridge references ──
             var bridge = _sceneManager.Bridge;
             if (bridge != null)
@@ -1905,7 +1911,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
         public void Dispose()
-        { 
+        {
+            _hud?.Cleanup();
             _csm?.Dispose();
             _objectManager?.Dispose();
             _gameTerrainChunk?.Dispose();

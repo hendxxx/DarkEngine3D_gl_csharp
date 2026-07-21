@@ -53,7 +53,7 @@ public class UIElement
 
     // ── Font ──
     public string FontPath { get; set; } = "Artifacts\\\\fonts\\\\Worldstar.ttf";
-    public float FontSize { get; set; } = 28f;
+    public float FontSize { get; set; } = 13f;
 
     // ── Colors ──
     public Vector3 TextColor { get; set; } = new(0.95f, 0.95f, 1f);
@@ -199,7 +199,7 @@ public class UIElement
             UIElementType.Button => "[Btn]",
             UIElementType.Label => "[Note]",
             UIElementType.Dialog => "[Chat]",
-            _ => "[?]",
+            _ => "❓",
         };
     }
 }
@@ -217,7 +217,7 @@ public class UIButtonData
     public float Width { get; set; } = 200f;
     public float Height { get; set; } = 50f;
     public string FontPath { get; set; } = "Artifacts\\\\fonts\\\\Worldstar.ttf";
-    public float FontSize { get; set; } = 28f;
+    public float FontSize { get; set; } = 13f;
     public Vector3 TextColor { get; set; } = new(0.95f, 0.95f, 1f);
     public Vector3 BgColor { get; set; } = new(0.10f, 0.12f, 0.18f);
     public Vector3 BorderColor { get; set; } = new(0.15f, 0.18f, 0.25f);

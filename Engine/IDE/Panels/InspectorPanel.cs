@@ -186,15 +186,15 @@ public class InspectorPanel
             ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.7f, 1f), "Hover");
             ImGui.Indent();
             var cHover = elem.HoverTextColor;
-            if (ImGui.ColorEdit3("Text", ref cHover, ImGuiColorEditFlags.NoInputs))
+            if (ImGui.ColorEdit3("TextHover", ref cHover, ImGuiColorEditFlags.NoInputs))
                 elem.HoverTextColor = cHover;
 
             cHover = elem.HoverBgColor;
-            if (ImGui.ColorEdit3("Background", ref cHover, ImGuiColorEditFlags.NoInputs))
+            if (ImGui.ColorEdit3("BackgroundHover", ref cHover, ImGuiColorEditFlags.NoInputs))
                 elem.HoverBgColor = cHover;
 
             cHover = elem.HoverBorderColor;
-            if (ImGui.ColorEdit3("Border", ref cHover, ImGuiColorEditFlags.NoInputs))
+            if (ImGui.ColorEdit3("BorderHover", ref cHover, ImGuiColorEditFlags.NoInputs))
                 elem.HoverBorderColor = cHover;
             ImGui.Unindent();
         }
@@ -295,7 +295,7 @@ public class InspectorPanel
     {
         if (ImGui.CollapsingHeader("Scene Info", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f), $"Scene: {editorScene.Name}");
+            ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f), $"Scene {editorScene.Name}");
             ImGui.Separator();
 
             // Count elements recursively

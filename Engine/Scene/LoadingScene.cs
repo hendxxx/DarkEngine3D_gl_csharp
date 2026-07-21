@@ -65,7 +65,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ];
             _images = images;
 
-            HUD hud = new("Artifacts\\\\fonts\\\\Ngaco.ttf", 28.0f);
+            HUD hud = new("Artifacts\\\\fonts\\\\Ngaco.ttf", 13.0f);
             _hud = hud;
 
             RenderFrame("Loading engine ...");
@@ -209,9 +209,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public void Dispose()
         {
-            // Cleanup loading screen specific resources
-            _images = null;
+            // HUD was handed off to GameScene — do NOT clean up here, GameScene owns it
             _hud = null;
+            _images = null;
         }
 
         /// <summary>
@@ -257,6 +257,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             float textX = grid.ColX(0);
             float textY = spinnerCenterY - (extents.MinY + extents.Height * 0.5f);
             _hud.DrawText(text, textX, textY, new Vector3(0.85f, 0.85f, 0.9f), new Vector3(0f, 0f, 0f), 1.5f);
+
+            // ── Flush all queued HUD commands ──
+            _hud.Flush();
 
             // ── Update bridge texture so Viewport panel shows loading screen ──
             if (ideActive)

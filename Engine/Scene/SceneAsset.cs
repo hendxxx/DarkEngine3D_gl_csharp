@@ -19,7 +19,7 @@ public class SceneElementData
     public float Y { get; set; }
     public float Width { get; set; } = 200f;
     public float Height { get; set; } = 50f;
-    public float FontSize { get; set; } = 28f;
+    public float FontSize { get; set; } = 13f;
     public string FontPath { get; set; } = "Artifacts\\\\\\\\fonts\\\\\\\\Worldstar.ttf";
 
     // Colors as arrays [r, g, b] — Vector3 is not directly serializable

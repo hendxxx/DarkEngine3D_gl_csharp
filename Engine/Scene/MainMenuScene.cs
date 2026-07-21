@@ -130,7 +130,7 @@ public unsafe class MainMenuScene : IScene
 
     public void Enter()
     {
-        _hud = new HUD("Artifacts\\fonts\\Worldstar.ttf", 28.0f);
+        _hud = new HUD("Artifacts\\fonts\\Worldstar.ttf", 13.0f);
         _totalTime = 0f;
         _scanLineY = 0f;
 
@@ -254,8 +254,16 @@ public unsafe class MainMenuScene : IScene
         {
             var uiBtn = _uiButtons[i];
             if (!uiBtn.IsVisible) continue;
+
+            // Determine font slot for this button (each can have its own size)
+            string btnFontPath = !string.IsNullOrEmpty(uiBtn.FontPath) ? uiBtn.FontPath : "Artifacts\\fonts\\Worldstar.ttf";
+            float btnFontSize = uiBtn.FontSize > 0 ? uiBtn.FontSize : 13f;
+
+            // Get or create font slot — HUD maintains an internal O(1) cache
+            int fontSlot = _hud.GetOrCreateFontSlot(btnFontPath, btnFontSize);
+
             _hud.AddButton(uiBtn.Text, uiBtn.X, uiBtn.Y, uiBtn.Width, uiBtn.Height,
-                () => uiBtn.OnClick?.Invoke());
+                () => uiBtn.OnClick?.Invoke(), fontSlotIndex: fontSlot);
         }
 
         nint window = Glfw.GetWindow();

@@ -31,7 +31,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
     }
 
-    /// <summary>Describes a single interactive button — position, label, and callbacks.</summary>
+    /// <summary>A baked font atlas — holds character data and OpenGL texture for one (fontPath, fontSize) pair.</summary>
+    public struct FontSlot
+    {
+        public StbTrueType.stbtt_bakedchar[] BakedChars; // 96 chars (ASCII 32..126)
+        public uint TextureID;
+        public string FontPath;
+        public float FontSize;
+    }
+
+    /// <summary>Describes a single interactive button — position, label, callbacks, and font slot.</summary>
     public struct ButtonDef
     {
         public string Label;
@@ -48,6 +57,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public ButtonStyle? Style;
         /// <summary>Optional tag for custom data.</summary>
         public object? Tag;
+        /// <summary>Index into HUD._fontSlots for this button's font face + size.</summary>
+        public int FontSlotIndex;
+        /// <summary>Cached text extents — computed once in AddButton() to avoid GetTextExtents() per frame per button.</summary>
+        public HUD.TextExtents CachedExtents;
     }
 
     public unsafe class HUD
@@ -55,259 +68,199 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private readonly uint vao;
         private readonly uint vbo;
         private readonly uint shaderProgram;
-        private readonly int posLoc, sizeLoc, colorLoc, uvOffsetLoc, uvScaleLoc, texLoc;
-        // 🛠️ FIX #13: Track allocated VBO size for dynamic resizing
+        private readonly int posLoc, sizeLoc, colorLoc, uvOffsetLoc, uvScaleLoc, texLoc, rotLoc;
         private nuint _vboAllocatedSize = 0;
 
-        private readonly StbTrueType.stbtt_bakedchar[] bakedChars = new StbTrueType.stbtt_bakedchar[96]; // ASCII 32..126
-        readonly uint fontTexture = 0;
+        /// <summary>Cache of baked font atlases, each for a unique (fontPath, fontSize) pair. Slot 0 is the default.</summary>
+        private readonly List<FontSlot> _fontSlots = [];
+        /// <summary>O(1) lookup: (fontPath, fontSize) → slot index. Updated when slots are created or cleared.</summary>
+        private readonly Dictionary<(string path, float size), int> _fontSlotLookup = [];
 
         private const int AtlasSize = 1024;
+
+        // ════════════════════════════════════════════
+        //  BATCH RENDER QUEUES
+        // ════════════════════════════════════════════
+
+        /// <summary>Queued box draw commands. Flushed by Flush().</summary>
+        private readonly List<(float x, float y, float w, float h, Vector3 color)> _boxQueue = [];
+
+        /// <summary>Queued text draw commands. Flushed by Flush().</summary>
+        private readonly List<(int fontSlot, float x, float y, string text, Vector3 color)> _textQueue = [];
+
+        /// <summary>Queued image draw commands. Flushed by Flush().</summary>
+        private readonly List<(float x, float y, float w, float h, uint texId, float rotation)> _imageQueue = [];
+
+        // ════════════════════════════════════════════
+        //  CONSTRUCTOR
+        // ════════════════════════════════════════════
 
         public unsafe HUD(string fontPath, float fontSize)
         {
             shaderProgram = Shader.GetHudShaderProgram();
-            // ... ambil Uniform Location seperti kode lama Anda ...
             posLoc = GL.GetUniformLocation(shaderProgram, "position");
             sizeLoc = GL.GetUniformLocation(shaderProgram, "size");
             colorLoc = GL.GetUniformLocation(shaderProgram, "textColor");
             uvOffsetLoc = GL.GetUniformLocation(shaderProgram, "uvOffset");
             uvScaleLoc = GL.GetUniformLocation(shaderProgram, "uvScale");
             texLoc = GL.GetUniformLocation(shaderProgram, "hudTexture");
+            rotLoc = GL.GetUniformLocation(shaderProgram, "rotation");
 
-            // 1. Persiapan Vertices (Unit Quad)
-            // DI KONSTRUKTOR HUD (Pastikan urutan V ini):
+            // 1. Vertex setup
             float[] vertices = [
-                // x, y      u, v
-                0f, 1f,     0f, 0f,   // top-left
-                0f, 0f,     0f, 1f,   // bottom-left
-                1f, 1f,     1f, 0f,   // top-right
-
-                0f, 0f,     0f, 1f,   // bottom-left
-                1f, 0f,     1f, 1f,   // bottom-right
-                1f, 1f,     1f, 0f    // top-right
+                0f, 1f,     0f, 0f,
+                0f, 0f,     0f, 1f,
+                1f, 1f,     1f, 0f,
+                0f, 0f,     0f, 1f,
+                1f, 0f,     1f, 1f,
+                1f, 1f,     1f, 0f
             ];
-
 
             fixed (uint* pVao = &vao) GL.GenVertexArrays(1, pVao);
             fixed (uint* pVbo = &vbo) GL.GenBuffers(1, pVbo);
 
-            // 🛠️ FIX #13: Start with a reasonable initial VBO size.
-            // The EnsureVBOSize() method will dynamically resize when needed.
             _vboAllocatedSize = 1000 * 6 * 4 * sizeof(float);
-            int stride = 4 * sizeof(float); // Karena satu baris data kita adalah: X, Y, U, V
+            int stride = 4 * sizeof(float);
 
             GL.BindVertexArray(vao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
 
             fixed (float* p = vertices)
-            {
                 GL.BufferData(Const.GL_ARRAY_BUFFER, _vboAllocatedSize, (void*)0, Const.GL_DYNAMIC_DRAW);
-            }
-            // Atribut 0: Posisi (X, Y) -> Ambil 2 float, mulai dari index 0
+
             GL.EnableVertexAttribArray(0);
             GL.VertexAttribPointer(0, 2, Const.GL_FLOAT, false, stride, (void*)0);
-
-            // Atribut 1: TexCoords (U, V) -> Ambil 2 float, mulai SETELAH 2 float posisi (offset 8 byte)
             GL.EnableVertexAttribArray(1);
             GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, stride, (void*)(2 * sizeof(float)));
 
-            // 2. Load & Bake TTF Font
-            byte[] ttfData = File.ReadAllBytes(fontPath);
-            byte[] tempBitmap = new byte[AtlasSize * AtlasSize]; // 1-channel untuk baking
+            // 2. Create initial font slot (slot 0 = default)
+            GetOrCreateFontSlot(fontPath, fontSize);
+        }
+
+        // ════════════════════════════════════════════
+        //  FONT SLOT SYSTEM
+        // ════════════════════════════════════════════
+
+        /// <summary>Find or create a font slot for the given (fontPath, fontSize). Returns the slot index.</summary>
+        public int GetOrCreateFontSlot(string fontPath, float fontSize)
+        {
+            // O(1) lookup via dictionary cache
+            var key = (fontPath, fontSize);
+            if (_fontSlotLookup.TryGetValue(key, out int cachedIdx))
+                return cachedIdx;
+
+            // Create new slot
+            uint texID;
+            GL.GenTextures(1, &texID);
+
+            var slot = new FontSlot
+            {
+                BakedChars = new StbTrueType.stbtt_bakedchar[96],
+                TextureID = texID,
+                FontPath = fontPath,
+                FontSize = fontSize,
+            };
+
+            BakeFontIntoSlot(ref slot);
+            _fontSlots.Add(slot);
+            _fontSlotLookup[key] = _fontSlots.Count - 1;
+
+            Console.WriteLine($"[HUD] Created font slot {_fontSlots.Count - 1}: {fontPath} @ {fontSize}px");
+            return _fontSlots.Count - 1;
+        }
+
+        /// <summary>Bake TTF data into a FontSlot's bakedChars array and upload to its GPU texture.</summary>
+        private static void BakeFontIntoSlot(ref FontSlot slot)
+        {
+            byte[] ttfData = File.ReadAllBytes(slot.FontPath);
+            byte[] tempBitmap = new byte[AtlasSize * AtlasSize];
 
             fixed (byte* pTtf = ttfData)
             fixed (byte* pTemp = tempBitmap)
-            fixed (StbTrueType.stbtt_bakedchar* pChars = bakedChars)
+            fixed (StbTrueType.stbtt_bakedchar* pChars = slot.BakedChars)
             {
-                StbTrueType.stbtt_BakeFontBitmap(pTtf, 0, fontSize, pTemp, AtlasSize, AtlasSize, 32, 96, pChars);
+                StbTrueType.stbtt_BakeFontBitmap(pTtf, 0, slot.FontSize, pTemp, AtlasSize, AtlasSize, 32, 96, pChars);
             }
 
-            // 3. KONVERSI KE 4-CHANNEL (RGBA) - Agar tidak miring
             byte[] rgbaBitmap = new byte[AtlasSize * AtlasSize * 4];
             for (int i = 0; i < tempBitmap.Length; i++)
             {
-                rgbaBitmap[i * 4 + 0] = 255; // R
-                rgbaBitmap[i * 4 + 1] = 255; // G
-                rgbaBitmap[i * 4 + 2] = 255; // B
-                rgbaBitmap[i * 4 + 3] = tempBitmap[i]; // Alpha (Data font)
+                rgbaBitmap[i * 4 + 0] = 255;
+                rgbaBitmap[i * 4 + 1] = 255;
+                rgbaBitmap[i * 4 + 2] = 255;
+                rgbaBitmap[i * 4 + 3] = tempBitmap[i];
             }
 
-            // 4. Upload ke GPU sebagai RGBA
-            uint texID;
-            GL.GenTextures(1, &texID);
-            fontTexture = texID;
-            GL.BindTexture(Const.GL_TEXTURE_2D, fontTexture); 
-
+            GL.BindTexture(Const.GL_TEXTURE_2D, slot.TextureID);
             fixed (byte* pB = rgbaBitmap)
             {
-                // Gunakan GL_RGBA (0x1908) agar pas dengan alignment 4-byte default
                 GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA, AtlasSize, AtlasSize, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, pB);
             }
             GL.GenerateMipmap(Const.GL_TEXTURE_2D);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR); // GL_LINEAR_MIPMAP_LINEAR
-
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR); // MAG_FILTER
-
-
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
         }
 
-        private void DrawTextBatched(string text, float startX, float startY, Vector3 textColor)
+        // ════════════════════════════════════════════
+        //  QUEUE-BASED DRAWING (deferred until Flush)
+        // ════════════════════════════════════════════
+
+        /// <summary>Queue a solid-colour rectangle. Rendered during Flush().</summary>
+        public void DrawBox(float x, float y, float w, float h, Vector3 color)
         {
-            GL.UseProgram(shaderProgram);
-            GL.BindVertexArray(0);
-            OpenGL.EnableFaceCulling(true);
+            _boxQueue.Add((x, y, w, h, color));
+        }
 
-            GL.Disable(Const.GL_DEPTH_TEST);
-            GL.Enable(Const.GL_BLEND);
-            GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
-             
-            GL.BindVertexArray(vao);
-            GL.ActiveTexture(Const.GL_TEXTURE0);
-            GL.BindTexture(Const.GL_TEXTURE_2D, fontTexture);
-            GL.Uniform1i(texLoc, 0);
-            GL.Uniform3f(colorLoc, textColor.X, textColor.Y, textColor.Z);
+        /// <summary>
+        /// Queue a pair of horizontal border bars (top + bottom) as a single batch concept.
+        /// Same colour, same width, positioned at top and bottom of the given rect.
+        /// Flush() groups them by colour automatically, so this is purely for cleaner code.
+        /// </summary>
+        public void DrawBoxHorizontalBorders(float x, float y, float w, float h, float thickness, Vector3 color)
+        {
+            _boxQueue.Add((x, y, w, thickness, color));                // top bar
+            _boxQueue.Add((x, y + h - thickness, w, thickness, color)); // bottom bar
+        }
 
-            float x = startX; // Posisi kursor awal (dalam pixel)
-            List<float> allVertices = [];
+        /// <summary>Queue text using a specific font slot. Rendered during Flush().</summary>
+        private void DrawTextBatched(string text, float startX, float startY, Vector3 textColor, int fontSlotIndex = 0)
+        {
+            if (fontSlotIndex < 0 || fontSlotIndex >= _fontSlots.Count) return;
+            if (string.IsNullOrEmpty(text)) return;
+            _textQueue.Add((fontSlotIndex, startX, startY, text, textColor));
+        }
 
-            foreach (char c in text)
-            {
-                // Pastikan hanya karakter yang ada di Atlas (ASCII 32-126)
-                if (c < 32 || c > 126) continue;
-                var bc = bakedChars[c - 32];
-
-                // 1. Hitung posisi pixel murni (Gunakan koordinat layar)
-                float pxX = x + bc.xoff;
-                float pxY = startY + bc.yoff;
-                float pxW = bc.x1 - bc.x0;
-                float pxH = bc.y1 - bc.y0;
-
-                // 2. Konversi ke NDC (-1.0 sampai 1.0)
-                // Rumus NDC yang lebih stabil
-                float x0 = (pxX / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
-                float y0 = 1.0f - (pxY / (float)Glfw.WindowHeight) * 2.0f;
-                float x1 = ((pxX + pxW) / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
-                float y1 = 1.0f - ((pxY + pxH) / (float)Glfw.WindowHeight) * 2.0f;
-
-
-                float u0 = bc.x0 / (float)AtlasSize;
-                float v0 = bc.y0 / (float)AtlasSize;
-                float u1 = bc.x1 / (float)AtlasSize;
-                float v1 = bc.y1 / (float)AtlasSize;
-
-                // 3. Masukkan 6 vertex per huruf ke dalam Batch
-                allVertices.AddRange([
-                    x0, y0, u0, v0, // Top Left
-                    x0, y1, u0, v1, // Bottom Left
-                    x1, y1, u1, v1, // Bottom Right
-
-                    x0, y0, u0, v0, // Top Left
-                    x1, y1, u1, v1, // Bottom Right
-                    x1, y0, u1, v0  // Top Right
-                ]);
-
-                // 4. GESER X agar huruf berikutnya tidak menumpuk
-                x += bc.xadvance;
-            }
-
-            if (allVertices.Count > 0)
-            {
-                float[] data = [.. allVertices];
-                GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
-                fixed (float* p = data)
-                {
-                    GL.BufferSubData(Const.GL_ARRAY_BUFFER, 0, (nuint)(data.Length * sizeof(float)), p);
-                }
-                GL.Uniform3f(uvScaleLoc, 1.0f, 1.0f, 1.0f); // MODE TEKS
-                GL.DrawArrays(Const.GL_TRIANGLES, 0, allVertices.Count / 4);
-            }
-
-            OpenGL.EnableFaceCulling(false);
-        } 
+        /// <summary>Queue text using the default font slot (slot 0), with optional outline.</summary>
         public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor = null, float outlineSize = 0.0f)
         {
+            DrawText(text, startX, startY, color, outlineColor, outlineSize, fontSlotIndex: 0);
+        }
+
+        /// <summary>Queue text using a specific font slot, with optional outline.</summary>
+        public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor, float outlineSize, int fontSlotIndex)
+        {
+            if (fontSlotIndex < 0 || fontSlotIndex >= _fontSlots.Count)
+                fontSlotIndex = 0;
 
             if (outlineColor != null)
             {
-                DrawTextBatched(text, startX - outlineSize, startY, outlineColor.GetValueOrDefault());
-                DrawTextBatched(text, startX + outlineSize, startY, outlineColor.GetValueOrDefault());
-                DrawTextBatched(text, startX, startY - outlineSize, outlineColor.GetValueOrDefault());
-                DrawTextBatched(text, startX, startY + outlineSize, outlineColor.GetValueOrDefault());
-
+                DrawTextBatched(text, startX - outlineSize, startY, outlineColor.GetValueOrDefault(), fontSlotIndex);
+                DrawTextBatched(text, startX + outlineSize, startY, outlineColor.GetValueOrDefault(), fontSlotIndex);
+                DrawTextBatched(text, startX, startY - outlineSize, outlineColor.GetValueOrDefault(), fontSlotIndex);
+                DrawTextBatched(text, startX, startY + outlineSize, outlineColor.GetValueOrDefault(), fontSlotIndex);
             }
 
-            DrawTextBatched(text, startX, startY, color);
+            DrawTextBatched(text, startX, startY, color, fontSlotIndex);
         }
-        public void DrawBox(float x, float y, float w, float h, Vector3 color)
-        { 
-            GL.UseProgram(shaderProgram);
-            GL.BindVertexArray(vao);
-            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
 
-            GL.Disable(Const.GL_DEPTH_TEST);
-            OpenGL.EnableFaceCulling(false);
-            GL.Enable(Const.GL_BLEND);
+        // ════════════════════════════════════════════
+        //  SHAPES & IMAGES
+        // ════════════════════════════════════════════
 
-            // 1. Konversi Koordinat
-            float x0 = (x / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
-            float y0 = 1.0f - (y / (float)Glfw.WindowHeight) * 2.0f;
-            float x1 = ((x + w) / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
-            float y1 = 1.0f - ((y + h) / (float)Glfw.WindowHeight) * 2.0f;
-
-            // 2. Data 6 titik (X, Y, U, V)
-            float[] boxVertices = {
-                // Triangle 1 (CCW)
-                x0, y0, 0, 0,   x1, y1, 0, 0,   x0, y1, 0, 0,
-                // Triangle 2 (CCW)
-                x0, y0, 0, 0,   x1, y0, 0, 0,   x1, y1, 0, 0
-            };
-
-            // 🛠️ FIX #13: Ensure VBO is large enough for this draw call
-            nuint neededSize = (nuint)(boxVertices.Length * sizeof(float));
-            EnsureVBOSize(neededSize);
-
-            // 3. Kirim data ke VBO
-            fixed (float* p = boxVertices)
-            {
-                GL.BufferSubData(Const.GL_ARRAY_BUFFER, 0, (nuint)(boxVertices.Length * sizeof(float)), p);
-            }
-
-            // 4. RESET POINTER
-            int stride = 4 * sizeof(float);
-            GL.VertexAttribPointer(0, 2, Const.GL_FLOAT, false, stride, (void*)0);
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, stride, (void*)(2 * sizeof(float)));
-            GL.EnableVertexAttribArray(1);
-
-            // 5. Set Uniform & Draw
-            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
-            GL.Uniform3f(uvScaleLoc, 0, 0, 0);
-
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-            GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
-
-            // Restore OpenGL state: depth=on, culling=off, blend=off
-            // NOTE: The rest of the HUD pipeline expects culling to be DISABLED
-            // after DrawBox (the old code's final state). With culling enabled,
-            // subsequent DrawTextBatched calls would have their CW triangles culled,
-            // causing inverted/half-rendered borders.
-            GL.Enable(Const.GL_DEPTH_TEST);
-            OpenGL.EnableFaceCulling(false);
-            GL.Disable(Const.GL_BLEND);
-        }
-        /// <summary>Cache of scratch textures keyed by color hash, to avoid GPU memory leaks.</summary>
         private readonly Dictionary<ulong, uint> _scratchTextureCache = [];
 
-        /// <summary>Get or create a scratch texture of the given size and solid color.
-        /// Textures are cached by color + size so repeated DrawImage calls with the same
-        /// color and dimensions reuse the same GPU texture instead of leaking.</summary>
         public uint GetOrCreateScratchTexture(int width, int height, Vector3 color)
         {
-            // 🛠️ FIX #4: Include width and height in the cache key.
-            // Without this, different-sized textures with the same color would
-            // return the wrong cached texture (e.g. a 200x50 box would get a
-            // 100x100 texture from a previous call, causing wrong UV coverage).
             byte r = (byte)(color.X * 255);
             byte g = (byte)(color.Y * 255);
             byte b = (byte)(color.Z * 255);
@@ -317,7 +270,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (_scratchTextureCache.TryGetValue(key, out uint existing))
                 return existing;
 
-            // Create new texture
             byte[] pixels = new byte[width * height * 4];
             for (int i = 0; i < width * height; i++)
             {
@@ -332,9 +284,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.BindTexture(Const.GL_TEXTURE_2D, tex);
 
             fixed (byte* p = pixels)
-            {
                 GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA, width, height, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, p);
-            }
 
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
@@ -343,7 +293,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return tex;
         }
 
-        /// <summary>Clean up all cached scratch textures (call on scene exit).</summary>
         public void ClearScratchTextureCache()
         {
             foreach (var kvp in _scratchTextureCache)
@@ -354,87 +303,254 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _scratchTextureCache.Clear();
         }
 
-        public unsafe void DrawImage( float x, float y, float w, float h, uint textureId = 0, float rotation = 0f, Vector3? scratchColor = null)
+        /// <summary>Queue an image draw. Rendered during Flush().</summary>
+        public void DrawImage(float x, float y, float w, float h, uint textureId = 0, float rotation = 0f, Vector3? scratchColor = null)
         {
+            uint finalTex = textureId;
+            if (textureId == 0 && scratchColor != null)
+                finalTex = GetOrCreateScratchTexture((int)w, (int)h, scratchColor.Value);
+            _imageQueue.Add((x, y, w, h, finalTex, rotation));
+        }
+
+        // ════════════════════════════════════════════
+        //  FLUSH — render all queued batches
+        // ════════════════════════════════════════════
+
+        /// <summary>
+        /// Render all queued DrawBox, DrawText, and DrawImage commands with minimal GL state changes.
+        /// Boxes are grouped by colour. Text is batched sequentially (consecutive same fontSlot+colour).
+        /// Images are grouped by texture ID. Call this at the end of every frame's HUD rendering.
+        /// </summary>
+        public void Flush()
+        {
+            if (_boxQueue.Count == 0 && _textQueue.Count == 0 && _imageQueue.Count == 0)
+                return;
+
             GL.UseProgram(shaderProgram);
             GL.BindVertexArray(vao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
 
             GL.Disable(Const.GL_DEPTH_TEST);
-            OpenGL.EnableFaceCulling(false);
             GL.Enable(Const.GL_BLEND);
-
-            // 1. Convert screen → NDC
-            float x0 = (x / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
-            float y0 = 1.0f - (y / (float)Glfw.WindowHeight) * 2.0f;
-            float x1 = ((x + w) / (float)Glfw.WindowWidth) * 2.0f - 1.0f;
-            float y1 = 1.0f - ((y + h) / (float)Glfw.WindowHeight) * 2.0f;
-
-            // 2. Vertex (pos + uv)
-            float[] verts = {
-                x0, y0, 0, 0,
-                x1, y1, 1, 1,
-                x0, y1, 0, 1,
-
-                x0, y0, 0, 0,
-                x1, y0, 1, 0,
-                x1, y1, 1, 1
-            };
-
-            fixed (float* p = verts)
-                GL.BufferSubData(Const.GL_ARRAY_BUFFER, 0, (nuint)(verts.Length * sizeof(float)), p);
+            GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+            OpenGL.EnableFaceCulling(false);
 
             int stride = 4 * sizeof(float);
+            int w = Glfw.WindowWidth;
+            int h = Glfw.WindowHeight;
+
+            // ── 1. BOXES: group by colour, render in first-occurrence order ──
+            if (_boxQueue.Count > 0)
+            {
+                // Group by colour preserving first-occurrence order
+                var boxGroups = new List<(Vector3 color, List<(float x, float y, float w, float h)> items, int order)>();
+                var colorMap = new Dictionary<(float r, float g, float b), int>();
+
+                foreach (var box in _boxQueue)
+                {
+                    var key = (box.color.X, box.color.Y, box.color.Z);
+                    if (!colorMap.TryGetValue(key, out int idx))
+                    {
+                        idx = boxGroups.Count;
+                        colorMap[key] = idx;
+                        boxGroups.Add((box.color, [], boxGroups.Count));
+                    }
+                    boxGroups[idx].items.Add((box.x, box.y, box.w, box.h));
+                }
+
+                foreach (var group in boxGroups)
+                {
+                    var verts = new List<float>(group.items.Count * 24); // 6 verts × 4 floats
+                    foreach (var (bx, by, bw, bh) in group.items)
+                    {
+                        float x0 = (bx / w) * 2.0f - 1.0f;
+                        float y0 = 1.0f - (by / h) * 2.0f;
+                        float x1 = ((bx + bw) / w) * 2.0f - 1.0f;
+                        float y1 = 1.0f - ((by + bh) / h) * 2.0f;
+
+                        verts.Add(x0); verts.Add(y0); verts.Add(0f); verts.Add(0f);
+                        verts.Add(x1); verts.Add(y1); verts.Add(0f); verts.Add(0f);
+                        verts.Add(x0); verts.Add(y1); verts.Add(0f); verts.Add(0f);
+
+                        verts.Add(x0); verts.Add(y0); verts.Add(0f); verts.Add(0f);
+                        verts.Add(x1); verts.Add(y0); verts.Add(0f); verts.Add(0f);
+                        verts.Add(x1); verts.Add(y1); verts.Add(0f); verts.Add(0f);
+                    }
+
+                    UploadAndDraw(verts, group.color, new Vector3(0, 0, 0), 0, stride, 0f);
+                }
+            }
+
+            // ── 2. TEXT: sequential batching (consecutive same fontSlot+colour) ──
+            if (_textQueue.Count > 0)
+            {
+                int ti = 0;
+                while (ti < _textQueue.Count)
+                {
+                    int start = ti;
+                    var (fsIdx, _, _, _, color) = _textQueue[ti];
+                    while (ti < _textQueue.Count &&
+                           _textQueue[ti].fontSlot == fsIdx &&
+                           ColorsEqual(_textQueue[ti].color, color))
+                        ti++;
+
+                    // Build vertices for batch [start..ti)
+                    if (fsIdx < 0 || fsIdx >= _fontSlots.Count) continue;
+                    var slot = _fontSlots[fsIdx];
+                    var verts = new List<float>((ti - start) * 144); // ~24 chars × 6 verts × 4 floats = 576 per item
+                    const int atlasSize = AtlasSize;
+
+                    for (int j = start; j < ti; j++)
+                    {
+                        var (_, sx, sy, text, _) = _textQueue[j];
+                        float x = sx;
+                        foreach (char c in text)
+                        {
+                            if (c < 32 || c > 126) continue;
+                            var bc = slot.BakedChars[c - 32];
+
+                            float pxX = x + bc.xoff;
+                            float pxY = sy + bc.yoff;
+                            float pxW = bc.x1 - bc.x0;
+                            float pxH = bc.y1 - bc.y0;
+
+                            float x0 = (pxX / w) * 2.0f - 1.0f;
+                            float y0 = 1.0f - (pxY / h) * 2.0f;
+                            float x1 = ((pxX + pxW) / w) * 2.0f - 1.0f;
+                            float y1 = 1.0f - ((pxY + pxH) / h) * 2.0f;
+
+                            float u0 = bc.x0 / atlasSize;
+                            float v0 = bc.y0 / atlasSize;
+                            float u1 = bc.x1 / atlasSize;
+                            float v1 = bc.y1 / atlasSize;
+
+                            verts.Add(x0); verts.Add(y0); verts.Add(u0); verts.Add(v0);
+                            verts.Add(x0); verts.Add(y1); verts.Add(u0); verts.Add(v1);
+                            verts.Add(x1); verts.Add(y1); verts.Add(u1); verts.Add(v1);
+
+                            verts.Add(x0); verts.Add(y0); verts.Add(u0); verts.Add(v0);
+                            verts.Add(x1); verts.Add(y1); verts.Add(u1); verts.Add(v1);
+                            verts.Add(x1); verts.Add(y0); verts.Add(u1); verts.Add(v0);
+
+                            x += bc.xadvance;
+                        }
+                    }
+
+                    if (verts.Count > 0)
+                    {
+                        UploadAndDraw(verts, color, new Vector3(1, 1, 1), slot.TextureID, stride, 0f);
+                    }
+                }
+            }
+
+            // ── 3. IMAGES: group by (textureId, rotation), render in first-occurrence order ──
+            if (_imageQueue.Count > 0)
+            {
+                var imgGroups = new List<(uint texId, float rot, List<(float x, float y, float w, float h)> items, int order)>();
+                var imgMap = new Dictionary<(uint texId, float rot), int>();
+
+                foreach (var img in _imageQueue)
+                {
+                    var key = (img.texId, img.rotation);
+                    if (!imgMap.TryGetValue(key, out int idx))
+                    {
+                        idx = imgGroups.Count;
+                        imgMap[key] = idx;
+                        imgGroups.Add((img.texId, img.rotation, [], imgGroups.Count));
+                    }
+                    imgGroups[idx].items.Add((img.x, img.y, img.w, img.h));
+                }
+
+                var whiteColor = new Vector3(1, 1, 1);
+                foreach (var (texId, rot, items, _) in imgGroups)
+                {
+                    var verts = new List<float>(items.Count * 24);
+                    foreach (var (ix, iy, iw, ih) in items)
+                    {
+                        float x0 = (ix / w) * 2.0f - 1.0f;
+                        float y0 = 1.0f - (iy / h) * 2.0f;
+                        float x1 = ((ix + iw) / w) * 2.0f - 1.0f;
+                        float y1 = 1.0f - ((iy + ih) / h) * 2.0f;
+
+                        verts.Add(x0); verts.Add(y0); verts.Add(0f); verts.Add(0f);
+                        verts.Add(x1); verts.Add(y1); verts.Add(1f); verts.Add(1f);
+                        verts.Add(x0); verts.Add(y1); verts.Add(0f); verts.Add(1f);
+
+                        verts.Add(x0); verts.Add(y0); verts.Add(0f); verts.Add(0f);
+                        verts.Add(x1); verts.Add(y0); verts.Add(1f); verts.Add(0f);
+                        verts.Add(x1); verts.Add(y1); verts.Add(1f); verts.Add(1f);
+                    }
+
+                    if (texId != 0)
+                        UploadAndDraw(verts, whiteColor, new Vector3(2, 0, 0), texId, stride, rot);
+                    else
+                        UploadAndDraw(verts, whiteColor, new Vector3(0, 0, 0), 0, stride, 0f);
+                }
+            }
+
+            OpenGL.EnableFaceCulling(true);
+            GL.Disable(Const.GL_BLEND);
+            GL.Enable(Const.GL_DEPTH_TEST);
+
+            // Clear all queues
+            _boxQueue.Clear();
+            _textQueue.Clear();
+            _imageQueue.Clear();
+        }
+
+        /// <summary>Upload vertex data and issue a single draw call.</summary>
+        private void UploadAndDraw(List<float> verts, Vector3 color, Vector3 uvScale, uint textureId, int stride, float rotation)
+        {
+            if (verts.Count == 0) return;
+
+            float[] data = [.. verts];
+            nuint neededSize = (nuint)(data.Length * sizeof(float));
+            EnsureVBOSize(neededSize);
+
+            fixed (float* p = data)
+                GL.BufferSubData(Const.GL_ARRAY_BUFFER, 0, neededSize, p);
+
             GL.VertexAttribPointer(0, 2, Const.GL_FLOAT, false, stride, (void*)0);
             GL.EnableVertexAttribArray(0);
-
             GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, stride, (void*)(2 * sizeof(float)));
             GL.EnableVertexAttribArray(1);
 
-            uint finalTex = textureId;
+            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+            GL.Uniform3f(uvScaleLoc, uvScale.X, uvScale.Y, uvScale.Z);
 
-            // 3. If scratchColor requested → get cached scratch texture (no leak)
-            if (textureId == 0 && scratchColor != null)
+            if (textureId != 0)
             {
-                finalTex = GetOrCreateScratchTexture((int)w, (int)h, scratchColor.Value);
-            }
-
-            // 4. If still no texture → solid color mode
-            if (finalTex == 0)
-            {
-                GL.Uniform3f(colorLoc, 1, 1, 1);
-                GL.Uniform3f(uvScaleLoc, 0, 0, 0);
-                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, textureId);
+                GL.Uniform1i(texLoc, 0);
             }
             else
             {
-                GL.Uniform3f(uvScaleLoc, 2, 0, 0);   // MODE IMAGE
-                GL.Uniform3f(colorLoc, 1, 1, 1);     // tidak mempengaruhi gambar
-
-                GL.ActiveTexture(Const.GL_TEXTURE0);
-                GL.BindTexture(Const.GL_TEXTURE_2D, finalTex);
-                GL.Uniform1i(GL.GetUniformLocation(shaderProgram, "hudTexture"), 0);
-
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             }
-            int rotLoc = GL.GetUniformLocation(shaderProgram, "rotation");
-            GL.Uniform1f(rotLoc, rotation);
 
+            if (uvScale.X >= 1.9f && uvScale.X <= 2.1f) // IMAGE mode
+            {
+                GL.Uniform1f(rotLoc, rotation);
+            }
 
-            GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
-
-            OpenGL.EnableFaceCulling(true);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, data.Length / 4);
         }
 
-        /// <summary>Bundles the visual bounding box of a string: Width (pixel width from xoff/xadvance),
-        /// Height (pixel height from yoff/glyph height), and MinY (top yoff — usually negative).
-        /// Obtained via a single call to GetTextExtents, avoiding redundant iterations.</summary>
+        /// <summary>Compare two Vector3 colours for exact float equality (used for batch grouping).</summary>
+        private static bool ColorsEqual(Vector3 a, Vector3 b)
+        {
+            return a.X == b.X && a.Y == b.Y && a.Z == b.Z;
+        }
+
+        // ════════════════════════════════════════════
+        //  TEXT EXTENTS (multi-font aware)
+        // ════════════════════════════════════════════
+
         public readonly struct TextExtents
         {
-            /// <summary>Visual pixel width of the text (maxX - minX).</summary>
             public float Width { get; }
-            /// <summary>Visual pixel height of the text (maxY - minY).</summary>
             public float Height { get; }
-            /// <summary>Top yoff offset from baseline (usually negative, above baseline).</summary>
             public float MinY { get; }
 
             public TextExtents(float width, float height, float minY)
@@ -444,15 +560,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 MinY = minY;
             }
 
-            /// <summary>Return the baseline Y that centers this text vertically in a box.</summary>
             public float GetCenteredBaselineY(float boxY, float boxH) => boxY + (boxH - Height) * 0.5f - MinY;
         }
 
-        /// <summary>Compute all text extents (width, height, top offset) in a single pass through the string.
-        /// Combines the horizontal bounding box (minX/maxX from xoff + xadvance) and the vertical bounding
-        /// box (minY/maxY from yoff + glyph height) so callers get everything with one iteration.</summary>
-        public TextExtents GetTextExtents(string text)
+        /// <summary>Compute text extents using a specific font slot. Defaults to slot 0.</summary>
+        public TextExtents GetTextExtents(string text, int fontSlotIndex = 0)
         {
+            if (fontSlotIndex < 0 || fontSlotIndex >= _fontSlots.Count)
+                fontSlotIndex = 0;
+
+            var chars = _fontSlots[fontSlotIndex].BakedChars;
+
             if (string.IsNullOrEmpty(text))
                 return new TextExtents(0f, 0f, 0f);
 
@@ -466,13 +584,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             foreach (char c in text)
             {
                 if (c < 32 || c > 126) continue;
-                var bc = bakedChars[c - 32];
+                var bc = chars[c - 32];
 
-                // Horizontal
                 float left = x + bc.xoff;
                 float right = x + bc.xoff + (bc.x1 - bc.x0);
-
-                // Vertical
                 float top = bc.yoff;
                 float bottom = bc.yoff + (bc.y1 - bc.y0);
 
@@ -493,29 +608,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 : new TextExtents(0f, 0f, 0f);
         }
 
-        /// <summary>Measure the exact pixel width of a string using the baked font glyph bounding box.
-        /// Unlike a simple xadvance sum, this accounts for negative xoff (glyph overhang) and
-        /// the actual rightmost extent of the last glyph — matching what DrawTextBatched renders.</summary>
-        public float MeasureText(string text) => GetTextExtents(text).Width;
+        public float MeasureText(string text) => GetTextExtents(text, 0).Width;
+        public float MeasureTextHeight(string text) => GetTextExtents(text, 0).Height;
 
-        /// <summary>Measure the exact visual pixel height of a string using the baked font glyph
-        /// bounding box. Accounts for ascent (negative yoff) and descent (positive yoff + height).</summary>
-        public float MeasureTextHeight(string text) => GetTextExtents(text).Height;
+        public float GetCenteredBaselineY(string text, float boxY, float boxH, int fontSlotIndex = 0)
+            => GetTextExtents(text, fontSlotIndex).GetCenteredBaselineY(boxY, boxH);
 
-        /// <summary>Return the baseline Y position that centers the visual glyph bounding box
-        /// vertically within a box at (boxY, boxH). Uses yoff + glyph height from baked chars
-        /// so it works correctly even when font ascent/descent don't match fontSize exactly.</summary>
-        public float GetCenteredBaselineY(string text, float boxY, float boxH)
-            => GetTextExtents(text).GetCenteredBaselineY(boxY, boxH);
-
-        /// <summary>Draw text centered horizontally within a container of the given width.
-        /// The container is assumed to start at x=0. For buttons/panels at an offset (bx),
-        /// use: DrawCenteredText(text, bx + btnW * 0.5f, y, color) where the second parameter
-        /// is the center X of the container.</summary>
-        public void DrawCenteredText(string text, float containerWidth, float y, Vector3 color)
+        public void DrawCenteredText(string text, float containerWidth, float y, Vector3 color, int fontSlotIndex = 0)
         {
-            float x = (containerWidth - GetTextExtents(text).Width) * 0.5f;
-            DrawText(text, x, y, color);
+            float x = (containerWidth - GetTextExtents(text, fontSlotIndex).Width) * 0.5f;
+            DrawText(text, x, y, color, null, 0f, fontSlotIndex);
         }
 
         private float spinnerAngle = 0f;
@@ -523,48 +625,46 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             spinnerAngle += deltaTime * 4.0f;
             if (spinnerAngle > MathF.Tau) spinnerAngle -= MathF.Tau;
-
             DrawImage(x, y, size, size, tex, spinnerAngle, null);
         }
 
-        // ──────────────────────────────────────────────
-        //  BUTTON SYSTEM — centralized hover/click/render
-        // ──────────────────────────────────────────────
+        // ════════════════════════════════════════════
+        //  BUTTON SYSTEM
+        // ════════════════════════════════════════════
 
         private readonly List<ButtonDef> _buttons = [];
         private bool _btnMouseWasDown = false;
 
-        /// <summary>Register a button. Returns its index for keyboard navigation.</summary>
-        public int AddButton(string label, float x, float y, float w, float h, Action? onClick = null, ButtonStyle? style = null)
+        /// <summary>Register a button with a specific font slot index. Returns the button index.</summary>
+        public int AddButton(string label, float x, float y, float w, float h, Action? onClick = null, ButtonStyle? style = null, int fontSlotIndex = 0)
         {
-            var btn = new ButtonDef { Label = label, X = x, Y = y, W = w, H = h, OnClick = onClick, Style = style };
+            // Compute text extents once at add-time and cache in the struct
+            var ext = GetTextExtents(label, fontSlotIndex);
+            var btn = new ButtonDef
+            {
+                Label = label, X = x, Y = y, W = w, H = h,
+                OnClick = onClick, Style = style,
+                FontSlotIndex = fontSlotIndex,
+                CachedExtents = ext,
+            };
             _buttons.Add(btn);
             return _buttons.Count - 1;
         }
 
-        /// <summary>Call once per frame BEFORE DrawButtons(). Detects hover + click for all buttons.
-        /// Updates _buttons[i].IsHovered and fires OnClick on mouse-press.
-        /// 🛠️ FIX #3: Uses a snapshot copy for iteration so callbacks that clear or modify
-        /// _buttons (e.g., AddButton/RemoveButton/ClearButtons) don't corrupt the loop.
-        /// Hover state is written back to the live list only for indices that still exist.</summary>
         public void UpdateButtons()
         {
             Mouse.GetCursorPosition(out double mx, out double my);
             bool mouseDown = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
 
-            // 🛠️ FIX #3: Take a snapshot of ButtonDef structs (value types = independent copy).
-            // This ensures callbacks that modify _buttons (Clear/Add/Remove) don't corrupt
-            // the iteration. Hover state is written back to the live list after processing.
             ButtonDef[] snapshot = [.. _buttons];
             int liveCount = _buttons.Count;
 
             for (int i = 0; i < snapshot.Length; i++)
             {
-                var btn = snapshot[i]; // working on snapshot copy — safe from list mutation
+                var btn = snapshot[i];
                 bool hovered = mx >= btn.X && mx <= btn.X + btn.W &&
                                my >= btn.Y && my <= btn.Y + btn.H;
 
-                // Hover enter/exit callbacks (only fire for live buttons that still exist)
                 if (i < liveCount)
                 {
                     var liveBtn = _buttons[i];
@@ -576,12 +676,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 btn.IsHovered = hovered;
 
-                // Click detection (edge-triggered) — fire on snapshot, safe from list mutation
                 if (hovered && mouseDown && !_btnMouseWasDown)
                     btn.OnClick?.Invoke();
 
-                // Write back hover state to live list only if the index is still valid
-                // (list wasn't cleared or shrunk below this index)
                 if (i < _buttons.Count)
                 {
                     var live = _buttons[i];
@@ -594,14 +691,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         /// <summary>
-        /// Draw all registered buttons with a standard style.
-        /// Style palette (can be overridden via params):
-        ///   - selectedBg / unselectedBg
-        ///   - selectedBorder / unselectedBorder
-        ///   - selectedText / unselectedText
-        ///   - selectedSidebar
-        ///   - glowColor
-        /// Pass keyboardSelected = -1 to use IsHovered as selection indicator.
+        /// Draw all buttons, each using its own font slot for text rendering.
+        /// Internally queues geometry and flushes at the end.
         /// </summary>
         public void DrawButtons(float time, int keyboardSelected = -1,
             Vector3? selectedBg = null, Vector3? unselectedBg = null,
@@ -609,7 +700,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Vector3? selectedText = null, Vector3? unselectedText = null,
             Vector3? selectedSidebar = null, Vector3? glowColor = null)
         {
-            // Default palette
             var selBg = selectedBg ?? new Vector3(0.22f, 0.28f, 0.45f);
             var unsBg = unselectedBg ?? new Vector3(0.10f, 0.12f, 0.18f);
             var selBr = selectedBorder ?? new Vector3(0.5f, 0.6f, 1.0f);
@@ -626,7 +716,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     ? (i == keyboardSelected)
                     : btn.IsHovered;
 
-                // Resolve colors: per-button style overrides global palette
                 var s = btn.Style;
                 var bg = isSelected ? (s?.SelectedBg ?? selBg) : (s?.UnselectedBg ?? unsBg);
                 var br = isSelected ? (s?.SelectedBorder ?? selBr) : (s?.UnselectedBorder ?? unsBr);
@@ -636,7 +725,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 float bx = btn.X, by = btn.Y, bw = btn.W, bh = btn.H;
 
-                // Glow behind selected
                 if (isSelected)
                 {
                     float glowPulse = 0.5f + 0.5f * MathF.Sin(time * 3f);
@@ -644,44 +732,40 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     DrawBox(bx - 6f, by - 5f, bw + 12f, bh + 10f, gl * glowAlpha);
                 }
 
-                // Background
                 DrawBox(bx, by, bw, bh, bg);
+                DrawBoxHorizontalBorders(bx, by, bw, bh, 1f, br);
 
-                // Top/bottom borders
-                DrawBox(bx, by, bw, 1f, br);
-                DrawBox(bx, by + bh - 1f, bw, 1f, br);
-
-                // Selected: left sidebar
                 if (isSelected)
                 {
                     float barPulse = 0.7f + 0.3f * MathF.Sin(time * 3f);
                     DrawBox(bx - 3f, by + 4f, 3f, bh - 8f, sb * barPulse);
                 }
 
-                // Text centered
-                var ext = GetTextExtents(btn.Label);
+                // Use cached text extents (computed once in AddButton) instead of GetTextExtents per frame
+                var ext = btn.CachedExtents;
                 float textX = bx + (bw - ext.Width) * 0.5f;
                 float textY = ext.GetCenteredBaselineY(by, bh);
-                DrawText(btn.Label, textX, textY, tx);
+                DrawText(btn.Label, textX, textY, tx, null, 0f, btn.FontSlotIndex);
             }
+
+            // Flush all queued button geometry immediately so buttons are rendered
+            // in the correct Z-order (boxes behind text)
+            Flush();
         }
 
-    /// <summary>Remove all registered buttons.</summary>
         public void ClearButtons()
         {
             _buttons.Clear();
         }
 
-        // 🛠️ FIX #13: Dynamically resize VBO when more space is needed
         private void EnsureVBOSize(nuint neededSize)
         {
             if (neededSize <= _vboAllocatedSize)
                 return;
 
-            // Round up to next power of 2 (or at least 2x needed)
             nuint newSize = _vboAllocatedSize;
             while (newSize < neededSize)
-                newSize = (newSize == 0) ? (nuint)(64 * 1024) : newSize * 2; // start at 64KB, double each time
+                newSize = (newSize == 0) ? (nuint)(64 * 1024) : newSize * 2;
 
             Console.WriteLine($"[HUD] Resizing VBO from {_vboAllocatedSize} to {newSize} bytes");
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
@@ -689,19 +773,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _vboAllocatedSize = newSize;
         }
 
-        /// <summary>Access registered buttons for custom rendering or keyboard navigation.</summary>
         public IReadOnlyList<ButtonDef> Buttons => _buttons;
-
-        /// <summary>Number of registered buttons.</summary>
         public int ButtonCount => _buttons.Count;
-
-        /// <summary>Get the bounding rect of a registered button (for keyboard nav indicators).</summary>
         public ButtonDef GetButton(int index) => index >= 0 && index < _buttons.Count ? _buttons[index] : default;
 
-        /// <summary>Clean up GPU resources (call on scene exit).</summary>
+        /// <summary>Delete all font slot GPU textures and clear the cache. Keeps scratch textures intact.</summary>
+        public void ClearFontSlots()
+        {
+            foreach (var slot in _fontSlots)
+            {
+                uint tex = slot.TextureID;
+                if (tex != 0)
+                    GL.DeleteTextures(1, &tex);
+            }
+            _fontSlots.Clear();
+            _fontSlotLookup.Clear();
+        }
+
+        /// <summary>Clean up GPU resources: all font slot textures + scratch textures.</summary>
         public void Cleanup()
         {
             ClearScratchTextureCache();
+            ClearFontSlots();
         }
     }
 }
