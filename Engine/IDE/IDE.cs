@@ -120,7 +120,7 @@ public class IDE : IDisposable
             }
 
             // ── Input lock toggle button (right side of menu bar) ──
-            ImGui.SameLine(ImGui.GetWindowWidth() - 150f);
+            ImGui.SameLine(ImGui.GetWindowWidth() - 200f);
             bool isInGameActive = Bridge.InGameActive;
             Vector4 btnColor = isInGameActive
                 ? new Vector4(0.20f, 0.65f, 0.25f, 1f) // red = active

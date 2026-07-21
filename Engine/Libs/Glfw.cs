@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Scene;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -12,6 +13,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate nint glfwCreateWindowDelegate(int width, int height, string title, nint monitor, nint share);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] 
+        private delegate nint glfwMaximizeWindowDelegate(IntPtr window, int maximized);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void glClearColorDelegate(float r, float g, float b, float a);
@@ -81,6 +85,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             // Ambil alamat fungsi (Get Function Pointers)
             var glfwInit = Marshal.GetDelegateForFunctionPointer<glfwInitDelegate>(NativeLibrary.GetExport(glfwLib, "glfwInit"));
             var glfwCreateWindow = Marshal.GetDelegateForFunctionPointer<glfwCreateWindowDelegate>(NativeLibrary.GetExport(glfwLib, "glfwCreateWindow"));
+            var glfwMaximizeWindow = Marshal.GetDelegateForFunctionPointer<glfwMaximizeWindowDelegate>(NativeLibrary.GetExport(glfwLib, "glfwMaximizeWindow"));
             var glfwMakeContextCurrent = (delegate* unmanaged[Cdecl]<IntPtr, void>)NativeLibrary.GetExport(glfwLib, "glfwMakeContextCurrent");
 
             glfwSetWindowSizeCallback = (delegate* unmanaged[Cdecl]<IntPtr, delegate* unmanaged[Cdecl]<IntPtr, int, int, void>, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowSizeCallback");
@@ -103,6 +108,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             // Init window
             if (glfwInit() == 0) return;
 
+            glfwWindowHint(Const.GLFW_MAXIMIZED, Const.GLFW_TRUE);
             // ── Borderless fullscreen windowed: size to monitor work area, no decorations ──
             if (borderless && !fullscreen)
             {
