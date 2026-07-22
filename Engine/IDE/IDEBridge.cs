@@ -135,28 +135,28 @@ public class IDEBridge
 
     // ── Available Behaviors (for Inspector panel combo box) ──
 
-    /// <summary>A behavior option with a UI label and a saved value string.</summary>
-    public record BehaviorOption(string Label, string Value);
-
-    /// <summary>All available behaviors a user can assign to a UI button via the Inspector.
-    /// The Value is saved to .ing files and mapped to Action delegates at runtime by the scene.
-    /// The Label is only for display in the combo box.</summary>
-    public static readonly BehaviorOption[] AvailableBehaviors =
+    /// <summary>Action type options for UI element behavior.</summary>
+    public static readonly string[] BehaviorActionTypes =
     [
-        new("(none)",                        ""),
-        new("New Game → Loading → Game",     "startgame"),
-        new("Continue (latest save)",         "continue"),
-        new("Open Load Game overlay",         "loadgame"),
-        new("Open Settings panel",            "opensettings"),
-        new("Show Exit Confirmation",         "showexitconfirm"),
-        new("Confirm Exit (quit app)",        "confirmexit"),
-        new("Cancel / Close dialog",          "cancel"),
-        new("Apply & Save Settings",          "applysettings"),
-        new("Cancel Settings",                "cancelsettings"),
-        new("Discard Changes",                "discardchanges"),
-        new("Keep Editing",                   "keepediting"),
-        new("Fit to Window (auto-resize)",     "fittowindow"),
+        "(none)",
+        "overlay",              // Toggle overlay visibility
+        "close parent overlay", // Close the parent overlay/dialog
+        "scene",                // Go to scene
+        "exit",                 // Exit preview/game mode
     ];
+
+    /// <summary>Available overlay names for overlay action type.</summary>
+    public static readonly string[] AvailableOverlayNames =
+    [
+        "ExitConfirm",
+        "SettingsPanel",
+        "SaveLoadPanel",
+        "CustomDialog",
+    ];
+
+    /// <summary>Available scene names for scene action type.</summary>
+    public string[] AvailableSceneNames =>
+        _availableScenes.Select(s => s.Name).ToArray();
 
     /// <summary>Mark a scene as initialized (has been entered at least once).</summary>
     public void MarkSceneInitialized(string name)

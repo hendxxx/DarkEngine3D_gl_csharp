@@ -251,31 +251,49 @@ public unsafe class ViewportPanel
                 ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
                 4f, ImDrawFlags.None, 1.5f);
 
-            // Click: in preview mode, trigger OnClick behavior; in editor mode, select element
+// Click: in preview mode, trigger behavior; in editor mode, select element
             if (isHovered && leftClicked && _dragMode == DragMode.None)
             {
                 if (isPreview)
                 {
                     // Game-like interaction: trigger element's behavior
+                    // Try: OnClick delegate > BehaviorActionType > ClickBehaviorLabel (legacy fallback)
                     if (elem.OnClick != null)
                     {
                         try { elem.OnClick.Invoke(); }
                         catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
                     }
-                    else if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel))
+                    else if (!string.IsNullOrEmpty(elem.BehaviorActionType))
                     {
-                        // Fallback: no game scene running — handle common behaviors directly
                         HandlePreviewBehavior(elem);
                     }
-                }
-                else
-                {
-                    // Editor: select element in hierarchy
-                    _bridge.SelectedUIElements?.Clear();
-                    _bridge.SelectedUIElements?.Add(elem);
-                    _bridge.SelectedUIElement = elem;
-                }
-            }
+                    else if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel))
+                    {
+                        // Legacy fallback: map ClickBehaviorLabel to behavior action
+                        string legacy = elem.ClickBehaviorLabel.ToLowerInvariant();
+                        if (legacy == "cancel" || legacy == "closeoverlay")
+                        {
+                            HandleCloseOverlay(elem);
+                        }
+                        else if (legacy == "exit" || legacy == "exitgame")
+                        {
+                            if (_bridge.InGameActive && _bridge.SceneManager != null)
+                            {
+                                _bridge.InGameActive = false;
+                                if (_bridge.SceneRoot != null)
+                                    foreach (var c in _bridge.SceneRoot.Children) c.IsVisible = false;
+                            }
+                            else { _bridge.SceneManager?.Stop(); }
+                        }
+                        else if (legacy.StartsWith("overlay:"))
+                        {
+                            string target = legacy.Substring("overlay:".Length);
+                            FindAndToggleDialog(_bridge.SceneRoot?.Children ?? [], target, true);
+                        }
+                        else if (legacy == "playgame")
+                        {
+                            if (_bridge.SceneRoot != null)
+                                foreach (var c in _bridge.SceneRoot.Children) c
 
             // Recursively render children
             if (elem.Children.Count > 0)
