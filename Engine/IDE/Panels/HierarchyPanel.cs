@@ -74,12 +74,12 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "Dialog"];
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container"];
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
     {
-        public enum ActionType { Add, Delete, Rename, Move, Transform }
+        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange }
         public ActionType Type;
 
         // For Add / Delete / Move: the element involved
@@ -98,6 +98,11 @@ public class HierarchyPanel
         // For Transform (position/size change from Viewport drag)
         public float OldX, OldY, OldW, OldH;
         public float NewX, NewY, NewW, NewH;
+
+        // For ColorChange (color property change from Inspector)
+        public string ColorPropertyName;
+        public Vector3 OldColor;
+        public Vector3 NewColor;
     }
 
     public HierarchyPanel(IDEBridge bridge)
@@ -113,6 +118,19 @@ public class HierarchyPanel
                 Element = elem,
                 OldX = oldX, OldY = oldY, OldW = oldW, OldH = oldH,
                 NewX = newX, NewY = newY, NewW = newW, NewH = newH,
+            });
+        };
+
+        // Wire up the color undo delegate so InspectorPanel can record color undos
+        _bridge.RecordColorUndo = (elem, propName, oldColor, newColor) =>
+        {
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.ColorChange,
+                Element = elem,
+                ColorPropertyName = propName,
+                OldColor = oldColor,
+                NewColor = newColor,
             });
         };
     }
@@ -701,15 +719,15 @@ public class HierarchyPanel
             if (ImGui.BeginMenu("⚡ Assign Behavior"))
             {
                 var behaviors = IDEBridge.AvailableBehaviors;
-                string currentLabel = element.ClickBehaviorLabel;
+                var (currentType, _) = IDEBridge.ParseBehavior(element.ClickBehaviorLabel);
 
                 foreach (var bhv in behaviors)
                 {
-                    bool bhvSelected = string.Equals(bhv.Value, currentLabel, StringComparison.OrdinalIgnoreCase);
+                    bool bhvSelected = string.Equals(bhv.Value, currentType, StringComparison.OrdinalIgnoreCase);
                     if (ImGui.MenuItem(bhv.Label, null, bhvSelected))
                     {
-                        element.ClickBehaviorLabel = bhv.Value;
-                        element.OnClick = null; // Force re-map on next .ing reload
+                        element.ClickBehaviorLabel = bhv.Value; // Just set the type, no sub-params
+                        element.OnClick = null;
                         Console.WriteLine($"[SceneDetail] Set behavior '{bhv.Value}' on '{element.Name}'");
                     }
                 }
@@ -937,6 +955,20 @@ public class HierarchyPanel
         _bridge.SelectedUIElement = source;
     }
 
+    /// <summary>Set a color property on a UIElement by property name.</summary>
+    private static void SetColorProperty(UIElement elem, string propName, Vector3 color)
+    {
+        switch (propName)
+        {
+            case "TextColor": elem.TextColor = color; break;
+            case "BgColor": elem.BgColor = color; break;
+            case "BorderColor": elem.BorderColor = color; break;
+            case "HoverTextColor": elem.HoverTextColor = color; break;
+            case "HoverBgColor": elem.HoverBgColor = color; break;
+            case "HoverBorderColor": elem.HoverBorderColor = color; break;
+        }
+    }
+
     /// <summary>Check if <paramref name="element"/> is a descendant of <paramref name="potentialAncestor"/>.</summary>
     private static bool IsDescendantOf(UIElement element, UIElement potentialAncestor)
     {
@@ -980,7 +1012,6 @@ public class HierarchyPanel
             0 => UIElementType.Button,
             1 => UIElementType.Label,
             2 => UIElementType.Container,
-            3 => UIElementType.Dialog,
             _ => UIElementType.Button,
         };
 
@@ -995,6 +1026,25 @@ public class HierarchyPanel
             Height = 50,
             IsVisible = true,
         };
+
+        // ── Defaults per type ──
+        // Label: transparent background, no hover
+        // Container/Dialog: no hover
+        // Button: default (hover on)
+        if (elemType == UIElementType.Label)
+        {
+            newElem.UseHover = false;
+            newElem.BgColor = new Vector3(0f, 0f, 0f) * 0f; // fully transparent
+            newElem.BorderColor = new Vector3(0f, 0f, 0f) * 0f;
+            newElem.HoverBgColor = newElem.BgColor;
+            newElem.HoverBorderColor = newElem.BorderColor;
+            newElem.HoverTextColor = newElem.TextColor;
+        }
+        else if (elemType == UIElementType.Container || elemType == UIElementType.Dialog)
+        {
+            newElem.UseHover = false;
+            newElem.BorderColor = newElem.BgColor; // border matches background (invisible)
+        }
 
         UIElement? parent;
         int childIndex;
@@ -1261,6 +1311,16 @@ public class HierarchyPanel
                 }
                 break;
 
+            case UndoRedoAction.ActionType.ColorChange:
+                // Restore element's old color value
+                if (action.Element != null)
+                {
+                    SetColorProperty(action.Element, action.ColorPropertyName, action.OldColor);
+                    Console.WriteLine($"[SceneDetail] Undo Color: '{action.Element.Name}'.{action.ColorPropertyName} → restored");
+                    _bridge.SelectedUIElement = action.Element;
+                }
+                break;
+
             case UndoRedoAction.ActionType.Transform:
                 // Restore element's old position/size
                 if (action.Element != null)
@@ -1343,6 +1403,16 @@ public class HierarchyPanel
                     Console.WriteLine($"[SceneDetail] Redo Move: '{action.Element.Name}' → moved to '{action.NewParent.Name}'[{restoreIdx}]");
 
                     // Select the moved element
+                    _bridge.SelectedUIElement = action.Element;
+                }
+                break;
+
+            case UndoRedoAction.ActionType.ColorChange:
+                // Apply new color value
+                if (action.Element != null)
+                {
+                    SetColorProperty(action.Element, action.ColorPropertyName, action.NewColor);
+                    Console.WriteLine($"[SceneDetail] Redo Color: '{action.Element.Name}'.{action.ColorPropertyName} → restored");
                     _bridge.SelectedUIElement = action.Element;
                 }
                 break;

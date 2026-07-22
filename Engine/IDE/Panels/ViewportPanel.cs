@@ -40,29 +40,6 @@ public unsafe class ViewportPanel
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
 
-    // ── Diagnostic file logging (TEMPORARY for debugging) ──
-    private static StreamWriter? _debugWriter;
-    private static bool _debugWriterReady = false;
-
-    private static void WriteDebugLog(string message)
-    {
-        try
-        {
-            if (!_debugWriterReady)
-            {
-                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "viewport_debug.txt");
-                _debugWriter = new StreamWriter(path, append: false) { AutoFlush = true };
-                _debugWriter.WriteLine("— Viewport Debug Log —");
-                _debugWriterReady = true;
-            }
-            _debugWriter?.WriteLine($"{DateTime.Now:HH:mm:ss.fff} {message}");
-        }
-        catch
-        {
-            // Silently ignore file write failures in debug code
-        }
-    }
-
     /// <summary>Convert ImGui screen coordinates to scene pixel coordinates.</summary>
     private Vector2 ScreenToScene(Vector2 screenPos)
     {
@@ -92,6 +69,22 @@ public unsafe class ViewportPanel
             var elem = elements[ei];
             if (!elem.IsVisible) continue;
 
+            // Auto-fill window: force element to cover the entire viewport
+            if (elem.AutoFillWindow)
+            {
+                elem.X = 0;
+                elem.Y = 0;
+                elem.Width = _texW;
+                elem.Height = _texH;
+            }
+
+            // Auto-center: center the element in the viewport
+            if (elem.AutoCenter)
+            {
+                elem.X = (_texW - elem.Width) * 0.5f;
+                elem.Y = (_texH - elem.Height) * 0.5f;
+            }
+
             // Convert scene coords to screen coords (no Y-flip — scene Y=0 is top)
             float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
             float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
@@ -112,14 +105,29 @@ public unsafe class ViewportPanel
             bool isHovered = mouseScreen.X >= csx0 && mouseScreen.X <= csx1 &&
                              mouseScreen.Y >= csy0 && mouseScreen.Y <= csy1;
 
-            // Pick colors: hover or normal
-            var bgColor = isHovered ? elem.HoverBgColor : elem.BgColor;
-            var borderColor = isHovered ? elem.HoverBorderColor : elem.BorderColor;
+            // Check if this element is blocked by an open overlay above it
+            bool blockedByOverlay = isPreview && IsBlockedByOverlay(elem);
 
-            // ── Draw background (filled rect) — always drawn first as backdrop ──
-            drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, 0.85f)),
-                4f);
+            // Pick colors: hover or normal
+            // UseHover controls whether hover colors are applied (per-element toggle).
+            // Elements behind an active overlay never show hover.
+            bool useHover = isHovered && elem.UseHover && !blockedByOverlay;
+            var bgColor = useHover ? elem.HoverBgColor : elem.BgColor;
+            var borderColor = useHover ? elem.HoverBorderColor : elem.BorderColor;
+
+            // ── Label default: skip background if BgColor is still default (0,0,0) ──
+            // This makes new Labels transparent by default, but still allows users to
+            // customize BgColor/BorderColor for visible backgrounds.
+            bool isLabel = elem.Type == UIElementType.Label;
+            bool labelDefaultBg = isLabel && bgColor.X < 0.001f && bgColor.Y < 0.001f && bgColor.Z < 0.001f;
+
+            // ── Draw background (filled rect) — skip for Labels with default transparent colors ──
+            if (!labelDefaultBg)
+            {
+                drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, 0.85f)),
+                    4f);
+            }
 
             // ── Draw image element on top of background ──
             bool hasImage = !string.IsNullOrEmpty(elem.ImagePath);
@@ -213,7 +221,7 @@ public unsafe class ViewportPanel
             {
                 string label = elem.Text;
                 float previewFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
-                var textColor = isHovered ? elem.HoverTextColor : elem.TextColor;
+                var textColor = useHover ? elem.HoverTextColor : elem.TextColor;
 
                 float baseFontSize = 13f;
                 float fontSizeScale = previewFontSize / baseFontSize;
@@ -246,58 +254,61 @@ public unsafe class ViewportPanel
                     label);
             }
 
-            // Draw border
-            drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
-                4f, ImDrawFlags.None, 1.5f);
+            // ── Draw border — skip for Labels with default transparent border colors ──
+            bool labelDefaultBorder = isLabel && borderColor.X < 0.001f && borderColor.Y < 0.001f && borderColor.Z < 0.001f;
+            if (!labelDefaultBorder)
+            {
+                drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
+                    4f, ImDrawFlags.None, 1.5f);
+            }
 
-// Click: in preview mode, trigger behavior; in editor mode, select element
-            if (isHovered && leftClicked && _dragMode == DragMode.None)
+            // ── Click handling ──
+            // Preview mode: trigger behavior; Editor mode: select element
+            // blockedByOverlay already computed above — blocks clicks on elements behind an overlay
+            if (isHovered && leftClicked && _dragMode == DragMode.None && !blockedByOverlay)
             {
                 if (isPreview)
                 {
                     // Game-like interaction: trigger element's behavior
-                    // Try: OnClick delegate > BehaviorActionType > ClickBehaviorLabel (legacy fallback)
                     if (elem.OnClick != null)
                     {
                         try { elem.OnClick.Invoke(); }
                         catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
                     }
-                    else if (!string.IsNullOrEmpty(elem.BehaviorActionType))
-                    {
-                        HandlePreviewBehavior(elem);
-                    }
                     else if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel))
                     {
-                        // Legacy fallback: map ClickBehaviorLabel to behavior action
-                        string legacy = elem.ClickBehaviorLabel.ToLowerInvariant();
-                        if (legacy == "cancel" || legacy == "closeoverlay")
+                        string behavior = elem.ClickBehaviorLabel.ToLowerInvariant();
+                        if (behavior == "closeoverlay" || behavior == "cancel")
                         {
                             HandleCloseOverlay(elem);
                         }
-                        else if (legacy == "exit" || legacy == "exitgame")
+                        else
                         {
-                            if (_bridge.InGameActive && _bridge.SceneManager != null)
-                            {
-                                _bridge.InGameActive = false;
-                                if (_bridge.SceneRoot != null)
-                                    foreach (var c in _bridge.SceneRoot.Children) c.IsVisible = false;
-                            }
-                            else { _bridge.SceneManager?.Stop(); }
+                            HandlePreviewBehavior(elem);
                         }
-                        else if (legacy.StartsWith("overlay:"))
-                        {
-                            string target = legacy.Substring("overlay:".Length);
-                            FindAndToggleDialog(_bridge.SceneRoot?.Children ?? [], target, true);
-                        }
-                        else if (legacy == "playgame")
-                        {
-                            if (_bridge.SceneRoot != null)
-                                foreach (var c in _bridge.SceneRoot.Children) c
+                    }
+                }
+                else
+                {
+                    // Editor mode: select element for inspection
+                    _bridge.SelectedUIElement = elem;
+                    _bridge.SelectedUIElements.Clear();
+                    _bridge.SelectedUIElements.Add(elem);
+                    Console.WriteLine($"[Viewport] Selected '{elem.Name}' in editor");
+                }
+            }
 
-            // Recursively render children
+            // ── Dim hover effect when blocked by overlay ──
+            if (isHovered && blockedByOverlay)
+            {
+                drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.3f, 0.35f, 0.20f)));
+            }
+
+            // ── Always recurse for children (so they render regardless of click state) ──
             if (elem.Children.Count > 0)
-                DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked);
+                DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview);
         }
     }
 
@@ -366,137 +377,177 @@ public unsafe class ViewportPanel
         return (0, 0);
     }
 
-    /// <summary>Handle a UI element click in preview mode when OnClick is null.
-    /// Supports 3 universal behavior formats:
-    /// 1. "overlay:DialogName" → toggle overlay visibility (open/close)
-    /// 2. "scene:SceneName" → switch to named scene
-    /// 3. "exit" → in preview: back to edit mode; in game: close app</summary>
+    /// <summary>Handle a UI element click in preview mode.
+    /// Parses ClickBehaviorLabel and executes the corresponding action.
+    /// Supported formats:
+    /// - "overlay:DialogName" → toggle overlay visibility
+    /// - "closeoverlay" → close parent overlay/dialog
+    /// - "scene:SceneName" → switch to named scene
+    /// - "exit" → preview→edit mode or close app
+    /// Legacy formats (cancel, confirmexit, showexitconfirm, etc.) are also supported.</summary>
     private void HandlePreviewBehavior(UIElement elem)
     {
         if (string.IsNullOrEmpty(elem.ClickBehaviorLabel))
             return;
 
-        var lower = elem.ClickBehaviorLabel.ToLowerInvariant();
+        var (type, param) = IDEBridge.ParseBehavior(elem.ClickBehaviorLabel);
 
-        // ── 1. Overlay toggle: "overlay:DialogName" ──
-        if (lower.StartsWith("overlay:"))
+        switch (type)
         {
-            string overlayName = lower["overlay:".Length..];
-            if (string.IsNullOrEmpty(overlayName))
-                return;
+            case "overlay":
+                HandleOverlayToggle(param);
+                break;
 
-            if (_bridge.SceneRoot != null)
-            {
-                // Determine current visibility
-                bool isCurrentlyVisible = false;
-                foreach (var child in _bridge.SceneRoot.Children)
+            case "closeoverlay":
+            case "cancel":
+                HandleCloseOverlay(elem);
+                break;
+
+            case "scene":
+                if (!string.IsNullOrEmpty(param) && _bridge.EditorScenes.TryGetValue(param, out var targetScene))
                 {
-                    if (child.Name == overlayName)
+                    Console.WriteLine($"[Viewport] scene:{param} → switching to editor scene");
+                    // Switch the editor scene root to the target scene
+                    _bridge.SelectedEditorScene = param;
+                    _bridge.SceneRoot = targetScene.Root;
+                    _bridge.SceneRootElements = new List<UIElement> { targetScene.Root }.AsReadOnly();
+                    // Reset overlay visibility for the new scene
+                    ResetSceneOverlays();
+                }
+                else if (!string.IsNullOrEmpty(param))
+                {
+                    Console.WriteLine($"[Viewport] scene:{param} → scene not found in editor scenes");
+                }
+                break;
+
+            case "exit":
+            case "exitgame":
+            case "confirmexit":
+            case "yes":
+                HandleExit();
+                break;
+
+            case "showexitconfirm":
+                HandleOverlayToggle("ExitConfirm");
+                break;
+
+            case "canceleexit":
+            case "cancelsettings":
+            case "discardchanges":
+            case "keepediting":
+                // Legacy: close all dialogs/containers
+                if (_bridge.SceneRoot != null)
+                {
+                    foreach (var child in _bridge.SceneRoot.Children)
                     {
-                        isCurrentlyVisible = child.IsVisible;
-                        break;
+                        if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+                            child.IsVisible = false;
                     }
                 }
+                break;
 
-                // For "cancel" inside dialog: always close regardless of label
-                // For normal overlay toggle: invert
-                bool newVisible = (lower == "cancel" || lower == "canceleexit") ? false : !isCurrentlyVisible;
+            default:
+                Console.WriteLine($"[Viewport] Unknown behavior: '{type}' (raw: '{elem.ClickBehaviorLabel}')");
+                break;
+        }
+    }
 
-                bool found = FindAndToggleDialog(_bridge.SceneRoot.Children, overlayName, newVisible);
-                if (!found && newVisible && overlayName == "ExitConfirm")
-                {
-                    CreateDefaultExitConfirmDialog();
-                    FindAndToggleDialog(_bridge.SceneRoot.Children, overlayName, true);
-                    Console.WriteLine($"[Viewport] overlay:{overlayName} → auto-created and shown");
-                }
-                else
-                {
-                    Console.WriteLine($"[Viewport] overlay:{overlayName} → IsVisible={newVisible} (found={found})");
-                }
-            }
+    /// <summary>Toggle an overlay's visibility. Finds the overlay by name and toggles it.
+    /// If the overlay doesn't exist and it's "ExitConfirm", auto-creates it.</summary>
+    private void HandleOverlayToggle(string overlayName)
+    {
+        if (string.IsNullOrEmpty(overlayName) || _bridge.SceneRoot == null)
             return;
+
+        // Determine current visibility
+        bool isCurrentlyVisible = false;
+        foreach (var child in _bridge.SceneRoot.Children)
+        {
+            if (child.Name == overlayName)
+            {
+                isCurrentlyVisible = child.IsVisible;
+                break;
+            }
         }
 
-        // ── 2. Goto scene: "scene:SceneName" ──
-        if (lower.StartsWith("scene:"))
+        // Toggle: close if open, open if closed
+        bool newVisible = !isCurrentlyVisible;
+
+        bool found = FindAndToggleDialog(_bridge.SceneRoot.Children, overlayName, newVisible);
+        if (!found && newVisible && overlayName == "ExitConfirm")
         {
-            string sceneName = lower["scene:".Length..];
-            Console.WriteLine($"[Viewport] scene:{sceneName} → switching scene");
+            CreateDefaultExitConfirmDialog();
+            FindAndToggleDialog(_bridge.SceneRoot.Children, overlayName, true);
+            Console.WriteLine($"[Viewport] overlay:{overlayName} → auto-created and shown");
+        }
+        else
+        {
+            Console.WriteLine($"[Viewport] overlay:{overlayName} → IsVisible={newVisible} (found={found})");
+        }
+    }
+
+    /// <summary>Exit action:
+    /// - Viewport preview mode → back to editor
+    /// - In-game mode → back to editor
+    /// - Otherwise → close the app</summary>
+    private void HandleExit()
+    {
+        if (_previewMode)
+        {
+            // Exit viewport preview mode → back to editor, reset overlay visibility
+            Console.WriteLine("[Viewport] exit → exiting preview mode, resetting overlays");
+            _previewMode = false;
+            ResetSceneOverlays();
+        }
+        else if (_bridge.InGameActive && _bridge.SceneManager != null)
+        {
+            // Exit in-game mode (F9 active)
+            Console.WriteLine("[Viewport] exit → back to edit mode");
+            _bridge.InGameActive = false;
             if (_bridge.SceneRoot != null)
             {
                 foreach (var child in _bridge.SceneRoot.Children)
                     child.IsVisible = false;
             }
-            _bridge.InGameActive = true;
-            return;
         }
-
-        // ── 3. Exit: "exit" ──
-        if (lower == "exit")
+        else
         {
-            if (_bridge.InGameActive && _bridge.SceneManager != null)
-            {
-                Console.WriteLine("[Viewport] exit → back to edit mode");
-                _bridge.InGameActive = false;
-                if (_bridge.SceneRoot != null)
-                {
-                    foreach (var child in _bridge.SceneRoot.Children)
-                        child.IsVisible = false;
-                }
-            }
-            else
-            {
-                Console.WriteLine("[Viewport] exit → stopping app");
-                _bridge.SceneManager?.Stop();
-            }
-            return;
+            // Close the app
+            Console.WriteLine("[Viewport] exit → stopping app");
+            _bridge.SceneManager?.Stop();
         }
+    }
 
-        // ── Legacy compatibility: map old behavior names ──
-        // These are still used by existing .ing files
-        if (lower == "showexitconfirm" || lower == "confirmexit" || lower == "yes")
+    /// <summary>Close the parent overlay/dialog of the clicked element.
+    /// Walks up the parent chain to find the nearest Dialog or Container and hides it.
+    /// If no parent dialog found, closes all dialogs/containers in the scene root.</summary>
+    private void HandleCloseOverlay(UIElement elem)
+    {
+        // Find the parent dialog/container and close it
+        var parent = elem.Parent;
+        while (parent != null)
         {
-            if (lower == "confirmexit" || lower == "yes")
+            if (parent.Type == UIElementType.Dialog || parent.Type == UIElementType.Container)
             {
-                // Exit action
-                if (_bridge.InGameActive && _bridge.SceneManager != null)
-                {
-                    Console.WriteLine("[Viewport] confirmexit → back to edit mode");
-                    _bridge.InGameActive = false;
-                    if (_bridge.SceneRoot != null)
-                    {
-                        foreach (var child in _bridge.SceneRoot.Children)
-                            child.IsVisible = false;
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("[Viewport] confirmexit → stopping app");
-                    _bridge.SceneManager?.Stop();
-                }
+                parent.IsVisible = false;
+                foreach (var child in parent.Children)
+                    child.IsVisible = false;
+                Console.WriteLine($"[Viewport] closeoverlay → closed '{parent.Name}'");
+                return;
             }
-            else // showexitconfirm
-            {
-                FindAndToggleDialog(_bridge.SceneRoot?.Children ?? [], "ExitConfirm", true);
-            }
-            return;
+            parent = parent.Parent;
         }
 
-        // Legacy cancel/close
-        if (lower == "cancel" || lower == "canceleexit" || lower == "cancelsettings" || lower == "discardchanges" || lower == "keepediting")
+        // If no parent dialog found, close all dialogs/containers in scene root
+        if (_bridge.SceneRoot != null)
         {
-            if (_bridge.SceneRoot != null)
+            foreach (var child in _bridge.SceneRoot.Children)
             {
-                foreach (var child in _bridge.SceneRoot.Children)
-                {
-                    if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
-                        child.IsVisible = false;
-                }
+                if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+                    child.IsVisible = false;
             }
-            return;
+            Console.WriteLine("[Viewport] closeoverlay → closed all dialogs (no parent found)");
         }
-
-        Console.WriteLine($"[Viewport] Unknown behavior: '{lower}'");
     }
 
     /// <summary>Create the default ExitConfirm dialog elements inside SceneRoot for preview mode.
@@ -629,6 +680,67 @@ public unsafe class ViewportPanel
         Console.WriteLine("[Viewport] Created default ExitConfirm dialog for preview mode.");
     }
 
+    /// <summary>Check if an element is blocked by an open overlay (Dialog/Container) above it.
+    /// Elements outside the overlay are blocked; elements inside (or the overlay itself) are not.</summary>
+    private bool IsBlockedByOverlay(UIElement elem)
+    {
+        if (_bridge.SceneRoot == null) return false;
+
+        // Find the first visible overlay (Dialog/Container) at root level
+        UIElement? activeOverlay = null;
+        foreach (var child in _bridge.SceneRoot.Children)
+        {
+            if (child.IsVisible && (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container))
+            {
+                activeOverlay = child;
+                break;
+            }
+        }
+
+        if (activeOverlay == null) return false; // no overlay open
+        if (elem == activeOverlay) return false;  // the overlay itself is clickable
+
+        // Check if elem is a descendant of the active overlay
+        var parent = elem.Parent;
+        while (parent != null)
+        {
+            if (parent == activeOverlay) return false; // descendant → not blocked
+            parent = parent.Parent;
+        }
+
+        // Element is outside the overlay → blocked
+        return true;
+    }
+
+    /// <summary>Reset overlay visibility and activate first-level children.
+    /// Overlays (Dialog/Container) → hidden; other first-level children → visible.</summary>
+    private void ResetSceneOverlays()
+    {
+        if (_bridge.SceneRoot == null) return;
+        foreach (var child in _bridge.SceneRoot.Children)
+        {
+            if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+            {
+                child.IsVisible = false;
+                foreach (var sub in child.Children)
+                    sub.IsVisible = false;
+            }
+            else if (child.Type != UIElementType.Scene)
+            {
+                child.IsVisible = true;
+            }
+        }
+    }
+
+    /// <summary>Check if the currently selected editor scene is of the given type.</summary>
+    private bool IsEditorSceneType(IDEBridge.SceneType type)
+    {
+        if (_bridge.SelectedEditorScene == null) return false;
+        if (_bridge.EditorScenes.TryGetValue(_bridge.SelectedEditorScene, out var editorScene))
+            return editorScene.Type == type;
+        return false;
+    }
+
     /// <summary>Recursively find a dialog element by name and set its visibility.
     /// Also syncs ALL children visibility to match the dialog.</summary>
     private static bool FindAndToggleDialog(List<UIElement> elements, string name, bool visible)
@@ -679,7 +791,11 @@ public unsafe class ViewportPanel
                 ? new Vector4(0.15f, 0.55f, 0.25f, 1f)    // green = preview ON
                 : new Vector4(0.35f, 0.35f, 0.35f, 1f)); // grey = editor
             if (ImGui.Button(previewNow ? "▶ Preview" : "◼ Edit"))
+            {
+                if (!previewNow)
+                    ResetSceneOverlays(); // entering preview: reset overlays like scene switch
                 _previewMode = !_previewMode;
+            }
             ImGui.PopStyleColor(1);
             if (ImGui.IsItemHovered())
             {
@@ -855,28 +971,22 @@ public unsafe class ViewportPanel
                 if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
                 {
                     _previewMode = false;
+                    ResetSceneOverlays();
                     Console.WriteLine("[Viewport] Exited preview mode via badge click");
                 }
             } // end if (_previewMode) badge block
 
             // ── UI Element Wireframe & Interactive Editing ──
             // In Preview mode, skip ALL editor overlays (wireframe, handles, info labels, drag)
+            // For Loading and GameScene editor types, skip helpers (only MainMenu needs UI layout editing)
             if (!_previewMode)
+            {
+            bool showHelpers = IsEditorSceneType(IDEBridge.SceneType.MainMenu);
+
+            if (showHelpers)
             {
             var selUiElem = _bridge.SelectedUIElement;
             var allSelected = _bridge.SelectedUIElements;
-
-            // ── DIAGNOSTIC: log element state every ~10 frames (even when not dragging) ──
-            if (selUiElem != null && (ImGui.GetFrameCount() % 10 == 0))
-            {
-                int sceneHash = _bridge.SceneRoot?.GetHashCode() ?? 0;
-                int editorSceneCount = _bridge.EditorScenes?.Count ?? 0;
-                string editorSceneName = _bridge.SelectedEditorScene ?? "(null)";
-                int elemHash = selUiElem.GetHashCode();
-                string curScene = _bridge.SceneManager?.CurrentScene?.Name ?? "(null)";
-                string sceneRootName = _bridge.SceneRoot?.Name ?? "(null)";
-                WriteDebugLog($"ELEM_STATE: elem=#{elemHash:X8}[id={selUiElem.InstanceId}] pos=({selUiElem.X:F0},{selUiElem.Y:F0}) size=({selUiElem.Width:F0}×{selUiElem.Height:F0}) root=#{sceneHash:X8}('{sceneRootName}') editor='{editorSceneName}'({editorSceneCount}) curScene='{curScene}'");
-            }
 
             if (selUiElem != null)
             {
@@ -984,11 +1094,13 @@ public unsafe class ViewportPanel
                     } // end if (isPrimary)
                 } // end DrawElemWireframe
 
-                // ── Call DrawElemWireframe for the selected element ──
-                DrawElemWireframe(selUiElem, true);
+                // ── Scene-type elements: NO wireframe (just skip the wireframe draw) ──
+                bool isSceneElem = selUiElem.Type == UIElementType.Scene;
+
+                if (!isSceneElem)
+                    DrawElemWireframe(selUiElem, true);
 
                 // ── Scene-type elements: NO resize/move handlers ──
-                bool isSceneElem = selUiElem.Type == UIElementType.Scene;
                 bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
 
                 if (isFitToWindowElem)
@@ -1098,23 +1210,21 @@ public unsafe class ViewportPanel
                         {
                             _dragMode = DragMode.Move;
                             dragStarted = true;
-                            WriteDebugLog($"DRAG START Move (handle) on '{selUiElem.Name}' at ({selUiElem.X:F1},{selUiElem.Y:F1})");
                         }
                         else
                         {
                             bool anyCorner = primaryFullyVisible && (overTL || overTR || overBL || overBR);
                             if (anyCorner)
                             {
-                                if (overTL) { _dragMode = DragMode.ResizeTL; dragStarted = true; WriteDebugLog($"DRAG START ResizeTL on '{selUiElem.Name}'"); }
-                                else if (overTR) { _dragMode = DragMode.ResizeTR; dragStarted = true; WriteDebugLog($"DRAG START ResizeTR on '{selUiElem.Name}'"); }
-                                else if (overBL) { _dragMode = DragMode.ResizeBL; dragStarted = true; WriteDebugLog($"DRAG START ResizeBL on '{selUiElem.Name}'"); }
-                                else { _dragMode = DragMode.ResizeBR; dragStarted = true; WriteDebugLog($"DRAG START ResizeBR on '{selUiElem.Name}'"); }
+                                if (overTL) { _dragMode = DragMode.ResizeTL; dragStarted = true; }
+                                else if (overTR) { _dragMode = DragMode.ResizeTR; dragStarted = true; }
+                                else if (overBL) { _dragMode = DragMode.ResizeBL; dragStarted = true; }
+                                else { _dragMode = DragMode.ResizeBR; dragStarted = true; }
                             }
                             else if (overBody)
                             {
                                 _dragMode = DragMode.Move;
                                 dragStarted = true;
-                                WriteDebugLog($"DRAG START Move (body) on '{selUiElem.Name}' at ({selUiElem.X:F1},{selUiElem.Y:F1})");
                             }
                         }
 
@@ -1123,14 +1233,9 @@ public unsafe class ViewportPanel
                             _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
                             _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
-                            WriteDebugLog($"Drag start state: pos=({_dragStartX:F1},{_dragStartY:F1}) size=({_dragStartW:F1}×{_dragStartH:F1}) mouseScene=({_dragStartMouseScene.X:F1},{_dragStartMouseScene.Y:F1})");
                         }
                     }
                 }
-
-                // ── DIAGNOSTIC: log mouse state every frame during drag (to file) ──
-                if (_dragMode != DragMode.None)
-                    WriteDebugLog($"DRAG_FRAME: mode={_dragMode} clicked={cachedLeftClicked} down={cachedLeftDown} released={cachedLeftReleased} mouse=({viewportMouseScreen.X:F0},{viewportMouseScreen.Y:F0})");
 
                 // Apply drag movement/resize while mouse is held
                 if (_dragMode != DragMode.None && !cachedLeftReleased)
@@ -1180,17 +1285,16 @@ public unsafe class ViewportPanel
 
                     selUiElem.X = newX; selUiElem.Y = newY;
                     selUiElem.Width = newW; selUiElem.Height = newH;
-                    WriteDebugLog($"DRAG_APPLY: mode={_dragMode} dx={dx:F1} dy={dy:F1} → pos=({newX:F1},{newY:F1}) size=({newW:F1}×{newH:F1})");
                 }
 
                 // ── Post-apply safety: reset if mouse is neither down nor being released ──
                 if (_dragMode != DragMode.None && !cachedLeftDown && !cachedLeftReleased)
                 {
                     _dragMode = DragMode.None;
-                    WriteDebugLog("Drag mode reset (post-apply)");
                 }
                 } // end if (!isSceneElem)
                 } // end if (selUiElem != null)
+                } // end if (showHelpers)
             } // end if (!_previewMode)
 
             // ── Safety reset: handle interrupted drag even when selUiElem became null ──

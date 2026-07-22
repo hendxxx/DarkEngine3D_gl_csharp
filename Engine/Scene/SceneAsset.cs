@@ -37,6 +37,9 @@ public class SceneElementData
 
     public string Alignment { get; set; } = "Center";
     public bool IsVisible { get; set; } = true;
+    public bool AutoFillWindow { get; set; } = false;
+    public bool AutoCenter { get; set; } = false;
+    public bool UseHover { get; set; } = true;
 
     // Behavior string — mapped to actual Action<> at runtime
     public string ClickBehavior { get; set; } = "";

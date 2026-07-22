@@ -86,6 +86,15 @@ public class UIElement
     // ── Visibility ──
     public bool IsVisible { get; set; } = true;
 
+    // ── Auto-fill window (for overlay/background elements) ──
+    public bool AutoFillWindow { get; set; } = false;
+    /// <summary>Auto-center this element in the viewport (for overlays/dialogs).</summary>
+    public bool AutoCenter { get; set; } = false;
+    /// <summary>Whether hover colors are applied on mouse hover.
+    /// When false, element always uses normal colors (no hover effect).
+    /// Default per type: true for Button, false for Label/Container/Dialog.</summary>
+    public bool UseHover { get; set; } = true;
+
     // ── Runtime state ──
     public bool IsHovered { get; set; }
 

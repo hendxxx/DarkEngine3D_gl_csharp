@@ -81,6 +81,9 @@ public class IDEBridge
     // Called by ViewportPanel when a drag operation ends to record undo for position/size change.
     // Parameters: (element, oldX, oldY, oldW, oldH, newX, newY, newW, newH)
     public Action<UIElement, float, float, float, float, float, float, float, float>? RecordTransformUndo { get; set; }
+    /// <summary>Called by InspectorPanel when a color property changes.
+    /// Parameters: (element, propertyName, oldColor, newColor)</summary>
+    public Action<UIElement, string, Vector3, Vector3>? RecordColorUndo { get; set; }
 
     // ── Save integration (HierarchyPanel → SceneManagerPanel) ──
     /// <summary>Called by HierarchyPanel to save ALL editor scenes (triggers SceneManager's Save All).</summary>
@@ -133,16 +136,32 @@ public class IDEBridge
         return null;
     }
 
+    /// <summary>Get overlay (Dialog/Container) names from the current scene root.</summary>
+    public static string[] GetOverlayNamesFromScene(UIElement? sceneRoot)
+    {
+        if (sceneRoot == null) return [];
+        var names = new List<string>();
+        foreach (var child in sceneRoot.Children)
+        {
+            if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+                names.Add(child.Name);
+        }
+        return [.. names];
+    }
+
     // ── Available Behaviors (for Inspector panel combo box) ──
 
-    /// <summary>Action type options for UI element behavior.</summary>
-    public static readonly string[] BehaviorActionTypes =
+    /// <summary>A behavior option with display label and stored value.</summary>
+    public record BehaviorOption(string Label, string Value);
+
+    /// <summary>Available behavior types for UI elements.</summary>
+    public static readonly BehaviorOption[] AvailableBehaviors =
     [
-        "(none)",
-        "overlay",              // Toggle overlay visibility
-        "close parent overlay", // Close the parent overlay/dialog
-        "scene",                // Go to scene
-        "exit",                 // Exit preview/game mode
+        new BehaviorOption("(none)", ""),
+        new BehaviorOption("Open / Close Overlay", "overlay"),
+        new BehaviorOption("Close Current Overlay", "closeoverlay"),
+        new BehaviorOption("Go to Scene", "scene"),
+        new BehaviorOption("Exit", "exit"),
     ];
 
     /// <summary>Available overlay names for overlay action type.</summary>
@@ -157,6 +176,34 @@ public class IDEBridge
     /// <summary>Available scene names for scene action type.</summary>
     public string[] AvailableSceneNames =>
         _availableScenes.Select(s => s.Name).ToArray();
+
+    /// <summary>Parse a ClickBehaviorLabel into (typeValue, param).
+    /// e.g. "overlay:ExitConfirm" → ("overlay", "ExitConfirm")
+    ///      "scene:MainMenu" → ("scene", "MainMenu")
+    ///      "exit" → ("exit", "")
+    ///      "" → ("", "")</summary>
+    public static (string type, string param) ParseBehavior(string clickBehaviorLabel)
+    {
+        if (string.IsNullOrEmpty(clickBehaviorLabel))
+            return ("", "");
+
+        int colon = clickBehaviorLabel.IndexOf(':');
+        if (colon >= 0)
+        {
+            string type = clickBehaviorLabel[..colon];
+            string param = clickBehaviorLabel[(colon + 1)..];
+            return (type.ToLowerInvariant(), param);
+        }
+        return (clickBehaviorLabel.ToLowerInvariant(), "");
+    }
+
+    /// <summary>Build a ClickBehaviorLabel from type and param.</summary>
+    public static string BuildBehavior(string type, string param)
+    {
+        if (string.IsNullOrEmpty(type))
+            return "";
+        return string.IsNullOrEmpty(param) ? type : $"{type}:{param}";
+    }
 
     /// <summary>Mark a scene as initialized (has been entered at least once).</summary>
     public void MarkSceneInitialized(string name)

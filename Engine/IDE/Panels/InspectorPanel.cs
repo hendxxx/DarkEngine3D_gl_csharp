@@ -24,7 +24,7 @@ public class InspectorPanel
 
     // ── Element type labels (mirrors UIElementType order) ──
     private static readonly string[] ElementTypeNames =
-        ["Scene", "Container", "Button", "Label", "Dialog"];
+        ["Scene", "Container", "Button", "Label"];
 
     public InspectorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -269,70 +269,155 @@ public class InspectorPanel
             // ── Normal state ──
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Normal");
             ImGui.Indent();
-            var cNormal = elem.TextColor;
-            if (ImGui.ColorEdit3("TextNormal", ref cNormal, ImGuiColorEditFlags.NoInputs))
-                elem.TextColor = cNormal;
 
-            cNormal = elem.BgColor;
-            if (ImGui.ColorEdit3("BackgroundNormal", ref cNormal, ImGuiColorEditFlags.NoInputs))
-                elem.BgColor = cNormal;
+            DrawColorPicker("Text", "N", elem.TextColor, c => RecordColorUndo(elem, "TextColor", elem.TextColor, c),
+                defaultColor: new(0.95f, 0.95f, 1f));
+            DrawColorPicker("Background", "N", elem.BgColor, c => RecordColorUndo(elem, "BgColor", elem.BgColor, c),
+                defaultColor: new(0.10f, 0.12f, 0.18f));
+            // Border default: buttons use (0.15,0.18,0.25), overlays/labels match BgColor
+            Vector3 borderDefN = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Dialog || elem.Type == UIElementType.Label)
+                ? elem.BgColor : new Vector3(0.15f, 0.18f, 0.25f);
+            DrawColorPicker("Border", "N", elem.BorderColor, c => RecordColorUndo(elem, "BorderColor", elem.BorderColor, c),
+                defaultColor: borderDefN);
 
-            cNormal = elem.BorderColor;
-            if (ImGui.ColorEdit3("BorderNormal", ref cNormal, ImGuiColorEditFlags.NoInputs))
-                elem.BorderColor = cNormal;
             ImGui.Unindent();
-
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
 
-            // ── Hover state ──
+            // ── Use Hover toggle ──
+            bool useHover = elem.UseHover;
+            if (ImGui.Checkbox("Use Hover", ref useHover))
+                elem.UseHover = useHover;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("When enabled, this element shows different colors on mouse hover. When disabled, normal colors are always used.");
+
+            // ── Hover state (greyed out when Use Hover is disabled) ──
+            ImGui.BeginDisabled(!elem.UseHover);
             ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.7f, 1f), "Hover");
             ImGui.Indent();
-            var cHover = elem.HoverTextColor;
-            if (ImGui.ColorEdit3("TextHover", ref cHover, ImGuiColorEditFlags.NoInputs))
-                elem.HoverTextColor = cHover;
 
-            cHover = elem.HoverBgColor;
-            if (ImGui.ColorEdit3("BackgroundHover", ref cHover, ImGuiColorEditFlags.NoInputs))
-                elem.HoverBgColor = cHover;
+            DrawColorPicker("Text", "H", elem.HoverTextColor, c => RecordColorUndo(elem, "HoverTextColor", elem.HoverTextColor, c),
+                defaultColor: new(0.95f, 0.95f, 1f));
+            DrawColorPicker("Background", "H", elem.HoverBgColor, c => RecordColorUndo(elem, "HoverBgColor", elem.HoverBgColor, c),
+                defaultColor: new(0.22f, 0.28f, 0.45f));
+            // Border default matches BgColor for overlays/labels (invisible border by default)
+            Vector3 borderDefH = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Dialog || elem.Type == UIElementType.Label)
+                ? elem.HoverBgColor : new Vector3(0.5f, 0.6f, 1.0f);
+            DrawColorPicker("Border", "H", elem.HoverBorderColor, c => RecordColorUndo(elem, "HoverBorderColor", elem.HoverBorderColor, c),
+                defaultColor: borderDefH);
 
-            cHover = elem.HoverBorderColor;
-            if (ImGui.ColorEdit3("BorderHover", ref cHover, ImGuiColorEditFlags.NoInputs))
-                elem.HoverBorderColor = cHover;
             ImGui.Unindent();
+            ImGui.EndDisabled();
         }
 
         // ════════════════════════════════════════════
-        //  Behaviors (Click + Hover) — kept for backward compat, hidden by default
+        //  Behaviors (Click + Hover)
         // ════════════════════════════════════════════
-        if (ImGui.CollapsingHeader("Behaviors", ImGuiTreeNodeFlags.None))
+        if (ImGui.CollapsingHeader("Behaviors", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var behaviors = IDEBridge.AvailableBehaviors;
             string[] behaviorLabels = new string[behaviors.Length];
             for (int i = 0; i < behaviors.Length; i++)
                 behaviorLabels[i] = behaviors[i].Label;
 
-            static int FindBehaviorIdx(string value, IDEBridge.BehaviorOption[] opts)
+            // Parse current behavior to get type and param
+            string currentLabel = elem.ClickBehaviorLabel;
+            var (currentType, currentParam) = IDEBridge.ParseBehavior(currentLabel);
+
+            int clickIdx = 0;
+            for (int i = 0; i < behaviors.Length; i++)
             {
-                for (int i = 0; i < opts.Length; i++)
-                    if (string.Equals(opts[i].Value, value, StringComparison.OrdinalIgnoreCase))
-                        return i;
-                return 0;
+                if (string.Equals(behaviors[i].Value, currentType, StringComparison.OrdinalIgnoreCase))
+                { clickIdx = i; break; }
             }
 
-            int clickIdx = FindBehaviorIdx(elem.ClickBehaviorLabel, behaviors);
             ImGui.Text("On Click:");
             ImGui.SetNextItemWidth(-1);
             if (ImGui.Combo("##click_bhv", ref clickIdx, behaviorLabels, behaviorLabels.Length))
             {
-                elem.ClickBehaviorLabel = behaviors[clickIdx].Value;
+                string newType = behaviors[clickIdx].Value;
+                string newParam = currentParam;
+                if (string.IsNullOrEmpty(newType))
+                    newParam = "";
+                else if (newType != currentType)
+                    newParam = ""; // reset param when switching type
+                elem.ClickBehaviorLabel = IDEBridge.BuildBehavior(newType, newParam);
                 elem.OnClick = null;
+                // Update current values so sub-combo appears immediately
+                currentType = newType;
+                currentParam = newParam;
+            }
+
+            // ── Sub-parameter: overlay name (only when "overlay" type selected) ──
+            if (string.Equals(currentType, "overlay", StringComparison.OrdinalIgnoreCase))
+            {
+                ImGui.Spacing();
+                ImGui.Indent();
+                ImGui.Text("Target Overlay:");
+                ImGui.SetNextItemWidth(-1);
+
+                string[] overlays = IDEBridge.GetOverlayNamesFromScene(_bridge.SceneRoot);
+                if (overlays.Length == 0) overlays = ["(create overlay first)"];
+                int overlayIdx = 0;
+                for (int i = 0; i < overlays.Length; i++)
+                {
+                    if (string.Equals(overlays[i], currentParam, StringComparison.OrdinalIgnoreCase))
+                    { overlayIdx = i; break; }
+                }
+
+                if (ImGui.Combo("##overlay_target", ref overlayIdx, overlays, overlays.Length))
+                {
+                    elem.ClickBehaviorLabel = IDEBridge.BuildBehavior("overlay", overlays[overlayIdx]);
+                    elem.OnClick = null;
+                }
+                ImGui.Unindent();
+            }
+
+            // ── Sub-parameter: scene name (only when "scene" type selected) ──
+            if (string.Equals(currentType, "scene", StringComparison.OrdinalIgnoreCase))
+            {
+                ImGui.Spacing();
+                ImGui.Indent();
+                ImGui.Text("Target Scene:");
+                ImGui.SetNextItemWidth(-1);
+
+                string[] scenes = _bridge.AvailableSceneNames;
+                if (scenes.Length == 0)
+                {
+                    ImGui.TextDisabled("(no scenes — add scenes in Scene Manager)");
+                }
+                else
+                {
+                    int sceneIdx = 0;
+                    for (int i = 0; i < scenes.Length; i++)
+                    {
+                        if (string.Equals(scenes[i], currentParam, StringComparison.OrdinalIgnoreCase))
+                        { sceneIdx = i; break; }
+                    }
+
+                    if (ImGui.Combo("##scene_target", ref sceneIdx, scenes, scenes.Length))
+                    {
+                        elem.ClickBehaviorLabel = IDEBridge.BuildBehavior("scene", scenes[sceneIdx]);
+                        elem.OnClick = null;
+                    }
+                }
+                ImGui.Unindent();
             }
 
             ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
 
-            int hoverEnterIdx = FindBehaviorIdx(elem.HoverEnterLabel, behaviors);
+            // ── Hover behaviors (simplified: just show type combo, no sub-params) ──
+            int hoverEnterIdx = 0;
+            var (hEnterType, _) = IDEBridge.ParseBehavior(elem.HoverEnterLabel);
+            for (int i = 0; i < behaviors.Length; i++)
+            {
+                if (string.Equals(behaviors[i].Value, hEnterType, StringComparison.OrdinalIgnoreCase))
+                { hoverEnterIdx = i; break; }
+            }
+
             ImGui.Text("On Hover Enter:");
             ImGui.SetNextItemWidth(-1);
             if (ImGui.Combo("##hover_enter_bhv", ref hoverEnterIdx, behaviorLabels, behaviorLabels.Length))
@@ -343,7 +428,14 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            int hoverExitIdx = FindBehaviorIdx(elem.HoverExitLabel, behaviors);
+            int hoverExitIdx = 0;
+            var (hExitType, _) = IDEBridge.ParseBehavior(elem.HoverExitLabel);
+            for (int i = 0; i < behaviors.Length; i++)
+            {
+                if (string.Equals(behaviors[i].Value, hExitType, StringComparison.OrdinalIgnoreCase))
+                { hoverExitIdx = i; break; }
+            }
+
             ImGui.Text("On Hover Exit:");
             ImGui.SetNextItemWidth(-1);
             if (ImGui.Combo("##hover_exit_bhv", ref hoverExitIdx, behaviorLabels, behaviorLabels.Length))
@@ -353,7 +445,7 @@ public class InspectorPanel
             }
 
             ImGui.Spacing();
-            ImGui.TextDisabled("Save to .ing and reload to apply");
+            ImGui.TextDisabled("Save scene to persist behavior changes");
         }
 
         // ════════════════════════════════════════════
@@ -370,6 +462,23 @@ public class InspectorPanel
                 ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "● Visible");
             else
                 ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), "○ Hidden");
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Auto-fill window (for overlay/background elements) ──
+            bool autoFill = elem.AutoFillWindow;
+            if (ImGui.Checkbox("Auto-fill Window", ref autoFill))
+                elem.AutoFillWindow = autoFill;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("When enabled, this element automatically fills the entire viewport (X=0, Y=0, W=viewport, H=viewport)");
+
+            // ── Auto-center (for overlays/dialogs) ──
+            bool autoCenter = elem.AutoCenter;
+            if (ImGui.Checkbox("Auto-center", ref autoCenter))
+                elem.AutoCenter = autoCenter;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("When enabled, this element is automatically centered in the viewport");
         }
 
         // ════════════════════════════════════════════
@@ -434,6 +543,70 @@ public class InspectorPanel
         foreach (var child in elem.Children)
             count += CountVisibleRecursive(child);
         return count;
+    }
+
+    /// <summary>Record a color change undo, then apply the new color.
+    /// Called from color picker callbacks.</summary>
+    private void RecordColorUndo(UIElement elem, string propName, Vector3 oldColor, Vector3 newColor)
+    {
+        if (_bridge.RecordColorUndo != null && oldColor != newColor)
+            _bridge.RecordColorUndo(elem, propName, oldColor, newColor);
+
+        // Apply the color via the property setter
+        switch (propName)
+        {
+            case "TextColor": elem.TextColor = newColor; break;
+            case "BgColor": elem.BgColor = newColor; break;
+            case "BorderColor": elem.BorderColor = newColor; break;
+            case "HoverTextColor": elem.HoverTextColor = newColor; break;
+            case "HoverBgColor": elem.HoverBgColor = newColor; break;
+            case "HoverBorderColor": elem.HoverBorderColor = newColor; break;
+        }
+    }
+
+    /// <summary>Draw a color picker with label + colored square + eyedropper.
+    /// Uses ImGui ColorEdit3 with NoInputs flag — click the colored square to open the
+    /// picker popup, then use the eyedropper pipette icon to sample from screen.
+    /// The <paramref name="idSuffix"/> ensures unique ImGui IDs when multiple
+    /// pickers share the same label (e.g. "N" for Normal, "H" for Hover).
+    /// When the color differs from <paramref name="defaultColor"/>, a small ↺ reset
+    /// button appears to restore the default value.</summary>
+    private static void DrawColorPicker(string label, string idSuffix, Vector3 color, Action<Vector3> onChanged, Vector3? defaultColor = null)
+    {
+        ImGui.Text(label);
+        ImGui.SameLine();
+
+        // ── Reset button — only show when color differs from default ──
+        bool hasDefault = defaultColor.HasValue;
+        bool isDefault = false;
+        if (hasDefault)
+        {
+            var def = defaultColor.Value;
+            isDefault = Math.Abs(color.X - def.X) < 0.001f &&
+                        Math.Abs(color.Y - def.Y) < 0.001f &&
+                        Math.Abs(color.Z - def.Z) < 0.001f;
+        }
+
+        if (hasDefault && !isDefault)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.2f, 0.15f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.5f, 0.3f, 0.2f, 1f));
+            if (ImGui.SmallButton($"↺##reset_{label}_{idSuffix}"))
+                onChanged(defaultColor!.Value);
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Reset to default color");
+            ImGui.SameLine();
+        }
+
+        ImGui.SetNextItemWidth(-1);
+
+        var c = color;
+        if (ImGui.ColorEdit3($"##color_{label}_{idSuffix}", ref c, ImGuiColorEditFlags.NoInputs))
+            onChanged(c);
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Click to open color picker with eyedropper (pipette icon)");
     }
 
     /// <summary>Scan Artifacts/fonts/ once and cache the list of .ttf files.</summary>
