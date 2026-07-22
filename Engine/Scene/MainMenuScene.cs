@@ -224,6 +224,9 @@ public unsafe class MainMenuScene : IScene
         _bgObjectDataList = [];
         LoadHierarchyFromIng(_sceneRoot);
 
+        // ── Ensure default runtime UI elements (ExitConfirm dialog, etc.) ──
+        EnsureDefaultUI();
+
         // ── Register for IDE Save All ──
         SceneAssetSerializer.RegisterSceneRoot("MainMenu", _sceneRoot);
         SceneAssetSerializer.RegisterBgObjects("MainMenu", _bgObjectDataList);
@@ -328,17 +331,18 @@ public unsafe class MainMenuScene : IScene
 
         nint window = Glfw.GetWindow();
 
-        // ── Input gate: block keyboard/mouse but keep UI rendering alive ──
-        bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
-        if (!ingameActive)
-            return;
-
         // ── Mouse tracking ──
         Mouse.GetCursorPosition(out double mouseX, out double mouseY);
         bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
 
         // ── Update HUD buttons & handle click-through to OnClick delegates ──
+        // This runs BEFORE the input gate so button clicks work even in IDE preview mode.
         _hud.UpdateButtons();
+
+        // ── Input gate: block keyboard/mouse but keep UI rendering alive ──
+        bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
+        if (!ingameActive)
+            return;
 
         // ── Load Game overlay: keyboard nav ──
         if (_loadGameActive)
@@ -547,8 +551,19 @@ public unsafe class MainMenuScene : IScene
             "cancel" or "canceleexit" => () => { _exitConfirmActive = false; _confirmActive = false; },
             "confirmexit" or "yes" => () =>
             {
-                Console.WriteLine("[MainMenu] Exiting...");
-                _sceneManager.Stop();
+                // If IDE is active (preview mode), just disable ingame input to return to edit mode
+                var bridge = _sceneManager.Bridge;
+                if (bridge != null && _sceneManager.IsIdeActive)
+                {
+                    Console.WriteLine("[MainMenu] Preview mode — disabling ingame input (back to editor)");
+                    bridge.InGameActive = false;
+                    _exitConfirmActive = false;
+                }
+                else
+                {
+                    Console.WriteLine("[MainMenu] Exiting...");
+                    _sceneManager.Stop();
+                }
             },
             "applysettings" => () =>
             {
@@ -577,6 +592,130 @@ public unsafe class MainMenuScene : IScene
         };
     }
 
+    /// <summary>
+    /// Ensure default UI elements that are required at runtime but not necessarily
+    /// saved in the .ing file. Currently adds the ExitConfirmation dialog.
+    /// The dialog is created once with IsVisible=false and shown/hidden by _exitConfirmActive.
+    /// </summary>
+    private void EnsureDefaultUI()
+    {
+        // Check if ExitConfirm dialog already exists in hierarchy
+        bool hasExitConfirm = false;
+        foreach (var child in _sceneRoot.Children)
+        {
+            if (child.Type == UIElementType.Dialog && child.Name == "ExitConfirm")
+            {
+                hasExitConfirm = true;
+                break;
+            }
+        }
+
+        if (hasExitConfirm) return;
+
+        // ── Create ExitConfirm dialog (default: hidden) ──
+        var exitDlg = new UIElement
+        {
+            Name = "ExitConfirm",
+            Type = UIElementType.Dialog,
+            Text = "",
+            IsVisible = false,
+            BgColor = new Vector3(0.12f, 0.13f, 0.19f), // dark bg
+            BorderColor = new Vector3(0.5f, 0.3f, 0.3f), // red accent
+        };
+
+        // Dark overlay behind the dialog
+        var overlay = new UIElement
+        {
+            Name = "ExitDlgOverlay",
+            Type = UIElementType.Container,
+            Text = "",
+            IsVisible = true,
+            BgColor = new Vector3(0f, 0f, 0f) * 0.55f,
+            X = 0,
+            Y = 0,
+            Width = Glfw.WindowWidth,
+            Height = Glfw.WindowHeight,
+        };
+        exitDlg.AddChild(overlay);
+
+        // Title label
+        var title = new UIElement
+        {
+            Name = "ExitDlgTitle",
+            Type = UIElementType.Label,
+            Text = "Exit Game?",
+            FontSize = 32f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(1f, 1f, 1f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+        };
+        exitDlg.AddChild(title);
+
+        // Message label
+        var message = new UIElement
+        {
+            Name = "ExitDlgMessage",
+            Type = UIElementType.Label,
+            Text = "Are you sure you want to exit?",
+            FontSize = 18f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(0.85f, 0.85f, 0.9f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+        };
+        exitDlg.AddChild(message);
+
+        // Cancel button (left)
+        var cancelBtn = new UIElement
+        {
+            Name = "ExitDlgCancel",
+            Type = UIElementType.Button,
+            Text = "Cancel",
+            Width = 150f,
+            Height = 44f,
+            FontSize = 20f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(0.95f, 0.95f, 1f),
+            BgColor = new Vector3(0.12f, 0.13f, 0.18f),
+            HoverBgColor = new Vector3(0.22f, 0.28f, 0.45f),
+            BorderColor = new Vector3(0.15f, 0.18f, 0.25f),
+            HoverBorderColor = new Vector3(0.5f, 0.6f, 1.0f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+            ClickBehaviorLabel = "cancel",
+        };
+        exitDlg.AddChild(cancelBtn);
+
+        // Yes, Exit button (right)
+        var exitBtn = new UIElement
+        {
+            Name = "ExitDlgConfirm",
+            Type = UIElementType.Button,
+            Text = "Yes, Exit",
+            Width = 150f,
+            Height = 44f,
+            FontSize = 20f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(1f, 1f, 1f),
+            BgColor = new Vector3(0.35f, 0.10f, 0.12f),      // red bg
+            HoverBgColor = new Vector3(0.55f, 0.20f, 0.22f), // brighter red on hover
+            BorderColor = new Vector3(0.5f, 0.2f, 0.2f),
+            HoverBorderColor = new Vector3(0.8f, 0.4f, 0.4f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+            ClickBehaviorLabel = "confirmexit",
+        };
+        exitDlg.AddChild(exitBtn);
+
+        _sceneRoot.AddChild(exitDlg);
+        // Ensure children match parent's hidden state initially.
+        // SyncHierarchyPositions() will keep them in sync every frame.
+        foreach (var sub in exitDlg.Children)
+            sub.IsVisible = false;
+        Console.WriteLine("[MainMenu] Created default ExitConfirm dialog.");
+    }
+
     /// <summary>Sync UIElement positions for IDE tree display (no hardcoded layout).</summary>
     private void SyncHierarchyPositions()
     {
@@ -590,18 +729,56 @@ public unsafe class MainMenuScene : IScene
         // If positions are zero, they'll get default positions from the loaded data.
         // The IDE's SceneDetail panel can be used to adjust positions and save.
 
-        // ── Exit confirm dialog visibility ──
+        // ── Exit confirm dialog visibility & positioning ──
         foreach (var child in _sceneRoot.Children)
         {
             if (child.Type == UIElementType.Dialog && child.Name == "ExitConfirm")
             {
                 child.IsVisible = _exitConfirmActive;
+                // Sync ALL children visibility to match parent — prevents buttons
+                // from appearing in _uiButtons flat list when dialog is hidden.
+                foreach (var sub in child.Children)
+                    sub.IsVisible = _exitConfirmActive;
+
                 if (_exitConfirmActive)
                 {
-                    child.X = (w - 400) * 0.5f;
-                    child.Y = (h - 150) * 0.5f;
-                    child.Width = 400;
-                    child.Height = 150;
+                    // Dialog container: centered, sized for title + message + buttons
+                    float dlgW = 440f;
+                    float dlgH = 210f;
+                    child.X = (w - dlgW) * 0.5f;
+                    child.Y = (h - dlgH) * 0.5f;
+                    child.Width = dlgW;
+                    child.Height = dlgH;
+
+                    // Position child elements
+                    foreach (var sub in child.Children)
+                    {
+                        switch (sub.Name)
+                        {
+                            case "ExitDlgOverlay":
+                                sub.X = 0;
+                                sub.Y = 0;
+                                sub.Width = w;
+                                sub.Height = h;
+                                break;
+                            case "ExitDlgTitle":
+                                sub.X = child.X + (dlgW - _hud.GetTextExtents(sub.Text, 0).Width) * 0.5f;
+                                sub.Y = child.Y + 20f;
+                                break;
+                            case "ExitDlgMessage":
+                                sub.X = child.X + (dlgW - _hud.GetTextExtents(sub.Text, 0).Width) * 0.5f;
+                                sub.Y = child.Y + 65f;
+                                break;
+                            case "ExitDlgCancel":
+                                sub.X = child.X + (dlgW * 0.5f - sub.Width - 10f);
+                                sub.Y = child.Y + 115f;
+                                break;
+                            case "ExitDlgConfirm":
+                                sub.X = child.X + (dlgW * 0.5f + 10f);
+                                sub.Y = child.Y + 115f;
+                                break;
+                        }
+                    }
                 }
             }
         }

@@ -568,18 +568,19 @@ public class HierarchyPanel
     {
         if (element == null) return;
 
-        string label = $"{element.GetIcon()} {element.Name}";
+// Show ALL children in the tree regardless of IsVisible, so hidden elements
+        // (like ExitConfirm dialog children) can still be selected and edited.
+        bool hasChildren = element.Children.Count > 0;
 
-        // Only count visible children
-        int visibleChildCount = 0;
-        foreach (var c in element.Children)
-            if (c.IsVisible) visibleChildCount++;
+        // For hidden elements, dim the icon to indicate they won't render in viewport
+        string icon = element.IsVisible ? element.GetIcon() : "○";
+        string label = $"{icon} {element.Name}";
 
         bool isSelected = _bridge.SelectedUIElement == element;
         bool isInMulti = _bridge.SelectedUIElements?.Contains(element) == true;
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.SpanFullWidth;
-        if (visibleChildCount == 0)
+        if (!hasChildren)
             flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
         if (isSelected)
             flags |= ImGuiTreeNodeFlags.Selected;
@@ -736,17 +737,15 @@ public class HierarchyPanel
         // ── Drop target (reorder / reparent) ──
         HandleDropTarget(element);
 
-        // Recursively render only visible children
+        // Recursively render ALL children — including hidden ones (like ExitConfirm dialog buttons)
+        // so they appear in the hierarchy tree for selection and editing.
         // IMPORTANT: snapshot to array before iterating — drag-drop reorder (ExecuteMove)
         // can modify element.Children during recursive RenderTreeNode calls, which would
         // throw "Collection was modified; enumeration operation may not execute."
-        if (visibleChildCount > 0 && nodeOpen)
+        if (hasChildren && nodeOpen)
         {
             foreach (var child in element.Children.ToArray())
-            {
-                if (child.IsVisible)
-                    RenderTreeNode(child);
-            }
+                RenderTreeNode(child);
             ImGui.TreePop();
         }
     }

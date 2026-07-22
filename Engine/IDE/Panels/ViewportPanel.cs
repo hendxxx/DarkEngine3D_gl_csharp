@@ -349,7 +349,10 @@ public unsafe class ViewportPanel
     }
 
     /// <summary>Handle a UI element click in preview mode when OnClick is null.
-    /// Maps common behavior strings to direct actions so preview works even without a game scene.</summary>
+    /// Supports 3 universal behavior formats:
+    /// 1. "overlay:DialogName" → toggle overlay visibility (open/close)
+    /// 2. "scene:SceneName" → switch to named scene
+    /// 3. "exit" → in preview: back to edit mode; in game: close app</summary>
     private void HandlePreviewBehavior(UIElement elem)
     {
         if (string.IsNullOrEmpty(elem.ClickBehaviorLabel))
@@ -357,49 +360,259 @@ public unsafe class ViewportPanel
 
         var lower = elem.ClickBehaviorLabel.ToLowerInvariant();
 
-        // ── Scene-level actions (via SceneManager) ──
-        if (lower == "confirmexit" || lower == "yes")
+        // ── 1. Overlay toggle: "overlay:DialogName" ──
+        if (lower.StartsWith("overlay:"))
         {
-            Console.WriteLine($"[Viewport] Preview behavior: {lower} → stopping app");
-            _bridge.SceneManager?.Stop();
+            string overlayName = lower["overlay:".Length..];
+            if (string.IsNullOrEmpty(overlayName))
+                return;
+
+            if (_bridge.SceneRoot != null)
+            {
+                // Determine current visibility
+                bool isCurrentlyVisible = false;
+                foreach (var child in _bridge.SceneRoot.Children)
+                {
+                    if (child.Name == overlayName)
+                    {
+                        isCurrentlyVisible = child.IsVisible;
+                        break;
+                    }
+                }
+
+                // For "cancel" inside dialog: always close regardless of label
+                // For normal overlay toggle: invert
+                bool newVisible = (lower == "cancel" || lower == "canceleexit") ? false : !isCurrentlyVisible;
+
+                bool found = FindAndToggleDialog(_bridge.SceneRoot.Children, overlayName, newVisible);
+                if (!found && newVisible && overlayName == "ExitConfirm")
+                {
+                    CreateDefaultExitConfirmDialog();
+                    FindAndToggleDialog(_bridge.SceneRoot.Children, overlayName, true);
+                    Console.WriteLine($"[Viewport] overlay:{overlayName} → auto-created and shown");
+                }
+                else
+                {
+                    Console.WriteLine($"[Viewport] overlay:{overlayName} → IsVisible={newVisible} (found={found})");
+                }
+            }
             return;
         }
 
-        // ── Dialog visibility toggles ──
-        // These mirror MainMenuScene.SyncHierarchyPositions() logic
-        bool setVisible = lower switch
+        // ── 2. Goto scene: "scene:SceneName" ──
+        if (lower.StartsWith("scene:"))
         {
-            "showexitconfirm" => true,
-            "opensettings" => true,
-            "loadgame" => true,
-            "cancel" or "canceleexit" => false,
-            "cancelsettings" or "discardchanges" => false,
-            "keepediting" => false,
-            _ => false
-        };
-
-        // Map behavior → dialog element name
-        string? dialogName = lower switch
-        {
-            "showexitconfirm" or "cancel" or "canceleexit" => "ExitConfirm",
-            "opensettings" or "cancelsettings" or "discardchanges" => "Settings",
-            "keepediting" => "ConfirmUnsaved",
-            "loadgame" => "LoadGame",
-            _ => null
-        };
-
-        if (dialogName != null && _bridge.SceneRoot != null)
-        {
-            bool found = FindAndToggleDialog(_bridge.SceneRoot.Children, dialogName, setVisible);
-            Console.WriteLine($"[Viewport] Preview behavior: '{lower}' → {dialogName}.IsVisible={setVisible} (found={found})");
+            string sceneName = lower["scene:".Length..];
+            Console.WriteLine($"[Viewport] scene:{sceneName} → switching scene");
+            if (_bridge.SceneRoot != null)
+            {
+                foreach (var child in _bridge.SceneRoot.Children)
+                    child.IsVisible = false;
+            }
+            _bridge.InGameActive = true;
+            return;
         }
-        else if (dialogName == null)
+
+        // ── 3. Exit: "exit" ──
+        if (lower == "exit")
         {
-            Console.WriteLine($"[Viewport] Preview behavior: '{lower}' — no dialog mapping");
+            if (_bridge.InGameActive && _bridge.SceneManager != null)
+            {
+                Console.WriteLine("[Viewport] exit → back to edit mode");
+                _bridge.InGameActive = false;
+                if (_bridge.SceneRoot != null)
+                {
+                    foreach (var child in _bridge.SceneRoot.Children)
+                        child.IsVisible = false;
+                }
+            }
+            else
+            {
+                Console.WriteLine("[Viewport] exit → stopping app");
+                _bridge.SceneManager?.Stop();
+            }
+            return;
         }
+
+        // ── Legacy compatibility: map old behavior names ──
+        // These are still used by existing .ing files
+        if (lower == "showexitconfirm" || lower == "confirmexit" || lower == "yes")
+        {
+            if (lower == "confirmexit" || lower == "yes")
+            {
+                // Exit action
+                if (_bridge.InGameActive && _bridge.SceneManager != null)
+                {
+                    Console.WriteLine("[Viewport] confirmexit → back to edit mode");
+                    _bridge.InGameActive = false;
+                    if (_bridge.SceneRoot != null)
+                    {
+                        foreach (var child in _bridge.SceneRoot.Children)
+                            child.IsVisible = false;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[Viewport] confirmexit → stopping app");
+                    _bridge.SceneManager?.Stop();
+                }
+            }
+            else // showexitconfirm
+            {
+                FindAndToggleDialog(_bridge.SceneRoot?.Children ?? [], "ExitConfirm", true);
+            }
+            return;
+        }
+
+        // Legacy cancel/close
+        if (lower == "cancel" || lower == "canceleexit" || lower == "cancelsettings" || lower == "discardchanges" || lower == "keepediting")
+        {
+            if (_bridge.SceneRoot != null)
+            {
+                foreach (var child in _bridge.SceneRoot.Children)
+                {
+                    if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+                        child.IsVisible = false;
+                }
+            }
+            return;
+        }
+
+        Console.WriteLine($"[Viewport] Unknown behavior: '{lower}'");
     }
 
-    /// <summary>Recursively find a dialog element by name and set its visibility.</summary>
+    /// <summary>Create the default ExitConfirm dialog elements inside SceneRoot for preview mode.
+    /// Mirrors the same structure that MainMenuScene.EnsureDefaultUI() would create at runtime.
+    /// IMPORTANT: Children get ABSOLUTE scene coordinates (not relative to dialog parent),
+    /// because DrawEditorUIPreview renders all elements with absolute positions.</summary>
+    private void CreateDefaultExitConfirmDialog()
+    {
+        if (_bridge.SceneRoot == null) return;
+
+        // Check if already exists (double-check)
+        foreach (var child in _bridge.SceneRoot.Children)
+            if (child.Type == UIElementType.Dialog && child.Name == "ExitConfirm")
+                return;
+
+        int w = _bridge.SceneTextureWidth > 0 ? _bridge.SceneTextureWidth : 1920;
+        int h = _bridge.SceneTextureHeight > 0 ? _bridge.SceneTextureHeight : 1080;
+        float dlgW = 440f;
+        float dlgH = 210f;
+        float dlgX = (w - dlgW) * 0.5f;
+        float dlgY = (h - dlgH) * 0.5f;
+
+        var exitDlg = new UIElement
+        {
+            Name = "ExitConfirm",
+            Type = UIElementType.Dialog,
+            Text = "",
+            IsVisible = false,
+            X = dlgX,
+            Y = dlgY,
+            Width = dlgW,
+            Height = dlgH,
+            BgColor = new Vector3(0.12f, 0.13f, 0.19f),
+            BorderColor = new Vector3(0.5f, 0.3f, 0.3f),
+        };
+
+        // Dark overlay behind the dialog — absolute position (full screen)
+        var overlay = new UIElement
+        {
+            Name = "ExitDlgOverlay",
+            Type = UIElementType.Container,
+            Text = "",
+            IsVisible = true,
+            BgColor = new Vector3(0f, 0f, 0f) * 0.55f,
+            X = 0, Y = 0, Width = w, Height = h,
+        };
+        exitDlg.AddChild(overlay);
+
+        // Title label — use ABSOLUTE coordinates
+        var title = new UIElement
+        {
+            Name = "ExitDlgTitle",
+            Type = UIElementType.Label,
+            Text = "Exit Game?",
+            FontSize = 32f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(1f, 1f, 1f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+            X = dlgX + (dlgW - 160f) * 0.5f,
+            Y = dlgY + 20f,
+            Width = 160f,
+            Height = 40f,
+        };
+        exitDlg.AddChild(title);
+
+        // Message label — use ABSOLUTE coordinates
+        var message = new UIElement
+        {
+            Name = "ExitDlgMessage",
+            Type = UIElementType.Label,
+            Text = "Are you sure you want to exit?",
+            FontSize = 18f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(0.85f, 0.85f, 0.9f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+            X = dlgX + (dlgW - 250f) * 0.5f,
+            Y = dlgY + 65f,
+            Width = 250f,
+            Height = 30f,
+        };
+        exitDlg.AddChild(message);
+
+        // Cancel button (left) — use ABSOLUTE coordinates
+        var cancelBtn = new UIElement
+        {
+            Name = "ExitDlgCancel",
+            Type = UIElementType.Button,
+            Text = "Cancel",
+            Width = 150f, Height = 44f,
+            X = dlgX + dlgW * 0.5f - 150f - 10f,
+            Y = dlgY + 115f,
+            FontSize = 20f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(0.95f, 0.95f, 1f),
+            BgColor = new Vector3(0.12f, 0.13f, 0.18f),
+            HoverBgColor = new Vector3(0.22f, 0.28f, 0.45f),
+            BorderColor = new Vector3(0.15f, 0.18f, 0.25f),
+            HoverBorderColor = new Vector3(0.5f, 0.6f, 1.0f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+            ClickBehaviorLabel = "cancel",
+        };
+        exitDlg.AddChild(cancelBtn);
+
+        // Yes, Exit button (right) — use ABSOLUTE coordinates
+        var exitBtn = new UIElement
+        {
+            Name = "ExitDlgConfirm",
+            Type = UIElementType.Button,
+            Text = "Yes, Exit",
+            Width = 150f, Height = 44f,
+            X = dlgX + dlgW * 0.5f + 10f,
+            Y = dlgY + 115f,
+            FontSize = 20f,
+            FontPath = "Artifacts\\fonts\\Worldstar.ttf",
+            TextColor = new Vector3(1f, 1f, 1f),
+            BgColor = new Vector3(0.35f, 0.10f, 0.12f),
+            HoverBgColor = new Vector3(0.55f, 0.20f, 0.22f),
+            BorderColor = new Vector3(0.5f, 0.2f, 0.2f),
+            HoverBorderColor = new Vector3(0.8f, 0.4f, 0.4f),
+            Alignment = TextAlignment.Center,
+            IsVisible = true,
+            ClickBehaviorLabel = "exit",
+        };
+        exitDlg.AddChild(exitBtn);
+
+        _bridge.SceneRoot.AddChild(exitDlg);
+        Console.WriteLine("[Viewport] Created default ExitConfirm dialog for preview mode.");
+    }
+
+    /// <summary>Recursively find a dialog element by name and set its visibility.
+    /// Also syncs ALL children visibility to match the dialog.</summary>
     private static bool FindAndToggleDialog(List<UIElement> elements, string name, bool visible)
     {
         foreach (var child in elements)
@@ -408,6 +621,9 @@ public unsafe class ViewportPanel
                 && child.Name == name)
             {
                 child.IsVisible = visible;
+                // Sync ALL children visibility to match parent
+                foreach (var sub in child.Children)
+                    sub.IsVisible = visible;
                 return true;
             }
             if (child.Children.Count > 0)
@@ -635,7 +851,6 @@ public unsafe class ViewportPanel
             // ── DIAGNOSTIC: log element state every ~10 frames (even when not dragging) ──
             if (selUiElem != null && (ImGui.GetFrameCount() % 10 == 0))
             {
-                // Log every 10 frames to detect position resets or object replacement
                 int sceneHash = _bridge.SceneRoot?.GetHashCode() ?? 0;
                 int editorSceneCount = _bridge.EditorScenes?.Count ?? 0;
                 string editorSceneName = _bridge.SelectedEditorScene ?? "(null)";
@@ -731,7 +946,6 @@ public unsafe class ViewportPanel
                             // Draw directional arrow inside each handle
                             uint arrowColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.15f, 0.2f, 0.9f));
                             float arrowInset = handleHalf * 0.3f;
-                            // TL corner: ↘ arrow
                             drawList.AddLine(
                                 new Vector2(sx0 + arrowInset, sy0 + arrowInset),
                                 new Vector2(sx0 + handleHalf - arrowInset, sy0 + handleHalf - arrowInset),
@@ -740,7 +954,6 @@ public unsafe class ViewportPanel
                                 new Vector2(sx0 + handleHalf - arrowInset * 2f, sy0 + arrowInset),
                                 new Vector2(sx0 + handleHalf - arrowInset, sy0 + handleHalf - arrowInset),
                                 arrowColor, 1.8f);
-                            // TR corner: ↙ arrow
                             drawList.AddLine(
                                 new Vector2(sx1 - arrowInset, sy0 + arrowInset),
                                 new Vector2(sx1 - handleHalf + arrowInset, sy0 + handleHalf - arrowInset),
@@ -749,111 +962,17 @@ public unsafe class ViewportPanel
                                 new Vector2(sx1 - handleHalf + arrowInset * 2f, sy0 + arrowInset),
                                 new Vector2(sx1 - handleHalf + arrowInset, sy0 + handleHalf - arrowInset),
                                 arrowColor, 1.8f);
-                            // BL corner: ↗ arrow
-                            drawList.AddLine(
-                                new Vector2(sx0 + arrowInset, sy1 - arrowInset),
-                                new Vector2(sx0 + handleHalf - arrowInset, sy1 - handleHalf + arrowInset),
-                                arrowColor, 1.8f);
-                            drawList.AddLine(
-                                new Vector2(sx0 + handleHalf - arrowInset * 2f, sy1 - arrowInset),
-                                new Vector2(sx0 + handleHalf - arrowInset, sy1 - handleHalf + arrowInset),
-                                arrowColor, 1.8f);
-                            // BR corner: ↖ arrow
-                            drawList.AddLine(
-                                new Vector2(sx1 - arrowInset, sy1 - arrowInset),
-                                new Vector2(sx1 - handleHalf + arrowInset, sy1 - handleHalf + arrowInset),
-                                arrowColor, 1.8f);
-                            drawList.AddLine(
-                                new Vector2(sx1 - handleHalf + arrowInset * 2f, sy1 - arrowInset),
-                                new Vector2(sx1 - handleHalf + arrowInset, sy1 - handleHalf + arrowInset),
-                                arrowColor, 1.8f);
+                        } // end if (!isFitToWindow && fullyVis)
+                    } // end if (isPrimary)
+                } // end DrawElemWireframe
 
-                            // Mini bracket corners at each handle
-                            float miniBracket = 4f;
-                            uint miniBrColor = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.5f));
-                            // Mini bracket around TL handle
-                            drawList.AddLine(new Vector2(sx0 - miniBracket, sy0 - miniBracket), new Vector2(sx0 - miniBracket, sy0 + miniBracket), miniBrColor, 1f);
-                            drawList.AddLine(new Vector2(sx0 - miniBracket, sy0 - miniBracket), new Vector2(sx0 + miniBracket, sy0 - miniBracket), miniBrColor, 1f);
-                            // Mini bracket around TR handle
-                            drawList.AddLine(new Vector2(sx1 + miniBracket, sy0 - miniBracket), new Vector2(sx1 + miniBracket, sy0 + miniBracket), miniBrColor, 1f);
-                            drawList.AddLine(new Vector2(sx1 + miniBracket, sy0 - miniBracket), new Vector2(sx1 - miniBracket, sy0 - miniBracket), miniBrColor, 1f);
-                            // Mini bracket around BL handle
-                            drawList.AddLine(new Vector2(sx0 - miniBracket, sy1 + miniBracket), new Vector2(sx0 - miniBracket, sy1 - miniBracket), miniBrColor, 1f);
-                            drawList.AddLine(new Vector2(sx0 - miniBracket, sy1 + miniBracket), new Vector2(sx0 + miniBracket, sy1 + miniBracket), miniBrColor, 1f);
-                            // Mini bracket around BR handle
-                            drawList.AddLine(new Vector2(sx1 + miniBracket, sy1 + miniBracket), new Vector2(sx1 + miniBracket, sy1 - miniBracket), miniBrColor, 1f);
-                            drawList.AddLine(new Vector2(sx1 + miniBracket, sy1 + miniBracket), new Vector2(sx1 - miniBracket, sy1 + miniBracket), miniBrColor, 1f);
-                        }
+                // ── Call DrawElemWireframe for the selected element ──
+                DrawElemWireframe(selUiElem, true);
 
-                        // ── Info label at top-left corner of element ──
-                        //    Uses hardcoded colors (not element colors) so tooltip stays readable.
-                        {
-                            string imagePart = !string.IsNullOrEmpty(elem.ImagePath)
-                                ? $" IMG:{Path.GetFileName(elem.ImagePath)} M:{elem.ImageMode}"
-                                : "";
-                            string fontPart = !string.IsNullOrEmpty(elem.FontPath) && string.IsNullOrEmpty(elem.ImagePath)
-                                ? $" F:{Path.GetFileNameWithoutExtension(elem.FontPath)}"
-                                : "";
-                            string info = isFitToWindow
-                                ? $"FULLSCREEN  [{_texW:F0}×{_texH:F0}]{imagePart}"
-                                : $"{elem.GetIcon()} {elem.Name}  [{elem.Width:F0}×{elem.Height:F0}] @ ({elem.X:F0},{elem.Y:F0}){fontPart}{imagePart}";
-                            var infoSize = ImGui.CalcTextSize(info);
-                            float infoPad = 5f;
-                            float ix = csx0 - 5f;
-                            float iy = csy0 - 15f;
-                            uint ibg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.1f, 0.15f, 0.85f));
-                            uint iborder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 0.5f));
-                            uint itext = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.9f, 1.0f, 1f));
-                            drawList.AddRectFilled(
-                                new Vector2(ix - infoPad, iy - 2f),
-                                new Vector2(ix + infoSize.X + infoPad, iy + infoSize.Y + 2f),
-                                ibg, 3f);
-                            drawList.AddRect(
-                                new Vector2(ix - infoPad, iy - 2f),
-                                new Vector2(ix + infoSize.X + infoPad, iy + infoSize.Y + 2f),
-                                iborder, 3f, ImDrawFlags.None, 1f);
-                            drawList.AddText(new Vector2(ix, iy), itext, info);
-
-                            // ── Image tooltip when hovering over the info label ──
-                            if (!string.IsNullOrEmpty(elem.ImagePath) || !string.IsNullOrEmpty(elem.FontPath))
-                            {
-                                Vector2 lblMin = new Vector2(ix - infoPad, iy - 2f);
-                                Vector2 lblMax = new Vector2(ix + infoSize.X + infoPad, iy + infoSize.Y + 2f);
-                                bool hoverInfo = viewportMouseScreen.X >= lblMin.X && viewportMouseScreen.X <= lblMax.X &&
-                                                 viewportMouseScreen.Y >= lblMin.Y && viewportMouseScreen.Y <= lblMax.Y;
-                                if (hoverInfo)
-                                {
-                                    ImGui.SetNextWindowPos(viewportTopLeft + new Vector2(8, 8), ImGuiCond.Always);
-                                    ImGui.BeginTooltip();
-                                    if (!string.IsNullOrEmpty(elem.ImagePath))
-                                        ImGui.Text($"Image: {elem.ImagePath}\nMode: {elem.ImageMode}");
-                                    else
-                                        ImGui.Text($"Font: {elem.FontPath}");
-                                    ImGui.EndTooltip();
-                                }
-                            }
-                        }
- 
-                    }
-                }
-
+                // ── Scene-type elements: NO resize/move handlers ──
                 bool isSceneElem = selUiElem.Type == UIElementType.Scene;
-
-                // ── Scene-type elements: NO wireframe, no helper, no resize/move ──
-                if (!isSceneElem)
-                {
-                    if (allSelected != null)
-                    {
-                        foreach (var elem in allSelected)
-                            if (elem != selUiElem)
-                                DrawElemWireframe(elem, false);
-                    }
-
-                    DrawElemWireframe(selUiElem, true);
-                }
-
-                // ── Fit-to-window: auto-size element to viewport, disable drag/resize ──
                 bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
+
                 if (isFitToWindowElem)
                 {
                     selUiElem.X = 0;
@@ -862,7 +981,6 @@ public unsafe class ViewportPanel
                     selUiElem.Height = _texH;
                 }
 
-                // ── Scene-type elements: NO resize/move handlers ──
                 if (isSceneElem)
                 {
                     // Ensure any lingering drag mode from a previously-selected element is cleared
