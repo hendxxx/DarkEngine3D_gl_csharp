@@ -366,10 +366,23 @@ public class InspectorPanel
                     { overlayIdx = i; break; }
                 }
 
-                if (ImGui.Combo("##overlay_target", ref overlayIdx, overlays, overlays.Length))
+                // Use BeginCombo/EndCombo to allow selection even with 1 item
+                string preview = overlayIdx >= 0 && overlayIdx < overlays.Length ? overlays[overlayIdx] : "";
+                if (ImGui.BeginCombo("##overlay_target", preview))
                 {
-                    elem.ClickBehaviorLabel = IDEBridge.BuildBehavior("overlay", overlays[overlayIdx]);
-                    elem.OnClick = null;
+                    for (int i = 0; i < overlays.Length; i++)
+                    {
+                        bool isSelected = (i == overlayIdx);
+                        if (ImGui.Selectable(overlays[i], isSelected))
+                        {
+                            overlayIdx = i;
+                            elem.ClickBehaviorLabel = IDEBridge.BuildBehavior("overlay", overlays[overlayIdx]);
+                            elem.OnClick = null;
+                        }
+                        if (isSelected)
+                            ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
                 }
                 ImGui.Unindent();
             }
@@ -396,10 +409,23 @@ public class InspectorPanel
                         { sceneIdx = i; break; }
                     }
 
-                    if (ImGui.Combo("##scene_target", ref sceneIdx, scenes, scenes.Length))
+                    // Use BeginCombo/EndCombo to allow selection even with 1 item
+                    string preview = sceneIdx >= 0 && sceneIdx < scenes.Length ? scenes[sceneIdx] : "";
+                    if (ImGui.BeginCombo("##scene_target", preview))
                     {
-                        elem.ClickBehaviorLabel = IDEBridge.BuildBehavior("scene", scenes[sceneIdx]);
-                        elem.OnClick = null;
+                        for (int i = 0; i < scenes.Length; i++)
+                        {
+                            bool isSelected = (i == sceneIdx);
+                            if (ImGui.Selectable(scenes[i], isSelected))
+                            {
+                                sceneIdx = i;
+                                elem.ClickBehaviorLabel = IDEBridge.BuildBehavior("scene", scenes[sceneIdx]);
+                                elem.OnClick = null;
+                            }
+                            if (isSelected)
+                                ImGui.SetItemDefaultFocus();
+                        }
+                        ImGui.EndCombo();
                     }
                 }
                 ImGui.Unindent();

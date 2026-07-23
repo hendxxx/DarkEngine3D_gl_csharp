@@ -159,6 +159,9 @@ public static class SceneAssetSerializer
         Directory.CreateDirectory(Path.GetDirectoryName(GameIngPath)!);
         File.WriteAllText(GameIngPath, json);
         Console.WriteLine($"[SceneAsset] Saved game.ing with {manifest.Scenes.Count} scenes (fresh write)");
+
+        // Invalidate cache so next read gets fresh data
+        InvalidateGameIngCache();
     }
 
     // ── Load ──
@@ -418,6 +421,9 @@ public static class SceneAssetSerializer
         Directory.CreateDirectory(Path.GetDirectoryName(GameIngPath)!);
         File.WriteAllText(GameIngPath, json);
         Console.WriteLine($"[SceneAsset] Saved {_registeredSceneRoots.Count} registered scenes to {GameIngPath} (fresh write)");
+
+        // Invalidate cache so next read gets fresh data
+        InvalidateGameIngCache();
     }
 
     /// <summary>Get the list of registered scene names (for IDE display).</summary>

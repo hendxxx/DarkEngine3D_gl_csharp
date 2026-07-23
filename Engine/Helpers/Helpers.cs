@@ -20,15 +20,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             return OGLMath.Lerp(1.0f, maxMul, normalized - 1.0f);
         }
     }
-    public struct Matrix3x3(
-        float m11, float m12, float m13,
-        float m21, float m22, float m23,
-        float m31, float m32, float m33)
-        {
-            public float M11 = m11, M12 = m12, M13 = m13;
-            public float M21 = m21, M22 = m22, M23 = m23;
-            public float M31 = m31, M32 = m32, M33 = m33;
-    }
     public static class OGLMath
     {
         public static float Lerp(float a, float b, float t)
@@ -233,7 +224,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             GL.AttachShader(program, vs);
             GL.AttachShader(program, fs);
             GL.LinkProgram(program);
-            CheckProgram(program, $"Shader Program (from srting)");
+            CheckProgram(program, $"Shader Program (from string)");
 
             // Optional: delete shader objects after linking
             GL.DeleteShader(vs);
@@ -438,6 +429,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             }
         }
 
+        /// <summary>
         /// Returns Identity if nodeIdx is invalid.
         /// </summary>
         public static Matrix4x4 GetNodeWorldMatrix(GltfNode[] nodes, int nodeIdx)

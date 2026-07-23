@@ -431,7 +431,6 @@ public unsafe class ViewportPanel
                 HandleOverlayToggle("ExitConfirm");
                 break;
 
-            case "canceleexit":
             case "cancelsettings":
             case "discardchanges":
             case "keepediting":
