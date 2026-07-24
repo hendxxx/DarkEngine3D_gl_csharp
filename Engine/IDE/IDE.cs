@@ -24,9 +24,7 @@ public class IDE : IDisposable
     private readonly SceneManagerPanel _sceneManagerPanel;
     private readonly HierarchyPanel _hierarchy;
 
-    private bool _showDemoWindow = false;
-
-    public bool IsHealthy { get; private set; } = false;
+    public bool IsHealthy { get; private set; }
 
     public IDE(nint window)
     {
@@ -95,13 +93,11 @@ public class IDE : IDisposable
             if (ImGui.BeginMenu("File"))
             {
                 if (ImGui.MenuItem("Exit IDE", "F2"))
-                    ToggleRequested = false;
+                    IsHealthy = false;
                 ImGui.EndMenu();
             }
             if (ImGui.BeginMenu("View"))
             {
-                ImGui.MenuItem("Demo Window", "", ref _showDemoWindow);
-                ImGui.Separator();
                 _viewport.ShowInMenu();
                 _sceneView.ShowInMenu();
                 _inspector.ShowInMenu();
@@ -154,17 +150,14 @@ public class IDE : IDisposable
         _console.Render();
         _sceneManagerPanel.Render();
 
-        // ── Demo window ──
-        if (_showDemoWindow)
-            ImGui.ShowDemoWindow(ref _showDemoWindow);
-
         // ── Render ImGui draw data ──
         _imgui.Render();
     }
 
-    /// <summary>Set by Program.cs when F2 is pressed.</summary>
-    public bool ToggleRequested { get; set; } = true;
+    /// <summary>Whether the IDE overlay is currently active. Always true since F2 toggle is disabled.</summary>
     public bool IsActive { get; set; } = true;
+    /// <summary>Set by Program.cs when F2 is pressed (kept for backward compat, currently unused).</summary>
+    public bool ToggleRequested { get; set; } = true;
 
     public void Dispose()
     {

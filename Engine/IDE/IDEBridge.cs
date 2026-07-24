@@ -164,15 +164,6 @@ public class IDEBridge
         new BehaviorOption("Exit", "exit"),
     ];
 
-    /// <summary>Available overlay names for overlay action type.</summary>
-    public static readonly string[] AvailableOverlayNames =
-    [
-        "ExitConfirm",
-        "SettingsPanel",
-        "SaveLoadPanel",
-        "CustomDialog",
-    ];
-
     /// <summary>Available scene names for scene action type.</summary>
     public string[] AvailableSceneNames =>
         _availableScenes.Select(s => s.Name).ToArray();

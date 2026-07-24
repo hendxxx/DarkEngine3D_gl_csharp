@@ -2,20 +2,20 @@
   "version": "1.0",
   "scenes": [
     {
-      "sceneName": "Menu Utama",
+      "sceneName": "mnMain",
       "description": "",
       "elements": [
         {
-          "name": "Menu Utama",
+          "name": "mnMain",
           "type": "Scene",
           "text": "Element",
-          "x": 160,
-          "y": 640,
-          "width": 740,
-          "height": 120,
+          "x": 0,
+          "y": 0,
+          "width": 200,
+          "height": 50,
           "imagePath": "",
-          "imageMode": "Fill",
-          "fontSize": 28,
+          "imageMode": "Stretch",
+          "fontSize": 13,
           "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
           "textColor": [
             0.95,
@@ -23,9 +23,9 @@
             1
           ],
           "bgColor": [
-            0,
-            0,
-            0
+            0.1,
+            0.12,
+            0.18
           ],
           "borderColor": [
             0.15,
@@ -48,7 +48,7 @@
             1
           ],
           "alignment": "Center",
-          "isVisible": true,
+          "isVisible": false,
           "autoFillWindow": false,
           "autoCenter": false,
           "useHover": true,
@@ -57,16 +57,16 @@
           "hoverExitBehavior": "None",
           "children": [
             {
-              "name": "A",
+              "name": "btnTest",
               "type": "Button",
-              "text": "Go to menu 2",
-              "x": 1100,
-              "y": 600,
-              "width": 400,
-              "height": 100,
+              "text": "Test",
+              "x": 860,
+              "y": 470.5,
+              "width": 200,
+              "height": 50,
               "imagePath": "",
               "imageMode": "Stretch",
-              "fontSize": 28,
+              "fontSize": 13,
               "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
               "textColor": [
                 0.95,
@@ -74,9 +74,9 @@
                 1
               ],
               "bgColor": [
-                0.21960784,
-                0.2784314,
-                0.4509804
+                0.1,
+                0.12,
+                0.18
               ],
               "borderColor": [
                 0.15,
@@ -103,22 +103,22 @@
               "autoFillWindow": false,
               "autoCenter": false,
               "useHover": true,
-              "clickBehavior": "scene:Menu 2",
+              "clickBehavior": "scene:mnSettings",
               "hoverEnterBehavior": "None",
               "hoverExitBehavior": "None",
               "children": []
             },
             {
-              "name": "Exit",
+              "name": "btnExit",
               "type": "Button",
               "text": "Exit",
-              "x": 1100,
-              "y": 720,
-              "width": 400,
-              "height": 80,
+              "x": 860,
+              "y": 540,
+              "width": 200,
+              "height": 50,
               "imagePath": "",
               "imageMode": "Stretch",
-              "fontSize": 28,
+              "fontSize": 13,
               "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
               "textColor": [
                 0.95,
@@ -141,33 +141,33 @@
                 1
               ],
               "hoverBgColor": [
-                1,
-                0.14705884,
-                0
+                0.22,
+                0.28,
+                0.45
               ],
               "hoverBorderColor": [
-                1,
-                0.91176474,
-                0.5
+                0.5,
+                0.6,
+                1
               ],
               "alignment": "Center",
               "isVisible": true,
               "autoFillWindow": false,
               "autoCenter": false,
               "useHover": true,
-              "clickBehavior": "overlay:ExitConfirm",
+              "clickBehavior": "overlay:contExitConfirm",
               "hoverEnterBehavior": "None",
               "hoverExitBehavior": "None",
               "children": []
             },
             {
-              "name": "ExitConfirm",
+              "name": "contExitConfirm",
               "type": "Container",
               "text": "",
-              "x": 0,
-              "y": 0,
-              "width": 2560,
-              "height": 1351,
+              "x": 620,
+              "y": 355.5,
+              "width": 680,
+              "height": 280,
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
@@ -204,7 +204,7 @@
               ],
               "alignment": "Center",
               "isVisible": false,
-              "autoFillWindow": true,
+              "autoFillWindow": false,
               "autoCenter": false,
               "useHover": false,
               "clickBehavior": "None",
@@ -212,13 +212,13 @@
               "hoverExitBehavior": "None",
               "children": [
                 {
-                  "name": "Box",
-                  "type": "Container",
-                  "text": "",
-                  "x": 970,
-                  "y": 565.5,
-                  "width": 620,
-                  "height": 220,
+                  "name": "btnNoExit",
+                  "type": "Button",
+                  "text": "No",
+                  "x": 640,
+                  "y": 560,
+                  "width": 200,
+                  "height": 50,
                   "imagePath": "",
                   "imageMode": "Stretch",
                   "fontSize": 13,
@@ -229,9 +229,9 @@
                     1
                   ],
                   "bgColor": [
-                    0.2797001,
-                    0.32864764,
-                    0.4754902
+                    0.1,
+                    0.12,
+                    0.18
                   ],
                   "borderColor": [
                     0.15,
@@ -256,71 +256,19 @@
                   "alignment": "Center",
                   "isVisible": false,
                   "autoFillWindow": false,
-                  "autoCenter": true,
-                  "useHover": true,
-                  "clickBehavior": "None",
-                  "hoverEnterBehavior": "None",
-                  "hoverExitBehavior": "None",
-                  "children": []
-                },
-                {
-                  "name": "Are you sure to exit ?",
-                  "type": "Label",
-                  "text": "Are you sure to exit ?",
-                  "x": 980,
-                  "y": 580,
-                  "width": 600,
-                  "height": 60,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 22,
-                  "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "bgColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "borderColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "hoverBorderColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "alignment": "Center",
-                  "isVisible": false,
-                  "autoFillWindow": false,
                   "autoCenter": false,
-                  "useHover": false,
-                  "clickBehavior": "None",
+                  "useHover": true,
+                  "clickBehavior": "closeoverlay",
                   "hoverEnterBehavior": "None",
                   "hoverExitBehavior": "None",
                   "children": []
                 },
                 {
-                  "name": "Yes",
+                  "name": "btnYesExit",
                   "type": "Button",
                   "text": "Yes",
-                  "x": 1340,
-                  "y": 700,
+                  "x": 1080,
+                  "y": 560,
                   "width": 200,
                   "height": 50,
                   "imagePath": "",
@@ -366,60 +314,120 @@
                   "hoverEnterBehavior": "None",
                   "hoverExitBehavior": "None",
                   "children": []
-                },
-                {
-                  "name": "No",
-                  "type": "Button",
-                  "text": "No",
-                  "x": 1020,
-                  "y": 700,
-                  "width": 200,
-                  "height": 50,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 13,
-                  "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "bgColor": [
-                    0.1,
-                    0.12,
-                    0.18
-                  ],
-                  "borderColor": [
-                    0.15,
-                    0.18,
-                    0.25
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0.22,
-                    0.28,
-                    0.45
-                  ],
-                  "hoverBorderColor": [
-                    0.5,
-                    0.6,
-                    1
-                  ],
-                  "alignment": "Center",
-                  "isVisible": false,
-                  "autoFillWindow": false,
-                  "autoCenter": false,
-                  "useHover": true,
-                  "clickBehavior": "closeoverlay",
-                  "hoverEnterBehavior": "",
-                  "hoverExitBehavior": "None",
-                  "children": []
                 }
               ]
+            }
+          ]
+        }
+      ],
+      "backgroundObjects": []
+    },
+    {
+      "sceneName": "mnSettings",
+      "description": "",
+      "elements": [
+        {
+          "name": "mnSettings",
+          "type": "Scene",
+          "text": "Element",
+          "x": 0,
+          "y": 0,
+          "width": 200,
+          "height": 50,
+          "imagePath": "",
+          "imageMode": "Stretch",
+          "fontSize": 13,
+          "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+          "textColor": [
+            0.95,
+            0.95,
+            1
+          ],
+          "bgColor": [
+            0.1,
+            0.12,
+            0.18
+          ],
+          "borderColor": [
+            0.15,
+            0.18,
+            0.25
+          ],
+          "hoverTextColor": [
+            0.95,
+            0.95,
+            1
+          ],
+          "hoverBgColor": [
+            0.22,
+            0.28,
+            0.45
+          ],
+          "hoverBorderColor": [
+            0.5,
+            0.6,
+            1
+          ],
+          "alignment": "Center",
+          "isVisible": false,
+          "autoFillWindow": false,
+          "autoCenter": false,
+          "useHover": true,
+          "clickBehavior": "None",
+          "hoverEnterBehavior": "None",
+          "hoverExitBehavior": "None",
+          "children": [
+            {
+              "name": "btnBacktoMain",
+              "type": "Button",
+              "text": "btnBacktoMain",
+              "x": 860,
+              "y": 470.5,
+              "width": 200,
+              "height": 50,
+              "imagePath": "",
+              "imageMode": "Stretch",
+              "fontSize": 13,
+              "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+              "textColor": [
+                0.95,
+                0.95,
+                1
+              ],
+              "bgColor": [
+                0.1,
+                0.12,
+                0.18
+              ],
+              "borderColor": [
+                0.15,
+                0.18,
+                0.25
+              ],
+              "hoverTextColor": [
+                0.95,
+                0.95,
+                1
+              ],
+              "hoverBgColor": [
+                0.22,
+                0.28,
+                0.45
+              ],
+              "hoverBorderColor": [
+                0.5,
+                0.6,
+                1
+              ],
+              "alignment": "Center",
+              "isVisible": true,
+              "autoFillWindow": false,
+              "autoCenter": false,
+              "useHover": true,
+              "clickBehavior": "scene:mnMain",
+              "hoverEnterBehavior": "None",
+              "hoverExitBehavior": "None",
+              "children": []
             }
           ]
         }

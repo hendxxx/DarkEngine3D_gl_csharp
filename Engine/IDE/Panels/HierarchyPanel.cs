@@ -40,15 +40,10 @@ public class HierarchyPanel
     private UIElement? _dragSourceElement = null;
     private bool _isDragging = false;
 
-    // ── Pending elements waiting for SceneRoot to be available ──
-    private List<UIElement>? _pendingOrphanedElements = null;
-
     // ── Undo / Redo ──
     private readonly List<UndoRedoAction> _undoStack = [];
     private readonly List<UndoRedoAction> _redoStack = [];
     private const int MaxUndoSteps = 50;
-    private bool _undoShortcutWasDown = false; // for Ctrl+Z edge detection
-    private bool _redoShortcutWasDown = false; // for Ctrl+Y edge detection
 
     // ── Save notification state ──
     private string _saveNotificationText = "";
@@ -299,18 +294,16 @@ public class HierarchyPanel
             bool yDown = ImGui.IsKeyDown(ImGuiKey.Y);
 
             // Ctrl+Z: Undo
-            if (ctrlHeld && zDown && !_undoShortcutWasDown && canUndo)
+            if (ctrlHeld && zDown && canUndo)
             {
                 ExecuteUndo();
             }
-            _undoShortcutWasDown = ctrlHeld && zDown;
 
             // Ctrl+Y: Redo
-            if (ctrlHeld && yDown && !_redoShortcutWasDown && canRedo)
+            if (ctrlHeld && yDown && canRedo)
             {
                 ExecuteRedo();
             }
-            _redoShortcutWasDown = ctrlHeld && yDown;
         }
 
         ImGui.Separator();
@@ -422,33 +415,6 @@ public class HierarchyPanel
 
         ImGui.End();
 
-        // ── Re-parent pending orphaned elements when SceneRoot becomes available ──
-        if (_pendingOrphanedElements != null && _pendingOrphanedElements.Count > 0 && _bridge.SceneRoot != null)
-        {
-            var sceneRoot = _bridge.SceneRoot;
-            for (int i = _pendingOrphanedElements.Count - 1; i >= 0; i--)
-            {
-                var orphan = _pendingOrphanedElements[i];
-                int childIdx = sceneRoot.Children.Count;
-                sceneRoot.AddChild(orphan);
-                Console.WriteLine($"[SceneDetail] Re-parented pending element '{orphan.Name}' to scene root");
-                _bridge.SelectedUIElement = orphan;
-
-                // Update the undo action for this pending element so undo works correctly
-                for (int u = 0; u < _undoStack.Count; u++)
-                {
-                    var ua = _undoStack[u];
-                    if (ua.Type == UndoRedoAction.ActionType.Add && ReferenceEquals(ua.Element, orphan))
-                    {
-                        ua.Parent = sceneRoot;
-                        ua.ChildIndex = childIdx;
-                        _undoStack[u] = ua; // struct, need to re-assign
-                        break;
-                    }
-                }
-            }
-            _pendingOrphanedElements.Clear();
-        }
 
         // Update save notification timer (always, even when no roots)
         if (_saveNotificationTimer > 0f)
@@ -1104,20 +1070,9 @@ public class HierarchyPanel
             else
             {
                 // No parent at all — scene hasn't set its root yet.
-                // Store the new element in a pending list; it will be re-parented
-                // on the next frame when the scene's Render() sets SceneRoot.
-                Console.WriteLine($"[SceneDetail] No SceneRoot available — queuing '{name}' for re-parent on next frame");
-                _pendingOrphanedElements ??= [];
-                _pendingOrphanedElements.Add(newElem);
-                // Push undo so user can undo this operation if needed
-                PushUndo(new UndoRedoAction
-                {
-                    Type = UndoRedoAction.ActionType.Add,
-                    Element = newElem,
-                    Parent = null,
-                    ChildIndex = -1,
-                });
-                // Don't set SelectedUIElement since the element isn't in the tree yet
+                // Cannot add element without a valid parent. Log and skip.
+                Console.WriteLine($"[SceneDetail] No SceneRoot available — cannot add '{name}'");
+                ShowSaveNotification("No scene root available");
                 return;
             }
         }
