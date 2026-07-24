@@ -105,8 +105,8 @@ public unsafe class ViewportPanel
             bool isHovered = mouseScreen.X >= csx0 && mouseScreen.X <= csx1 &&
                              mouseScreen.Y >= csy0 && mouseScreen.Y <= csy1;
 
-            // Check if this element is blocked by an open overlay above it
-            bool blockedByOverlay = isPreview && IsBlockedByOverlay(elem);
+// Check if this element is blocked by an open overlay above it
+            bool blockedByOverlay = IsBlockedByOverlay(elem);
 
             // Pick colors: hover or normal
             // UseHover controls whether hover colors are applied (per-element toggle).
@@ -191,15 +191,15 @@ public unsafe class ViewportPanel
                             drawW = elemW;
                             drawH = elemH;
                             break;
-                    }
+}
 
                     // Draw image
                     drawList.AddImage((nint)texId,
                         new Vector2(drawX, drawY),
                         new Vector2(drawX + drawW, drawY + drawH));
 
-                    // Overlay subtle hover tint
-                    if (isHovered)
+                    // Overlay subtle hover tint (skip when blocked by overlay)
+                    if (isHovered && !blockedByOverlay)
                     {
                         drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
                             ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.08f)));
@@ -299,12 +299,6 @@ public unsafe class ViewportPanel
                 }
             }
 
-            // ── Dim hover effect when blocked by overlay ──
-            if (isHovered && blockedByOverlay)
-            {
-                drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.3f, 0.35f, 0.20f)));
-            }
 
             // ── Always recurse for children (so they render regardless of click state) ──
             if (elem.Children.Count > 0)

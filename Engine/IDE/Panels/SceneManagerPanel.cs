@@ -84,7 +84,7 @@ public class SceneManagerPanel
             if (ImGui.Button("+ Add", new Vector2(btnWidth, 28)))
             {
                 _showAddPopup = true;
-                _editNameBuffer = "";
+                _editNameBuffer = _selectedNewSceneTypeIdx switch { 0 => "mn", 1 => "scn", 2 => "load", _ => "scene" };
                 _editDescBuffer = "";
                 _selectedNewSceneTypeIdx = 0;
             }
@@ -319,8 +319,17 @@ public class SceneManagerPanel
 
             ImGui.Text("Scene Type:");
             ImGui.SetNextItemWidth(280);
+            int prevSceneTypeIdx = _selectedNewSceneTypeIdx;
             ImGui.Combo("##add_type", ref _selectedNewSceneTypeIdx,
                 IDEBridge.SceneTypeLabels, IDEBridge.SceneTypeLabels.Length);
+            if (_selectedNewSceneTypeIdx != prevSceneTypeIdx)
+            {
+                string oldDefault = prevSceneTypeIdx switch { 0 => "mn", 1 => "scn", 2 => "load", _ => "scene" };
+                if (_editNameBuffer == oldDefault)
+                {
+                    _editNameBuffer = _selectedNewSceneTypeIdx switch { 0 => "mn", 1 => "scn", 2 => "load", _ => "scene" };
+                }
+            }
 
             ImGui.Separator();
             bool nameValid = !string.IsNullOrWhiteSpace(_editNameBuffer);

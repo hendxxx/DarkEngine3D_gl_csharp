@@ -221,10 +221,10 @@ public class UIElement
         return Type switch
         {
             UIElementType.Scene => "[Scene]",
-            UIElementType.Container => "[Box]",
-            UIElementType.Button => "[Btn]",
-            UIElementType.Label => "[Note]",
-            UIElementType.Dialog => "[Chat]",
+            UIElementType.Container => "[container]",
+            UIElementType.Button => "[btn]",
+            UIElementType.Label => "[lb]",
+            UIElementType.Dialog => "[dialog]",
             _ => "❓",
         };
     }

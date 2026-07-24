@@ -211,7 +211,7 @@ public class HierarchyPanel
             if (ImGui.Button("+ Add", new Vector2(btnWidth, 26)))
             {
                 _showAddPopup = true;
-                _addNameBuffer = "";
+                _addNameBuffer = _addTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "element" };
                 _addTypeIdx = 0;
             }
             ImGui.PopStyleColor(2);
@@ -475,7 +475,17 @@ public class HierarchyPanel
 
             ImGui.Text("Type:");
             ImGui.SetNextItemWidth(260);
+            int prevTypeIdx = _addTypeIdx;
             ImGui.Combo("##add_type", ref _addTypeIdx, ElementTypeLabels, ElementTypeLabels.Length);
+            if (_addTypeIdx != prevTypeIdx)
+            {
+                // If name still matches the old default prefix, update it to new type's prefix
+                string oldDefault = prevTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "element" };
+                if (_addNameBuffer == oldDefault)
+                {
+                    _addNameBuffer = _addTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "element" };
+                }
+            }
 
             ImGui.Separator();
 
@@ -692,7 +702,7 @@ public class HierarchyPanel
             _dragSourceElement = element;
             _isDragging = true;
             ImGui.SetDragDropPayload("SCENEDETAIL_NODE", nint.Zero, 0);
-            ImGui.Text($"[Box] {element.Name}");
+            ImGui.Text($"{element.GetIcon()} {element.Name}");
             ImGui.EndDragDropSource();
         }
 
