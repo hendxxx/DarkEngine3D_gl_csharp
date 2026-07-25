@@ -204,8 +204,13 @@ public class IDE : IDisposable
 
                 ImGui.Separator();
 
-                if (ImGui.MenuItem("Exit IDE", "F2"))
-                    IsHealthy = false;
+                if (ImGui.MenuItem("Exit"))
+                {
+                    Console.WriteLine("Exiting via File > Exit");
+                    nint exitWindow = Glfw.GetWindow();
+                    if (exitWindow != nint.Zero)
+                        Glfw.SetWindowShouldClose(exitWindow, 1);
+                }
                 ImGui.EndMenu();
             }
 
