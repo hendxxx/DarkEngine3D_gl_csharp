@@ -35,6 +35,11 @@ public unsafe class ViewportPanel
     private float _triRotation = 0f;
     private float _bgTotalTime = 0f;
 
+    // ── In-game mode: last element clicked by mouse (for syncing keyboard focus) ──
+    /// <summary>Set by DrawEditorUIPreview when a mouse click occurs in preview mode.
+    /// Read and reset by IDE.RenderInGameMode() to sync keyboard focus to the clicked element.</summary>
+    public UIElement? LastInGameClickedElement { get; set; }
+
     // ── Drag state for UI element editing ──
     private enum DragMode { None, Move, ResizeTL, ResizeTR, ResizeBL, ResizeBR }
     private DragMode _dragMode = DragMode.None;
@@ -623,6 +628,10 @@ public unsafe class ViewportPanel
             bool keyActivate = isPreview && keyboardActivate && focusedElement != null && elem == focusedElement;
             if ((mouseClick || keyActivate) && dragOk && !blockedByOverlay)
             {
+                // Sync mouse click to keyboard focus (in-game mode only)
+                if (mouseClick && isPreview)
+                    LastInGameClickedElement = elem;
+
                 if (isPreview)
                 {
                     // ── Checkbox: ALWAYS toggle first (primary action), then run OnClick if present ──

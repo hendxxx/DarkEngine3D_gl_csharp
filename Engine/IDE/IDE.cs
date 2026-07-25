@@ -67,6 +67,31 @@ public class IDE : IDisposable
     /// <summary>Toggle in-game mode on/off. F8 shortcut.</summary>
     public void ToggleInGameMode() => InGameMode = !_inGameMode;
 
+    /// <summary>Enter in-game mode directly at startup with a specified .ing file.
+    /// Skips the save step (nothing to save yet) and loads the given file path.
+    /// Used by -load= command line argument in Program.cs.</summary>
+    public void EnterInGameModeFromStartup(string loadPath)
+    {
+        if (!File.Exists(loadPath))
+        {
+            Console.WriteLine($"[IDE] Startup load FAILED: file not found at '{loadPath}'");
+            return;
+        }
+
+        Console.WriteLine($"[IDE] Startup: loading '{loadPath}' and entering in-game mode...");
+
+        // Load the file into editor scenes (replaces any existing scenes)
+        _sceneManagerPanel.LoadFromFilePath(loadPath);
+
+        // Set in-game mode directly — skip save, just set flags
+        _inGameMode = true;
+        _viewport.SetFullscreen(true);
+        _focusedInGameElement = null;
+        _focusedInGameIndex = -1;
+
+        Console.WriteLine($"[IDE] Startup in-game mode active ({Bridge.EditorScenes.Count} scene(s) from '{loadPath}')");
+    }
+
     /// <summary>Load game.ing from disk every time in-game mode is entered.
     /// Replaces any existing editor scenes with the freshly loaded data.</summary>
     private void LoadDefaultGameIng()
@@ -419,7 +444,33 @@ public class IDE : IDisposable
             // ── Keyboard navigation ──
             // Collect all visible interactive elements (depth-first, flattened)
             var navElements = new List<UIElement>();
-            FlattenVisibleInteractive(activeEditScene.Root.Children, navElements);
+
+            // Check if there's an active overlay (first visible Container at root level)
+            // When an overlay is open, only elements INSIDE it are navigable (modal behavior).
+            // Elements behind the overlay are blocked from navigation, just like they're
+            // blocked from mouse clicks by IsBlockedByOverlay in ViewportPanel.
+            UIElement? activeOverlay = null;
+            foreach (var rootChild in activeEditScene.Root.Children)
+            {
+                if (rootChild.IsVisible && rootChild.Type == UIElementType.Container)
+                {
+                    activeOverlay = rootChild;
+                    break;
+                }
+            }
+
+            if (activeOverlay != null)
+            {
+                // Modal: only flatten elements inside the overlay (background not navigable)
+                FlattenVisibleInteractive(activeOverlay.Children, navElements);
+                if (navElements.Count > 0)
+                    Console.WriteLine($"[IDE] Overlay '{activeOverlay.Name}' — {navElements.Count} navigable elements inside");
+            }
+            else
+            {
+                // No overlay: flatten all visible interactive elements as usual
+                FlattenVisibleInteractive(activeEditScene.Root.Children, navElements);
+            }
 
             // Tab / Shift+Tab to navigate forward/backward
             bool tabPressed = ImGui.IsKeyPressed(ImGuiKey.Tab, false);
@@ -533,6 +584,22 @@ public class IDE : IDisposable
                 isMouseDown: ImGui.IsMouseDown(ImGuiMouseButton.Left),
                 focusedElement: _focusedInGameElement,
                 keyboardActivate: activatePressed);
+
+            // ── Sync mouse click to keyboard focus ──
+            // If the user clicked an element with the mouse, update keyboard focus to match.
+            if (_viewport.LastInGameClickedElement != null)
+            {
+                var clicked = _viewport.LastInGameClickedElement;
+                _viewport.LastInGameClickedElement = null; // consume
+
+                int clickIdx = navElements.IndexOf(clicked);
+                if (clickIdx >= 0)
+                {
+                    _focusedInGameIndex = clickIdx;
+                    _focusedInGameElement = clicked;
+                    Console.WriteLine($"[IDE] Mouse click synced keyboard focus to '{clicked.Name}'");
+                }
+            }
         }
 
         // No ImGui windows at all — just flush the draw list

@@ -1,8 +1,7 @@
 {
   "profiles": {
     "DarkEngine3D_gl_csharp": {
-      "commandName": "Project",
-      "commandLineArgs": "-load=game.ing"
+      "commandName": "Project"
     }
   }
 }

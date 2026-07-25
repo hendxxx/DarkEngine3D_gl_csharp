@@ -10,11 +10,24 @@ namespace DarkEngine3D_gl_csharp;
 
 public unsafe class Program
 {
-    public static void Main()
+    // add -load=game.ing untuk auto load a scene on startup
+    public static void Main(string[] args)
     {
         // ═══════════════════════════════════════════════════
         // PHASE 0: LOAD SETTINGS (before window creation)
         // ═══════════════════════════════════════════════════
+
+        // Parse command line arguments
+        string? startupLoadPath = null;
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("-load=", StringComparison.OrdinalIgnoreCase))
+            {
+                startupLoadPath = arg["-load=".Length..];
+                Console.WriteLine($"[Program] Command-line: -load={startupLoadPath}");
+            }
+        }
+
         var settings = SettingsSave.Load();
 
         // Initialize save system directories
@@ -97,6 +110,12 @@ public unsafe class Program
 
         SceneManager sceneManager = new();
         sceneManager.AttachIde(ide);
+
+        // If -load= was specified on command line, load the file and enter in-game mode immediately
+        if (!string.IsNullOrEmpty(startupLoadPath))
+        {
+            ide.EnterInGameModeFromStartup(startupLoadPath);
+        }
 
         // ═══════════════════════════════════════════════════
         // PHASE 3: MAIN LOOP (starts with no scene — UI Editor mode)
