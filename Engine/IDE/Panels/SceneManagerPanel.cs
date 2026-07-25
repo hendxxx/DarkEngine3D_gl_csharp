@@ -79,11 +79,25 @@ public class SceneManagerPanel
     /// <summary>Save all editor scenes to game.ing (File > Save).</summary>
     public void SaveAllScenes() => SaveAllEditorScenes();
 
-    /// <summary>Load scenes from a .ing file (called by main menu Recent Files).</summary>
+    /// <summary>Load scenes from a .ing file (called by main menu Recent Files).
+    /// Also adds the file path to the Recent Files list.</summary>
     public void LoadFromFilePath(string path)
     {
         LoadFromIngFile(path);
         DarkEngine3D_gl_csharp.Engine.Config.RecentFilesManager.AddRecentFile(path);
+    }
+
+    /// <summary>Load scenes from game.ing without adding to Recent Files.
+    /// Called by IDE when entering In-Game Mode (F8) to avoid spamming Recent Files.</summary>
+    public void LoadGameIngScenes()
+    {
+        string path = SceneAssetSerializer.GameIngPath;
+        if (!File.Exists(path))
+        {
+            Console.WriteLine($"[SceneManagerPanel] game.ing not found at: {path}");
+            return;
+        }
+        LoadFromIngFile(path);
     }
 
     public void Render()

@@ -32,6 +32,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         private static delegate* unmanaged[Cdecl]<int, void> glfwSwapInterval;
         private static delegate* unmanaged[Cdecl]<IntPtr, nint, int, int, int, int, int, void> glfwSetWindowMonitor;
         private static delegate* unmanaged[Cdecl]<IntPtr, int> glfwWindowShouldClose;
+        private static delegate* unmanaged[Cdecl]<IntPtr, int, void> glfwSetWindowShouldClose;
         private static delegate* unmanaged[Cdecl]<IntPtr, out int, out int, void> glfwGetFramebufferSize;
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int, void> glfwSetWindowPos;
 
@@ -78,6 +79,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return glfwWindowShouldClose(window);
         }
 
+        /// <summary>Signal GLFW to close the window (triggers clean shutdown of the game loop).
+        /// Pass 1 to close, 0 to cancel close request.</summary>
+        public static void SetWindowShouldClose(nint window, int value)
+        {
+            glfwSetWindowShouldClose(window, value);
+        }
+
         public static void Init(string title, bool fullscreen = true, bool borderless = false)
         {
             glfwLib = NativeLibrary.Load("glfw3.dll");
@@ -96,6 +104,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             glfwSetWindowPos = (delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowPos");
 
             glfwWindowShouldClose = (delegate* unmanaged[Cdecl]<IntPtr, int>)NativeLibrary.GetExport(glfwLib, "glfwWindowShouldClose");
+            glfwSetWindowShouldClose = (delegate* unmanaged[Cdecl]<IntPtr, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowShouldClose");
             glfwGetTime = (delegate* unmanaged[Cdecl]<double>)NativeLibrary.GetExport(glfwLib, "glfwGetTime");
             glfwSetWindowTitle = (delegate* unmanaged[Cdecl]<IntPtr, byte*, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowTitle");
 

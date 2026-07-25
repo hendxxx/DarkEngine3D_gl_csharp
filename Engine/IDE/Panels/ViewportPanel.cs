@@ -28,6 +28,12 @@ public unsafe class ViewportPanel
 
     // ── Preview mode: hides all editor helpers, shows scene as-in-game ──
     private bool _previewMode = false;
+    // ── Fullscreen mode: used by In-Game Mode (F8), skips toolbar, fullscreen window ──
+    private bool _fullscreenMode = false;
+
+    // ── Spinning triangle demo ──
+    private float _triRotation = 0f;
+    private float _bgTotalTime = 0f;
 
     // ── Drag state for UI element editing ──
     private enum DragMode { None, Move, ResizeTL, ResizeTR, ResizeBL, ResizeBR }
@@ -39,6 +45,8 @@ public unsafe class ViewportPanel
     // ── Cached conversion data (set each frame in overlay) ──
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
+
+
 
     /// <summary>Convert ImGui screen coordinates to scene pixel coordinates.</summary>
     private Vector2 ScreenToScene(Vector2 screenPos)
@@ -590,16 +598,34 @@ public unsafe class ViewportPanel
             // ── Click handling ──
             // Preview mode: trigger behavior; Editor mode: select element
             // blockedByOverlay already computed above — blocks clicks on elements behind an overlay
-            if (isHovered && leftClicked && _dragMode == DragMode.None && !blockedByOverlay)
+            // Use leftClicked directly AND also check IsMouseClicked for in-game mode (no ImGui windows)
+            bool clickActive = leftClicked || ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+            // Drag guard: in editor mode, skip clicks while dragging; preview mode: always allow
+            bool dragOk = isPreview || _dragMode == DragMode.None;
+            if (isHovered && clickActive && dragOk && !blockedByOverlay)
             {
                 if (isPreview)
                 {
-                    // Game-like interaction: trigger element's behavior
-                    if (elem.OnClick != null)
+                    // ── Checkbox: ALWAYS toggle first (primary action), then run OnClick if present ──
+                    if (elem.Type == UIElementType.Checkbox)
+                    {
+                        elem.IsChecked = !elem.IsChecked;
+                        Console.WriteLine($"[Viewport] Checkbox '{elem.Name}' toggled: {elem.IsChecked}");
+
+                        // Still run OnClick delegate if set (custom handler)
+                        if (elem.OnClick != null)
+                        {
+                            try { elem.OnClick.Invoke(); }
+                            catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
+                        }
+                    }
+                    // Custom handler (OnClick delegate) takes priority for non-checkbox elements
+                    else if (elem.OnClick != null)
                     {
                         try { elem.OnClick.Invoke(); }
                         catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
                     }
+                    // Custom ClickBehaviorLabel takes priority over defaults
                     else if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel))
                     {
                         string behavior = elem.ClickBehaviorLabel.ToLowerInvariant();
@@ -611,6 +637,12 @@ public unsafe class ViewportPanel
                         {
                             HandlePreviewBehavior(elem);
                         }
+                    }
+                    // ── Default interactive element behaviors (fallback when no custom handler) ──
+                    else if (elem.Type == UIElementType.Dropdown && elem.Options.Count > 0)
+                    {
+                        elem.SelectedIndex = (elem.SelectedIndex + 1) % elem.Options.Count;
+                        Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' → '{elem.Options[elem.SelectedIndex]}'");
                     }
                 }
                 else
@@ -805,20 +837,29 @@ public unsafe class ViewportPanel
 
     /// <summary>Exit action:
     /// - Viewport preview mode → back to editor
-    /// - In-game mode → back to editor
+    /// - In-game mode (F8 fullscreen) → close the app
+    /// - In-game input mode (F9 active) → back to editor
     /// - Otherwise → close the app</summary>
     private void HandleExit()
     {
-        if (_previewMode)
+        // ── In-game mode (F8 fullscreen): close the app entirely ──
+        if (_fullscreenMode)
         {
-            // Exit viewport preview mode → back to editor, reset overlay visibility
+            Console.WriteLine("[Viewport] exit → closing app (in-game mode, via GLFW)");
+            nint window = Glfw.GetWindow();
+            if (window != nint.Zero)
+                Glfw.SetWindowShouldClose(window, 1);
+        }
+        // ── Viewport preview mode (F5): back to editor ──
+        else if (_previewMode)
+        {
             Console.WriteLine("[Viewport] exit → exiting preview mode, resetting overlays");
             _previewMode = false;
             ResetSceneOverlays();
         }
+        // ── In-game input mode (F9 active): back to editor ──
         else if (_bridge.InGameActive && _bridge.SceneManager != null)
         {
-            // Exit in-game mode (F9 active)
             Console.WriteLine("[Viewport] exit → back to edit mode");
             _bridge.InGameActive = false;
             if (_bridge.SceneRoot != null)
@@ -827,9 +868,9 @@ public unsafe class ViewportPanel
                     child.IsVisible = false;
             }
         }
+        // ── Otherwise: close the app ──
         else
         {
-            // Close the app
             Console.WriteLine("[Viewport] exit → stopping app");
             _bridge.SceneManager?.Stop();
         }
@@ -1100,75 +1141,230 @@ public unsafe class ViewportPanel
         PreviewMode = !_previewMode;
     }
 
+    /// <summary>Set fullscreen mode (used by In-Game Mode F8).
+    /// When true, toolbar is hidden and window gets NoTitleBar|NoResize flags.</summary>
+    public void SetFullscreen(bool fullscreen) => _fullscreenMode = fullscreen;
+
+    /// <summary>Render UI elements to a draw list at the specified canvas coordinates.
+    /// Used by In-Game Mode (F8) to display loaded scenes without any ImGui windows.</summary>
+    public void RenderUIElements(
+        ImDrawListPtr drawList,
+        Vector2 canvasMin, Vector2 canvasMax,
+        float texW, float texH,
+        IReadOnlyList<UIElement> elements,
+        Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false)
+    {
+        var savedMin = _imageMin;
+        var savedMax = _imageMax;
+        var savedSize = _imageSize;
+        float savedTexW = _texW;
+        float savedTexH = _texH;
+
+        _imageMin = canvasMin;
+        _imageMax = canvasMax;
+        _imageSize = new Vector2(canvasMax.X - canvasMin.X, canvasMax.Y - canvasMin.Y);
+        _texW = texW;
+        _texH = texH;
+
+        DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown);
+
+        _imageMin = savedMin;
+        _imageMax = savedMax;
+        _imageSize = savedSize;
+        _texW = savedTexW;
+        _texH = savedTexH;
+    }
+
+    // ──────────────────────────────────────────────
+    //  ImGui-based background gradient + spinning triangle
+    // ──────────────────────────────────────────────
+
+    /// <summary>Draw animated gradient background using ImGui draw list.
+    /// Renders only when no scene texture is present (dark canvas mode).</summary>
+    private void RenderImGuiGradient(ImDrawListPtr drawList, Vector2 min, Vector2 max)
+    {
+        float w = max.X - min.X;
+        float h = max.Y - min.Y;
+        if (w < 1f || h < 1f) return;
+
+        // Animated gradient: 20 horizontal strips with pulsing colors
+        int gradSteps = 20;
+        float stepH = h / gradSteps;
+        float pulse = MathF.Sin(_bgTotalTime * 0.3f) * 0.015f;
+
+        for (int i = 0; i < gradSteps; i++)
+        {
+            float t = (float)i / gradSteps;
+            float r = 0.06f + t * 0.03f + pulse * 0.5f;
+            float g = 0.06f + t * 0.02f + pulse * 0.3f;
+            float b = 0.10f + t * 0.04f + pulse;
+            float y0 = min.Y + stepH * i;
+            float y1 = y0 + stepH + 1f;
+            drawList.AddRectFilled(
+                new Vector2(min.X, y0),
+                new Vector2(max.X, y1),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(r, g, b, 1f)));
+        }
+    }
+
+    /// <summary>Draw the spinning triangle using ImGui draw list primitives.
+    /// Computes vertex rotation on CPU, draws colored edges + glowing vertices.</summary>
+    private void RenderImGuiTriangle(ImDrawListPtr drawList, Vector2 min, Vector2 max)
+    {
+        float dt = ImGui.GetIO().DeltaTime;
+        _triRotation += dt * 1.5f;
+        if (_triRotation > MathF.PI * 2f) _triRotation -= MathF.PI * 2f;
+
+        float w = max.X - min.X;
+        float h = max.Y - min.Y;
+        if (w < 1f || h < 1f) return;
+
+        // Center of canvas
+        float cx = (min.X + max.X) * 0.5f;
+        float cy = (min.Y + max.Y) * 0.5f;
+        float scale = Math.Min(w, h) * 0.30f;
+
+        // Triangle vertices in local coords (centered at origin)
+        float cosA = MathF.Cos(_triRotation);
+        float sinA = MathF.Sin(_triRotation);
+
+        // Three vertices: top, bottom-left, bottom-right (in local -1 to 1 space)
+        float[] lx = [0f, -0.5f, 0.5f];
+        float[] ly = [0.5f, -0.5f, -0.5f];
+        Vector3[] colors = [
+            new(1f, 0.2f, 0.2f),
+            new(0.2f, 1f, 0.2f),
+            new(0.2f, 0.2f, 1f),
+        ];
+
+        // Compute screen positions
+        var sx = new Vector2[3];
+        for (int i = 0; i < 3; i++)
+        {
+            float rx = lx[i] * cosA - ly[i] * sinA;
+            float ry = lx[i] * sinA + ly[i] * cosA;
+            sx[i] = new(cx + rx * scale, cy + ry * scale);
+        }
+
+        // ── Semi-transparent triangle body ──
+        uint bodyCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.8f, 0.8f, 1f, 0.10f));
+        drawList.AddTriangleFilled(sx[0], sx[1], sx[2], bodyCol);
+
+        // ── Colored edges + vertex glow ──
+        for (int i = 0; i < 3; i++)
+        {
+            int next = (i + 1) % 3;
+            var colV = colors[i];
+
+            // Line from vertex i to next vertex
+            uint edgeCol = ImGui.ColorConvertFloat4ToU32(new Vector4(colV.X, colV.Y, colV.Z, 0.85f));
+            drawList.AddLine(sx[i], sx[next], edgeCol, 2.5f);
+
+            // Outer glow
+            uint glowCol = ImGui.ColorConvertFloat4ToU32(new Vector4(colV.X, colV.Y, colV.Z, 0.25f));
+            drawList.AddCircleFilled(sx[i], 10f, glowCol, 16);
+
+            // Inner bright dot
+            uint dotCol = ImGui.ColorConvertFloat4ToU32(new Vector4(
+                Math.Clamp(colV.X * 1.3f, 0f, 1f),
+                Math.Clamp(colV.Y * 1.3f, 0f, 1f),
+                Math.Clamp(colV.Z * 1.3f, 0f, 1f),
+                1f));
+            drawList.AddCircleFilled(sx[i], 4f, dotCol, 12);
+        }
+    }
+
+
+
     public void Render()
     {
-        if (!_visible) return;
+        // In fullscreen mode (In-Game Mode F8), always render regardless of _visible
+        if (!_fullscreenMode)
+        {
+            if (!_visible) return;
+        }
 
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(0, 0));
-        ImGui.Begin("Viewport", ref _visible, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+
+        // ── Fullscreen mode: add NoTitleBar|NoResize flags ──
+        var windowFlags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
+        if (_fullscreenMode)
+            windowFlags |= ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
+                           ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoNavFocus;
+
+        if (_fullscreenMode)
+        {
+            // Fullscreen: no close button (no ref _visible)
+            ImGui.Begin("Viewport", windowFlags);
+        }
+        else
+        {
+            ImGui.Begin("Viewport", ref _visible, windowFlags);
+        }
         ImGui.PopStyleVar();
 
-        // Track whether the viewport is focused — used by GameScene to manage cursor visibility
+        // Track whether the viewport is focused
         _bridge.IsViewportFocused = ImGui.IsWindowFocused();
 
-        // Cache viewport window position for tooltip positioning (top-left)
-        var viewportTopLeft = ImGui.GetWindowPos();
-
-        // ── Snap-to-grid toggle + grid size selector ──
+        if (!_fullscreenMode)
         {
-            // ── Preview mode toggle ──
-            bool previewNow = _previewMode;
-            ImGui.PushStyleColor(ImGuiCol.Button, previewNow
-                ? new Vector4(0.15f, 0.55f, 0.25f, 1f)    // green = preview ON
-                : new Vector4(0.35f, 0.35f, 0.35f, 1f)); // grey = editor
-            if (ImGui.Button(previewNow ? "▶ Preview" : "◼ Edit"))
-            {
-                if (!previewNow)
-                    ResetSceneOverlays(); // entering preview: reset overlays like scene switch
-                _previewMode = !_previewMode;
-            }
-            ImGui.PopStyleColor(1);
-            if (ImGui.IsItemHovered())
-            {
-                ImGui.SetTooltip(_previewMode
-                    ? "Preview mode: hides editor helpers — shows scene as in-game"
-                    : "Edit mode: shows wireframes, handles, and info labels");
-            }
-            ImGui.SameLine();
-            ImGui.TextDisabled("|");
-            ImGui.SameLine();
+            // Cache viewport window position for tooltip positioning (top-left)
+            var viewportTopLeft = ImGui.GetWindowPos();
 
-            ImGui.Checkbox("Snap", ref _snapEnabled);
-            ImGui.SameLine();
-
-            string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "—";
-            ImGui.SetNextItemWidth(70f);
-            if (ImGui.BeginCombo("##grid_size", gridLabel))
+            // ── Snap-to-grid toggle + grid size selector (skipped in fullscreen) ──
             {
-                for (int si = 0; si < SnapOptions.Length; si++)
+                // ── Preview mode toggle ──
+                bool previewNow = _previewMode;
+                ImGui.PushStyleColor(ImGuiCol.Button, previewNow
+                    ? new Vector4(0.15f, 0.55f, 0.25f, 1f)    // green = preview ON
+                    : new Vector4(0.35f, 0.35f, 0.35f, 1f)); // grey = editor
+                if (ImGui.Button(previewNow ? "▶ Preview" : "◼ Edit"))
                 {
-                    bool isSel = Math.Abs(_snapGridSize - SnapOptions[si]) < 0.01f;
-                    if (ImGui.Selectable($"{SnapOptions[si]}px", isSel))
-                    {
-                        _snapGridSize = SnapOptions[si];
-                        _snapEnabled = true;
-                    }
+                    if (!previewNow)
+                        ResetSceneOverlays();
+                    _previewMode = !_previewMode;
                 }
-                ImGui.EndCombo();
-            }
-
-            ImGui.SameLine();
-            ImGui.TextDisabled("|  " + (_snapEnabled ? $"Grid {_snapGridSize:F0}px" : "Free"));
-
-            // Show element position readout when selected
-            var selReadout = _bridge.SelectedUIElement;
-            if (selReadout != null)
-            {
+                ImGui.PopStyleColor(1);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip(_previewMode
+                        ? "Preview mode: hides editor helpers — shows scene as in-game"
+                        : "Edit mode: shows wireframes, handles, and info labels");
                 ImGui.SameLine();
-                ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
-                    $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
-            }
-        }
+                ImGui.TextDisabled("|");
+                ImGui.SameLine();
+
+                ImGui.Checkbox("Snap", ref _snapEnabled);
+                ImGui.SameLine();
+
+                string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "—";
+                ImGui.SetNextItemWidth(70f);
+                if (ImGui.BeginCombo("##grid_size", gridLabel))
+                {
+                    for (int si = 0; si < SnapOptions.Length; si++)
+                    {
+                        bool isSel = Math.Abs(_snapGridSize - SnapOptions[si]) < 0.01f;
+                        if (ImGui.Selectable($"{SnapOptions[si]}px", isSel))
+                        {
+                            _snapGridSize = SnapOptions[si];
+                            _snapEnabled = true;
+                        }
+                    }
+                    ImGui.EndCombo();
+                }
+
+                ImGui.SameLine();
+                ImGui.TextDisabled("|  " + (_snapEnabled ? $"Grid {_snapGridSize:F0}px" : "Free"));
+
+                // Show element position readout when selected
+                var selReadout = _bridge.SelectedUIElement;
+                if (selReadout != null)
+                {
+                    ImGui.SameLine();
+                    ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
+                        $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
+                }
+            } // end toolbar block
+        } // end if (!_fullscreenMode)
 
         var avail = ImGui.GetContentRegionAvail();
         bool hasSceneTexture = avail.X > 0 && avail.Y > 0 && _bridge.SceneTextureID != 0;
@@ -1207,23 +1403,30 @@ public unsafe class ViewportPanel
                 _imageSize = imageSize;
                 _texW = _bridge.SceneTextureWidth > 0 ? _bridge.SceneTextureWidth : 1f;
                 _texH = _bridge.SceneTextureHeight > 0 ? _bridge.SceneTextureHeight : 1f;
+
             }
             else
             {
-                // No game scene — draw a dark canvas for UI editing
+                // No game scene — draw dark animated canvas for UI editing
                 ImGui.Dummy(new Vector2(canvasW, canvasH));
                 var drawList = ImGui.GetWindowDrawList();
                 var min = ImGui.GetItemRectMin();
                 var max = ImGui.GetItemRectMax();
-                drawList.AddRectFilled(min, max,
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.08f, 0.10f, 1f)));
+
+                // Animated gradient background (via ImGui draw list)
+                RenderImGuiGradient(drawList, min, max);
 
                 _imageMin = min;
                 _imageMax = max;
                 _imageSize = new Vector2(canvasW, canvasH);
-                // Use a default canvas size of 1920×1080 for coordinate conversion
                 _texW = 1920f;
                 _texH = 1080f;
+            }
+
+            // ── Draw spinning triangle via ImGui (on top of scene/background) ──
+            {
+                var drawList = ImGui.GetWindowDrawList();
+                RenderImGuiTriangle(drawList, _imageMin, _imageMax);
             }
 
             var viewportMouseScreen = ImGui.GetMousePos();

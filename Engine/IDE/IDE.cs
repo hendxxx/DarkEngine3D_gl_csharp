@@ -1,8 +1,10 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
+using System.IO;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE;
@@ -26,6 +28,53 @@ public class IDE : IDisposable
     private readonly HierarchyPanel _hierarchy;
 
     public bool IsHealthy { get; private set; }
+
+    // ── Mode toggles ──
+    private bool _inGameMode = false;
+    /// <summary>When true, all ImGui panels are hidden and the game scene fills the entire screen.</summary>
+    public bool InGameMode
+    {
+        get => _inGameMode;
+        set
+        {
+            if (_inGameMode != value)
+            {
+                _inGameMode = value;
+                if (_inGameMode)
+                {
+                    // Save all editor scenes to game.ing first, then reload for in-game mode
+                    Console.WriteLine("[IDE] Saving editor scenes before entering in-game mode...");
+                    Bridge.SaveAllScenes?.Invoke();
+                    LoadDefaultGameIng();
+                    _viewport.SetFullscreen(true);
+                }
+                else
+                {
+                    // Reset fullscreen mode when exiting in-game mode
+                    _viewport.SetFullscreen(false);
+                }
+                Console.WriteLine($"[IDE] In-Game Mode: {_inGameMode}");
+            }
+        }
+    }
+    /// <summary>Toggle in-game mode on/off. F8 shortcut.</summary>
+    public void ToggleInGameMode() => InGameMode = !_inGameMode;
+
+    /// <summary>Load game.ing from disk every time in-game mode is entered.
+    /// Replaces any existing editor scenes with the freshly loaded data.</summary>
+    private void LoadDefaultGameIng()
+    {
+        string gameIngPath = SceneAssetSerializer.GameIngPath;
+        if (!File.Exists(gameIngPath))
+        {
+            Console.WriteLine($"[IDE] game.ing not found at: {gameIngPath}");
+            return;
+        }
+
+        Console.WriteLine($"[IDE] Loading game.ing for in-game mode...");
+        _sceneManagerPanel.LoadGameIngScenes();
+        Console.WriteLine($"[IDE] Loaded game.ing ({Bridge.EditorScenes.Count} scenes)");
+    }
 
     public IDE(nint window)
     {
@@ -78,6 +127,17 @@ public class IDE : IDisposable
     {
         if (!IsHealthy) return;
 
+        // ── F8 shortcut: toggle between IDE Mode and In-Game Mode ──
+        if (ImGui.IsKeyReleased(ImGuiKey.F8))
+            ToggleInGameMode();
+
+        // ── In-Game Mode: render full-screen viewport with no ImGui chrome ──
+        if (_inGameMode)
+        {
+            RenderInGameMode();
+            return;
+        }
+
         // ── Restore editor scene root (game scenes overwrite bridge.SceneRoot each frame) ──
         // Without this, ViewportPanel, HierarchyPanel, and InspectorPanel would see the
         // game scene's empty _sceneRoot instead of the loaded editor scene's UI elements.
@@ -89,7 +149,7 @@ public class IDE : IDisposable
         }
 
         // ── Build main menu bar ──
-        if (ImGui.BeginMainMenuBar())
+        ImGui.BeginMainMenuBar();
         {
             // ════════════════════════════════════════════════════
             //  File Menu
@@ -198,12 +258,20 @@ public class IDE : IDisposable
             // ════════════════════════════════════════════════════
             if (ImGui.BeginMenu("View"))
             {
-                // ── IDE Mode / Preview Mode (radio-like, mutually exclusive) ──
+                // ── IDE Mode / In-Game Mode (radio-like, mutually exclusive) ──
+                if (ImGui.MenuItem("IDE Mode", null, !_inGameMode, true))
+                    InGameMode = false;
+                if (ImGui.MenuItem("In-Game Mode", "F8", _inGameMode, true))
+                    InGameMode = true;
+
+                ImGui.Separator();
+
+                // ── Preview Mode (within IDE Mode, hides editor helpers) ──
+                ImGui.BeginDisabled(_inGameMode);
                 bool isPreview = _viewport.PreviewMode;
-                if (ImGui.MenuItem("IDE Mode", null, !isPreview, true))
-                    _viewport.PreviewMode = false;
-                if (ImGui.MenuItem("Preview Mode", "F5", isPreview, true))
-                    _viewport.PreviewMode = true;
+                if (ImGui.MenuItem("Preview Mode", "F5", isPreview, !_inGameMode))
+                    _viewport.PreviewMode = !isPreview;
+                ImGui.EndDisabled();
 
                 ImGui.Separator();
 
@@ -241,6 +309,7 @@ public class IDE : IDisposable
                 ImGui.TextDisabled("Ctrl+D  Duplicate");
                 ImGui.TextDisabled("Del     Delete");
                 ImGui.TextDisabled("F5      Preview Mode");
+                ImGui.TextDisabled("F8      In-Game Mode");
                 ImGui.TextDisabled("F9      In-Game Input");
                 ImGui.EndMenu();
             }
@@ -280,6 +349,96 @@ public class IDE : IDisposable
         _sceneManagerPanel.Render();
 
         // ── Render ImGui draw data ──
+        _imgui.Render();
+    }
+
+    /// <summary>Render a full-screen game viewport with no ImGui chrome.
+    /// All editor panels and menu bars are hidden; the game scene fills the entire screen.
+    /// A small overlay button allows returning to IDE mode.</summary>
+    /// <summary>In-Game Mode: NO ImGui windows at all.
+    /// Renders scene texture + UI elements directly to foreground draw list,
+    /// then calls _imgui.Render() to flush. Exit via F8 only.</summary>
+    private void RenderInGameMode()
+    {
+        var io = ImGui.GetIO();
+        float screenW = io.DisplaySize.X;
+        float screenH = io.DisplaySize.Y;
+
+        // Render directly to foreground draw list — no ImGui windows!
+        var drawList = ImGui.GetForegroundDrawList();
+
+        // 1) Scene texture from running game scene (render first, behind UI)
+        if (Bridge.SceneTextureID != 0)
+        {
+            float texW = Bridge.SceneTextureWidth > 0 ? Bridge.SceneTextureWidth : 1f;
+            float texH = Bridge.SceneTextureHeight > 0 ? Bridge.SceneTextureHeight : 1f;
+            float panelAspect = screenW / screenH;
+            float texAspect = texW / texH;
+
+            Vector2 imgSize;
+            if (panelAspect > texAspect)
+                imgSize = new Vector2(screenH * texAspect, screenH);
+            else
+                imgSize = new Vector2(screenW, screenW / texAspect);
+
+            float ox = (screenW - imgSize.X) * 0.5f;
+            float oy = (screenH - imgSize.Y) * 0.5f;
+
+            drawList.AddImage((nint)Bridge.SceneTextureID,
+                new Vector2(ox, oy), new Vector2(ox + imgSize.X, oy + imgSize.Y),
+                new Vector2(0, 1), new Vector2(1, 0));
+        }
+        else
+        {
+            // Dark background when no scene texture
+            drawList.AddRectFilled(new Vector2(0, 0), new Vector2(screenW, screenH),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.05f, 0.08f, 1f)));
+        }
+
+        // 2) Editor scene UI elements (from loaded game.ing) — ALWAYS rendered on top
+        if (Bridge.EditorScenes.Count > 0 &&
+            Bridge.SelectedEditorScene != null &&
+            Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var activeEditScene) &&
+            activeEditScene.Root.Children.Count > 0)
+        {
+            // Use scene texture dimensions as the virtual coordinate space
+            // (elements' X/Y/W/H are stored relative to this resolution)
+            float virtualW = Bridge.SceneTextureWidth > 0 ? Bridge.SceneTextureWidth : 1920f;
+            float virtualH = Bridge.SceneTextureHeight > 0 ? Bridge.SceneTextureHeight : 1080f;
+            float virtualAspect = virtualW / virtualH;
+            float panelAspect = screenW / screenH;
+
+            // Calculate aspect-ratio-corrected canvas centered on screen
+            float canvasW, canvasH, ox, oy;
+            if (panelAspect > virtualAspect)
+            {
+                // Screen is wider than texture — use full height, centered horizontally
+                canvasH = screenH;
+                canvasW = screenH * virtualAspect;
+                ox = (screenW - canvasW) * 0.5f;
+                oy = 0f;
+            }
+            else
+            {
+                // Screen is taller than texture — use full width, centered vertically
+                canvasW = screenW;
+                canvasH = screenW / virtualAspect;
+                ox = 0f;
+                oy = (screenH - canvasH) * 0.5f;
+            }
+
+            _viewport.RenderUIElements(
+                drawList,
+                new Vector2(ox, oy), new Vector2(ox + canvasW, oy + canvasH),
+                virtualW, virtualH,
+                activeEditScene.Root.Children,
+                ImGui.GetMousePos(),
+                ImGui.IsMouseClicked(ImGuiMouseButton.Left),
+                isPreview: true,
+                isMouseDown: ImGui.IsMouseDown(ImGuiMouseButton.Left));
+        }
+
+        // No ImGui windows at all — just flush the draw list
         _imgui.Render();
     }
 
