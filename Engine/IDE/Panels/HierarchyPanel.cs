@@ -31,7 +31,7 @@ public class HierarchyPanel
     private bool _showRenamePopup = false;
     private bool _showReloadConfirm = false;
     private string _addNameBuffer = "";
-    private int _addTypeIdx = 0; // 0=Button, 1=Label, 2=Container, 3=Dialog
+    private int _addTypeIdx = 0; // 0=Button, 1=Label, 2=Container, 3=SliderNumber, 4=SliderText, 5=Checkbox, 6=Dropdown, 7=TextBox
     private string _renameBuffer = "";
     private string _renamePreviousName = ""; // captured before dialog opens, for undo
     private const int InputBufSize = 256;
@@ -69,7 +69,7 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container"];
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox"];
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
@@ -206,7 +206,7 @@ public class HierarchyPanel
             if (ImGui.Button("+ Add", new Vector2(btnWidth, 26)))
             {
                 _showAddPopup = true;
-                _addNameBuffer = _addTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "element" };
+                _addNameBuffer = _addTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "sld" };
                 _addTypeIdx = 0;
             }
             ImGui.PopStyleColor(2);
@@ -286,23 +286,28 @@ public class HierarchyPanel
                 ImGui.SetTooltip("Reload hierarchy from .ing file (discard unsaved edits)");
         }
 
-        // ── Keyboard shortcuts (Ctrl+Z / Ctrl+Y) ──
-        // Must be checked outside any disabled block so they always work
+        // ── Keyboard shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+D) ──
+        // Uses IsKeyReleased to prevent repeated triggering when key is held down.
+        // Must be checked outside any disabled block so they always work.
         {
             bool ctrlHeld = ImGui.GetIO().KeyCtrl;
-            bool zDown = ImGui.IsKeyDown(ImGuiKey.Z);
-            bool yDown = ImGui.IsKeyDown(ImGuiKey.Y);
 
-            // Ctrl+Z: Undo
-            if (ctrlHeld && zDown && canUndo)
+            // Ctrl+Z: Undo (on key release — prevents looping)
+            if (ctrlHeld && ImGui.IsKeyReleased(ImGuiKey.Z) && canUndo)
             {
                 ExecuteUndo();
             }
 
-            // Ctrl+Y: Redo
-            if (ctrlHeld && yDown && canRedo)
+            // Ctrl+Y: Redo (on key release)
+            if (ctrlHeld && ImGui.IsKeyReleased(ImGuiKey.Y) && canRedo)
             {
                 ExecuteRedo();
+            }
+
+            // Ctrl+D: Duplicate selected element(s) — multi-select (on key release)
+            if (ctrlHeld && ImGui.IsKeyReleased(ImGuiKey.D) && hasSelection)
+            {
+                DuplicateAllSelected();
             }
         }
 
@@ -446,10 +451,32 @@ public class HierarchyPanel
             if (_addTypeIdx != prevTypeIdx)
             {
                 // If name still matches the old default prefix, update it to new type's prefix
-                string oldDefault = prevTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "element" };
+                string oldDefault = prevTypeIdx switch
+                {
+                    0 => "btn",
+                    1 => "lb",
+                    2 => "cont",
+                    3 => "sld",
+                    4 => "sldtxt",
+                    5 => "chk",
+                    6 => "drp",
+                    7 => "txt",
+                    _ => "element",
+                };
                 if (_addNameBuffer == oldDefault)
                 {
-                    _addNameBuffer = _addTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "element" };
+                    _addNameBuffer = _addTypeIdx switch
+                    {
+                        0 => "btn",
+                        1 => "lb",
+                        2 => "cont",
+                        3 => "sld",
+                        4 => "sldtxt",
+                        5 => "chk",
+                        6 => "drp",
+                        7 => "txt",
+                        _ => "element",
+                    };
                 }
             }
 
@@ -709,6 +736,14 @@ public class HierarchyPanel
                 }
 
                 ImGui.EndMenu();
+            }
+
+            ImGui.Separator();
+
+            // ── Duplicate Item ──
+            if (ImGui.MenuItem("Duplicate", "Ctrl+D"))
+            {
+                DuplicateSelectedElement(element);
             }
 
             ImGui.Separator();
@@ -988,6 +1023,11 @@ public class HierarchyPanel
             0 => UIElementType.Button,
             1 => UIElementType.Label,
             2 => UIElementType.Container,
+            3 => UIElementType.SliderNumber,
+            4 => UIElementType.SliderText,
+            5 => UIElementType.Checkbox,
+            6 => UIElementType.Dropdown,
+            7 => UIElementType.TextBox,
             _ => UIElementType.Button,
         };
 
@@ -1005,8 +1045,9 @@ public class HierarchyPanel
 
         // ── Defaults per type ──
         // Label: transparent background, no hover
-        // Container/Dialog: no hover
+        // Container: no hover
         // Button: default (hover on)
+        // SliderNumber, SliderText, Checkbox, Dropdown, TextBox: no hover, sensible sizes
         if (elemType == UIElementType.Label)
         {
             newElem.UseHover = false;
@@ -1016,10 +1057,53 @@ public class HierarchyPanel
             newElem.HoverBorderColor = newElem.BorderColor;
             newElem.HoverTextColor = newElem.TextColor;
         }
-        else if (elemType == UIElementType.Container || elemType == UIElementType.Dialog)
+        else if (elemType == UIElementType.Container)
         {
             newElem.UseHover = false;
+            newElem.Opacity = 1.0f; // fully opaque (0% transparent)
             newElem.BorderColor = newElem.BgColor; // border matches background (invisible)
+        }
+        else if (elemType == UIElementType.SliderNumber)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 300;
+            newElem.Height = 40;
+            newElem.MinValue = 0;
+            newElem.MaxValue = 100;
+            newElem.Step = 1;
+            newElem.CurrentValue = 50;
+        }
+        else if (elemType == UIElementType.SliderText)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 300;
+            newElem.Height = 40;
+            newElem.TextOptions = ["Option A", "Option B", "Option C"];
+            newElem.SelectedTextIndex = 0;
+        }
+        else if (elemType == UIElementType.Checkbox)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 200;
+            newElem.Height = 36;
+            newElem.IsChecked = false;
+        }
+        else if (elemType == UIElementType.Dropdown)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 250;
+            newElem.Height = 40;
+            newElem.Options = ["Option 1", "Option 2", "Option 3"];
+            newElem.SelectedIndex = 0;
+        }
+        else if (elemType == UIElementType.TextBox)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 300;
+            newElem.Height = 40;
+            newElem.Placeholder = "Enter text...";
+            newElem.InputText = "";
+            newElem.MaxLength = 0;
         }
 
         UIElement? parent;
@@ -1149,6 +1233,142 @@ public class HierarchyPanel
         }
 
         Console.WriteLine($"[SceneDetail] Could not find element '{element.Name}' in hierarchy");
+    }
+
+    // ──────────────────────────────────────────────
+    //  Duplicate Element
+    // ──────────────────────────────────────────────
+
+    /// <summary>Generate a unique duplicate name by appending "Copy N" suffix.
+    /// Checks existing siblings to avoid duplicates like "Copy 1, Copy 2".</summary>
+    private static string GetDuplicateName(UIElement original, UIElement parent)
+    {
+        string baseName = original.Name;
+        // If original already ends with "Copy N", strip it and use the base name
+        // Pattern: "something Copy 1", "something Copy 2", etc.
+        var match = System.Text.RegularExpressions.Regex.Match(baseName, @"^(.*?)\s+Copy\s+(\d+)$");
+        if (match.Success)
+            baseName = match.Groups[1].Value.Trim();
+
+        // Find the highest existing Copy N number among siblings
+        int maxCopy = 0;
+        foreach (var sibling in parent.Children)
+        {
+            if (sibling == original) continue;
+            var m = System.Text.RegularExpressions.Regex.Match(sibling.Name, @$"^{System.Text.RegularExpressions.Regex.Escape(baseName)}\s+Copy\s+(\d+)$");
+            if (m.Success)
+            {
+                int num = int.Parse(m.Groups[1].Value);
+                if (num > maxCopy) maxCopy = num;
+            }
+        }
+
+        return $"{baseName} Copy {maxCopy + 1}";
+    }
+
+    /// <summary>Duplicate the selected element (deep clone) and insert it as a sibling after the original.
+    /// Supports single-element mode only (used from right-click context menu).
+    /// The new element gets name suffix "Copy 1", "Copy 2", etc.</summary>
+    private void DuplicateSelectedElement(UIElement source)
+    {
+        if (source == null) return;
+
+        // Find parent and index of the source element
+        var rootElements = _bridge.SceneRootElements;
+        if (rootElements == null) return;
+
+        var (parent, sourceIndex) = FindParentAndIndex(rootElements, source, _bridge.SceneRoot);
+        if (parent == null || sourceIndex < 0)
+        {
+            Console.WriteLine($"[SceneDetail] Duplicate FAIL: source '{source.Name}' parent not found");
+            return;
+        }
+
+        // Deep clone the element
+        var clone = source.DeepClone();
+        clone.Name = GetDuplicateName(source, parent);
+
+        // Insert right after the original
+        int insertIdx = Math.Min(sourceIndex + 1, parent.Children.Count);
+        clone.Parent = parent;
+        parent.Children.Insert(insertIdx, clone);
+
+        Console.WriteLine($"[SceneDetail] Duplicated '{source.Name}' → '{clone.Name}' at index {insertIdx}");
+
+        // Record undo for add
+        PushUndo(new UndoRedoAction
+        {
+            Type = UndoRedoAction.ActionType.Add,
+            Element = clone,
+            Parent = parent,
+            ChildIndex = insertIdx,
+        });
+
+        // Select the cloned element
+        _bridge.SelectedUIElement = clone;
+        _bridge.SelectedUIElements?.Clear();
+        _bridge.SelectedUIElements?.Add(clone);
+    }
+
+    /// <summary>Duplicate ALL currently selected elements. Each clone is inserted as a sibling
+    /// right after its original, with "Copy N" name suffix. Supports both single and multi-select.
+    /// Processes elements from last to first to preserve insert indices. Selects all clones afterwards.</summary>
+    private void DuplicateAllSelected()
+    {
+        var multi = _bridge.SelectedUIElements;
+        if (multi == null || multi.Count == 0) return;
+
+        var rootElements = _bridge.SceneRootElements;
+        if (rootElements == null) return;
+
+        // Collect (element, parent, index) tuples sorted from LAST to FIRST by tree position.
+        // Processing in reverse order ensures insert indices are correct when adding clones.
+        var items = new List<(UIElement elem, UIElement parent, int index)>();
+        foreach (var elem in multi)
+        {
+            var (parent, idx) = FindParentAndIndex(rootElements, elem, _bridge.SceneRoot);
+            if (parent != null && idx >= 0)
+                items.Add((elem, parent, idx));
+        }
+
+        // Sort by parent then index descending (last child first)
+        items.Sort((a, b) =>
+        {
+            int cmp = a.parent.GetHashCode().CompareTo(b.parent.GetHashCode());
+            return cmp != 0 ? cmp : b.index.CompareTo(a.index);
+        });
+
+        // Clone all elements
+        var clones = new List<UIElement>();
+        foreach (var (elem, parent, idx) in items)
+        {
+            var clone = elem.DeepClone();
+            clone.Name = GetDuplicateName(elem, parent);
+
+            int insertIdx = Math.Min(idx + 1, parent.Children.Count);
+            clone.Parent = parent;
+            parent.Children.Insert(insertIdx, clone);
+            clones.Add(clone);
+
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.Add,
+                Element = clone,
+                Parent = parent,
+                ChildIndex = insertIdx,
+            });
+
+            Console.WriteLine($"[SceneDetail] Duplicated '{elem.Name}' → '{clone.Name}' at index {insertIdx}");
+        }
+
+        // Select all cloned elements
+        if (clones.Count > 0)
+        {
+            _bridge.SelectedUIElements?.Clear();
+            foreach (var c in clones)
+                _bridge.SelectedUIElements?.Add(c);
+            _bridge.SelectedUIElement = clones[^1]; // last clone as primary
+        }
     }
 
     /// <summary>Recursively search for an element and return (parent, index).

@@ -603,7 +603,7 @@ public unsafe class MainMenuScene : IScene
         bool hasExitConfirm = false;
         foreach (var child in _sceneRoot.Children)
         {
-            if (child.Type == UIElementType.Dialog && child.Name == "ExitConfirm")
+            if (child.Type == UIElementType.Container && child.Name == "ExitConfirm")
             {
                 hasExitConfirm = true;
                 break;
@@ -616,9 +616,9 @@ public unsafe class MainMenuScene : IScene
         var exitDlg = new UIElement
         {
             Name = "ExitConfirm",
-            Type = UIElementType.Dialog,
+            Type = UIElementType.Container,
             Text = "",
-            IsVisible = false,
+            IsVisible = true, // visibility synced by SyncHierarchyPositions each frame
             BgColor = new Vector3(0.12f, 0.13f, 0.19f), // dark bg
             BorderColor = new Vector3(0.5f, 0.3f, 0.3f), // red accent
         };
@@ -709,10 +709,6 @@ public unsafe class MainMenuScene : IScene
         exitDlg.AddChild(exitBtn);
 
         _sceneRoot.AddChild(exitDlg);
-        // Ensure children match parent's hidden state initially.
-        // SyncHierarchyPositions() will keep them in sync every frame.
-        foreach (var sub in exitDlg.Children)
-            sub.IsVisible = false;
         Console.WriteLine("[MainMenu] Created default ExitConfirm dialog.");
     }
 
@@ -732,10 +728,10 @@ public unsafe class MainMenuScene : IScene
         // ── Exit confirm dialog visibility & positioning ──
         foreach (var child in _sceneRoot.Children)
         {
-            if (child.Type == UIElementType.Dialog && child.Name == "ExitConfirm")
+            if (child.Type == UIElementType.Container && child.Name == "ExitConfirm")
             {
                 child.IsVisible = _exitConfirmActive;
-                // Sync ALL children visibility to match parent — prevents buttons
+                // Sync children visibility to match parent — prevents buttons
                 // from appearing in _uiButtons flat list when dialog is hidden.
                 foreach (var sub in child.Children)
                     sub.IsVisible = _exitConfirmActive;
@@ -1151,10 +1147,10 @@ public unsafe class MainMenuScene : IScene
                 }
                 else
                 {
-                    // Image not loaded — draw fallback text
-                    if (!string.IsNullOrEmpty(elem.Text))
+                    // Image not loaded — draw fallback text (separate from Text property)
+                    if (!string.IsNullOrEmpty(elem.FallbackText) && elem.Opacity > 0.01f)
                     {
-                        _hud.DrawText(elem.Text, elem.X, elem.Y, elem.TextColor);
+                        _hud.DrawText(elem.FallbackText, elem.X, elem.Y, elem.TextColor);
                     }
                 }
             }

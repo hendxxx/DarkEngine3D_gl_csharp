@@ -61,13 +61,15 @@ public unsafe class ViewportPanel
     /// <summary>Draw a live preview of editor scene UI elements using ImGui draw list.
     /// Renders backgrounds, borders, text/images with hover effects.
     /// When isPreview=true: click triggers element's OnClick behavior (game-like).
-    /// When isPreview=false: click selects element in the editor.</summary>
-    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false)
+    /// When isPreview=false: click selects element in the editor.
+    /// Pass isMouseDown=true when the mouse button is held (for slider dragging).</summary>
+    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false)
     {
         for (int ei = 0; ei < elements.Count; ei++)
         {
             var elem = elements[ei];
             if (!elem.IsVisible) continue;
+            float elemOpacity = Math.Clamp(elem.Opacity, 0f, 1f);
 
             // Auto-fill window: force element to cover the entire viewport
             if (elem.AutoFillWindow)
@@ -105,7 +107,7 @@ public unsafe class ViewportPanel
             bool isHovered = mouseScreen.X >= csx0 && mouseScreen.X <= csx1 &&
                              mouseScreen.Y >= csy0 && mouseScreen.Y <= csy1;
 
-// Check if this element is blocked by an open overlay above it
+            // Check if this element is blocked by an open overlay above it
             bool blockedByOverlay = IsBlockedByOverlay(elem);
 
             // Pick colors: hover or normal
@@ -122,10 +124,12 @@ public unsafe class ViewportPanel
             bool labelDefaultBg = isLabel && bgColor.X < 0.001f && bgColor.Y < 0.001f && bgColor.Z < 0.001f;
 
             // ── Draw background (filled rect) — skip for Labels with default transparent colors ──
+            // Uses elemOpacity directly as alpha so the element's Opacity property is the sole
+            // control for transparency (no hardcoded multiplier).
             if (!labelDefaultBg)
             {
                 drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, 0.85f)),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, 1.0f * elemOpacity)),
                     4f);
             }
 
@@ -202,22 +206,22 @@ public unsafe class ViewportPanel
                     if (isHovered && !blockedByOverlay)
                     {
                         drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                            ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.08f)));
+                            ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.08f * elemOpacity)));
                     }
                 }
-                else
+                else if (!string.IsNullOrEmpty(elem.FallbackText))
                 {
-                    // Image not loaded — show placeholder
+                    // Image not loaded — show fallback text (only if set)
                     drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                        ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.2f, 0.2f, 0.6f)));
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.2f, 0.2f, 0.6f * elemOpacity)));
                     drawList.AddText(new Vector2(csx0 + 4f, csy0 + 4f),
-                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.6f, 0.3f, 1f)),
-                        "[Missing]");
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.6f, 0.3f, 1f * elemOpacity)),
+                        elem.FallbackText);
                 }
             }
 
-            // ── Draw text label with element's FontSize ──
-            if (!string.IsNullOrEmpty(elem.Text))
+            // ── Draw text label with element's FontSize (skip for image elements & checkbox — checkbox has its own label rendering) ──
+            if (!hasImage && elem.Type != UIElementType.Checkbox && !string.IsNullOrEmpty(elem.Text))
             {
                 string label = elem.Text;
                 float previewFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
@@ -250,7 +254,7 @@ public unsafe class ViewportPanel
                 textX = Math.Max(csx0 + 2f, Math.Min(textX, csx1 - textW - 2f));
 
                 drawList.AddText(ImGui.GetFont(), previewFontSize, new Vector2(textX, textY),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f)),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f * elemOpacity)),
                     label);
             }
 
@@ -259,8 +263,328 @@ public unsafe class ViewportPanel
             if (!labelDefaultBorder)
             {
                 drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f)),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f * elemOpacity)),
                     4f, ImDrawFlags.None, 1.5f);
+            }
+
+            // ════════════════════════════════════════════
+            //  Type-Specific Element Rendering
+            // ════════════════════════════════════════════
+            float elemScreenW = sx1 - sx0;
+            float elemScreenH = sy1 - sy0;
+            float innerPad = 6f;
+
+            if (elem.Type == UIElementType.SliderNumber)
+            {
+                // ── SliderNumber: track + filled portion + thumb + value label ──
+                float trackY = csy0 + elemScreenH * 0.5f - 3f;
+                float trackHStyle = Math.Max(2f, elem.SliderTrackHeight);
+                float trackX = csx0 + innerPad;
+                float trackW = (csx1 - csx0) - innerPad * 2f;
+
+                // Track background
+                float thumbSizeStyle = Math.Max(6f, elem.SliderThumbSize);
+                uint trackBgCol = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderTrackColor.X, elem.SliderTrackColor.Y, elem.SliderTrackColor.Z, 0.9f * elemOpacity));
+                drawList.AddRectFilled(new Vector2(trackX, trackY), new Vector2(trackX + trackW, trackY + trackHStyle), trackBgCol, 3f);
+
+                // Filled portion
+                float t = (elem.MaxValue - elem.MinValue) > 0.001f
+                    ? Math.Clamp((elem.CurrentValue - elem.MinValue) / (elem.MaxValue - elem.MinValue), 0f, 1f)
+                    : 0f;
+                float fillW = trackW * t;
+                uint fillColorUi = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderFillColor.X, elem.SliderFillColor.Y, elem.SliderFillColor.Z, 0.9f * elemOpacity));
+                drawList.AddRectFilled(new Vector2(trackX, trackY), new Vector2(trackX + fillW, trackY + trackHStyle), fillColorUi, 3f);
+
+                // Thumb handle
+                float thumbX = trackX + fillW;
+                uint thumbCol = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderThumbColor.X, elem.SliderThumbColor.Y, elem.SliderThumbColor.Z, 1f * elemOpacity));
+                uint thumbBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderThumbBorderColor.X, elem.SliderThumbBorderColor.Y, elem.SliderThumbBorderColor.Z, 1f * elemOpacity));
+                drawList.AddCircleFilled(new Vector2(thumbX, trackY + trackHStyle * 0.5f), thumbSizeStyle * 0.5f, thumbCol, 16);
+                drawList.AddCircle(new Vector2(thumbX, trackY + trackHStyle * 0.5f), thumbSizeStyle * 0.5f, thumbBorder, 16, 1.5f);
+
+                // Value label with position controlled by SliderValuePosition
+                string valStr = $"{elem.CurrentValue:F1}";
+                var valSize = ImGui.CalcTextSize(valStr);
+                if (elem.SliderValuePosition != SliderLabelPosition.None)
+                {
+                    float valX, valY;
+                    switch (elem.SliderValuePosition)
+                    {
+                        case SliderLabelPosition.Left:
+                            valX = csx0 + innerPad;
+                            valY = csy0 + (elemScreenH - valSize.Y) * 0.5f;
+                            break;
+                        case SliderLabelPosition.Top:
+                            valX = csx0 + (elemScreenW - valSize.X) * 0.5f;
+                            valY = csy0 + 2f;
+                            break;
+                        case SliderLabelPosition.Bottom:
+                            valX = csx0 + (elemScreenW - valSize.X) * 0.5f;
+                            valY = csy1 - valSize.Y - 2f;
+                            break;
+                        default: // Right
+                            valX = csx1 - innerPad - valSize.X;
+                            valY = csy0 + (elemScreenH - valSize.Y) * 0.5f;
+                            break;
+                    }
+                    uint valColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.8f, 0.9f, 1.0f, 1f * elemOpacity));
+                    drawList.AddText(new Vector2(valX, valY), valColor, valStr);
+                }
+
+                // Draw step tick marks (when step is significant)
+                if (elem.Step > 0.1f && trackW > 80f)
+                {
+                    int tickCount = Math.Min(20, (int)((elem.MaxValue - elem.MinValue) / elem.Step));
+                    if (tickCount > 1 && tickCount <= 30)
+                    {
+                        uint tickCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 0.5f, 0.6f, 0.4f));
+                        for (int ti = 1; ti < tickCount; ti++)
+                        {
+                            float frac = (float)ti / tickCount;
+                            float tickX = trackX + trackW * frac;
+                            drawList.AddLine(
+                                new Vector2(tickX, trackY + 1f),
+                                new Vector2(tickX, trackY + trackHStyle - 1f),
+                                tickCol, 1f);
+                        }
+                    }
+                }
+
+                // ── Interactive slider drag (preview mode only) ──
+                if (isPreview && isHovered && isMouseDown && !blockedByOverlay && trackW > 1f)
+                {
+                    float mouseRelX = mouseScreen.X - trackX;
+                    float frac = Math.Clamp(mouseRelX / trackW, 0f, 1f);
+                    float newVal = elem.MinValue + frac * (elem.MaxValue - elem.MinValue);
+                    if (elem.Step > 0.001f)
+                        newVal = MathF.Round(newVal / elem.Step) * elem.Step;
+                    elem.CurrentValue = Math.Clamp(newVal, elem.MinValue, elem.MaxValue);
+                }
+            }
+            else if (elem.Type == UIElementType.SliderText)
+            {
+                // ── SliderText: track + filled portion + thumb + text label ──
+                float trackY = csy0 + elemScreenH * 0.5f - 3f;
+                float trackHStyle = Math.Max(2f, elem.SliderTrackHeight);
+                float trackX = csx0 + innerPad;
+                float trackW = (csx1 - csx0) - innerPad * 2f;
+
+                // Track background
+                float thumbSizeStyle = Math.Max(6f, elem.SliderThumbSize);
+                uint trackBgCol = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderTrackColor.X, elem.SliderTrackColor.Y, elem.SliderTrackColor.Z, 0.9f * elemOpacity));
+                drawList.AddRectFilled(new Vector2(trackX, trackY), new Vector2(trackX + trackW, trackY + trackHStyle), trackBgCol, 3f);
+
+                // Filled portion (based on selected text index)
+                float t = elem.TextOptions.Count > 1
+                    ? Math.Clamp((float)elem.SelectedTextIndex / (elem.TextOptions.Count - 1), 0f, 1f)
+                    : 0f;
+                float fillW = trackW * t;
+                uint fillColorUi = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderFillColor.X, elem.SliderFillColor.Y, elem.SliderFillColor.Z, 0.9f * elemOpacity));
+                drawList.AddRectFilled(new Vector2(trackX, trackY), new Vector2(trackX + fillW, trackY + trackHStyle), fillColorUi, 3f);
+
+                // Thumb handle
+                float thumbX = trackX + fillW;
+                uint thumbCol = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderThumbColor.X, elem.SliderThumbColor.Y, elem.SliderThumbColor.Z, 1f * elemOpacity));
+                uint thumbBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(elem.SliderThumbBorderColor.X, elem.SliderThumbBorderColor.Y, elem.SliderThumbBorderColor.Z, 1f * elemOpacity));
+                drawList.AddCircleFilled(new Vector2(thumbX, trackY + trackHStyle * 0.5f), thumbSizeStyle * 0.5f, thumbCol, 16);
+                drawList.AddCircle(new Vector2(thumbX, trackY + trackHStyle * 0.5f), thumbSizeStyle * 0.5f, thumbBorder, 16, 1.5f);
+
+                // Selected text label with position controlled by SliderValuePosition
+                string selText = elem.SelectedTextIndex >= 0 && elem.SelectedTextIndex < elem.TextOptions.Count
+                    ? elem.TextOptions[elem.SelectedTextIndex]
+                    : "?";
+                var selSize = ImGui.CalcTextSize(selText);
+                if (elem.SliderValuePosition != SliderLabelPosition.None)
+                {
+                    float selX, selY;
+                    switch (elem.SliderValuePosition)
+                    {
+                        case SliderLabelPosition.Left:
+                            selX = csx0 + innerPad;
+                            selY = csy0 + (elemScreenH - selSize.Y) * 0.5f;
+                            break;
+                        case SliderLabelPosition.Top:
+                            selX = csx0 + (elemScreenW - selSize.X) * 0.5f;
+                            selY = csy0 + 2f;
+                            break;
+                        case SliderLabelPosition.Bottom:
+                            selX = csx0 + (elemScreenW - selSize.X) * 0.5f;
+                            selY = csy1 - selSize.Y - 2f;
+                            break;
+                        default: // Right
+                            selX = csx1 - innerPad - selSize.X;
+                            selY = csy0 + (elemScreenH - selSize.Y) * 0.5f;
+                            break;
+                    }
+                    uint selColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.8f, 0.7f, 1.0f, 1f * elemOpacity));
+                    drawList.AddText(new Vector2(selX, selY), selColor, selText);
+                }
+
+                // Tick marks for each text option
+                if (elem.TextOptions.Count > 1 && trackW > 80f)
+                {
+                    uint tickCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 0.5f, 0.7f, 0.4f * elemOpacity));
+                    for (int ti = 0; ti < elem.TextOptions.Count; ti++)
+                    {
+                        float frac = elem.TextOptions.Count > 1 ? (float)ti / (elem.TextOptions.Count - 1) : 0f;
+                        float tickX = trackX + trackW * frac;
+                        drawList.AddLine(
+                            new Vector2(tickX, trackY + 1f),
+                            new Vector2(tickX, trackY + trackHStyle - 1f),
+                            tickCol, 1.5f);
+                    }
+                }
+
+                // ── Interactive slider drag (preview mode only) ──
+                if (isPreview && isHovered && isMouseDown && !blockedByOverlay && trackW > 1f && elem.TextOptions.Count > 0)
+                {
+                    float mouseRelX = mouseScreen.X - trackX;
+                    float frac = Math.Clamp(mouseRelX / trackW, 0f, 1f);
+                    int newIdx = (int)Math.Round(frac * (elem.TextOptions.Count - 1));
+                    newIdx = Math.Clamp(newIdx, 0, elem.TextOptions.Count - 1);
+                    elem.SelectedTextIndex = newIdx;
+                }
+            }
+            else if (elem.Type == UIElementType.Checkbox)
+            {
+                // ── Checkbox: square + checkmark + label ──
+                float boxSize = Math.Min(24f, elemScreenH - innerPad * 2f);
+                float boxX = csx0 + innerPad;
+                float boxY = csy0 + (elemScreenH - boxSize) * 0.5f;
+
+                // Checkbox square
+                uint chkBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.4f, 0.55f, 1f * elemOpacity));
+                var chkCheckedBg = elem.CheckedBgColor;
+                var chkUncheckedBg = elem.UncheckedBgColor;
+                uint chkBg = ImGui.ColorConvertFloat4ToU32(elem.IsChecked
+                    ? new Vector4(chkCheckedBg.X, chkCheckedBg.Y, chkCheckedBg.Z, 0.9f * elemOpacity)
+                    : new Vector4(chkUncheckedBg.X, chkUncheckedBg.Y, chkUncheckedBg.Z, 0.9f * elemOpacity));
+                drawList.AddRectFilled(new Vector2(boxX, boxY), new Vector2(boxX + boxSize, boxY + boxSize), chkBg, 4f);
+                drawList.AddRect(new Vector2(boxX, boxY), new Vector2(boxX + boxSize, boxY + boxSize), chkBorder, 4f, ImDrawFlags.None, 1.5f);
+
+                // Checkmark (when checked)
+                if (elem.IsChecked)
+                {
+                    var cmCol = elem.CheckmarkColor;
+                    uint checkCol = ImGui.ColorConvertFloat4ToU32(new Vector4(cmCol.X, cmCol.Y, cmCol.Z, 1f * elemOpacity));
+                    float cx = boxX + boxSize * 0.5f;
+                    float cy = boxY + boxSize * 0.5f;
+                    float cs = boxSize * 0.25f;
+                    drawList.AddLine(new Vector2(cx - cs, cy), new Vector2(cx - cs * 0.2f, cy + cs * 0.7f), checkCol, 2.5f);
+                    drawList.AddLine(new Vector2(cx - cs * 0.2f, cy + cs * 0.7f), new Vector2(cx + cs * 0.8f, cy - cs * 0.5f), checkCol, 2.5f);
+                }
+
+                // Label text
+                string chkLabel = !string.IsNullOrEmpty(elem.Text) ? elem.Text : elem.Name;
+                float lblX = boxX + boxSize + innerPad;
+                float lblY = csy0 + (elemScreenH - ImGui.CalcTextSize(chkLabel).Y) * 0.5f;
+                uint lblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
+                drawList.AddText(ImGui.GetFont(), 13f, new Vector2(lblX, lblY), lblCol, chkLabel);
+            }
+            else if (elem.Type == UIElementType.Dropdown)
+            {
+                // ── Dropdown: box + selected text + dropdown arrow ──
+                float arrowSize = 10f;
+                float arrowX = csx1 - innerPad - arrowSize;
+                float arrowY = csy0 + (elemScreenH - arrowSize) * 0.5f;
+
+                // Selected value text
+                string selText = elem.SelectedIndex >= 0 && elem.SelectedIndex < elem.Options.Count
+                    ? elem.Options[elem.SelectedIndex]
+                    : "(select)";
+                uint ddTextCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
+
+                // Truncate if too wide
+                float maxTextW = (csx1 - csx0) - innerPad * 3f - arrowSize;
+                var ddTextSize = ImGui.CalcTextSize(selText);
+                if (ddTextSize.X > maxTextW)
+                {
+                    while (selText.Length > 1 && ImGui.CalcTextSize(selText + "...").X > maxTextW)
+                        selText = selText[..^1];
+                    selText += "...";
+                }
+
+                float ddTextX = csx0 + innerPad;
+                float ddTextY = csy0 + (elemScreenH - ddTextSize.Y) * 0.5f;
+                drawList.AddText(new Vector2(ddTextX, ddTextY), ddTextCol, selText);
+
+                // Dropdown arrow icon
+                var arrCol = elem.ArrowColor;
+                uint arrowCol = ImGui.ColorConvertFloat4ToU32(new Vector4(arrCol.X, arrCol.Y, arrCol.Z, 1f * elemOpacity));
+                float arrowHalf = arrowSize * 0.5f;
+                drawList.AddTriangleFilled(
+                    new Vector2(arrowX, arrowY),
+                    new Vector2(arrowX + arrowSize, arrowY),
+                    new Vector2(arrowX + arrowHalf, arrowY + arrowSize * 0.7f),
+                    arrowCol);
+
+                // Placeholder when no selection
+                if (elem.SelectedIndex < 0 || elem.SelectedIndex >= elem.Options.Count)
+                {
+                    string phText = "Select...";
+                    uint phCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 0.5f, 0.5f, 0.6f * elemOpacity));
+                    drawList.AddText(new Vector2(ddTextX, ddTextY), phCol, phText);
+                }
+            }
+            else if (elem.Type == UIElementType.TextBox)
+            {
+                // ── TextBox: input field with placeholder or current text ──
+                float inputPadX = 10f;
+                float inputX = csx0 + inputPadX;
+                float inputY = csy0 + 4f;
+                float inputW = (csx1 - csx0) - inputPadX * 2f;
+                float inputH = elemScreenH - 8f;
+
+                // Input background (slightly lighter)
+                uint inputBg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.12f, 0.12f, 0.18f, 0.9f * elemOpacity));
+                drawList.AddRectFilled(new Vector2(inputX, inputY), new Vector2(inputX + inputW, inputY + inputH), inputBg, 3f);
+
+                // Text content
+                string displayText = !string.IsNullOrEmpty(elem.InputText) ? elem.InputText : elem.Placeholder;
+                bool isPlaceholder = string.IsNullOrEmpty(elem.InputText);
+
+                // Truncate to fit
+                var tbTextSize = ImGui.CalcTextSize(displayText);
+                float maxTextW = inputW - 8f;
+                if (tbTextSize.X > maxTextW)
+                {
+                    while (displayText.Length > 1 && ImGui.CalcTextSize(displayText + "...").X > maxTextW)
+                        displayText = displayText[..^1];
+                    displayText += "...";
+                }
+
+                uint tbTextCol = ImGui.ColorConvertFloat4ToU32(isPlaceholder
+                    ? new Vector4(0.5f, 0.5f, 0.5f, 0.7f * elemOpacity)
+                    : new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
+                float tbTextX = inputX + 6f;
+                float tbTextY = inputY + (inputH - tbTextSize.Y) * 0.5f;
+                drawList.AddText(new Vector2(tbTextX, tbTextY), tbTextCol, displayText);
+
+                // Blinking cursor indicator (when text is entered and element is hovered)
+                if (!string.IsNullOrEmpty(elem.InputText) && isHovered)
+                {
+                    float cursorX = tbTextX + tbTextSize.X + 2f;
+                    float cursorH = tbTextSize.Y * 0.8f;
+                    float cursorY = tbTextY + (tbTextSize.Y - cursorH) * 0.5f;
+                    var curCol = elem.CursorColor;
+                    uint cursorCol = ImGui.ColorConvertFloat4ToU32(new Vector4(curCol.X, curCol.Y, curCol.Z, 0.8f * elemOpacity));
+                    drawList.AddLine(
+                        new Vector2(cursorX, cursorY),
+                        new Vector2(cursorX, cursorY + cursorH),
+                        cursorCol, 1.5f);
+                }
+
+                // Length indicator
+                int maxLen = elem.MaxLength;
+                if (maxLen > 0)
+                {
+                    string lenStr = $"{elem.InputText.Length}/{maxLen}";
+                    var lenSize = ImGui.CalcTextSize(lenStr);
+                    float lenX = csx1 - inputPadX - lenSize.X;
+                    float lenY = inputY + inputH - lenSize.Y - 2f;
+                    uint lenCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 0.5f, 0.6f, 0.7f * elemOpacity));
+                    drawList.AddText(new Vector2(lenX, lenY), lenCol, lenStr);
+                }
             }
 
             // ── Click handling ──
@@ -302,7 +626,7 @@ public unsafe class ViewportPanel
 
             // ── Always recurse for children (so they render regardless of click state) ──
             if (elem.Children.Count > 0)
-                DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview);
+                DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown);
         }
     }
 
@@ -428,12 +752,12 @@ public unsafe class ViewportPanel
             case "cancelsettings":
             case "discardchanges":
             case "keepediting":
-                // Legacy: close all dialogs/containers
+                // Legacy: close all containers
                 if (_bridge.SceneRoot != null)
                 {
                     foreach (var child in _bridge.SceneRoot.Children)
                     {
-                        if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+                        if (child.Type == UIElementType.Container)
                             child.IsVisible = false;
                     }
                 }
@@ -511,16 +835,16 @@ public unsafe class ViewportPanel
         }
     }
 
-    /// <summary>Close the parent overlay/dialog of the clicked element.
-    /// Walks up the parent chain to find the nearest Dialog or Container and hides it.
-    /// If no parent dialog found, closes all dialogs/containers in the scene root.</summary>
+    /// <summary>Close the parent overlay/container of the clicked element.
+    /// Walks up the parent chain to find the nearest Container and hides it.
+    /// If no parent container found, closes all containers in the scene root.</summary>
     private void HandleCloseOverlay(UIElement elem)
     {
-        // Find the parent dialog/container and close it
+        // Find the parent container and close it
         var parent = elem.Parent;
         while (parent != null)
         {
-            if (parent.Type == UIElementType.Dialog || parent.Type == UIElementType.Container)
+            if (parent.Type == UIElementType.Container)
             {
                 parent.IsVisible = false;
                 foreach (var child in parent.Children)
@@ -531,15 +855,15 @@ public unsafe class ViewportPanel
             parent = parent.Parent;
         }
 
-        // If no parent dialog found, close all dialogs/containers in scene root
+        // If no parent container found, close all containers in scene root
         if (_bridge.SceneRoot != null)
         {
             foreach (var child in _bridge.SceneRoot.Children)
             {
-                if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+                if (child.Type == UIElementType.Container)
                     child.IsVisible = false;
             }
-            Console.WriteLine("[Viewport] closeoverlay → closed all dialogs (no parent found)");
+            Console.WriteLine("[Viewport] closeoverlay → closed all containers (no parent found)");
         }
     }
 
@@ -553,7 +877,7 @@ public unsafe class ViewportPanel
 
         // Check if already exists (double-check)
         foreach (var child in _bridge.SceneRoot.Children)
-            if (child.Type == UIElementType.Dialog && child.Name == "ExitConfirm")
+            if (child.Type == UIElementType.Container && child.Name == "ExitConfirm")
                 return;
 
         int w = _bridge.SceneTextureWidth > 0 ? _bridge.SceneTextureWidth : 1920;
@@ -566,9 +890,9 @@ public unsafe class ViewportPanel
         var exitDlg = new UIElement
         {
             Name = "ExitConfirm",
-            Type = UIElementType.Dialog,
+            Type = UIElementType.Container,
             Text = "",
-            IsVisible = false,
+            IsVisible = true,
             X = dlgX,
             Y = dlgY,
             Width = dlgW,
@@ -679,11 +1003,11 @@ public unsafe class ViewportPanel
     {
         if (_bridge.SceneRoot == null) return false;
 
-        // Find the first visible overlay (Dialog/Container) at root level
+        // Find the first visible overlay (Container) at root level
         UIElement? activeOverlay = null;
         foreach (var child in _bridge.SceneRoot.Children)
         {
-            if (child.IsVisible && (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container))
+            if (child.IsVisible && child.Type == UIElementType.Container)
             {
                 activeOverlay = child;
                 break;
@@ -706,19 +1030,13 @@ public unsafe class ViewportPanel
     }
 
     /// <summary>Reset overlay visibility and activate first-level children.
-    /// Overlays (Dialog/Container) → hidden; other first-level children → visible.</summary>
+    /// Non-container children → visible. Containers keep their current state.</summary>
     private void ResetSceneOverlays()
     {
         if (_bridge.SceneRoot == null) return;
         foreach (var child in _bridge.SceneRoot.Children)
         {
-            if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
-            {
-                child.IsVisible = false;
-                foreach (var sub in child.Children)
-                    sub.IsVisible = false;
-            }
-            else if (child.Type != UIElementType.Scene)
+            if (child.Type != UIElementType.Scene && child.Type != UIElementType.Container)
             {
                 child.IsVisible = true;
             }
@@ -740,8 +1058,7 @@ public unsafe class ViewportPanel
     {
         foreach (var child in elements)
         {
-            if ((child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
-                && child.Name == name)
+            if (child.Type == UIElementType.Container && child.Name == name)
             {
                 child.IsVisible = visible;
                 // Sync ALL children visibility to match parent
@@ -928,7 +1245,7 @@ public unsafe class ViewportPanel
             if (_bridge.SceneRoot != null && _bridge.SceneRoot.Children.Count > 0)
             {
                 var drawList = ImGui.GetWindowDrawList();
-                DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked, isPreview: _previewMode);
+                DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked, isPreview: _previewMode, isMouseDown: cachedLeftDown);
             }
 
             // ── Preview mode indicator badge (bottom-right corner) ──

@@ -24,7 +24,7 @@ public class InspectorPanel
 
     // ── Element type labels (mirrors UIElementType order) ──
     private static readonly string[] ElementTypeNames =
-        ["Scene", "Container", "Button", "Label"];
+        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox"];
 
     public InspectorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -68,6 +68,11 @@ public class InspectorPanel
 
     private unsafe void RenderUIElementInspector(UIElement elem)
     {
+        // Unique ID scope per element instance — prevents ImGui ID collisions
+        // when switching between elements (all InputText/DragFloat/Combo IDs are
+        // scoped under elem.InstanceId, so each element gets its own ID space).
+        ImGui.PushID(elem.InstanceId);
+
         bool isSceneType = elem.Type == UIElementType.Scene;
 
         // ════════════════════════════════════════════
@@ -108,8 +113,14 @@ public class InspectorPanel
                         ImGui.SetTooltip($"Type: {child.Type} | Click to select");
                 }
             }
+            ImGui.PopID();
             return; // Scene type: nothing else to show
         }
+
+        // ════════════════════════════════════════════
+        //  Type-Specific Properties (Moved to top)
+        // ════════════════════════════════════════════
+        RenderTypeSpecificProperties(elem);
 
         // ════════════════════════════════════════════
         //  Image (replaces Text & Font when ImagePath is set)
@@ -178,19 +189,19 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Resize element to fill the entire window (1920×1080)");
 
-            // ── Label (text shown when image can't be loaded) ──
+            // ── Fallback Label (shown when image can't be loaded) — independent from main Text ──
             ImGui.Spacing();
-            string labelText = elem.Text;
+            string fallbackText = elem.FallbackText;
             ImGui.Text("Fallback Label:");
-            if (ImGui.InputText("##fallback_label", ref labelText, 256))
-                elem.Text = labelText;
+            if (ImGui.InputText("##fallback_label", ref fallbackText, 256))
+                elem.FallbackText = fallbackText;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Displayed when image fails to load");
 
             // Alignment
             string[] alignItems = ["Left", "Center", "Right"];
             int alignIdx = (int)elem.Alignment;
-            if (ImGui.Combo("Alignment", ref alignIdx, alignItems, alignItems.Length))
+            if (ImGui.Combo("AlignmentFallback", ref alignIdx, alignItems, alignItems.Length))
                 elem.Alignment = (TextAlignment)alignIdx;
         }
 
@@ -275,7 +286,10 @@ public class InspectorPanel
             DrawColorPicker("Background", "N", elem.BgColor, c => RecordColorUndo(elem, "BgColor", elem.BgColor, c),
                 defaultColor: new(0.10f, 0.12f, 0.18f));
             // Border default: buttons use (0.15,0.18,0.25), overlays/labels match BgColor
-            Vector3 borderDefN = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Dialog || elem.Type == UIElementType.Label)
+            Vector3 borderDefN = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Label ||
+                                   elem.Type == UIElementType.SliderNumber || elem.Type == UIElementType.SliderText ||
+                                   elem.Type == UIElementType.Checkbox ||
+                                   elem.Type == UIElementType.Dropdown || elem.Type == UIElementType.TextBox)
                 ? elem.BgColor : new Vector3(0.15f, 0.18f, 0.25f);
             DrawColorPicker("Border", "N", elem.BorderColor, c => RecordColorUndo(elem, "BorderColor", elem.BorderColor, c),
                 defaultColor: borderDefN);
@@ -302,7 +316,10 @@ public class InspectorPanel
             DrawColorPicker("Background", "H", elem.HoverBgColor, c => RecordColorUndo(elem, "HoverBgColor", elem.HoverBgColor, c),
                 defaultColor: new(0.22f, 0.28f, 0.45f));
             // Border default matches BgColor for overlays/labels (invisible border by default)
-            Vector3 borderDefH = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Dialog || elem.Type == UIElementType.Label)
+            Vector3 borderDefH = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Label ||
+                                    elem.Type == UIElementType.SliderNumber || elem.Type == UIElementType.SliderText ||
+                                    elem.Type == UIElementType.Checkbox ||
+                                    elem.Type == UIElementType.Dropdown || elem.Type == UIElementType.TextBox)
                 ? elem.HoverBgColor : new Vector3(0.5f, 0.6f, 1.0f);
             DrawColorPicker("Border", "H", elem.HoverBorderColor, c => RecordColorUndo(elem, "HoverBorderColor", elem.HoverBorderColor, c),
                 defaultColor: borderDefH);
@@ -489,6 +506,19 @@ public class InspectorPanel
             else
                 ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), "○ Hidden");
 
+            // ── Opacity / Transparency ──
+            float opacity = elem.Opacity;
+            if (ImGui.SliderFloat("Opacity", ref opacity, 0f, 1f, "%.2f"))
+                elem.Opacity = Math.Clamp(opacity, 0f, 1f);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Overall element transparency (0.0 = fully transparent, 1.0 = fully opaque)");
+
+            // Preview bar
+            var barCol = new Vector4(0.3f, 0.8f, 1.0f, 0.5f);
+            ImGui.PushStyleColor(ImGuiCol.PlotHistogram, barCol);
+            ImGui.ProgressBar(elem.Opacity, new Vector2(-1, 6f), "");
+            ImGui.PopStyleColor(1);
+
             ImGui.Spacing();
             ImGui.Separator();
 
@@ -522,6 +552,286 @@ public class InspectorPanel
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip($"Type: {child.Type} | Click to select");
             }
+        }
+        ImGui.PopID();
+    }
+
+    /// <summary>Render type-specific properties for slider, checkbox, dropdown, textbox elements.</summary>
+    private static void RenderTypeSpecificProperties(UIElement elem)
+    {
+        switch (elem.Type)
+        {
+            case UIElementType.SliderNumber:
+                if (ImGui.CollapsingHeader("Slider Number Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    float minVal = elem.MinValue;
+                    if (ImGui.DragFloat("Min Value", ref minVal, 0.1f))
+                        elem.MinValue = minVal;
+
+                    float maxVal = elem.MaxValue;
+                    if (ImGui.DragFloat("Max Value", ref maxVal, 0.1f))
+                        elem.MaxValue = maxVal;
+
+                    float step = elem.Step;
+                    if (ImGui.DragFloat("Step", ref step, 0.01f, 0.001f, 1000f))
+                        elem.Step = Math.Max(0.001f, step);
+
+                    float curVal = elem.CurrentValue;
+                    if (ImGui.SliderFloat("Current Value", ref curVal, elem.MinValue, elem.MaxValue))
+                        elem.CurrentValue = curVal;
+
+                    ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),
+                        $"Value: {elem.CurrentValue:F2}  (Range: {elem.MinValue:F1} - {elem.MaxValue:F1}, Step: {elem.Step:F3})");
+
+                    ImGui.Spacing();
+                    string[] labelPositions = ["None", "Left", "Right", "Top", "Bottom"];
+                    int posIdx = (int)elem.SliderValuePosition;
+                    if (ImGui.Combo("Value Position", ref posIdx, labelPositions, labelPositions.Length))
+                        elem.SliderValuePosition = (SliderLabelPosition)posIdx;
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
+                    DrawColorPicker("Track Color", "st", elem.SliderTrackColor, c => elem.SliderTrackColor = c,
+                        defaultColor: new(0.30f, 0.30f, 0.35f));
+                    DrawColorPicker("Fill Color", "sf", elem.SliderFillColor, c => elem.SliderFillColor = c,
+                        defaultColor: new(0.3f, 0.6f, 1.0f));
+                    DrawColorPicker("Thumb Color", "stc", elem.SliderThumbColor, c => elem.SliderThumbColor = c,
+                        defaultColor: new(0.9f, 0.9f, 1.0f));
+                    DrawColorPicker("Thumb Border", "stb", elem.SliderThumbBorderColor, c => elem.SliderThumbBorderColor = c,
+                        defaultColor: new(0.3f, 0.6f, 1.0f));
+
+                    float thumbSz = elem.SliderThumbSize;
+                    if (ImGui.DragFloat("Thumb Size", ref thumbSz, 0.5f, 4f, 40f, "%.1f"))
+                        elem.SliderThumbSize = Math.Max(4f, thumbSz);
+
+                    float trackHt = elem.SliderTrackHeight;
+                    if (ImGui.DragFloat("Track Height", ref trackHt, 0.5f, 2f, 30f, "%.1f"))
+                        elem.SliderTrackHeight = Math.Max(2f, trackHt);
+                }
+                break;
+
+            case UIElementType.Checkbox:
+                if (ImGui.CollapsingHeader("Checkbox Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    bool checkedVal = elem.IsChecked;
+                    if (ImGui.Checkbox("Checked", ref checkedVal))
+                        elem.IsChecked = checkedVal;
+
+                    if (elem.IsChecked)
+                        ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "● Checked");
+                    else
+                        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), "○ Unchecked");
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
+                    DrawColorPicker("Checked Bg", "cb", elem.CheckedBgColor, c => elem.CheckedBgColor = c,
+                        defaultColor: new(0.25f, 0.55f, 1.0f));
+                    DrawColorPicker("Unchecked Bg", "ub", elem.UncheckedBgColor, c => elem.UncheckedBgColor = c,
+                        defaultColor: new(0.15f, 0.15f, 0.22f));
+                    DrawColorPicker("Checkmark", "cm", elem.CheckmarkColor, c => elem.CheckmarkColor = c,
+                        defaultColor: new(0.9f, 0.9f, 1.0f));
+                }
+                break;
+
+            case UIElementType.Dropdown:
+                if (ImGui.CollapsingHeader("Dropdown Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    // Options list editor
+                    ImGui.Text("Options:");
+                    ImGui.Spacing();
+
+                    // Show current options with ability to edit/remove
+                    int removeIdx = -1;
+                    for (int i = 0; i < elem.Options.Count; i++)
+                    {
+                        string opt = elem.Options[i];
+                        ImGui.PushID($"opt_{i}");
+
+                        ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - 60f);
+                        if (ImGui.InputText("##opt", ref opt, 256))
+                            elem.Options[i] = opt;
+
+                        ImGui.SameLine();
+                        if (ImGui.Button("X", new Vector2(24, 0)))
+                            removeIdx = i;
+
+                        // Mark as selected if index matches
+                        if (i == elem.SelectedIndex)
+                        {
+                            ImGui.SameLine();
+                            ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "◄ Selected");
+                        }
+
+                        ImGui.PopID();
+                    }
+
+                    if (removeIdx >= 0 && elem.Options.Count > 1)
+                    {
+                        elem.Options.RemoveAt(removeIdx);
+                        if (elem.SelectedIndex >= elem.Options.Count)
+                            elem.SelectedIndex = elem.Options.Count - 1;
+                    }
+
+                    // Add option button
+                    if (ImGui.Button("+ Add Option", new Vector2(-1, 24)))
+                    {
+                        elem.Options.Add($"Option {elem.Options.Count + 1}");
+                    }
+
+                    ImGui.Spacing();
+                    ImGui.Separator();
+                    ImGui.Spacing();
+
+                    // Selected index combo
+                    string[] optArray = [.. elem.Options];
+                    int selIdx = elem.SelectedIndex;
+                    if (selIdx < 0 || selIdx >= optArray.Length)
+                        selIdx = 0;
+
+                    string preview = selIdx >= 0 && selIdx < optArray.Length ? optArray[selIdx] : "(none)";
+                    if (ImGui.BeginCombo("Selected Value", preview))
+                    {
+                        for (int i = 0; i < optArray.Length; i++)
+                        {
+                            bool isSelected = (i == selIdx);
+                            if (ImGui.Selectable(optArray[i], isSelected))
+                            {
+                                elem.SelectedIndex = i;
+                            }
+                            if (isSelected)
+                                ImGui.SetItemDefaultFocus();
+                        }
+                        ImGui.EndCombo();
+                    }
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
+                    DrawColorPicker("Arrow Color", "da", elem.ArrowColor, c => elem.ArrowColor = c,
+                        defaultColor: new(0.5f, 0.5f, 0.7f));
+                }
+                break;
+
+            case UIElementType.SliderText:
+                if (ImGui.CollapsingHeader("Slider Text Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    ImGui.Text("Text Options:");
+                    ImGui.Spacing();
+
+                    int removeIdx = -1;
+                    for (int i = 0; i < elem.TextOptions.Count; i++)
+                    {
+                        string opt = elem.TextOptions[i];
+                        ImGui.PushID($"stxt_{i}");
+
+                        ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - 60f);
+                        if (ImGui.InputText("##stxt", ref opt, 256))
+                            elem.TextOptions[i] = opt;
+
+                        ImGui.SameLine();
+                        if (ImGui.Button("X", new Vector2(24, 0)))
+                            removeIdx = i;
+
+                        if (i == elem.SelectedTextIndex)
+                        {
+                            ImGui.SameLine();
+                            ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "◄ Selected");
+                        }
+
+                        ImGui.PopID();
+                    }
+
+                    if (removeIdx >= 0 && elem.TextOptions.Count > 1)
+                    {
+                        elem.TextOptions.RemoveAt(removeIdx);
+                        if (elem.SelectedTextIndex >= elem.TextOptions.Count)
+                            elem.SelectedTextIndex = elem.TextOptions.Count - 1;
+                    }
+
+                    if (ImGui.Button("+ Add Option", new Vector2(-1, 24)))
+                    {
+                        elem.TextOptions.Add($"Option {elem.TextOptions.Count + 1}");
+                    }
+
+                    ImGui.Spacing();
+                    ImGui.Separator();
+                    ImGui.Spacing();
+
+                    string[] optArray = [.. elem.TextOptions];
+                    int selIdx = elem.SelectedTextIndex;
+                    if (selIdx < 0 || selIdx >= optArray.Length)
+                        selIdx = 0;
+
+                    string preview = selIdx >= 0 && selIdx < optArray.Length ? optArray[selIdx] : "(none)";
+                    if (ImGui.BeginCombo("Selected Value", preview))
+                    {
+                        for (int i = 0; i < optArray.Length; i++)
+                        {
+                            bool isSelected = (i == selIdx);
+                            if (ImGui.Selectable(optArray[i], isSelected))
+                            {
+                                elem.SelectedTextIndex = i;
+                            }
+                            if (isSelected)
+                                ImGui.SetItemDefaultFocus();
+                        }
+                        ImGui.EndCombo();
+                    }
+
+                    ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),
+                        $"Current: {elem.TextOptions[elem.SelectedTextIndex]}");
+
+                    ImGui.Spacing();
+                    string[] labelPositions = ["None", "Left", "Right", "Top", "Bottom"];
+                    int posIdx = (int)elem.SliderValuePosition;
+                    if (ImGui.Combo("Value Position", ref posIdx, labelPositions, labelPositions.Length))
+                        elem.SliderValuePosition = (SliderLabelPosition)posIdx;
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
+                    DrawColorPicker("Track Color", "stt", elem.SliderTrackColor, c => elem.SliderTrackColor = c,
+                        defaultColor: new(0.30f, 0.30f, 0.35f));
+                    DrawColorPicker("Fill Color", "stf", elem.SliderFillColor, c => elem.SliderFillColor = c,
+                        defaultColor: new(0.3f, 0.6f, 1.0f));
+                    DrawColorPicker("Thumb Color", "sttc", elem.SliderThumbColor, c => elem.SliderThumbColor = c,
+                        defaultColor: new(0.9f, 0.9f, 1.0f));
+                    DrawColorPicker("Thumb Border", "sttb", elem.SliderThumbBorderColor, c => elem.SliderThumbBorderColor = c,
+                        defaultColor: new(0.3f, 0.6f, 1.0f));
+
+                    float thumbSz = elem.SliderThumbSize;
+                    if (ImGui.DragFloat("Thumb Size", ref thumbSz, 0.5f, 4f, 40f, "%.1f"))
+                        elem.SliderThumbSize = Math.Max(4f, thumbSz);
+
+                    float trackHt = elem.SliderTrackHeight;
+                    if (ImGui.DragFloat("Track Height", ref trackHt, 0.5f, 2f, 30f, "%.1f"))
+                        elem.SliderTrackHeight = Math.Max(2f, trackHt);
+                }
+                break;
+
+            case UIElementType.TextBox:
+                if (ImGui.CollapsingHeader("Text Box Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    string placeholder = elem.Placeholder;
+                    if (ImGui.InputText("Placeholder", ref placeholder, 256))
+                        elem.Placeholder = placeholder;
+
+                    int maxLen = elem.MaxLength;
+                    if (ImGui.DragInt("Max Length", ref maxLen, 1, 0, 4096))
+                        elem.MaxLength = Math.Max(0, maxLen);
+
+                    string inputText = elem.InputText;
+                    int maxInputLen = elem.MaxLength > 0 ? elem.MaxLength : 4096;
+                    if (ImGui.InputText("Current Value", ref inputText, (uint)maxInputLen))
+                        elem.InputText = inputText;
+
+                    ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),
+                        $"Length: {elem.InputText.Length}{(elem.MaxLength > 0 ? $" / {elem.MaxLength}" : "")}");
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
+                    DrawColorPicker("Cursor Color", "tc", elem.CursorColor, c => elem.CursorColor = c,
+                        defaultColor: new(0.5f, 0.8f, 1.0f));
+                }
+                break;
         }
     }
 

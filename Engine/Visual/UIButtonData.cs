@@ -1,4 +1,5 @@
 using System.Numerics;
+using DarkEngine3D_gl_csharp.Engine.Scene;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual;
 
@@ -8,6 +9,21 @@ public enum TextAlignment
     Left,
     Center,
     Right
+}
+
+/// <summary>Slider value label position.</summary>
+public enum SliderLabelPosition
+{
+    /// <summary>No value label shown.</summary>
+    None,
+    /// <summary>Show label on the left side of the slider.</summary>
+    Left,
+    /// <summary>Show label on the right side of the slider (default).</summary>
+    Right,
+    /// <summary>Show label above the slider.</summary>
+    Top,
+    /// <summary>Show label below the slider.</summary>
+    Bottom,
 }
 
 /// <summary>Image sizing mode for image elements.</summary>
@@ -32,8 +48,16 @@ public enum UIElementType
     Button,
     /// <summary>A text label (no interaction).</summary>
     Label,
-    /// <summary>A dialog box (e.g. confirm dialog with buttons).</summary>
-    Dialog,
+    /// <summary>A slider for numeric value selection (FOV, Volume, etc.).</summary>
+    SliderNumber,
+    /// <summary>A slider for cycling through text options.</summary>
+    SliderText,
+    /// <summary>A checkbox for boolean settings (Enable Shadow, Fullscreen, etc.).</summary>
+    Checkbox,
+    /// <summary>A dropdown/combo box for selecting one value from a list.</summary>
+    Dropdown,
+    /// <summary>A text input field (Save Name, Player Name, etc.).</summary>
+    TextBox,
 }
 
 /// <summary>
@@ -83,8 +107,11 @@ public class UIElement
     // ── Alignment ──
     public TextAlignment Alignment { get; set; } = TextAlignment.Center;
 
-    // ── Visibility ──
+    // ── Visibility & Opacity ──
     public bool IsVisible { get; set; } = true;
+    /// <summary>Overall opacity (0.0 = fully transparent, 1.0 = fully opaque).
+    /// Multiplied with all element rendering (background, border, text, child elements).</summary>
+    public float Opacity { get; set; } = 1f;
 
     // ── Auto-fill window (for overlay/background elements) ──
     public bool AutoFillWindow { get; set; } = false;
@@ -112,6 +139,81 @@ public class UIElement
     public Action? OnClick { get; set; }
     public Action? OnHoverEnter { get; set; }
     public Action? OnHoverExit { get; set; }
+
+    // ── SliderNumber properties ──
+    /// <summary>Minimum value for the slider range.</summary>
+    public float MinValue { get; set; } = 0f;
+    /// <summary>Maximum value for the slider range.</summary>
+    public float MaxValue { get; set; } = 100f;
+    /// <summary>Step/increment value for the slider.</summary>
+    public float Step { get; set; } = 1f;
+    /// <summary>Current value of the slider.</summary>
+    public float CurrentValue { get; set; } = 50f;
+
+    // ── SliderText properties ──
+    /// <summary>Available text options for the text slider.</summary>
+    public List<string> TextOptions { get; set; } = ["Option A", "Option B", "Option C"];
+    /// <summary>Currently selected text option index.</summary>
+    public int SelectedTextIndex { get; set; } = 0;
+
+    // ── Checkbox properties (for Checkbox type) ──
+    /// <summary>Whether the checkbox is checked.</summary>
+    public bool IsChecked { get; set; } = false;
+
+    // ── Dropdown properties (for Dropdown type) ──
+    /// <summary>Available options for the dropdown.</summary>
+    public List<string> Options { get; set; } = ["Option 1", "Option 2", "Option 3"];
+    /// <summary>Currently selected option index (-1 = none).</summary>
+    public int SelectedIndex { get; set; } = 0;
+
+    // ── Fallback text when image fails to load ──
+    /// <summary>Text shown when the element has an ImagePath but the image fails to load.
+    /// Independent from the main Text property (which is shown when no image is set).</summary>
+    public string FallbackText { get; set; } = "";
+
+    // ── TextBox properties (for TextBox type) ──
+    /// <summary>Placeholder text shown when input is empty.</summary>
+    public string Placeholder { get; set; } = "Enter text...";
+    /// <summary>Maximum length of input text (0 = unlimited).</summary>
+    public int MaxLength { get; set; } = 0;
+    /// <summary>Current text value of the input field.</summary>
+    public string InputText { get; set; } = "";
+
+    // ════════════════════════════════════════════════
+    //  Visual Style Properties (for type-specific rendering)
+    // ════════════════════════════════════════════════
+
+    // ── Slider track/thumb colors ──
+    /// <summary>Color of the slider track background (empty portion).</summary>
+    public Vector3 SliderTrackColor { get; set; } = new(0.30f, 0.30f, 0.35f);
+    /// <summary>Color of the slider filled/selected portion.</summary>
+    public Vector3 SliderFillColor { get; set; } = new(0.3f, 0.6f, 1.0f);
+    /// <summary>Color of the slider thumb handle.</summary>
+    public Vector3 SliderThumbColor { get; set; } = new(0.9f, 0.9f, 1.0f);
+    /// <summary>Color of the slider thumb handle border.</summary>
+    public Vector3 SliderThumbBorderColor { get; set; } = new(0.3f, 0.6f, 1.0f);
+    /// <summary>Size (diameter) of the slider thumb handle in scene pixels.</summary>
+    public float SliderThumbSize { get; set; } = 14f;
+    /// <summary>Height of the slider track bar in scene pixels.</summary>
+    public float SliderTrackHeight { get; set; } = 6f;
+    /// <summary>Position of the slider value label (None, Left, Right, Top, Bottom).</summary>
+    public SliderLabelPosition SliderValuePosition { get; set; } = SliderLabelPosition.Right;
+
+    // ── Checkbox colors ──
+    /// <summary>Color of the checkbox checkmark.</summary>
+    public Vector3 CheckmarkColor { get; set; } = new(0.9f, 0.9f, 1.0f);
+    /// <summary>Background color when checkbox is checked.</summary>
+    public Vector3 CheckedBgColor { get; set; } = new(0.25f, 0.55f, 1.0f);
+    /// <summary>Background color when checkbox is unchecked.</summary>
+    public Vector3 UncheckedBgColor { get; set; } = new(0.15f, 0.15f, 0.22f);
+
+    // ── Dropdown colors ──
+    /// <summary>Color of the dropdown arrow icon.</summary>
+    public Vector3 ArrowColor { get; set; } = new(0.5f, 0.5f, 0.7f);
+
+    // ── TextBox colors ──
+    /// <summary>Color of the text box blinking cursor.</summary>
+    public Vector3 CursorColor { get; set; } = new(0.5f, 0.8f, 1.0f);
 
     /// <summary>Add a child element and set its parent.</summary>
     public UIElement AddChild(UIElement child)
@@ -203,7 +305,10 @@ public class UIElement
             }
 
             // Check self — only buttons are interactive
-            if (elem.Type == UIElementType.Button || elem.Type == UIElementType.Label)
+            if (elem.Type == UIElementType.Button || elem.Type == UIElementType.Label ||
+                elem.Type == UIElementType.SliderNumber || elem.Type == UIElementType.SliderText ||
+                elem.Type == UIElementType.Checkbox ||
+                elem.Type == UIElementType.Dropdown || elem.Type == UIElementType.TextBox)
             {
                 if (sceneX >= elem.X && sceneX <= elem.X + elem.Width &&
                     sceneY >= elem.Y && sceneY <= elem.Y + elem.Height)
@@ -215,6 +320,16 @@ public class UIElement
         return null;
     }
 
+    /// <summary>Create a deep clone of this element (all properties + children recursively).
+    /// Uses SceneAssetSerializer serialization round-trip for a reliable full copy.
+    /// The clone gets a fresh InstanceId but preserves all other values.</summary>
+    public UIElement DeepClone()
+    {
+        // Serialize to data, then deserialize back to a new element tree
+        var data = SceneAssetSerializer.ToData(this);
+        return SceneAssetSerializer.ToUIElement(data);
+    }
+
     /// <summary>Get the display icon for this element type (for hierarchy tree).</summary>
     public string GetIcon()
     {
@@ -224,7 +339,11 @@ public class UIElement
             UIElementType.Container => "[container]",
             UIElementType.Button => "[btn]",
             UIElementType.Label => "[lb]",
-            UIElementType.Dialog => "[dialog]",
+            UIElementType.SliderNumber => "[sld]",
+            UIElementType.SliderText => "[sldtxt]",
+            UIElementType.Checkbox => "[chk]",
+            UIElementType.Dropdown => "[drp]",
+            UIElementType.TextBox => "[txt]",
             _ => "❓",
         };
     }

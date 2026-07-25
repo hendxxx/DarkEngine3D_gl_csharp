@@ -143,7 +143,7 @@ public class IDEBridge
         var names = new List<string>();
         foreach (var child in sceneRoot.Children)
         {
-            if (child.Type == UIElementType.Dialog || child.Type == UIElementType.Container)
+            if (child.Type == UIElementType.Container)
                 names.Add(child.Name);
         }
         return [.. names];

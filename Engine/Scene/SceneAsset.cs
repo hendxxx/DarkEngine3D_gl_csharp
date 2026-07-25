@@ -13,7 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene;
 public class SceneElementData
 {
     public string Name { get; set; } = "Element";
-    public string Type { get; set; } = "Button"; // Scene, Container, Button, Label, Dialog
+    public string Type { get; set; } = "Button"; // Scene, Container, Button, Label, SliderNumber, SliderText, Checkbox, Dropdown, TextBox
     public string Text { get; set; } = "";
     public float X { get; set; }
     public float Y { get; set; }
@@ -37,6 +37,7 @@ public class SceneElementData
 
     public string Alignment { get; set; } = "Center";
     public bool IsVisible { get; set; } = true;
+    public float Opacity { get; set; } = 1f;
     public bool AutoFillWindow { get; set; } = false;
     public bool AutoCenter { get; set; } = false;
     public bool UseHover { get; set; } = true;
@@ -45,6 +46,54 @@ public class SceneElementData
     public string ClickBehavior { get; set; } = "";
     public string HoverEnterBehavior { get; set; } = "";
     public string HoverExitBehavior { get; set; } = "";
+
+    // ── SliderNumber / SliderText properties ──
+    public float MinValue { get; set; } = 0f;
+    public float MaxValue { get; set; } = 100f;
+    public float Step { get; set; } = 1f;
+    public float CurrentValue { get; set; } = 50f;
+    public List<string> TextOptions { get; set; } = ["Option A", "Option B", "Option C"];
+    public int SelectedTextIndex { get; set; } = 0;
+
+    // ── Checkbox properties ──
+    public bool IsChecked { get; set; } = false;
+
+    // ── Dropdown properties ──
+    public List<string> Options { get; set; } = ["Option 1", "Option 2", "Option 3"];
+    public int SelectedIndex { get; set; } = 0;
+
+    // ── Fallback text when image fails to load ──
+    public string FallbackText { get; set; } = "";
+
+    // ── TextBox properties ──
+    public string Placeholder { get; set; } = "Enter text...";
+    public int MaxLength { get; set; } = 0;
+    public string InputText { get; set; } = "";
+
+    // ════════════════════════════════════════════════
+    //  Visual Style Properties (for type-specific rendering)
+    // ════════════════════════════════════════════════
+
+    // ── Slider visual style ──
+    public float[] SliderTrackColor { get; set; } = [0.30f, 0.30f, 0.35f];
+    public float[] SliderFillColor { get; set; } = [0.3f, 0.6f, 1.0f];
+    public float[] SliderThumbColor { get; set; } = [0.9f, 0.9f, 1.0f];
+    public float[] SliderThumbBorderColor { get; set; } = [0.3f, 0.6f, 1.0f];
+    public float SliderThumbSize { get; set; } = 14f;
+    public float SliderTrackHeight { get; set; } = 6f;
+    /// <summary>Position of the slider value label (0=None, 1=Left, 2=Right, 3=Top, 4=Bottom).</summary>
+    public int SliderLabelPosition { get; set; } = 2;
+
+    // ── Checkbox visual style ──
+    public float[] CheckmarkColor { get; set; } = [0.9f, 0.9f, 1.0f];
+    public float[] CheckedBgColor { get; set; } = [0.25f, 0.55f, 1.0f];
+    public float[] UncheckedBgColor { get; set; } = [0.15f, 0.15f, 0.22f];
+
+    // ── Dropdown visual style ──
+    public float[] ArrowColor { get; set; } = [0.5f, 0.5f, 0.7f];
+
+    // ── TextBox visual style ──
+    public float[] CursorColor { get; set; } = [0.5f, 0.8f, 1.0f];
 
     // Recursive children
     public List<SceneElementData> Children { get; set; } = [];
