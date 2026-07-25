@@ -132,6 +132,100 @@ public class HierarchyPanel
 
     public void ShowInMenu() => ImGui.MenuItem("SceneDetail", null, ref _visible);
 
+    // ── Public API for main menu bar integration ──
+    public bool CanUndo => _undoStack.Count > 0;
+    public bool CanRedo => _redoStack.Count > 0;
+    public bool HasSelection => _bridge.SelectedUIElement != null;
+    public void Undo() => ExecuteUndo();
+    public void Redo() => ExecuteRedo();
+    public void Duplicate() => DuplicateAllSelected();
+    public void DeleteSelection() => DeleteSelectedElement();
+
+    // ── Clipboard for Copy/Paste ──
+    private UIElement? _clipboardElement = null;
+
+    /// <summary>Copy the primary selected element (deep clone) into clipboard.</summary>
+    public void CopySelection()
+    {
+        var sel = _bridge.SelectedUIElement;
+        if (sel == null) return;
+        _clipboardElement = sel.DeepClone();
+        Console.WriteLine($"[SceneDetail] Copied '{sel.Name}' to clipboard");
+    }
+
+    /// <summary>Cut the primary selected element: copy to clipboard then delete it (Ctrl+X).</summary>
+    public void CutSelection()
+    {
+        CopySelection();
+        DeleteSelection();
+    }
+
+    /// <summary>Paste the clipboard element as a sibling after the primary selection.
+    /// If nothing is selected, append to the scene root.
+    /// If clipboard is empty or pasted element name collides, generates unique name.</summary>
+    public void PasteClipboard()
+    {
+        if (_clipboardElement == null) return;
+
+        var rootElements = _bridge.SceneRootElements;
+        if (rootElements == null) return;
+
+        var clone = _clipboardElement.DeepClone();
+
+        UIElement? parent;
+        int insertIdx;
+
+        var sel = _bridge.SelectedUIElement;
+        if (sel != null && sel != _bridge.SceneRoot)
+        {
+            var (foundParent, _) = FindParentAndIndex(rootElements, sel, _bridge.SceneRoot);
+            parent = foundParent ?? _bridge.SceneRoot;
+            if (parent != null)
+            {
+                insertIdx = parent.Children.IndexOf(sel) + 1;
+                insertIdx = Math.Clamp(insertIdx, 0, parent.Children.Count);
+                // Generate unique name among siblings
+                clone.Name = GetDuplicateName(clone, parent);
+                clone.Parent = parent;
+                parent.Children.Insert(insertIdx, clone);
+            }
+            else
+            {
+                parent = _bridge.SceneRoot;
+                insertIdx = parent?.Children.Count ?? 0;
+                parent?.AddChild(clone);
+            }
+        }
+        else if (_bridge.SceneRoot != null)
+        {
+            parent = _bridge.SceneRoot;
+            clone.Name = GetDuplicateName(clone, parent);
+            insertIdx = parent.Children.Count;
+            parent.AddChild(clone);
+        }
+        else
+        {
+            Console.WriteLine("[SceneDetail] Paste: no scene root available");
+            return;
+        }
+
+        // Record undo
+        PushUndo(new UndoRedoAction
+        {
+            Type = UndoRedoAction.ActionType.Add,
+            Element = clone,
+            Parent = parent,
+            ChildIndex = insertIdx,
+        });
+
+        // Select the pasted element
+        _bridge.SelectedUIElement = clone;
+        _bridge.SelectedUIElements?.Clear();
+        _bridge.SelectedUIElements?.Add(clone);
+
+        Console.WriteLine($"[SceneDetail] Pasted '{clone.Name}' at '{parent.Name}'[{insertIdx}]");
+    }
+
     public void Render()
     {
         if (!_visible) return;

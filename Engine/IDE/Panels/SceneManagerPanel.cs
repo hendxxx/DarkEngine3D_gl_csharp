@@ -60,6 +60,32 @@ public class SceneManagerPanel
 
     public void ShowInMenu() => ImGui.MenuItem("Scene Manager", null, ref _visible);
 
+    // ── Public API for main menu bar integration ──
+    /// <summary>Open the Add New Scene popup (File > New Scene).</summary>
+    public void OpenAddScenePopup()
+    {
+        _showAddPopup = true;
+        _editNameBuffer = _selectedNewSceneTypeIdx switch { 0 => "mn", 1 => "scn", 2 => "load", _ => "scene" };
+        _editDescBuffer = "";
+        _selectedNewSceneTypeIdx = 0;
+    }
+
+    /// <summary>Open the file dialog to load a .ing file (File > Open Scene).</summary>
+    public void OpenLoadFileDialog()
+    {
+        _fileDialog.OpenForLoad();
+    }
+
+    /// <summary>Save all editor scenes to game.ing (File > Save).</summary>
+    public void SaveAllScenes() => SaveAllEditorScenes();
+
+    /// <summary>Load scenes from a .ing file (called by main menu Recent Files).</summary>
+    public void LoadFromFilePath(string path)
+    {
+        LoadFromIngFile(path);
+        DarkEngine3D_gl_csharp.Engine.Config.RecentFilesManager.AddRecentFile(path);
+    }
+
     public void Render()
     {
         if (!_visible) return;
@@ -552,6 +578,7 @@ public class SceneManagerPanel
             {
                 // Load: read from chosen path
                 LoadFromIngFile(path);
+                DarkEngine3D_gl_csharp.Engine.Config.RecentFilesManager.AddRecentFile(path);
             }
             _fileDialog.Close();
         }

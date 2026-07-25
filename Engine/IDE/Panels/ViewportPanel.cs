@@ -1079,6 +1079,27 @@ public unsafe class ViewportPanel
 
     public void ShowInMenu() => ImGui.MenuItem("Viewport", null, ref _visible);
 
+    // ── Public API for main menu bar integration ──
+    /// <summary>Whether preview mode is active (hides editor helpers, shows scene as-in-game).</summary>
+    public bool PreviewMode
+    {
+        get => _previewMode;
+        set
+        {
+            if (value && !_previewMode)
+                ResetSceneOverlays();
+            _previewMode = value;
+        }
+    }
+    /// <summary>Whether snap-to-grid is enabled.</summary>
+    public bool SnapEnabled { get => _snapEnabled; set => _snapEnabled = value; }
+
+    /// <summary>Toggle preview mode on/off.</summary>
+    public void TogglePreviewMode()
+    {
+        PreviewMode = !_previewMode;
+    }
+
     public void Render()
     {
         if (!_visible) return;
