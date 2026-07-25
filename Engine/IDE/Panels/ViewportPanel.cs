@@ -70,8 +70,10 @@ public unsafe class ViewportPanel
     /// Renders backgrounds, borders, text/images with hover effects.
     /// When isPreview=true: click triggers element's OnClick behavior (game-like).
     /// When isPreview=false: click selects element in the editor.
-    /// Pass isMouseDown=true when the mouse button is held (for slider dragging).</summary>
-    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false)
+    /// Pass isMouseDown=true when the mouse button is held (for slider dragging).
+    /// focusedElement is highlighted with a glow border for keyboard navigation.
+    /// keyboardActivate signals that Enter/Space was pressed for the focused element.</summary>
+    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false, UIElement? focusedElement = null, bool keyboardActivate = false)
     {
         for (int ei = 0; ei < elements.Count; ei++)
         {
@@ -273,6 +275,20 @@ public unsafe class ViewportPanel
                 drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
                     ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f * elemOpacity)),
                     4f, ImDrawFlags.None, 1.5f);
+            }
+
+            // ── Focus highlight (keyboard navigation) — glowing cyan border ──
+            if (focusedElement != null && elem == focusedElement && isPreview)
+            {
+                float glowExtra = 3f;
+                uint focusCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 0.9f * elemOpacity));
+                uint focusGlow = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 0.25f * elemOpacity));
+                // Outer glow
+                drawList.AddRect(new Vector2(csx0 - glowExtra, csy0 - glowExtra), new Vector2(csx1 + glowExtra, csy1 + glowExtra),
+                    focusGlow, 4f, ImDrawFlags.None, 4f);
+                // Inner bright border
+                drawList.AddRect(new Vector2(csx0 - 1f, csy0 - 1f), new Vector2(csx1 + 1f, csy1 + 1f),
+                    focusCol, 4f, ImDrawFlags.None, 2f);
             }
 
             // ════════════════════════════════════════════
@@ -602,7 +618,10 @@ public unsafe class ViewportPanel
             bool clickActive = leftClicked || ImGui.IsMouseClicked(ImGuiMouseButton.Left);
             // Drag guard: in editor mode, skip clicks while dragging; preview mode: always allow
             bool dragOk = isPreview || _dragMode == DragMode.None;
-            if (isHovered && clickActive && dragOk && !blockedByOverlay)
+            // Mouse click: must be hovered. Keyboard activation: bypass hover check for focused element.
+            bool mouseClick = isHovered && clickActive;
+            bool keyActivate = isPreview && keyboardActivate && focusedElement != null && elem == focusedElement;
+            if ((mouseClick || keyActivate) && dragOk && !blockedByOverlay)
             {
                 if (isPreview)
                 {
@@ -658,7 +677,7 @@ public unsafe class ViewportPanel
 
             // ── Always recurse for children (so they render regardless of click state) ──
             if (elem.Children.Count > 0)
-                DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown);
+                DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
         }
     }
 
@@ -1146,13 +1165,16 @@ public unsafe class ViewportPanel
     public void SetFullscreen(bool fullscreen) => _fullscreenMode = fullscreen;
 
     /// <summary>Render UI elements to a draw list at the specified canvas coordinates.
-    /// Used by In-Game Mode (F8) to display loaded scenes without any ImGui windows.</summary>
+    /// Used by In-Game Mode (F8) to display loaded scenes without any ImGui windows.
+    /// Optional focusedElement is highlighted with a glow border for keyboard navigation.
+    /// keyboardActivate signals that Enter/Space was pressed for the focused element.</summary>
     public void RenderUIElements(
         ImDrawListPtr drawList,
         Vector2 canvasMin, Vector2 canvasMax,
         float texW, float texH,
         IReadOnlyList<UIElement> elements,
-        Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false)
+        Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false,
+        UIElement? focusedElement = null, bool keyboardActivate = false)
     {
         var savedMin = _imageMin;
         var savedMax = _imageMax;
@@ -1166,7 +1188,7 @@ public unsafe class ViewportPanel
         _texW = texW;
         _texH = texH;
 
-        DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown);
+        DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
 
         _imageMin = savedMin;
         _imageMax = savedMax;

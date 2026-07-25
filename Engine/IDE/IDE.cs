@@ -31,6 +31,9 @@ public class IDE : IDisposable
 
     // ── Mode toggles ──
     private bool _inGameMode = false;
+    // ── Keyboard navigation in in-game mode ──
+    private UIElement? _focusedInGameElement = null;
+    private int _focusedInGameIndex = -1;
     /// <summary>When true, all ImGui panels are hidden and the game scene fills the entire screen.</summary>
     public bool InGameMode
     {
@@ -47,11 +50,15 @@ public class IDE : IDisposable
                     Bridge.SaveAllScenes?.Invoke();
                     LoadDefaultGameIng();
                     _viewport.SetFullscreen(true);
+                    _focusedInGameElement = null;
+                    _focusedInGameIndex = -1;
                 }
                 else
                 {
                     // Reset fullscreen mode when exiting in-game mode
                     _viewport.SetFullscreen(false);
+                    _focusedInGameElement = null;
+                    _focusedInGameIndex = -1;
                 }
                 Console.WriteLine($"[IDE] In-Game Mode: {_inGameMode}");
             }
@@ -305,7 +312,6 @@ public class IDE : IDisposable
             if (ImGui.BeginMenu("Help"))
             {
                 ImGui.Text("DarkEngine IDE v0.1");
-                ImGui.Text("F2 to toggle IDE overlay");
                 ImGui.Separator();
                 ImGui.TextDisabled("Ctrl+Z  Undo");
                 ImGui.TextDisabled("Ctrl+Y  Redo");
@@ -314,29 +320,10 @@ public class IDE : IDisposable
                 ImGui.TextDisabled("Ctrl+D  Duplicate");
                 ImGui.TextDisabled("Del     Delete");
                 ImGui.TextDisabled("F5      Preview Mode");
-                ImGui.TextDisabled("F8      In-Game Mode");
-                ImGui.TextDisabled("F9      In-Game Input");
+                ImGui.TextDisabled("F8      In-Game Mode"); 
                 ImGui.EndMenu();
-            }
-
-            // ── Input lock toggle button (right side of menu bar) ──
-            ImGui.SameLine(ImGui.GetWindowWidth() - 200f);
-            bool isInGameActive = Bridge.InGameActive;
-            Vector4 btnColor = isInGameActive
-                ? new Vector4(0.20f, 0.65f, 0.25f, 1f) // green = active (in-game input on)
-                : new Vector4(0.85f, 0.25f, 0.20f, 1f); // red = inactive (editor mode)
-            ImGui.PushStyleColor(ImGuiCol.Button, btnColor);
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, btnColor * 1.2f);
-            if (ImGui.Button(isInGameActive ? "In-Game ON" : "In-Game OFF", new Vector2(120, 0)))
-            {
-                Bridge.InGameActive = !isInGameActive;
-            }
-            ImGui.PopStyleColor(2);
-
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(isInGameActive
-                    ? "In-game input is active (F9 to toggle)"
-                    : "In-game input is blocked (F9 to toggle)");
+            }  
+             
 
             ImGui.EndMainMenuBar();
         }
@@ -413,11 +400,9 @@ public class IDE : IDisposable
             float virtualAspect = virtualW / virtualH;
             float panelAspect = screenW / screenH;
 
-            // Calculate aspect-ratio-corrected canvas centered on screen
             float canvasW, canvasH, ox, oy;
             if (panelAspect > virtualAspect)
             {
-                // Screen is wider than texture — use full height, centered horizontally
                 canvasH = screenH;
                 canvasW = screenH * virtualAspect;
                 ox = (screenW - canvasW) * 0.5f;
@@ -425,12 +410,117 @@ public class IDE : IDisposable
             }
             else
             {
-                // Screen is taller than texture — use full width, centered vertically
                 canvasW = screenW;
                 canvasH = screenW / virtualAspect;
                 ox = 0f;
                 oy = (screenH - canvasH) * 0.5f;
             }
+
+            // ── Keyboard navigation ──
+            // Collect all visible interactive elements (depth-first, flattened)
+            var navElements = new List<UIElement>();
+            FlattenVisibleInteractive(activeEditScene.Root.Children, navElements);
+
+            // Tab / Shift+Tab to navigate forward/backward
+            bool tabPressed = ImGui.IsKeyPressed(ImGuiKey.Tab, false);
+            bool shiftTab = tabPressed && io.KeyShift;
+            if (tabPressed)
+            {
+                if (navElements.Count > 0)
+                {
+                    if (shiftTab)
+                    {
+                        _focusedInGameIndex--;
+                        if (_focusedInGameIndex < 0)
+                            _focusedInGameIndex = navElements.Count - 1;
+                    }
+                    else
+                    {
+                        _focusedInGameIndex++;
+                        if (_focusedInGameIndex >= navElements.Count)
+                            _focusedInGameIndex = 0;
+                    }
+                    _focusedInGameElement = navElements[_focusedInGameIndex];
+                }
+            }
+
+            // Arrow keys:
+            // - Up/Down always navigate focus (previous/next element)
+            // - Left/Right also navigate focus UNLESS the focused element is a SliderNumber or SliderText
+            //   (in which case they adjust the value: Left=decrease, Right=increase)
+            if (navElements.Count > 0 && _focusedInGameIndex >= 0 && _focusedInGameElement != null)
+            {
+                // ── Slider value adjustment (Left/Right when focused on a slider) ──
+                bool isSlider = _focusedInGameElement.Type == UIElementType.SliderNumber ||
+                                _focusedInGameElement.Type == UIElementType.SliderText;
+                bool leftPressed = ImGui.IsKeyPressed(ImGuiKey.LeftArrow, false);
+                bool rightPressed = ImGui.IsKeyPressed(ImGuiKey.RightArrow, false);
+
+                if (isSlider && (leftPressed || rightPressed))
+                {
+                    if (_focusedInGameElement.Type == UIElementType.SliderNumber)
+                    {
+                        float step = Math.Max(0.001f, _focusedInGameElement.Step);
+                        float delta = rightPressed ? step : -step;
+                        float newVal = _focusedInGameElement.CurrentValue + delta;
+                        newVal = Math.Clamp(newVal, _focusedInGameElement.MinValue, _focusedInGameElement.MaxValue);
+                        if (step >= 1f)
+                            newVal = MathF.Round(newVal / step, MidpointRounding.AwayFromZero) * step;
+                        _focusedInGameElement.CurrentValue = newVal;
+                        Console.WriteLine($"[IDE] Slider '{_focusedInGameElement.Name}' = {newVal:F2}");
+                    }
+                    else // SliderText
+                    {
+                        int maxIdx = _focusedInGameElement.TextOptions.Count - 1;
+                        if (maxIdx >= 0)
+                        {
+                            int newIdx = _focusedInGameElement.SelectedTextIndex + (rightPressed ? 1 : -1);
+                            newIdx = Math.Clamp(newIdx, 0, maxIdx);
+                            _focusedInGameElement.SelectedTextIndex = newIdx;
+                            Console.WriteLine($"[IDE] SliderText '{_focusedInGameElement.Name}' = idx {newIdx} ('{_focusedInGameElement.TextOptions[newIdx]}')");
+                        }
+                    }
+                }
+                else
+                {
+                    // ── Focus navigation (Up/Down, or Left/Right when NOT on a slider) ──
+                    bool arrowNext = ImGui.IsKeyPressed(ImGuiKey.DownArrow, false) ||
+                                     (ImGui.IsKeyPressed(ImGuiKey.RightArrow, false) && !isSlider);
+                    bool arrowPrev = ImGui.IsKeyPressed(ImGuiKey.UpArrow, false) ||
+                                     (ImGui.IsKeyPressed(ImGuiKey.LeftArrow, false) && !isSlider);
+
+                    if (arrowNext)
+                    {
+                        _focusedInGameIndex = (_focusedInGameIndex + 1) % navElements.Count;
+                        _focusedInGameElement = navElements[_focusedInGameIndex];
+                    }
+                    else if (arrowPrev)
+                    {
+                        _focusedInGameIndex--;
+                        if (_focusedInGameIndex < 0)
+                            _focusedInGameIndex = navElements.Count - 1;
+                        _focusedInGameElement = navElements[_focusedInGameIndex];
+                    }
+                }
+            }
+
+            // Ensure valid focused element
+            if (_focusedInGameIndex >= 0 && _focusedInGameIndex < navElements.Count)
+                _focusedInGameElement = navElements[_focusedInGameIndex];
+            else if (navElements.Count > 0)
+            {
+                _focusedInGameIndex = 0;
+                _focusedInGameElement = navElements[0];
+            }
+            else
+            {
+                _focusedInGameIndex = -1;
+                _focusedInGameElement = null;
+            }
+
+            // Enter / Space to activate focused element (simulate click)
+            bool activatePressed = ImGui.IsKeyPressed(ImGuiKey.Enter, false) ||
+                                    ImGui.IsKeyPressed(ImGuiKey.Space, false);
 
             _viewport.RenderUIElements(
                 drawList,
@@ -440,11 +530,34 @@ public class IDE : IDisposable
                 ImGui.GetMousePos(),
                 ImGui.IsMouseClicked(ImGuiMouseButton.Left),
                 isPreview: true,
-                isMouseDown: ImGui.IsMouseDown(ImGuiMouseButton.Left));
+                isMouseDown: ImGui.IsMouseDown(ImGuiMouseButton.Left),
+                focusedElement: _focusedInGameElement,
+                keyboardActivate: activatePressed);
         }
 
         // No ImGui windows at all — just flush the draw list
         _imgui.Render();
+    }
+
+    /// <summary>Depth-first flatten visible interactive elements for keyboard navigation.</summary>
+    private static void FlattenVisibleInteractive(IReadOnlyList<UIElement> elements, List<UIElement> result)
+    {
+        foreach (var elem in elements)
+        {
+            if (!elem.IsVisible) continue;
+            // Interactive types only: Button, Checkbox, Dropdown, SliderNumber, SliderText, TextBox
+            if (elem.Type == UIElementType.Button ||
+                elem.Type == UIElementType.Checkbox ||
+                elem.Type == UIElementType.Dropdown ||
+                elem.Type == UIElementType.SliderNumber ||
+                elem.Type == UIElementType.SliderText ||
+                elem.Type == UIElementType.TextBox)
+            {
+                result.Add(elem);
+            }
+            if (elem.Children.Count > 0)
+                FlattenVisibleInteractive(elem.Children, result);
+        }
     }
 
     /// <summary>Whether the IDE overlay is currently active. Always true since F2 toggle is disabled.</summary>
