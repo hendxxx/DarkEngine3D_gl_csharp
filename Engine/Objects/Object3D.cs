@@ -196,6 +196,57 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return obj;
         }
 
+        /// <summary>
+        /// Create a flat plane (ground quad) vertices with proper normals for lighting.
+        /// The plane lies in XZ plane at Y=0, facing up.
+        /// </summary>
+        public static Vertex[] CreatePlaneVertices(float sizeX, float sizeZ, Vector3 color, int segmentsX = 1, int segmentsZ = 1)
+        {
+            var verts = new List<Vertex>();
+
+            float hx = sizeX * 0.5f;
+            float hz = sizeZ * 0.5f;
+            Vector3 normal = Vector3.UnitY;
+
+            for (int iz = 0; iz < segmentsZ; iz++)
+            {
+                for (int ix = 0; ix < segmentsX; ix++)
+                {
+                    float x0 = -hx + (ix / (float)segmentsX) * sizeX;
+                    float x1 = -hx + ((ix + 1) / (float)segmentsX) * sizeX;
+                    float z0 = -hz + (iz / (float)segmentsZ) * sizeZ;
+                    float z1 = -hz + ((iz + 1) / (float)segmentsZ) * sizeZ;
+
+                    float u0 = (float)ix / segmentsX;
+                    float u1 = (float)(ix + 1) / segmentsX;
+                    float v0 = (float)iz / segmentsZ;
+                    float v1 = (float)(iz + 1) / segmentsZ;
+
+                    // First triangle
+                    verts.Add(new Vertex(x0, 0, z0, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u0, v0));
+                    verts.Add(new Vertex(x1, 0, z0, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v0));
+                    verts.Add(new Vertex(x1, 0, z1, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v1));
+
+                    // Second triangle
+                    verts.Add(new Vertex(x0, 0, z0, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u0, v0));
+                    verts.Add(new Vertex(x1, 0, z1, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v1));
+                    verts.Add(new Vertex(x0, 0, z1, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u0, v1));
+                }
+            }
+
+            return [.. verts];
+        }
+
+        public static Object3D CreatePlaneObject(float sizeX, float sizeZ, float px, float py, float pz, Vector3 color)
+        {
+            var obj = new Object3D(0, 0, 0);
+            Vertex[] planeVerts = CreatePlaneVertices(sizeX, sizeZ, color);
+            obj.Generate(obj.ShaderProgram, planeVerts);
+            obj.SetPosition(px, py, pz);
+            obj.modelMatrix = Matrix4x4.CreateTranslation(new Vector3(px, py, pz));
+            return obj;
+        }
+
         public static Object3D[] SpawnFourRandomBigBoxes( TerrainChunk terrain, int seed = 12345, float areaRadius = 60f)
         {
             var rng = new Random(seed);

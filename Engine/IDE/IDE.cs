@@ -1,6 +1,7 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
@@ -26,6 +27,10 @@ public class IDE : IDisposable
     private readonly ConsolePanel _console;
     private readonly SceneManagerPanel _sceneManagerPanel;
     private readonly HierarchyPanel _hierarchy;
+    private readonly ModelEditorPanel _modelEditor;
+
+    // ── Editor Object Manager ──
+    private EditorObjectManager? _editorObjectManager;
 
     public bool IsHealthy { get; private set; }
 
@@ -123,6 +128,11 @@ public class IDE : IDisposable
             _console = new ConsolePanel(Bridge);
             _sceneManagerPanel = new SceneManagerPanel(Bridge);
             _hierarchy = new HierarchyPanel(Bridge);
+            _modelEditor = new ModelEditorPanel(Bridge);
+
+            // Create EditorObjectManager and assign to bridge
+            _editorObjectManager = new EditorObjectManager();
+            Bridge.EditorObjectManager = _editorObjectManager;
 
             // Wire save integration: HierarchyPanel can trigger SceneManager's Save All / Save As
             Bridge.SaveAllScenes = () => _sceneManagerPanel.SaveAllEditorScenesPublic();
@@ -247,6 +257,36 @@ public class IDE : IDisposable
             }
 
             // ════════════════════════════════════════════════════
+            //  Model Menu
+            // ════════════════════════════════════════════════════
+            if (ImGui.BeginMenu("Model"))
+            {
+                if (ImGui.MenuItem("Add Plane", "Ctrl+1"))
+                {
+                    var obj = _editorObjectManager?.AddPrimitive(EditorPrimitiveType.Plane, GetSpawnPosition());
+                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                }
+                if (ImGui.MenuItem("Add Box", "Ctrl+2"))
+                {
+                    var obj = _editorObjectManager?.AddPrimitive(EditorPrimitiveType.Box, GetSpawnPosition());
+                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                }
+                if (ImGui.MenuItem("Add Sphere", "Ctrl+3"))
+                {
+                    var obj = _editorObjectManager?.AddPrimitive(EditorPrimitiveType.Sphere, GetSpawnPosition());
+                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                }
+                ImGui.Separator();
+                if (ImGui.MenuItem("Gizmo: Translate", "W", Bridge.GizmoMode == 0))
+                    Bridge.GizmoMode = 0;
+                if (ImGui.MenuItem("Gizmo: Rotate", "E", Bridge.GizmoMode == 1))
+                    Bridge.GizmoMode = 1;
+                if (ImGui.MenuItem("Gizmo: Scale", "R", Bridge.GizmoMode == 2))
+                    Bridge.GizmoMode = 2;
+                ImGui.EndMenu();
+            }
+
+            // ════════════════════════════════════════════════════
             //  Edit Menu
             // ════════════════════════════════════════════════════
             if (ImGui.BeginMenu("Edit"))
@@ -325,6 +365,7 @@ public class IDE : IDisposable
                 _inspector.ShowInMenu();
                 _assetBrowser.ShowInMenu();
                 _console.ShowInMenu();
+                _modelEditor.ShowInMenu();
                 _hierarchy.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
@@ -356,12 +397,24 @@ public class IDE : IDisposable
         // ── Docking space ──
         ImGui.DockSpaceOverViewport();
 
+        // ── Handle W/E/R keyboard shortcuts for gizmo modes ──
+        if (!ImGui.GetIO().WantTextInput)
+        {
+            if (ImGui.IsKeyPressed(ImGuiKey.W, false))
+                Bridge.GizmoMode = 0; // Translate
+            if (ImGui.IsKeyPressed(ImGuiKey.E, false))
+                Bridge.GizmoMode = 1; // Rotate
+            if (ImGui.IsKeyPressed(ImGuiKey.R, false))
+                Bridge.GizmoMode = 2; // Scale
+        }
+
         // ── Render panels ──
         _viewport.Render();
         _sceneView.Render();
         _inspector.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
+        _modelEditor.Render();
         _console.Render();
         _sceneManagerPanel.Render();
 
@@ -625,6 +678,19 @@ public class IDE : IDisposable
             if (elem.Children.Count > 0)
                 FlattenVisibleInteractive(elem.Children, result);
         }
+    }
+
+    /// <summary>
+    /// Get a spawn position slightly in front of the camera, or a default offset if no camera is set.
+    /// </summary>
+    private Vector3 GetSpawnPosition()
+    {
+        var cam = Bridge.Camera;
+        if (cam != null)
+        {
+            return cam.Position + cam.Front * 5f;
+        }
+        return new Vector3(0f, 1f, -5f);
     }
 
     /// <summary>Whether the IDE overlay is currently active. Always true since F2 toggle is disabled.</summary>

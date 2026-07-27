@@ -94,6 +94,19 @@ public class IDEBridge
     // ── Scene Manager (for SceneManagerPanel to switch scenes) ──
     public SceneManager? SceneManager { get; set; }
 
+    // ── Editor Object Manager ──
+    /// <summary>Manages editor-placed 3D primitives (Plane, Box, Sphere, glb references).</summary>
+    public EditorObjectManager? EditorObjectManager { get; set; }
+
+    /// <summary>Currently selected editor-placed 3D object (for inspector + gizmo).</summary>
+    public EditorObject? SelectedEditorObject { get; set; }
+
+    /// <summary>Gizmo interaction mode: 0=Translate, 1=Rotate, 2=Scale.</summary>
+    public int GizmoMode { get; set; } = 0;
+
+    /// <summary>Called by ViewportPanel when a gizmo drag ends (for undo support).</summary>
+    public Action? OnGizmoDragEnded { get; set; }
+
     /// <summary>Scene type — user picks this explicitly (no auto-detection).</summary>
     public enum SceneType
     {

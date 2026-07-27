@@ -1,0 +1,7 @@
+  DarkEngine3D_gl_csharp -> c:\Users\EMUDHRA-HENDRY\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\DarkEngine3D_gl_csharp.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:01.22
