@@ -90,23 +90,32 @@ public unsafe class EditorObject
         }
     }
 
-    /// <summary>Compute world-space AABB for selection/culling.</summary>
+    /// <summary>Compute world-space AABB for selection/culling.
+    /// Accounts for scale and rotation (transforms 8 corners through WorldMatrix).</summary>
     public AABB WorldAABB
     {
         get
         {
-            // Default size for primitives
-            Vector3 halfSize = PrimitiveType switch
+            // Local-space AABB for each primitive type (before transform)
+            AABB localAABB = PrimitiveType switch
             {
-                EditorPrimitiveType.Plane => new Vector3(5f, 0.05f, 5f) * Scale,
-                EditorPrimitiveType.Box => new Vector3(0.5f, 0.5f, 0.5f) * Scale,
-                EditorPrimitiveType.Sphere => new Vector3(0.5f, 0.5f, 0.5f) * Scale,
-                EditorPrimitiveType.GlbReference => new Vector3(0.5f, 0.5f, 0.5f) * Scale,
-                _ => Vector3.One * 0.5f
+                EditorPrimitiveType.Plane => new AABB(
+                    new Vector3(-0.5f, -0.5f, -0.5f),
+                    new Vector3( 0.5f,  0.5f,  0.5f)),
+                EditorPrimitiveType.Box => new AABB(
+                    new Vector3(-0.5f, -0.5f, -0.5f),
+                    new Vector3( 0.5f,  0.5f,  0.5f)),
+                EditorPrimitiveType.Sphere => new AABB(
+                    new Vector3(-0.5f, -0.5f, -0.5f),
+                    new Vector3( 0.5f,  0.5f,  0.5f)),
+                EditorPrimitiveType.GlbReference => new AABB(
+                    new Vector3(-0.5f, -0.5f, -0.5f),
+                    new Vector3( 0.5f,  0.5f,  0.5f)),
+                _ => new AABB(
+                    new Vector3(-0.5f, -0.5f, -0.5f),
+                    new Vector3( 0.5f,  0.5f,  0.5f)),
             };
-            Vector3 min = Position - halfSize;
-            Vector3 max = Position + halfSize;
-            return new AABB(min, max);
+            return localAABB.Transform(WorldMatrix);
         }
     }
 
@@ -170,21 +179,35 @@ public unsafe class EditorObject
     public void InitGPU()
     {
         EnsureResources();
-    }
+    }    /// <summary>Draw using individual uniform locations (matching EditorObjectManager's call pattern).</summary>
+        public void Draw(
+            int modelLoc, int viewLoc, int projLoc,
+            int sunDirLoc, int lightColorLoc, int viewPosLoc,
+            int useFogLoc, int fogColorLoc,
+            Camera camera, Lights light)
+        {
+            if (!IsVisible || _object3D == null) return;
 
-    /// <summary>Draw using individual uniform locations (matching EditorObjectManager's call pattern).</summary>
-    public void Draw(
-        int modelLoc, int viewLoc, int projLoc,
-        int sunDirLoc, int lightColorLoc, int viewPosLoc,
-        int useFogLoc, int fogColorLoc,
-        Camera camera, Lights light)
-    {
-        if (!IsVisible || _object3D == null) return;
+            // Set correct model matrix (WorldMatrix includes position, scale, rotation)
+            var model = WorldMatrix;
+            GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
 
-        var model = WorldMatrix;
-        GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
-        _object3D.Draw(0, nint.Zero, 0);
-    }
+            // Disable face culling during primitive rendering
+            // (primitives use CW winding which would be back-face culled with GL_CCW)
+            OpenGL.EnableFaceCulling(false);
+
+            // Set useTexture=0 so fragment shader uses vertex color instead of textures
+            int useTexLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "useTexture");
+            GL.Uniform1i(useTexLoc, 0);
+
+            // Render VAO directly (bypass Object3D.Draw to avoid model matrix override)
+            GL.BindVertexArray(_object3D.VAO);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+            GL.BindVertexArray(0);
+
+            // Re-enable face culling
+            OpenGL.EnableFaceCulling(true);
+        }
 
     /// <summary>Get world-space AABB (method version for API compatibility).</summary>
     public AABB GetWorldAABB() => WorldAABB;
@@ -245,7 +268,7 @@ public unsafe class EditorObject
         {
             Position = position,
             Scale = type == EditorPrimitiveType.Plane
-                ? new Vector3(5f, 1f, 5f)
+                ? new Vector3(5f, 0.05f, 5f)
                 : Vector3.One,
             CastShadow = true,
             IsVisible = true,

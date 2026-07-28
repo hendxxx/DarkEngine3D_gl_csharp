@@ -12,6 +12,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     public unsafe class EditorObjectManager
     {
         private readonly List<EditorObject> _objects = [];
+        // Per-type counters for incremental default names
+        private int _boxCounter = 1;
+        private int _sphereCounter = 1;
+        private int _planeCounter = 1;
+        private int _glbCounter = 1;
         private readonly uint _shaderProgram;
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
@@ -68,6 +73,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return _objects.Remove(obj);
         }
 
+        /// <summary>Move an editor object from one index to another (for drag-drop reorder).</summary>
+        public void MoveObject(int fromIndex, int toIndex)
+        {
+            if (fromIndex < 0 || fromIndex >= _objects.Count) return;
+            if (toIndex < 0 || toIndex >= _objects.Count) return;
+            if (fromIndex == toIndex) return;
+
+            var obj = _objects[fromIndex];
+            _objects.RemoveAt(fromIndex);
+            int insertIdx = toIndex;
+            if (fromIndex < toIndex) insertIdx--;
+            insertIdx = Math.Clamp(insertIdx, 0, _objects.Count);
+            _objects.Insert(insertIdx, obj);
+        }
+
         /// <summary>Remove an editor object at index.</summary>
         public void RemoveAt(int index)
         {
@@ -87,6 +107,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var obj in _objects)
                 obj.Dispose();
             _objects.Clear();
+        }
+
+        /// <summary>Get next incremental default name for a primitive type (per-type counter).</summary>
+        public string GetNextName(EditorPrimitiveType type)
+        {
+            return type switch
+            {
+                EditorPrimitiveType.Plane => $"plane{_planeCounter++}",
+                EditorPrimitiveType.Box => $"box{_boxCounter++}",
+                EditorPrimitiveType.Sphere => $"sphere{_sphereCounter++}",
+                EditorPrimitiveType.GlbReference => $"glb{_glbCounter++}",
+                _ => $"object{_boxCounter++}",
+            };
         }
 
         /// <summary>Create and add a primitive editor object at the given position.</summary>

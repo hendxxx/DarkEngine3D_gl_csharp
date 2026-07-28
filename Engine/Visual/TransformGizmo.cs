@@ -22,13 +22,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public bool IsDragging { get; private set; } = false;
         public bool IsVisible { get; set; } = true;
 
-        // ── Gizmo size ──
-        private const float AxisLength = 2.5f;
-        private const float ArrowHeadSize = 0.3f;
-        private const float HandleRadius = 0.12f;
-        private const float RotationRingRadius = 2.0f;
-        private const float ScaleCubeSize = 0.25f;
-        private const float HitTestRadius = 0.15f;
+        // ── Gizmo size (compact but usable) ──
+        private const float AxisLength = 1.5f;
+        private const float ArrowHeadSize = 0.18f;
+        private const float HandleRadius = 0.10f;
+        private const float RotationRingRadius = 1.2f;
+        private const float ScaleCubeSize = 0.15f;
+        private const float HitTestRadius = 0.30f; // generous for easy clicking
 
         // ── Drag state ──
         private Axis _dragAxis = Axis.None;
@@ -51,7 +51,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             if (!IsVisible) return;
 
-            float gizmoScale = MathF.Max(0.5f, objectScale);
+            float gizmoScale = MathF.Max(0.5f, objectScale * 0.6f);
             GL.Disable(Const.GL_DEPTH_TEST);
 
             switch (Mode)
@@ -82,13 +82,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // Z-axis (blue)
             DrawArrowLine(camera, pos, pos + new Vector3(0, 0, len), ColorZ, headSize);
 
-            // Draw axis end cubes (for easier clicking)
+            // Draw axis end handles (for easier clicking)
             DrawAxisHandle(camera, pos + new Vector3(len, 0, 0), HandleRadius * scale, ColorX);
             DrawAxisHandle(camera, pos + new Vector3(0, len, 0), HandleRadius * scale, ColorY);
             DrawAxisHandle(camera, pos + new Vector3(0, 0, len), HandleRadius * scale, ColorZ);
-
-            // Center sphere
-            DrawAxisHandle(camera, pos, HandleRadius * scale * 0.6f, ColorInactive);
         }
 
         private void DrawRotateGizmo(Camera camera, Vector3 pos, float scale)
@@ -103,8 +100,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // Z-axis ring (blue) - in XY plane
             DrawRing(camera, pos, radius, new Vector3(0, 0, 1), ColorZ, segments);
 
-            // Center sphere
-            DrawAxisHandle(camera, pos, HandleRadius * scale * 0.5f, ColorInactive);
+
         }
 
         private void DrawScaleGizmo(Camera camera, Vector3 pos, float scale)
@@ -124,8 +120,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             DrawLine(camera, pos, pos + new Vector3(0, 0, len), ColorZ);
             DrawCubeHandle(camera, pos + new Vector3(0, 0, len), cubeSize, ColorZ);
 
-            // Center cube
-            DrawCubeHandle(camera, pos, cubeSize * 0.5f, ColorInactive);
+
         }
 
         private static void DrawArrowLine(Camera camera, Vector3 from, Vector3 to, Vector3 color, float headSize)
@@ -266,7 +261,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// </summary>
         public Axis HitTest(Vector3 rayOrigin, Vector3 rayDir, Vector3 gizmoPosition, float objectScale = 1f)
         {
-            float scale = MathF.Max(0.5f, objectScale);
+            float scale = MathF.Max(0.5f, objectScale * 0.6f);
             float len = AxisLength * scale;
             float hitRadius = HitTestRadius * scale;
 

@@ -259,7 +259,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
-        private void SetCameraFlyMode(nint window, float dt, bool processInput = true)
+        /// <summary>Free-fly camera with WASD + mouse look. Used by IDE viewport.</summary>
+        public void SetCameraFlyMode(nint window, float dt, bool processInput = true)
         {
             if (processInput)
             {

@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
@@ -34,11 +35,13 @@ public class HierarchyPanel
     private int _addTypeIdx = 0; // 0=Button, 1=Label, 2=Container, 3=SliderNumber, 4=SliderText, 5=Checkbox, 6=Dropdown, 7=TextBox
     private string _renameBuffer = "";
     private string _renamePreviousName = ""; // captured before dialog opens, for undo
-    private const int InputBufSize = 256;
-
-    // ── Drag & drop state ──
+    private const int InputBufSize = 256;        // ── Drag & drop state ──
     private UIElement? _dragSourceElement = null;
     private bool _isDragging = false;
+
+    // ── 3D object drag & drop state ──
+    private int _dragSourceObjectIndex = -1;
+    private bool _isDraggingObject = false;
 
     // ── Undo / Redo ──
     private readonly List<UndoRedoAction> _undoStack = [];
@@ -69,7 +72,8 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox"];
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "—— 3D ——", "Plane", "Box", "Sphere"];
+    private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
@@ -248,13 +252,17 @@ public class HierarchyPanel
                 // Not a release frame either — drag was cancelled without delivery
                 _dragSourceElement = null;
                 _isDragging = false;
+                _dragSourceObjectIndex = -1;
+                _isDraggingObject = false;
             }
         }
 
         ImGui.Begin("SceneDetail", ref _visible, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
 
         var rootElements = _bridge.SceneRootElements;
-        bool hasSelection = _bridge.SelectedUIElement != null;
+        bool hasUIElementSelection = _bridge.SelectedUIElement != null;
+        bool has3DSelection = _bridge.SelectedEditorObject != null;
+        bool hasSelection = hasUIElementSelection || has3DSelection;
         int multiCount = _bridge.SelectedUIElements?.Count > 1 ? _bridge.SelectedUIElements.Count : 0;
         bool hasRoots = rootElements != null && rootElements.Count > 0;
         bool canUndo = _undoStack.Count > 0;
@@ -300,12 +308,18 @@ public class HierarchyPanel
             if (ImGui.Button("+ Add", new Vector2(btnWidth, 26)))
             {
                 _showAddPopup = true;
-                _addNameBuffer = _addTypeIdx switch { 0 => "btn", 1 => "lb", 2 => "cont", _ => "sld" };
+                _addNameBuffer = _addTypeIdx switch
+                {
+                    0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
+                    5 => "chk", 6 => "drp", 7 => "txt",
+                    9 => "plane", 10 => "box", 11 => "sphere",
+                    _ => "element",
+                };
                 _addTypeIdx = 0;
             }
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Add a new UI element to the hierarchy");
+                ImGui.SetTooltip("Add a new UI element or 3D object to the scene");
 
             ImGui.SameLine();
 
@@ -332,7 +346,7 @@ public class HierarchyPanel
             ImGui.SameLine();
 
             // Delete button (red) — deletes ALL selected when multi
-            string delLabel = multiCount > 0 ? $"Del ({multiCount})" : "Del";
+            string delLabel = multiCount > 0 ? $"Del ({multiCount})" : (has3DSelection ? "Del 3D" : "Del");
             ImGui.PushStyleColor(ImGuiCol.Button, ColDelBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColDelBtnHov);
             ImGui.BeginDisabled(!hasSelection);
@@ -343,7 +357,7 @@ public class HierarchyPanel
             ImGui.EndDisabled();
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(multiCount > 0 ? $"Delete {multiCount + 1} selected elements" : "Delete the selected element");
+                ImGui.SetTooltip(multiCount > 0 ? $"Delete {multiCount + 1} selected elements" : (has3DSelection ? "Delete selected 3D object" : "Delete the selected element"));
         }
 
         // ── Toolbar Row 2: Save / Reload from .ing ──
@@ -378,6 +392,54 @@ public class HierarchyPanel
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Reload hierarchy from .ing file (discard unsaved edits)");
+        }
+
+        // ── Toolbar Row 3: Quick-add 3D primitives (Box, Sphere, Plane) ──
+        if (_bridge.EditorObjectManager != null)
+        {
+            float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 2f) / 3f;
+
+            // Box button (reddish)
+            var colBox = new Vector4(0.55f, 0.25f, 0.25f, 1f);
+            var colBoxHov = new Vector4(0.75f, 0.35f, 0.35f, 1f);
+            ImGui.PushStyleColor(ImGuiCol.Button, colBox);
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colBoxHov);
+            if (ImGui.Button("▣ Box", new Vector2(btnWidth, 24)))
+            {
+                QuickAdd3D(EditorPrimitiveType.Box);
+            }
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Box primitive");
+
+            ImGui.SameLine();
+
+            // Sphere button (bluish)
+            var colSphere = new Vector4(0.25f, 0.30f, 0.65f, 1f);
+            var colSphereHov = new Vector4(0.35f, 0.45f, 0.85f, 1f);
+            ImGui.PushStyleColor(ImGuiCol.Button, colSphere);
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colSphereHov);
+            if (ImGui.Button("◉ Sphere", new Vector2(btnWidth, 24)))
+            {
+                QuickAdd3D(EditorPrimitiveType.Sphere);
+            }
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Sphere primitive");
+
+            ImGui.SameLine();
+
+            // Plane button (greenish)
+            var colPlane = new Vector4(0.25f, 0.55f, 0.25f, 1f);
+            var colPlaneHov = new Vector4(0.35f, 0.75f, 0.35f, 1f);
+            ImGui.PushStyleColor(ImGuiCol.Button, colPlane);
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colPlaneHov);
+            if (ImGui.Button("▭ Plane", new Vector2(btnWidth, 24)))
+            {
+                QuickAdd3D(EditorPrimitiveType.Plane);
+            }
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Plane primitive");
+
+            ImGui.Separator();
         }
 
         // ── Keyboard shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+D) ──
@@ -492,8 +554,11 @@ public class HierarchyPanel
             ImGui.Separator();
         }
 
-        // ── Render hierarchy tree ──
-        if (!hasRoots)
+        // ── Render hierarchy tree (Scene root node wraps both UI elements and 3D objects) ──
+        var editorMgr = _bridge.EditorObjectManager;
+        bool hasEditorObjects = editorMgr != null && editorMgr.Count > 0;
+
+        if (!hasRoots && !hasEditorObjects)
         {
             ImGui.TextColored(ColDim, "No UI elements");
             ImGui.TextDisabled("Use + Add to create elements");
@@ -501,14 +566,153 @@ public class HierarchyPanel
             {
                 ImGui.TextColored(ColWarnDim, "No scenes exist. Use Scene Manager panel to create one.");
             }
-            // Don't return here — popup rendering below must execute so user can add elements!
+        }
+        else if (_bridge.SceneRoot != null)
+        {
+            // ── Render the Scene node as a tree root ──
+            string sceneName = _bridge.SceneRoot.Name;
+            ImGuiTreeNodeFlags sceneFlags = ImGuiTreeNodeFlags.SpanFullWidth | ImGuiTreeNodeFlags.DefaultOpen;
+            bool sceneNodeOpen = ImGui.TreeNodeEx(sceneName, sceneFlags);
+
+            if (ImGui.IsItemClicked())
+            {
+                _bridge.SelectedUIElement = _bridge.SceneRoot;
+            }
+
+            if (sceneNodeOpen)
+            {
+                // ── Render UI children (actual children of SceneRoot) ──
+                if (_bridge.SceneRoot.Children.Count > 0)
+                {
+                    foreach (var child in _bridge.SceneRoot.Children.ToArray())
+                    {
+                        RenderTreeNode(child);
+                    }
+                }
+
+                // ── Render 3D editor objects as children of Scene node ──
+                if (hasEditorObjects)
+                {
+                    var objects = editorMgr!.Objects;
+
+                    for (int i = 0; i < objects.Count; i++)
+                    {
+                        var obj = objects[i];
+                        bool isSelected = _bridge.SelectedEditorObject == obj;
+
+                        string icon = obj.PrimitiveType switch
+                        {
+                            EditorPrimitiveType.Plane => "▭",
+                            EditorPrimitiveType.Box => "▣",
+                            EditorPrimitiveType.Sphere => "◉",
+                            EditorPrimitiveType.GlbReference => "◈",
+                            _ => "◇",
+                        };
+
+                        string label = $"{icon} {obj.Name}";
+
+                        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth;
+                        if (isSelected)
+                            flags |= ImGuiTreeNodeFlags.Selected;
+
+                        ImGui.TreeNodeEx(label, flags);
+
+                        if (ImGui.IsItemClicked())
+                        {
+                            _bridge.SelectedEditorObject = obj;
+                            _bridge.SelectedUIElement = null;
+                            _bridge.SelectedUIElements.Clear();
+                            _bridge.SelectedObject = null;
+                            _bridge.SelectedAgent = null;
+                        }
+
+                        // ── Drag source for 3D object ──
+                        if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.None))
+                        {
+                            _dragSourceObjectIndex = i;
+                            _isDraggingObject = true;
+                            ImGui.SetDragDropPayload("SCENEDETAIL_3DOBJ", nint.Zero, 0);
+                            ImGui.Text($"{icon} {obj.Name}");
+                            ImGui.EndDragDropSource();
+                        }
+
+                        // Context menu
+                        if (ImGui.BeginPopupContextItem())
+                        {
+                            if (ImGui.MenuItem("Rename"))
+                            {
+                                _renamePreviousName = obj.Name;
+                                _renameBuffer = obj.Name;
+                                _showRenamePopup = true;
+                            }
+                            ImGui.Separator();
+                            if (ImGui.MenuItem("Delete"))
+                            {
+                                if (_bridge.SelectedEditorObject == obj)
+                                    _bridge.SelectedEditorObject = null;
+                                editorMgr.Remove(obj);
+                                Console.WriteLine($"[SceneDetail] Deleted editor object: {obj.Name}");
+                            }
+                            ImGui.EndPopup();
+                        }
+
+                        // ── Drop target for 3D objects (reorder) ──
+                        Handle3DDropTarget(i);
+                    }
+                }
+
+                ImGui.TreePop();
+            }
         }
         else
         {
-            // Root elements (scene containers) always show — only filter children by IsVisible.
-            foreach (var root in rootElements)
+            // Fallback: no SceneRoot, render root elements directly
+            if (hasRoots)
             {
-                RenderTreeNode(root);
+                foreach (var root in rootElements)
+                {
+                    RenderTreeNode(root);
+                }
+            }
+
+            // Render 3D objects at root level as fallback
+            if (hasEditorObjects)
+            {
+                var objects = editorMgr!.Objects;
+                for (int i = 0; i < objects.Count; i++)
+                {
+                    var obj = objects[i];
+                    bool isSelected = _bridge.SelectedEditorObject == obj;
+                    string icon = obj.PrimitiveType switch
+                    {
+                        EditorPrimitiveType.Plane => "▭",
+                        EditorPrimitiveType.Box => "▣",
+                        EditorPrimitiveType.Sphere => "◉",
+                        EditorPrimitiveType.GlbReference => "◈",
+                        _ => "◇",
+                    };
+                    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth;
+                    if (isSelected) flags |= ImGuiTreeNodeFlags.Selected;
+                    ImGui.TreeNodeEx($"{icon} {obj.Name}", flags);
+                    if (ImGui.IsItemClicked())
+                    {
+                        _bridge.SelectedEditorObject = obj;
+                        _bridge.SelectedUIElement = null;
+                        _bridge.SelectedUIElements.Clear();
+                        _bridge.SelectedObject = null;
+                        _bridge.SelectedAgent = null;
+                    }
+                    if (ImGui.BeginPopupContextItem())
+                    {
+                        if (ImGui.MenuItem("Delete"))
+                        {
+                            if (_bridge.SelectedEditorObject == obj) _bridge.SelectedEditorObject = null;
+                            editorMgr.Remove(obj);
+                        }
+                        ImGui.EndPopup();
+                    }
+                    Handle3DDropTarget(i);
+                }
             }
         }
 
@@ -540,38 +744,50 @@ public class HierarchyPanel
 
             ImGui.Text("Type:");
             ImGui.SetNextItemWidth(260);
-            int prevTypeIdx = _addTypeIdx;
-            ImGui.Combo("##add_type", ref _addTypeIdx, ElementTypeLabels, ElementTypeLabels.Length);
-            if (_addTypeIdx != prevTypeIdx)
+            // Use a custom combo that handles the separator
+            if (ImGui.BeginCombo("##add_type", _addTypeIdx >= First3DTypeIdx ? ElementTypeLabels[_addTypeIdx] : ElementTypeLabels[_addTypeIdx]))
             {
-                // If name still matches the old default prefix, update it to new type's prefix
-                string oldDefault = prevTypeIdx switch
+                for (int ti = 0; ti < ElementTypeLabels.Length; ti++)
                 {
-                    0 => "btn",
-                    1 => "lb",
-                    2 => "cont",
-                    3 => "sld",
-                    4 => "sldtxt",
-                    5 => "chk",
-                    6 => "drp",
-                    7 => "txt",
-                    _ => "element",
-                };
-                if (_addNameBuffer == oldDefault)
-                {
-                    _addNameBuffer = _addTypeIdx switch
+                    string label = ElementTypeLabels[ti];
+                    bool isSeparator = label.StartsWith("—");
+                    
+                    if (isSeparator)
                     {
-                        0 => "btn",
-                        1 => "lb",
-                        2 => "cont",
-                        3 => "sld",
-                        4 => "sldtxt",
-                        5 => "chk",
-                        6 => "drp",
-                        7 => "txt",
-                        _ => "element",
-                    };
+                        ImGui.Separator();
+                        ImGui.TextColored(ColDim, label);
+                        continue;
+                    }
+                    
+                    bool isSel = (ti == _addTypeIdx);
+                    if (ImGui.Selectable(label, isSel))
+                    {
+                        int prevTypeIdx = _addTypeIdx;
+                        _addTypeIdx = ti;
+                        
+                        // If name still matches the old default prefix, update it to new type's prefix
+                        string oldDefault = prevTypeIdx switch
+                        {
+                            0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
+                            5 => "chk", 6 => "drp", 7 => "txt",
+                            9 => "plane", 10 => "box", 11 => "sphere",
+                            _ => "element",
+                        };
+                        if (_addNameBuffer == oldDefault)
+                        {
+                            _addNameBuffer = ti switch
+                            {
+                                0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
+                                5 => "chk", 6 => "drp", 7 => "txt",
+                                9 => "plane", 10 => "box", 11 => "sphere",
+                                _ => "element",
+                            };
+                        }
+                    }
+                    if (isSel)
+                        ImGui.SetItemDefaultFocus();
                 }
+                ImGui.EndCombo();
             }
 
             ImGui.Separator();
@@ -1106,12 +1322,132 @@ public class HierarchyPanel
     }
 
     // ──────────────────────────────────────────────
+    //  Quick-Add 3D Primitive
+    // ──────────────────────────────────────────────
+
+    /// <summary>Quick-add a 3D primitive with incremental naming, placed at camera position.</summary>
+    private void QuickAdd3D(EditorPrimitiveType primType)
+    {
+        var editorMgr = _bridge.EditorObjectManager;
+        if (editorMgr == null)
+        {
+            Console.WriteLine("[SceneDetail] Cannot add 3D object: EditorObjectManager not available");
+            ShowSaveNotification("No EditorObjectManager");
+            return;
+        }
+
+        var cam = _bridge.Camera;
+        Vector3 spawnPos = cam != null
+            ? cam.Position + cam.Front * 5f
+            : new Vector3(0f, 1f, -5f);
+
+        string objName = editorMgr.GetNextName(primType);
+        var obj = editorMgr.AddPrimitive(primType, spawnPos);
+        obj.Name = objName;
+        _bridge.SelectedEditorObject = obj;
+        _bridge.SelectedUIElement = null;
+        _bridge.SelectedUIElements.Clear();
+        _bridge.SelectedObject = null;
+        _bridge.SelectedAgent = null;
+        Console.WriteLine($"[SceneDetail] Quick-added 3D {primType}: '{objName}' at {spawnPos}");
+    }
+
+    // ──────────────────────────────────────────────
+    //  3D Object Drag & Drop — Drop Target Handling
+    // ──────────────────────────────────────────────
+
+    /// <summary>Handle drop target for reordering 3D objects in the tree.</summary>
+    private unsafe void Handle3DDropTarget(int targetIndex)
+    {
+        if (_dragSourceObjectIndex < 0 || !_isDraggingObject)
+            return;
+
+        if (ImGui.BeginDragDropTarget())
+        {
+            ImGuiPayload* payload = ImGui.AcceptDragDropPayload("SCENEDETAIL_3DOBJ");
+            bool hasPayload = payload != null;
+
+            if (hasPayload)
+            {
+                var editorMgr = _bridge.EditorObjectManager;
+                if (editorMgr == null) { ImGui.EndDragDropTarget(); return; }
+
+                bool canDrop = _dragSourceObjectIndex >= 0
+                    && _dragSourceObjectIndex < editorMgr.Count
+                    && targetIndex >= 0 && targetIndex < editorMgr.Count
+                    && _dragSourceObjectIndex != targetIndex;
+
+                if (canDrop)
+                {
+                    // Draw visual indicator
+                    var drawList = ImGui.GetWindowDrawList();
+                    float lineX = ImGui.GetItemRectMin().X;
+                    float lineW = ImGui.GetItemRectMax().X - lineX;
+                    float lineY = ImGui.GetItemRectMax().Y;
+                    uint lineColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.8f, 1.0f, 0.9f));
+                    drawList.AddLine(new Vector2(lineX, lineY), new Vector2(lineX + lineW, lineY), lineColor, 2.5f);
+
+                    // Execute reorder on drop
+                    if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+                    {
+                        int srcIdx = _dragSourceObjectIndex;
+                        editorMgr.MoveObject(srcIdx, targetIndex);
+                        Console.WriteLine($"[SceneDetail] Reordered 3D object from index {srcIdx} to {targetIndex}");
+
+                        // Clear drag state
+                        _dragSourceObjectIndex = -1;
+                        _isDraggingObject = false;
+                    }
+                }
+            }
+
+            ImGui.EndDragDropTarget();
+        }
+    }
+
+    // ──────────────────────────────────────────────
     //  Add New Element
     // ──────────────────────────────────────────────
 
-    /// <summary>Add a new element as a child of the selected element, or to the first root if nothing selected.</summary>
+    /// <summary>Add a new element or 3D object. UI elements are added to the hierarchy;
+    /// 3D objects (Plane, Box, Sphere) are created via EditorObjectManager.</summary>
     private void AddNewElement(string name, int typeIdx)
     {
+        // ── Handle 3D object creation ──
+        if (typeIdx >= First3DTypeIdx)
+        {
+            var editorMgr = _bridge.EditorObjectManager;
+            if (editorMgr == null)
+            {
+                Console.WriteLine("[SceneDetail] Cannot add 3D object: EditorObjectManager not available");
+                ShowSaveNotification("No EditorObjectManager");
+                return;
+            }
+
+            var cam = _bridge.Camera;
+            Vector3 spawnPos = cam != null
+                ? cam.Position + cam.Front * 5f
+                : new Vector3(0f, 1f, -5f);
+
+            EditorPrimitiveType primType = typeIdx switch
+            {
+                9 => EditorPrimitiveType.Plane,
+                10 => EditorPrimitiveType.Box,
+                11 => EditorPrimitiveType.Sphere,
+                _ => EditorPrimitiveType.Box,
+            };
+
+            var obj = editorMgr.AddPrimitive(primType, spawnPos);
+            obj.Name = name;
+            _bridge.SelectedEditorObject = obj;
+            _bridge.SelectedUIElement = null;
+            _bridge.SelectedUIElements.Clear();
+            _bridge.SelectedObject = null;
+            _bridge.SelectedAgent = null;
+            Console.WriteLine($"[SceneDetail] Created 3D {primType}: '{name}' at {spawnPos}");
+            return;
+        }
+
         UIElementType elemType = typeIdx switch
         {
             0 => UIElementType.Button,
@@ -1275,6 +1611,16 @@ public class HierarchyPanel
     /// <summary>Delete the currently selected element(s). Supports multi-delete.</summary>
     private void DeleteSelectedElement()
     {
+        // ── Handle 3D object deletion first ──
+        var editorObj = _bridge.SelectedEditorObject;
+        if (editorObj != null)
+        {
+            _bridge.EditorObjectManager?.Remove(editorObj);
+            _bridge.SelectedEditorObject = null;
+            Console.WriteLine($"[SceneDetail] Deleted 3D object: {editorObj.Name}");
+            return;
+        }
+
         var multi = _bridge.SelectedUIElements;
         if (multi == null || multi.Count == 0) return;
 

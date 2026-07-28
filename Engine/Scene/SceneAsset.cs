@@ -116,6 +116,30 @@ public class BackgroundObjectData
 }
 
 /// <summary>
+/// Serializable data for an editor-placed 3D primitive (Box, Sphere, Plane).
+/// Stored in the SceneAsset.EditorObjects list for save/load persistence.
+/// </summary>
+public class EditorObjectData
+{
+    public string Name { get; set; } = "EditorObject";
+    public string PrimitiveType { get; set; } = "Box"; // Box, Sphere, Plane, GlbReference
+    public float PosX { get; set; }
+    public float PosY { get; set; }
+    public float PosZ { get; set; }
+    public float RotX { get; set; }  // degrees
+    public float RotY { get; set; }
+    public float RotZ { get; set; }
+    public float ScaleX { get; set; } = 1f;
+    public float ScaleY { get; set; } = 1f;
+    public float ScaleZ { get; set; } = 1f;
+    public float ColorR { get; set; } = 0.8f;
+    public float ColorG { get; set; } = 0.8f;
+    public float ColorB { get; set; } = 0.9f;
+    public bool CastShadow { get; set; } = true;
+    public bool IsVisible { get; set; } = true;
+}
+
+/// <summary>
 /// A complete scene definition stored in a .ing file.
 /// One .ing file can contain multiple scene definitions (MainMenu, Loading, GameScene).
 /// </summary>
@@ -127,6 +151,8 @@ public class SceneAsset
     public List<SceneElementData> Elements { get; set; } = [];
     /// <summary>3D background objects to render behind the UI (models, position, scale).</summary>
     public List<BackgroundObjectData> BackgroundObjects { get; set; } = [];
+    /// <summary>Editor-placed 3D primitives (Box, Sphere, Plane) — saved per scene.</summary>
+    public List<EditorObjectData> EditorObjects { get; set; } = [];
 }
 
 /// <summary>

@@ -144,8 +144,12 @@ public class IDEBridge
 
     // ── UI Editor scene data (managed by IDE, not by game scenes) ──
 
-    /// <summary>An editor scene is a named container with its own UIElement tree root.</summary>
-    public record EditorScene(string Name, SceneType Type, UIElement Root);
+    /// <summary>An editor scene with its own UIElement tree root and optional 3D objects.</summary>
+    public record EditorScene(string Name, SceneType Type, UIElement Root)
+    {
+        /// <summary>3D editor objects specific to this scene (Plane, Box, Sphere, etc.).</summary>
+        public EditorObjectManager? ObjectManager { get; set; }
+    }
 
     /// <summary>All scenes created/managed by the UI Editor. Keyed by scene name.</summary>
     public Dictionary<string, EditorScene> EditorScenes { get; } = [];

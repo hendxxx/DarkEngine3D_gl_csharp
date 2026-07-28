@@ -195,125 +195,171 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bridge.SceneRoot = _sceneRoot;
             bridge.SceneRootElements = [_sceneRoot];
 
+            // ── Gizmo drag update (continuous, each frame while dragging) ──
+            var gizmo = bridge.EditorGizmo;
+            var selEditorObjForDrag = bridge.SelectedEditorObject;
+            if (gizmo != null && selEditorObjForDrag != null && gizmo.IsDragging && _camera != null)
+            {
+                float mouseX = bridge.ViewportMouseX;
+                float mouseY = bridge.ViewportMouseY;
+                if (mouseX >= 0 && mouseY >= 0 &&
+                    bridge.SceneTextureWidth > 0 && bridge.SceneTextureHeight > 0)
+                {
+                    _camera.ScreenToRay(mouseX, mouseY,
+                        bridge.SceneTextureWidth, bridge.SceneTextureHeight,
+                        out Vector3 rayOrigin, out Vector3 rayDir);
+                    gizmo.UpdateDrag(rayOrigin, rayDir, selEditorObjForDrag);
+                }
+            }
+
+            // ── Gizmo drag end ──
+            if (gizmo != null && gizmo.IsDragging && bridge.IsViewportMouseReleased)
+            {
+                gizmo.EndDrag();
+                bridge.OnGizmoDragEnded?.Invoke();
+                Console.WriteLine("[Gizmo] Drag ended");
+            }
+
             // ── Viewport click → select element ──
             if (bridge.IsViewportClicked)
             {
-                // First try UI elements (pause menu, settings, etc.)
-                var uiHit = UIElement.HitTestPoint(_sceneRoot.Children,
-                    bridge.ViewportClickX, bridge.ViewportClickY);
-                if (uiHit != null)
+                // ── Gizmo hit test first (takes priority over other selection) ──
+                bool gizmoConsumedClick = false;
+                if (gizmo != null && selEditorObjForDrag != null && _camera != null)
                 {
-                    bridge.SelectedUIElement = uiHit;
-                    bridge.SelectedObject = null;
-                    bridge.SelectedAgent = null;
-                }
-                else if (_objectManager != null && _camera != null)
-                {
-                    // No UI hit → raycast against 3D objects
                     _camera.ScreenToRay(bridge.ViewportClickX, bridge.ViewportClickY,
                         bridge.SceneTextureWidth, bridge.SceneTextureHeight,
                         out Vector3 rayOrigin, out Vector3 rayDir);
-
-                    float closestHit = float.MaxValue;
-                    GltfObject? hitObject = null;
-                    CharacterAgent? hitAgent = null;
-
-                    // Check animated objects (characters)
-                    var animObjs = _objectManager.GetObjects();
-                    for (int i = 0; i < animObjs.Count; i++)
+                    var hitAxis = gizmo.HitTest(rayOrigin, rayDir,
+                        selEditorObjForDrag.Position,
+                        selEditorObjForDrag.Scale.Length() * 0.5f);
+                    if (hitAxis != TransformGizmo.Axis.None)
                     {
-                        var obj = animObjs[i];
-                        if (!obj.IsVisible) continue;
-                        var aabb = obj.WorldAABB;
-
-                        if (Helpers.ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir, aabb,
-                                out float tMin, out float _) && tMin > 0f && tMin < closestHit)
-                        {
-                            closestHit = tMin;
-                            hitObject = obj;
-                            hitAgent = null;
-                        }
+                        gizmo.StartDrag(hitAxis, selEditorObjForDrag.Position, rayOrigin, rayDir, selEditorObjForDrag);
+                        gizmoConsumedClick = true;
+                        Console.WriteLine($"[Gizmo] Started drag on axis {hitAxis}");
                     }
+                }
 
-                    // Find agent for hit object
-                    if (hitObject != null)
+                if (!gizmoConsumedClick)
+                {
+                    // First try UI elements (pause menu, settings, etc.)
+                    var uiHit = UIElement.HitTestPoint(_sceneRoot.Children,
+                        bridge.ViewportClickX, bridge.ViewportClickY);
+                    if (uiHit != null)
                     {
-                        var agents = _objectManager.Agents;
-                        for (int ai = 0; ai < agents.Count; ai++)
-                        {
-                            if (ReferenceEquals(agents[ai].GameObject, hitObject))
-                            {
-                                hitAgent = agents[ai];
-                                break;
-                            }
-                        }
+                        bridge.SelectedUIElement = uiHit;
+                        bridge.SelectedObject = null;
+                        bridge.SelectedAgent = null;
                     }
-
-                    // Check static objects (trees, walls, rocks) — compete equally with animated
-                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
+                    else if (_objectManager != null && _camera != null)
                     {
-                        var mgr = _objectManager.staticObjectManagers[mi];
-                        if (mgr == null) continue;
-                        var staticObjs = mgr.GetObjects();
-                        for (int si = 0; si < staticObjs.Count; si++)
-                        {
-                            var sobj = staticObjs[si];
-                            if (!sobj.IsVisible) continue;
+                        // No UI hit → raycast against 3D objects
+                        _camera.ScreenToRay(bridge.ViewportClickX, bridge.ViewportClickY,
+                            bridge.SceneTextureWidth, bridge.SceneTextureHeight,
+                            out Vector3 rayOrigin, out Vector3 rayDir);
 
-                            if (ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir,
-                                    sobj.CachedWorldAABB, out float tMin, out float _) &&
-                                tMin > 0f && tMin < closestHit)
+                        float closestHit = float.MaxValue;
+                        GltfObject? hitObject = null;
+                        CharacterAgent? hitAgent = null;
+
+                        // Check animated objects (characters)
+                        var animObjs = _objectManager.GetObjects();
+                        for (int i = 0; i < animObjs.Count; i++)
+                        {
+                            var obj = animObjs[i];
+                            if (!obj.IsVisible) continue;
+                            var aabb = obj.WorldAABB;
+
+                            if (Helpers.ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir, aabb,
+                                    out float tMin, out float _) && tMin > 0f && tMin < closestHit)
                             {
                                 closestHit = tMin;
-                                hitObject = null; // static object, not animated
+                                hitObject = obj;
                                 hitAgent = null;
                             }
                         }
-                    }
 
-                    // ── Also raycast against editor objects ──
-                    var editorMgr = bridge.EditorObjectManager;
-                    if (editorMgr != null)
-                    {
-                        float editorHitDist;
-                        Vector3 editorHitPoint;
-                        var hitEditor = editorMgr.Raycast(rayOrigin, rayDir, out editorHitDist, out editorHitPoint);
-                        if (hitEditor != null && editorHitDist > 0f && editorHitDist < closestHit)
+                        // Find agent for hit object
+                        if (hitObject != null)
                         {
-                            closestHit = editorHitDist;
-                            bridge.SelectedEditorObject = hitEditor;
-                            bridge.SelectedObject = null;
-                            bridge.SelectedAgent = null;
+                            var agents = _objectManager.Agents;
+                            for (int ai = 0; ai < agents.Count; ai++)
+                            {
+                                if (ReferenceEquals(agents[ai].GameObject, hitObject))
+                                {
+                                    hitAgent = agents[ai];
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Check static objects (trees, walls, rocks) — compete equally with animated
+                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
+                        {
+                            var mgr = _objectManager.staticObjectManagers[mi];
+                            if (mgr == null) continue;
+                            var staticObjs = mgr.GetObjects();
+                            for (int si = 0; si < staticObjs.Count; si++)
+                            {
+                                var sobj = staticObjs[si];
+                                if (!sobj.IsVisible) continue;
+
+                                if (ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir,
+                                        sobj.CachedWorldAABB, out float tMin, out float _) &&
+                                    tMin > 0f && tMin < closestHit)
+                                {
+                                    closestHit = tMin;
+                                    hitObject = null; // static object, not animated
+                                    hitAgent = null;
+                                }
+                            }
+                        }
+
+                        // ── Also raycast against editor objects ──
+                        var editorMgr = bridge.EditorObjectManager;
+                        if (editorMgr != null)
+                        {
+                            float editorHitDist;
+                            Vector3 editorHitPoint;
+                            var hitEditor = editorMgr.Raycast(rayOrigin, rayDir, out editorHitDist, out editorHitPoint);
+                            if (hitEditor != null && editorHitDist > 0f && editorHitDist < closestHit)
+                            {
+                                closestHit = editorHitDist;
+                                bridge.SelectedEditorObject = hitEditor;
+                                bridge.SelectedObject = null;
+                                bridge.SelectedAgent = null;
+                                bridge.SelectedUIElement = null;
+                                Console.WriteLine($"[Raycast] Selected editor object: {hitEditor.Name}");
+                            }
+                            else
+                            {
+                                // Only clear editor selection if we hit something else
+                                if (closestHit < float.MaxValue)
+                                    bridge.SelectedEditorObject = null;
+                            }
+                        }
+
+                        // Log if a static object was hit (closest but no animated match)
+                        if (hitObject == null && closestHit < float.MaxValue)
+                        {
+                            Console.WriteLine("[Raycast] Hit static object");
+                        }
+
+                        // Set selection
+                        if (hitObject != null)
+                        {
+                            bridge.SelectedObject = hitObject;
+                            bridge.SelectedAgent = hitAgent;
                             bridge.SelectedUIElement = null;
-                            Console.WriteLine($"[Raycast] Selected editor object: {hitEditor.Name}");
+                            Console.WriteLine($"[Raycast] Selected: {hitObject.GetHashCode():X8}");
                         }
                         else
                         {
-                            // Only clear editor selection if we hit something else
-                            if (closestHit < float.MaxValue)
-                                bridge.SelectedEditorObject = null;
+                            // Static object or nothing — clear selection
+                            bridge.SelectedObject = null;
+                            bridge.SelectedAgent = null;
                         }
-                    }
-
-                    // Log if a static object was hit (closest but no animated match)
-                    if (hitObject == null && closestHit < float.MaxValue)
-                    {
-                        Console.WriteLine("[Raycast] Hit static object");
-                    }
-
-                    // Set selection
-                    if (hitObject != null)
-                    {
-                        bridge.SelectedObject = hitObject;
-                        bridge.SelectedAgent = hitAgent;
-                        bridge.SelectedUIElement = null;
-                        Console.WriteLine($"[Raycast] Selected: {hitObject.GetHashCode():X8}");
-                    }
-                    else
-                    {
-                        // Static object or nothing — clear selection
-                        bridge.SelectedObject = null;
-                        bridge.SelectedAgent = null;
                     }
                 }
             }
@@ -1106,6 +1152,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     GL.Disable(Const.GL_DEPTH_TEST);
                     TerrainChunk.DrawAABBWireframe(selEditorObj.GetWorldAABB(), selColor, _camera);
                     GL.Enable(Const.GL_DEPTH_TEST);
+                }
+
+                // ── Render TransformGizmo for selected editor object ──
+                var gizmo = bridge.EditorGizmo;
+                if (gizmo != null && selEditorObj != null)
+                {
+                    float objScale = selEditorObj.Scale.Length() * 0.25f;
+                    gizmo.Render(_camera, selEditorObj.Position, Math.Max(0.5f, objScale));
                 }
             }
 

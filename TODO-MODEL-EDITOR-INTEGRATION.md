@@ -21,17 +21,23 @@
 - [x] Add "Model" menu with "Add Primitive" submenu
 - [x] Add W/E/R keyboard shortcuts for gizmo modes
 - [x] Instantiate ModelEditorPanel
-- [ ] Wire EditorObjectManager Draw/RenderShadow in rendering pipeline
+- [x] Wire EditorObjectManager Draw/RenderShadow in rendering pipeline
+- [x] Assign shared TransformGizmo to Bridge.EditorGizmo
 
 ## Step D: Update ViewportPanel.cs
-- [ ] Render gizmo when editor object is selected
-- [ ] Handle mouse click for raycast selection
-- [ ] Handle gizmo drag interaction
-- [ ] Add toolbar buttons for gizmo mode + primitive creation
+- [x] Render gizmo when editor object is selected (via GameScene.Render)
+- [x] Handle mouse click for raycast selection (via GameScene)
+- [x] Handle gizmo drag interaction (via GameScene.UpdateBridgeData)
+- [x] Add toolbar buttons for gizmo mode + primitive creation
+- [x] Use shared Bridge.EditorGizmo instead of local instance
 
 ## Step E: Update InspectorPanel.cs
 - [x] Add RenderEditorObjectInspector() method
 
 ## Step F: Update GameScene.cs
-- [ ] Call EditorObjectManager.Draw() after main object rendering
-- [ ] Call EditorObjectManager.RenderShadow() in shadow pass
+- [x] Call EditorObjectManager.Draw() after main object rendering
+- [x] Call EditorObjectManager.RenderShadow() in shadow pass
+- [x] Render TransformGizmo at selected editor object position
+- [x] Gizmo hit test on viewport click (start drag)
+- [x] Gizmo drag update each frame while dragging
+- [x] Gizmo drag end on mouse release

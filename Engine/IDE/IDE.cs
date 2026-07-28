@@ -26,10 +26,7 @@ public class IDE : IDisposable
     private readonly AssetBrowserPanel _assetBrowser;
     private readonly ConsolePanel _console;
     private readonly SceneManagerPanel _sceneManagerPanel;
-
-
-    // ── Editor Object Manager ──
-    private EditorObjectManager? _editorObjectManager;
+    private readonly HierarchyPanel _hierarchy;
 
     // ── Transform Gizmo ──
     private readonly TransformGizmo _gizmo = new();
@@ -130,11 +127,9 @@ public class IDE : IDisposable
             _console = new ConsolePanel(Bridge);
             _sceneManagerPanel = new SceneManagerPanel(Bridge);
             _hierarchy = new HierarchyPanel(Bridge);
-            _modelEditor = new ModelEditorPanel(Bridge);
 
-            // Create EditorObjectManager and assign to bridge
-            _editorObjectManager = new EditorObjectManager();
-            Bridge.EditorObjectManager = _editorObjectManager;
+            // Assign shared gizmo to bridge
+            Bridge.EditorGizmo = _gizmo;
 
             // Wire save integration: HierarchyPanel can trigger SceneManager's Save All / Save As
             Bridge.SaveAllScenes = () => _sceneManagerPanel.SaveAllEditorScenesPublic();
@@ -182,14 +177,25 @@ public class IDE : IDisposable
             return;
         }
 
-        // ── Restore editor scene root (game scenes overwrite bridge.SceneRoot each frame) ──
-        // Without this, ViewportPanel, HierarchyPanel, and InspectorPanel would see the
-        // game scene's empty _sceneRoot instead of the loaded editor scene's UI elements.
+        // ── Restore editor scene root and 3D objects for the current scene ──
         if (Bridge.SelectedEditorScene != null &&
             Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var activeEditorScene))
         {
             Bridge.SceneRoot = activeEditorScene.Root;
             Bridge.SceneRootElements = new List<UIElement> { activeEditorScene.Root }.AsReadOnly();
+
+            // Sync the editor object manager to match the current scene
+            if (Bridge.EditorObjectManager != activeEditorScene.ObjectManager)
+            {
+                var mgr = activeEditorScene.ObjectManager;
+                if (mgr == null)
+                {
+                    mgr = new EditorObjectManager();
+                    activeEditorScene.ObjectManager = mgr;
+                }
+                Bridge.EditorObjectManager = mgr;
+                Bridge.SelectedEditorObject = null;
+            }
         }
 
         // ── Build main menu bar ──
@@ -265,25 +271,25 @@ public class IDE : IDisposable
             {
                 if (ImGui.MenuItem("Add Plane", "Ctrl+1"))
                 {
-                    var obj = _editorObjectManager?.AddPrimitive(EditorPrimitiveType.Plane, GetSpawnPosition());
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Plane, GetSpawnPosition());
                     if (obj != null) Bridge.SelectedEditorObject = obj;
                 }
                 if (ImGui.MenuItem("Add Box", "Ctrl+2"))
                 {
-                    var obj = _editorObjectManager?.AddPrimitive(EditorPrimitiveType.Box, GetSpawnPosition());
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Box, GetSpawnPosition());
                     if (obj != null) Bridge.SelectedEditorObject = obj;
                 }
                 if (ImGui.MenuItem("Add Sphere", "Ctrl+3"))
                 {
-                    var obj = _editorObjectManager?.AddPrimitive(EditorPrimitiveType.Sphere, GetSpawnPosition());
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sphere, GetSpawnPosition());
                     if (obj != null) Bridge.SelectedEditorObject = obj;
                 }
                 ImGui.Separator();
-                if (ImGui.MenuItem("Gizmo: Translate", "W", Bridge.GizmoMode == 0))
+                if (ImGui.MenuItem("Gizmo: Translate", null, Bridge.GizmoMode == 0))
                     Bridge.GizmoMode = 0;
-                if (ImGui.MenuItem("Gizmo: Rotate", "E", Bridge.GizmoMode == 1))
+                if (ImGui.MenuItem("Gizmo: Rotate", null, Bridge.GizmoMode == 1))
                     Bridge.GizmoMode = 1;
-                if (ImGui.MenuItem("Gizmo: Scale", "R", Bridge.GizmoMode == 2))
+                if (ImGui.MenuItem("Gizmo: Scale", null, Bridge.GizmoMode == 2))
                     Bridge.GizmoMode = 2;
                 ImGui.EndMenu();
             }
@@ -367,7 +373,6 @@ public class IDE : IDisposable
                 _inspector.ShowInMenu();
                 _assetBrowser.ShowInMenu();
                 _console.ShowInMenu();
-                _modelEditor.ShowInMenu();
                 _hierarchy.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
@@ -399,16 +404,7 @@ public class IDE : IDisposable
         // ── Docking space ──
         ImGui.DockSpaceOverViewport();
 
-        // ── Handle W/E/R keyboard shortcuts for gizmo modes ──
-        if (!ImGui.GetIO().WantTextInput)
-        {
-            if (ImGui.IsKeyPressed(ImGuiKey.W, false))
-                Bridge.GizmoMode = 0; // Translate
-            if (ImGui.IsKeyPressed(ImGuiKey.E, false))
-                Bridge.GizmoMode = 1; // Rotate
-            if (ImGui.IsKeyPressed(ImGuiKey.R, false))
-                Bridge.GizmoMode = 2; // Scale
-        }
+
 
         // ── Render panels ──
         _viewport.Render();
@@ -416,7 +412,6 @@ public class IDE : IDisposable
         _inspector.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
-        _modelEditor.Render();
         _console.Render();
         _sceneManagerPanel.Render();
 

@@ -1403,7 +1403,7 @@ ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
                     ImGui.SameLine();
 
                     int gizmoMode = _bridge.GizmoMode;
-                    string[] gizmoLabels = ["W: Move", "E: Rotate", "R: Scale"];
+                    string[] gizmoLabels = ["Move", "Rotate", "Scale"];
                     for (int gi = 0; gi < 3; gi++)
                     {
 ImGui.PushStyleColor(ImGuiCol.Button, gizmoMode == gi
@@ -1926,6 +1926,18 @@ ImGui.SameLine();
                 }
             }
 
+            // ── Gizmo safety reset: handle interrupted gizmo drag even when mouse leaves viewport ──
+            if (_bridge.EditorGizmo != null && _bridge.EditorGizmo.IsDragging)
+            {
+                bool mouseDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+                bool mouseReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+                if (!mouseDown && !mouseReleased)
+                {
+                    _bridge.EditorGizmo.EndDrag();
+                    Console.WriteLine("[Viewport] Gizmo drag reset (interrupted)");
+                }
+            }
+
             // ── Drag-drop target: Asset Browser image → selected element ──
             if (_bridge.SelectedUIElement != null && ImGui.BeginDragDropTarget())
             {
@@ -1971,6 +1983,96 @@ ImGui.SameLine();
                 _bridge.ViewportMouseY = -1;
                 _bridge.IsViewportClicked = false;
             }
+
+            // ── 3D Object click-to-select (raycast) ──
+            if (!_previewMode && _bridge.EditorObjectManager != null && _bridge.Camera != null
+                && _bridge.IsViewportClicked && _bridge.SelectedUIElement == null
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+            {
+                var cam = _bridge.Camera;
+                var mgr = _bridge.EditorObjectManager;
+                // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
+                float clickY = _bridge.SceneTextureHeight - _bridge.ViewportClickY;
+                cam.ScreenToRay(
+                    _bridge.ViewportClickX, clickY,
+                    _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
+                    out Vector3 rayOrigin, out Vector3 rayDir);
+
+                if (mgr.Raycast(rayOrigin, rayDir, out float hitDist, out Vector3 hitPoint) is EditorObject hitObj)
+                {
+                    _bridge.SelectedEditorObject = hitObj;
+                    _bridge.SelectedUIElement = null;
+                    _bridge.SelectedUIElements.Clear();
+                    _bridge.SelectedObject = null;
+                    _bridge.SelectedAgent = null;
+                    Console.WriteLine($"[Viewport] Raycast selected 3D object: {hitObj.Name}");
+                }
+                else if (_bridge.SelectedEditorObject != null)
+                {
+                    // Check if gizmo was hit before deselecting
+                    bool gizmoHit = false;
+                    var gizmo = _bridge.EditorGizmo;
+                    if (gizmo != null)
+                    {
+                        float gizmoHitScale = _bridge.SelectedEditorObject.Scale.Length() * 0.5f;
+                        var hitAxis = gizmo.HitTest(rayOrigin, rayDir, _bridge.SelectedEditorObject.Position, gizmoHitScale);
+                        gizmoHit = hitAxis != TransformGizmo.Axis.None;
+                    }
+                    if (!gizmoHit)
+                    {
+                        _bridge.SelectedEditorObject = null;
+                        Console.WriteLine("[Viewport] Deselected 3D object (empty click)");
+                    }
+                }
+            }
+
+            // ── Gizmo mouse interaction (drag to transform selected editor object) ──
+            if (!_previewMode && _bridge.Camera != null && _bridge.EditorGizmo != null
+                && _bridge.SelectedEditorObject != null && mouseOverImage
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+            {
+                var cam = _bridge.Camera;
+                var gizmo = _bridge.EditorGizmo;
+                var selected = _bridge.SelectedEditorObject;
+
+                // Set gizmo mode from bridge
+                gizmo.Mode = (TransformGizmo.GizmoMode)_bridge.GizmoMode;
+
+                // Calculate mouse ray using current mouse position
+                float mouseY = _bridge.SceneTextureHeight - _bridge.ViewportMouseY;
+                cam.ScreenToRay(
+                    _bridge.ViewportMouseX, mouseY,
+                    _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
+                    out Vector3 mouseRayOrigin, out Vector3 mouseRayDir);
+
+                // Compute gizmo scale from object size
+                float gizmoScale = selected.Scale.Length() * 0.5f;
+
+                bool leftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+                bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+
+                if (gizmo.IsDragging)
+                {
+                    // Update gizmo drag
+                    gizmo.UpdateDrag(mouseRayOrigin, mouseRayDir, selected);
+                    if (leftReleased)
+                    {
+                        gizmo.EndDrag();
+                        Console.WriteLine($"[Viewport] Gizmo drag ended on '{selected.Name}'");
+                    }
+                }
+                else
+                {
+                    // Hit test the gizmo (use object scale for hit detection)
+                    var hitAxis = gizmo.HitTest(mouseRayOrigin, mouseRayDir, selected.Position, gizmoScale);
+                    if (leftClicked && hitAxis != TransformGizmo.Axis.None)
+                    {
+                        gizmo.StartDrag(hitAxis, selected.Position, mouseRayOrigin, mouseRayDir, selected);
+                        Console.WriteLine($"[Viewport] Gizmo drag started on '{selected.Name}' axis={hitAxis}");
+                    }
+                }
+            }
+
         }
         else
         {

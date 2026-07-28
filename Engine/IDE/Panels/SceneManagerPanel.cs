@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
@@ -604,7 +605,7 @@ public class SceneManagerPanel
     /// <summary>Public wrapper so IDE can wire it to IDEBridge.RequestSaveAsDialog delegate.</summary>
     public void OpenSaveAsDialog() => _fileDialog.OpenForSave("game.ing");
 
-    /// <summary>Save ALL editor scenes to game.ing file by reusing existing save logic.</summary>
+    /// <summary>Save ALL editor scenes to game.ing file, including 3D editor objects.</summary>
     private void SaveAllEditorScenes()
     {
         if (_bridge.EditorScenes.Count == 0)
@@ -613,13 +614,57 @@ public class SceneManagerPanel
             return;
         }
 
-        // Convert editor scenes to the format SaveGameIng expects
-        var scenes = _bridge.EditorScenes
-            .Select(kv => (kv.Key, kv.Value.Root))
-            .ToArray();
+        // Build fresh manifest with UI elements AND 3D editor objects
+        var manifest = new SceneManifest();
 
-        SceneAssetSerializer.SaveGameIng(scenes);
-        Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} editor scenes to game.ing");
+        foreach (var (name, editorScene) in _bridge.EditorScenes)
+        {
+            var asset = new SceneAsset
+            {
+                SceneName = name,
+                Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
+                BackgroundObjects = [],
+                EditorObjects = []
+            };
+
+            // ── Save 3D editor objects ──
+            var objMgr = editorScene.ObjectManager;
+            if (objMgr != null)
+            {
+                foreach (var obj in objMgr.Objects)
+                {
+                    asset.EditorObjects.Add(new EditorObjectData
+                    {
+                        Name = obj.Name,
+                        PrimitiveType = obj.PrimitiveType.ToString(),
+                        PosX = obj.Position.X,
+                        PosY = obj.Position.Y,
+                        PosZ = obj.Position.Z,
+                        RotX = obj.RotationEuler.X,
+                        RotY = obj.RotationEuler.Y,
+                        RotZ = obj.RotationEuler.Z,
+                        ScaleX = obj.Scale.X,
+                        ScaleY = obj.Scale.Y,
+                        ScaleZ = obj.Scale.Z,
+                        ColorR = obj.Color.X,
+                        ColorG = obj.Color.Y,
+                        ColorB = obj.Color.Z,
+                        CastShadow = obj.CastShadow,
+                        IsVisible = obj.IsVisible
+                    });
+                }
+            }
+
+            manifest.Scenes.Add(asset);
+        }
+
+        // Write to game.ing
+        string json = System.Text.Json.JsonSerializer.Serialize(manifest,
+            SceneAssetSerializer.GetJsonOptions());
+        Directory.CreateDirectory(Path.GetDirectoryName(SceneAssetSerializer.GameIngPath)!);
+        File.WriteAllText(SceneAssetSerializer.GameIngPath, json);
+        Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} editor scenes (+ 3D objects) to game.ing");
+        // Cache auto-invalidates on next read by file timestamp change.
     }
 
     /// <summary>Select an editor scene to display in SceneDetail. Does NOT switch game scene.</summary>
@@ -639,6 +684,15 @@ public class SceneManagerPanel
         // Show the scene root itself in the tree (not its children directly)
         _bridge.SceneRoot = editorScene.Root;
         _bridge.SceneRootElements = new List<UIElement> { editorScene.Root }.AsReadOnly();
+
+        // Ensure this scene has its own EditorObjectManager for 3D objects
+        if (editorScene.ObjectManager == null)
+        {
+            editorScene.ObjectManager = new EditorObjectManager();
+            Console.WriteLine($"[SceneManagerPanel] Created EditorObjectManager for scene '{sceneName}'");
+        }
+        _bridge.EditorObjectManager = editorScene.ObjectManager;
+        _bridge.SelectedEditorObject = null;
 
         // Select the first visible child so wireframe/handles appear in the viewport
         _bridge.SelectedUIElements?.Clear();
@@ -786,13 +840,45 @@ public class SceneManagerPanel
                     continue;
                 }
 
+                // ── Restore 3D editor objects for this scene ──
+                var editorMgr = new EditorObjectManager();
+                if (asset.EditorObjects != null && asset.EditorObjects.Count > 0)
+                {
+                    foreach (var objData in asset.EditorObjects)
+                    {
+                        // Parse primitive type
+                        var primType = objData.PrimitiveType.ToLowerInvariant() switch
+                        {
+                            "plane" => EditorPrimitiveType.Plane,
+                            "sphere" => EditorPrimitiveType.Sphere,
+                            "box" => EditorPrimitiveType.Box,
+                            "glbreference" => EditorPrimitiveType.GlbReference,
+                            _ => EditorPrimitiveType.Box,
+                        };
+
+                        var pos = new Vector3(objData.PosX, objData.PosY, objData.PosZ);
+                        var obj = editorMgr.AddPrimitive(primType, pos);
+                        obj.Name = objData.Name;
+                        obj.RotationEuler = new Vector3(objData.RotX, objData.RotY, objData.RotZ);
+                        obj.Scale = new Vector3(objData.ScaleX, objData.ScaleY, objData.ScaleZ);
+                        obj.Color = new Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
+                        obj.CastShadow = objData.CastShadow;
+                        obj.IsVisible = objData.IsVisible;
+
+                        Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
+                    }
+                }
+
                 _bridge.EditorScenes[sceneName] = new IDEBridge.EditorScene(
-                    sceneName, IDEBridge.SceneType.MainMenu, sceneRoot);
+                    sceneName, IDEBridge.SceneType.MainMenu, sceneRoot)
+                {
+                    ObjectManager = editorMgr
+                };
 
                 // Track the first loaded scene for auto-selection
                 firstLoadedScene ??= sceneName;
                 sceneCount++;
-                Console.WriteLine($"[SceneManagerPanel] Loaded scene '{sceneName}' from {filePath}");
+                Console.WriteLine($"[SceneManagerPanel] Loaded scene '{sceneName}' from {filePath} ({asset.EditorObjects?.Count ?? 0} 3D objects)");
             }
 
             // Select the first loaded scene
@@ -806,9 +892,7 @@ public class SceneManagerPanel
         {
             Console.WriteLine($"[SceneManagerPanel] Failed to load {filePath}: {ex.Message}");
         }
-    }
-
-    /// <summary>Save all editor scenes to a specific .ing file path (Save As).</summary>
+    }        /// <summary>Save all editor scenes to a specific .ing file path (Save As), including 3D objects.</summary>
     private void SaveToIngFile(string filePath)
     {
         if (_bridge.EditorScenes.Count == 0)
@@ -819,25 +903,55 @@ public class SceneManagerPanel
 
         try
         {
-            // Build manifest from editor scenes
+            // Build manifest from editor scenes with 3D objects
             var manifest = new SceneManifest();
             foreach (var (name, editorScene) in _bridge.EditorScenes)
             {
-                manifest.Scenes.Add(new SceneAsset
+                var asset = new SceneAsset
                 {
                     SceneName = name,
                     Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
-                    BackgroundObjects = []
-                });
+                    BackgroundObjects = [],
+                    EditorObjects = []
+                };
+
+                // Save 3D editor objects
+                var objMgr = editorScene.ObjectManager;
+                if (objMgr != null)
+                {
+                    foreach (var obj in objMgr.Objects)
+                    {
+                        asset.EditorObjects.Add(new EditorObjectData
+                        {
+                            Name = obj.Name,
+                            PrimitiveType = obj.PrimitiveType.ToString(),
+                            PosX = obj.Position.X,
+                            PosY = obj.Position.Y,
+                            PosZ = obj.Position.Z,
+                            RotX = obj.RotationEuler.X,
+                            RotY = obj.RotationEuler.Y,
+                            RotZ = obj.RotationEuler.Z,
+                            ScaleX = obj.Scale.X,
+                            ScaleY = obj.Scale.Y,
+                            ScaleZ = obj.Scale.Z,
+                            ColorR = obj.Color.X,
+                            ColorG = obj.Color.Y,
+                            ColorB = obj.Color.Z,
+                            CastShadow = obj.CastShadow,
+                            IsVisible = obj.IsVisible
+                        });
+                    }
+                }
+
+                manifest.Scenes.Add(asset);
             }
 
-            // Serialize and write
             string json = System.Text.Json.JsonSerializer.Serialize(manifest,
                 SceneAssetSerializer.GetJsonOptions());
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
             File.WriteAllText(filePath, json);
 
-            Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} scene(s) to {filePath}");
+            Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} scene(s) (+ 3D objects) to {filePath}");
         }
         catch (Exception ex)
         {

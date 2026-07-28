@@ -126,6 +126,13 @@ public unsafe class MainMenuScene : IScene
     // ── Background objects (loaded from .ing scene data) ──
     private List<BackgroundObjectData> _bgObjectDataList = [];
 
+    // ── Editor grid (3D ground plane with axis helpers for IDE viewport) ──
+    private uint _gridVAO = 0;
+    private uint _gridVBO = 0;
+    private int _gridVertexCount = 0;
+    private uint _axisVAO = 0;
+    private uint _axisVBO = 0;
+
     public MainMenuScene(SceneManager sceneManager, Camera camera, Lights light)
     {
         _sceneManager = sceneManager;
@@ -165,6 +172,18 @@ public unsafe class MainMenuScene : IScene
         _hud = new HUD("Artifacts\\fonts\\Worldstar.ttf", 13.0f);
         _totalTime = 0f;
         _scanLineY = 0f;
+
+        // ── Set camera to a good default position looking at the origin from above ──
+        // Position: above and slightly behind the grid, looking down at ~30°
+        // This ensures the grid and editor objects are immediately visible in the viewport.
+        // Only set if the camera hasn't been positioned elsewhere (e.g. from a saved scene).
+        if (_camera.Position.LengthSquared() < 0.01f)
+        {
+            _camera.Init(0f, 8f, 10f, 0f, -35f);
+        }
+
+        // ── Create editor grid (ground plane + axes) for IDE viewport ──
+        CreateEditorGrid();
 
         Glfw.OnWindowResized += OnWindowResized;
         Mouse.ShowMouse(true);
@@ -342,7 +361,15 @@ public unsafe class MainMenuScene : IScene
         // ── Input gate: block keyboard/mouse but keep UI rendering alive ──
         bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
         if (!ingameActive)
+        {
+            // ── IDE mode: free-fly camera (WASD + mouse look) when viewport is focused ──
+            var ideBridge = _sceneManager.Bridge;
+            if (ideBridge != null && ideBridge.IsViewportFocused)
+            {
+                _camera.SetCameraFlyMode(window, _deltaTime, true);
+            }
             return;
+        }
 
         // ── Load Game overlay: keyboard nav ──
         if (_loadGameActive)
@@ -990,6 +1017,24 @@ public unsafe class MainMenuScene : IScene
         // ── Render UI from loaded hierarchy via HUD ──
         RenderUI();
 
+        // ── Render editor grid (ground plane + axis helpers) when IDE active ──
+        // Enable depth test so lines sit properly in 3D space.
+        if (_sceneManager.IsIdeActive)
+        {
+            GL.Enable(Const.GL_DEPTH_TEST);
+            RenderEditorGrid();
+        }
+
+        // ── Render EditorObjectManager 3D objects (primitives added via IDE toolbar) ──
+        if (_sceneManager.IsIdeActive)
+        {
+            var editorBridge = _sceneManager.Bridge;
+            if (editorBridge?.EditorObjectManager != null)
+            {
+                editorBridge.EditorObjectManager.Draw(_camera, _light, null);
+            }
+        }
+
         // ── Update bridge with scene data (always, so IDE panels have current state) ──
         var bridge = _sceneManager.Bridge;
         if (bridge != null)
@@ -1171,6 +1216,174 @@ public unsafe class MainMenuScene : IScene
         _hud.DrawButtons(_totalTime, -1);
     }
 
+    // ══════════════════════════════════════════════
+    //  Editor Grid (Ground plane + Axis helpers)
+    // ══════════════════════════════════════════════    /// <summary>Create the ground-plane grid and axis helpers as line VAOs.</summary>
+    private void CreateEditorGrid()
+    {
+        CleanupEditorGrid();
+
+        // ── Ground plane grid: 10x10 units centered at origin, spacing 1 ──
+        const float halfSize = 5f;
+        const int divisions = 10;
+        const int linesPerDir = divisions + 1; // 11
+
+        // Build vertices: horizontal lines (along X) + vertical lines (along Z)
+        var gridVerts = new List<float>();
+
+        for (int i = 0; i < linesPerDir; i++)
+        {
+            float pos = -halfSize + i; // -5 to +5
+
+            // Horizontal: ( -halfSize, 0, pos ) → ( halfSize, 0, pos )
+            gridVerts.Add(-halfSize); gridVerts.Add(0f); gridVerts.Add(pos);
+            gridVerts.Add(halfSize); gridVerts.Add(0f); gridVerts.Add(pos);
+
+            // Vertical: ( pos, 0, -halfSize ) → ( pos, 0, halfSize )
+            gridVerts.Add(pos); gridVerts.Add(0f); gridVerts.Add(-halfSize);
+            gridVerts.Add(pos); gridVerts.Add(0f); gridVerts.Add(halfSize);
+        }
+
+        _gridVertexCount = gridVerts.Count / 3;
+
+        float[] gridArray = gridVerts.ToArray();
+        uint gridVAO = 0, gridVBO = 0;
+        GL.GenVertexArrays(1, &gridVAO);
+        GL.GenBuffers(1, &gridVBO);
+        GL.BindVertexArray(gridVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, gridVBO);
+        fixed (float* ptr = gridArray)
+        {
+            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(gridArray.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
+        }
+        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), null);
+        GL.EnableVertexAttribArray(0);
+        GL.BindVertexArray(0);
+        _gridVAO = gridVAO;
+        _gridVBO = gridVBO;
+
+        // ── Axis helpers: 3 lines, each rendered separately with different color ──
+        // X line: (0,0,0) → (2,0,0)
+        // Y line: (0,0,0) → (0,2,0)
+        // Z line: (0,0,0) → (0,0,2)
+        float[] axisVerts =
+        [
+            0f, 0f, 0f,   2f, 0f, 0f,
+            0f, 0f, 0f,   0f, 2f, 0f,
+            0f, 0f, 0f,   0f, 0f, 2f,
+        ];
+
+        uint axisVAO = 0, axisVBO = 0;
+        GL.GenVertexArrays(1, &axisVAO);
+        GL.GenBuffers(1, &axisVBO);
+        GL.BindVertexArray(axisVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, axisVBO);
+        fixed (float* ptr = axisVerts)
+        {
+            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(axisVerts.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
+        }
+        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), null);
+        GL.EnableVertexAttribArray(0);
+        GL.BindVertexArray(0);
+        _axisVAO = axisVAO;
+        _axisVBO = axisVBO;
+
+        Console.WriteLine($"[MainMenu] Editor grid created. LineShaderProgram={Shader.GetLineShaderProgram()}");
+    }
+
+    /// <summary>Render the editor ground-plane grid and axis helpers.</summary>
+    private void RenderEditorGrid()
+    {
+        if (_gridVAO == 0 || _axisVAO == 0)
+        {
+            Console.WriteLine("[Grid] VAO not initialized");
+            return;
+        }
+
+        uint prog = Shader.GetLineShaderProgram();
+        if (prog == 0)
+        {
+            Console.WriteLine("[Grid] Line shader program is 0!");
+            return;
+        }
+
+        GL.UseProgram(prog);
+
+        // ── Set view/projection from camera ──
+        Matrix4x4 viewMatrix = _camera.GetViewMatrix();
+        Matrix4x4 projMatrix = _camera.GetProjectionMatrix();
+
+        int viewLoc = GL.GetUniformLocation(prog, "view");
+        int projLoc = GL.GetUniformLocation(prog, "projection");
+        int modelLoc = GL.GetUniformLocation(prog, "model");
+        int colorLoc = GL.GetUniformLocation(prog, "lineColor");
+
+        // Pass matrix pointers (local structs on stack — safe without fixed)
+        GL.UniformMatrix4fv(viewLoc, 1, false, &viewMatrix.M11);
+        GL.UniformMatrix4fv(projLoc, 1, false, &projMatrix.M11);
+
+        // Identity for ground grid
+        Matrix4x4 ident = Matrix4x4.Identity;
+        GL.UniformMatrix4fv(modelLoc, 1, false, &ident.M11);
+
+        // ── Draw ground grid (subtle blue-gray) ──
+        var gridColor = new Vector3(0.35f, 0.45f, 0.65f);
+        GL.Uniform3f(colorLoc, gridColor.X, gridColor.Y, gridColor.Z);
+
+        GL.BindVertexArray(_gridVAO);
+        GL.DrawArrays(Const.GL_LINES, 0, _gridVertexCount);
+        GL.BindVertexArray(0);
+
+        // ── Draw axes (RGB colors) ──
+        GL.BindVertexArray(_axisVAO);
+
+        // X axis (red) — vertices 0-1
+        GL.Uniform3f(colorLoc, 1f, 0.2f, 0.2f);
+        GL.DrawArrays(Const.GL_LINES, 0, 2);
+
+        // Y axis (green) — vertices 2-3
+        GL.Uniform3f(colorLoc, 0.2f, 1f, 0.2f);
+        GL.DrawArrays(Const.GL_LINES, 2, 2);
+
+        // Z axis (blue) — vertices 4-5
+        GL.Uniform3f(colorLoc, 0.2f, 0.3f, 1f);
+        GL.DrawArrays(Const.GL_LINES, 4, 2);
+
+        GL.BindVertexArray(0);
+
+        GL.UseProgram(0);
+    }
+
+    /// <summary>Delete GPU resources for editor grid.</summary>
+    private void CleanupEditorGrid()
+    {
+        if (_gridVAO != 0)
+        {
+            uint vao = _gridVAO;
+            GL.DeleteVertexArrays(1, &vao);
+            _gridVAO = 0;
+        }
+        if (_gridVBO != 0)
+        {
+            uint vbo = _gridVBO;
+            GL.DeleteBuffers(1, &vbo);
+            _gridVBO = 0;
+        }
+        if (_axisVAO != 0)
+        {
+            uint vao = _axisVAO;
+            GL.DeleteVertexArrays(1, &vao);
+            _axisVAO = 0;
+        }
+        if (_axisVBO != 0)
+        {
+            uint vbo = _axisVBO;
+            GL.DeleteBuffers(1, &vbo);
+            _axisVBO = 0;
+        }
+        _gridVertexCount = 0;
+    }
+
     private void RenderBackgroundEffects()
     {
         if (_hud == null) return;
@@ -1227,6 +1440,7 @@ public unsafe class MainMenuScene : IScene
         // Clean up GPU resources
         _hud?.Cleanup();
         CleanupImageTextures();
+        CleanupEditorGrid();
 
         // Clear IDE bridge references
         var bridge = _sceneManager.Bridge;
@@ -1247,5 +1461,6 @@ public unsafe class MainMenuScene : IScene
         _hud?.Cleanup();
         _hud = null;
         CleanupImageTextures();
+        CleanupEditorGrid();
     }
 }
