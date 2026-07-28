@@ -1,4 +1,6 @@
+
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
 using StbImageSharp;
@@ -47,11 +49,16 @@ public unsafe class ViewportPanel
     private float _dragStartX, _dragStartY, _dragStartW, _dragStartH;
     private Vector2 _dragStartMouseScene; // mouse position in scene coords when drag started
 
+    // ── Model Editor Gizmo ──
+    private readonly TransformGizmo _gizmo = new();
+    private TransformGizmo.Axis _gizmoHoveredAxis = TransformGizmo.Axis.None;
+    private Vector3 _gizmoDragStartPosition;
+    private Vector3 _gizmoDragStartRotation;
+    private Vector3 _gizmoDragStartScale;
+
     // ── Cached conversion data (set each frame in overlay) ──
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
-
-
 
     /// <summary>Convert ImGui screen coordinates to scene pixel coordinates.</summary>
     private Vector2 ScreenToScene(Vector2 screenPos)
@@ -88,13 +95,6 @@ public unsafe class ViewportPanel
 
             // Auto-fill window: force element to cover the entire viewport
             if (elem.AutoFillWindow)
-            {
-                elem.X = 0;
-                elem.Y = 0;
-                elem.Width = _texW;
-                elem.Height = _texH;
-            }
-
             // Auto-center: center the element in the viewport
             if (elem.AutoCenter)
             {
@@ -1383,7 +1383,7 @@ public unsafe class ViewportPanel
                     ImGui.EndCombo();
                 }
 
-                ImGui.SameLine();
+ImGui.SameLine();
                 ImGui.TextDisabled("|  " + (_snapEnabled ? $"Grid {_snapGridSize:F0}px" : "Free"));
 
                 // Show element position readout when selected
@@ -1391,8 +1391,60 @@ public unsafe class ViewportPanel
                 if (selReadout != null)
                 {
                     ImGui.SameLine();
-                    ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
+ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
                         $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
+                }
+
+                // ── Model Editor Gizmo Mode Buttons ──
+                if (_bridge.EditorObjectManager != null)
+                {
+                    ImGui.SameLine();
+                    ImGui.TextDisabled("|");
+                    ImGui.SameLine();
+
+                    int gizmoMode = _bridge.GizmoMode;
+                    string[] gizmoLabels = ["W: Move", "E: Rotate", "R: Scale"];
+                    for (int gi = 0; gi < 3; gi++)
+                    {
+ImGui.PushStyleColor(ImGuiCol.Button, gizmoMode == gi
+                            ? new Vector4(0.25f, 0.50f, 0.80f, 1f)
+                            : new Vector4(0.25f, 0.25f, 0.30f, 1f));
+                        if (ImGui.Button(gizmoLabels[gi]))
+                        {
+                            _bridge.GizmoMode = gi;
+                            _gizmo.Mode = (TransformGizmo.GizmoMode)gi;
+                        }
+                        ImGui.PopStyleColor(1);
+                        if (gi < 2) ImGui.SameLine();
+                    }
+
+                    // Primitive creation buttons
+                    ImGui.SameLine();
+                    ImGui.TextDisabled("|");
+                    ImGui.SameLine();
+if (ImGui.Button("+Box"))
+                    {
+                        var cam = _bridge.Camera;
+                        var pos = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
+                        var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Box, pos);
+                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                    }
+                    ImGui.SameLine();
+if (ImGui.Button("+Sphere"))
+                    {
+                        var cam = _bridge.Camera;
+                        var pos = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
+                        var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sphere, pos);
+                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                    }
+ImGui.SameLine();
+                    if (ImGui.Button("+Plane"))
+                    {
+                        var cam = _bridge.Camera;
+                        var pos = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
+                        var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Plane, pos);
+                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                    }
                 }
             } // end toolbar block
         } // end if (!_fullscreenMode)

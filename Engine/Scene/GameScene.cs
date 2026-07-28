@@ -271,6 +271,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                     }
 
+                    // ── Also raycast against editor objects ──
+                    var editorMgr = bridge.EditorObjectManager;
+                    if (editorMgr != null)
+                    {
+                        float editorHitDist;
+                        Vector3 editorHitPoint;
+                        var hitEditor = editorMgr.Raycast(rayOrigin, rayDir, out editorHitDist, out editorHitPoint);
+                        if (hitEditor != null && editorHitDist > 0f && editorHitDist < closestHit)
+                        {
+                            closestHit = editorHitDist;
+                            bridge.SelectedEditorObject = hitEditor;
+                            bridge.SelectedObject = null;
+                            bridge.SelectedAgent = null;
+                            bridge.SelectedUIElement = null;
+                            Console.WriteLine($"[Raycast] Selected editor object: {hitEditor.Name}");
+                        }
+                        else
+                        {
+                            // Only clear editor selection if we hit something else
+                            if (closestHit < float.MaxValue)
+                                bridge.SelectedEditorObject = null;
+                        }
+                    }
+
                     // Log if a static object was hit (closest but no animated match)
                     if (hitObject == null && closestHit < float.MaxValue)
                     {
@@ -739,6 +763,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             _shadowStaticAlphaShader, _shadowStaticAlphaModelLoc);
 
                     _gameTerrainChunk?.RenderShadow(_camera, _csm, i, _shadowShader, _shadowModelLoc);
+
+                    // ── EditorObjectManager shadow pass ──
+                    var editorObjMgr = _sceneManager.Bridge?.EditorObjectManager;
+                    if (editorObjMgr != null)
+                    {
+                        editorObjMgr.RenderShadow(_camera, _csm, i);
+                    }
                 }
 
                 // Restore default viewport and framebuffer
@@ -881,6 +912,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 _objectManager.Draw(_camera, _light, _csm);
                 _objectManager.DrawHealthBars(_camera, _hud);
+            }
+
+            // ── EditorObjectManager draw (editor primitives) ──
+            var editorMgr = _sceneManager.Bridge?.EditorObjectManager;
+            if (editorMgr != null)
+            {
+                editorMgr.Draw(_camera, _light, _csm);
             }
 
             //  Record objects timing, start post-process timing
@@ -1041,10 +1079,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             // ── Selection wireframe highlight (IDE mode) ──
-            // Draws a pulsing gold AABB around the selected 3D object.
+            // Draws a pulsing gold AABB around the selected 3D object or editor object.
             if (_sceneManager.IsIdeActive && _sceneManager.Bridge != null)
             {
-                var selObj = _sceneManager.Bridge.SelectedObject;
+                var bridge = _sceneManager.Bridge;
+                var selObj = bridge.SelectedObject;
+                var selEditorObj = bridge.SelectedEditorObject;
+                
                 if (selObj != null)
                 {
                     // Pulsing gold color
@@ -1053,6 +1094,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                     GL.Disable(Const.GL_DEPTH_TEST);
                     TerrainChunk.DrawAABBWireframe(selObj.WorldAABB, selColor, _camera);
+                    GL.Enable(Const.GL_DEPTH_TEST);
+                }
+                
+                // Draw selection wireframe for editor objects
+                if (selEditorObj != null)
+                {
+                    float pulse = 0.6f + 0.4f * MathF.Sin(_time * 4f);
+                    Vector3 selColor = new Vector3(0.1f, 0.8f, 1.0f) * pulse; // Cyan for editor objects
+
+                    GL.Disable(Const.GL_DEPTH_TEST);
+                    TerrainChunk.DrawAABBWireframe(selEditorObj.GetWorldAABB(), selColor, _camera);
                     GL.Enable(Const.GL_DEPTH_TEST);
                 }
             }

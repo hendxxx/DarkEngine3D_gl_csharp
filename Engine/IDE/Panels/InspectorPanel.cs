@@ -39,8 +39,13 @@ public class InspectorPanel
         var uiElem = _bridge.SelectedUIElement;
         var obj = _bridge.SelectedObject;
         var agent = _bridge.SelectedAgent;
+        var editorObj = _bridge.SelectedEditorObject;
 
-        if (uiElem != null)
+        if (editorObj != null)
+        {
+            RenderEditorObjectInspector(editorObj);
+        }
+        else if (uiElem != null)
         {
             RenderUIElementInspector(uiElem);
         }
@@ -965,6 +970,103 @@ public class InspectorPanel
         catch
         {
             _availableFonts = null;
+        }
+    }
+
+    /// <summary>Render inspector for an EditorObject (primitives, glb references).</summary>
+    private unsafe void RenderEditorObjectInspector(EditorObject editorObj)
+    {
+        // ── Identity ──
+        if (ImGui.CollapsingHeader("Editor Object", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            string name = editorObj.Name;
+            if (ImGui.InputText("Name", ref name, 256))
+                editorObj.Name = name;
+
+            string typeStr = editorObj.PrimitiveType switch
+            {
+                EditorPrimitiveType.Plane => "Plane",
+                EditorPrimitiveType.Box => "Box",
+                EditorPrimitiveType.Sphere => "Sphere",
+                EditorPrimitiveType.GlbReference => "GLB Reference",
+                _ => "Unknown"
+            };
+            ImGui.Text($"Type: {typeStr}");
+            if (editorObj.PrimitiveType == EditorPrimitiveType.GlbReference && !string.IsNullOrEmpty(editorObj.GlbFilePath))
+            {
+                ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $"GLB: {Path.GetFileName(editorObj.GlbFilePath)}");
+            }
+            ImGui.Separator();
+        }
+
+        // ── Transform ──
+        if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var pos = editorObj.Position;
+            if (ImGui.DragFloat3("Position", ref pos, 0.1f))
+            {
+                editorObj.Position = pos;
+                editorObj.MarkDirty();
+            }
+
+            var rot = editorObj.RotationEuler;
+            if (ImGui.DragFloat3("Rotation (Euler)", ref rot, 1f))
+            {
+                editorObj.RotationEuler = rot;
+                editorObj.MarkDirty();
+            }
+
+            var scale = editorObj.Scale;
+            if (ImGui.DragFloat3("Scale", ref scale, 0.05f, 0.01f, 100f))
+            {
+                editorObj.Scale = scale;
+                editorObj.MarkDirty();
+            }
+        }
+
+        // ── Visual ──
+        if (ImGui.CollapsingHeader("Visual", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var color = editorObj.Color;
+            if (ImGui.ColorEdit3("Color", ref color))
+            {
+                editorObj.Color = color;
+                editorObj.MarkDirty();
+            }
+
+            string texPath = editorObj.TexturePath ?? "";
+            ImGui.Text("Texture Path:");
+            if (ImGui.InputText("##tex_path", ref texPath, 512))
+            {
+                editorObj.TexturePath = string.IsNullOrEmpty(texPath) ? null : texPath;
+                editorObj.MarkDirty();
+            }
+
+            // ── Drag-drop target for Asset Browser ──
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                {
+                    editorObj.TexturePath = AssetBrowserPanel._dragImagePath;
+                    editorObj.MarkDirty();
+                    Console.WriteLine($"[Inspector] Set TexturePath on '{editorObj.Name}' → {editorObj.TexturePath}");
+                    AssetBrowserPanel._dragImagePath = null;
+                }
+                ImGui.EndDragDropTarget();
+            }
+        }
+
+        // ── Flags ──
+        if (ImGui.CollapsingHeader("Flags", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            bool vis = editorObj.IsVisible;
+            if (ImGui.Checkbox("Visible", ref vis))
+                editorObj.IsVisible = vis;
+
+            bool shadow = editorObj.CastShadow;
+            if (ImGui.Checkbox("Cast Shadow", ref shadow))
+                editorObj.CastShadow = shadow;
         }
     }
 

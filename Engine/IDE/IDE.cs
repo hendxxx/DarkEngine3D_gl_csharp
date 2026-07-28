@@ -26,11 +26,13 @@ public class IDE : IDisposable
     private readonly AssetBrowserPanel _assetBrowser;
     private readonly ConsolePanel _console;
     private readonly SceneManagerPanel _sceneManagerPanel;
-    private readonly HierarchyPanel _hierarchy;
-    private readonly ModelEditorPanel _modelEditor;
+
 
     // ── Editor Object Manager ──
     private EditorObjectManager? _editorObjectManager;
+
+    // ── Transform Gizmo ──
+    private readonly TransformGizmo _gizmo = new();
 
     public bool IsHealthy { get; private set; }
 

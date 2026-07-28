@@ -101,11 +101,24 @@ public class IDEBridge
     /// <summary>Currently selected editor-placed 3D object (for inspector + gizmo).</summary>
     public EditorObject? SelectedEditorObject { get; set; }
 
-    /// <summary>Gizmo interaction mode: 0=Translate, 1=Rotate, 2=Scale.</summary>
+/// <summary>Gizmo interaction mode: 0=Translate, 1=Rotate, 2=Scale.</summary>
     public int GizmoMode { get; set; } = 0;
+
+    /// <summary>Shared TransformGizmo instance for viewport interaction.</summary>
+    public TransformGizmo? EditorGizmo { get; set; }
 
     /// <summary>Called by ViewportPanel when a gizmo drag ends (for undo support).</summary>
     public Action? OnGizmoDragEnded { get; set; }
+
+    // ── Viewport mouse state (tracked per frame for 3D gizmo interaction) ──
+    /// <summary>True when the left mouse button is held down over the viewport.</summary>
+    public bool IsViewportMouseDown { get; set; }
+    /// <summary>True on the frame the left mouse button is released over the viewport.</summary>
+    public bool IsViewportMouseReleased { get; set; }
+    /// <summary>Mouse NDC X coordinate (-1 to 1) for ray casting.</summary>
+    public float ViewportMouseNDCX { get; set; }
+    /// <summary>Mouse NDC Y coordinate (-1 to 1) for ray casting.</summary>
+    public float ViewportMouseNDCY { get; set; }
 
     /// <summary>Scene type — user picks this explicitly (no auto-detection).</summary>
     public enum SceneType

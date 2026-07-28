@@ -30,9 +30,7 @@
 - [ ] Add toolbar buttons for gizmo mode + primitive creation
 
 ## Step E: Update InspectorPanel.cs
-- [ ] Add RenderEditorObjectInspector() method
-- [ ] Show Name, Position, Rotation, Scale, Color, Texture, CastShadow
-- [ ] Wire up in Render() to detect SelectedEditorObject
+- [x] Add RenderEditorObjectInspector() method
 
 ## Step F: Update GameScene.cs
 - [ ] Call EditorObjectManager.Draw() after main object rendering
