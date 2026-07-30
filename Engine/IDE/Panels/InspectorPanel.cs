@@ -1071,9 +1071,52 @@ public class InspectorPanel
                 if (ImGui.SmallButton("Reset Colors"))
                 {
                     _bridge.SelectionHighlights = SelectionHighlightColors.Default;
-                    // gold (1,0.8,0.1) + cyan (0.1,0.8,1.0)
                     Console.WriteLine("[Inspector] Selection highlight colors reset to defaults");
                 }
+            }
+
+            // ════════════════════════════════════════════
+            //  Editor Settings (fly mode sensitivity, speed)
+            // ════════════════════════════════════════════
+            if (ImGui.CollapsingHeader("Editor Settings", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Fly Mode Camera");
+                ImGui.Spacing();
+
+                float flySens = Config.CameraConfig.FlyMouseSensitivity;
+                if (ImGui.SliderFloat("Mouse Sensitivity", ref flySens, 0.01f, 2.0f, "%.2f"))
+                {
+                    Config.CameraConfig.FlyMouseSensitivity = flySens;
+                    Console.WriteLine($"[Inspector] Fly mouse sensitivity changed: {flySens:F2}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Mouse look sensitivity in editor fly mode (CTRL+drag to look around)");
+
+                float flySpeed = Config.CameraConfig.CameraFlySpeed;
+                if (ImGui.SliderFloat("Movement Speed", ref flySpeed, 1f, 500f, "%.0f"))
+                {
+                    Config.CameraConfig.CameraFlySpeed = flySpeed;
+                    Console.WriteLine($"[Inspector] Fly movement speed changed: {flySpeed:F0}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("WASD movement speed in editor fly mode");
+
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Transform Gizmo");
+                ImGui.Spacing();
+
+                float gizmoSize = Config.CameraConfig.GizmoSize;
+                if (ImGui.SliderFloat("Gizmo Size", ref gizmoSize, 0.25f, 3.0f, "%.2f"))
+                {
+                    Config.CameraConfig.GizmoSize = gizmoSize;
+                    Console.WriteLine($"[Inspector] Gizmo size changed: {gizmoSize:F2}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Scale multiplier for the 3D transform gizmo (Move/Rotate/Scale)");
+
+                ImGui.Spacing();
+                ImGui.TextDisabled("Settings are applied immediately.");
             }
 
             // ── Reset to defaults button ──

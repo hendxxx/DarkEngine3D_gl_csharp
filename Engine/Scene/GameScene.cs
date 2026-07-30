@@ -168,6 +168,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         //  IDE focus-camera state
         private Vector3? _cameraFocusPivot = null;
         private float _focusHoldTimer = 0f;
+        //  Gizmo size shortcut edge tracking (= / - keys)
+        private bool _gizmoPlusWasDown = false;
+        private bool _gizmoMinusWasDown = false;
+        //  Gizmo pivot override reset (ESC key)
+        private bool _gizmoEscWasDown = false;
         //  Cursor visibility tracking (avoid redundant GLFW calls)
         private bool _prevCursorShown = true;
         //  Per-frame render timing (ms) 
@@ -302,9 +307,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                         else
                         {
-                            // Only clear editor selection if we hit something else
-                            if (closestHit < float.MaxValue)
-                                bridge.SelectedEditorObject = null;
+                            // Clear editor selection when clicking anywhere that doesn't hit an editor object
+                            // (empty space / grid / game object / static object)
+                            bridge.SelectedEditorObject = null;
                         }
                     }
 
@@ -719,6 +724,40 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // use WASD + mouse look (fly mode) for camera navigation instead of game camera modes.
             bool editorFlyMode = !(_sceneManager.Bridge?.InGameActive ?? false) &&
                                   (_sceneManager.Bridge?.IsViewportFocused ?? false);
+
+            // ── Gizmo size shortcuts: = to increase, - to decrease ──
+            // Only active when viewport is focused (not during gameplay or when typing in other panels).
+            // Edge-triggered so each press changes size by 0.1 increment.
+            if (_sceneManager.Bridge?.IsViewportFocused ?? false)
+            {
+                bool gizmoPlusDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_EQUAL);
+                bool gizmoMinusDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_MINUS);
+                if (gizmoPlusDown && !_gizmoPlusWasDown)
+                {
+                    Config.CameraConfig.GizmoSize = Math.Clamp(Config.CameraConfig.GizmoSize + 0.1f, 0.25f, 3.0f);
+                    Console.WriteLine($"[Gizmo] Size increased to {Config.CameraConfig.GizmoSize:F2}");
+                }
+                if (gizmoMinusDown && !_gizmoMinusWasDown)
+                {
+                    Config.CameraConfig.GizmoSize = Math.Clamp(Config.CameraConfig.GizmoSize - 0.1f, 0.25f, 3.0f);
+                    Console.WriteLine($"[Gizmo] Size decreased to {Config.CameraConfig.GizmoSize:F2}");
+                }
+                _gizmoPlusWasDown = gizmoPlusDown;
+                _gizmoMinusWasDown = gizmoMinusDown;
+
+                // ── ESC: reset gizmo pivot override ──
+                bool escDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+                if (escDown && !_gizmoEscWasDown)
+                {
+                    var selObj = _sceneManager.Bridge?.SelectedEditorObject;
+                    if (selObj != null && selObj.GizmoPivotOverride != null)
+                    {
+                        selObj.GizmoPivotOverride = null;
+                        Console.WriteLine($"[Gizmo] Pivot override reset for '{selObj.Name}'");
+                    }
+                }
+                _gizmoEscWasDown = escDown;
+            }
 
             if (_objectManager != null)
             {

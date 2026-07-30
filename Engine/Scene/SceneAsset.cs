@@ -137,6 +137,11 @@ public class EditorObjectData
     public float ColorB { get; set; } = 0.9f;
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
+
+    // ── Per-object gizmo pivot override (nullable — null means use object position) ──
+    public float? PivotOverrideX { get; set; }
+    public float? PivotOverrideY { get; set; }
+    public float? PivotOverrideZ { get; set; }
 }
 
 /// <summary>

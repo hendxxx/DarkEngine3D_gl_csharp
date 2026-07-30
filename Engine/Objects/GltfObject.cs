@@ -1212,10 +1212,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
             GL.Uniform3f(colorLoc, outlineColor.X, outlineColor.Y, outlineColor.Z);
 
-            // Scale the object about its position for the inverted-hull outline
-            var scaleAboutPos = Matrix4x4.CreateTranslation(Position)
-                              * Matrix4x4.CreateScale(outlineScale)
-                              * Matrix4x4.CreateTranslation(-Position);
+            // Use Scale * outlineScale directly so the outline stays centered
+            // on the object's Position (unlike the old scaleAboutPos approach
+            // which caused a positional drift).
+            var objMatOutline = Matrix4x4.CreateScale(Scale * outlineScale)
+                              * Matrix4x4.CreateFromQuaternion(Rotation)
+                              * Matrix4x4.CreateTranslation(Position);
 
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
@@ -1231,17 +1233,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 var mesh = GpuData.Meshes[mi];
 
-                Matrix4x4 modelMat = objMat;
+                Matrix4x4 modelMat = objMatOutline;
                 if (!isSkinned)
                 {
                     int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length)
                         ? GpuData.MeshToNode[mi] : -1;
                     if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
-                        modelMat = _nodeGlobal[nodeIdx] * objMat;
+                        modelMat = _nodeGlobal[nodeIdx] * objMatOutline;
                 }
-
-                // Apply the scale-about-position to the model matrix
-                modelMat = scaleAboutPos * modelMat;
 
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
 

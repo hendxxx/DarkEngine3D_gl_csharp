@@ -1093,6 +1093,174 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         /// <summary>
+        /// Draw a small crosshair indicator at the given 3D position using the line shader.
+        /// Shows a ring + +-shaped cross for marking gizmo pivot override positions.
+        /// Color is bright orange-yellow. Radius ~0.4 units. Uses shared debug VAO/VBO.
+        /// </summary>
+        public static unsafe void DrawGizmoPivotCrosshair(Vector3 position, Camera camera)
+        {
+            DrawGizmoPivotCrosshairColored(position, camera, new Vector3(1.0f, 0.6f, 0.1f));
+        }
+
+        /// <summary>
+        /// Draw a small crosshair indicator with a custom color at the given 3D position.
+        /// Same visual as DrawGizmoPivotCrosshair but with a caller-specified color.
+        /// </summary>
+        public static unsafe void DrawGizmoPivotCrosshairColored(Vector3 position, Camera camera, Vector3 color)
+        {
+            const int segs = 12;
+            float radius = 0.4f;
+            // Ring (circle in XZ plane): segs * 2 verts
+            // +-cross in XZ: 2 lines = 4 verts  
+            // X-cross in XZ: 2 lines = 4 verts
+            int totalVerts = segs * 2 + 4 + 4;
+            float[] lineData = new float[totalVerts * 3];
+            int idx = 0;
+
+            void Line(float x1, float y1, float z1, float x2, float y2, float z2)
+            {
+                lineData[idx++] = x1; lineData[idx++] = y1; lineData[idx++] = z1;
+                lineData[idx++] = x2; lineData[idx++] = y2; lineData[idx++] = z2;
+            }
+
+            // Ring
+            for (int i = 0; i < segs; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segs;
+                float a1 = (i + 1) * MathF.PI * 2f / segs;
+                Line(
+                    position.X + radius * MathF.Cos(a0), position.Y,
+                    position.Z + radius * MathF.Sin(a0),
+                    position.X + radius * MathF.Cos(a1), position.Y,
+                    position.Z + radius * MathF.Sin(a1));
+            }
+
+            // +-cross (axis-aligned in XZ)
+            float extent = radius * 0.7f;
+            // X-axis line
+            Line(position.X - extent, position.Y, position.Z,
+                 position.X + extent, position.Y, position.Z);
+            // Z-axis line
+            Line(position.X, position.Y, position.Z - extent,
+                 position.X, position.Y, position.Z + extent);
+
+            // X-cross (diagonal in XZ)
+            float diag = extent * 0.5f;
+            Line(position.X - diag, position.Y, position.Z - diag,
+                 position.X + diag, position.Y, position.Z + diag);
+            Line(position.X - diag, position.Y, position.Z + diag,
+                 position.X + diag, position.Y, position.Z - diag);
+
+            // Use shared debug VAO/VBO
+            lock (debugBufferLock)
+            {
+                if (debugVao == 0 || debugVbo == 0)
+                {
+                    fixed (uint* pVao = &debugVao) GL.GenVertexArrays(1, pVao);
+                    fixed (uint* pVbo = &debugVbo) GL.GenBuffers(1, pVbo);
+                }
+            }
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+
+            GL.BindVertexArray(debugVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
+            fixed (void* ptr = lineData)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(totalVerts * 3 * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, totalVerts);
+            GL.BindVertexArray(0);
+        }
+
+        /// <summary>
+        /// Draw a subtle small dot indicator at the given 3D position using the line shader.
+        /// Shows just a simple ring (+ no cross) to mark that an object has a pivot override
+        /// but is not currently selected. Color is a muted orange. Radius ~0.25 units.
+        /// </summary>
+        public static unsafe void DrawPivotDot(Vector3 position, Camera camera)
+        {
+            const int segs = 8;
+            float radius = 0.25f;
+            int totalVerts = segs * 2;
+            float[] lineData = new float[totalVerts * 3];
+            int idx = 0;
+
+            void Line(float x1, float y1, float z1, float x2, float y2, float z2)
+            {
+                lineData[idx++] = x1; lineData[idx++] = y1; lineData[idx++] = z1;
+                lineData[idx++] = x2; lineData[idx++] = y2; lineData[idx++] = z2;
+            }
+
+            // Simple ring
+            for (int i = 0; i < segs; i++)
+            {
+                float a0 = (i + 0) * MathF.PI * 2f / segs;
+                float a1 = (i + 1) * MathF.PI * 2f / segs;
+                Line(
+                    position.X + radius * MathF.Cos(a0), position.Y,
+                    position.Z + radius * MathF.Sin(a0),
+                    position.X + radius * MathF.Cos(a1), position.Y,
+                    position.Z + radius * MathF.Sin(a1));
+            }
+
+            lock (debugBufferLock)
+            {
+                if (debugVao == 0 || debugVbo == 0)
+                {
+                    fixed (uint* pVao = &debugVao) GL.GenVertexArrays(1, pVao);
+                    fixed (uint* pVbo = &debugVbo) GL.GenBuffers(1, pVbo);
+                }
+            }
+
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
+
+            // Muted orange — subtle but visible
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
+            GL.Uniform3f(colorLoc, 0.7f, 0.4f, 0.05f);
+
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
+            int modelLoc = GL.GetUniformLocation(lineShader, "model");
+
+            Matrix4x4 v = camera.GetViewMatrix();
+            Matrix4x4 proj = camera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&proj);
+            if (modelLoc != -1)
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+
+            GL.BindVertexArray(debugVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
+            fixed (void* ptr = lineData)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(totalVerts * 3 * sizeof(float)), ptr, Const.GL_DYNAMIC_DRAW);
+
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
+            GL.DrawArrays(Const.GL_LINES, 0, totalVerts);
+            GL.BindVertexArray(0);
+        }
+
+        /// <summary>
         /// Draw a wireframe sphere using the shared line shader.
         /// Draws 3 rings (XY, XZ, YZ planes) for a clear sphere silhouette.
         /// </summary>

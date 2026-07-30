@@ -95,7 +95,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public bool IsADS = false;
         
         public bool FlyMode = false;
-        public float FlySpeed = Config.CameraConfig.CameraFlySpeed; // sesuai permintaan
+        /// <summary>Live-reads from Config.CameraConfig.CameraFlySpeed so Inspector slider changes take effect immediately.</summary>
+        public float FlySpeed => Config.CameraConfig.CameraFlySpeed;
 
         public bool IsFlyMode=false;
 
@@ -267,15 +268,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (processInput)
             {
                 // ── Mouse look: only active when CTRL is held ──
-                // When CTRL is pressed, mouse movement controls yaw/pitch and cursor is hidden.
-                // When CTRL is released, cursor is shown and rotation stops.
                 bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
                                 Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
 
                 if (ctrlHeld)
                 {
-                    smoothYaw += Mouse.DeltaX * 0.1f;
-                    smoothPitch -= Mouse.DeltaY * 0.1f;
+                    // Use configurable sensitivity from CameraConfig
+                    float sens = Config.CameraConfig.FlyMouseSensitivity;
+                    smoothYaw -= Mouse.DeltaX * sens;
+                    smoothPitch -= Mouse.DeltaY * sens;
                     smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
 
                     if (!_mouseLookWasActive)
@@ -297,6 +298,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 Yaw = smoothYaw;
                 Pitch = smoothPitch;
 
+                // ── Update vectors BEFORE movement so Front/Right are correct ──
+                UpdateCameraVectorsFly();
+
                 // Movement (WASD + scroll) — always active regardless of CTRL
                 Vector3 move = Vector3.Zero;
 
@@ -314,18 +318,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 Position += move * FlySpeed * dt;
 
-                // Scroll wheel for vertical movement (replaces old CTRL binding)
+                // Scroll wheel for zoom (move camera along Front direction)
                 if (Mouse.ScrollY != 0)
                 {
-                    Position.Y += Mouse.ScrollY * FlySpeed * dt * 2f;
+                    Position += Front * Mouse.ScrollY * FlySpeed * dt * 2f;
                     Mouse.ResetScroll();
                 }
             }
+            else
+            {
+                // Still update vectors even without input processing so the camera faces the right way
+                UpdateCameraVectorsFly();
+            }
+        }
 
-            // Update camera vectors (FPS) — always keep Front/Right/Up synced with current yaw/pitch
-            Front.X = MathF.Cos(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
-            Front.Y = MathF.Sin(Helpers.OGLMath.ToRadians(Pitch));
-            Front.Z = MathF.Sin(Helpers.OGLMath.ToRadians(Yaw)) * MathF.Cos(Helpers.OGLMath.ToRadians(Pitch));
+        /// <summary>
+        /// Update Front/Right/Up vectors using the SAME formula as UpdateVectors()
+        /// so fly mode behaves consistently with other camera modes.
+        /// At Yaw=0 => Front faces +Z (not +X).
+        /// </summary>
+        private void UpdateCameraVectorsFly()
+        {
+            float yawRad = Helpers.OGLMath.ToRadians(Yaw);
+            float pitchRad = Helpers.OGLMath.ToRadians(Pitch);
+
+            Front.X = MathF.Sin(yawRad) * MathF.Cos(pitchRad);
+            Front.Y = MathF.Sin(pitchRad);
+            Front.Z = MathF.Cos(yawRad) * MathF.Cos(pitchRad);
             Front = Vector3.Normalize(Front);
 
             Right = Vector3.Normalize(Vector3.Cross(Front, Vector3.UnitY));

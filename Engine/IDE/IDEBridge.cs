@@ -141,6 +141,11 @@ public class IDEBridge
     /// <summary>Shared TransformGizmo instance for viewport interaction.</summary>
     public TransformGizmo? EditorGizmo { get; set; }
 
+    /// <summary>When set, the gizmo renders at this world position instead of the selected object's position.
+    /// Delegates to SelectedEditorObject.GizmoPivotOverride so each object remembers its own pivot.
+    /// Set by middle-clicking in the viewport. Persists across selection changes.</summary>
+    public Vector3? GizmoOverridePosition => SelectedEditorObject?.GizmoPivotOverride;
+
     /// <summary>Called by ViewportPanel when a gizmo drag ends (for undo support).</summary>
     public Action? OnGizmoDragEnded { get; set; }
 

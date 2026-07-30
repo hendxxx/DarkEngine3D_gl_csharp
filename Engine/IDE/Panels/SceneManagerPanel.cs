@@ -654,7 +654,10 @@ public class SceneManagerPanel
                         ColorG = obj.Color.Y,
                         ColorB = obj.Color.Z,
                         CastShadow = obj.CastShadow,
-                        IsVisible = obj.IsVisible
+                        IsVisible = obj.IsVisible,
+                        PivotOverrideX = obj.GizmoPivotOverride?.X,
+                        PivotOverrideY = obj.GizmoPivotOverride?.Y,
+                        PivotOverrideZ = obj.GizmoPivotOverride?.Z
                     });
                 }
             }
@@ -875,6 +878,10 @@ public class SceneManagerPanel
                         obj.CastShadow = objData.CastShadow;
                         obj.IsVisible = objData.IsVisible;
 
+                        // Restore per-object gizmo pivot override (backward compatible — null if not present)
+                        if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)
+                            obj.GizmoPivotOverride = new Vector3(objData.PivotOverrideX.Value, objData.PivotOverrideY.Value, objData.PivotOverrideZ.Value);
+
                         Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
                     }
                 }
@@ -953,7 +960,10 @@ public class SceneManagerPanel
                             ColorG = obj.Color.Y,
                             ColorB = obj.Color.Z,
                             CastShadow = obj.CastShadow,
-                            IsVisible = obj.IsVisible
+                            IsVisible = obj.IsVisible,
+                            PivotOverrideX = obj.GizmoPivotOverride?.X,
+                            PivotOverrideY = obj.GizmoPivotOverride?.Y,
+                            PivotOverrideZ = obj.GizmoPivotOverride?.Z
                         });
                     }
                 }

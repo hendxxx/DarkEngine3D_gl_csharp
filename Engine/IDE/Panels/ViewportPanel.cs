@@ -50,10 +50,6 @@ public unsafe class ViewportPanel
 
     // ── Model Editor Gizmo ──
     private readonly TransformGizmo _gizmo = new();
-    private TransformGizmo.Axis _gizmoHoveredAxis = TransformGizmo.Axis.None;
-    private Vector3 _gizmoDragStartPosition;
-    private Vector3 _gizmoDragStartRotation;
-    private Vector3 _gizmoDragStartScale;
 
     // ── Cached conversion data (set each frame in overlay) ──
     private Vector2 _imageMin, _imageMax, _imageSize;
@@ -1879,16 +1875,57 @@ ImGui.SameLine();
                 _bridge.ViewportMouseX = sceneU * _texW;
                 _bridge.ViewportMouseY = sceneV * _texH;
 
+                // Reset click flag each frame — set to true below if left-click occurs
+                _bridge.IsViewportClicked = false;
+
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None)
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
                     _bridge.ViewportClickY = sceneV * _bridge.SceneTextureHeight;
                 }
-                else
+
+                // ── Middle click: reposition gizmo pivot ──
+                if (hasSceneTexture && ImGui.IsItemClicked(ImGuiMouseButton.Middle) && !_previewMode && _bridge.Camera != null
+                    && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
                 {
-                    _bridge.IsViewportClicked = false;
+                    // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
+                    float midClickY = _bridge.SceneTextureHeight - sceneV * _bridge.SceneTextureHeight;
+                    _bridge.Camera.ScreenToRay(
+                        sceneU * _bridge.SceneTextureWidth, midClickY,
+                        _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
+                        out Vector3 rayOrigin, out Vector3 rayDir);
+
+                    Vector3? hitPoint = null;
+
+                    // Try editor objects first
+                    if (_bridge.EditorObjectManager != null)
+                    {
+                        var edObj = _bridge.EditorObjectManager.Raycast(rayOrigin, rayDir, out float edDist, out Vector3 edPoint);
+                        if (edObj != null)
+                        {
+                            hitPoint = edPoint;
+                        }
+                    }
+
+                    // If no hit, raycast against Y=0 ground plane
+                    if (hitPoint == null && Math.Abs(rayDir.Y) > 0.0001f)
+                    {
+                        float t = -rayOrigin.Y / rayDir.Y;
+                        if (t > 0f)
+                            hitPoint = rayOrigin + rayDir * t;
+                    }
+
+                    if (hitPoint.HasValue && _bridge.SelectedEditorObject != null)
+                    {
+                        _bridge.SelectedEditorObject.GizmoPivotOverride = hitPoint.Value;
+                        Console.WriteLine($"[Viewport] Gizmo pivot for '{_bridge.SelectedEditorObject.Name}' set to {hitPoint.Value:F2}");
+                    }
                 }
+                // IsViewportClicked is reset on the next frame (set to false at start of each
+                // frame before the left-click check). The old `else` block that reset it here
+                // was a bug: it belonged to the middle-click `if` above, so it would immediately
+                // cancel the left-click flag set by the left-click handler.
             }
             else
             {
@@ -1916,6 +1953,7 @@ ImGui.SameLine();
 
                 if (mgr.Raycast(rayOrigin, rayDir, out float hitDist, out Vector3 hitPoint) is EditorObject hitObj)
                 {
+                    // Don't clear gizmo pivot — each object stores its own
                     _bridge.SelectedEditorObject = hitObj;
                     _bridge.SelectedUIElement = null;
                     _bridge.SelectedUIElements.Clear();
@@ -1928,10 +1966,17 @@ ImGui.SameLine();
                     // Check if gizmo was hit before deselecting
                     bool gizmoHit = false;
                     var gizmo = _bridge.EditorGizmo;
-                    if (gizmo != null)
+                    if (gizmo != null && _bridge.Camera != null)
                     {
-                        float gizmoHitScale = _bridge.SelectedEditorObject.Scale.Length() * 0.5f;
-                        var hitAxis = gizmo.HitTest(rayOrigin, rayDir, _bridge.SelectedEditorObject.Position, gizmoHitScale);
+                        int vpw = _bridge.SceneTextureWidth > 0 ? _bridge.SceneTextureWidth : 1920;
+                        int vph = _bridge.SceneTextureHeight > 0 ? _bridge.SceneTextureHeight : 1080;
+                        // Flip Y: ImGui Y=0=top → GL Y=0=bottom
+                        float glClickY = vph - _bridge.ViewportClickY;
+                        Vector3 gizmoPos = _bridge.GizmoOverridePosition ?? _bridge.SelectedEditorObject.Position;
+                        var hitAxis = gizmo.HitTest(
+                            new Vector2(_bridge.ViewportClickX, glClickY),
+                            _bridge.Camera, gizmoPos,
+                            vpw, vph);
                         gizmoHit = hitAxis != TransformGizmo.Axis.None;
                     }
                     if (!gizmoHit)
@@ -1943,6 +1988,7 @@ ImGui.SameLine();
             }
 
             // ── Gizmo mouse interaction (drag to transform selected editor object) ──
+            // Uses screen-space coordinates — gizmo renders at bottom-center of viewport
             if (!_previewMode && _bridge.Camera != null && _bridge.EditorGizmo != null
                 && _bridge.SelectedEditorObject != null && mouseOverImage
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
@@ -1951,26 +1997,23 @@ ImGui.SameLine();
                 var gizmo = _bridge.EditorGizmo;
                 var selected = _bridge.SelectedEditorObject;
 
+                int vpw = _bridge.SceneTextureWidth;
+                int vph = _bridge.SceneTextureHeight;
+
                 // Set gizmo mode from bridge
                 gizmo.Mode = (TransformGizmo.GizmoMode)_bridge.GizmoMode;
 
-                // Calculate mouse ray using current mouse position
-                float mouseY = _bridge.SceneTextureHeight - _bridge.ViewportMouseY;
-                cam.ScreenToRay(
-                    _bridge.ViewportMouseX, mouseY,
-                    _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
-                    out Vector3 mouseRayOrigin, out Vector3 mouseRayDir);
-
-                // Compute gizmo scale from object size
-                float gizmoScale = selected.Scale.Length() * 0.5f;
+                // Flip Y: ImGui Y=0=top → GL Y=0=bottom
+                float glMouseY = vph - _bridge.ViewportMouseY;
+                Vector2 mouseScreen = new(_bridge.ViewportMouseX, glMouseY);
 
                 bool leftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
                 bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
 
                 if (gizmo.IsDragging)
                 {
-                    // Update gizmo drag
-                    gizmo.UpdateDrag(mouseRayOrigin, mouseRayDir, selected);
+                    // Update gizmo drag with screen-space mouse
+                    gizmo.UpdateDrag(mouseScreen, selected, cam, vpw, vph);
                     if (leftReleased)
                     {
                         gizmo.EndDrag();
@@ -1979,11 +2022,15 @@ ImGui.SameLine();
                 }
                 else
                 {
-                    // Hit test the gizmo (use object scale for hit detection)
-                    var hitAxis = gizmo.HitTest(mouseRayOrigin, mouseRayDir, selected.Position, gizmoScale);
+                    // Hit test the gizmo at the object's projected screen position
+                    Vector3 gizmoPos2 = _bridge.GizmoOverridePosition ?? selected.Position;
+                    var hitAxis = gizmo.HitTest(mouseScreen, cam, gizmoPos2, vpw, vph);
                     if (leftClicked && hitAxis != TransformGizmo.Axis.None)
                     {
-                        gizmo.StartDrag(hitAxis, selected.Position, mouseRayOrigin, mouseRayDir, selected);
+                        // Clear per-object gizmo pivot so the gizmo follows the object after drag
+                        if (selected != null)
+                            selected.GizmoPivotOverride = null;
+                        gizmo.StartDrag(hitAxis, mouseScreen, selected);
                         Console.WriteLine($"[Viewport] Gizmo drag started on '{selected.Name}' axis={hitAxis}");
                     }
                 }

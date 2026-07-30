@@ -55,6 +55,11 @@ public unsafe class EditorObject
     public Vector3 LastGizmoRotation { get; set; }
     public Vector3 LastGizmoScale { get; set; }
 
+    // ── Per-object gizmo pivot override (set by middle-click in viewport) ──
+    /// <summary>When set, the gizmo renders at this world position instead of the object's Position.
+    /// Persists across selection changes — each object remembers its own pivot override.</summary>
+    public Vector3? GizmoPivotOverride { get; set; }
+
     // ── Shader uniform locations (cached for Draw overloads) ──
     private int _modelLoc = -1, _viewLoc = -1, _projLoc = -1;
     private int _sunDirLoc = -1, _lightColorLoc = -1, _viewPosLoc = -1;
@@ -324,6 +329,8 @@ public unsafe class EditorObject
     /// with face culling disabled, letting the stencil test (NOTEQUAL, 1)
     /// block the original object area so only the expanded border shows.
     /// Should be called after DrawOutlineStencil() with stencil test enabled.
+    /// FIXED: Uses Scale * outlineScale directly in the world matrix
+    /// instead of scaleAboutPos to keep the outline centered on the object.
     /// </summary>
     public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
     {
@@ -335,11 +342,15 @@ public unsafe class EditorObject
 
         GL.UseProgram(prog);
 
-        // Scale the object about its position for the inverted-hull outline
-        var scaleAboutPos = Matrix4x4.CreateTranslation(Position)
-                          * Matrix4x4.CreateScale(outlineScale)
-                          * Matrix4x4.CreateTranslation(-Position);
-        var model = scaleAboutPos * WorldMatrix;
+        // Use Scale * outlineScale directly so the outline stays centered
+        // on the object's Position (unlike the old scaleAboutPos approach
+        // which caused a positional drift proportional to Position * 0.05).
+        float rotY = RotationEuler.Y * MathF.PI / 180f;
+        float rotX = RotationEuler.X * MathF.PI / 180f;
+        float rotZ = RotationEuler.Z * MathF.PI / 180f;
+        var model = Matrix4x4.CreateScale(Scale * outlineScale)
+                  * Matrix4x4.CreateFromYawPitchRoll(rotY, rotX, rotZ)
+                  * Matrix4x4.CreateTranslation(Position);
         var view = camera.GetViewMatrix();
         var proj = camera.GetProjectionMatrix();
 
