@@ -10,6 +10,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         string Name { get; }
 
         /// <summary>
+        /// Per-scene OpenGL render state properties (background color, face culling, wireframe, etc.).
+        /// Applied automatically at the start of each frame's Render() call.
+        /// </summary>
+        SceneRenderProperties RenderProperties { get; }
+
+        /// <summary>
         /// Called once when the scene becomes active.
         /// For LoadingScene this is where synchronous loading happens (renders frames internally).
         /// For GameScene this sets up the game state.

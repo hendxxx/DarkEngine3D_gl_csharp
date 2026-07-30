@@ -20,6 +20,19 @@ public unsafe class MainMenuScene : IScene
 {
     public string Name => "MainMenu";
 
+        //  Per-scene render properties 
+        private readonly SceneRenderProperties _renderProperties = new()
+        {
+            BackgroundColor = new System.Numerics.Vector3(0f, 0f, 0f),
+            VSync = true,
+            FaceCulling = CullMode.None,
+            FrontFaceWinding = WindingOrder.CCW,
+            WireframeMode = false,
+            DepthTest = false,
+            Blending = true,
+        };
+    public SceneRenderProperties RenderProperties => _renderProperties;
+
     // ── Dependencies ──
     private readonly SceneManager _sceneManager;
     private readonly Camera _camera;

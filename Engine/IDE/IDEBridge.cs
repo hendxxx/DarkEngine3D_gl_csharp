@@ -149,6 +149,9 @@ public class IDEBridge
     {
         /// <summary>3D editor objects specific to this scene (Plane, Box, Sphere, etc.).</summary>
         public EditorObjectManager? ObjectManager { get; set; }
+
+        /// <summary>Per-scene render properties (background color, VSync, face culling, wireframe, etc.).</summary>
+        public SceneRenderProperties? RenderProperties { get; set; }
     }
 
     /// <summary>All scenes created/managed by the UI Editor. Keyed by scene name.</summary>

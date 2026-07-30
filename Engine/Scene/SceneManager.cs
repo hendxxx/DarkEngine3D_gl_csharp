@@ -40,6 +40,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private uint _editorAxisVBO = 0;
         private bool _editorGridCreated = false;
 
+        // ── VSync state tracking (for per-scene VSync switching) ──
+        private bool _currentVSync = true;
+
         private void EnsureSharedFBO()
         {
             if (_sharedFBOCreated) return;
@@ -251,6 +254,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     var bridge = _ide.Bridge;
                     if (bridge != null)
                         bridge.SceneTextureID = 0;
+                }
+
+                // ── Apply per-scene render properties before rendering ──
+                if (_currentScene != null)
+                {
+                    OpenGL.ApplySceneProperties(_currentScene.RenderProperties, ref _currentVSync);
                 }
 
                 _currentScene?.Render();

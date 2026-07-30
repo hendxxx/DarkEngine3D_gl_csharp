@@ -22,6 +22,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public string Name => "GameScene";
 
+        //  Per-scene render properties 
+        private readonly SceneRenderProperties _renderProperties = new()
+        {
+            BackgroundColor = new System.Numerics.Vector3(0.07f, 0.13f, 0.17f),
+            VSync = true,
+            FaceCulling = CullMode.Back,
+            FrontFaceWinding = WindingOrder.CCW,
+            WireframeMode = false,
+            DepthTest = true,
+            Blending = false,
+        };
+        public SceneRenderProperties RenderProperties => _renderProperties;
+
         //  Dependencies 
         private readonly SceneManager _sceneManager;
         private Camera _camera;
@@ -195,35 +208,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bridge.SceneRoot = _sceneRoot;
             bridge.SceneRootElements = [_sceneRoot];
 
-            // ── Gizmo drag update (continuous, each frame while dragging) ──
-            var gizmo = bridge.EditorGizmo;
-            var selEditorObjForDrag = bridge.SelectedEditorObject;
-            if (gizmo != null && selEditorObjForDrag != null && gizmo.IsDragging && _camera != null)
-            {
-                float mouseX = bridge.ViewportMouseX;
-                float mouseY = bridge.ViewportMouseY;
-                if (mouseX >= 0 && mouseY >= 0 &&
-                    bridge.SceneTextureWidth > 0 && bridge.SceneTextureHeight > 0)
-                {
-                    _camera.ScreenToRay(mouseX, mouseY,
-                        bridge.SceneTextureWidth, bridge.SceneTextureHeight,
-                        out Vector3 rayOrigin, out Vector3 rayDir);
-                    gizmo.UpdateDrag(rayOrigin, rayDir, selEditorObjForDrag);
-                }
-            }
-
-            // ── Gizmo drag end ──
-            if (gizmo != null && gizmo.IsDragging && bridge.IsViewportMouseReleased)
-            {
-                gizmo.EndDrag();
-                bridge.OnGizmoDragEnded?.Invoke();
-                Console.WriteLine("[Gizmo] Drag ended");
-            }
-
             // ── Viewport click → select element ──
             if (bridge.IsViewportClicked)
             {
                 // ── Gizmo hit test first (takes priority over other selection) ──
+                var gizmo = bridge.EditorGizmo;
+                var selEditorObjForDrag = bridge.SelectedEditorObject;
                 bool gizmoConsumedClick = false;
                 if (gizmo != null && selEditorObjForDrag != null && _camera != null)
                 {
@@ -617,7 +607,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
-             
+
+            // ── Gizmo drag update (continuous, each frame while dragging) ──
+            // This runs BEFORE Render() so the gizmo position is updated before rendering.
+            // Previously this was in UpdateBridgeData() (called after Render), causing a 1-frame delay.
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null)
+            {
+                var gizmo = bridge.EditorGizmo;
+                var selEditorObjForDrag = bridge.SelectedEditorObject;
+                if (gizmo != null && selEditorObjForDrag != null && gizmo.IsDragging && _camera != null)
+                {
+                    float mouseX = bridge.ViewportMouseX;
+                    float mouseY = bridge.ViewportMouseY;
+                    if (mouseX >= 0 && mouseY >= 0 &&
+                        bridge.SceneTextureWidth > 0 && bridge.SceneTextureHeight > 0)
+                    {
+                        _camera.ScreenToRay(mouseX, mouseY,
+                            bridge.SceneTextureWidth, bridge.SceneTextureHeight,
+                            out Vector3 rayOrigin, out Vector3 rayDir);
+                        gizmo.UpdateDrag(rayOrigin, rayDir, selEditorObjForDrag);
+                    }
+                }
+
+                // ── Gizmo drag end ──
+                if (gizmo != null && gizmo.IsDragging && bridge.IsViewportMouseReleased)
+                {
+                    gizmo.EndDrag();
+                    bridge.OnGizmoDragEnded?.Invoke();
+                    Console.WriteLine("[Gizmo] Drag ended");
+                }
+            }
+
             // ── Cursor visibility: show when locked, viewport not focused, or paused ──
             bool viewportFocused = _sceneManager.Bridge?.IsViewportFocused ?? true;
             bool shouldShowCursor =  !viewportFocused || _paused;
@@ -830,7 +851,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             if (_ppStack == null || _csm == null || _skybox == null || _hud == null) return;
 
+            // Wireframe toggle from keyboard overrides the per-scene setting
             bool wireframeMode = Keyboard.GetIsWireframe();
+            _renderProperties.WireframeMode = wireframeMode;
             bool ideActive = _sceneManager.IsIdeActive;
 
             //  Start per-frame render timing 
@@ -843,13 +866,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // Wireframe: render directly to screen, skip postprocess (F1 conflicts with PP)
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
                 GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
-                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
             }
             else
             {
                 _ppStack.BindSceneFBO();
-                GL.ClearColor(0.07f, 0.13f, 0.17f, 1.0f);
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
             }
 
@@ -972,11 +993,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _renderTimer.Restart();
 
             //  Post Process (render SceneFBO to screen) — run always; IDE scene stays in FBO for Viewport panel
-            if (wireframeMode)
-            {
-                GL.Enable(Const.GL_DEPTH_TEST);
-            }
-            else
+            if (!wireframeMode)
             {
                 _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
             }
@@ -1154,13 +1171,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     GL.Enable(Const.GL_DEPTH_TEST);
                 }
 
-                // ── Render TransformGizmo for selected editor object ──
-                var gizmo = bridge.EditorGizmo;
-                if (gizmo != null && selEditorObj != null)
-                {
-                    float objScale = selEditorObj.Scale.Length() * 0.25f;
-                    gizmo.Render(_camera, selEditorObj.Position, Math.Max(0.5f, objScale));
-                }
+                // Gizmo is now rendered by SceneManager after this Render() returns,
+                // so the position is updated in Update() before rendering.
             }
 
             //  Record total render time (from the dedicated total timer, not the section timer)

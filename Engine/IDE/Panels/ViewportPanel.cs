@@ -33,10 +33,6 @@ public unsafe class ViewportPanel
     // ── Fullscreen mode: used by In-Game Mode (F8), skips toolbar, fullscreen window ──
     private bool _fullscreenMode = false;
 
-    // ── Spinning triangle demo ──
-    private float _triRotation = 0f;
-    private float _bgTotalTime = 0f;
-
     // ── In-game mode: last element clicked by mouse (for syncing keyboard focus) ──
     /// <summary>Set by DrawEditorUIPreview when a mouse click occurs in preview mode.
     /// Read and reset by IDE.RenderInGameMode() to sync keyboard focus to the clicked element.</summary>
@@ -1206,106 +1202,7 @@ public unsafe class ViewportPanel
         _texH = savedTexH;
     }
 
-    // ──────────────────────────────────────────────
-    //  ImGui-based background gradient + spinning triangle
-    // ──────────────────────────────────────────────
-
-    /// <summary>Draw animated gradient background using ImGui draw list.
-    /// Renders only when no scene texture is present (dark canvas mode).</summary>
-    private void RenderImGuiGradient(ImDrawListPtr drawList, Vector2 min, Vector2 max)
-    {
-        float w = max.X - min.X;
-        float h = max.Y - min.Y;
-        if (w < 1f || h < 1f) return;
-
-        // Animated gradient: 20 horizontal strips with pulsing colors
-        int gradSteps = 20;
-        float stepH = h / gradSteps;
-        float pulse = MathF.Sin(_bgTotalTime * 0.3f) * 0.015f;
-
-        for (int i = 0; i < gradSteps; i++)
-        {
-            float t = (float)i / gradSteps;
-            float r = 0.06f + t * 0.03f + pulse * 0.5f;
-            float g = 0.06f + t * 0.02f + pulse * 0.3f;
-            float b = 0.10f + t * 0.04f + pulse;
-            float y0 = min.Y + stepH * i;
-            float y1 = y0 + stepH + 1f;
-            drawList.AddRectFilled(
-                new Vector2(min.X, y0),
-                new Vector2(max.X, y1),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(r, g, b, 1f)));
-        }
-    }
-
-    /// <summary>Draw the spinning triangle using ImGui draw list primitives.
-    /// Computes vertex rotation on CPU, draws colored edges + glowing vertices.</summary>
-    private void RenderImGuiTriangle(ImDrawListPtr drawList, Vector2 min, Vector2 max)
-    {
-        float dt = ImGui.GetIO().DeltaTime;
-        _triRotation += dt * 1.5f;
-        if (_triRotation > MathF.PI * 2f) _triRotation -= MathF.PI * 2f;
-
-        float w = max.X - min.X;
-        float h = max.Y - min.Y;
-        if (w < 1f || h < 1f) return;
-
-        // Center of canvas
-        float cx = (min.X + max.X) * 0.5f;
-        float cy = (min.Y + max.Y) * 0.5f;
-        float scale = Math.Min(w, h) * 0.30f;
-
-        // Triangle vertices in local coords (centered at origin)
-        float cosA = MathF.Cos(_triRotation);
-        float sinA = MathF.Sin(_triRotation);
-
-        // Three vertices: top, bottom-left, bottom-right (in local -1 to 1 space)
-        float[] lx = [0f, -0.5f, 0.5f];
-        float[] ly = [0.5f, -0.5f, -0.5f];
-        Vector3[] colors = [
-            new(1f, 0.2f, 0.2f),
-            new(0.2f, 1f, 0.2f),
-            new(0.2f, 0.2f, 1f),
-        ];
-
-        // Compute screen positions
-        var sx = new Vector2[3];
-        for (int i = 0; i < 3; i++)
-        {
-            float rx = lx[i] * cosA - ly[i] * sinA;
-            float ry = lx[i] * sinA + ly[i] * cosA;
-            sx[i] = new(cx + rx * scale, cy + ry * scale);
-        }
-
-        // ── Semi-transparent triangle body ──
-        uint bodyCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.8f, 0.8f, 1f, 0.10f));
-        drawList.AddTriangleFilled(sx[0], sx[1], sx[2], bodyCol);
-
-        // ── Colored edges + vertex glow ──
-        for (int i = 0; i < 3; i++)
-        {
-            int next = (i + 1) % 3;
-            var colV = colors[i];
-
-            // Line from vertex i to next vertex
-            uint edgeCol = ImGui.ColorConvertFloat4ToU32(new Vector4(colV.X, colV.Y, colV.Z, 0.85f));
-            drawList.AddLine(sx[i], sx[next], edgeCol, 2.5f);
-
-            // Outer glow
-            uint glowCol = ImGui.ColorConvertFloat4ToU32(new Vector4(colV.X, colV.Y, colV.Z, 0.25f));
-            drawList.AddCircleFilled(sx[i], 10f, glowCol, 16);
-
-            // Inner bright dot
-            uint dotCol = ImGui.ColorConvertFloat4ToU32(new Vector4(
-                Math.Clamp(colV.X * 1.3f, 0f, 1f),
-                Math.Clamp(colV.Y * 1.3f, 0f, 1f),
-                Math.Clamp(colV.Z * 1.3f, 0f, 1f),
-                1f));
-            drawList.AddCircleFilled(sx[i], 4f, dotCol, 12);
-        }
-    }
-
-
+    
 
     public void Render()
     {
@@ -1506,11 +1403,6 @@ ImGui.SameLine();
                 _texH = 1080f;
             }
 
-            // ── Draw spinning triangle via ImGui (on top of scene/background) ──
-            {
-                var drawList = ImGui.GetWindowDrawList();
-                RenderImGuiTriangle(drawList, _imageMin, _imageMax);
-            }
 
             var viewportMouseScreen = ImGui.GetMousePos();
 
@@ -2086,5 +1978,32 @@ ImGui.SameLine();
         }
 
         ImGui.End();
+    }
+
+    /// <summary>Render an animated gradient background for the viewport canvas when no scene texture is available.</summary>
+    private void RenderImGuiGradient(ImDrawListPtr drawList, Vector2 min, Vector2 max)
+    {
+        int w = (int)(max.X - min.X);
+        int h = (int)(max.Y - min.Y);
+        if (w <= 0 || h <= 0) return;
+
+        float time = (float)ImGui.GetTime();
+        
+        // Dark gradient colors
+        var col1 = ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.08f, 0.12f, 1f));
+        var col2 = ImGui.ColorConvertFloat4ToU32(new Vector4(0.12f, 0.10f, 0.16f, 1f));
+        var col3 = ImGui.ColorConvertFloat4ToU32(new Vector4(0.06f, 0.06f, 0.10f, 1f));
+        
+        // Top-to-bottom gradient
+        drawList.AddRectFilledMultiColor(min, max, col1, col1, col2, col2);
+        
+        // Subtle animated horizontal band
+        float bandY = min.Y + h * (0.3f + 0.2f * MathF.Sin(time * 0.5f));
+        float bandH = h * 0.15f;
+        uint bandCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.12f, 0.20f, 0.3f));
+        drawList.AddRectFilled(
+            new Vector2(min.X, bandY - bandH * 0.5f),
+            new Vector2(max.X, bandY + bandH * 0.5f),
+            bandCol);
     }
 }

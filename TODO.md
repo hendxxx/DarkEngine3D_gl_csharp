@@ -1,7 +1,17 @@
-# Exit Confirm Dialog Implementation
+# TODO: Scene Render Properties + Gizmo Fix
 
-## Steps
-1. ✅ HierarchyPanel.cs - Fix: Render ALL children (including hidden dialog buttons)
-2. ✅ Update `game.ing` - Add ExitConfirm Dialog (Yes/Cancel) with isVisible: false
-3. ✅ Update `Main Menu.ing` - Add ExitConfirm Dialog (Yes/Cancel) with isVisible: false
-4. ✅ Modify `MainMenuScene.cs` - confirmexit behavior: preview mode → stop preview, only IDE off → exit
+## Step 1: Add RenderProperties to IDEBridge.EditorScene
+- [x] Add `SceneRenderProperties RenderProperties` to the `EditorScene` record in `IDEBridge.cs`
+- [x] Initialize with default values
+
+## Step 2: Show Render Properties in InspectorPanel
+- [x] In `InspectorPanel.RenderEditorSceneInfo()`, add a collapsible "Render Properties" section
+- [x] Show controls for: BackgroundColor, VSync, FaceCulling, FrontFaceWinding, WireframeMode, DepthTest, Blending
+- [x] When properties change, apply via `renderProps.Apply()`
+
+## Step 3: Fix Gizmo Real-Time Update
+- [x] Move the gizmo 3D rendering to AFTER the IDE overlay render in the SceneManager loop
+- [x] Ensure the gizmo renders into the correct FBO before rendering
+
+## Step 4: Build and Test
+- [x] Build the project and verify no errors

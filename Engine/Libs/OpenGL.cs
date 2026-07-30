@@ -134,6 +134,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         } 
 
         /// <summary>
+        /// Apply per-scene OpenGL render state properties (background color, face culling,
+        /// wireframe mode, depth test, blending, etc.) at the start of a scene's Render().
+        /// This replaces scattered GL state calls inside each scene's render method.
+        /// </summary>
+        /// <param name="props">The scene's render properties to apply.</param>
+        /// <param name="vsyncCurrent">The current VSync state. Pass by ref so it's only set when changed.</param>
+        public static void ApplySceneProperties(Scene.SceneRenderProperties props, ref bool vsyncCurrent)
+        {
+            if (props == null) return;
+
+            // Apply all properties via the SceneRenderProperties.Apply() method
+            props.Apply();
+
+            // VSync is a GLFW call, applied once per scene switch (not per frame)
+            if (props.VSync != vsyncCurrent)
+            {
+                vsyncCurrent = props.VSync;
+                Glfw.SetSwapInterval(props.VSync ? 1 : 0);
+                Console.WriteLine($"[OpenGL] VSync set to {(props.VSync ? "ON" : "OFF")}");
+            }
+        }
+
+        /// <summary>
         /// Query GL_FRONT_FACE and GL_CULL_FACE state, log a warning if winding is not GL_CCW.
         /// Call once per frame at the start of the render loop to detect state corruption.
         /// Only logs on state change (not every frame) to avoid spam.

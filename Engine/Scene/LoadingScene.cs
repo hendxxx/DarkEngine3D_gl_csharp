@@ -45,6 +45,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public string Name => "LoadingScene";
 
+        //  Per-scene render properties 
+        private readonly SceneRenderProperties _renderProperties = new()
+        {
+            BackgroundColor = new System.Numerics.Vector3(0f, 0f, 0f),
+            VSync = true,
+            FaceCulling = CullMode.None,
+            FrontFaceWinding = WindingOrder.CCW,
+            WireframeMode = false,
+            DepthTest = false,
+            Blending = true,
+        };
+        public SceneRenderProperties RenderProperties => _renderProperties;
+
         public LoadingScene(SceneManager sceneManager, Camera camera, Lights light)
         {
             _sceneManager = sceneManager;

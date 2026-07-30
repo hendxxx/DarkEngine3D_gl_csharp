@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
@@ -867,6 +868,129 @@ public class InspectorPanel
             ImGui.Separator();
             ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.6f, 1f), "Click an element in the viewport");
             ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.6f, 1f), "or hierarchy tree to inspect it.");
+        }
+
+        // ════════════════════════════════════════════
+        //  Render Properties (per-scene)
+        // ════════════════════════════════════════════
+        // Ensure the scene has a RenderProperties instance
+        var renderProps = editorScene.RenderProperties;
+        if (renderProps == null)
+        {
+            renderProps = new SceneRenderProperties();
+            editorScene.RenderProperties = renderProps;
+        }
+
+        if (ImGui.CollapsingHeader("Render Properties", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            bool changed = false;
+
+            // ── Background Color ──
+            var bgColor = renderProps.BackgroundColor;
+            if (ImGui.ColorEdit3("Background Color", ref bgColor, ImGuiColorEditFlags.NoInputs))
+            {
+                renderProps.BackgroundColor = bgColor;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("GL.ClearColor — background color when rendering this scene");
+
+            ImGui.Spacing();
+
+            // ── VSync ──
+            bool vsync = renderProps.VSync;
+            if (ImGui.Checkbox("VSync", ref vsync))
+            {
+                renderProps.VSync = vsync;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Enable/disable vertical sync for this scene");
+
+            ImGui.Spacing();
+
+            // ── Face Culling ──
+            string[] cullModes = ["None", "Back", "Front", "Front & Back"];
+            int cullIdx = (int)renderProps.FaceCulling;
+            if (cullIdx < 0 || cullIdx >= cullModes.Length) cullIdx = 1;
+            if (ImGui.Combo("Face Culling", ref cullIdx, cullModes, cullModes.Length))
+            {
+                renderProps.FaceCulling = (CullMode)cullIdx;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Which faces to cull (Back = default, None = disable culling)");
+
+            // ── Front Face Winding ──
+            string[] windingModes = ["CCW (Counter-Clockwise)", "CW (Clockwise)"];
+            int windingIdx = renderProps.FrontFaceWinding == WindingOrder.CCW ? 0 : 1;
+            if (ImGui.Combo("Front Face Winding", ref windingIdx, windingModes, windingModes.Length))
+            {
+                renderProps.FrontFaceWinding = windingIdx == 0 ? WindingOrder.CCW : WindingOrder.CW;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Winding order for front faces (CCW = OpenGL default)");
+
+            ImGui.Spacing();
+
+            // ── Wireframe Mode ──
+            bool wireframe = renderProps.WireframeMode;
+            if (ImGui.Checkbox("Wireframe Mode", ref wireframe))
+            {
+                renderProps.WireframeMode = wireframe;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Render polygons as lines (wireframe)");
+
+            ImGui.Spacing();
+
+            // ── Depth Test ──
+            bool depthTest = renderProps.DepthTest;
+            if (ImGui.Checkbox("Depth Test", ref depthTest))
+            {
+                renderProps.DepthTest = depthTest;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Enable/disable depth testing");
+
+            // ── Blending ──
+            bool blending = renderProps.Blending;
+            if (ImGui.Checkbox("Blending", ref blending))
+            {
+                renderProps.Blending = blending;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Enable/disable alpha blending");
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Apply button ──
+            if (changed)
+            {
+                // Apply the render properties immediately
+                renderProps.Apply();
+                Console.WriteLine($"[Inspector] Applied render properties for scene '{editorScene.Name}'");
+            }
+
+            // ── Reset to defaults button ──
+            ImGui.Spacing();
+            if (ImGui.Button("Reset to Defaults", new Vector2(-1, 28)))
+            {
+                renderProps.BackgroundColor = new Vector3(0f, 0f, 0f);
+                renderProps.VSync = true;
+                renderProps.FaceCulling = CullMode.Back;
+                renderProps.FrontFaceWinding = WindingOrder.CCW;
+                renderProps.WireframeMode = false;
+                renderProps.DepthTest = true;
+                renderProps.Blending = false;
+                renderProps.Apply();
+                Console.WriteLine($"[Inspector] Reset render properties to defaults for scene '{editorScene.Name}'");
+            }
         }
     }
 
