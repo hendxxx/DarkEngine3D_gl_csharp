@@ -617,6 +617,10 @@ public class SceneManagerPanel
         // Build fresh manifest with UI elements AND 3D editor objects
         var manifest = new SceneManifest();
 
+        // ── Persist global IDE selection highlight colors ──
+        manifest.SelectionHighlightColor = [_bridge.SelectionHighlights.GltfObject.X, _bridge.SelectionHighlights.GltfObject.Y, _bridge.SelectionHighlights.GltfObject.Z];
+        manifest.EditorObjectHighlightColor = [_bridge.SelectionHighlights.EditorObject.X, _bridge.SelectionHighlights.EditorObject.Y, _bridge.SelectionHighlights.EditorObject.Z];
+
         foreach (var (name, editorScene) in _bridge.EditorScenes)
         {
             var asset = new SceneAsset
@@ -788,6 +792,12 @@ public class SceneManagerPanel
                 return;
             }
 
+            // ── Restore global IDE selection highlight colors ──
+            if (manifest.SelectionHighlightColor?.Length == 3)
+                _bridge.SelectionHighlights.GltfObject = new Vector3(manifest.SelectionHighlightColor[0], manifest.SelectionHighlightColor[1], manifest.SelectionHighlightColor[2]);
+            if (manifest.EditorObjectHighlightColor?.Length == 3)
+                _bridge.SelectionHighlights.EditorObject = new Vector3(manifest.EditorObjectHighlightColor[0], manifest.EditorObjectHighlightColor[1], manifest.EditorObjectHighlightColor[2]);
+
             // Clear existing editor scenes — we're replacing with loaded data
             _bridge.EditorScenes.Clear();
 
@@ -905,6 +915,11 @@ public class SceneManagerPanel
         {
             // Build manifest from editor scenes with 3D objects
             var manifest = new SceneManifest();
+
+            // ── Persist global IDE selection highlight colors ──
+            manifest.SelectionHighlightColor = [_bridge.SelectionHighlights.GltfObject.X, _bridge.SelectionHighlights.GltfObject.Y, _bridge.SelectionHighlights.GltfObject.Z];
+            manifest.EditorObjectHighlightColor = [_bridge.SelectionHighlights.EditorObject.X, _bridge.SelectionHighlights.EditorObject.Y, _bridge.SelectionHighlights.EditorObject.Z];
+
             foreach (var (name, editorScene) in _bridge.EditorScenes)
             {
                 var asset = new SceneAsset

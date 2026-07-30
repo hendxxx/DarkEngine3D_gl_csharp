@@ -576,7 +576,11 @@ public class HierarchyPanel
 
             if (ImGui.IsItemClicked())
             {
+                // Select the scene root element and clear any 3D selection
                 _bridge.SelectedUIElement = _bridge.SceneRoot;
+                _bridge.SelectedEditorObject = null;
+                _bridge.SelectedObject = null;
+                _bridge.SelectedAgent = null;
             }
 
             if (sceneNodeOpen)
@@ -985,6 +989,16 @@ public class HierarchyPanel
                     multi.Add(element);
                     _bridge.SelectedUIElement = element;
                 }
+            }
+
+            // After any click on a UI element, clear 3D selection so the Inspector
+            // shows UI element properties (or scene properties for Scene-type elements).
+            // This covers Ctrl+Click, Shift+Click, and Normal Click cases.
+            if (_bridge.SelectedUIElement != null)
+            {
+                _bridge.SelectedEditorObject = null;
+                _bridge.SelectedObject = null;
+                _bridge.SelectedAgent = null;
             }
         }
 

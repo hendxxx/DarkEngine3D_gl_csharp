@@ -97,6 +97,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr IsEnabledPtr = IntPtr.Zero;
         internal static IntPtr DrawElementsBaseVertexPtr = IntPtr.Zero;
 
+        // Stencil function pointers
+        internal static IntPtr StencilMaskPtr = IntPtr.Zero;
+        internal static IntPtr StencilFuncPtr = IntPtr.Zero;
+        internal static IntPtr StencilOpPtr = IntPtr.Zero;
+
         // Buat properti pembungkus agar pemanggilan tetap bersih
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static unsafe void ReadPixels(
@@ -466,6 +471,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static void DrawElementsBaseVertex(uint mode, int count, uint type, void* indices, int baseVertex)
             => ((delegate* unmanaged[Cdecl]<uint, int, uint, void*, int, void>)DrawElementsBaseVertexPtr)(mode, count, type, indices, baseVertex);
 
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void StencilMask(uint mask)
+            => ((delegate* unmanaged[Cdecl]<uint, void>)StencilMaskPtr)(mask);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void StencilFunc(uint func, int refValue, uint mask)
+            => ((delegate* unmanaged[Cdecl]<uint, int, uint, void>)StencilFuncPtr)(func, refValue, mask);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void StencilOp(uint sfail, uint dpfail, uint dppass)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, uint, void>)StencilOpPtr)(sfail, dpfail, dppass);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void PixelStore(uint pname, int param)

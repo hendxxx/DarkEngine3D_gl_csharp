@@ -8,6 +8,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint skyShaderProgram;
         static uint invertPassShaderProgram;
         static uint blurPassShaderProgram;
+        static uint outlineShaderProgram;
         
         static uint shadowShaderProgram;
         static uint shadowSkinnedShaderProgram;
@@ -61,6 +62,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             blurPassShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/blur_vertex.glsl",
                 "Artifacts/shaders/blur_fragment.glsl");
+             
+            outlineShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/outline_vertex.glsl",
+                "Artifacts/shaders/outline_fragment.glsl");
              
             shadowShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/shadow_vertex.glsl",
@@ -117,6 +122,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetBlurPassShaderProgram()
         {
             return blurPassShaderProgram;
+        }
+
+        public static uint GetOutlineShaderProgram()
+        {
+            return outlineShaderProgram;
         }
 
         public static uint GetSkyShaderProgram()

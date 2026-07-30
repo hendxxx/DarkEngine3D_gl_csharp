@@ -109,6 +109,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.IsEnabledPtr = GetProcAddress(glLib, "glIsEnabled");
             GL.DrawElementsBaseVertexPtr = GetProcAddress(glLib, "glDrawElementsBaseVertex");
 
+            GL.StencilMaskPtr = GetProcAddress(glLib, "glStencilMask");
+            GL.StencilFuncPtr = GetProcAddress(glLib, "glStencilFunc");
+            GL.StencilOpPtr = GetProcAddress(glLib, "glStencilOp");
+
             return glLib;
         }
 

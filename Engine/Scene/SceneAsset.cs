@@ -164,4 +164,11 @@ public class SceneManifest
     public string Version { get; set; } = "1.0";
     /// <summary>All scenes defined in this file.</summary>
     public List<SceneAsset> Scenes { get; set; } = [];
+
+    // ── Global IDE settings (persisted with the .ing file) ──
+
+    /// <summary>Selection highlight color for 3D objects [r, g, b]. Default: gold (1, 0.8, 0.1).</summary>
+    public float[] SelectionHighlightColor { get; set; } = [1f, 0.8f, 0.1f];
+    /// <summary>Selection highlight color for editor objects [r, g, b]. Default: cyan (0.1, 0.8, 1.0).</summary>
+    public float[] EditorObjectHighlightColor { get; set; } = [0.1f, 0.8f, 1.0f];
 }

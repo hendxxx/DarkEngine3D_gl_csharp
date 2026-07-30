@@ -95,11 +95,45 @@ public class IDEBridge
     public SceneManager? SceneManager { get; set; }
 
     // ── Editor Object Manager ──
-    /// <summary>Manages editor-placed 3D primitives (Plane, Box, Sphere, glb references).</summary>
-    public EditorObjectManager? EditorObjectManager { get; set; }
+    private EditorObjectManager? _editorObjectManager;
+    /// <summary>Manages editor-placed 3D primitives (Plane, Box, Sphere, glb references).
+    /// Auto-wires OnObjectSelected to keep SelectedEditorObject in sync.</summary>
+    public EditorObjectManager? EditorObjectManager
+    {
+        get => _editorObjectManager;
+        set
+        {
+            // Unwire old manager
+            if (_editorObjectManager != null)
+                _editorObjectManager.OnObjectSelected -= OnManagerSelectionChanged;
 
-    /// <summary>Currently selected editor-placed 3D object (for inspector + gizmo).</summary>
-    public EditorObject? SelectedEditorObject { get; set; }
+            _editorObjectManager = value;
+
+            // Wire new manager
+            if (_editorObjectManager != null)
+                _editorObjectManager.OnObjectSelected += OnManagerSelectionChanged;
+        }
+    }
+
+    private void OnManagerSelectionChanged(EditorObject? obj)
+    {
+        _selectedEditorObject = obj;
+    }
+
+    private EditorObject? _selectedEditorObject;
+    /// <summary>Currently selected editor-placed 3D object (for inspector + gizmo).
+    /// Setting this also syncs to EditorObjectManager.SelectedObject automatically.</summary>
+    public EditorObject? SelectedEditorObject
+    {
+        get => _selectedEditorObject;
+        set
+        {
+            _selectedEditorObject = value;
+            // Keep EditorObjectManager.SelectedObject in sync
+            if (_editorObjectManager != null && _editorObjectManager.SelectedObject != value)
+                _editorObjectManager.SelectedObject = value;
+        }
+    }
 
 /// <summary>Gizmo interaction mode: 0=Translate, 1=Rotate, 2=Scale.</summary>
     public int GizmoMode { get; set; } = 0;
@@ -120,6 +154,9 @@ public class IDEBridge
     /// <summary>Mouse NDC Y coordinate (-1 to 1) for ray casting.</summary>
     public float ViewportMouseNDCY { get; set; }
 
+    // ── Selection highlight colors (configurable via Inspector) ──
+    /// <summary>Contains the two configurable wireframe colors: GltfObject (gold) and EditorObject (cyan).</summary>
+    public SelectionHighlightColors SelectionHighlights = SelectionHighlightColors.Default;
     /// <summary>Scene type — user picks this explicitly (no auto-detection).</summary>
     public enum SceneType
     {

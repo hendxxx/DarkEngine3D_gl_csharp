@@ -211,152 +211,135 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Viewport click → select element ──
             if (bridge.IsViewportClicked)
             {
-                // ── Gizmo hit test first (takes priority over other selection) ──
-                var gizmo = bridge.EditorGizmo;
-                var selEditorObjForDrag = bridge.SelectedEditorObject;
-                bool gizmoConsumedClick = false;
-                if (gizmo != null && selEditorObjForDrag != null && _camera != null)
+                // First try UI elements (pause menu, settings, etc.)
+                var uiHit = UIElement.HitTestPoint(_sceneRoot.Children,
+                    bridge.ViewportClickX, bridge.ViewportClickY);
+                if (uiHit != null)
                 {
+                    bridge.SelectedUIElement = uiHit;
+                    bridge.SelectedObject = null;
+                    bridge.SelectedAgent = null;
+                }
+                else if (_objectManager != null && _camera != null)
+                {
+                    // No UI hit → raycast against 3D objects
                     _camera.ScreenToRay(bridge.ViewportClickX, bridge.ViewportClickY,
                         bridge.SceneTextureWidth, bridge.SceneTextureHeight,
                         out Vector3 rayOrigin, out Vector3 rayDir);
-                    var hitAxis = gizmo.HitTest(rayOrigin, rayDir,
-                        selEditorObjForDrag.Position,
-                        selEditorObjForDrag.Scale.Length() * 0.5f);
-                    if (hitAxis != TransformGizmo.Axis.None)
-                    {
-                        gizmo.StartDrag(hitAxis, selEditorObjForDrag.Position, rayOrigin, rayDir, selEditorObjForDrag);
-                        gizmoConsumedClick = true;
-                        Console.WriteLine($"[Gizmo] Started drag on axis {hitAxis}");
-                    }
-                }
 
-                if (!gizmoConsumedClick)
-                {
-                    // First try UI elements (pause menu, settings, etc.)
-                    var uiHit = UIElement.HitTestPoint(_sceneRoot.Children,
-                        bridge.ViewportClickX, bridge.ViewportClickY);
-                    if (uiHit != null)
-                    {
-                        bridge.SelectedUIElement = uiHit;
-                        bridge.SelectedObject = null;
-                        bridge.SelectedAgent = null;
-                    }
-                    else if (_objectManager != null && _camera != null)
-                    {
-                        // No UI hit → raycast against 3D objects
-                        _camera.ScreenToRay(bridge.ViewportClickX, bridge.ViewportClickY,
-                            bridge.SceneTextureWidth, bridge.SceneTextureHeight,
-                            out Vector3 rayOrigin, out Vector3 rayDir);
+                    float closestHit = float.MaxValue;
+                    GltfObject? hitObject = null;
+                    CharacterAgent? hitAgent = null;
 
-                        float closestHit = float.MaxValue;
-                        GltfObject? hitObject = null;
-                        CharacterAgent? hitAgent = null;
+                    // Check animated objects (characters)
+                    var animObjs = _objectManager.GetObjects();
+                    for (int i = 0; i < animObjs.Count; i++)
+                    {
+                        var obj = animObjs[i];
+                        if (!obj.IsVisible) continue;
+                        var aabb = obj.WorldAABB;
 
-                        // Check animated objects (characters)
-                        var animObjs = _objectManager.GetObjects();
-                        for (int i = 0; i < animObjs.Count; i++)
+                        if (Helpers.ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir, aabb,
+                                out float tMin, out float _) && tMin > 0f && tMin < closestHit)
                         {
-                            var obj = animObjs[i];
-                            if (!obj.IsVisible) continue;
-                            var aabb = obj.WorldAABB;
+                            closestHit = tMin;
+                            hitObject = obj;
+                            hitAgent = null;
+                        }
+                    }
 
-                            if (Helpers.ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir, aabb,
-                                    out float tMin, out float _) && tMin > 0f && tMin < closestHit)
+                    // Find agent for hit object
+                    if (hitObject != null)
+                    {
+                        var agents = _objectManager.Agents;
+                        for (int ai = 0; ai < agents.Count; ai++)
+                        {
+                            if (ReferenceEquals(agents[ai].GameObject, hitObject))
+                            {
+                                hitAgent = agents[ai];
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check static objects (trees, walls, rocks) — compete equally with animated
+                    for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
+                    {
+                        var mgr = _objectManager.staticObjectManagers[mi];
+                        if (mgr == null) continue;
+                        var staticObjs = mgr.GetObjects();
+                        for (int si = 0; si < staticObjs.Count; si++)
+                        {
+                            var sobj = staticObjs[si];
+                            if (!sobj.IsVisible) continue;
+
+                            if (ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir,
+                                    sobj.CachedWorldAABB, out float tMin, out float _) &&
+                                tMin > 0f && tMin < closestHit)
                             {
                                 closestHit = tMin;
-                                hitObject = obj;
+                                hitObject = null; // static object, not animated
                                 hitAgent = null;
                             }
                         }
+                    }
 
-                        // Find agent for hit object
-                        if (hitObject != null)
+                    // ── Also raycast against editor objects ──
+                    var editorMgr = bridge.EditorObjectManager;
+                    if (editorMgr != null)
+                    {
+                        float editorHitDist;
+                        Vector3 editorHitPoint;
+                        var hitEditor = editorMgr.Raycast(rayOrigin, rayDir, out editorHitDist, out editorHitPoint);
+                        if (hitEditor != null && editorHitDist > 0f && editorHitDist < closestHit)
                         {
-                            var agents = _objectManager.Agents;
-                            for (int ai = 0; ai < agents.Count; ai++)
-                            {
-                                if (ReferenceEquals(agents[ai].GameObject, hitObject))
-                                {
-                                    hitAgent = agents[ai];
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Check static objects (trees, walls, rocks) — compete equally with animated
-                        for (int mi = 0; mi < _objectManager.staticObjectManagers.Count; mi++)
-                        {
-                            var mgr = _objectManager.staticObjectManagers[mi];
-                            if (mgr == null) continue;
-                            var staticObjs = mgr.GetObjects();
-                            for (int si = 0; si < staticObjs.Count; si++)
-                            {
-                                var sobj = staticObjs[si];
-                                if (!sobj.IsVisible) continue;
-
-                                if (ObjectHelpers.AABB.RayIntersectsAABB(rayOrigin, rayDir,
-                                        sobj.CachedWorldAABB, out float tMin, out float _) &&
-                                    tMin > 0f && tMin < closestHit)
-                                {
-                                    closestHit = tMin;
-                                    hitObject = null; // static object, not animated
-                                    hitAgent = null;
-                                }
-                            }
-                        }
-
-                        // ── Also raycast against editor objects ──
-                        var editorMgr = bridge.EditorObjectManager;
-                        if (editorMgr != null)
-                        {
-                            float editorHitDist;
-                            Vector3 editorHitPoint;
-                            var hitEditor = editorMgr.Raycast(rayOrigin, rayDir, out editorHitDist, out editorHitPoint);
-                            if (hitEditor != null && editorHitDist > 0f && editorHitDist < closestHit)
-                            {
-                                closestHit = editorHitDist;
-                                bridge.SelectedEditorObject = hitEditor;
-                                bridge.SelectedObject = null;
-                                bridge.SelectedAgent = null;
-                                bridge.SelectedUIElement = null;
-                                Console.WriteLine($"[Raycast] Selected editor object: {hitEditor.Name}");
-                            }
-                            else
-                            {
-                                // Only clear editor selection if we hit something else
-                                if (closestHit < float.MaxValue)
-                                    bridge.SelectedEditorObject = null;
-                            }
-                        }
-
-                        // Log if a static object was hit (closest but no animated match)
-                        if (hitObject == null && closestHit < float.MaxValue)
-                        {
-                            Console.WriteLine("[Raycast] Hit static object");
-                        }
-
-                        // Set selection
-                        if (hitObject != null)
-                        {
-                            bridge.SelectedObject = hitObject;
-                            bridge.SelectedAgent = hitAgent;
+                            closestHit = editorHitDist;
+                            bridge.SelectedEditorObject = hitEditor;
+                            bridge.SelectedObject = null;
+                            bridge.SelectedAgent = null;
                             bridge.SelectedUIElement = null;
-                            Console.WriteLine($"[Raycast] Selected: {hitObject.GetHashCode():X8}");
+                            Console.WriteLine($"[Raycast] Selected editor object: {hitEditor.Name}");
                         }
                         else
                         {
-                            // Static object or nothing — clear selection
-                            bridge.SelectedObject = null;
-                            bridge.SelectedAgent = null;
+                            // Only clear editor selection if we hit something else
+                            if (closestHit < float.MaxValue)
+                                bridge.SelectedEditorObject = null;
                         }
+                    }
+
+                    // Log if a static object was hit (closest but no animated match)
+                    if (hitObject == null && closestHit < float.MaxValue)
+                    {
+                        Console.WriteLine("[Raycast] Hit static object");
+                    }
+
+                    // Set selection
+                    if (hitObject != null)
+                    {
+                        bridge.SelectedObject = hitObject;
+                        bridge.SelectedAgent = hitAgent;
+                        bridge.SelectedUIElement = null;
+                        Console.WriteLine($"[Raycast] Selected: {hitObject.GetHashCode():X8}");
+                    }
+                    else
+                    {
+                        // Static object or nothing — clear selection
+                        bridge.SelectedObject = null;
+                        bridge.SelectedAgent = null;
                     }
                 }
             }
 
-            // Auto-select first child if nothing selected
-            if (bridge.SelectedUIElement == null && _sceneRoot.Children.Count > 0)
+            // Auto-select first child ONLY if nothing at all is selected.
+            // Don't override when a 3D/editor object is selected (user clicked viewport to select an object).
+            if (bridge.SelectedUIElement == null
+                && bridge.SelectedObject == null
+                && bridge.SelectedEditorObject == null
+                && _sceneRoot.Children.Count > 0)
+            {
                 bridge.SelectedUIElement = _sceneRoot.Children[0];
+            }
 
             // Object counts
             if (_objectManager != null)
@@ -608,37 +591,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
 
-            // ── Gizmo drag update (continuous, each frame while dragging) ──
-            // This runs BEFORE Render() so the gizmo position is updated before rendering.
-            // Previously this was in UpdateBridgeData() (called after Render), causing a 1-frame delay.
-            var bridge = _sceneManager.Bridge;
-            if (bridge != null)
-            {
-                var gizmo = bridge.EditorGizmo;
-                var selEditorObjForDrag = bridge.SelectedEditorObject;
-                if (gizmo != null && selEditorObjForDrag != null && gizmo.IsDragging && _camera != null)
-                {
-                    float mouseX = bridge.ViewportMouseX;
-                    float mouseY = bridge.ViewportMouseY;
-                    if (mouseX >= 0 && mouseY >= 0 &&
-                        bridge.SceneTextureWidth > 0 && bridge.SceneTextureHeight > 0)
-                    {
-                        _camera.ScreenToRay(mouseX, mouseY,
-                            bridge.SceneTextureWidth, bridge.SceneTextureHeight,
-                            out Vector3 rayOrigin, out Vector3 rayDir);
-                        gizmo.UpdateDrag(rayOrigin, rayDir, selEditorObjForDrag);
-                    }
-                }
-
-                // ── Gizmo drag end ──
-                if (gizmo != null && gizmo.IsDragging && bridge.IsViewportMouseReleased)
-                {
-                    gizmo.EndDrag();
-                    bridge.OnGizmoDragEnded?.Invoke();
-                    Console.WriteLine("[Gizmo] Drag ended");
-                }
-            }
-
             // ── Cursor visibility: show when locked, viewport not focused, or paused ──
             bool viewportFocused = _sceneManager.Bridge?.IsViewportFocused ?? true;
             bool shouldShowCursor =  !viewportFocused || _paused;
@@ -763,32 +715,55 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
         SkipInput:
+            // ── Editor fly mode: when InGameActive=false and viewport is focused,
+            // use WASD + mouse look (fly mode) for camera navigation instead of game camera modes.
+            bool editorFlyMode = !(_sceneManager.Bridge?.InGameActive ?? false) &&
+                                  (_sceneManager.Bridge?.IsViewportFocused ?? false);
+
             if (_objectManager != null)
             {
-                // 4. Update agents (AI, physics, animations) â€” always runs
+                // 4. Update agents (AI, physics, animations) — always runs
                 _objectManager.Update(deltaTime);
 
-                // 4A. Update player movement — only when not paused, input cooldown passed, AND viewport focused
-                if (!_paused && _inputCooldown <= 0f)
+                // 4A. Update player movement — skip when in editor fly mode
+                if (!editorFlyMode && !_paused && _inputCooldown <= 0f)
                 {
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
                 }
 
-                // 4B. Update NPC AI + movement
-                _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
-
-                // 5. Set Camera orbital (with terrain collision) — always runs, but skip input when locked
-                Vector3 camPivot = _cameraFocusPivot ?? _objectManager.PlayerAgent.Position;
-                _camera.SetCamera(window, camPivot, _gameTerrainChunk, deltaTime, null);
-
-                // 5A. Focus hold timer: decrement and release back to player
-                if (_focusHoldTimer > 0f)
+                // 4B. Update NPC AI + movement — skip when in editor fly mode
+                if (!editorFlyMode)
                 {
-                    _focusHoldTimer -= deltaTime;
-                    if (_focusHoldTimer <= 0f)
+                    _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
+                }
+
+                // 5. Camera — use fly mode in editor, game camera otherwise
+                if (editorFlyMode)
+                {
+                    // Update mouse deltas (game input was skipped via goto SkipInput)
+                    // Mouse.Update() updates DeltaX/Y which SetCameraFlyMode() reads.
+                    // The Yaw/Pitch changes from Mouse.Update() are harmless because
+                    // SetCameraFlyMode() overwrites them with smoothYaw/smoothPitch.
+                    Mouse.Update(window, _camera);
+                    _camera.SetCameraFlyMode(window, _deltaTime, true);
+                    // Reset focus pivot when in editor fly mode
+                    _cameraFocusPivot = null;
+                    _focusHoldTimer = 0f;
+                }
+                else
+                {
+                    Vector3 camPivot = _cameraFocusPivot ?? _objectManager.PlayerAgent.Position;
+                    _camera.SetCamera(window, camPivot, _gameTerrainChunk, deltaTime, null);
+
+                    // 5A. Focus hold timer: decrement and release back to player
+                    if (_focusHoldTimer > 0f)
                     {
-                        _cameraFocusPivot = null;
-                        _focusHoldTimer = 0f;
+                        _focusHoldTimer -= deltaTime;
+                        if (_focusHoldTimer <= 0f)
+                        {
+                            _cameraFocusPivot = null;
+                            _focusHoldTimer = 0f;
+                        }
                     }
                 }
             }
@@ -982,10 +957,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             // ── EditorObjectManager draw (editor primitives) ──
-            var editorMgr = _sceneManager.Bridge?.EditorObjectManager;
+            var editorMgrBridge = _sceneManager.Bridge;
+            var editorMgr = editorMgrBridge?.EditorObjectManager;
             if (editorMgr != null)
             {
-                editorMgr.Draw(_camera, _light, _csm);
+                // Pass selection highlight color so selected object gets a mesh wireframe outline
+                Vector3? wireCol = editorMgr.SelectedObject != null ? editorMgrBridge?.SelectionHighlights.EditorObject : null;
+                editorMgr.Draw(_camera, _light, _csm, wireCol);
             }
 
             //  Record objects timing, start post-process timing
@@ -1141,35 +1119,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            // ── Selection wireframe highlight (IDE mode) ──
-            // Draws a pulsing gold AABB around the selected 3D object or editor object.
+            // ── Selection outline highlight (IDE mode) ──
+            // Draws a pulsing yellow inverted-hull outline around the selected glTF object.
             if (_sceneManager.IsIdeActive && _sceneManager.Bridge != null)
             {
                 var bridge = _sceneManager.Bridge;
                 var selObj = bridge.SelectedObject;
-                var selEditorObj = bridge.SelectedEditorObject;
                 
                 if (selObj != null)
                 {
-                    // Pulsing gold color
-                    float pulse = 0.6f + 0.4f * MathF.Sin(_time * 4f);
-                    Vector3 selColor = new Vector3(1f, 0.8f, 0.1f) * pulse;
+                    // Stencil-based inverted-hull outline (customizable color) with pulsing effect
+                    // Uses Environment.TickCount to stay in sync with EditorObjectManager's pulse
+                    float pulse = 0.6f + 0.4f * MathF.Sin(Environment.TickCount / 1000f * 4f);
+                    Vector3 outlineCol = bridge.SelectionHighlights.GltfObject * pulse;
 
-                    GL.Disable(Const.GL_DEPTH_TEST);
-                    TerrainChunk.DrawAABBWireframe(selObj.WorldAABB, selColor, _camera);
-                    GL.Enable(Const.GL_DEPTH_TEST);
+                    // ── Pass 1: Write stencil mask ──
+                    GL.Enable(Const.GL_STENCIL_TEST);
+                    GL.StencilMask(0xFF);
+                    GL.Clear(Const.GL_STENCIL_BUFFER_BIT);
+                    GL.StencilFunc(Const.GL_ALWAYS, 1, 0xFF);
+                    GL.StencilOp(Const.GL_KEEP, Const.GL_KEEP, Const.GL_REPLACE);
+                    GL.ColorMask(false, false, false, false);
+
+                    selObj.DrawOutlineStencil(_camera);
+
+                    GL.ColorMask(true, true, true, true);
+
+                    // ── Pass 2: Draw expanded back faces where stencil != 1 ──
+                    GL.StencilFunc(Const.GL_NOTEQUAL, 1, 0xFF);
+                    GL.StencilOp(Const.GL_KEEP, Const.GL_KEEP, Const.GL_KEEP);
+
+                    selObj.DrawOutline(_camera, outlineCol);
+
+                    GL.Disable(Const.GL_STENCIL_TEST);
                 }
                 
-                // Draw selection wireframe for editor objects
-                if (selEditorObj != null)
-                {
-                    float pulse = 0.6f + 0.4f * MathF.Sin(_time * 4f);
-                    Vector3 selColor = new Vector3(0.1f, 0.8f, 1.0f) * pulse; // Cyan for editor objects
-
-                    GL.Disable(Const.GL_DEPTH_TEST);
-                    TerrainChunk.DrawAABBWireframe(selEditorObj.GetWorldAABB(), selColor, _camera);
-                    GL.Enable(Const.GL_DEPTH_TEST);
-                }
+                // Editor object outline is now drawn inside EditorObjectManager.Draw()
+                // (replaces the old wireframe approach)
 
                 // Gizmo is now rendered by SceneManager after this Render() returns,
                 // so the position is updated in Update() before rendering.

@@ -68,7 +68,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public bool Remove(EditorObject obj)
         {
             if (SelectedObject == obj)
+            {
                 SelectedObject = null;
+                OnObjectSelected?.Invoke(null);
+            }
             obj.Dispose();
             return _objects.Remove(obj);
         }
@@ -94,7 +97,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (index >= 0 && index < _objects.Count)
             {
                 if (SelectedObject == _objects[index])
+                {
                     SelectedObject = null;
+                    OnObjectSelected?.Invoke(null);
+                }
                 _objects[index].Dispose();
                 _objects.RemoveAt(index);
             }
@@ -104,6 +110,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void Clear()
         {
             SelectedObject = null;
+            OnObjectSelected?.Invoke(null);
             foreach (var obj in _objects)
                 obj.Dispose();
             _objects.Clear();
@@ -159,8 +166,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return obj;
         }
 
-        /// <summary>Draw all editor objects (called from the game scene rendering loop).</summary>
-        public void Draw(Camera camera, Lights light, CSM? csm = null)
+        /// <summary>Draw all editor objects (called from the game scene rendering loop).
+        /// If <paramref name="wireframeColor"/> is set and an object is selected,
+        /// the selected object is also rendered as a wireframe line outline in that color.
+        /// </summary>
+        public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null)
         {
             if (_objects.Count == 0) return;
 
@@ -222,6 +232,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             GL.BindVertexArray(0);
+
+            // ── Stencil-based inverted-hull outline on the selected object (with pulsing effect) ──
+            if (SelectedObject != null && wireframeColor.HasValue)
+            {
+                // Pulsing effect: oscillates between 0.6 and 1.0 brightness
+                float t = Environment.TickCount / 1000f;
+                float pulse = 0.6f + 0.4f * MathF.Sin(t * 4f);
+                Vector3 outlineCol = wireframeColor.Value * pulse;
+
+                // ── Pass 1: Write stencil mask (set stencil to 1 where object depth passes) ──
+                GL.Enable(Const.GL_STENCIL_TEST);
+                GL.StencilMask(0xFF);
+                GL.Clear(Const.GL_STENCIL_BUFFER_BIT);
+                GL.StencilFunc(Const.GL_ALWAYS, 1, 0xFF);
+                GL.StencilOp(Const.GL_KEEP, Const.GL_KEEP, Const.GL_REPLACE);
+                GL.ColorMask(false, false, false, false);
+
+                SelectedObject.DrawOutlineStencil(camera);
+
+                GL.ColorMask(true, true, true, true);
+
+                // ── Pass 2: Draw expanded back faces where stencil != 1 (yellow outline) ──
+                GL.StencilFunc(Const.GL_NOTEQUAL, 1, 0xFF);
+                GL.StencilOp(Const.GL_KEEP, Const.GL_KEEP, Const.GL_KEEP);
+
+                SelectedObject.DrawOutline(camera, outlineCol);
+
+                GL.Disable(Const.GL_STENCIL_TEST);
+                // CullFace is restored to BACK inside DrawOutline()
+            }
         }
 
         /// <summary>Render shadow for all editor objects (called from shadow pass).</summary>

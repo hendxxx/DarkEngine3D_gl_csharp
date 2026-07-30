@@ -26,6 +26,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_FRONT_FACE = 0x0B46;
         public const uint GL_DEPTH_TEST = 0x0B71;
+        public const uint GL_STENCIL_TEST = 0x0B90;
         public const uint GL_CULL_FACE = 0x0B44;
         public const uint GL_CCW = 0x0901;
         public const uint GL_CW = 0x0900;
@@ -64,6 +65,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // ======================
         public const uint GL_COLOR_BUFFER_BIT = 0x00004000;
         public const uint GL_DEPTH_BUFFER_BIT = 0x00000100;
+        public const uint GL_STENCIL_BUFFER_BIT = 0x00000400;
 
         // ======================
         // TEXTURES
@@ -145,6 +147,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_RENDERBUFFER = 0x8D41;
         public const uint GL_FRAMEBUFFER_COMPLETE = 0x8CD5;
+
+        // ======================
+        // STENCIL ACTIONS
+        // ======================
+        public const uint GL_KEEP = 0x1E00;
+        public const uint GL_REPLACE = 0x1E01;
 
         // ======================
         // DEPTH FUNCTIONS

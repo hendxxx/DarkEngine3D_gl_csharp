@@ -47,6 +47,9 @@ public unsafe class EditorObject
     private uint _textureID = 0;
     private bool _dirty = true;
 
+    // ── Vertex cache for wireframe outline rendering ──
+    private Vertex[]? _vertexCache;
+
     // ── Gizmo state (snapshots for undo) ──
     public Vector3 LastGizmoPosition { get; set; }
     public Vector3 LastGizmoRotation { get; set; }
@@ -140,6 +143,7 @@ public unsafe class EditorObject
                 var verts = Object3D.CreatePlaneVertices(1f, 1f, Color);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
+                _vertexCache = verts;
                 break;
             }
             case EditorPrimitiveType.Box:
@@ -147,6 +151,7 @@ public unsafe class EditorObject
                 var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
+                _vertexCache = verts;
                 break;
             }
             case EditorPrimitiveType.Sphere:
@@ -154,6 +159,7 @@ public unsafe class EditorObject
                 var verts = Object3D.CreateSphereVertices(0.5f, Color);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
+                _vertexCache = verts;
                 break;
             }
             case EditorPrimitiveType.GlbReference:
@@ -209,6 +215,155 @@ public unsafe class EditorObject
             OpenGL.EnableFaceCulling(true);
         }
 
+    /// <summary>
+    /// Draw the object's mesh as a wireframe line outline in the given color.
+    /// Walks the triangle edges from the cached vertex data and draws them as
+    /// line segments using the line shader.
+    /// Deduplicates shared edges by their world-space position to reduce line vertices.
+    /// Capped at 100k triangles for safety.
+    /// </summary>
+    public void DrawWireframe(Camera camera, Vector3 lineColor)
+    {
+        if (!IsVisible || _vertexCache == null || _vertexCache.Length < 3
+            || PrimitiveType == EditorPrimitiveType.GlbReference) return;
+
+        var worldMatrix = WorldMatrix;
+        int triCount = _vertexCache.Length / 3;
+
+        // Cap wireframe triangle count for safety
+        const int maxTri = 100_000;
+        if (triCount > maxTri)
+        {
+            Console.WriteLine($"[EditorObject] Wireframe skipped: {triCount} triangles exceeds max {maxTri}");
+            return;
+        }
+
+        // Pack a Vector3 into a long with 2 decimal precision (±1000 range)
+        long PackPos(Vector3 v)
+        {
+            long x = ((long)(v.X * 100 + 100000) & 0x3FFFF);
+            long y = ((long)(v.Y * 100 + 100000) & 0x3FFFF);
+            long z = ((long)(v.Z * 100 + 100000) & 0x3FFFF);
+            return (x << 40) | (y << 20) | z;
+        }
+
+        var lineVerts = new List<Vector3>(triCount * 3); // ~50% reduction vs 6 per tri
+        var edgeSet = new HashSet<(long, long)>(triCount * 3 / 2);
+
+        for (int t = 0; t < triCount; t++)
+        {
+            int i = t * 3;
+            var p0 = Vector3.Transform(_vertexCache[i].Position, worldMatrix);
+            var p1 = Vector3.Transform(_vertexCache[i + 1].Position, worldMatrix);
+            var p2 = Vector3.Transform(_vertexCache[i + 2].Position, worldMatrix);
+
+            long h0 = PackPos(p0), h1 = PackPos(p1), h2 = PackPos(p2);
+
+            // Edge (p0, p1) — sorted key so both directions hash the same
+            var e1 = h0 < h1 ? (h0, h1) : (h1, h0);
+            if (edgeSet.Add(e1)) { lineVerts.Add(p0); lineVerts.Add(p1); }
+
+            // Edge (p1, p2)
+            var e2 = h1 < h2 ? (h1, h2) : (h2, h1);
+            if (edgeSet.Add(e2)) { lineVerts.Add(p1); lineVerts.Add(p2); }
+
+            // Edge (p2, p0)
+            var e3 = h2 < h0 ? (h2, h0) : (h0, h2);
+            if (edgeSet.Add(e3)) { lineVerts.Add(p2); lineVerts.Add(p0); }
+        }
+
+        if (lineVerts.Count == 0) return;
+
+        GL.Disable(Const.GL_DEPTH_TEST);
+        Terrains.TerrainChunk.DrawLineSegments(lineVerts, lineColor, camera);
+        GL.Enable(Const.GL_DEPTH_TEST);
+    }
+
+    /// <summary>
+    /// First pass of the inverted-hull outline technique.
+    /// Renders the object to the stencil buffer only (no color output)
+    /// with depth test enabled. Stencil is set to 1 where depth passes.
+    /// Face culling is disabled (Editor primitives use CW winding).
+    /// </summary>
+    public void DrawOutlineStencil(Camera camera)
+    {
+        if (!IsVisible || _object3D == null
+            || PrimitiveType == EditorPrimitiveType.GlbReference) return;
+
+        uint prog = Shader.GetOutlineShaderProgram();
+        if (prog == 0) return;
+
+        GL.UseProgram(prog);
+
+        var model = WorldMatrix;
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+
+        int modelLoc = GL.GetUniformLocation(prog, "model");
+        int viewLoc = GL.GetUniformLocation(prog, "view");
+        int projLoc = GL.GetUniformLocation(prog, "projection");
+
+        GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
+        GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
+        GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
+
+        // Disable face culling so all triangles write to stencil
+        // (Editor primitives use CW winding, culling would discard them)
+        OpenGL.EnableFaceCulling(false);
+
+        GL.BindVertexArray(_object3D.VAO);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+        GL.BindVertexArray(0);
+
+        GL.UseProgram(0);
+    }
+
+    /// <summary>
+    /// Second pass of the inverted-hull outline technique.
+    /// Renders the object slightly scaled up (centered on its position)
+    /// with face culling disabled, letting the stencil test (NOTEQUAL, 1)
+    /// block the original object area so only the expanded border shows.
+    /// Should be called after DrawOutlineStencil() with stencil test enabled.
+    /// </summary>
+    public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
+    {
+        if (!IsVisible || _object3D == null
+            || PrimitiveType == EditorPrimitiveType.GlbReference) return;
+
+        uint prog = Shader.GetOutlineShaderProgram();
+        if (prog == 0) return;
+
+        GL.UseProgram(prog);
+
+        // Scale the object about its position for the inverted-hull outline
+        var scaleAboutPos = Matrix4x4.CreateTranslation(Position)
+                          * Matrix4x4.CreateScale(outlineScale)
+                          * Matrix4x4.CreateTranslation(-Position);
+        var model = scaleAboutPos * WorldMatrix;
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+
+        int modelLoc = GL.GetUniformLocation(prog, "model");
+        int viewLoc = GL.GetUniformLocation(prog, "view");
+        int projLoc = GL.GetUniformLocation(prog, "projection");
+        int colorLoc = GL.GetUniformLocation(prog, "outlineColor");
+
+        GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
+        GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
+        GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
+        GL.Uniform3f(colorLoc, outlineColor.X, outlineColor.Y, outlineColor.Z);
+
+        // Disable face culling: all triangles render, stencil test (NOTEQUAL, 1)
+        // blocks the original area so only the expanded border is visible.
+        OpenGL.EnableFaceCulling(false);
+
+        GL.BindVertexArray(_object3D.VAO);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+        GL.BindVertexArray(0);
+
+        GL.UseProgram(0);
+    }
+
     /// <summary>Get world-space AABB (method version for API compatibility).</summary>
     public AABB GetWorldAABB() => WorldAABB;
 
@@ -232,7 +387,11 @@ public unsafe class EditorObject
     }
 
     /// <summary>Mark object as needing resource refresh (color/texture changed).</summary>
-    public void MarkDirty() => _dirty = true;
+    public void MarkDirty()
+    {
+        _dirty = true;
+        _vertexCache = null; // Invalidate wireframe cache until EnsureResources() rebuilds it
+    }
 
     /// <summary>Draw the primitive using Object3D's rendering pipeline.</summary>
     public void Draw(float dt, nint window, float moveSpeed)

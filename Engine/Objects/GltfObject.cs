@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
@@ -1008,6 +1009,252 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OpenGL.EnableFaceCulling(false);
             GL.BindVertexArray(0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);  
+        }
+
+        private const int MaxWireframeTriangles = 100_000;
+
+        /// <summary>
+        /// Draw the object's mesh as a wireframe line outline in the given color.
+        /// Walks the triangle edges from the CPU-side vertex data and draws them
+        /// as line segments using the line shader.
+        /// For skinned meshes, vertex positions use the object transform (approximate).
+        /// For static meshes, per-node global transforms are applied when available.
+        /// Capped at MaxWireframeTriangles to protect against high-poly models.
+        /// </summary>
+        public void DrawWireframe(Camera camera, Vector3 lineColor)
+        {
+            if (!IsVisible || GpuData?.Data?.Meshes == null || GpuData.Data.Meshes.Length == 0)
+                return;
+
+            // Count total triangles across all meshes; bail if over cap
+            int totalTriangles = 0;
+            for (int mi = 0; mi < GpuData.Data.Meshes.Length; mi++)
+            {
+                var cpuMesh = GpuData.Data.Meshes[mi];
+                var indices = cpuMesh.Indices;
+                if (indices != null && indices.Length >= 3)
+                    totalTriangles += indices.Length / 3;
+                else if (cpuMesh.Vertices != null)
+                    totalTriangles += cpuMesh.Vertices.Length / 3;
+            }
+            if (totalTriangles > MaxWireframeTriangles)
+            {
+                Console.WriteLine($"[GltfObject] Wireframe skipped: {totalTriangles} triangles exceeds max {MaxWireframeTriangles}");
+                return;
+            }
+
+            var objMat = Matrix4x4.CreateScale(Scale)
+                         * Matrix4x4.CreateFromQuaternion(Rotation)
+                         * Matrix4x4.CreateTranslation(Position);
+
+            bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
+            var allLineVerts = new List<Vector3>();
+
+            for (int mi = 0; mi < GpuData.Data.Meshes.Length; mi++)
+            {
+                var cpuMesh = GpuData.Data.Meshes[mi];
+                var verts = cpuMesh.Vertices;
+                var indices = cpuMesh.Indices;
+
+                if (verts == null || verts.Length == 0) continue;
+
+                // Compute model matrix for this mesh (same as Draw())
+                Matrix4x4 modelMat = objMat;
+                if (!isSkinned)
+                {
+                    int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length)
+                        ? GpuData.MeshToNode[mi] : -1;
+                    if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
+                        modelMat = _nodeGlobal[nodeIdx] * objMat;
+                }
+
+                if (indices != null && indices.Length >= 3)
+                {
+                    // Indexed rendering: deduplicate shared edges using sorted index pairs.
+                    // Each unique edge is drawn once instead of once per adjacent triangle.
+                    // For a closed mesh this cuts line vertices by ~50%.
+                    int triCount = indices.Length / 3;
+
+                    // Transform all unique vertices first (cache avoids redundant transforms)
+                    var xformed = new Vector3[verts.Length];
+                    for (int vi = 0; vi < verts.Length; vi++)
+                        xformed[vi] = Vector3.Transform(verts[vi].Position, modelMat);
+
+                    var edgeSet = new HashSet<(int, int)>(triCount * 3 / 2);
+                    for (int t = 0; t < triCount; t++)
+                    {
+                        int i0 = (int)indices[t * 3];
+                        int i1 = (int)indices[t * 3 + 1];
+                        int i2 = (int)indices[t * 3 + 2];
+
+                        if (i0 >= verts.Length || i1 >= verts.Length || i2 >= verts.Length)
+                            continue;
+
+                        // Each edge sorted as (min, max) for consistent hashing
+                        var e1 = i0 < i1 ? (i0, i1) : (i1, i0);
+                        if (edgeSet.Add(e1)) { allLineVerts.Add(xformed[i0]); allLineVerts.Add(xformed[i1]); }
+
+                        var e2 = i1 < i2 ? (i1, i2) : (i2, i1);
+                        if (edgeSet.Add(e2)) { allLineVerts.Add(xformed[i1]); allLineVerts.Add(xformed[i2]); }
+
+                        var e3 = i2 < i0 ? (i2, i0) : (i0, i2);
+                        if (edgeSet.Add(e3)) { allLineVerts.Add(xformed[i2]); allLineVerts.Add(xformed[i0]); }
+                    }
+                }
+                else
+                {
+                    // Non-indexed: every 3 vertices = 1 triangle
+                    int triCount = verts.Length / 3;
+                    for (int t = 0; t < triCount; t++)
+                    {
+                        int i = t * 3;
+                        var p0 = Vector3.Transform(verts[i].Position, modelMat);
+                        var p1 = Vector3.Transform(verts[i + 1].Position, modelMat);
+                        var p2 = Vector3.Transform(verts[i + 2].Position, modelMat);
+
+                        allLineVerts.Add(p0); allLineVerts.Add(p1);
+                        allLineVerts.Add(p1); allLineVerts.Add(p2);
+                        allLineVerts.Add(p2); allLineVerts.Add(p0);
+                    }
+                }
+            }
+
+            if (allLineVerts.Count == 0) return;
+
+            GL.Disable(Const.GL_DEPTH_TEST);
+            Terrains.TerrainChunk.DrawLineSegments(allLineVerts, lineColor, camera);
+            GL.Enable(Const.GL_DEPTH_TEST);
+        }
+
+        /// <summary>
+        /// First pass of the inverted-hull outline technique.
+        /// Renders all visible meshes to the stencil buffer only (no color output)
+        /// with depth test enabled. Stencil is set to 1 where depth passes.
+        /// Skinned meshes use the object transform (approximate).
+        /// </summary>
+        public void DrawOutlineStencil(Camera camera)
+        {
+            if (!IsVisible || GpuData?.Data?.Meshes == null || GpuData.Data.Meshes.Length == 0)
+                return;
+
+            uint prog = Shader.GetOutlineShaderProgram();
+            if (prog == 0) return;
+
+            GL.UseProgram(prog);
+
+            var view = camera.GetViewMatrix();
+            var proj = camera.GetProjectionMatrix();
+
+            int viewLoc = GL.GetUniformLocation(prog, "view");
+            int projLoc = GL.GetUniformLocation(prog, "projection");
+            int modelLoc = GL.GetUniformLocation(prog, "model");
+
+            GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
+            GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
+
+            var objMat = Matrix4x4.CreateScale(Scale)
+                         * Matrix4x4.CreateFromQuaternion(Rotation)
+                         * Matrix4x4.CreateTranslation(Position);
+
+            bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
+
+            for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
+            {
+                var mesh = GpuData.Meshes[mi];
+
+                Matrix4x4 modelMat = objMat;
+                if (!isSkinned)
+                {
+                    int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length)
+                        ? GpuData.MeshToNode[mi] : -1;
+                    if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
+                        modelMat = _nodeGlobal[nodeIdx] * objMat;
+                }
+
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
+
+                GL.BindVertexArray(mesh.VAO);
+                if (mesh.IndexCount > 0)
+                    GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                else
+                    GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+            }
+            GL.BindVertexArray(0);
+            GL.UseProgram(0);
+        }
+
+        /// <summary>
+        /// Second pass of the inverted-hull outline technique.
+        /// Renders all visible meshes slightly scaled up (centered on the object's position)
+        /// with back-face culling, colored in <paramref name="outlineColor"/>.
+        /// Should be called after DrawOutlineStencil() with stencil test enabled.
+        /// Skinned meshes use the object transform (approximate).
+        /// </summary>
+        public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
+        {
+            if (!IsVisible || GpuData?.Data?.Meshes == null || GpuData.Data.Meshes.Length == 0)
+                return;
+
+            uint prog = Shader.GetOutlineShaderProgram();
+            if (prog == 0) return;
+
+            GL.UseProgram(prog);
+
+            var view = camera.GetViewMatrix();
+            var proj = camera.GetProjectionMatrix();
+
+            int viewLoc = GL.GetUniformLocation(prog, "view");
+            int projLoc = GL.GetUniformLocation(prog, "projection");
+            int modelLoc = GL.GetUniformLocation(prog, "model");
+            int colorLoc = GL.GetUniformLocation(prog, "outlineColor");
+
+            GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
+            GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
+            GL.Uniform3f(colorLoc, outlineColor.X, outlineColor.Y, outlineColor.Z);
+
+            // Scale the object about its position for the inverted-hull outline
+            var scaleAboutPos = Matrix4x4.CreateTranslation(Position)
+                              * Matrix4x4.CreateScale(outlineScale)
+                              * Matrix4x4.CreateTranslation(-Position);
+
+            var objMat = Matrix4x4.CreateScale(Scale)
+                         * Matrix4x4.CreateFromQuaternion(Rotation)
+                         * Matrix4x4.CreateTranslation(Position);
+
+            bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
+
+            // Cull front faces so only back faces render (inverted hull)
+            GL.Enable(Const.GL_CULL_FACE);
+            GL.CullFace(Const.GL_FRONT);
+
+            for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
+            {
+                var mesh = GpuData.Meshes[mi];
+
+                Matrix4x4 modelMat = objMat;
+                if (!isSkinned)
+                {
+                    int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length)
+                        ? GpuData.MeshToNode[mi] : -1;
+                    if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
+                        modelMat = _nodeGlobal[nodeIdx] * objMat;
+                }
+
+                // Apply the scale-about-position to the model matrix
+                modelMat = scaleAboutPos * modelMat;
+
+                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
+
+                GL.BindVertexArray(mesh.VAO);
+                if (mesh.IndexCount > 0)
+                    GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);
+                else
+                    GL.DrawArrays(Const.GL_TRIANGLES, 0, mesh.VertexCount);
+            }
+            GL.BindVertexArray(0);
+
+            GL.CullFace(Const.GL_BACK);
+            GL.UseProgram(0);
         }
 
         public void DrawShadow(int modelLoc, int jointsLoc)

@@ -390,26 +390,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             };
         }
 
-        /// <summary>Get the intersection point of a ray with the plane perpendicular to the axis at the gizmo position.</summary>
+        /// <summary>
+        /// Find the closest point on the axis line (through gizmoPos in the axis direction)
+        /// to the mouse ray. This gives a world-space point that moves along the axis as
+        /// the mouse moves, producing a correct non-zero delta for object translation.
+        /// </summary>
         private static Vector3 GetAxisIntersection(Vector3 rayOrigin, Vector3 rayDir, Vector3 gizmoPos, Axis axis)
         {
-            Vector3 planeNormal = axis switch
-            {
-                Axis.X => Vector3.UnitX,
-                Axis.Y => Vector3.UnitY,
-                Axis.Z => Vector3.UnitZ,
-                _ => Vector3.UnitY,
-            };
+            Vector3 axisDir = GetAxisDirection(axis);
+            if (axisDir == Vector3.Zero) return gizmoPos;
 
-            // Find intersection of ray with plane: planeNormal · (p - gizmoPos) = 0
-            float denom = Vector3.Dot(rayDir, planeNormal);
-            if (MathF.Abs(denom) < 0.0001f)
-                return gizmoPos;
+            // Ray-parameter: rayOrigin + t * rayDir
+            // Axis-line: gizmoPos + s * axisDir
+            // Find s such that the distance between the two lines is minimized.
+            Vector3 w0 = rayOrigin - gizmoPos;
+            float b = Vector3.Dot(rayDir, axisDir);       // cos angle between ray and axis
+            float denom = 1f - b * b;                      // always >= 0
+            if (denom < 0.0001f)
+                return gizmoPos;                           // ray is parallel to axis
 
-            float t = Vector3.Dot(gizmoPos - rayOrigin, planeNormal) / denom;
-            if (t < 0) return gizmoPos;
+            float d = Vector3.Dot(rayDir, w0);
+            float e = Vector3.Dot(axisDir, w0);
+            float s = (e - b * d) / denom;                 // closest point parameter on axis line
 
-            return rayOrigin + rayDir * t;
+            return gizmoPos + axisDir * s;
         }
 
         private static bool RayVsCylinder(Vector3 origin, Vector3 dir, Vector3 basePos, Vector3 axisEnd, float radius)

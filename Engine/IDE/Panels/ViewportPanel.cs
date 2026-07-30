@@ -33,6 +33,9 @@ public unsafe class ViewportPanel
     // ── Fullscreen mode: used by In-Game Mode (F8), skips toolbar, fullscreen window ──
     private bool _fullscreenMode = false;
 
+    // ── Initial sync guard: ensures InGameActive matches _previewMode on first frame ──
+    private bool _initialSyncDone = false;
+
     // ── In-game mode: last element clicked by mouse (for syncing keyboard focus) ──
     /// <summary>Set by DrawEditorUIPreview when a mouse click occurs in preview mode.
     /// Read and reset by IDE.RenderInGameMode() to sync keyboard focus to the clicked element.</summary>
@@ -879,6 +882,7 @@ public unsafe class ViewportPanel
         {
             Console.WriteLine("[Viewport] exit → exiting preview mode, resetting overlays");
             _previewMode = false;
+            _bridge.InGameActive = false; // Back to edit mode: disable game input for WASD fly
             ResetSceneOverlays();
         }
         // ── In-game input mode (F9 active): back to editor ──
@@ -1154,6 +1158,8 @@ public unsafe class ViewportPanel
             if (value && !_previewMode)
                 ResetSceneOverlays();
             _previewMode = value;
+            // Sync InGameActive with preview mode so scenes know whether to process game input
+            _bridge.InGameActive = value;
         }
     }
     /// <summary>Whether snap-to-grid is enabled.</summary>
@@ -1206,6 +1212,17 @@ public unsafe class ViewportPanel
 
     public void Render()
     {
+        // ── Initial sync: ensure InGameActive matches _previewMode on first frame ──
+        // This is needed because Program.cs may have set InGameActive = settings.InGameActive
+        // (which could be true) AFTER the ViewportPanel constructor ran.
+        // Without this sync, the user would see the "◼ Edit" button (preview=false)
+        // but InGameActive=true, causing freefly + gizmo to not work until a second click.
+        if (!_initialSyncDone)
+        {
+            _bridge.InGameActive = _previewMode;
+            _initialSyncDone = true;
+        }
+
         // In fullscreen mode (In-Game Mode F8), always render regardless of _visible
         if (!_fullscreenMode)
         {
@@ -1251,6 +1268,10 @@ public unsafe class ViewportPanel
                     if (!previewNow)
                         ResetSceneOverlays();
                     _previewMode = !_previewMode;
+                    // Sync InGameActive with preview mode:
+                    // Edit mode (preview=false): InGameActive=false → WASD fly mode + gizmo
+                    // Preview mode (preview=true): InGameActive=true → game input works
+                    _bridge.InGameActive = _previewMode;
                 }
                 ImGui.PopStyleColor(1);
                 if (ImGui.IsItemHovered())
@@ -1877,8 +1898,11 @@ ImGui.SameLine();
             }
 
             // ── 3D Object click-to-select (raycast) ──
+            // Note: does NOT check SelectedUIElement==null — clicking the viewport should always
+            // attempt to select a 3D/editor object, even when a UI element is selected in the Hierarchy.
+            // If a 3D object is hit, SelectedUIElement is cleared below (line ~1895).
             if (!_previewMode && _bridge.EditorObjectManager != null && _bridge.Camera != null
-                && _bridge.IsViewportClicked && _bridge.SelectedUIElement == null
+                && _bridge.IsViewportClicked
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
                 var cam = _bridge.Camera;

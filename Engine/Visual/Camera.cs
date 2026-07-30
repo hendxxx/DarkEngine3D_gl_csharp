@@ -98,7 +98,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float FlySpeed = Config.CameraConfig.CameraFlySpeed; // sesuai permintaan
 
         public bool IsFlyMode=false;
-         
+
+        // ── Mouse look toggle: only active when CTRL is held ──
+        private bool _mouseLookWasActive = false;
 
         public Camera(float x, float y, float z, float yaw, float pitch, float aspect, float fov, float nearDist, float farDist)
         {
@@ -259,21 +261,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
-        /// <summary>Free-fly camera with WASD + mouse look. Used by IDE viewport.</summary>
+        /// <summary>Free-fly camera with WASD + mouse look (CTRL to activate mouse look). Used by IDE viewport.</summary>
         public void SetCameraFlyMode(nint window, float dt, bool processInput = true)
         {
             if (processInput)
             {
-                // Mouse look (FPS style)
-                smoothYaw += Mouse.DeltaX * 0.1f;
-                smoothPitch -= Mouse.DeltaY * 0.1f;
+                // ── Mouse look: only active when CTRL is held ──
+                // When CTRL is pressed, mouse movement controls yaw/pitch and cursor is hidden.
+                // When CTRL is released, cursor is shown and rotation stops.
+                bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
+                                Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
 
-                smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
+                if (ctrlHeld)
+                {
+                    smoothYaw += Mouse.DeltaX * 0.1f;
+                    smoothPitch -= Mouse.DeltaY * 0.1f;
+                    smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
+
+                    if (!_mouseLookWasActive)
+                    {
+                        Mouse.ShowMouse(false);
+                        _mouseLookWasActive = true;
+                    }
+                }
+                else
+                {
+                    if (_mouseLookWasActive)
+                    {
+                        Mouse.ShowMouse(true);
+                        Mouse.ResetState();
+                        _mouseLookWasActive = false;
+                    }
+                }
 
                 Yaw = smoothYaw;
                 Pitch = smoothPitch;
 
-                // Movement
+                // Movement (WASD + scroll) — always active regardless of CTRL
                 Vector3 move = Vector3.Zero;
 
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
@@ -284,15 +308,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     move -= Right;
                 if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
                     move += Right;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE))
-                    move += Vector3.UnitY;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL))
-                    move -= Vector3.UnitY;
 
                 if (move.LengthSquared() > 0)
                     move = Vector3.Normalize(move);
 
                 Position += move * FlySpeed * dt;
+
+                // Scroll wheel for vertical movement (replaces old CTRL binding)
+                if (Mouse.ScrollY != 0)
+                {
+                    Position.Y += Mouse.ScrollY * FlySpeed * dt * 2f;
+                    Mouse.ResetScroll();
+                }
             }
 
             // Update camera vectors (FPS) — always keep Front/Right/Up synced with current yaw/pitch

@@ -42,13 +42,44 @@ public class InspectorPanel
         var agent = _bridge.SelectedAgent;
         var editorObj = _bridge.SelectedEditorObject;
 
+        // ── "Select Scene" button — shown when any object is selected, allows quick jump
+        //     to scene render properties (BackgroundColor, Wireframe, etc.).
+        bool hasSelection = editorObj != null || (uiElem != null && uiElem.Type != UIElementType.Scene) || obj != null;
+        if (hasSelection)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.20f, 0.35f, 0.55f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.50f, 0.75f, 1f));
+            if (ImGui.Button("🎬 Select Scene", new Vector2(-1, 26)))
+            {
+                // Clear all selections to jump to scene properties
+                _bridge.SelectedUIElement = null;
+                _bridge.SelectedUIElements?.Clear();
+                _bridge.SelectedEditorObject = null;
+                _bridge.SelectedObject = null;
+                _bridge.SelectedAgent = null;
+            }
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Deselect all objects and show scene properties (BackgroundColor, Wireframe, etc.)");
+            ImGui.Separator();
+        }
+
         if (editorObj != null)
         {
             RenderEditorObjectInspector(editorObj);
         }
         else if (uiElem != null)
         {
+            // Always render the UI element inspector (children list for Scene type)
             RenderUIElementInspector(uiElem);
+
+            // If the selected UI element is a Scene type, ALSO show the scene's
+            // render properties (BackgroundColor, Wireframe, etc.) below it.
+            // This ensures users can always access per-scene render settings.
+            if (uiElem.Type == UIElementType.Scene)
+            {
+                RenderScenePropertiesFromSelection();
+            }
         }
         else if (obj != null)
         {
@@ -56,17 +87,8 @@ public class InspectorPanel
         }
         else
         {
-            // Check if an editor scene is selected — show scene info even without SelectedUIElement
-            var selectedScene = _bridge.SelectedEditorScene;
-            if (selectedScene != null && _bridge.EditorScenes.TryGetValue(selectedScene, out var editorScene))
-            {
-                RenderEditorSceneInfo(editorScene);
-            }
-            else
-            {
-                ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "No object selected");
-                ImGui.TextDisabled("Click an element in the viewport or hierarchy");
-            }
+            // When nothing is selected, show scene render properties
+            RenderScenePropertiesFromSelection();
         }
 
         ImGui.End();
@@ -841,6 +863,38 @@ public class InspectorPanel
         }
     }
 
+    /// <summary>Find an editor scene and render its properties. Used when nothing specific is selected,
+    /// or when a Scene-type UI element is selected (shows render props below the children list).</summary>
+    private void RenderScenePropertiesFromSelection()
+    {
+        var selectedScene = _bridge.SelectedEditorScene;
+        IDEBridge.EditorScene? editorScene = null;
+
+        if (selectedScene != null && _bridge.EditorScenes.TryGetValue(selectedScene, out var scene))
+        {
+            editorScene = scene;
+        }
+        else if (_bridge.EditorScenes.Count > 0)
+        {
+            // No scene selected but there are editor scenes — pick the first one
+            foreach (var kvp in _bridge.EditorScenes)
+            {
+                editorScene = kvp.Value;
+                break;
+            }
+        }
+
+        if (editorScene != null)
+        {
+            RenderEditorSceneInfo(editorScene);
+        }
+        else
+        {
+            ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1f), "No object selected");
+            ImGui.TextDisabled("Click an element in the viewport or hierarchy");
+        }
+    }
+
     /// <summary>Show scene overview info when no element is selected but an editor scene is active.</summary>
     private void RenderEditorSceneInfo(IDEBridge.EditorScene editorScene)
     {
@@ -974,7 +1028,52 @@ public class InspectorPanel
             {
                 // Apply the render properties immediately
                 renderProps.Apply();
+
+                // Wireframe mode should ONLY affect the viewport (shared FBO rendering),
+                // not the game scene. Reset PolygonMode to GL_FILL here so the game scene
+                // isn't affected. Wireframe will be reapplied in SceneManager for the viewport.
+                GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
+
                 Console.WriteLine($"[Inspector] Applied render properties for scene '{editorScene.Name}'");
+            }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ════════════════════════════════════════════
+            //  Selection Highlight Colors (global IDE settings)
+            // ════════════════════════════════════════════
+            if (ImGui.CollapsingHeader("Selection Highlight", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Customize the selection wireframe colors");
+                ImGui.Spacing();
+
+                var selColor = _bridge.SelectionHighlights.GltfObject;
+                if (ImGui.ColorEdit3("3D Object", ref selColor, ImGuiColorEditFlags.NoInputs))
+                {
+                    _bridge.SelectionHighlights.GltfObject = selColor;
+                    Console.WriteLine($"[Inspector] Selection highlight color changed: {selColor}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Color of the pulsing inverted-hull outline around selected 3D objects (glTF)");
+
+                var editorSelColor = _bridge.SelectionHighlights.EditorObject;
+                if (ImGui.ColorEdit3("Editor Object", ref editorSelColor, ImGuiColorEditFlags.NoInputs))
+                {
+                    _bridge.SelectionHighlights.EditorObject = editorSelColor;
+                    Console.WriteLine($"[Inspector] Editor highlight color changed: {editorSelColor}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Color of the inverted-hull outline around selected editor primitives");
+
+                // Reset selection colors to defaults
+                ImGui.Spacing();
+                if (ImGui.SmallButton("Reset Colors"))
+                {
+                    _bridge.SelectionHighlights = SelectionHighlightColors.Default;
+                    // gold (1,0.8,0.1) + cyan (0.1,0.8,1.0)
+                    Console.WriteLine("[Inspector] Selection highlight colors reset to defaults");
+                }
             }
 
             // ── Reset to defaults button ──
@@ -989,6 +1088,8 @@ public class InspectorPanel
                 renderProps.DepthTest = true;
                 renderProps.Blending = false;
                 renderProps.Apply();
+                // Reset wireframe so it doesn't affect game scene
+                GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
                 Console.WriteLine($"[Inspector] Reset render properties to defaults for scene '{editorScene.Name}'");
             }
         }

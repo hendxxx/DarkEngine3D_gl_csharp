@@ -178,6 +178,18 @@ public class IDE : IDisposable
         }
 
         // ── Restore editor scene root and 3D objects for the current scene ──
+        if (Bridge.SelectedEditorScene == null && Bridge.EditorScenes.Count > 0)
+        {
+            // No scene is selected but there are editor scenes — auto-select the first one.
+            // This ensures the Inspector, Hierarchy, and Viewport always have a scene to display.
+            foreach (var kvp in Bridge.EditorScenes)
+            {
+                Bridge.SelectedEditorScene = kvp.Key;
+                Console.WriteLine($"[IDE] Auto-selected scene: {kvp.Key}");
+                break;
+            }
+        }
+
         if (Bridge.SelectedEditorScene != null &&
             Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var activeEditorScene))
         {
@@ -686,8 +698,7 @@ public class IDE : IDisposable
         if (cam != null)
         {
             return cam.Position + cam.Front * 5f;
-        }
-        return new Vector3(0f, 1f, -5f);
+        }            return new Vector3(0f, 1f, -5f);
     }
 
     /// <summary>Whether the IDE overlay is currently active. Always true since F2 toggle is disabled.</summary>

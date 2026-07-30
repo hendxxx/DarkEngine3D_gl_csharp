@@ -1044,7 +1044,10 @@ public unsafe class MainMenuScene : IScene
             var editorBridge = _sceneManager.Bridge;
             if (editorBridge?.EditorObjectManager != null)
             {
-                editorBridge.EditorObjectManager.Draw(_camera, _light, null);
+                // Pass selection highlight color so selected object gets a mesh wireframe outline
+                Vector3? wireCol = editorBridge.EditorObjectManager.SelectedObject != null
+                    ? editorBridge.SelectionHighlights.EditorObject : null;
+                editorBridge.EditorObjectManager.Draw(_camera, _light, null, wireCol);
             }
         }
 

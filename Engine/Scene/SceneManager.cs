@@ -164,7 +164,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         if (_editorCamera == null)
                         {
                             float aspect = (float)Glfw.WindowWidth / Math.Max(1, Glfw.WindowHeight);
-                            _editorCamera = new Camera(0f, 8f, 10f, 0f, -35f, aspect, 60f, 0.1f, 500f);
+                            _editorCamera = new Camera(0f, 10f, 15f, 180f, -33.7f, aspect, 60f, 0.1f, 500f);
                         }
                         if (_editorLights == null)
                         {
@@ -174,6 +174,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                                 _editorCamera.Position);
                         }
 
+                        // Mouse.Update must be called to refresh delta values
+                        // before SetCameraFlyMode reads them. Without this, stale
+                        // Mouse.DeltaX/Y from window creation/ImGui would rotate
+                        // the camera away from its initial orientation each frame.
+                        Mouse.Update(window, _editorCamera);
                         _editorCamera.SetCameraFlyMode(window, dt, true);
                     }
                 }
@@ -244,7 +249,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     {
                         GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
                         GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
-                        GL.ClearColor(0f, 0f, 0f, 1f);
+
+                        // Use the active editor scene's BackgroundColor for the viewport clear color
+                        Vector3 bgColor = GetEditorSceneBackgroundColor();
+                        GL.ClearColor(bgColor.X, bgColor.Y, bgColor.Z, 1f);
                         GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
                     }
 
@@ -280,13 +288,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                     }
 
-                    // ── Render selection highlight (wireframe AABB box) for active scene ──
-                    if (br?.SelectedEditorObject != null)
-                    {
-                        var sceneCam = br.Camera;
-                        if (sceneCam != null)
-                            DrawSelectionBox(br, sceneCam);
-                    }
+                    // Editor object mesh wireframe is now drawn inside EditorObjectManager.Draw()
+                    // (replaces the old AABB bounding-box wireframe approach)
                 }
 
                 // ── If no scene is active, render editor grid + 3D objects into the SharedFBO ──
@@ -301,7 +304,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (_editorCamera == null)
                     {
                         float aspect = (float)Glfw.WindowWidth / Math.Max(1, Glfw.WindowHeight);
-                        _editorCamera = new Camera(0f, 8f, 10f, 0f, -35f, aspect, 60f, 0.1f, 500f);
+                        _editorCamera = new Camera(0f, 10f, 15f, 180f, -33.7f, aspect, 60f, 0.1f, 500f);
                     }
                     if (_editorLights == null)
                     {
@@ -316,6 +319,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
                     GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
 
+                    // ── Apply editor scene's wireframe mode (viewport only) ──
+                    GL.PolygonMode(Const.GL_FRONT_AND_BACK,
+                        GetEditorSceneWireframe() ? Const.GL_LINE : Const.GL_FILL);
+
                     // ── Render editor grid (ground plane + axis helpers) ──
                     GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
                     RenderEditorGrid();
@@ -323,7 +330,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // ── Render editor 3D objects ──
                     if (bridge?.EditorObjectManager != null && bridge.EditorObjectManager.Count > 0)
                     {
-                        bridge.EditorObjectManager.Draw(_editorCamera, _editorLights, null);
+                        // Pass selection highlight color so selected object gets a mesh wireframe outline
+                        Vector3? wireCol = bridge.EditorObjectManager.SelectedObject != null
+                            ? bridge.SelectionHighlights.EditorObject : null;
+                        bridge.EditorObjectManager.Draw(_editorCamera, _editorLights, null, wireCol);
                     }
 
                     // ── Render gizmo on selected editor object ──
@@ -335,8 +345,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         gizmo.Render(_editorCamera, bridge.SelectedEditorObject.Position, objScale);
                     }
 
-                    // ── Render selection highlight (wireframe AABB box) ──
-                    DrawSelectionBox(bridge, _editorCamera);
+                    // ── Reset PolygonMode to GL_FILL after viewport rendering ──
+                    // This ensures wireframe mode from the editor scene does NOT
+                    // leak into any subsequent game scene rendering.
+                    GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
 
                     // Update bridge camera so the IDE panels can show camera info
                     bridge.Camera = _editorCamera;
@@ -451,52 +463,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         //  Editor Grid (Ground plane + Axis helpers)
         // ══════════════════════════════════════════════
 
-        /// <summary>Create the ground-plane grid and axis helpers as line VAOs.</summary>
+        /// <summary>Create VAO/VBO for the dynamic editor grid and static axis helpers.</summary>
         private void CreateEditorGrid()
         {
             CleanupEditorGrid();
 
-            // ── Ground plane grid: 10x10 units centered at origin, spacing 1 ──
-            const float halfSize = 5f;
-            const int linesPerDir = 11;
-
-            var gridVerts = new List<float>();
-
-            for (int i = 0; i < linesPerDir; i++)
-            {
-                float pos = -halfSize + i;
-                gridVerts.Add(-halfSize); gridVerts.Add(0f); gridVerts.Add(pos);
-                gridVerts.Add(halfSize); gridVerts.Add(0f); gridVerts.Add(pos);
-                gridVerts.Add(pos); gridVerts.Add(0f); gridVerts.Add(-halfSize);
-                gridVerts.Add(pos); gridVerts.Add(0f); gridVerts.Add(halfSize);
-            }
-
-            _editorGridVertexCount = gridVerts.Count / 3;
-
-            float[] gridArray = gridVerts.ToArray();
+            // ── Grid VAO/VBO: allocated once, updated each frame via BufferSubData ──
             uint gridVAO = 0, gridVBO = 0;
             GL.GenVertexArrays(1, &gridVAO);
             GL.GenBuffers(1, &gridVBO);
             GL.BindVertexArray(gridVAO);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, gridVBO);
-            fixed (float* ptr = gridArray)
-            {
-                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(gridArray.Length * sizeof(float)), ptr, Const.GL_STATIC_DRAW);
-            }
+
+            // Pre-allocate max vertex buffer (501 lines × 4 verts × 3 floats)
+            int maxFloats = 501 * 4 * 3;
+            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(maxFloats * sizeof(float)), (void*)0, Const.GL_DYNAMIC_DRAW);
+
             GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), null);
             GL.EnableVertexAttribArray(0);
             GL.BindVertexArray(0);
             _editorGridVAO = gridVAO;
             _editorGridVBO = gridVBO;
 
-            // ── Axis helpers: 3 lines, each rendered separately with different color ──
+            // ── Axis helpers: 3 lines at world origin ──
             float[] axisVerts =
             [
                 0f, 0f, 0f,   2f, 0f, 0f,
                 0f, 0f, 0f,   0f, 2f, 0f,
                 0f, 0f, 0f,   0f, 0f, 2f,
             ];
-
             uint axisVAO = 0, axisVBO = 0;
             GL.GenVertexArrays(1, &axisVAO);
             GL.GenBuffers(1, &axisVBO);
@@ -516,12 +511,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             Console.WriteLine("[SceneManager] Editor grid created.");
         }
 
-        /// <summary>Render the editor ground-plane grid and axis helpers.</summary>
+        /// <summary>
+        /// Render the editor ground-plane grid centered on the camera's XZ position.
+        /// Vertices are regenerated each frame so the grid always extends equally
+        /// in all directions from the camera (truly "infinite" feel).
+        /// The grid center is snapped to the nearest integer so lines align with
+        /// world-space integer coordinates. Axes stay at world origin.
+        /// </summary>
         private void RenderEditorGrid()
         {
             if (!_editorGridCreated) CreateEditorGrid();
             if (_editorGridVAO == 0 || _editorAxisVAO == 0) return;
-
             if (_editorCamera == null) return;
 
             uint prog = Shader.GetLineShaderProgram();
@@ -531,6 +531,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             Matrix4x4 viewMatrix = _editorCamera.GetViewMatrix();
             Matrix4x4 projMatrix = _editorCamera.GetProjectionMatrix();
+            Matrix4x4 ident = Matrix4x4.Identity;
 
             int viewLoc = GL.GetUniformLocation(prog, "view");
             int projLoc = GL.GetUniformLocation(prog, "projection");
@@ -539,18 +540,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             GL.UniformMatrix4fv(viewLoc, 1, false, &viewMatrix.M11);
             GL.UniformMatrix4fv(projLoc, 1, false, &projMatrix.M11);
-
-            Matrix4x4 ident = Matrix4x4.Identity;
             GL.UniformMatrix4fv(modelLoc, 1, false, &ident.M11);
 
-            // Grid color (blue-gray)
-            GL.Uniform3f(colorLoc, 0.35f, 0.45f, 0.65f);
+            // ── Generate grid vertices centered on camera XZ, snapped to integer ──
+            const int halfLines = 250;        // 250 lines on each side = 501 total
+            float centerX = MathF.Round(_editorCamera.Position.X);
+            float centerZ = MathF.Round(_editorCamera.Position.Z);
 
+            var verts = new List<float>((halfLines * 2 + 1) * 4 * 3);
+            for (int i = -halfLines; i <= halfLines; i++)
+            {
+                // X-aligned line at Z = centerZ + i
+                float z = centerZ + i;
+                verts.Add(centerX - halfLines); verts.Add(0); verts.Add(z);
+                verts.Add(centerX + halfLines); verts.Add(0); verts.Add(z);
+
+                // Z-aligned line at X = centerX + i
+                float x = centerX + i;
+                verts.Add(x); verts.Add(0); verts.Add(centerZ - halfLines);
+                verts.Add(x); verts.Add(0); verts.Add(centerZ + halfLines);
+            }
+
+            _editorGridVertexCount = verts.Count / 3;
+            float[] gridArray = verts.ToArray();
+
+            // Upload new vertex data via BufferSubData
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, _editorGridVBO);
+            fixed (float* ptr = gridArray)
+            {
+                GL.BufferSubData(Const.GL_ARRAY_BUFFER, (nuint)0,
+                    (nuint)(gridArray.Length * sizeof(float)), ptr);
+            }
+
+            // ── Draw grid in blue-gray ──
+            GL.Uniform3f(colorLoc, 0.35f, 0.45f, 0.65f);
             GL.BindVertexArray(_editorGridVAO);
             GL.DrawArrays(Const.GL_LINES, 0, _editorGridVertexCount);
             GL.BindVertexArray(0);
 
-            // Axes
+            // ── Axes at world origin ──
             GL.BindVertexArray(_editorAxisVAO);
             GL.Uniform3f(colorLoc, 1f, 0.2f, 0.2f); // X red
             GL.DrawArrays(Const.GL_LINES, 0, 2);
@@ -606,50 +634,59 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
         // ══════════════════════════════════════════════
-        //  Selection Highlight (wireframe AABB box)
+        //  Selection Highlight (inverted-hull outline)
         // ══════════════════════════════════════════════
+        // Now handled inside EditorObjectManager.Draw() with DrawOutlineStencil()/DrawOutline().
+        // The old edge-wireframe approach has been removed.
 
-        /// <summary>Draw a wireframe bounding box around the selected editor object.</summary>
-        private static void DrawSelectionBox(IDEBridge? bridge, Camera? overrideCamera = null)
+        /// <summary>Get the active editor scene's background color, or black if none is available.</summary>
+        private Vector3 GetEditorSceneBackgroundColor()
         {
-            if (bridge?.SelectedEditorObject == null) return;
+            if (_ide == null) return Vector3.Zero;
+            var bridge = _ide.Bridge;
+            if (bridge == null) return Vector3.Zero;
 
-            var obj = bridge.SelectedEditorObject;
-            var aabb = obj.GetWorldAABB();
-
-            // Build 12 edge lines of the AABB
-            float minX = aabb.Min.X, minY = aabb.Min.Y, minZ = aabb.Min.Z;
-            float maxX = aabb.Max.X, maxY = aabb.Max.Y, maxZ = aabb.Max.Z;
-
-            var verts = new List<Vector3>
+            // Try selected editor scene first
+            if (bridge.SelectedEditorScene != null &&
+                bridge.EditorScenes.TryGetValue(bridge.SelectedEditorScene, out var editorScene) &&
+                editorScene.RenderProperties != null)
             {
-                // Bottom face (Z ring)
-                new(minX, minY, minZ), new(maxX, minY, minZ),
-                new(maxX, minY, minZ), new(maxX, minY, maxZ),
-                new(maxX, minY, maxZ), new(minX, minY, maxZ),
-                new(minX, minY, maxZ), new(minX, minY, minZ),
-                // Top face (Z ring)
-                new(minX, maxY, minZ), new(maxX, maxY, minZ),
-                new(maxX, maxY, minZ), new(maxX, maxY, maxZ),
-                new(maxX, maxY, maxZ), new(minX, maxY, maxZ),
-                new(minX, maxY, maxZ), new(minX, maxY, minZ),
-                // Vertical connectors
-                new(minX, minY, minZ), new(minX, maxY, minZ),
-                new(maxX, minY, minZ), new(maxX, maxY, minZ),
-                new(maxX, minY, maxZ), new(maxX, maxY, maxZ),
-                new(minX, minY, maxZ), new(minX, maxY, maxZ),
-            };
+                return editorScene.RenderProperties.BackgroundColor;
+            }
 
-            // Use bright cyan/yellow color for selection
-            Vector3 selectionColor = new(0.2f, 0.9f, 1.0f); // bright cyan
+            // Fallback: first editor scene with render properties
+            foreach (var (_, es) in bridge.EditorScenes)
+            {
+                if (es.RenderProperties != null)
+                    return es.RenderProperties.BackgroundColor;
+            }
 
-            // Get the appropriate camera
-            Camera? cam = overrideCamera ?? bridge.Camera;
-            if (cam == null) return;
+            return Vector3.Zero;
+        }
 
-            GL.Disable(Const.GL_DEPTH_TEST);
-            TerrainChunk.DrawLineSegments(verts, selectionColor, cam);
-            GL.Enable(Const.GL_DEPTH_TEST);
+        /// <summary>Get the active editor scene's wireframe mode, or false if none is available.</summary>
+        private bool GetEditorSceneWireframe()
+        {
+            if (_ide == null) return false;
+            var bridge = _ide.Bridge;
+            if (bridge == null) return false;
+
+            // Try selected editor scene first
+            if (bridge.SelectedEditorScene != null &&
+                bridge.EditorScenes.TryGetValue(bridge.SelectedEditorScene, out var editorScene) &&
+                editorScene.RenderProperties != null)
+            {
+                return editorScene.RenderProperties.WireframeMode;
+            }
+
+            // Fallback: first editor scene with render properties
+            foreach (var (_, es) in bridge.EditorScenes)
+            {
+                if (es.RenderProperties != null)
+                    return es.RenderProperties.WireframeMode;
+            }
+
+            return false;
         }
 
         /// <summary>Stop the main loop gracefully.</summary>
