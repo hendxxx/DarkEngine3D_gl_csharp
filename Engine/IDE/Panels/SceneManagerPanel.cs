@@ -655,6 +655,14 @@ public class SceneManagerPanel
                         ColorB = obj.Color.Z,
                         CastShadow = obj.CastShadow,
                         IsVisible = obj.IsVisible,
+                        CameraFov = obj.CameraFov,
+                        CameraNear = obj.CameraNear,
+                        CameraFar = obj.CameraFar,
+                        LightDirX = obj.LightDirection.X,
+                        LightDirY = obj.LightDirection.Y,
+                        LightDirZ = obj.LightDirection.Z,
+                        LightIntensity = obj.LightIntensity,
+                        SkyTimeOfDay = obj.SkyTimeOfDay,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z
@@ -866,6 +874,9 @@ public class SceneManagerPanel
                             "sphere" => EditorPrimitiveType.Sphere,
                             "box" => EditorPrimitiveType.Box,
                             "glbreference" => EditorPrimitiveType.GlbReference,
+                            "camera" => EditorPrimitiveType.Camera,
+                            "light" => EditorPrimitiveType.Light,
+                            "sky" => EditorPrimitiveType.Sky,
                             _ => EditorPrimitiveType.Box,
                         };
 
@@ -877,6 +888,12 @@ public class SceneManagerPanel
                         obj.Color = new Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
                         obj.CastShadow = objData.CastShadow;
                         obj.IsVisible = objData.IsVisible;
+                        obj.CameraFov = objData.CameraFov;
+                        obj.CameraNear = objData.CameraNear;
+                        obj.CameraFar = objData.CameraFar;
+                        obj.LightDirection = new Vector3(objData.LightDirX, objData.LightDirY, objData.LightDirZ);
+                        obj.LightIntensity = objData.LightIntensity;
+                        obj.SkyTimeOfDay = objData.SkyTimeOfDay;
 
                         // Restore per-object gizmo pivot override (backward compatible — null if not present)
                         if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)

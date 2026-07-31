@@ -147,8 +147,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Mouse sensitivity multiplier for fly mode camera (default 0.5 = moderately responsive).</summary>
         public static float FlyMouseSensitivity = 0.5f;
 
-        /// <summary>Size multiplier for the viewport transform gizmo (default 1.0 = normal size).</summary>
-        public static float GizmoSize = 1.0f;
+        /// <summary>Size multiplier for the viewport transform gizmo (default 1.25 = larger, more visible).</summary>
+        public static float GizmoSize = 1.25f;
 
         public static float CameraMinDistance = 1.5f;
 

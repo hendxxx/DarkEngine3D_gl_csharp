@@ -1049,14 +1049,16 @@ public unsafe class MainMenuScene : IScene
                     ? editorBridge.SelectionHighlights.EditorObject : null;
                 editorBridge.EditorObjectManager.Draw(_camera, _light, null, wireCol);
             }
-        }
+        }            // ── Update bridge with scene data (always, so IDE panels have current state) ──
+            var bridge = _sceneManager.Bridge;
+            if (bridge != null)
+            {
+                // Always set SceneRoot so HierarchyPanel can add elements even when IDE just opened
+                bridge.SceneRoot = _sceneRoot;
 
-        // ── Update bridge with scene data (always, so IDE panels have current state) ──
-        var bridge = _sceneManager.Bridge;
-        if (bridge != null)
-        {
-            // Always set SceneRoot so HierarchyPanel can add elements even when IDE just opened
-            bridge.SceneRoot = _sceneRoot;
+                // Expose the camera so the viewport Fly toggle (FlyMouseLook) and gizmo
+                // interaction target the same camera that drives freefly in this scene.
+                bridge.Camera = _camera;
 
             // ── Update bridge texture for IDE Viewport panel ──
             if (ideActive)
@@ -1239,17 +1241,21 @@ public unsafe class MainMenuScene : IScene
     {
         CleanupEditorGrid();
 
-        // ── Ground plane grid: 10x10 units centered at origin, spacing 1 ──
-        const float halfSize = 5f;
-        const int divisions = 10;
-        const int linesPerDir = divisions + 1; // 11
+        // ── Ground plane grid: 50x50 units centered at origin, spacing 1 ──
+        // Sized so a default 25x25 plane (the default plane scale) sits proportionally
+        // inside the grid, covering about half of it on each axis.
+        const float halfSize = 25f;
+        const int divisions = 50;
+        const int linesPerDir = divisions + 1; // 51
 
         // Build vertices: horizontal lines (along X) + vertical lines (along Z)
         var gridVerts = new List<float>();
 
+        // Lines are offset by 0.5 so they sit on half-integer coordinates: a 25x25 plane
+        // centered at an integer position spans -12.5..12.5 and covers exactly 25x25 grid squares.
         for (int i = 0; i < linesPerDir; i++)
         {
-            float pos = -halfSize + i; // -5 to +5
+            float pos = -halfSize - 0.5f + i; // -25.5 to +25.5
 
             // Horizontal: ( -halfSize, 0, pos ) → ( halfSize, 0, pos )
             gridVerts.Add(-halfSize); gridVerts.Add(0f); gridVerts.Add(pos);

@@ -88,40 +88,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             var verts = new List<Vertex>(36);
 
+            // NOTE: All faces use CCW winding (front faces point outward) so that
+            // back-face culling works correctly with the default GL_CCW front-face convention.
             Vector3 nBack = new(0, 0, -1);
             verts.AddRange(new[] {
-                V(p0,nBack,color,0,0), V(p1,nBack,color,1,0), V(p2,nBack,color,1,1),
-                V(p0,nBack,color,0,0), V(p2,nBack,color,1,1), V(p3,nBack,color,0,1)
+                V(p0,nBack,color,0,0), V(p2,nBack,color,1,1), V(p1,nBack,color,1,0),
+                V(p0,nBack,color,0,0), V(p3,nBack,color,0,1), V(p2,nBack,color,1,1)
             });
 
             Vector3 nFront = new(0, 0, 1);
             verts.AddRange(new[] {
-                V(p5,nFront,color,0,0), V(p4,nFront,color,1,0), V(p7,nFront,color,1,1),
-                V(p5,nFront,color,0,0), V(p7,nFront,color,1,1), V(p6,nFront,color,0,1)
+                V(p5,nFront,color,0,0), V(p7,nFront,color,1,1), V(p4,nFront,color,1,0),
+                V(p5,nFront,color,0,0), V(p6,nFront,color,0,1), V(p7,nFront,color,1,1)
             });
 
             Vector3 nLeft = new(-1, 0, 0);
             verts.AddRange(new[] {
-                V(p4,nLeft,color,0,0), V(p0,nLeft,color,1,0), V(p3,nLeft,color,1,1),
-                V(p4,nLeft,color,0,0), V(p3,nLeft,color,1,1), V(p7,nLeft,color,0,1)
+                V(p4,nLeft,color,0,0), V(p3,nLeft,color,1,1), V(p0,nLeft,color,1,0),
+                V(p4,nLeft,color,0,0), V(p7,nLeft,color,0,1), V(p3,nLeft,color,1,1)
             });
 
             Vector3 nRight = new(1, 0, 0);
             verts.AddRange(new[] {
-                V(p1,nRight,color,0,0), V(p5,nRight,color,1,0), V(p6,nRight,color,1,1),
-                V(p1,nRight,color,0,0), V(p6,nRight,color,1,1), V(p2,nRight,color,0,1)
+                V(p1,nRight,color,0,0), V(p6,nRight,color,1,1), V(p5,nRight,color,1,0),
+                V(p1,nRight,color,0,0), V(p2,nRight,color,0,1), V(p6,nRight,color,1,1)
             });
 
             Vector3 nBottom = new(0, -1, 0);
             verts.AddRange(new[] {
-                V(p4,nBottom,color,0,0), V(p5,nBottom,color,1,0), V(p1,nBottom,color,1,1),
-                V(p4,nBottom,color,0,0), V(p1,nBottom,color,1,1), V(p0,nBottom,color,0,1)
+                V(p4,nBottom,color,0,0), V(p1,nBottom,color,1,1), V(p5,nBottom,color,1,0),
+                V(p4,nBottom,color,0,0), V(p0,nBottom,color,0,1), V(p1,nBottom,color,1,1)
             });
 
             Vector3 nTop = new(0, 1, 0);
             verts.AddRange(new[] {
-                V(p3,nTop,color,0,0), V(p2,nTop,color,1,0), V(p6,nTop,color,1,1),
-                V(p3,nTop,color,0,0), V(p6,nTop,color,1,1), V(p7,nTop,color,0,1)
+                V(p3,nTop,color,0,0), V(p6,nTop,color,1,1), V(p2,nTop,color,1,0),
+                V(p3,nTop,color,0,0), V(p7,nTop,color,0,1), V(p6,nTop,color,1,1)
             });
 
             return verts.ToArray();
@@ -222,15 +224,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     float v0 = (float)iz / segmentsZ;
                     float v1 = (float)(iz + 1) / segmentsZ;
 
-                    // First triangle
+                    // First triangle (CCW when viewed from above +Y so the plane is front-facing)
                     verts.Add(new Vertex(x0, 0, z0, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u0, v0));
-                    verts.Add(new Vertex(x1, 0, z0, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v0));
                     verts.Add(new Vertex(x1, 0, z1, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v1));
+                    verts.Add(new Vertex(x1, 0, z0, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v0));
 
                     // Second triangle
                     verts.Add(new Vertex(x0, 0, z0, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u0, v0));
-                    verts.Add(new Vertex(x1, 0, z1, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v1));
                     verts.Add(new Vertex(x0, 0, z1, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u0, v1));
+                    verts.Add(new Vertex(x1, 0, z1, normal.X, normal.Y, normal.Z, color.X, color.Y, color.Z, u1, v1));
                 }
             }
 
@@ -294,8 +296,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void Draw(float deltaTime, nint window, float _moveSpeed)
         {
-            OpenGL.EnableFaceCulling(false);
-             
+            // Culling state is applied by the scene's RenderProperties — do not override it here.
             if (!_useCustomModelMatrix)
                 modelMatrix = Matrix4x4.CreateTranslation(objectPosition);
             _useCustomModelMatrix = false; // reset setelah dipakai
@@ -310,14 +311,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.BindVertexArray(VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount);
             GL.BindVertexArray(0);
-
-            OpenGL.EnableFaceCulling(true);
         }
 
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
             GL.UseProgram(shadowShader);
-            OpenGL.EnableFaceCulling(false);
+            // Culling state is set by the CSM shadow pass — do not override it here.
 
             fixed (float* ptr = &modelMatrix.M11)
             {
@@ -331,8 +330,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.BindVertexArray(VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount);
             GL.BindVertexArray(0);
-
-            OpenGL.EnableFaceCulling(true);
         }
 
         private bool IsObjectInsideOrthoFrustum(Plane[]? planes)

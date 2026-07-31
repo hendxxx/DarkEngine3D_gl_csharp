@@ -72,13 +72,13 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "—— 3D ——", "Plane", "Box", "Sphere"];
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "—— 3D ——", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
     private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
     {
-        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange }
+        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform }
         public ActionType Type;
 
         // For Add / Delete / Move: the element involved
@@ -102,6 +102,12 @@ public class HierarchyPanel
         public string ColorPropertyName;
         public Vector3 OldColor;
         public Vector3 NewColor;
+
+        // For EditorTransform (3D gizmo drag on an EditorObject)
+        public EditorObject? EditorObj;
+        public Vector3 OldPos, OldRot, OldScale;
+        public Vector3 NewPos, NewRot, NewScale;
+        public Vector3? OldPivot, NewPivot;   // gizmo pivot override snapshots
     }
 
     public HierarchyPanel(IDEBridge bridge)
@@ -118,6 +124,36 @@ public class HierarchyPanel
                 OldX = oldX, OldY = oldY, OldW = oldW, OldH = oldH,
                 NewX = newX, NewY = newY, NewW = newW, NewH = newH,
             });
+        };
+
+        // Wire up the 3D gizmo drag-end delegate so ViewportPanel can record
+        // transform undos for editor objects (uses the object's LastGizmo* snapshot
+        // captured at drag start as the "old" state, current values as "new").
+        _bridge.OnGizmoDragEnded = (obj) =>
+        {
+            if (obj == null) return;
+
+            // Skip if nothing actually moved (e.g. interrupted drag with no change)
+            if (obj.Position == obj.LastGizmoPosition
+                && obj.RotationEuler == obj.LastGizmoRotation
+                && obj.Scale == obj.LastGizmoScale
+                && obj.GizmoPivotOverride == obj.LastGizmoPivot)
+                return;
+
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.EditorTransform,
+                EditorObj = obj,
+                OldPos = obj.LastGizmoPosition,
+                OldRot = obj.LastGizmoRotation,
+                OldScale = obj.LastGizmoScale,
+                OldPivot = obj.LastGizmoPivot,
+                NewPos = obj.Position,
+                NewRot = obj.RotationEuler,
+                NewScale = obj.Scale,
+                NewPivot = obj.GizmoPivotOverride,
+            });
+            Console.WriteLine($"[SceneDetail] Recorded gizmo undo for '{obj.Name}'");
         };
 
         // Wire up the color undo delegate so InspectorPanel can record color undos
@@ -139,7 +175,7 @@ public class HierarchyPanel
     // ── Public API for main menu bar integration ──
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
-    public bool HasSelection => _bridge.SelectedUIElement != null;
+    public bool HasSelection => _bridge.SelectedUIElement != null || _bridge.SelectedEditorObject != null;
     public void Undo() => ExecuteUndo();
     public void Redo() => ExecuteRedo();
     public void Duplicate() => DuplicateAllSelected();
@@ -310,11 +346,11 @@ public class HierarchyPanel
                 _showAddPopup = true;
                 _addNameBuffer = _addTypeIdx switch
                 {
-                    0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
-                    5 => "chk", 6 => "drp", 7 => "txt",
-                    9 => "plane", 10 => "box", 11 => "sphere",
-                    _ => "element",
-                };
+                0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
+                5 => "chk", 6 => "drp", 7 => "txt",
+                9 => "plane", 10 => "box", 11 => "sphere", 12 => "camera", 13 => "light", 14 => "sky",
+                _ => "element",
+            };
                 _addTypeIdx = 0;
             }
             ImGui.PopStyleColor(2);
@@ -440,6 +476,53 @@ public class HierarchyPanel
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Plane primitive");
 
             ImGui.Separator();
+
+            // ── Toolbar Row 4: Camera / Light / Sky scene elements ──
+            {
+                float btnWidth2 = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 2f) / 3f;
+
+                // Camera button (teal)
+                var colCam = new Vector4(0.20f, 0.55f, 0.60f, 1f);
+                var colCamHov = new Vector4(0.30f, 0.70f, 0.75f, 1f);
+                ImGui.PushStyleColor(ImGuiCol.Button, colCam);
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colCamHov);
+                if (ImGui.Button("📷 Camera", new Vector2(btnWidth2, 24)))
+                {
+                    QuickAdd3D(EditorPrimitiveType.Camera);
+                }
+                ImGui.PopStyleColor(2);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Camera marker (eye height)");
+
+                ImGui.SameLine();
+
+                // Light button (amber)
+                var colLgt = new Vector4(0.60f, 0.50f, 0.20f, 1f);
+                var colLgtHov = new Vector4(0.75f, 0.62f, 0.28f, 1f);
+                ImGui.PushStyleColor(ImGuiCol.Button, colLgt);
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colLgtHov);
+                if (ImGui.Button("☀ Light", new Vector2(btnWidth2, 24)))
+                {
+                    QuickAdd3D(EditorPrimitiveType.Light);
+                }
+                ImGui.PopStyleColor(2);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Light marker (overrides sun color/direction)");
+
+                ImGui.SameLine();
+
+                // Sky button (blue)
+                var colSky = new Vector4(0.25f, 0.40f, 0.65f, 1f);
+                var colSkyHov = new Vector4(0.35f, 0.55f, 0.80f, 1f);
+                ImGui.PushStyleColor(ImGuiCol.Button, colSky);
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colSkyHov);
+                if (ImGui.Button("☁ Sky", new Vector2(btnWidth2, 24)))
+                {
+                    QuickAdd3D(EditorPrimitiveType.Sky);
+                }
+                ImGui.PopStyleColor(2);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Sky marker (renders procedural skybox)");
+
+                ImGui.Separator();
+            }
         }
 
         // ── Keyboard shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+D) ──
@@ -610,6 +693,9 @@ public class HierarchyPanel
                             EditorPrimitiveType.Box => "▣",
                             EditorPrimitiveType.Sphere => "◉",
                             EditorPrimitiveType.GlbReference => "◈",
+                            EditorPrimitiveType.Camera => "📷",
+                            EditorPrimitiveType.Light => "☀",
+                            EditorPrimitiveType.Sky => "☁",
                             _ => "◇",
                         };
 
@@ -783,7 +869,7 @@ public class HierarchyPanel
                             {
                                 0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
                                 5 => "chk", 6 => "drp", 7 => "txt",
-                                9 => "plane", 10 => "box", 11 => "sphere",
+                                9 => "plane", 10 => "box", 11 => "sphere", 12 => "camera", 13 => "light", 14 => "sky",
                                 _ => "element",
                             };
                         }
@@ -1350,10 +1436,7 @@ public class HierarchyPanel
             return;
         }
 
-        var cam = _bridge.Camera;
-        Vector3 spawnPos = cam != null
-            ? cam.Position + cam.Front * 5f
-            : new Vector3(0f, 1f, -5f);
+        Vector3 spawnPos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, primType);
 
         string objName = editorMgr.GetNextName(primType);
         var obj = editorMgr.AddPrimitive(primType, spawnPos);
@@ -1438,18 +1521,18 @@ public class HierarchyPanel
                 return;
             }
 
-            var cam = _bridge.Camera;
-            Vector3 spawnPos = cam != null
-                ? cam.Position + cam.Front * 5f
-                : new Vector3(0f, 1f, -5f);
-
             EditorPrimitiveType primType = typeIdx switch
             {
                 9 => EditorPrimitiveType.Plane,
                 10 => EditorPrimitiveType.Box,
                 11 => EditorPrimitiveType.Sphere,
+                12 => EditorPrimitiveType.Camera,
+                13 => EditorPrimitiveType.Light,
+                14 => EditorPrimitiveType.Sky,
                 _ => EditorPrimitiveType.Box,
             };
+
+            Vector3 spawnPos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, primType);
 
             var obj = editorMgr.AddPrimitive(primType, spawnPos);
             obj.Name = name;
@@ -1769,6 +1852,19 @@ public class HierarchyPanel
     /// Processes elements from last to first to preserve insert indices. Selects all clones afterwards.</summary>
     private void DuplicateAllSelected()
     {
+        // ── 3D object duplication (Ctrl+D) ──
+        var editorObj = _bridge.SelectedEditorObject;
+        if (editorObj != null)
+        {
+            var dup = _bridge.EditorObjectManager?.Duplicate(editorObj);
+            if (dup != null)
+            {
+                _bridge.SelectedEditorObject = dup;
+                Console.WriteLine($"[SceneDetail] Duplicated 3D object: '{editorObj.Name}' → '{dup.Name}'");
+            }
+            return;
+        }
+
         var multi = _bridge.SelectedUIElements;
         if (multi == null || multi.Count == 0) return;
 
@@ -1972,6 +2068,19 @@ public class HierarchyPanel
                     _bridge.SelectedUIElement = action.Element;
                 }
                 break;
+
+            case UndoRedoAction.ActionType.EditorTransform:
+                // Restore the 3D editor object's old transform + pivot override
+                if (action.EditorObj != null)
+                {
+                    action.EditorObj.Position = action.OldPos;
+                    action.EditorObj.RotationEuler = action.OldRot;
+                    action.EditorObj.Scale = action.OldScale;
+                    action.EditorObj.GizmoPivotOverride = action.OldPivot;
+                    Console.WriteLine($"[SceneDetail] Undo Gizmo: '{action.EditorObj.Name}' → pos {action.OldPos:F2}");
+                    _bridge.SelectedEditorObject = action.EditorObj;
+                }
+                break;
         }
 
         // Push onto redo stack for redo
@@ -2066,6 +2175,19 @@ public class HierarchyPanel
                     action.Element.Height = action.NewH;
                     Console.WriteLine($"[SceneDetail] Redo Transform: '{action.Element.Name}' → ({action.NewX:F0},{action.NewY:F0}) [{action.NewW:F0}×{action.NewH:F0}]");
                     _bridge.SelectedUIElement = action.Element;
+                }
+                break;
+
+            case UndoRedoAction.ActionType.EditorTransform:
+                // Re-apply the 3D editor object's new transform + pivot override
+                if (action.EditorObj != null)
+                {
+                    action.EditorObj.Position = action.NewPos;
+                    action.EditorObj.RotationEuler = action.NewRot;
+                    action.EditorObj.Scale = action.NewScale;
+                    action.EditorObj.GizmoPivotOverride = action.NewPivot;
+                    Console.WriteLine($"[SceneDetail] Redo Gizmo: '{action.EditorObj.Name}' → pos {action.NewPos:F2}");
+                    _bridge.SelectedEditorObject = action.EditorObj;
                 }
                 break;
         }

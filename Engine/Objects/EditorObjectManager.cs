@@ -17,6 +17,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private int _sphereCounter = 1;
         private int _planeCounter = 1;
         private int _glbCounter = 1;
+        private int _cameraCounter = 1;
+        private int _lightCounter = 1;
+        private int _skyCounter = 1;
         private readonly uint _shaderProgram;
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
@@ -125,6 +128,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 EditorPrimitiveType.Box => $"box{_boxCounter++}",
                 EditorPrimitiveType.Sphere => $"sphere{_sphereCounter++}",
                 EditorPrimitiveType.GlbReference => $"glb{_glbCounter++}",
+                EditorPrimitiveType.Camera => $"camera{_cameraCounter++}",
+                EditorPrimitiveType.Light => $"light{_lightCounter++}",
+                EditorPrimitiveType.Sky => $"sky{_skyCounter++}",
                 _ => $"object{_boxCounter++}",
             };
         }
@@ -136,13 +142,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 Position = position,
                 Scale = type == EditorPrimitiveType.Sphere ? new Vector3(1f, 1f, 1f)
-                       : type == EditorPrimitiveType.Plane ? new Vector3(5f, 0.05f, 5f)
-                       : Vector3.One, // Box
+                       : type == EditorPrimitiveType.Plane ? new Vector3(25f, 0.05f, 25f)
+                       : type == EditorPrimitiveType.Camera ? new Vector3(0.5f, 0.4f, 0.6f)
+                       : Vector3.One, // Box / Light / Sky
                 Color = type switch
                 {
                     EditorPrimitiveType.Plane => new Vector3(0.3f, 0.7f, 0.3f),
                     EditorPrimitiveType.Box => new Vector3(0.7f, 0.3f, 0.3f),
                     EditorPrimitiveType.Sphere => new Vector3(0.3f, 0.3f, 0.7f),
+                    EditorPrimitiveType.Camera => new Vector3(0.2f, 0.7f, 0.8f),
+                    EditorPrimitiveType.Light => new Vector3(1.0f, 0.85f, 0.3f),
+                    EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
                     _ => new Vector3(0.8f, 0.8f, 0.8f),
                 }
             };
@@ -164,6 +174,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             };
             _objects.Add(obj);
             return obj;
+        }
+
+        /// <summary>Duplicate an editor object (all properties copied, offset slightly in X) and add it to the scene.</summary>
+        public EditorObject Duplicate(EditorObject source)
+        {
+            var clone = new EditorObject(source.PrimitiveType)
+            {
+                Name = GetNextName(source.PrimitiveType),
+                Position = source.Position + new Vector3(1f, 0f, 0f),
+                RotationEuler = source.RotationEuler,
+                Scale = source.Scale,
+                Color = source.Color,
+                TexturePath = source.TexturePath,
+                CastShadow = source.CastShadow,
+                IsVisible = source.IsVisible,
+                GlbFilePath = source.GlbFilePath,
+                CameraFov = source.CameraFov,
+                CameraNear = source.CameraNear,
+                CameraFar = source.CameraFar,
+                LightDirection = source.LightDirection,
+                LightIntensity = source.LightIntensity,
+                SkyTimeOfDay = source.SkyTimeOfDay,
+                GizmoPivotOverride = null,
+            };
+            if (clone.PrimitiveType != EditorPrimitiveType.GlbReference)
+                clone.InitGPU();
+            _objects.Add(clone);
+            return clone;
         }
 
         /// <summary>Draw all editor objects (called from the game scene rendering loop).
@@ -219,7 +257,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             GL.Enable(Const.GL_DEPTH_TEST);
-            GL.Enable(Const.GL_CULL_FACE);
+            // Face culling/winding state is applied by the scene's RenderProperties
+            // (see OpenGL.ApplySceneProperties) — do NOT force-enable culling here.
 
             for (int i = 0; i < _objects.Count; i++)
             {
@@ -260,7 +299,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 SelectedObject.DrawOutline(camera, outlineCol);
 
                 GL.Disable(Const.GL_STENCIL_TEST);
-                // CullFace is restored to BACK inside DrawOutline()
+                // NOTE: DrawOutline() leaves GL_CULL_FACE disabled (needed for the inverted-hull
+                // stencil technique). The scene's RenderProperties.Apply() re-applies the correct
+                // culling/winding state at the start of the next frame's render pass.
             }
         }
 
@@ -291,6 +332,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     }
                     if (outside) continue;
                 }
+
+                // Camera/Light/Sky markers don't cast shadows
+                if (obj.PrimitiveType == EditorPrimitiveType.Camera
+                    || obj.PrimitiveType == EditorPrimitiveType.Light
+                    || obj.PrimitiveType == EditorPrimitiveType.Sky) continue;
 
                 obj.RenderShadow(_shadowModelLoc, camera, csm, cascadeIndex);
             }

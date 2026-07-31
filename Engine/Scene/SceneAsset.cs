@@ -138,6 +138,22 @@ public class EditorObjectData
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
 
+    // ── Type-specific properties (Camera / Light / Sky) ──
+    /// <summary>Vertical FOV in degrees (Camera).</summary>
+    public float CameraFov { get; set; } = 60f;
+    /// <summary>Near clip distance (Camera).</summary>
+    public float CameraNear { get; set; } = 0.1f;
+    /// <summary>Far clip distance (Camera).</summary>
+    public float CameraFar { get; set; } = 500f;
+    /// <summary>Light direction (Light).</summary>
+    public float LightDirX { get; set; } = -0.5f;
+    public float LightDirY { get; set; } = 0.8f;
+    public float LightDirZ { get; set; } = -0.3f;
+    /// <summary>Light intensity multiplier (Light).</summary>
+    public float LightIntensity { get; set; } = 1f;
+    /// <summary>Time of day in hours 0..24 (Sky).</summary>
+    public float SkyTimeOfDay { get; set; } = 12f;
+
     // ── Per-object gizmo pivot override (nullable — null means use object position) ──
     public float? PivotOverrideX { get; set; }
     public float? PivotOverrideY { get; set; }

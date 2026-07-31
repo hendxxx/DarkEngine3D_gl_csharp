@@ -283,17 +283,33 @@ public class IDE : IDisposable
             {
                 if (ImGui.MenuItem("Add Plane", "Ctrl+1"))
                 {
-                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Plane, GetSpawnPosition());
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Plane, GetSpawnPosition(EditorPrimitiveType.Plane));
                     if (obj != null) Bridge.SelectedEditorObject = obj;
                 }
                 if (ImGui.MenuItem("Add Box", "Ctrl+2"))
                 {
-                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Box, GetSpawnPosition());
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Box, GetSpawnPosition(EditorPrimitiveType.Box));
                     if (obj != null) Bridge.SelectedEditorObject = obj;
                 }
                 if (ImGui.MenuItem("Add Sphere", "Ctrl+3"))
                 {
-                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sphere, GetSpawnPosition());
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sphere, GetSpawnPosition(EditorPrimitiveType.Sphere));
+                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                }
+                ImGui.Separator();
+                if (ImGui.MenuItem("Add Camera", "Ctrl+4"))
+                {
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Camera, GetSpawnPosition(EditorPrimitiveType.Camera));
+                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                }
+                if (ImGui.MenuItem("Add Light", "Ctrl+5"))
+                {
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Light, GetSpawnPosition(EditorPrimitiveType.Light));
+                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                }
+                if (ImGui.MenuItem("Add Sky", "Ctrl+6"))
+                {
+                    var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sky, GetSpawnPosition(EditorPrimitiveType.Sky));
                     if (obj != null) Bridge.SelectedEditorObject = obj;
                 }
                 ImGui.Separator();
@@ -690,15 +706,12 @@ public class IDE : IDisposable
     }
 
     /// <summary>
-    /// Get a spawn position slightly in front of the camera, or a default offset if no camera is set.
+    /// Get a spawn position aligned to the editor grid (Z=0, X snapped to grid squares),
+    /// slightly in front of the camera, or a default offset if no camera is set.
     /// </summary>
-    private Vector3 GetSpawnPosition()
+    private Vector3 GetSpawnPosition(EditorPrimitiveType type)
     {
-        var cam = Bridge.Camera;
-        if (cam != null)
-        {
-            return cam.Position + cam.Front * 5f;
-        }            return new Vector3(0f, 1f, -5f);
+        return IDEBridge.GetGridSpawnPosition(Bridge.Camera, type);
     }
 
     /// <summary>Whether the IDE overlay is currently active. Always true since F2 toggle is disabled.</summary>

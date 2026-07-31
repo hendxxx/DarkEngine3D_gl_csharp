@@ -23,6 +23,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public bool IsDragging { get; private set; } = false;
         public bool IsVisible { get; set; } = true;
 
+        /// <summary>Axis currently hovered by the mouse (set by HitTest for visual feedback).</summary>
+        public Axis HoverAxis { get; private set; } = Axis.None;
+
+        /// <summary>The EditorObject currently being dragged (null when not dragging).
+        /// Used by ViewportPanel to record undo for the correct object on drag end.</summary>
+        public EditorObject? DragTarget => _dragTarget;
+
+        // ── Translate snap (movement via gizmo) ──
+        /// <summary>When true, translate drags snap to <see cref="SnapValue"/> world-unit increments.</summary>
+        public bool SnapEnabled { get; set; } = true;
+        /// <summary>Snap increment in world units for translate mode (1 = matches the 1-unit editor grid).</summary>
+        public float SnapValue { get; set; } = 1f;
+
         // ── Gizmo dimensions (in viewport pixels) ──
         private const float GizmoRadius = 75f;
         private const float AxisLength = 58f;
@@ -41,6 +54,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private static readonly Vector3 ColorActive = new(1f, 1f, 0.2f);
         private static readonly Vector3 ColorCenter = new(0.55f, 0.55f, 0.65f);
         private static readonly Vector3 ColorCenterActive = new(0.7f, 0.7f, 1.0f);
+        // ── Hover highlight: brighter, whitened version of each axis color ──
+        private static readonly Vector3 ColorHoverX = new(1f, 0.6f, 0.5f);
+        private static readonly Vector3 ColorHoverY = new(0.55f, 1f, 0.5f);
+        private static readonly Vector3 ColorHoverZ = new(0.5f, 0.75f, 1f);
+
+        /// <summary>Pick the color for an axis: active while dragging, hover-brightened while
+        /// the mouse hovers it, otherwise its base color.</summary>
+        private Vector3 AxisColor(Axis axis, Vector3 baseColor, Vector3 hoverColor)
+        {
+            if (_dragAxis == axis) return ColorActive;
+            if (HoverAxis == axis && !IsDragging) return hoverColor;
+            return baseColor;
+        }
 
         // ── Shared GL resources (lazy init) ──
         private static uint _vao = 0;
@@ -52,6 +78,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private Vector2 _dragStartMouse;
         private Vector3 _dragStartValue;
         private Vector3 _dragObjPos;
+        private Vector3? _dragStartPivot;   // pivot override captured once at drag start (avoids cumulative drift)
         private EditorObject? _dragTarget;
 
         // ── Gizmo never clips to bottom; it follows the object's projected screen position ──
@@ -130,6 +157,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // Project the object's world position to screen coordinates
             Vector2 center = ProjectToScreen(camera, worldPosition, viewportWidth, viewportHeight);
 
+            // ── Halo backing: a translucent dark disc behind the gizmo so it pops
+            // against bright scenes and overlapping geometry. Drawn first (behind). ──
+            float haloR = RingRadius * 1.05f * Size;
+            if (Mode == GizmoMode.Translate || Mode == GizmoMode.Scale)
+                haloR = AxisLength * 0.72f * Size;
+            DrawCircle(center, haloR, 36, new Vector3(0.06f, 0.06f, 0.10f), colorLoc);
+            // Outer rim ring to clearly mark the selected gizmo bounds
+            DrawRing(center, haloR + 2.5f, 3.0f, 48, new Vector3(1f, 1f, 1f) * 0.9f, colorLoc);
+
             switch (Mode)
             {
                 case GizmoMode.Translate:
@@ -155,9 +191,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private void DrawTranslateGizmo(Vector2 center, int colorLoc)
         {
             float s = Size;
-            Vector3 colX = _dragAxis == Axis.X ? ColorActive : ColorX;
-            Vector3 colY = _dragAxis == Axis.Y ? ColorActive : ColorY;
-            Vector3 colZ = _dragAxis == Axis.Z ? ColorActive : ColorZ;
+            Vector3 colX = AxisColor(Axis.X, ColorX, ColorHoverX);
+            Vector3 colY = AxisColor(Axis.Y, ColorY, ColorHoverY);
+            Vector3 colZ = AxisColor(Axis.Z, ColorZ, ColorHoverZ);
 
             // Z axis (into screen) — drawn first so it's behind others
             Vector2 zDir = Vector2.Normalize(new Vector2(-1, -1));
@@ -180,9 +216,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private void DrawRotateGizmo(Vector2 center, int colorLoc)
         {
             float s = Size;
-            Vector3 colX = _dragAxis == Axis.X ? ColorActive : ColorX;
-            Vector3 colY = _dragAxis == Axis.Y ? ColorActive : ColorY;
-            Vector3 colZ = _dragAxis == Axis.Z ? ColorActive : ColorZ;
+            Vector3 colX = AxisColor(Axis.X, ColorX, ColorHoverX);
+            Vector3 colY = AxisColor(Axis.Y, ColorY, ColorHoverY);
+            Vector3 colZ = AxisColor(Axis.Z, ColorZ, ColorHoverZ);
 
             float r = RingRadius * s;
 
@@ -204,9 +240,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private void DrawScaleGizmo(Vector2 center, int colorLoc)
         {
             float s = Size;
-            Vector3 colX = _dragAxis == Axis.X ? ColorActive : ColorX;
-            Vector3 colY = _dragAxis == Axis.Y ? ColorActive : ColorY;
-            Vector3 colZ = _dragAxis == Axis.Z ? ColorActive : ColorZ;
+            Vector3 colX = AxisColor(Axis.X, ColorX, ColorHoverX);
+            Vector3 colY = AxisColor(Axis.Y, ColorY, ColorHoverY);
+            Vector3 colZ = AxisColor(Axis.Z, ColorZ, ColorHoverZ);
 
             // Z shaft (into screen)
             Vector2 zDir = Vector2.Normalize(new Vector2(-1, -1));
@@ -450,6 +486,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Vector2 center = ProjectToScreen(camera, worldPosition, viewportWidth, viewportHeight);
             float hitRadius = HandleRadius * 2.5f * s;
 
+            Axis result = Axis.None;
+
             if (Mode == GizmoMode.Translate)
             {
                 Vector2 xEnd = center + new Vector2(AxisLength * s, 0);
@@ -461,11 +499,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 float dz = PointToSegmentDist(mouseScreen, center, zEnd);
 
                 float minDist = MathF.Min(dx, MathF.Min(dy, dz));
-                if (minDist > hitRadius) return Axis.None;
-
-                if (dx <= dy && dx <= dz) return Axis.X;
-                if (dy <= dz) return Axis.Y;
-                return Axis.Z;
+                if (minDist <= hitRadius)
+                {
+                    if (dx <= dy && dx <= dz) result = Axis.X;
+                    else if (dy <= dz) result = Axis.Y;
+                    else result = Axis.Z;
+                }
             }
             else if (Mode == GizmoMode.Scale)
             {
@@ -478,30 +517,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 float dz = Vector2.Distance(mouseScreen, zEnd);
 
                 float minDist = MathF.Min(dx, MathF.Min(dy, dz));
-                if (minDist > CubeHalfSize * 2.5f * s) return Axis.None;
-
-                if (dx <= dy && dx <= dz) return Axis.X;
-                if (dy <= dz) return Axis.Y;
-                return Axis.Z;
+                if (minDist <= CubeHalfSize * 2.5f * s)
+                {
+                    if (dx <= dy && dx <= dz) result = Axis.X;
+                    else if (dy <= dz) result = Axis.Y;
+                    else result = Axis.Z;
+                }
             }
             else if (Mode == GizmoMode.Rotate)
             {
                 float dist = Vector2.Distance(mouseScreen, center);
                 float ringDist = MathF.Abs(dist - RingRadius * s);
-                if (ringDist > RingThickness * 3f * s) return Axis.None;
+                if (ringDist <= RingThickness * 3f * s)
+                {
+                    // Determine which ring by angle
+                    Vector2 offset = mouseScreen - center;
+                    float angle = MathF.Atan2(offset.Y, offset.X);
+                    float normAngle = (angle / MathF.PI + 1f) % 2f;
 
-                // Determine which ring by angle
-                Vector2 offset = mouseScreen - center;
-                float angle = MathF.Atan2(offset.Y, offset.X);
-                float normAngle = (angle / MathF.PI + 1f) % 2f;
-
-                // Segment the circle into 3 regions
-                if (normAngle < 0.33f || normAngle >= 1.67f) return Axis.X;
-                if (normAngle >= 0.67f && normAngle < 1.33f) return Axis.Y;
-                return Axis.Z;
+                    // Segment the circle into 3 regions
+                    if (normAngle < 0.33f || normAngle >= 1.67f) result = Axis.X;
+                    else if (normAngle >= 0.67f && normAngle < 1.33f) result = Axis.Y;
+                    else result = Axis.Z;
+                }
             }
 
-            return Axis.None;
+            HoverAxis = result;
+            return result;
         }
 
         /// <summary>Distance from a point to a line segment.</summary>
@@ -528,6 +570,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _dragStartMouse = mouseScreen;
             _dragTarget = target;
             _dragObjPos = target.Position;
+            _dragStartPivot = target.GizmoPivotOverride;
 
             switch (Mode)
             {
@@ -575,7 +618,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     Axis.Z => Vector3.UnitZ,
                     _ => Vector3.Zero,
                 };
-                target.Position = _dragStartValue + axisDir * proj;
+                Vector3 newPos = _dragStartValue + axisDir * proj;
+
+                // Snap only the dragged axis so movement stays aligned to the grid
+                if (SnapEnabled && SnapValue > 0f)
+                {
+                    switch (_dragAxis)
+                    {
+                        case Axis.X: newPos.X = SnapAxis(newPos.X); break;
+                        case Axis.Y: newPos.Y = SnapAxis(newPos.Y); break;
+                        case Axis.Z: newPos.Z = SnapAxis(newPos.Z); break;
+                    }
+                }
+                target.Position = newPos;
+
+                // Keep the gizmo pivot override attached to the object while translating:
+                // shift the pivot (captured at drag start) by the same (snapped) delta so the
+                // gizmo stays where the user placed it relative to the object and the handle
+                // keeps tracking the mouse.
+                if (_dragStartPivot is Vector3 startPivot)
+                {
+                    target.GizmoPivotOverride = startPivot + (newPos - _dragStartValue);
+                }
             }
             else if (Mode == GizmoMode.Scale)
             {
@@ -603,6 +667,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
         }
 
+        /// <summary>Snap a value to the nearest multiple of <see cref="SnapValue"/>.</summary>
+        private float SnapAxis(float value) => MathF.Round(value / SnapValue) * SnapValue;
+
         /// <summary>End the current drag operation.</summary>
         public void EndDrag()
         {
@@ -610,6 +677,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             IsDragging = false;
             ActiveAxis = Axis.None;
             _dragTarget = null;
+            _dragStartPivot = null;
         }
     }
 }

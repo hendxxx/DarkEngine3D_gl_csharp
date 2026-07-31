@@ -100,6 +100,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public bool IsFlyMode=false;
 
+        /// <summary>When true, fly-mode mouse look stays active without holding CTRL.
+        /// Toggled by the "Fly" button in the viewport toolbar.</summary>
+        public bool FlyMouseLook = false;
+
         // ── Mouse look toggle: only active when CTRL is held ──
         private bool _mouseLookWasActive = false;
 
@@ -262,16 +266,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
-        /// <summary>Free-fly camera with WASD + mouse look (CTRL to activate mouse look). Used by IDE viewport.</summary>
+        /// <summary>Free-fly camera with WASD + mouse look (button toggle, or hold CTRL for mouse look).
+        /// Pressing ESC cancels fly mouse-look. While CTRL is held, both mouse-look and WASD movement
+        /// are suppressed so editor shortcuts (Ctrl+D duplicate, Ctrl+Z undo, etc.) don't move the camera.</summary>
         public void SetCameraFlyMode(nint window, float dt, bool processInput = true)
         {
             if (processInput)
             {
-                // ── Mouse look: only active when CTRL is held ──
+                // ── ESC: cancel fly mouse-look toggle ──
+                if (Keyboard.IsKeyPressed(window, Const.GLFW_KEY_ESCAPE))
+                {
+                    FlyMouseLook = false;
+                    if (_mouseLookWasActive)
+                    {
+                        Mouse.ShowMouse(true);
+                        Mouse.ResetState();
+                        _mouseLookWasActive = false;
+                    }
+                }
+
+                // CTRL is reserved for editor shortcuts (Ctrl+D duplicate, Ctrl+Z undo, ...).
+                // When held, suppress mouse-look AND movement so shortcuts don't move the camera.
                 bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
                                 Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
 
-                if (ctrlHeld)
+                // ── Mouse look: only active when the Fly toggle is ON (and CTRL not held) ──
+                if (FlyMouseLook && !ctrlHeld)
                 {
                     // Use configurable sensitivity from CameraConfig
                     float sens = Config.CameraConfig.FlyMouseSensitivity;
@@ -301,28 +321,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // ── Update vectors BEFORE movement so Front/Right are correct ──
                 UpdateCameraVectorsFly();
 
-                // Movement (WASD + scroll) — always active regardless of CTRL
-                Vector3 move = Vector3.Zero;
-
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                    move += Front;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
-                    move -= Front;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                    move -= Right;
-                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                    move += Right;
-
-                if (move.LengthSquared() > 0)
-                    move = Vector3.Normalize(move);
-
-                Position += move * FlySpeed * dt;
-
-                // Scroll wheel for zoom (move camera along Front direction)
-                if (Mouse.ScrollY != 0)
+                // Movement (WASD + scroll) — suppressed while CTRL is held (editor shortcuts)
+                if (!ctrlHeld)
                 {
-                    Position += Front * Mouse.ScrollY * FlySpeed * dt * 2f;
-                    Mouse.ResetScroll();
+                    Vector3 move = Vector3.Zero;
+
+                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                        move += Front;
+                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+                        move -= Front;
+                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
+                        move -= Right;
+                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                        move += Right;
+
+                    if (move.LengthSquared() > 0)
+                        move = Vector3.Normalize(move);
+
+                    Position += move * FlySpeed * dt;
+
+                    // Scroll wheel for zoom (move camera along Front direction)
+                    if (Mouse.ScrollY != 0)
+                    {
+                        Position += Front * Mouse.ScrollY * FlySpeed * dt * 2f;
+                        Mouse.ResetScroll();
+                    }
                 }
             }
             else

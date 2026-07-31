@@ -14,7 +14,10 @@ public enum EditorPrimitiveType
     Plane,
     Box,
     Sphere,
-    GlbReference
+    GlbReference,
+    Camera,
+    Light,
+    Sky
 }
 
 /// <summary>
@@ -42,6 +45,24 @@ public unsafe class EditorObject
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
     public string? GlbFilePath { get; set; } = null;
 
+    // ── Camera (only used when PrimitiveType == Camera) ──
+    /// <summary>Vertical FOV in degrees for the placed camera.</summary>
+    public float CameraFov { get; set; } = 60f;
+    /// <summary>Near clip distance for the placed camera.</summary>
+    public float CameraNear { get; set; } = 0.1f;
+    /// <summary>Far clip distance for the placed camera.</summary>
+    public float CameraFar { get; set; } = 500f;
+
+    // ── Light (only used when PrimitiveType == Light) ──
+    /// <summary>Direction the light points toward (world space, not normalized).</summary>
+    public Vector3 LightDirection { get; set; } = new(-0.5f, 0.8f, -0.3f);
+    /// <summary>Brightness multiplier for the light color.</summary>
+    public float LightIntensity { get; set; } = 1f;
+
+    // ── Sky (only used when PrimitiveType == Sky) ──
+    /// <summary>Time of day in hours (0..24). 12 = midday.</summary>
+    public float SkyTimeOfDay { get; set; } = 12f;
+
     // ── Internal rendering resources (lazy-init) ──
     private Object3D? _object3D;
     private uint _textureID = 0;
@@ -54,6 +75,11 @@ public unsafe class EditorObject
     public Vector3 LastGizmoPosition { get; set; }
     public Vector3 LastGizmoRotation { get; set; }
     public Vector3 LastGizmoScale { get; set; }
+
+    // ── Gizmo pivot override snapshot (so undo/redo also restores the pivot position) ──
+    /// <summary>Snapshot of <see cref="GizmoPivotOverride"/> taken at gizmo drag start,
+    /// used by undo/redo to prevent the gizmo floating detached from the object.</summary>
+    public Vector3? LastGizmoPivot { get; set; }
 
     // ── Per-object gizmo pivot override (set by middle-click in viewport) ──
     /// <summary>When set, the gizmo renders at this world position instead of the object's Position.
@@ -74,13 +100,21 @@ public unsafe class EditorObject
         if (name != null)
             Name = name;
         // Set reasonable defaults based on type
-        Scale = type == EditorPrimitiveType.Plane ? new Vector3(5f, 0.05f, 5f) : Vector3.One;
+        Scale = type switch
+        {
+            EditorPrimitiveType.Plane => new Vector3(25f, 0.05f, 25f),
+            EditorPrimitiveType.Camera => new Vector3(0.5f, 0.4f, 0.6f),
+            _ => Vector3.One,
+        };
         Color = type switch
         {
             EditorPrimitiveType.Plane => new Vector3(0.3f, 0.6f, 0.3f),
             EditorPrimitiveType.Box => new Vector3(0.8f, 0.4f, 0.2f),
             EditorPrimitiveType.Sphere => new Vector3(0.2f, 0.4f, 0.8f),
             EditorPrimitiveType.GlbReference => new Vector3(0.6f, 0.6f, 0.8f),
+            EditorPrimitiveType.Camera => new Vector3(0.2f, 0.7f, 0.8f),
+            EditorPrimitiveType.Light => new Vector3(1.0f, 0.85f, 0.3f),
+            EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
     }
@@ -167,6 +201,33 @@ public unsafe class EditorObject
                 _vertexCache = verts;
                 break;
             }
+            case EditorPrimitiveType.Camera:
+            {
+                // Camera marker: small box so it's visible & selectable in the viewport
+                var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color);
+                _object3D = new Object3D(0, 0, 0);
+                _object3D.Generate(shader, verts);
+                _vertexCache = verts;
+                break;
+            }
+            case EditorPrimitiveType.Light:
+            {
+                // Light marker: small sphere (sun icon)
+                var verts = Object3D.CreateSphereVertices(0.5f, Color);
+                _object3D = new Object3D(0, 0, 0);
+                _object3D.Generate(shader, verts);
+                _vertexCache = verts;
+                break;
+            }
+            case EditorPrimitiveType.Sky:
+            {
+                // Sky marker: small box so it's visible & selectable (the real sky is rendered separately)
+                var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color);
+                _object3D = new Object3D(0, 0, 0);
+                _object3D.Generate(shader, verts);
+                _vertexCache = verts;
+                break;
+            }
             case EditorPrimitiveType.GlbReference:
                 // glb objects are handled by EditorObjectManager externally
                 break;
@@ -203,9 +264,8 @@ public unsafe class EditorObject
             var model = WorldMatrix;
             GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
 
-            // Disable face culling during primitive rendering
-            // (primitives use CW winding which would be back-face culled with GL_CCW)
-            OpenGL.EnableFaceCulling(false);
+            // Primitives are CCW-wound, so the scene's culling/winding state (applied via
+            // SceneRenderProperties) is respected here — do NOT force culling on/off.
 
             // Set useTexture=0 so fragment shader uses vertex color instead of textures
             int useTexLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "useTexture");
@@ -215,9 +275,6 @@ public unsafe class EditorObject
             GL.BindVertexArray(_object3D.VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
             GL.BindVertexArray(0);
-
-            // Re-enable face culling
-            OpenGL.EnableFaceCulling(true);
         }
 
     /// <summary>
@@ -288,7 +345,8 @@ public unsafe class EditorObject
     /// First pass of the inverted-hull outline technique.
     /// Renders the object to the stencil buffer only (no color output)
     /// with depth test enabled. Stencil is set to 1 where depth passes.
-    /// Face culling is disabled (Editor primitives use CW winding).
+    /// Face culling is intentionally disabled so both front and back faces
+    /// write to the stencil (needed for a complete silhouette outline).
     /// </summary>
     public void DrawOutlineStencil(Camera camera)
     {
@@ -313,7 +371,7 @@ public unsafe class EditorObject
         GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
 
         // Disable face culling so all triangles write to stencil
-        // (Editor primitives use CW winding, culling would discard them)
+        // (both front and back faces needed for a complete silhouette)
         OpenGL.EnableFaceCulling(false);
 
         GL.BindVertexArray(_object3D.VAO);
@@ -438,7 +496,7 @@ public unsafe class EditorObject
         {
             Position = position,
             Scale = type == EditorPrimitiveType.Plane
-                ? new Vector3(5f, 0.05f, 5f)
+                ? new Vector3(25f, 0.05f, 25f)
                 : Vector3.One,
             CastShadow = true,
             IsVisible = true,
@@ -447,6 +505,7 @@ public unsafe class EditorObject
         obj.LastGizmoPosition = obj.Position;
         obj.LastGizmoRotation = obj.RotationEuler;
         obj.LastGizmoScale = obj.Scale;
+        obj.LastGizmoPivot = obj.GizmoPivotOverride;
         return obj;
     }
 

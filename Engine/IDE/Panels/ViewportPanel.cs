@@ -1332,33 +1332,105 @@ ImGui.PushStyleColor(ImGuiCol.Button, gizmoMode == gi
                         if (gi < 2) ImGui.SameLine();
                     }
 
+                    // ── Freefly mouse-look toggle (replaces holding CTRL) ──
+                    ImGui.SameLine();
+                    ImGui.TextDisabled("|");
+                    ImGui.SameLine();
+                    bool flyLook = _bridge.Camera?.FlyMouseLook ?? false;
+                    ImGui.PushStyleColor(ImGuiCol.Button, flyLook
+                        ? new Vector4(0.20f, 0.45f, 0.75f, 1f)
+                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
+                    if (ImGui.Button(flyLook ? "✈ Fly ON" : "✈ Fly"))
+                    {
+                        if (_bridge.Camera != null)
+                            _bridge.Camera.FlyMouseLook = !_bridge.Camera.FlyMouseLook;
+                    }
+                    ImGui.PopStyleColor(1);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip(flyLook
+                            ? "Freefly mouse-look ON — click to turn off"
+                            : "Freefly mouse-look OFF — click to turn on (WASD + mouse look)");
+
+                    // ── Gizmo translate snap toggle ──
+                    ImGui.SameLine();
+                    bool gizmoSnap = _bridge.EditorGizmo?.SnapEnabled ?? false;
+                    ImGui.PushStyleColor(ImGuiCol.Button, gizmoSnap
+                        ? new Vector4(0.15f, 0.55f, 0.30f, 1f)
+                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
+                    if (ImGui.Button(gizmoSnap ? "Snap 1u" : "Snap off"))
+                    {
+                        if (_bridge.EditorGizmo != null)
+                            _bridge.EditorGizmo.SnapEnabled = !gizmoSnap;
+                    }
+                    ImGui.PopStyleColor(1);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Toggle gizmo movement snap (1 world unit grid)");
+
                     // Primitive creation buttons
                     ImGui.SameLine();
                     ImGui.TextDisabled("|");
                     ImGui.SameLine();
 if (ImGui.Button("+Box"))
                     {
-                        var cam = _bridge.Camera;
-                        var pos = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
+                        var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Box);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Box, pos);
                         if (obj != null) _bridge.SelectedEditorObject = obj;
                     }
                     ImGui.SameLine();
 if (ImGui.Button("+Sphere"))
                     {
-                        var cam = _bridge.Camera;
-                        var pos = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
+                        var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Sphere);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sphere, pos);
                         if (obj != null) _bridge.SelectedEditorObject = obj;
                     }
 ImGui.SameLine();
                     if (ImGui.Button("+Plane"))
                     {
-                        var cam = _bridge.Camera;
-                        var pos = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
+                        var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Plane);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Plane, pos);
                         if (obj != null) _bridge.SelectedEditorObject = obj;
                     }
+
+                    // ── Camera / Light / Sky scene elements ──
+                    ImGui.SameLine();
+                    if (ImGui.Button("+Cam"))
+                    {
+                        var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Camera);
+                        var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Camera, pos);
+                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Add a Camera marker (eye-height spawn, teal)");
+                    ImGui.SameLine();
+                    if (ImGui.Button("+Light"))
+                    {
+                        var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Light);
+                        var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Light, pos);
+                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Add a Light marker (overrides editor sun color/direction, yellow)");
+                    ImGui.SameLine();
+                    if (ImGui.Button("+Sky"))
+                    {
+                        var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Sky);
+                        var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sky, pos);
+                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Add a Sky marker (renders the procedural skybox in the viewport, blue)");
+
+                    // ── Duplicate selected 3D object ──
+                    ImGui.SameLine();
+                    ImGui.BeginDisabled(_bridge.SelectedEditorObject == null);
+                    if (ImGui.Button("⧉ Duplicate"))
+                    {
+                        var dup = _bridge.EditorObjectManager.Duplicate(_bridge.SelectedEditorObject!);
+                        if (dup != null) _bridge.SelectedEditorObject = dup;
+                    }
+                    ImGui.EndDisabled();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Duplicate the selected 3D object");
                 }
             } // end toolbar block
         } // end if (!_fullscreenMode)
@@ -1842,7 +1914,10 @@ ImGui.SameLine();
                 bool mouseReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
                 if (!mouseDown && !mouseReleased)
                 {
+                    var draggedObj = _bridge.EditorGizmo.DragTarget;
                     _bridge.EditorGizmo.EndDrag();
+                    // Record undo for the partial movement that happened before the interruption
+                    _bridge.OnGizmoDragEnded?.Invoke(draggedObj!);
                     Console.WriteLine("[Viewport] Gizmo drag reset (interrupted)");
                 }
             }
@@ -1938,49 +2013,54 @@ ImGui.SameLine();
             // Note: does NOT check SelectedUIElement==null — clicking the viewport should always
             // attempt to select a 3D/editor object, even when a UI element is selected in the Hierarchy.
             // If a 3D object is hit, SelectedUIElement is cleared below (line ~1895).
+            // IMPORTANT: If the click hits the currently-selected object's gizmo, the gizmo WINS
+            // (selection stays on the already-selected object) so you can drag it even when it
+            // overlaps another object. Only when the gizmo is NOT hit does the nearest ray win.
             if (!_previewMode && _bridge.EditorObjectManager != null && _bridge.Camera != null
                 && _bridge.IsViewportClicked
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
                 var cam = _bridge.Camera;
                 var mgr = _bridge.EditorObjectManager;
-                // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
-                float clickY = _bridge.SceneTextureHeight - _bridge.ViewportClickY;
-                cam.ScreenToRay(
-                    _bridge.ViewportClickX, clickY,
-                    _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
-                    out Vector3 rayOrigin, out Vector3 rayDir);
 
-                if (mgr.Raycast(rayOrigin, rayDir, out float hitDist, out Vector3 hitPoint) is EditorObject hitObj)
+                // ── Step 1: gizmo priority — if the click lands on the selected object's
+                // gizmo, keep the current selection (gizmo wins over overlapping objects).
+                bool gizmoClaimedClick = false;
+                if (_bridge.SelectedEditorObject != null && _bridge.EditorGizmo != null)
                 {
-                    // Don't clear gizmo pivot — each object stores its own
-                    _bridge.SelectedEditorObject = hitObj;
-                    _bridge.SelectedUIElement = null;
-                    _bridge.SelectedUIElements.Clear();
-                    _bridge.SelectedObject = null;
-                    _bridge.SelectedAgent = null;
-                    Console.WriteLine($"[Viewport] Raycast selected 3D object: {hitObj.Name}");
+                    int vpwG = _bridge.SceneTextureWidth > 0 ? _bridge.SceneTextureWidth : 1920;
+                    int vphG = _bridge.SceneTextureHeight > 0 ? _bridge.SceneTextureHeight : 1080;
+                    // Flip Y: ImGui Y=0=top → GL Y=0=bottom
+                    float glClickYG = vphG - _bridge.ViewportClickY;
+                    Vector3 gizmoPosG = _bridge.GizmoOverridePosition ?? _bridge.SelectedEditorObject.Position;
+                    var gizmoAxisG = _bridge.EditorGizmo.HitTest(
+                        new Vector2(_bridge.ViewportClickX, glClickYG),
+                        cam, gizmoPosG, vpwG, vphG);
+                    gizmoClaimedClick = gizmoAxisG != TransformGizmo.Axis.None;
                 }
-                else if (_bridge.SelectedEditorObject != null)
+
+                if (!gizmoClaimedClick)
                 {
-                    // Check if gizmo was hit before deselecting
-                    bool gizmoHit = false;
-                    var gizmo = _bridge.EditorGizmo;
-                    if (gizmo != null && _bridge.Camera != null)
+                    // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
+                    float clickY = _bridge.SceneTextureHeight - _bridge.ViewportClickY;
+                    cam.ScreenToRay(
+                        _bridge.ViewportClickX, clickY,
+                        _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
+                        out Vector3 rayOrigin, out Vector3 rayDir);
+
+                    if (mgr.Raycast(rayOrigin, rayDir, out float hitDist, out Vector3 hitPoint) is EditorObject hitObj)
                     {
-                        int vpw = _bridge.SceneTextureWidth > 0 ? _bridge.SceneTextureWidth : 1920;
-                        int vph = _bridge.SceneTextureHeight > 0 ? _bridge.SceneTextureHeight : 1080;
-                        // Flip Y: ImGui Y=0=top → GL Y=0=bottom
-                        float glClickY = vph - _bridge.ViewportClickY;
-                        Vector3 gizmoPos = _bridge.GizmoOverridePosition ?? _bridge.SelectedEditorObject.Position;
-                        var hitAxis = gizmo.HitTest(
-                            new Vector2(_bridge.ViewportClickX, glClickY),
-                            _bridge.Camera, gizmoPos,
-                            vpw, vph);
-                        gizmoHit = hitAxis != TransformGizmo.Axis.None;
+                        // Don't clear gizmo pivot — each object stores its own
+                        _bridge.SelectedEditorObject = hitObj;
+                        _bridge.SelectedUIElement = null;
+                        _bridge.SelectedUIElements.Clear();
+                        _bridge.SelectedObject = null;
+                        _bridge.SelectedAgent = null;
+                        Console.WriteLine($"[Viewport] Raycast selected 3D object: {hitObj.Name}");
                     }
-                    if (!gizmoHit)
+                    else if (_bridge.SelectedEditorObject != null)
                     {
+                        // No object hit and no gizmo hit → deselect
                         _bridge.SelectedEditorObject = null;
                         Console.WriteLine("[Viewport] Deselected 3D object (empty click)");
                     }
@@ -2017,6 +2097,8 @@ ImGui.SameLine();
                     if (leftReleased)
                     {
                         gizmo.EndDrag();
+                        // Record undo for the gizmo transform change
+                        _bridge.OnGizmoDragEnded?.Invoke(selected);
                         Console.WriteLine($"[Viewport] Gizmo drag ended on '{selected.Name}'");
                     }
                 }
@@ -2027,9 +2109,15 @@ ImGui.SameLine();
                     var hitAxis = gizmo.HitTest(mouseScreen, cam, gizmoPos2, vpw, vph);
                     if (leftClicked && hitAxis != TransformGizmo.Axis.None)
                     {
-                        // Clear per-object gizmo pivot so the gizmo follows the object after drag
-                        if (selected != null)
-                            selected.GizmoPivotOverride = null;
+                        // Keep the per-object gizmo pivot override so the gizmo stays where the
+                        // user moved it (middle-click) instead of snapping back to the object's
+                        // default position when manipulation starts. The override is translated
+                        // along with the object in TransformGizmo.UpdateDrag so it stays attached.
+                        // Snapshot transform + pivot override BEFORE dragging so undo can restore them
+                        selected.LastGizmoPosition = selected.Position;
+                        selected.LastGizmoRotation = selected.RotationEuler;
+                        selected.LastGizmoScale = selected.Scale;
+                        selected.LastGizmoPivot = selected.GizmoPivotOverride;
                         gizmo.StartDrag(hitAxis, mouseScreen, selected);
                         Console.WriteLine($"[Viewport] Gizmo drag started on '{selected.Name}' axis={hitAxis}");
                     }

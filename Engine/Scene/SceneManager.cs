@@ -32,6 +32,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private Camera? _editorCamera;
         private Lights? _editorLights;
 
+        // ── Editor skybox (rendered when a Sky editor object exists in the active scene) ──
+        private Skybox? _editorSkybox;
+        private Texture[]? _editorSkyTextures;
+        private bool _editorSkyboxInitFailed = false;
+
         // ── Editor grid (ground plane + axis helpers for viewport when no scene is active) ──
         private uint _editorGridVAO = 0;
         private uint _editorGridVBO = 0;
@@ -346,12 +351,78 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
                     GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
 
-                    // ── Apply editor scene's wireframe mode (viewport only) ──
-                    GL.PolygonMode(Const.GL_FRONT_AND_BACK,
-                        GetEditorSceneWireframe() ? Const.GL_LINE : Const.GL_FILL);
+                    // ── Apply the active editor scene's full render properties (viewport only) ──
+                    // This includes background color, face culling (None/Back/Front/Front&Back),
+                    // winding order (CCW/CW), wireframe mode, depth test and blending, so the
+                    // Inspector's render-property changes take effect in real-time.
+                    var editorProps = GetEditorSceneRenderProperties();
+                    if (editorProps != null)
+                    {
+                        editorProps.Apply();
+                    }
+                    else
+                    {
+                        // Fallback: ensure a sane default if no editor scene is configured.
+                        GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
+                        GL.Enable(Const.GL_CULL_FACE);
+                        GL.CullFace(Const.GL_BACK);
+                        GL.FrontFace(Const.GL_CCW);
+                    }
 
                     // ── Render editor grid (ground plane + axis helpers) ──
                     GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
+
+                    // ── Sky object: render the procedural skybox in the editor viewport ──
+                    // Also apply a Light object's direction/color to the editor lights so the
+                    // user can see their lighting setup live.
+                    if (bridge?.EditorObjectManager != null)
+                    {
+                        EditorObject? skyObj = null;
+                        EditorObject? lightObj = null;
+                        foreach (var obj in bridge.EditorObjectManager.Objects)
+                        {
+                            if (skyObj == null && obj.PrimitiveType == EditorPrimitiveType.Sky) skyObj = obj;
+                            if (lightObj == null && obj.PrimitiveType == EditorPrimitiveType.Light) lightObj = obj;
+                        }
+
+                        // ── Light override: copy the first Light object's settings to the editor lights ──
+                        if (_editorLights != null)
+                        {
+                            if (lightObj != null)
+                            {
+                                _editorLights.SunDirOverride = lightObj.LightDirection;
+                                _editorLights.LightColorOverride = lightObj.Color;
+                                _editorLights.LightIntensity = lightObj.LightIntensity;
+                            }
+                            else
+                            {
+                                _editorLights.SunDirOverride = null;
+                                _editorLights.LightColorOverride = null;
+                                _editorLights.LightIntensity = 1f;
+                            }
+
+                            // Sky object drives the time of day (12h = midday)
+                            if (skyObj != null)
+                            {
+                                float hours = Math.Clamp(skyObj.SkyTimeOfDay, 0f, 24f);
+                                _editorLights.WorldTime = (hours / 24f) * (MathF.PI * 2f);
+                            }
+
+                            // Ensure lighting uniforms are computed for the editor lights
+                            _editorLights.Update(dt, _editorCamera.Position);
+                        }
+
+                        // ── Skybox render (behind the grid, drawn first) ──
+                        if (skyObj != null)
+                        {
+                            EnsureEditorSkybox();
+                            if (_editorSkybox != null && _editorSkyTextures != null && _editorLights != null)
+                            {
+                                _editorSkybox.Draw(_editorCamera, _editorLights, dt, _editorSkyTextures, null);
+                            }
+                        }
+                    }
+
                     RenderEditorGrid();
 
                     // ── Render editor 3D objects ──
@@ -568,8 +639,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// Render the editor ground-plane grid centered on the camera's XZ position.
         /// Vertices are regenerated each frame so the grid always extends equally
         /// in all directions from the camera (truly "infinite" feel).
-        /// The grid center is snapped to the nearest integer so lines align with
-        /// world-space integer coordinates. Axes stay at world origin.
+        /// Lines are offset by 0.5 so they sit on half-integer coordinates: any NxN plane
+        /// centered at an integer position spans -N/2..N/2 and covers exactly NxN grid squares.
+        /// Axes stay at world origin.
         /// </summary>
         private void RenderEditorGrid()
         {
@@ -595,10 +667,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             GL.UniformMatrix4fv(projLoc, 1, false, &projMatrix.M11);
             GL.UniformMatrix4fv(modelLoc, 1, false, &ident.M11);
 
-            // ── Generate grid vertices centered on camera XZ, snapped to integer ──
+            // ── Generate grid vertices centered on camera XZ, snapped to half-integer ──
+            // Offsetting by 0.5 makes each 1-unit grid square centered on an integer position,
+            // so an NxN plane placed at an integer coordinate covers exactly NxN squares.
             const int halfLines = 250;        // 250 lines on each side = 501 total
-            float centerX = MathF.Round(_editorCamera.Position.X);
-            float centerZ = MathF.Round(_editorCamera.Position.Z);
+            float centerX = MathF.Round(_editorCamera.Position.X - 0.5f) + 0.5f;
+            float centerZ = MathF.Round(_editorCamera.Position.Z - 0.5f) + 0.5f;
 
             var verts = new List<float>((halfLines * 2 + 1) * 4 * 3);
             for (int i = -halfLines; i <= halfLines; i++)
@@ -686,6 +760,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 Mouse.ResetState();
         }
 
+        /// <summary>Lazily create the editor skybox + moon texture so the viewport can preview
+        /// the procedural sky when the active scene contains a Sky editor object.
+        /// Texture path matches LoadingScene's moon texture (Artifacts/Textures/moon.png).</summary>
+        private void EnsureEditorSkybox()
+        {
+            if (_editorSkybox != null || _editorSkyboxInitFailed) return;
+            try
+            {
+                _editorSkybox = new Skybox();
+                _editorSkyTextures =
+                [
+                    new Texture("Artifacts/Textures/moon.png"),
+                ];
+                Console.WriteLine("[SceneManager] Editor skybox created.");
+            }
+            catch (Exception ex)
+            {
+                _editorSkybox = null;
+                _editorSkyTextures = null;
+                _editorSkyboxInitFailed = true;
+                Console.WriteLine($"[SceneManager] Editor skybox init failed: {ex.Message}");
+            }
+        }
+
         // ══════════════════════════════════════════════
         //  Selection Highlight (inverted-hull outline)
         // ══════════════════════════════════════════════
@@ -717,29 +815,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             return Vector3.Zero;
         }
 
-        /// <summary>Get the active editor scene's wireframe mode, or false if none is available.</summary>
-        private bool GetEditorSceneWireframe()
+        /// <summary>Get the active editor scene's render properties, or null if none is available.</summary>
+        private SceneRenderProperties? GetEditorSceneRenderProperties()
         {
-            if (_ide == null) return false;
+            if (_ide == null) return null;
             var bridge = _ide.Bridge;
-            if (bridge == null) return false;
+            if (bridge == null) return null;
 
             // Try selected editor scene first
             if (bridge.SelectedEditorScene != null &&
                 bridge.EditorScenes.TryGetValue(bridge.SelectedEditorScene, out var editorScene) &&
                 editorScene.RenderProperties != null)
             {
-                return editorScene.RenderProperties.WireframeMode;
+                return editorScene.RenderProperties;
             }
 
             // Fallback: first editor scene with render properties
             foreach (var (_, es) in bridge.EditorScenes)
             {
                 if (es.RenderProperties != null)
-                    return es.RenderProperties.WireframeMode;
+                    return es.RenderProperties;
             }
 
-            return false;
+            return null;
         }
 
         /// <summary>Stop the main loop gracefully.</summary>

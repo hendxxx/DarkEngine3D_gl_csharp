@@ -1257,6 +1257,9 @@ public class InspectorPanel
                 EditorPrimitiveType.Box => "Box",
                 EditorPrimitiveType.Sphere => "Sphere",
                 EditorPrimitiveType.GlbReference => "GLB Reference",
+                EditorPrimitiveType.Camera => "Camera",
+                EditorPrimitiveType.Light => "Light",
+                EditorPrimitiveType.Sky => "Sky",
                 _ => "Unknown"
             };
             ImGui.Text($"Type: {typeStr}");
@@ -1290,6 +1293,108 @@ public class InspectorPanel
                 editorObj.Scale = scale;
                 editorObj.MarkDirty();
             }
+        }
+
+        // ── Gizmo Pivot ──
+        if (ImGui.CollapsingHeader("Gizmo Pivot", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            bool hasPivot = editorObj.GizmoPivotOverride.HasValue;
+            ImGui.TextColored(hasPivot
+                ? new Vector4(0.3f, 0.85f, 0.4f, 1f)
+                : new Vector4(0.6f, 0.6f, 0.6f, 1f),
+                hasPivot ? "● Custom pivot active" : "○ Using object position");
+
+            // Pivot world position — falls back to the object's position when no override set.
+            // Dragging these inputs activates a custom pivot at the entered world position.
+            var pivot = editorObj.GizmoPivotOverride ?? editorObj.Position;
+            if (ImGui.DragFloat3("Pivot Position", ref pivot, 0.1f))
+            {
+                editorObj.GizmoPivotOverride = pivot;
+                // Note: no MarkDirty() here — the pivot is a gizmo render position and
+                // does not affect the object's mesh/GPU resources.
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("World position where the gizmo renders. Set via middle-click in the viewport or drag here to place it manually.");
+
+            ImGui.Spacing();
+
+            // Snap the pivot to the object's current position
+            if (ImGui.Button("Snap Pivot to Object", new Vector2(-1, 24)))
+            {
+                editorObj.GizmoPivotOverride = editorObj.Position;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Place the gizmo pivot exactly at the object's position");
+
+            // Clear the pivot override so the gizmo follows the object position again
+            ImGui.BeginDisabled(!hasPivot);
+            if (ImGui.Button("Reset Pivot (follow object)", new Vector2(-1, 24)))
+            {
+                editorObj.GizmoPivotOverride = null;
+            }
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Remove the custom pivot — the gizmo follows the object position");
+        }
+
+        // ── Type-specific properties (Camera / Light / Sky) ──
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Camera &&
+            ImGui.CollapsingHeader("Camera Settings", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            float fov = editorObj.CameraFov;
+            if (ImGui.DragFloat("FOV", ref fov, 0.5f, 10f, 120f, "%.1f°"))
+                editorObj.CameraFov = fov;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Vertical field of view in degrees");
+
+            float near = editorObj.CameraNear;
+            if (ImGui.DragFloat("Near Clip", ref near, 0.01f, 0.01f, 10f, "%.2f"))
+                editorObj.CameraNear = near;
+
+            float far = editorObj.CameraFar;
+            if (ImGui.DragFloat("Far Clip", ref far, 1f, 10f, 5000f, "%.0f"))
+                editorObj.CameraFar = far;
+
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),
+                "Marker at eye height. Use as the scene's spawn camera later.");
+            ImGui.Separator();
+        }
+
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Light &&
+            ImGui.CollapsingHeader("Light Settings", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var dir = editorObj.LightDirection;
+            if (ImGui.DragFloat3("Direction", ref dir, 0.05f))
+                editorObj.LightDirection = Vector3.Normalize(dir);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("World direction the light points toward (overrides the editor sun)");
+
+            float intensity = editorObj.LightIntensity;
+            if (ImGui.DragFloat("Intensity", ref intensity, 0.05f, 0f, 10f, "%.2f"))
+                editorObj.LightIntensity = Math.Max(0f, intensity);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Brightness multiplier applied to the light color");
+
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1f),
+                "Color = the object's Color in Visual section below.");
+            ImGui.Separator();
+        }
+
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Sky &&
+            ImGui.CollapsingHeader("Sky Settings", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            float tod = editorObj.SkyTimeOfDay;
+            if (ImGui.SliderFloat("Time of Day", ref tod, 0f, 24f, "%.1f h"))
+                editorObj.SkyTimeOfDay = tod;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Hours since midnight (12 = midday, 18 = sunset, 6 = sunrise)");
+
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),
+                "Skybox renders in the viewport while this object exists in the scene.");
+            ImGui.Separator();
         }
 
         // ── Visual ──

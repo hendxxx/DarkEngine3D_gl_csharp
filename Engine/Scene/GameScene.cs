@@ -290,8 +290,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
 
                     // ── Also raycast against editor objects ──
+                    // Gizmo priority: if the click hit the currently-selected object's gizmo,
+                    // keep that selection (gizmo wins over overlapping objects). Only pick by
+                    // nearest ray when the gizmo was NOT hit.
+                    bool gizmoClaimedClick = false;
+                    if (bridge.SelectedEditorObject != null && bridge.EditorGizmo != null
+                        && bridge.SceneTextureWidth > 0 && bridge.SceneTextureHeight > 0)
+                    {
+                        int vpwG = bridge.SceneTextureWidth;
+                        int vphG = bridge.SceneTextureHeight;
+                        float glClickYG = vphG - bridge.ViewportClickY;
+                        Vector3 gizmoPosG = bridge.GizmoOverridePosition ?? bridge.SelectedEditorObject.Position;
+                        gizmoClaimedClick = bridge.EditorGizmo.HitTest(
+                            new Vector2(bridge.ViewportClickX, glClickYG),
+                            _camera, gizmoPosG, vpwG, vphG) != TransformGizmo.Axis.None;
+                    }
+
                     var editorMgr = bridge.EditorObjectManager;
-                    if (editorMgr != null)
+                    if (editorMgr != null && !gizmoClaimedClick)
                     {
                         float editorHitDist;
                         Vector3 editorHitPoint;

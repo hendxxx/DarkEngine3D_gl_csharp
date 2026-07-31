@@ -34,6 +34,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Vector3 FogColor { get; private set; }
         public Vector3 LightColor { get; private set; }
 
+        // ── Editor light-object overrides ──
+        // When a Light editor object exists in the scene, SceneManager copies its
+        // direction / color / intensity here so Update() uses them instead of the
+        // procedurally-computed sun. Null = fall back to computed values.
+        /// <summary>When set, overrides the computed sun direction (editor Light object).</summary>
+        public Vector3? SunDirOverride { get; set; }
+        /// <summary>When set, overrides the computed light color (editor Light object).</summary>
+        public Vector3? LightColorOverride { get; set; }
+        /// <summary>Brightness multiplier applied to LightColorOverride. Default 1.</summary>
+        public float LightIntensity { get; set; } = 1f;
+
         // smoothing shadowDir: makin besar, makin cepat ngejar matahari
         // Dengan sun speed 30x, nilai 5.0 terlalu agresif → shadow flicker.
         // 0.8 = smooth tapi tetap update cepat saat matahari bergerak
@@ -123,11 +134,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 nightLight * (nightBrightness * tNight);
 
             // ── Horizon fog color (sama persis dengan GetHorizonFogColor di shader) ──
-            Vector3 horizonFogColor = ComputeHorizonFogColor(sunDir);
+            // Computed AFTER the override block below so the fog color follows the
+            // overridden sun direction too (not just the procedural one).
 
             // ── Weather dimming — pow curve for more dramatic overcast effect ──
             float w = Keyboard.GetCurrentWeather();
             float weatherDim = 1.0f / (1.0f + w * 4.0f);
+
+            // ── Editor light-object overrides: replace the procedural sun with the
+            //    user-placed Light object's direction/color if set. Applied BEFORE the
+            //    public properties are assigned so the overridden values flow through to
+            //    the uniforms AND to the property consumers (EditorObjectManager.Draw,
+            //    StaticObjectManager.Draw, ObjectManager.Draw, BillboardManager, Skybox). ──
+            if (SunDirOverride.HasValue)
+            {
+                sunDir = Vector3.Normalize(SunDirOverride.Value);
+                targetShadowDir = sunDir;
+                ShadowDirStable = sunDir;
+            }
+            if (LightColorOverride.HasValue)
+            {
+                lightColor = LightColorOverride.Value * LightIntensity;
+            }
+
+            Vector3 horizonFogColor = ComputeHorizonFogColor(sunDir);
 
             RealSunDir = sunDir;
             SunDir = ShadowDirStable;

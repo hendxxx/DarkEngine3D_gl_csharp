@@ -146,8 +146,31 @@ public class IDEBridge
     /// Set by middle-clicking in the viewport. Persists across selection changes.</summary>
     public Vector3? GizmoOverridePosition => SelectedEditorObject?.GizmoPivotOverride;
 
-    /// <summary>Called by ViewportPanel when a gizmo drag ends (for undo support).</summary>
-    public Action? OnGizmoDragEnded { get; set; }
+    /// <summary>Compute a spawn position aligned to the editor grid for newly created objects.
+    /// Z is forced to 0 and X is snapped to the nearest 1-unit grid column so primitives
+    /// line up with the editor grid squares. Y is set so the object rests on the ground
+    /// (0 for a plane, 0.5 for box/sphere so they sit on the grid plane, 1.5 for cameras at
+    /// eye height, 3 for lights so they float above, 0 for sky markers).</summary>
+    public static Vector3 GetGridSpawnPosition(Camera? cam, EditorPrimitiveType type)
+    {
+        Vector3 spawn = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
+        spawn.X = MathF.Round(spawn.X);
+        spawn.Y = type switch
+        {
+            EditorPrimitiveType.Plane => 0f,
+            EditorPrimitiveType.Camera => 1.5f,
+            EditorPrimitiveType.Light => 3f,
+            EditorPrimitiveType.Sky => 0f,
+            _ => 0.5f,
+        };
+        spawn.Z = 0f;
+        return spawn;
+    }
+
+    /// <summary>Called by ViewportPanel when a gizmo drag ends (for undo support).
+    /// Passes the EditorObject that was actually dragged (not whatever is currently selected),
+    /// so undo stays correct even if selection changed mid-drag.</summary>
+    public Action<EditorObject>? OnGizmoDragEnded { get; set; }
 
     // ── Viewport mouse state (tracked per frame for 3D gizmo interaction) ──
     /// <summary>True when the left mouse button is held down over the viewport.</summary>
