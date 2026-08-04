@@ -23,6 +23,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public bool IsDragging { get; private set; } = false;
         public bool IsVisible { get; set; } = true;
 
+        // ── Per-selection mode restrictions (Sky markers have no meaningful rotation
+        //    or scale — rotation is fixed, scale is ignored — so their gizmo must stay
+        //    in Translate mode). ViewportPanel sets these before each draw. ──
+        /// <summary>When false, Rotate mode is never used — the gizmo falls back to Translate.</summary>
+        public bool AllowRotate { get; set; } = true;
+        /// <summary>When false, Scale mode is never used — the gizmo falls back to Translate.</summary>
+        public bool AllowScale { get; set; } = true;
+
+        /// <summary>The mode actually in effect: <see cref="Mode"/> clamped to Translate
+        /// when the requested mode is disallowed (e.g. a Sky marker selected).</summary>
+        public GizmoMode EffectiveMode => Mode switch
+        {
+            GizmoMode.Rotate when !AllowRotate => GizmoMode.Translate,
+            GizmoMode.Scale when !AllowScale => GizmoMode.Translate,
+            _ => Mode,
+        };
+
         /// <summary>Axis currently hovered by the mouse (set by HitTest for visual feedback).</summary>
         public Axis HoverAxis { get; private set; } = Axis.None;
         /// <summary>World position of the gizmo that was hit-tested last (set by HitTest).
@@ -184,7 +201,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // gizmo look like it sat on a black background. The axes now draw cleanly
             // over the scene.
 
-            switch (Mode)
+            switch (EffectiveMode)
             {
                 case GizmoMode.Translate:
                     DrawTranslateGizmo(center, colorLoc);
@@ -505,8 +522,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float hitRadius = HandleRadius * 2.5f * s;
 
             Axis result = Axis.None;
+            GizmoMode mode = EffectiveMode;
 
-            if (Mode == GizmoMode.Translate)
+            if (mode == GizmoMode.Translate)
             {
                 Vector2 xEnd = center + new Vector2(AxisLength * s, 0);
                 Vector2 yEnd = center + new Vector2(0, AxisLength * s);
@@ -524,7 +542,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     else result = Axis.Z;
                 }
             }
-            else if (Mode == GizmoMode.Scale)
+            else if (mode == GizmoMode.Scale)
             {
                 Vector2 xEnd = center + new Vector2(AxisLength * s, 0);
                 Vector2 yEnd = center + new Vector2(0, AxisLength * s);
@@ -542,22 +560,48 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     else result = Axis.Z;
                 }
             }
-            else if (Mode == GizmoMode.Rotate)
+            else if (mode == GizmoMode.Rotate)
             {
-                float dist = Vector2.Distance(mouseScreen, center);
-                float ringDist = MathF.Abs(dist - RingRadius * s);
-                if (ringDist <= RingThickness * 3f * s)
-                {
-                    // Determine which ring by angle
-                    Vector2 offset = mouseScreen - center;
-                    float angle = MathF.Atan2(offset.Y, offset.X);
-                    float normAngle = (angle / MathF.PI + 1f) % 2f;
+                // Hit-test each ring against its ACTUAL drawn shape (X = vertical ellipse,
+                // Y = horizontal ellipse, Z = full circle). Sampling points along each ring
+                // and picking the closest one makes the rings selectable exactly where they
+                // are drawn — the old angle-slicing made Y/Z regions tiny and frustrating.
+                float r = RingRadius * s;
+                float hitTol = RingThickness * 3.5f * s;
+                const int segs = 40;
 
-                    // Segment the circle into 3 regions
-                    if (normAngle < 0.33f || normAngle >= 1.67f) result = Axis.X;
-                    else if (normAngle >= 0.67f && normAngle < 1.33f) result = Axis.Y;
-                    else result = Axis.Z;
+                float bestDist = float.MaxValue;
+                Axis bestAxis = Axis.None;
+
+                // (scaleX, scaleY) per ring, matching DrawRotateGizmo. Z is drawn LAST
+                // (visually on top), so it's checked first and wins ties at the elbows.
+                Span<(float sx, float sy, Axis axis)> rings =
+                [
+                    (1.0f, 1.0f, Axis.Z),   // Z ring — full circle (top-most)
+                    (0.3f, 1.0f, Axis.X),   // X ring — vertical ellipse
+                    (1.0f, 0.3f, Axis.Y),   // Y ring — horizontal ellipse
+                ];
+
+                foreach (var (sx, sy, axis) in rings)
+                {
+                    float minD = float.MaxValue;
+                    for (int i = 0; i < segs; i++)
+                    {
+                        float a = i * MathF.PI * 2f / segs;
+                        float px = center.X + MathF.Cos(a) * r * sx;
+                        float py = center.Y + MathF.Sin(a) * r * sy;
+                        float d = Vector2.Distance(mouseScreen, new Vector2(px, py));
+                        if (d < minD) minD = d;
+                    }
+                    if (minD < bestDist)
+                    {
+                        bestDist = minD;
+                        bestAxis = axis;
+                    }
                 }
+
+                // Only register a hit when the mouse is actually near a ring curve
+                if (bestDist <= hitTol) result = bestAxis;
             }
 
             HoverAxis = result;
@@ -617,7 +661,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 _dragGroupCenter += _dragStartPositions[i];
             _dragGroupCenter /= MathF.Max(1, _dragStartPositions.Length);
 
-            switch (Mode)
+            switch (EffectiveMode)
             {
                 case GizmoMode.Translate:
                     _dragStartValue = target.Position;
@@ -664,7 +708,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 case Axis.Z: proj = (deltaScreen.X - deltaScreen.Y) * 0.5f * sens; break;
             }
 
-            if (Mode == GizmoMode.Translate)
+            if (EffectiveMode == GizmoMode.Translate)
             {
                 Vector3 axisDir = _dragAxis switch
                 {
@@ -706,7 +750,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         t.GizmoPivotOverride = startPivot + delta;
                 }
             }
-            else if (Mode == GizmoMode.Scale)
+            else if (EffectiveMode == GizmoMode.Scale)
             {
                 float scaleFactor = 1f + proj * 0.5f;
                 scaleFactor = MathF.Max(0.05f, scaleFactor);
@@ -735,7 +779,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         t.GizmoPivotOverride = _dragGroupCenter + (startPivot - _dragGroupCenter) * factor;
                 }
             }
-            else if (Mode == GizmoMode.Rotate)
+            else if (EffectiveMode == GizmoMode.Rotate)
             {
                 float angle = proj * 60f; // rotation sensitivity
                 Vector3 rotDelta = Vector3.Zero;
@@ -776,7 +820,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// drags move the whole group so there is no fixed pivot; the marker should
         /// follow the objects' live average instead).</summary>
         public Vector3? GroupCenter =>
-            IsDragging && _dragTargets.Length > 1 && Mode != GizmoMode.Translate
+            IsDragging && _dragTargets.Length > 1 && EffectiveMode != GizmoMode.Translate
                 ? _dragGroupCenter : null;
 
         /// <summary>End the current drag operation.</summary>

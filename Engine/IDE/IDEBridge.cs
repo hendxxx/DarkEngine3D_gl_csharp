@@ -168,6 +168,20 @@ public class IDEBridge
     /// The primary (last-clicked / gizmo-driven) selection is <see cref="SelectedEditorObject"/>.</summary>
     public HashSet<EditorObject> SelectedEditorObjects { get; set; } = [];
 
+    /// <summary>True when any selected editor object is a Sky marker. Sky objects have no
+    /// meaningful rotation/scale, so the gizmo is locked to Translate while one is selected.
+    /// Used by the viewport gizmo setup, the gizmo-mode toolbar/menu, and SceneManager.</summary>
+    public bool SelectionHasSky
+    {
+        get
+        {
+            foreach (var o in SelectedEditorObjects)
+                if (o != null && o.PrimitiveType == EditorPrimitiveType.Sky)
+                    return true;
+            return false;
+        }
+    }
+
     /// <summary>Currently selected editor-placed 3D object (primary — drives the Inspector + gizmo).
     /// Setting this also syncs to EditorObjectManager.SelectedObject and keeps the multi-set in sync.
     /// Use <see cref="SelectEditorObject"/> for ctrl-additive selection instead of this setter.</summary>
@@ -297,7 +311,9 @@ public class IDEBridge
             EditorPrimitiveType.Plane => 0f,
             EditorPrimitiveType.Camera => 1.5f,
             EditorPrimitiveType.Light => 3f,
-            EditorPrimitiveType.Sky => 0f,
+            // Sky floats up near the camera's height (a bit below the eye) so the 2D
+            // sky marker sits comfortably in view instead of being buried at ground level.
+            EditorPrimitiveType.Sky => cam != null ? MathF.Max(cam.Position.Y - 0.4f, 2f) : 2f,
             _ => 0.5f,
         };
         spawn.Z = 0f;

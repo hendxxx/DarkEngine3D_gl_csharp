@@ -317,10 +317,15 @@ public class IDE : IDisposable
                 ImGui.Separator();
                 if (ImGui.MenuItem("Gizmo: Translate", null, Bridge.GizmoMode == 0))
                     Bridge.GizmoMode = 0;
+                // Sky markers can't be rotated/scaled — disable those gizmo modes while
+                // a Sky object is selected (the gizmo stays locked to Translate).
+                bool skyLocked = Bridge.SelectionHasSky;
+                if (skyLocked) ImGui.BeginDisabled();
                 if (ImGui.MenuItem("Gizmo: Rotate", null, Bridge.GizmoMode == 1))
                     Bridge.GizmoMode = 1;
                 if (ImGui.MenuItem("Gizmo: Scale", null, Bridge.GizmoMode == 2))
                     Bridge.GizmoMode = 2;
+                if (skyLocked) ImGui.EndDisabled();
                 ImGui.EndMenu();
             }
 

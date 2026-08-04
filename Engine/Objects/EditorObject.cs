@@ -325,30 +325,13 @@ public unsafe class EditorObject
                 break;
             }
             case EditorPrimitiveType.Camera:
-            {
-                // Camera marker: small box so it's visible & selectable in the viewport
-                var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color);
-                _object3D = new Object3D(0, 0, 0);
-                _object3D.Generate(shader, verts);
-                _vertexCache = verts;
-                break;
-            }
             case EditorPrimitiveType.Light:
-            {
-                // Light marker: small sphere (sun icon)
-                var verts = Object3D.CreateSphereVertices(0.5f, Color);
-                _object3D = new Object3D(0, 0, 0);
-                _object3D.Generate(shader, verts);
-                _vertexCache = verts;
-                break;
-            }
             case EditorPrimitiveType.Sky:
             {
-                // Sky marker: small box so it's visible & selectable (the real sky is rendered separately)
-                var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color);
-                _object3D = new Object3D(0, 0, 0);
-                _object3D.Generate(shader, verts);
-                _vertexCache = verts;
+                // Camera/Light/Sky markers are 2D billboard icons (drawn via Draw2DMarker) —
+                // no solid mesh (the camera shows a wireframe frustum gizmo instead).
+                // Keep _object3D null so they don't render as 3D boxes/spheres.
+                _vertexCache = null;
                 break;
             }
             case EditorPrimitiveType.GlbReference:
@@ -501,17 +484,26 @@ public unsafe class EditorObject
     /// geometry), shared by the camera frustum and light gizmos.</summary>
     private void DrawEditorLines(List<Vector3> verts, Camera camera)
     {
+        DrawEditorLines(verts, camera, Color);
+    }
+
+    /// <summary>Render editor wireframe lines in a custom color (depth-test off so they
+    /// show through geometry). Used by the light gizmo to color-code its parts.</summary>
+    private void DrawEditorLines(List<Vector3> verts, Camera camera, Vector3 lineColor)
+    {
+        if (verts == null || verts.Count == 0) return;
         GL.Disable(Const.GL_DEPTH_TEST);
-        Terrains.TerrainChunk.DrawLineSegments(verts, Color, camera);
+        Terrains.TerrainChunk.DrawLineSegments(verts, lineColor, camera);
         GL.Enable(Const.GL_DEPTH_TEST);
     }
 
     /// <summary>
-    /// Draw a real-light gizmo for this placed light: a small sun/sphere marker with a
-    /// direction ray showing where <see cref="LightDirection"/> points, plus a spotlight
-    /// cone (radius grows with distance) visualizing <see cref="LightConeAngle"/>.
-    /// The cone follows the object's rotation on top of the light direction so rotating
-    /// the marker re-aims the beam. Depth test disabled so lines show through geometry.
+    /// Draw a real-light gizmo for this placed light: a bright direction axis showing
+    /// where <see cref="LightDirection"/> points (the beam the user must "see" first),
+    /// a dimmer spotlight cone visualizing <see cref="LightConeAngle"/>, a sun marker
+    /// at the anchor, and a small RGB axis tripod so the marker's local orientation is
+    /// always readable. Each part is drawn in its own color so the beam never blends
+    /// into the cone. Depth test disabled so lines show through geometry.
     /// </summary>
     public unsafe void DrawLightGizmo(Camera camera)
     {
@@ -538,20 +530,25 @@ public unsafe class EditorObject
         var right = Vector3.Normalize(Vector3.Cross(beam, upRef));
         var up = Vector3.Normalize(Vector3.Cross(right, beam));
 
-        var verts = new List<Vector3>(48);
-        void Line(Vector3 a, Vector3 b) { verts.Add(a); verts.Add(b); }
+        // Separate vertex lists — one per color — so the axis reads instantly.
+        var beamVerts = new List<Vector3>(32); // bright gold: THE direction axis
+        var coneVerts = new List<Vector3>(64); // dim amber: spotlight spread
+        var sunVerts  = new List<Vector3>(40); // object color: light anchor
 
-        // ── Direction ray: origin → beam tip, with an arrowhead cross at the tip ──
+        void Line(List<Vector3> list, Vector3 a, Vector3 b) { list.Add(a); list.Add(b); }
+
+        // ── Direction axis (the beam): origin → tip with a prominent arrowhead. ──
+        // This is the line the user must spot first, so it gets the brightest color.
         Vector3 tip = Position + beam * displayLen;
-        Line(Position, tip);
-        float head = displayLen * 0.08f;
-        Line(tip, tip - beam * head + right * head * 0.7f);
-        Line(tip, tip - beam * head - right * head * 0.7f);
-        Line(tip, tip - beam * head + up * head * 0.7f);
-        Line(tip, tip - beam * head - up * head * 0.7f);
+        Line(beamVerts, Position, tip);
+        float head = displayLen * 0.10f;
+        Line(beamVerts, tip, tip - beam * head + right * head * 0.7f);
+        Line(beamVerts, tip, tip - beam * head - right * head * 0.7f);
+        Line(beamVerts, tip, tip - beam * head + up * head * 0.7f);
+        Line(beamVerts, tip, tip - beam * head - up * head * 0.7f);
 
-        // ── Spotlight cone: a circle at the beam tip whose radius grows with distance,
-        // plus cone edge lines from the origin to that circle. ──
+        // ── Spotlight cone (dim): a circle at the beam tip whose radius grows with
+        // distance, plus cone edge lines from the origin to that circle. ──
         float coneHalf = Math.Clamp(LightConeAngle, 1f, 89f) * MathF.PI / 180f;
         float coneRadius = MathF.Tan(coneHalf) * displayLen;
         const int segs = 12;
@@ -564,12 +561,12 @@ public unsafe class EditorObject
         }
         for (int i = 0; i < segs; i++)
         {
-            Line(ring[i], ring[(i + 1) % segs]); // ring edge
-            Line(Position, ring[i]);             // cone side
+            Line(coneVerts, ring[i], ring[(i + 1) % segs]); // ring edge
+            Line(coneVerts, Position, ring[i]);             // cone side
         }
 
-        // ── Small sun marker around the origin (circle + cross) so the light anchor is
-        // obvious even when zoomed far out. ──
+        // ── Sun marker around the origin (circle + cross) in the object's color so the
+        // light anchor is obvious even when zoomed far out. ──
         float r = 0.35f * MathF.Max(Scale.X, MathF.Max(Scale.Y, Scale.Z));
         const int sunSegs = 8;
         var sun = new Vector3[sunSegs];
@@ -579,11 +576,32 @@ public unsafe class EditorObject
             sun[i] = Position + right * (MathF.Cos(a) * r) + up * (MathF.Sin(a) * r);
         }
         for (int i = 0; i < sunSegs; i++)
-            Line(sun[i], sun[(i + 1) % sunSegs]);
-        Line(Position - right * r, Position + right * r);
-        Line(Position - up * r, Position + up * r);
+            Line(sunVerts, sun[i], sun[(i + 1) % sunSegs]);
+        Line(sunVerts, Position - right * r, Position + right * r);
+        Line(sunVerts, Position - up * r, Position + up * r);
 
-        DrawEditorLines(verts, camera);
+        // ── RGB local-axis tripod at the anchor (X red, Y green, Z blue, matching the
+        // transform gizmo colors) so the marker's rotation state is readable at a glance
+        // — Y is always up-ish before you rotate the marker. Each axis is a separate
+        // list so it can be colored individually. ──
+        float aLen = MathF.Max(0.9f, r * 2.2f);
+        var basis = Matrix4x4.CreateFromYawPitchRoll(yaw, pitch, roll);
+        var ax = Vector3.Transform(Vector3.UnitX, basis);
+        var ay = Vector3.Transform(Vector3.UnitY, basis);
+        var az = Vector3.Transform(Vector3.UnitZ, basis);
+        var xVerts = new List<Vector3>(2) { Position, Position + ax * aLen };
+        var yVerts = new List<Vector3>(2) { Position, Position + ay * aLen };
+        var zVerts = new List<Vector3>(2) { Position, Position + az * aLen };
+
+        // Draw order matters (depth test is off, so later draws overwrite earlier ones):
+        // dim cone + sun + tripod first, then the bright beam LAST so the direction axis
+        // always wins where its line crosses the cone.
+        DrawEditorLines(coneVerts, camera, new Vector3(0.45f, 0.38f, 0.14f));
+        DrawEditorLines(sunVerts, camera, Color);
+        DrawEditorLines(xVerts, camera, new Vector3(0.85f, 0.25f, 0.2f));  // X = red
+        DrawEditorLines(yVerts, camera, new Vector3(0.3f, 0.8f, 0.3f));    // Y = green
+        DrawEditorLines(zVerts, camera, new Vector3(0.3f, 0.45f, 0.9f));   // Z = blue
+        DrawEditorLines(beamVerts, camera, new Vector3(1.0f, 0.92f, 0.35f)); // beam on top
     }
 
     /// <summary>
@@ -661,6 +679,106 @@ public unsafe class EditorObject
             float a = i * MathF.PI / 2f;
             var d = sunRight * MathF.Cos(a) + sunUp * MathF.Sin(a);
             Line(sunCenter + d * (sunRadius + 0.05f), sunCenter + d * (sunRadius + rayLen));
+        }
+
+        DrawEditorLines(verts, camera);
+    }
+
+    /// <summary>
+    /// Draw a 2D billboard icon for Camera (camera glyph), Light (sun with rays) and
+    /// Sky (sun + cloud) markers. The icon always faces the camera (built on the camera's
+    /// right/up vectors), so it reads as a flat 2D badge in the viewport instead of a
+    /// solid 3D box/sphere.
+    /// </summary>
+    public unsafe void Draw2DMarker(Camera camera)
+    {
+        if (!IsVisible || (PrimitiveType != EditorPrimitiveType.Camera
+            && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky)) return;
+
+        // Derive a camera-facing basis from Front (Right/Up fields can be stale in fly
+        // mode). Same upRef fallback as the light/sky gizmos so the icon always faces you.
+        var front = Vector3.Normalize(camera.Front);
+        var upRef = MathF.Abs(front.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitZ;
+        var right = Vector3.Normalize(Vector3.Cross(front, upRef));
+        var up = Vector3.Normalize(Vector3.Cross(right, front));
+        float r = 0.45f * MathF.Max(Scale.X, MathF.Max(Scale.Y, Scale.Z));
+
+        var verts = new List<Vector3>(96);
+        void Line(Vector3 a, Vector3 b) { verts.Add(a); verts.Add(b); }
+        Vector3 P(float u, float v) => Position + right * (u * r) + up * (v * r);
+
+        if (PrimitiveType == EditorPrimitiveType.Light)
+        {
+            // Sun icon: circle + 8 rays
+            const int segs = 16;
+            var prev = P(MathF.Cos(0f), MathF.Sin(0f));
+            for (int i = 1; i <= segs; i++)
+            {
+                float a = i * MathF.PI * 2f / segs;
+                var cur = P(MathF.Cos(a), MathF.Sin(a));
+                Line(prev, cur);
+                prev = cur;
+            }
+            for (int i = 0; i < 8; i++)
+            {
+                float a = i * MathF.PI / 4f;
+                float c = MathF.Cos(a), s = MathF.Sin(a);
+                Line(P(c * 0.8f, s * 0.8f), P(c * 1.25f, s * 1.25f));
+            }
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Camera)
+        {
+            // Camera glyph: body rectangle + top viewfinder bump + lens circle.
+            // The lens sits toward +right of the icon, echoing the frustum's forward
+            // direction (which points down -Z in world space before any rotation).
+            Line(P(-0.85f, -0.55f), P(0.85f, -0.55f)); // bottom
+            Line(P(0.85f, -0.55f), P(0.85f, 0.35f));   // right
+            Line(P(0.85f, 0.35f), P(-0.85f, 0.35f));   // top
+            Line(P(-0.85f, 0.35f), P(-0.85f, -0.55f)); // left
+
+            // Viewfinder bump on top
+            Line(P(-0.45f, 0.35f), P(-0.45f, 0.6f));
+            Line(P(-0.45f, 0.6f), P(0.45f, 0.6f));
+            Line(P(0.45f, 0.6f), P(0.45f, 0.35f));
+
+            // Lens circle (centered on the body)
+            const int lensSegs = 12;
+            const float lcx = 0.28f, lcy = -0.1f, lr = 0.28f;
+            var lprev = P(lcx + lr, lcy);
+            for (int i = 1; i <= lensSegs; i++)
+            {
+                float a = i * MathF.PI * 2f / lensSegs;
+                var lcur = P(lcx + MathF.Cos(a) * lr, lcy + MathF.Sin(a) * lr);
+                Line(lprev, lcur);
+                lprev = lcur;
+            }
+        }
+        else
+        {
+            // Sky icon: small sun circle + cloud arcs
+            const int segs = 12;
+            var prev = P(MathF.Cos(0f), MathF.Sin(0f));
+            for (int i = 1; i <= segs; i++)
+            {
+                float a = i * MathF.PI * 2f / segs;
+                var cur = P(MathF.Cos(a), MathF.Sin(a));
+                Line(prev, cur);
+                prev = cur;
+            }
+            // Cloud: three overlapping arcs on the lower half
+            for (int arc = 0; arc < 3; arc++)
+            {
+                float cx = -0.45f + arc * 0.45f;
+                float cy = -0.15f;
+                Vector3? prevCloud = null;
+                for (int i = 0; i <= 4; i++)
+                {
+                    float a = MathF.PI + i * MathF.PI / 4f; // lower half arc
+                    var p = P(cx + MathF.Cos(a) * 0.35f, cy + MathF.Sin(a) * 0.35f);
+                    if (prevCloud.HasValue) Line(prevCloud.Value, p);
+                    prevCloud = p;
+                }
+            }
         }
 
         DrawEditorLines(verts, camera);

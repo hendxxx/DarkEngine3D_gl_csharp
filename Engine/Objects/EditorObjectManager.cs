@@ -299,6 +299,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var obj in _objects)
             {
                 if (obj == null) continue;
+
+                // Camera/Light/Sky markers are 2D billboard icons (always face the camera)
+                if (obj.PrimitiveType == EditorPrimitiveType.Camera ||
+                    obj.PrimitiveType == EditorPrimitiveType.Light ||
+                    obj.PrimitiveType == EditorPrimitiveType.Sky)
+                {
+                    obj.Draw2DMarker(camera);
+                }
+
                 if (obj.PrimitiveType == EditorPrimitiveType.Camera)
                 {
                     if (obj.ShowFrustum)
@@ -316,11 +325,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
             }
 
-            // ── Stencil-based inverted-hull outline on ALL selected objects (with pulsing effect) ──
+            // ── Stencil-based inverted-hull outline on ALL selected objects (with pulsing effect).
+            // Planes are intentionally excluded — their large ground tiles would fill the whole
+            // screen with a blinking outline, so a selected plane shows no highlight (the gizmo
+            // still marks it as selected). ──
             var outlineSet = selectedObjects is { Count: > 0 }
-                ? selectedObjects
-                : (SelectedObject != null ? [SelectedObject] : null);
-            if (outlineSet != null && wireframeColor.HasValue)
+                ? selectedObjects.Where(o => o.PrimitiveType != EditorPrimitiveType.Plane).ToArray()
+                : (SelectedObject != null && SelectedObject.PrimitiveType != EditorPrimitiveType.Plane ? [SelectedObject] : null);
+            if (outlineSet != null && outlineSet.Length > 0 && wireframeColor.HasValue)
             {
                 // Pulsing effect: oscillates between 0.6 and 1.0 brightness
                 float t = Environment.TickCount / 1000f;

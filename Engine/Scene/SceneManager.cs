@@ -302,6 +302,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (br?.SelectedEditorObject != null && br.EditorGizmo != null)
                     {
                         var gizmo = br.EditorGizmo;
+                        // Sky markers can't be rotated/scaled — lock the gizmo to Translate
+                        gizmo.AllowRotate = !br.SelectionHasSky;
+                        gizmo.AllowScale = !br.SelectionHasSky;
                         gizmo.Mode = (TransformGizmo.GizmoMode)br.GizmoMode;
                         var sceneCam = br.Camera;
                         if (sceneCam != null)
@@ -459,6 +462,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (bridge?.SelectedEditorObject != null && bridge.EditorGizmo != null && _editorCamera != null)
                     {
                         var gizmo = bridge.EditorGizmo;
+                        // Sky markers can't be rotated/scaled — lock the gizmo to Translate
+                        gizmo.AllowRotate = !bridge.SelectionHasSky;
+                        gizmo.AllowScale = !bridge.SelectionHasSky;
                         gizmo.Mode = (TransformGizmo.GizmoMode)bridge.GizmoMode;
                         int vpW = bridge.SceneTextureWidth > 0 ? bridge.SceneTextureWidth : Glfw.WindowWidth;
                         int vpH = bridge.SceneTextureHeight > 0 ? bridge.SceneTextureHeight : Glfw.WindowHeight;

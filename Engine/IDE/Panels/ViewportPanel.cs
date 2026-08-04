@@ -1389,9 +1389,14 @@ ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
 
                     int gizmoMode = _bridge.GizmoMode;
                     string[] gizmoLabels = ["Move", "Rotate", "Scale"];
+                    // Sky markers can't be rotated/scaled — lock the gizmo to Move while selected
+                    bool gizmoLocked = _bridge.SelectionHasSky;
                     for (int gi = 0; gi < 3; gi++)
                     {
-ImGui.PushStyleColor(ImGuiCol.Button, gizmoMode == gi
+                        bool locked = gizmoLocked && gi != 0;
+                        if (locked) ImGui.BeginDisabled();
+                        bool isActive = (gizmoMode == gi) || (gizmoLocked && gi == 0);
+ImGui.PushStyleColor(ImGuiCol.Button, isActive
                             ? new Vector4(0.25f, 0.50f, 0.80f, 1f)
                             : new Vector4(0.25f, 0.25f, 0.30f, 1f));
                         if (ImGui.Button(gizmoLabels[gi]))
@@ -1400,6 +1405,7 @@ ImGui.PushStyleColor(ImGuiCol.Button, gizmoMode == gi
                             _gizmo.Mode = (TransformGizmo.GizmoMode)gi;
                         }
                         ImGui.PopStyleColor(1);
+                        if (locked) ImGui.EndDisabled();
                         if (gi < 2) ImGui.SameLine();
                     }
 
@@ -2297,7 +2303,14 @@ ImGui.SameLine();
                 int vpw = _bridge.SceneTextureWidth;
                 int vph = _bridge.SceneTextureHeight;
 
-                // Set gizmo mode from bridge
+                // Sky markers have no meaningful rotation/scale (rotation is fixed and
+                // scale is ignored), so when a Sky object is in the selection the gizmo is
+                // locked to Translate — rotate/scale are neither drawn nor hit-tested.
+                bool skySelected = _bridge.SelectionHasSky;
+                gizmo.AllowRotate = !skySelected;
+                gizmo.AllowScale = !skySelected;
+
+                // Set gizmo mode from bridge (EffectiveMode clamps it to Translate for Sky)
                 gizmo.Mode = (TransformGizmo.GizmoMode)_bridge.GizmoMode;
 
                 // Flip Y: ImGui Y=0=top → GL Y=0=bottom
