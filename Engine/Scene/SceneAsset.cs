@@ -153,6 +153,24 @@ public class EditorObjectData
     public float LightIntensity { get; set; } = 1f;
     /// <summary>Time of day in hours 0..24 (Sky).</summary>
     public float SkyTimeOfDay { get; set; } = 12f;
+    /// <summary>Sun elevation override in degrees (Sky). null = follow time of day.</summary>
+    public float? SkySunPitch { get; set; }
+    /// <summary>Sun azimuth override in degrees (Sky). null = follow time of day.</summary>
+    public float? SkySunYaw { get; set; }
+    /// <summary>Cloud coverage 0..1 (Sky).</summary>
+    public float SkyCloudCoverage { get; set; } = 0.3f;
+    /// <summary>Sun brightness multiplier (Sky).</summary>
+    public float SkySunIntensity { get; set; } = 1f;
+    /// <summary>Time-of-day animation speed in hours/second (Sky, 0 = static).</summary>
+    public float SkyTimeAnimSpeed { get; set; } = 0f;
+    /// <summary>Pause the time-of-day animation (Sky).</summary>
+    public bool SkyTimeAnimPaused { get; set; } = false;
+    /// <summary>Whether the camera view-frustum gizmo is shown (Camera).</summary>
+    public bool ShowFrustum { get; set; } = true;
+    /// <summary>Whether the light direction/cone gizmo is shown (Light).</summary>
+    public bool ShowLightGizmo { get; set; } = true;
+    /// <summary>Whether the sky horizon/sun gizmo is shown (Sky).</summary>
+    public bool ShowSkyGizmo { get; set; } = true;
 
     // ── Per-object gizmo pivot override (nullable — null means use object position) ──
     public float? PivotOverrideX { get; set; }

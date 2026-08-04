@@ -27,6 +27,7 @@ public class IDE : IDisposable
     private readonly ConsolePanel _console;
     private readonly SceneManagerPanel _sceneManagerPanel;
     private readonly HierarchyPanel _hierarchy;
+    private readonly RenderTimePanel _renderTime;
 
     // ── Transform Gizmo ──
     private readonly TransformGizmo _gizmo = new();
@@ -127,6 +128,7 @@ public class IDE : IDisposable
             _console = new ConsolePanel(Bridge);
             _sceneManagerPanel = new SceneManagerPanel(Bridge);
             _hierarchy = new HierarchyPanel(Bridge);
+            _renderTime = new RenderTimePanel(Bridge);
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -284,33 +286,33 @@ public class IDE : IDisposable
                 if (ImGui.MenuItem("Add Plane", "Ctrl+1"))
                 {
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Plane, GetSpawnPosition(EditorPrimitiveType.Plane));
-                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                    if (obj != null) Bridge.SelectEditorObject(obj);
                 }
                 if (ImGui.MenuItem("Add Box", "Ctrl+2"))
                 {
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Box, GetSpawnPosition(EditorPrimitiveType.Box));
-                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                    if (obj != null) Bridge.SelectEditorObject(obj);
                 }
                 if (ImGui.MenuItem("Add Sphere", "Ctrl+3"))
                 {
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sphere, GetSpawnPosition(EditorPrimitiveType.Sphere));
-                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                    if (obj != null) Bridge.SelectEditorObject(obj);
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Add Camera", "Ctrl+4"))
                 {
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Camera, GetSpawnPosition(EditorPrimitiveType.Camera));
-                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                    if (obj != null) Bridge.SelectEditorObject(obj);
                 }
                 if (ImGui.MenuItem("Add Light", "Ctrl+5"))
                 {
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Light, GetSpawnPosition(EditorPrimitiveType.Light));
-                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                    if (obj != null) Bridge.SelectEditorObject(obj);
                 }
                 if (ImGui.MenuItem("Add Sky", "Ctrl+6"))
                 {
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sky, GetSpawnPosition(EditorPrimitiveType.Sky));
-                    if (obj != null) Bridge.SelectedEditorObject = obj;
+                    if (obj != null) Bridge.SelectEditorObject(obj);
                 }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Gizmo: Translate", null, Bridge.GizmoMode == 0))
@@ -402,6 +404,7 @@ public class IDE : IDisposable
                 _assetBrowser.ShowInMenu();
                 _console.ShowInMenu();
                 _hierarchy.ShowInMenu();
+                _renderTime.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
                 ImGui.EndMenu();
@@ -438,6 +441,7 @@ public class IDE : IDisposable
         _viewport.Render();
         _sceneView.Render();
         _inspector.Render();
+        _renderTime.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
         _console.Render();
@@ -677,6 +681,78 @@ public class IDE : IDisposable
                     _focusedInGameElement = clicked;
                     Console.WriteLine($"[IDE] Mouse click synced keyboard focus to '{clicked.Name}'");
                 }
+            }
+        }
+
+        // ── Stats overlay (in-game mode) — always visible, drawn last so it sits on top ──
+        // Mirrors the GameScene debug HUD: FPS/frame-time, triangles, object counts,
+        // and camera position. Reads the bridge values SceneManager refreshes every frame.
+        {
+            float fps = Bridge.Fps;
+            float frameMs = Bridge.FrameMs;
+            // Prefer the live camera object when the bridge position is stale (e.g. scenes
+            // that only set Bridge.Camera and not Bridge.CameraPosition).
+            var camPos = Bridge.Camera?.Position ?? Bridge.CameraPosition;
+
+            var fpsCol = fps switch
+            {
+                >= 55f => new Vector4(0.3f, 0.9f, 0.3f, 1f),
+                >= 30f => new Vector4(0.9f, 0.8f, 0.2f, 1f),
+                _ => new Vector4(0.9f, 0.3f, 0.2f, 1f)
+            };
+            var objCol = new Vector4(0.3f, 0.8f, 1.0f, 1f);
+            var trisCol = new Vector4(1f, 0.7f, 0.3f, 1f);
+            var timeCol = new Vector4(0.6f, 1f, 0.5f, 1f);
+            var posCol = new Vector4(0.9f, 0.9f, 0.9f, 1f);
+            var dimCol = new Vector4(0.7f, 0.7f, 0.8f, 1f);
+
+            string[] lines =
+            [
+                $"FPS: {fps:F0}  ({frameMs:F1} ms)",
+                $"TRIS: {Bridge.RenderedTriangles:N0} / {Bridge.TotalTriangles:N0}",
+                $"Objects: {Bridge.DrawnObjects:N0} / {Bridge.TotalObjects:N0}  (anim {Bridge.AnimatedObjectCount:N0} | static {Bridge.StaticObjectCount:N0})",
+                $"Render: t={Bridge.RenderTerrainMs:N1}ms  o={Bridge.RenderObjectsMs:N1}ms  fx={Bridge.RenderPostFxMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
+                $"POS: X={camPos.X:N2}  Y={camPos.Y:N2}  Z={camPos.Z:N2}",
+                $"Yaw: {Bridge.CameraYaw:F1}°  Pitch: {Bridge.CameraPitch:F1}°",
+            ];
+
+            var font = ImGui.GetFont();
+            float fontSize = 18f;
+            float lineHeight = 20f;
+            float pad = 6f;
+
+            // Measure the widest line for the backing panel
+            float panelW = 0f;
+            for (int li = 0; li < lines.Length; li++)
+            {
+                float w = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, lines[li]).X;
+                if (w > panelW) panelW = w;
+            }
+            float panelH = lineHeight * lines.Length + pad * 2f;
+
+            var bgMin = new Vector2(10f, 10f);
+            var bgMax = new Vector2(10f + panelW + pad * 2f, 10f + panelH);
+            drawList.AddRectFilled(bgMin, bgMax,
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.45f)), 6f);
+            drawList.AddRect(bgMin, bgMax,
+                ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.12f)), 6f, ImDrawFlags.None, 1f);
+
+            // Symmetric padding: first line starts at bgMin + pad, spacing is lineHeight
+            float ty = bgMin.Y + pad;
+            for (int li = 0; li < lines.Length; li++)
+            {
+                var col = li switch
+                {
+                    0 => fpsCol,
+                    1 => trisCol,
+                    2 => objCol,
+                    3 => timeCol,
+                    4 => posCol,
+                    _ => dimCol,
+                };
+                drawList.AddText(font, fontSize, new Vector2(bgMin.X + pad, ty),
+                    ImGui.ColorConvertFloat4ToU32(col), lines[li]);
+                ty += lineHeight;
             }
         }
 

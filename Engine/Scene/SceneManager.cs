@@ -143,6 +143,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 float dt = Glfw.GetDeltaTime();
 
+                // ── Rolling FPS counter — driven from the CENTRAL loop so the FPS
+                // readout stays live in every scene (GameScene, MainMenu, Loading)
+                // and in bare editor mode. Previously only GameScene called
+                // Glfw.ShowFPS/UpdateFPS, so FPS froze at 0 everywhere else.
+                Glfw.UpdateFPS(dt);
+
                 // ═══════════════════════════════════════════════════════
                 // FRAME-START VALIDATION: detect OpenGL state corruption
                 // ═══════════════════════════════════════════════════════
@@ -219,6 +225,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_ide != null)
                     _ide.Update(dt);
 
+                // ── Keep the IDE FPS/FrameMs readouts fresh EVERY frame regardless of
+                // which scene is active (SceneViewPanel + in-game overlay read these).
+                if (_ide != null)
+                {
+                    var bridgeStats = _ide.Bridge;
+                    if (bridgeStats != null)
+                    {
+                        bridgeStats.Fps = Glfw.GetLastFPS();
+                        bridgeStats.FrameMs = dt * 1000f;
+                    }
+                }
+
                 // ── F9: toggle manual input lock [DISABLED]
                     // bool f9Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F9);
                     // if (f9Down && !_f9WasDown && _ide.IsActive)
@@ -288,27 +306,38 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         var sceneCam = br.Camera;
                         if (sceneCam != null)
                         {
-                            Vector3 gizmoPos = br.GizmoOverridePosition ?? br.SelectedEditorObject.Position;
-                            gizmo.Render(sceneCam, gizmoPos,
-                                br.SceneTextureWidth > 0 ? br.SceneTextureWidth : Glfw.WindowWidth,
-                                br.SceneTextureHeight > 0 ? br.SceneTextureHeight : Glfw.WindowHeight);
+                            int vpW = br.SceneTextureWidth > 0 ? br.SceneTextureWidth : Glfw.WindowWidth;
+                            int vpH = br.SceneTextureHeight > 0 ? br.SceneTextureHeight : Glfw.WindowHeight;
 
-                            // Draw crosshair indicator if gizmo pivot is overridden
-                            if (br.GizmoOverridePosition != null)
+                            // ── Render ONE gizmo at the selection center (group average for
+                            // multi-select) — a single gizmo drives the whole selection.
+                            // While a multi scale/rotate drag is active, stick to the FROZEN
+                            // pivot captured at drag start (TransformGizmo.GroupCenter) so the
+                            // visible gizmo matches the pivot the group actually orbits around.
+                            Vector3 gizmoCenter = gizmo.GroupCenter ??
+                                (br.GetEditorGizmoCenter() ?? Vector3.Zero);
+                            if (br.SelectedEditorObjects.Count > 0)
                             {
+                                gizmo.Render(sceneCam, gizmoCenter, vpW, vpH);
+                            }
+
+                            // Draw crosshair indicators on every SELECTED object that has a
+                            // per-object gizmo pivot override (so overrides stay visible).
+                            foreach (var sel in br.SelectedEditorObjects)
+                            {
+                                if (sel == null || sel.GizmoPivotOverride == null) continue;
                                 GL.Disable(Const.GL_DEPTH_TEST);
-                                TerrainChunk.DrawGizmoPivotCrosshair(br.GizmoOverridePosition.Value, sceneCam);
+                                TerrainChunk.DrawGizmoPivotCrosshair(sel.GizmoPivotOverride.Value, sceneCam);
                                 GL.Enable(Const.GL_DEPTH_TEST);
                             }
 
-                            // Draw pivot dot indicators for ALL other objects that have pivot override
+                            // Draw pivot dot indicators for ALL NON-selected objects that have pivot override
                             var editorMgr = br.EditorObjectManager;
                             if (editorMgr != null)
                             {
-                                var selObj = br.SelectedEditorObject;
                                 foreach (var obj in editorMgr.Objects)
                                 {
-                                    if (obj == selObj) continue; // already has full crosshair
+                                    if (br.SelectedEditorObjects.Contains(obj)) continue; // already has full gizmo/crosshair
                                     if (obj.GizmoPivotOverride != null)
                                     {
                                         GL.Disable(Const.GL_DEPTH_TEST);
@@ -385,37 +414,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             if (lightObj == null && obj.PrimitiveType == EditorPrimitiveType.Light) lightObj = obj;
                         }
 
-                        // ── Light override: copy the first Light object's settings to the editor lights ──
+                        // ── Light + Sky override: apply the first Light/Sky marker settings to
+                        //    the editor lights (shared helper — same code drives in-game mode).
+                        //    Ensure the editor skybox exists FIRST so the helper can apply the
+                        //    cloud-coverage WeatherOverride on the very first sky frame too.
+                        if (skyObj != null)
+                            EnsureEditorSkybox();
                         if (_editorLights != null)
                         {
-                            if (lightObj != null)
-                            {
-                                _editorLights.SunDirOverride = lightObj.LightDirection;
-                                _editorLights.LightColorOverride = lightObj.Color;
-                                _editorLights.LightIntensity = lightObj.LightIntensity;
-                            }
-                            else
-                            {
-                                _editorLights.SunDirOverride = null;
-                                _editorLights.LightColorOverride = null;
-                                _editorLights.LightIntensity = 1f;
-                            }
-
-                            // Sky object drives the time of day (12h = midday)
-                            if (skyObj != null)
-                            {
-                                float hours = Math.Clamp(skyObj.SkyTimeOfDay, 0f, 24f);
-                                _editorLights.WorldTime = (hours / 24f) * (MathF.PI * 2f);
-                            }
+                            EditorObject.ApplyEnvironmentMarkers(lightObj, skyObj, _editorLights, _editorSkybox, dt);
 
                             // Ensure lighting uniforms are computed for the editor lights
                             _editorLights.Update(dt, _editorCamera.Position);
                         }
 
-                        // ── Skybox render (behind the grid, drawn first) ──
+                        // ── Skybox render (behind the grid, drawn first). The skybox was
+                        //    already ensured and the cloud-coverage WeatherOverride applied by
+                        //    ApplyEnvironmentMarkers above. ──
                         if (skyObj != null)
                         {
-                            EnsureEditorSkybox();
                             if (_editorSkybox != null && _editorSkyTextures != null && _editorLights != null)
                             {
                                 _editorSkybox.Draw(_editorCamera, _editorLights, dt, _editorSkyTextures, null);
@@ -423,42 +440,55 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                     }
 
-                    RenderEditorGrid();
+                    // Debug grid toggle (shared with the GameScene DrawDebugGrid path) — the
+                    // camera-centered editor grid hides when the viewport toolbar toggle is off.
+                    if (bridge?.ShowDebugGrid ?? true)
+                        RenderEditorGrid();
 
                     // ── Render editor 3D objects ──
                     if (bridge?.EditorObjectManager != null && bridge.EditorObjectManager.Count > 0)
                     {
-                        // Pass selection highlight color so selected object gets a mesh wireframe outline
-                        Vector3? wireCol = bridge.EditorObjectManager.SelectedObject != null
+                        // Pass selection highlight color so selected objects get a mesh wireframe outline
+                        Vector3? wireCol = bridge is { SelectedEditorObjects.Count: > 0 }
                             ? bridge.SelectionHighlights.EditorObject : null;
-                        bridge.EditorObjectManager.Draw(_editorCamera, _editorLights, null, wireCol);
+                        bridge.EditorObjectManager.Draw(_editorCamera, _editorLights, null, wireCol, bridge.SelectedEditorObjects);
                     }
 
-                    // ── Render gizmo on selected editor object ──
+                    // ── Render ONE gizmo at the selection center (group average for
+                    // multi-select) — a single gizmo drives the whole selection.
                     if (bridge?.SelectedEditorObject != null && bridge.EditorGizmo != null && _editorCamera != null)
                     {
                         var gizmo = bridge.EditorGizmo;
                         gizmo.Mode = (TransformGizmo.GizmoMode)bridge.GizmoMode;
-                        Vector3 gizmoPos = bridge.GizmoOverridePosition ?? bridge.SelectedEditorObject.Position;
-                        gizmo.Render(_editorCamera, gizmoPos,
-                            bridge.SceneTextureWidth > 0 ? bridge.SceneTextureWidth : Glfw.WindowWidth,
-                            bridge.SceneTextureHeight > 0 ? bridge.SceneTextureHeight : Glfw.WindowHeight);
+                        int vpW = bridge.SceneTextureWidth > 0 ? bridge.SceneTextureWidth : Glfw.WindowWidth;
+                        int vpH = bridge.SceneTextureHeight > 0 ? bridge.SceneTextureHeight : Glfw.WindowHeight;
 
-                        // Draw crosshair indicator if gizmo pivot is overridden
-                        if (bridge.GizmoOverridePosition != null)
+                        // While a multi scale/rotate drag is active, stick to the FROZEN
+                        // pivot captured at drag start (TransformGizmo.GroupCenter) so the
+                        // visible gizmo matches the pivot the group actually orbits around.
+                        Vector3 gizmoCenter = gizmo.GroupCenter ??
+                            (bridge.GetEditorGizmoCenter() ?? Vector3.Zero);
+                        if (bridge.SelectedEditorObjects.Count > 0)
                         {
+                            gizmo.Render(_editorCamera, gizmoCenter, vpW, vpH);
+                        }
+
+                        // Draw crosshair indicators on every SELECTED object that has a
+                        // per-object gizmo pivot override (so overrides stay visible).
+                        foreach (var sel in bridge.SelectedEditorObjects)
+                        {
+                            if (sel == null || sel.GizmoPivotOverride == null) continue;
                             GL.Disable(Const.GL_DEPTH_TEST);
-                            TerrainChunk.DrawGizmoPivotCrosshair(bridge.GizmoOverridePosition.Value, _editorCamera);
+                            TerrainChunk.DrawGizmoPivotCrosshair(sel.GizmoPivotOverride.Value, _editorCamera);
                             GL.Enable(Const.GL_DEPTH_TEST);
                         }
 
-                        // Draw pivot dot indicators for ALL other objects that have pivot override
+                        // Draw pivot dot indicators for ALL NON-selected objects that have pivot override
                         if (bridge.EditorObjectManager != null)
                         {
-                            var selObj = bridge.SelectedEditorObject;
                             foreach (var obj in bridge.EditorObjectManager.Objects)
                             {
-                                if (obj == selObj) continue; // already has full crosshair
+                                if (bridge.SelectedEditorObjects.Contains(obj)) continue; // already has full gizmo/crosshair
                                 if (obj.GizmoPivotOverride != null)
                                 {
                                     GL.Disable(Const.GL_DEPTH_TEST);
@@ -635,7 +665,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             Console.WriteLine("[SceneManager] Editor grid created.");
         }
 
-        /// <summary>
         /// Render the editor ground-plane grid centered on the camera's XZ position.
         /// Vertices are regenerated each frame so the grid always extends equally
         /// in all directions from the camera (truly "infinite" feel).

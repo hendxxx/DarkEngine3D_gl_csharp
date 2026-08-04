@@ -938,6 +938,62 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         /// <summary>
+        /// Draw a debug grid on the XZ plane (Y = 0) centered at the world origin, using
+        /// the shared line shader. Minor lines are dim, major lines (every 5 cells) are
+        /// brighter, and the X/Z axis lines are colored red/blue. Used by the editor
+        /// viewport grid toggle to help place primitives and judge scale.
+        /// </summary>
+        // ── Cached debug-grid geometry (built once; the grid is static in world space) ──
+        private static readonly List<Vector3> GridMinorX = new();
+        private static readonly List<Vector3> GridMinorZ = new();
+        private static readonly List<Vector3> GridMajorX = new();
+        private static readonly List<Vector3> GridMajorZ = new();
+        private static readonly List<Vector3> GridAxisX = new();
+        private static readonly List<Vector3> GridAxisZ = new();
+        private static bool _gridBuilt;
+
+        public static void DrawDebugGrid(Camera camera, int halfExtent = 25, float spacing = 1f)
+        {
+            if (!_gridBuilt)
+            {
+                GridMinorX.Clear(); GridMinorZ.Clear(); GridMajorX.Clear(); GridMajorZ.Clear();
+                GridAxisX.Clear(); GridAxisZ.Clear();
+
+                float extent = halfExtent * spacing;
+                for (int i = -halfExtent; i <= halfExtent; i++)
+                {
+                    if (i == 0) continue; // axis lines drawn separately below
+                    float coord = i * spacing;
+                    bool major = (i % 5) == 0;
+
+                    // Line parallel to X (varying X, fixed Z)
+                    var xLines = major ? GridMajorX : GridMinorX;
+                    xLines.Add(new Vector3(-extent, 0f, coord));
+                    xLines.Add(new Vector3(extent, 0f, coord));
+
+                    // Line parallel to Z (varying Z, fixed X)
+                    var zLines = major ? GridMajorZ : GridMinorZ;
+                    zLines.Add(new Vector3(coord, 0f, -extent));
+                    zLines.Add(new Vector3(coord, 0f, extent));
+                }
+
+                GridAxisX.Add(new Vector3(-extent, 0f, 0f)); GridAxisX.Add(new Vector3(extent, 0f, 0f));
+                GridAxisZ.Add(new Vector3(0f, 0f, -extent)); GridAxisZ.Add(new Vector3(0f, 0f, extent));
+                _gridBuilt = true;
+            }
+
+            // Depth test off so the grid shows through terrain (like the other editor gizmos).
+            GL.Disable(Const.GL_DEPTH_TEST);
+            if (GridMinorX.Count > 0) DrawLineSegments(GridMinorX, new Vector3(0.22f, 0.22f, 0.27f), camera);
+            if (GridMinorZ.Count > 0) DrawLineSegments(GridMinorZ, new Vector3(0.22f, 0.22f, 0.27f), camera);
+            if (GridMajorX.Count > 0) DrawLineSegments(GridMajorX, new Vector3(0.45f, 0.45f, 0.5f), camera);
+            if (GridMajorZ.Count > 0) DrawLineSegments(GridMajorZ, new Vector3(0.45f, 0.45f, 0.5f), camera);
+            DrawLineSegments(GridAxisX, new Vector3(0.9f, 0.2f, 0.2f), camera);
+            DrawLineSegments(GridAxisZ, new Vector3(0.2f, 0.4f, 0.9f), camera);
+            GL.Enable(Const.GL_DEPTH_TEST);
+        }
+
+        /// <summary>
         /// Draw a wireframe standing capsule using the shared line shader.
         /// Capsule defined by foot position, collider radius, and total height.
         /// Draws: waist ring + vertical lines + top/bottom hemisphere arcs.

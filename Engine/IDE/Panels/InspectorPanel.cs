@@ -1090,7 +1090,7 @@ public class InspectorPanel
                     Console.WriteLine($"[Inspector] Fly mouse sensitivity changed: {flySens:F2}");
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Mouse look sensitivity in editor fly mode (CTRL+drag to look around)");
+                    ImGui.SetTooltip("Mouse look sensitivity in editor fly mode (toggle with the ✈ Fly button in the viewport)");
 
                 float flySpeed = Config.CameraConfig.CameraFlySpeed;
                 if (ImGui.SliderFloat("Movement Speed", ref flySpeed, 1f, 500f, "%.0f"))
@@ -1100,6 +1100,15 @@ public class InspectorPanel
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("WASD movement speed in editor fly mode");
+
+                float flyZoom = Config.CameraConfig.FlyZoomSpeed;
+                if (ImGui.SliderFloat("Zoom Speed", ref flyZoom, 1f, 500f, "%.0f"))
+                {
+                    Config.CameraConfig.FlyZoomSpeed = flyZoom;
+                    Console.WriteLine($"[Inspector] Fly zoom speed changed: {flyZoom:F0}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Scroll-wheel zoom speed in editor fly mode (independent of movement speed)");
 
                 ImGui.Spacing();
                 ImGui.Separator();
@@ -1244,6 +1253,14 @@ public class InspectorPanel
     /// <summary>Render inspector for an EditorObject (primitives, glb references).</summary>
     private unsafe void RenderEditorObjectInspector(EditorObject editorObj)
     {
+        // ── Multi-selection indicator ──
+        if (_bridge.SelectedEditorObjects.Count > 1)
+        {
+            ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
+                $"▲ {_bridge.SelectedEditorObjects.Count} objects selected (editing primary '{editorObj.Name}')");
+            ImGui.Separator();
+        }
+
         // ── Identity ──
         if (ImGui.CollapsingHeader("Editor Object", ImGuiTreeNodeFlags.DefaultOpen))
         {
@@ -1355,6 +1372,31 @@ public class InspectorPanel
             if (ImGui.DragFloat("Far Clip", ref far, 1f, 10f, 5000f, "%.0f"))
                 editorObj.CameraFar = far;
 
+            bool showFrustum = editorObj.ShowFrustum;
+            if (ImGui.Checkbox("Show Frustum", ref showFrustum))
+                editorObj.ShowFrustum = showFrustum;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Show/hide the view-frustum wireframe gizmo for this camera in the viewport");
+
+            ImGui.Spacing();
+            // ── Preview from this camera: teleport the editor camera to the marker ──
+            if (ImGui.Button("Preview from Camera", new Vector2(-1, 28)))
+            {
+                var cam = _bridge.Camera;
+                if (cam != null)
+                {
+                    // Convert the marker's forward direction back to camera yaw/pitch
+                    // (inverse of Front = (sin(yaw)cos(pitch), sin(pitch), cos(yaw)cos(pitch))).
+                    var fwd = editorObj.Forward;
+                    float pitchDeg = MathF.Asin(Math.Clamp(fwd.Y, -1f, 1f)) * 180f / MathF.PI;
+                    float yawDeg = MathF.Atan2(fwd.X, fwd.Z) * 180f / MathF.PI;
+                    cam.SetEditorViewTransform(editorObj.Position, yawDeg, pitchDeg, editorObj.CameraFov);
+                    Console.WriteLine($"[Inspector] Previewed from camera marker '{editorObj.Name}' (pos {editorObj.Position})");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Move the editor camera to this marker's position and look direction (also sets FOV)");
+
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),
                 "Marker at eye height. Use as the scene's spawn camera later.");
@@ -1376,6 +1418,18 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Brightness multiplier applied to the light color");
 
+            float cone = editorObj.LightConeAngle;
+            if (ImGui.SliderFloat("Cone Angle", ref cone, 1f, 89f, "%.0f°"))
+                editorObj.LightConeAngle = cone;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Spotlight cone half-angle visualized by the light gizmo in the viewport");
+
+            bool showLightGizmo = editorObj.ShowLightGizmo;
+            if (ImGui.Checkbox("Show Light Gizmo", ref showLightGizmo))
+                editorObj.ShowLightGizmo = showLightGizmo;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Show/hide the direction ray + spotlight cone gizmo for this light in the viewport");
+
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1f),
                 "Color = the object's Color in Visual section below.");
@@ -1390,6 +1444,92 @@ public class InspectorPanel
                 editorObj.SkyTimeOfDay = tod;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Hours since midnight (12 = midday, 18 = sunset, 6 = sunrise)");
+
+            // ── Time-of-day animation: play/pause + speed (hours per second) ──
+            bool animating = editorObj.SkyTimeAnimSpeed > 0f && !editorObj.SkyTimeAnimPaused;
+            if (ImGui.Button(animating ? "⏸ Pause Day/Night" : "▶ Play Day/Night", new Vector2(-1, 26)))
+            {
+                if (animating)
+                    editorObj.SkyTimeAnimPaused = true;
+                else
+                {
+                    editorObj.SkyTimeAnimPaused = false;
+                    if (editorObj.SkyTimeAnimSpeed <= 0f)
+                        editorObj.SkyTimeAnimSpeed = 1f; // sensible default when first enabled
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Play/pause the day/night cycle — the sun orbits automatically");
+
+            float speed = editorObj.SkyTimeAnimSpeed;
+            if (ImGui.SliderFloat("Day Speed", ref speed, 0f, 24f, "%.1f h/s"))
+                editorObj.SkyTimeAnimSpeed = speed;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("How many in-game hours pass per real second (0 = static, 24 = full day in 1s)");
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Sun position override (pitch/yaw) — null = follow time of day ──
+            bool hasSunOverride = editorObj.SkySunPitch.HasValue && editorObj.SkySunYaw.HasValue;
+            ImGui.TextDisabled("Sun Position");
+            float pitch = editorObj.SkySunPitch ?? 30f;
+            float yaw = editorObj.SkySunYaw ?? 180f;
+            ImGui.BeginDisabled(!hasSunOverride);
+            if (ImGui.SliderFloat("Sun Pitch", ref pitch, -90f, 90f, "%.1f°"))
+                editorObj.SkySunPitch = pitch;
+            if (ImGui.SliderFloat("Sun Yaw", ref yaw, 0f, 360f, "%.1f°"))
+                editorObj.SkySunYaw = yaw;
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered() && !hasSunOverride)
+                ImGui.SetTooltip("Sun follows the Time of Day. Adjust pitch/yaw to aim it manually.");
+            if (ImGui.Button(hasSunOverride ? "Reset to Time of Day" : "Override Sun Position", new Vector2(-1, 0)))
+            {
+                if (hasSunOverride)
+                {
+                    editorObj.SkySunPitch = null;
+                    editorObj.SkySunYaw = null;
+                }
+                else
+                {
+                    // Seed the override from the current time-of-day sun position so the user
+                    // keeps the sun where it already is, then fine-tunes pitch/yaw. Mirrors the
+                    // SceneManager WorldTime→sunAngle math (sunAngle = hours/24*2π - π/2).
+                    float hours = Math.Clamp(editorObj.SkyTimeOfDay, 0f, 24f);
+                    float sunAngle = (hours / 24f) * (MathF.PI * 2f) - (MathF.PI * 0.5f);
+                    var sun = new Vector3(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f);
+                    sun = Vector3.Normalize(sun);
+                    // Convert to pitch/yaw using the same convention as the sky override:
+                    // sun = (sin yaw cos pitch, sin pitch, cos yaw cos pitch)
+                    float seedPitch = MathF.Asin(Math.Clamp(sun.Y, -1f, 1f)) * 180f / MathF.PI;
+                    float seedYaw = MathF.Atan2(sun.X, sun.Z) * 180f / MathF.PI;
+                    editorObj.SkySunPitch = seedPitch;
+                    editorObj.SkySunYaw = seedYaw;
+                }
+            }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Cloud coverage ──
+            float clouds = editorObj.SkyCloudCoverage;
+            if (ImGui.SliderFloat("Cloud Coverage", ref clouds, 0f, 1f, "%.2f"))
+                editorObj.SkyCloudCoverage = clouds;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Cloud amount/intensity in the sky (0 = clear, 1 = heavy overcast)");
+
+            // ── Sun brightness ──
+            float sunI = editorObj.SkySunIntensity;
+            if (ImGui.SliderFloat("Sun Intensity", ref sunI, 0.1f, 3f, "%.2f×"))
+                editorObj.SkySunIntensity = sunI;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Sun brightness multiplier applied to the scene light color");
+
+            bool showSkyGizmo = editorObj.ShowSkyGizmo;
+            if (ImGui.Checkbox("Show Sky Gizmo", ref showSkyGizmo))
+                editorObj.ShowSkyGizmo = showSkyGizmo;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Show/hide the horizon circle + sun icon gizmo in the viewport");
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),

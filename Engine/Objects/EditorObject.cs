@@ -52,16 +52,39 @@ public unsafe class EditorObject
     public float CameraNear { get; set; } = 0.1f;
     /// <summary>Far clip distance for the placed camera.</summary>
     public float CameraFar { get; set; } = 500f;
+    /// <summary>Whether the view-frustum wireframe gizmo is drawn in the viewport.</summary>
+    public bool ShowFrustum { get; set; } = true;
 
     // ── Light (only used when PrimitiveType == Light) ──
     /// <summary>Direction the light points toward (world space, not normalized).</summary>
     public Vector3 LightDirection { get; set; } = new(-0.5f, 0.8f, -0.3f);
     /// <summary>Brightness multiplier for the light color.</summary>
     public float LightIntensity { get; set; } = 1f;
+    /// <summary>Spotlight cone half-angle in degrees — used by the viewport light gizmo
+    /// (and by the editor light sampling) to visualize the light's spread.</summary>
+    public float LightConeAngle { get; set; } = 30f;
+    /// <summary>Whether the direction-ray + spotlight-cone gizmo is drawn in the viewport.</summary>
+    public bool ShowLightGizmo { get; set; } = true;
 
     // ── Sky (only used when PrimitiveType == Sky) ──
     /// <summary>Time of day in hours (0..24). 12 = midday.</summary>
     public float SkyTimeOfDay { get; set; } = 12f;
+    /// <summary>Sun elevation override in degrees (-90..90). null = follow SkyTimeOfDay.
+    /// Setting this lets the user aim the sun independently of the time-of-day cycle.</summary>
+    public float? SkySunPitch { get; set; } = null;
+    /// <summary>Sun azimuth override in degrees (0..360). null = follow SkyTimeOfDay.</summary>
+    public float? SkySunYaw { get; set; } = null;
+    /// <summary>Cloud coverage/intensity 0..1 (drives the sky shader's weather mode).</summary>
+    public float SkyCloudCoverage { get; set; } = 0.3f;
+    /// <summary>Sun brightness multiplier (applied to the sky light color).</summary>
+    public float SkySunIntensity { get; set; } = 1f;
+    /// <summary>Time-of-day animation speed in hours per second (0 = static). While > 0 and
+    /// not paused, SkyTimeOfDay advances automatically and the sun orbits the scene.</summary>
+    public float SkyTimeAnimSpeed { get; set; } = 0f;
+    /// <summary>Pause the time-of-day animation (keeps the current SkyTimeOfDay).</summary>
+    public bool SkyTimeAnimPaused { get; set; } = false;
+    /// <summary>Whether the horizon-circle + sun-icon gizmo is drawn in the viewport.</summary>
+    public bool ShowSkyGizmo { get; set; } = true;
 
     // ── Internal rendering resources (lazy-init) ──
     private Object3D? _object3D;
@@ -132,6 +155,95 @@ public unsafe class EditorObject
         }
     }
 
+    /// <summary>
+    /// Apply the first placed Light + Sky marker settings to the given Lights/Skybox pair.
+    /// Shared by SceneManager (editor viewport) and GameScene (in-game mode) so both render
+    /// with the same sun direction, brightness, cloud coverage and time of day.
+    /// </summary>
+    /// <param name="lightObj">First Light marker (or null). Its direction/color/intensity win over the sky sun.</param>
+    /// <param name="skyObj">First Sky marker (or null). Drives time of day, optional sun pitch/yaw override, cloud coverage, sun brightness.</param>
+    /// <param name="lights">The Lights instance to mutate.</param>
+    /// <param name="skybox">The Skybox to mutate (cloud override), may be null.</param>
+    public static void ApplyEnvironmentMarkers(EditorObject? lightObj, EditorObject? skyObj, Lights lights, Skybox? skybox, float deltaTime)
+    {
+        // ── Light override: the Light marker's direction/color take priority over the sky sun ──
+        if (lightObj != null)
+        {
+            lights.SunDirOverride = lightObj.LightDirection;
+            lights.LightColorOverride = lightObj.Color;
+            lights.LightIntensity = lightObj.LightIntensity;
+        }
+        else
+        {
+            lights.SunDirOverride = null;
+            lights.LightColorOverride = null;
+            lights.LightIntensity = 1f;
+        }
+
+        // ── Sky override: time of day + optional sun pitch/yaw + brightness ──
+        if (skyObj != null)
+        {
+            // Time-of-day animation: while enabled (speed > 0) and not paused, advance the
+            // stored SkyTimeOfDay so the sun orbits, the gizmo follows, the Inspector slider
+            // moves and the saved scene keeps the current time. Paused/static pins the time.
+            if (skyObj.SkyTimeAnimSpeed > 0f && !skyObj.SkyTimeAnimPaused)
+            {
+                skyObj.SkyTimeOfDay = (skyObj.SkyTimeOfDay + skyObj.SkyTimeAnimSpeed * deltaTime) % 24f;
+                if (skyObj.SkyTimeOfDay < 0f) skyObj.SkyTimeOfDay += 24f;
+            }
+
+            float hours = Math.Clamp(skyObj.SkyTimeOfDay, 0f, 24f);
+            lights.WorldTime = (hours / 24f) * (MathF.PI * 2f);
+
+            // Optional sun pitch/yaw override: aim the sun independently of the time-of-day
+            // cycle. Only applied when there is no Light object (the Light marker's direction
+            // takes priority) and only when BOTH pitch and yaw are set (null keeps time-of-day).
+            if (lightObj == null
+                && skyObj.SkySunPitch.HasValue && skyObj.SkySunYaw.HasValue)
+            {
+                float pitch = skyObj.SkySunPitch.Value * MathF.PI / 180f;
+                float yaw = skyObj.SkySunYaw.Value * MathF.PI / 180f;
+                // Same convention as the camera: front = (sin yaw cos pitch, sin pitch, cos yaw cos pitch)
+                var sunDir = new Vector3(
+                    MathF.Sin(yaw) * MathF.Cos(pitch),
+                    MathF.Sin(pitch),
+                    MathF.Cos(yaw) * MathF.Cos(pitch));
+                lights.SunDirOverride = Vector3.Normalize(sunDir);
+            }
+
+            // Sun brightness multiplier from the sky object
+            lights.SunBrightness = Math.Max(0f, skyObj.SkySunIntensity);
+        }
+        else
+        {
+            // No sky object → restore default sun brightness
+            lights.SunBrightness = 1f;
+        }
+
+        // ── Cloud coverage → skybox weather override ──
+        if (skybox != null)
+        {
+            skybox.WeatherOverride = skyObj != null
+                ? Math.Clamp(skyObj.SkyCloudCoverage, 0f, 1f)
+                : null;
+        }
+    }
+
+    /// <summary>World-space forward (look) direction derived from <see cref="RotationEuler"/>
+    /// — same convention as <see cref="WorldMatrix"/> and the camera/light gizmos.
+    /// Default (no rotation) looks down -Z.</summary>
+    public Vector3 Forward
+    {
+        get
+        {
+            var rot = Matrix4x4.CreateFromYawPitchRoll(
+                RotationEuler.Y * MathF.PI / 180f,
+                RotationEuler.X * MathF.PI / 180f,
+                RotationEuler.Z * MathF.PI / 180f);
+            return Vector3.Transform(-Vector3.UnitZ, rot);
+        }
+    }
+
     /// <summary>Compute world-space AABB for selection/culling.
     /// Accounts for scale and rotation (transforms 8 corners through WorldMatrix).</summary>
     public AABB WorldAABB
@@ -166,10 +278,21 @@ public unsafe class EditorObject
     {
         if (_object3D != null && !_dirty) return;
 
-        // Cleanup old resources
+        // Cleanup old GPU resources (VAO/VBO) so repeated color changes don't leak buffers.
+        // EditorObjectManager.Remove() also disposes the Object3D, but here we're re-creating
+        // in place, so delete the GL handles ourselves before dropping the reference.
         if (_object3D != null)
         {
-            // Object3D cleanup handled by caller
+            if (_object3D.VAO != 0)
+            {
+                uint vao = _object3D.VAO;
+                GL.DeleteVertexArrays(1, &vao);
+            }
+            if (_object3D.VBO != 0)
+            {
+                uint vbo = _object3D.VBO;
+                GL.DeleteBuffers(1, &vbo);
+            }
             _object3D = null;
         }
 
@@ -258,7 +381,12 @@ public unsafe class EditorObject
             int useFogLoc, int fogColorLoc,
             Camera camera, Lights light)
         {
-            if (!IsVisible || _object3D == null) return;
+            if (!IsVisible) return;
+
+            // Rebuild GPU resources if MarkDirty() was called (e.g. color changed in the
+            // Inspector) — otherwise the old vertices/color would keep rendering forever.
+            EnsureResources();
+            if (_object3D == null) return;
 
             // Set correct model matrix (WorldMatrix includes position, scale, rotation)
             var model = WorldMatrix;
@@ -276,6 +404,267 @@ public unsafe class EditorObject
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
             GL.BindVertexArray(0);
         }
+
+    /// <summary>
+    /// Draw a real-camera gizmo for this placed camera: a small camera body box plus a
+    /// view-frustum wireframe (near plane, far plane, connector lines and a center ray)
+    /// built from <see cref="CameraFov"/>, <see cref="CameraNear"/> and <see cref="CameraFar"/>.
+    /// The frustum follows the object's rotation (Yaw/Pitch/Roll) so rotating the marker
+    /// points the frustum the same way. Depth test is disabled so the wireframe shows
+    /// through terrain and other geometry (like other editor helpers).
+    /// </summary>
+    public unsafe void DrawCameraFrustum(Camera camera)
+    {
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Camera) return;
+
+        float yaw = RotationEuler.Y * MathF.PI / 180f;
+        float pitch = RotationEuler.X * MathF.PI / 180f;
+        float roll = RotationEuler.Z * MathF.PI / 180f;
+        var rot = Matrix4x4.CreateFromYawPitchRoll(yaw, pitch, roll);
+
+        // Camera looks down -Z (same convention as the engine Camera + gizmo rotation).
+        var forward = Vector3.Transform(-Vector3.UnitZ, rot);
+        var up = Vector3.Transform(Vector3.UnitY, rot);
+        var right = Vector3.Transform(Vector3.UnitX, rot);
+
+        float fovRad = CameraFov * MathF.PI / 180f;
+        float aspect = 16f / 9f; // assumed viewport aspect for the preview frustum
+
+        // Display distances: keep the real near plane exact, but clamp the *displayed*
+        // far distance so a 500-unit far clip doesn't produce a giant wireframe that
+        // dominates the scene. Near is floored so the near quad stays readable.
+        float displayNear = MathF.Max(CameraNear, 0.25f);
+        float displayFar = MathF.Min(CameraFar, 100f);
+
+        float nearHalfH = MathF.Tan(fovRad * 0.5f) * displayNear;
+        float nearHalfW = nearHalfH * aspect;
+        float farHalfH = MathF.Tan(fovRad * 0.5f) * displayFar;
+        float farHalfW = farHalfH * aspect;
+
+        Vector3 nearCenter = Position + forward * displayNear;
+        Vector3 farCenter = Position + forward * displayFar;
+
+        // 8 frustum corners: near quad then far quad
+        Vector3 n0 = nearCenter - right * nearHalfW + up * nearHalfH;
+        Vector3 n1 = nearCenter + right * nearHalfW + up * nearHalfH;
+        Vector3 n2 = nearCenter + right * nearHalfW - up * nearHalfH;
+        Vector3 n3 = nearCenter - right * nearHalfW - up * nearHalfH;
+        Vector3 f0 = farCenter - right * farHalfW + up * farHalfH;
+        Vector3 f1 = farCenter + right * farHalfW + up * farHalfH;
+        Vector3 f2 = farCenter + right * farHalfW - up * farHalfH;
+        Vector3 f3 = farCenter - right * farHalfW - up * farHalfH;
+
+        var verts = new List<Vector3>(48);
+        void Line(Vector3 a, Vector3 b) { verts.Add(a); verts.Add(b); }
+
+        // Near plane quad
+        Line(n0, n1); Line(n1, n2); Line(n2, n3); Line(n3, n0);
+        // Far plane quad
+        Line(f0, f1); Line(f1, f2); Line(f2, f3); Line(f3, f0);
+        // Connectors near → far
+        Line(n0, f0); Line(n1, f1); Line(n2, f2); Line(n3, f3);
+        // Center ray (from camera origin to far center, with a small crosshair dot at the
+        // far center so the look target is obvious)
+        Line(Position, farCenter);
+        float r = farHalfW * 0.06f;
+        Line(farCenter - right * r, farCenter + right * r);
+        Line(farCenter - up * r, farCenter + up * r);
+
+        // Small camera body box right at the origin (wireframe, slightly larger than the
+        // solid marker so the lens direction reads clearly)
+        float b = 0.28f * MathF.Max(Scale.X, MathF.Max(Scale.Y, Scale.Z));
+        Vector3[] body =
+        [
+            Position - right * b - up * b - forward * b, Position + right * b - up * b - forward * b,
+            Position + right * b + up * b - forward * b, Position - right * b + up * b - forward * b,
+            Position - right * b - up * b + forward * b, Position + right * b - up * b + forward * b,
+            Position + right * b + up * b + forward * b, Position - right * b + up * b + forward * b,
+        ];
+        int[] boxEdges = [0,1, 1,2, 2,3, 3,0, 4,5, 5,6, 6,7, 7,4, 0,4, 1,5, 2,6, 3,7];
+        for (int i = 0; i < boxEdges.Length; i += 2)
+            Line(body[boxEdges[i]], body[boxEdges[i + 1]]);
+
+        // Lens: small quad on the +forward face to show which way the camera points
+        float l = b * 0.55f;
+        Vector3 lensC = Position + forward * b;
+        Vector3[] lens =
+        [
+            lensC - right * l - up * l, lensC + right * l - up * l,
+            lensC + right * l + up * l, lensC - right * l + up * l,
+        ];
+        Line(lens[0], lens[1]); Line(lens[1], lens[2]); Line(lens[2], lens[3]); Line(lens[3], lens[0]);
+
+        DrawEditorLines(verts, camera);
+    }
+
+    /// <summary>Render editor wireframe lines (depth-test off so they show through
+    /// geometry), shared by the camera frustum and light gizmos.</summary>
+    private void DrawEditorLines(List<Vector3> verts, Camera camera)
+    {
+        GL.Disable(Const.GL_DEPTH_TEST);
+        Terrains.TerrainChunk.DrawLineSegments(verts, Color, camera);
+        GL.Enable(Const.GL_DEPTH_TEST);
+    }
+
+    /// <summary>
+    /// Draw a real-light gizmo for this placed light: a small sun/sphere marker with a
+    /// direction ray showing where <see cref="LightDirection"/> points, plus a spotlight
+    /// cone (radius grows with distance) visualizing <see cref="LightConeAngle"/>.
+    /// The cone follows the object's rotation on top of the light direction so rotating
+    /// the marker re-aims the beam. Depth test disabled so lines show through geometry.
+    /// </summary>
+    public unsafe void DrawLightGizmo(Camera camera)
+    {
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Light) return;
+
+        float yaw = RotationEuler.Y * MathF.PI / 180f;
+        float pitch = RotationEuler.X * MathF.PI / 180f;
+        float roll = RotationEuler.Z * MathF.PI / 180f;
+        var rot = Matrix4x4.CreateFromYawPitchRoll(yaw, pitch, roll);
+
+        // The light direction is a world-space vector on the object; apply the marker's
+        // rotation so rotating the object re-aims the beam (matches WorldMatrix convention).
+        var dir = Vector3.Transform(LightDirection, rot);
+        float len = dir.Length();
+        if (len < 1e-4f) len = 1f;
+        var beam = dir / len; // normalized aim direction
+
+        // Display beam length: respect intensity a bit, but keep it bounded so it never
+        // dominates the scene (intensity is a multiplier, not distance).
+        float displayLen = Math.Clamp(4f + LightIntensity * 3f, 4f, 24f);
+
+        // Build an orthonormal basis around the beam for the cone circle
+        var upRef = MathF.Abs(beam.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitZ;
+        var right = Vector3.Normalize(Vector3.Cross(beam, upRef));
+        var up = Vector3.Normalize(Vector3.Cross(right, beam));
+
+        var verts = new List<Vector3>(48);
+        void Line(Vector3 a, Vector3 b) { verts.Add(a); verts.Add(b); }
+
+        // ── Direction ray: origin → beam tip, with an arrowhead cross at the tip ──
+        Vector3 tip = Position + beam * displayLen;
+        Line(Position, tip);
+        float head = displayLen * 0.08f;
+        Line(tip, tip - beam * head + right * head * 0.7f);
+        Line(tip, tip - beam * head - right * head * 0.7f);
+        Line(tip, tip - beam * head + up * head * 0.7f);
+        Line(tip, tip - beam * head - up * head * 0.7f);
+
+        // ── Spotlight cone: a circle at the beam tip whose radius grows with distance,
+        // plus cone edge lines from the origin to that circle. ──
+        float coneHalf = Math.Clamp(LightConeAngle, 1f, 89f) * MathF.PI / 180f;
+        float coneRadius = MathF.Tan(coneHalf) * displayLen;
+        const int segs = 12;
+        var ring = new Vector3[segs];
+        for (int i = 0; i < segs; i++)
+        {
+            float a = i * MathF.PI * 2f / segs;
+            ring[i] = tip + right * (MathF.Cos(a) * coneRadius)
+                          + up * (MathF.Sin(a) * coneRadius);
+        }
+        for (int i = 0; i < segs; i++)
+        {
+            Line(ring[i], ring[(i + 1) % segs]); // ring edge
+            Line(Position, ring[i]);             // cone side
+        }
+
+        // ── Small sun marker around the origin (circle + cross) so the light anchor is
+        // obvious even when zoomed far out. ──
+        float r = 0.35f * MathF.Max(Scale.X, MathF.Max(Scale.Y, Scale.Z));
+        const int sunSegs = 8;
+        var sun = new Vector3[sunSegs];
+        for (int i = 0; i < sunSegs; i++)
+        {
+            float a = i * MathF.PI * 2f / sunSegs;
+            sun[i] = Position + right * (MathF.Cos(a) * r) + up * (MathF.Sin(a) * r);
+        }
+        for (int i = 0; i < sunSegs; i++)
+            Line(sun[i], sun[(i + 1) % sunSegs]);
+        Line(Position - right * r, Position + right * r);
+        Line(Position - up * r, Position + up * r);
+
+        DrawEditorLines(verts, camera);
+    }
+
+    /// <summary>
+    /// Draw a sky gizmo for this placed sky marker: a horizon circle in the XZ plane
+    /// around the marker, a small vertical zenith axis, and a sun icon placed in the
+    /// direction of the sun (driven by SkyTimeOfDay, or by the SkySunPitch/SkySunYaw
+    /// override when set) whose radius/brightness scales with SkySunIntensity.
+    /// </summary>
+    public unsafe void DrawSkyGizmo(Camera camera)
+    {
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sky) return;
+
+        // ── Sun direction: same math as SceneManager/editor lights ──
+        Vector3 sunDir;
+        if (SkySunPitch.HasValue && SkySunYaw.HasValue)
+        {
+            float p = SkySunPitch.Value * MathF.PI / 180f;
+            float y = SkySunYaw.Value * MathF.PI / 180f;
+            sunDir = Vector3.Normalize(new Vector3(
+                MathF.Sin(y) * MathF.Cos(p), MathF.Sin(p), MathF.Cos(y) * MathF.Cos(p)));
+        }
+        else
+        {
+            float hours = Math.Clamp(SkyTimeOfDay, 0f, 24f);
+            float sunAngle = (hours / 24f) * (MathF.PI * 2f) - (MathF.PI * 0.5f);
+            sunDir = Vector3.Normalize(new Vector3(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f));
+        }
+
+        var verts = new List<Vector3>(96);
+        void Line(Vector3 a, Vector3 b) { verts.Add(a); verts.Add(b); }
+
+        // ── Horizon circle (XZ plane, radius 3.5, center = marker) ──
+        const int segs = 24;
+        float horizonR = 3.5f * MathF.Max(Scale.X, MathF.Max(Scale.Y, Scale.Z));
+        var prev = new Vector3(Position.X + horizonR, Position.Y, Position.Z);
+        for (int i = 1; i <= segs; i++)
+        {
+            float a = i * MathF.PI * 2f / segs;
+            var cur = new Vector3(Position.X + MathF.Cos(a) * horizonR, Position.Y, Position.Z + MathF.Sin(a) * horizonR);
+            Line(prev, cur);
+            prev = cur;
+        }
+
+        // ── Zenith axis (straight up through the marker) ──
+        float zAxis = horizonR * 0.6f;
+        Line(Position, Position + Vector3.UnitY * zAxis);
+        Line(Position + Vector3.UnitY * (zAxis - 0.25f), Position + Vector3.UnitY * zAxis + Vector3.UnitX * 0.15f);
+        Line(Position + Vector3.UnitY * (zAxis - 0.25f), Position + Vector3.UnitY * zAxis - Vector3.UnitX * 0.15f);
+
+        // ── Sun icon: small circle + rays placed along the sun direction, radius scaled
+        //    by intensity (brighter/larger sun = more intense) ──
+        float sunRadius = 0.35f + 0.25f * Math.Clamp(SkySunIntensity, 0.1f, 3f);
+        Vector3 sunCenter = Position + sunDir * (horizonR * 0.85f);
+
+        // Build an orthonormal basis around the sun direction for the circle/rays
+        var upRef = MathF.Abs(sunDir.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitZ;
+        var sunRight = Vector3.Normalize(Vector3.Cross(sunDir, upRef));
+        var sunUp = Vector3.Normalize(Vector3.Cross(sunRight, sunDir));
+
+        const int sunSegs = 10;
+        var ring = new Vector3[sunSegs];
+        for (int i = 0; i < sunSegs; i++)
+        {
+            float a = i * MathF.PI * 2f / sunSegs;
+            ring[i] = sunCenter + sunRight * (MathF.Cos(a) * sunRadius)
+                                + sunUp * (MathF.Sin(a) * sunRadius);
+        }
+        for (int i = 0; i < sunSegs; i++)
+            Line(ring[i], ring[(i + 1) % sunSegs]);
+
+        // Rays around the sun (4 spokes, brighter color separately? — same color for now)
+        float rayLen = sunRadius * 0.9f;
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * MathF.PI / 2f;
+            var d = sunRight * MathF.Cos(a) + sunUp * MathF.Sin(a);
+            Line(sunCenter + d * (sunRadius + 0.05f), sunCenter + d * (sunRadius + rayLen));
+        }
+
+        DrawEditorLines(verts, camera);
+    }
 
     /// <summary>
     /// Draw the object's mesh as a wireframe line outline in the given color.

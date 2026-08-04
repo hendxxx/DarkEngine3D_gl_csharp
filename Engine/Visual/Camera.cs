@@ -104,6 +104,74 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// Toggled by the "Fly" button in the viewport toolbar.</summary>
         public bool FlyMouseLook = false;
 
+        /// <summary>Editor viewport camera presets (perspective + orthographic-style side views).
+        /// Applied by the "Views" button in the viewport toolbar.</summary>
+        public enum EditorViewPreset
+        {
+            Perspective,
+            Top,
+            Bottom,
+            Front,
+            Back,
+            Left,
+            Right,
+        }
+
+        /// <summary>Snap the editor fly-camera to a preset view (position + orientation).
+        /// Also syncs the internal smoothing targets so fly-mode doesn't snap back next frame.
+        /// Top/Bottom look straight down/up; Front/Back/Left/Right look at the world origin.
+        /// NOTE: pitch ±89 is only valid in fly mode (UpdateCameraVectorsFly doesn't clamp);
+        /// non-fly paths clamp to the preset pitch limits (~±85). The editor camera is always fly.</summary>
+        public void SetEditorViewPreset(EditorViewPreset preset)
+        {
+            Vector3 pos;
+            float yaw, pitch;
+            switch (preset)
+            {
+                case EditorViewPreset.Perspective:
+                    pos = new Vector3(0f, 10f, 15f); yaw = 180f; pitch = -33.7f; break;
+                case EditorViewPreset.Top:
+                    pos = new Vector3(0f, 40f, 0f); yaw = 180f; pitch = -89f; break;
+                case EditorViewPreset.Bottom:
+                    pos = new Vector3(0f, -40f, 0f); yaw = 180f; pitch = 89f; break;
+                case EditorViewPreset.Front:
+                    pos = new Vector3(0f, 5f, 40f); yaw = 180f; pitch = 0f; break;
+                case EditorViewPreset.Back:
+                    pos = new Vector3(0f, 5f, -40f); yaw = 0f; pitch = 0f; break;
+                case EditorViewPreset.Left:
+                    pos = new Vector3(40f, 5f, 0f); yaw = -90f; pitch = 0f; break;
+                case EditorViewPreset.Right:
+                    pos = new Vector3(-40f, 5f, 0f); yaw = 90f; pitch = 0f; break;
+                default:
+                    return;
+            }
+            Position = pos;
+            Yaw = yaw;
+            Pitch = pitch;
+            smoothYaw = yaw;
+            smoothPitch = pitch;
+            smoothCamPos = pos;
+            UpdateCameraVectorsFly();
+        }
+
+        /// <summary>Teleport the editor fly-camera to an explicit position + yaw/pitch
+        /// (degrees), syncing the internal smoothing targets so fly-mode doesn't snap back
+        /// next frame. Used by the Inspector's "Preview from Camera" button to place the
+        /// editor camera exactly at a placed camera marker (position + rotation + FOV).
+        /// Also sets the FOV to match the marker's camera.</summary>
+        public void SetEditorViewTransform(Vector3 pos, float yawDeg, float pitchDeg, float fovDeg)
+        {
+            Position = pos;
+            Yaw = yawDeg;
+            Pitch = pitchDeg;
+            smoothYaw = yawDeg;
+            smoothPitch = pitchDeg;
+            smoothCamPos = pos;
+            if (fovDeg > 0f)
+                FoV = fovDeg; // setter already marks the projection dirty
+            UpdateCameraVectorsFly();
+        }
+
         // ── Mouse look toggle: only active when CTRL is held ──
         private bool _mouseLookWasActive = false;
 
@@ -232,21 +300,61 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             rayDir = Vector3.Normalize(farPos - rayOrigin);
         }
 
+    /// <summary>When true, the editor viewport uses an orthographic projection
+    /// (no perspective foreshortening) — useful for top/side architectural views.
+    /// Toggled from the viewport camera-view menu.</summary>
+    public bool IsOrthographic { get; set; } = false;
+    private float _orthoSize = 20f;
+    /// <summary>Half-height of the orthographic view volume in world units
+    /// (scales how much of the scene is visible in ortho mode).
+    /// Setting it dirties the cached projection matrix so the change takes effect.</summary>
+    public float OrthoSize
+    {
+        get => _orthoSize;
+        set
+        {
+            if (MathF.Abs(_orthoSize - value) > 0.001f)
+            {
+                _orthoSize = value;
+                _projectionDirty = true;
+            }
+        }
+    }
+
+    /// <summary>Toggle between perspective and orthographic projection (editor only).</summary>
+    public void ToggleProjection()
+    {
+        IsOrthographic = !IsOrthographic;
+        _projectionDirty = true;
+    }
+
     public Matrix4x4 GetProjectionMatrix()
 {
     if (_projectionDirty)
     {
         float nearDist = _cameraMode == CameraMode.FirstPerson ? 0.1f : NearDist;
 
-        // Convert FoV (degrees) → radians
-        float fovRad = Helpers.OGLMath.ToRadians(FoV);
+        if (IsOrthographic)
+        {
+            // Orthographic: world-space box centered on the camera's view direction.
+            // Half-extents = OrthoSize (vertical); horizontal scales by aspect ratio.
+            float halfH = OrthoSize;
+            float halfW = halfH * _aspect;
+            _projection = Matrix4x4.CreateOrthographicOffCenter(
+                -halfW, halfW, -halfH, halfH, nearDist, FarDist);
+        }
+        else
+        {
+            // Convert FoV (degrees) → radians
+            float fovRad = Helpers.OGLMath.ToRadians(FoV);
 
-        _projection = Matrix4x4.CreatePerspectiveFieldOfView(
-            fovRad,
-            _aspect,
-            nearDist,
-            FarDist
-        );
+            _projection = Matrix4x4.CreatePerspectiveFieldOfView(
+                fovRad,
+                _aspect,
+                nearDist,
+                FarDist
+            );
+        }
 
         _projectionDirty = false;
     }
@@ -340,10 +448,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                     Position += move * FlySpeed * dt;
 
-                    // Scroll wheel for zoom (move camera along Front direction)
+                    // Scroll wheel for zoom (move camera along Front direction).
+                    // Uses its own FlyZoomSpeed so zooming stays responsive even though
+                    // WASD movement (CameraFlySpeed) is deliberately slower for precision.
                     if (Mouse.ScrollY != 0)
                     {
-                        Position += Front * Mouse.ScrollY * FlySpeed * dt * 2f;
+                        Position += Front * Mouse.ScrollY * Config.CameraConfig.FlyZoomSpeed * dt;
                         Mouse.ResetScroll();
                     }
                 }

@@ -663,6 +663,15 @@ public class SceneManagerPanel
                         LightDirZ = obj.LightDirection.Z,
                         LightIntensity = obj.LightIntensity,
                         SkyTimeOfDay = obj.SkyTimeOfDay,
+                        SkySunPitch = obj.SkySunPitch,
+                        SkySunYaw = obj.SkySunYaw,
+                        SkyCloudCoverage = obj.SkyCloudCoverage,
+                        SkySunIntensity = obj.SkySunIntensity,
+                        SkyTimeAnimSpeed = obj.SkyTimeAnimSpeed,
+                        SkyTimeAnimPaused = obj.SkyTimeAnimPaused,
+                        ShowFrustum = obj.ShowFrustum,
+                        ShowLightGizmo = obj.ShowLightGizmo,
+                        ShowSkyGizmo = obj.ShowSkyGizmo,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z
@@ -694,6 +703,16 @@ public class SceneManagerPanel
         // Set the selected editor scene on the bridge
         _bridge.SelectedEditorScene = sceneName;
         var editorScene = _bridge.EditorScenes[sceneName];
+
+        // Keep the panel's row highlight in sync (works even after a fresh load)
+        for (int i = 0; i < _bridge.AvailableScenes.Count; i++)
+        {
+            if (_bridge.AvailableScenes[i].Name.Equals(sceneName, StringComparison.OrdinalIgnoreCase))
+            {
+                _selectedIdx = i;
+                break;
+            }
+        }
 
         // Update bridge SceneRoot/SceneRootElements for HierarchyPanel to display
         // Show the scene root itself in the tree (not its children directly)
@@ -809,8 +828,15 @@ public class SceneManagerPanel
             if (manifest.EditorObjectHighlightColor?.Length == 3)
                 _bridge.SelectionHighlights.EditorObject = new Vector3(manifest.EditorObjectHighlightColor[0], manifest.EditorObjectHighlightColor[1], manifest.EditorObjectHighlightColor[2]);
 
-            // Clear existing editor scenes — we're replacing with loaded data
+            // Clear existing editor scenes AND the panel's scene list — we're replacing
+            // everything with the loaded data. Without clearing AvailableScenes, scenes from
+            // a previously loaded file would linger and mix with the newly loaded ones.
             _bridge.EditorScenes.Clear();
+            _bridge.AvailableScenesInternal.Clear();
+            _selectedIdx = -1;
+            _bridge.SelectedEditorScene = null;
+            _bridge.EditorObjectManager = null;
+            _bridge.SelectedEditorObjects.Clear();
 
             string? firstLoadedScene = null;
             int sceneCount = 0;
@@ -819,17 +845,12 @@ public class SceneManagerPanel
             {
                 string sceneName = asset.SceneName ?? $"Scene_{sceneCount}";
 
-                // Add to AvailableScenes if not already present
-                bool exists = _bridge.AvailableScenes.Any(e =>
-                    e.Name.Equals(sceneName, StringComparison.OrdinalIgnoreCase));
-                if (!exists)
-                {
-                    _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
-                        sceneName,
-                        $"Loaded from {Path.GetFileName(filePath)}",
-                        false,
-                        IDEBridge.SceneType.MainMenu));
-                }
+                // Add to AvailableScenes (list was cleared above, so no duplicates possible)
+                _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
+                    sceneName,
+                    $"Loaded from {Path.GetFileName(filePath)}",
+                    false,
+                    IDEBridge.SceneType.MainMenu));
 
                 // Build a tree root from the elements
                 UIElement sceneRoot;
@@ -894,6 +915,15 @@ public class SceneManagerPanel
                         obj.LightDirection = new Vector3(objData.LightDirX, objData.LightDirY, objData.LightDirZ);
                         obj.LightIntensity = objData.LightIntensity;
                         obj.SkyTimeOfDay = objData.SkyTimeOfDay;
+                        obj.SkySunPitch = objData.SkySunPitch;
+                        obj.SkySunYaw = objData.SkySunYaw;
+                        obj.SkyCloudCoverage = objData.SkyCloudCoverage;
+                        obj.SkySunIntensity = objData.SkySunIntensity;
+                        obj.SkyTimeAnimSpeed = objData.SkyTimeAnimSpeed;
+                        obj.SkyTimeAnimPaused = objData.SkyTimeAnimPaused;
+                        obj.ShowFrustum = objData.ShowFrustum;
+                        obj.ShowLightGizmo = objData.ShowLightGizmo;
+                        obj.ShowSkyGizmo = objData.ShowSkyGizmo;
 
                         // Restore per-object gizmo pivot override (backward compatible — null if not present)
                         if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)

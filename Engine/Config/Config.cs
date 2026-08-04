@@ -143,7 +143,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // ============================
         public static float CameraDistance = 10.0f;
         public static float CameraOffsetHeight = 1.8f;
-        public static float CameraFlySpeed = 80.0f;
+        /// <summary>WASD movement speed in editor fly mode (default 25 = moderate; the old 80 was too fast for precise placement).</summary>
+        public static float CameraFlySpeed = 25.0f;
+        /// <summary>Scroll-wheel zoom speed in editor fly mode — independent of CameraFlySpeed
+        /// so zoom stays quick even when movement is slowed down.
+        /// (Default 300 = ~2× the old zoom rate of 160·dt per scroll notch.)</summary>
+        public static float FlyZoomSpeed = 300.0f;
         /// <summary>Mouse sensitivity multiplier for fly mode camera (default 0.5 = moderately responsive).</summary>
         public static float FlyMouseSensitivity = 0.5f;
 

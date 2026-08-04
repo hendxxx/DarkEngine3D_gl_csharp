@@ -43,6 +43,11 @@ public class HierarchyPanel
     private int _dragSourceObjectIndex = -1;
     private bool _isDraggingObject = false;
 
+    // ── 3D object selection state ──
+    /// <summary>Index of the last PLAIN-clicked 3D object row — the anchor for
+    /// Shift+Click range selection (selects everything between anchor and click).</summary>
+    private int _last3DClickIndex = -1;
+
     // ── Undo / Redo ──
     private readonly List<UndoRedoAction> _undoStack = [];
     private readonly List<UndoRedoAction> _redoStack = [];
@@ -78,7 +83,7 @@ public class HierarchyPanel
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
     {
-        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform }
+        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform, EditorTransformGroup, EditorPivotChange }
         public ActionType Type;
 
         // For Add / Delete / Move: the element involved
@@ -108,6 +113,13 @@ public class HierarchyPanel
         public Vector3 OldPos, OldRot, OldScale;
         public Vector3 NewPos, NewRot, NewScale;
         public Vector3? OldPivot, NewPivot;   // gizmo pivot override snapshots
+
+        // For EditorTransformGroup (single undo covering a MULTI-select gizmo drag).
+        // Parallel arrays — one entry per object that was actually moved.
+        public EditorObject[]? EditorObjs;
+        public Vector3[]? OldPositions, OldRotations, OldScales;
+        public Vector3[]? NewPositions, NewRotations, NewScales;
+        public Vector3?[]? OldPivots, NewPivots;
     }
 
     public HierarchyPanel(IDEBridge bridge)
@@ -127,33 +139,85 @@ public class HierarchyPanel
         };
 
         // Wire up the 3D gizmo drag-end delegate so ViewportPanel can record
-        // transform undos for editor objects (uses the object's LastGizmo* snapshot
+        // transform undos for editor objects (uses each object's LastGizmo* snapshot
         // captured at drag start as the "old" state, current values as "new").
-        _bridge.OnGizmoDragEnded = (obj) =>
+        // Multi-select drags record ONE grouped undo covering ALL moved objects,
+        // so a single Ctrl+Z restores the entire multi-drag in one step.
+        _bridge.OnGizmoDragEnded = (objs) =>
+        {
+            if (objs == null) return;
+
+            // Collect only the objects that actually moved (skip interrupted/no-op drags)
+            var moved = new List<EditorObject>();
+            foreach (var obj in objs)
+            {
+                if (obj == null) continue;
+                if (obj.Position == obj.LastGizmoPosition
+                    && obj.RotationEuler == obj.LastGizmoRotation
+                    && obj.Scale == obj.LastGizmoScale
+                    && obj.GizmoPivotOverride == obj.LastGizmoPivot)
+                    continue;
+                moved.Add(obj);
+            }
+            if (moved.Count == 0) return;
+
+            if (moved.Count == 1)
+            {
+                // Single-object drag — keep the classic per-object action
+                var obj = moved[0];
+                PushUndo(new UndoRedoAction
+                {
+                    Type = UndoRedoAction.ActionType.EditorTransform,
+                    EditorObj = obj,
+                    OldPos = obj.LastGizmoPosition,
+                    OldRot = obj.LastGizmoRotation,
+                    OldScale = obj.LastGizmoScale,
+                    OldPivot = obj.LastGizmoPivot,
+                    NewPos = obj.Position,
+                    NewRot = obj.RotationEuler,
+                    NewScale = obj.Scale,
+                    NewPivot = obj.GizmoPivotOverride,
+                });
+                Console.WriteLine($"[SceneDetail] Recorded gizmo undo for '{obj.Name}'");
+                return;
+            }
+
+            // Multi-select drag — ONE grouped undo action with parallel per-object
+            // arrays, so a single Ctrl+Z restores the whole group in one step.
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.EditorTransformGroup,
+                EditorObjs = moved.ToArray(),
+                OldPositions = moved.Select(o => o.LastGizmoPosition).ToArray(),
+                OldRotations = moved.Select(o => o.LastGizmoRotation).ToArray(),
+                OldScales = moved.Select(o => o.LastGizmoScale).ToArray(),
+                OldPivots = moved.Select(o => o.LastGizmoPivot).ToArray(),
+                NewPositions = moved.Select(o => o.Position).ToArray(),
+                NewRotations = moved.Select(o => o.RotationEuler).ToArray(),
+                NewScales = moved.Select(o => o.Scale).ToArray(),
+                NewPivots = moved.Select(o => o.GizmoPivotOverride).ToArray(),
+            });
+            Console.WriteLine($"[SceneDetail] Recorded grouped gizmo undo for {moved.Count} object(s) in one step");
+        };
+
+        // Wire up the gizmo pivot-placement delegate so ViewportPanel middle-click pivot
+        // placement records an undo/redo (consistent with gizmo transform drags).
+        // Params: (obj, oldPivotOverride, newPivotOverride) — either may be null.
+        _bridge.OnGizmoPivotChanged = (obj, oldPivot, newPivot) =>
         {
             if (obj == null) return;
 
-            // Skip if nothing actually moved (e.g. interrupted drag with no change)
-            if (obj.Position == obj.LastGizmoPosition
-                && obj.RotationEuler == obj.LastGizmoRotation
-                && obj.Scale == obj.LastGizmoScale
-                && obj.GizmoPivotOverride == obj.LastGizmoPivot)
-                return;
+            // Skip if the pivot didn't actually change (e.g. clicked the same spot)
+            if (oldPivot == newPivot) return;
 
             PushUndo(new UndoRedoAction
             {
-                Type = UndoRedoAction.ActionType.EditorTransform,
+                Type = UndoRedoAction.ActionType.EditorPivotChange,
                 EditorObj = obj,
-                OldPos = obj.LastGizmoPosition,
-                OldRot = obj.LastGizmoRotation,
-                OldScale = obj.LastGizmoScale,
-                OldPivot = obj.LastGizmoPivot,
-                NewPos = obj.Position,
-                NewRot = obj.RotationEuler,
-                NewScale = obj.Scale,
-                NewPivot = obj.GizmoPivotOverride,
+                OldPivot = oldPivot,
+                NewPivot = newPivot,
             });
-            Console.WriteLine($"[SceneDetail] Recorded gizmo undo for '{obj.Name}'");
+            Console.WriteLine($"[SceneDetail] Recorded gizmo pivot undo for '{obj.Name}'");
         };
 
         // Wire up the color undo delegate so InspectorPanel can record color undos
@@ -175,7 +239,7 @@ public class HierarchyPanel
     // ── Public API for main menu bar integration ──
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
-    public bool HasSelection => _bridge.SelectedUIElement != null || _bridge.SelectedEditorObject != null;
+    public bool HasSelection => _bridge.SelectedUIElement != null || _bridge.SelectedEditorObjects.Count > 0;
     public void Undo() => ExecuteUndo();
     public void Redo() => ExecuteRedo();
     public void Duplicate() => DuplicateAllSelected();
@@ -297,9 +361,10 @@ public class HierarchyPanel
 
         var rootElements = _bridge.SceneRootElements;
         bool hasUIElementSelection = _bridge.SelectedUIElement != null;
-        bool has3DSelection = _bridge.SelectedEditorObject != null;
+        bool has3DSelection = _bridge.SelectedEditorObjects.Count > 0;
         bool hasSelection = hasUIElementSelection || has3DSelection;
         int multiCount = _bridge.SelectedUIElements?.Count > 1 ? _bridge.SelectedUIElements.Count : 0;
+        int multi3DCount = _bridge.SelectedEditorObjects.Count > 1 ? _bridge.SelectedEditorObjects.Count : 0;
         bool hasRoots = rootElements != null && rootElements.Count > 0;
         bool canUndo = _undoStack.Count > 0;
         bool canRedo = _redoStack.Count > 0;
@@ -382,7 +447,9 @@ public class HierarchyPanel
             ImGui.SameLine();
 
             // Delete button (red) — deletes ALL selected when multi
-            string delLabel = multiCount > 0 ? $"Del ({multiCount})" : (has3DSelection ? "Del 3D" : "Del");
+            string delLabel = multiCount > 0 ? $"Del ({multiCount})"
+                : multi3DCount > 0 ? $"Del 3D ({multi3DCount})"
+                : (has3DSelection ? "Del 3D" : "Del");
             ImGui.PushStyleColor(ImGuiCol.Button, ColDelBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColDelBtnHov);
             ImGui.BeginDisabled(!hasSelection);
@@ -393,7 +460,9 @@ public class HierarchyPanel
             ImGui.EndDisabled();
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(multiCount > 0 ? $"Delete {multiCount + 1} selected elements" : (has3DSelection ? "Delete selected 3D object" : "Delete the selected element"));
+                ImGui.SetTooltip(multiCount > 0 ? $"Delete {multiCount + 1} selected elements"
+                    : multi3DCount > 0 ? $"Delete {multi3DCount} selected 3D objects"
+                    : (has3DSelection ? "Delete selected 3D object" : "Delete the selected element"));
         }
 
         // ── Toolbar Row 2: Save / Reload from .ing ──
@@ -685,7 +754,8 @@ public class HierarchyPanel
                     for (int i = 0; i < objects.Count; i++)
                     {
                         var obj = objects[i];
-                        bool isSelected = _bridge.SelectedEditorObject == obj;
+                        bool isSelected = _bridge.SelectedEditorObjects.Contains(obj);
+                        bool isPrimary = _bridge.SelectedEditorObject == obj;
 
                         string icon = obj.PrimitiveType switch
                         {
@@ -707,13 +777,18 @@ public class HierarchyPanel
 
                         ImGui.TreeNodeEx(label, flags);
 
+                        // ── Multi-select highlight for non-primary members ──
+                        if (isSelected && !isPrimary)
+                        {
+                            var dl = ImGui.GetWindowDrawList();
+                            var min = ImGui.GetItemRectMin();
+                            var max = ImGui.GetItemRectMax();
+                            dl.AddRectFilled(min, max, ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.5f, 0.8f, 0.18f)));
+                        }
+
                         if (ImGui.IsItemClicked())
                         {
-                            _bridge.SelectedEditorObject = obj;
-                            _bridge.SelectedUIElement = null;
-                            _bridge.SelectedUIElements.Clear();
-                            _bridge.SelectedObject = null;
-                            _bridge.SelectedAgent = null;
+                            Handle3DObjectClick(i, obj);
                         }
 
                         // ── Drag source for 3D object ──
@@ -738,10 +813,18 @@ public class HierarchyPanel
                             ImGui.Separator();
                             if (ImGui.MenuItem("Delete"))
                             {
-                                if (_bridge.SelectedEditorObject == obj)
-                                    _bridge.SelectedEditorObject = null;
-                                editorMgr.Remove(obj);
-                                Console.WriteLine($"[SceneDetail] Deleted editor object: {obj.Name}");
+                                // If right-clicked object is part of a multi-selection, delete ALL selected;
+                                // otherwise delete just this object.
+                                if (_bridge.SelectedEditorObjects.Contains(obj))
+                                {
+                                    DeleteSelectedElement();
+                                }
+                                else
+                                {
+                                    _bridge.DeselectEditorObject(obj);
+                                    editorMgr.Remove(obj);
+                                    Console.WriteLine($"[SceneDetail] Deleted editor object: {obj.Name}");
+                                }
                             }
                             ImGui.EndPopup();
                         }
@@ -772,32 +855,49 @@ public class HierarchyPanel
                 for (int i = 0; i < objects.Count; i++)
                 {
                     var obj = objects[i];
-                    bool isSelected = _bridge.SelectedEditorObject == obj;
+                    bool isSelected = _bridge.SelectedEditorObjects.Contains(obj);
+                    bool isPrimary = _bridge.SelectedEditorObject == obj;
                     string icon = obj.PrimitiveType switch
                     {
                         EditorPrimitiveType.Plane => "▭",
                         EditorPrimitiveType.Box => "▣",
                         EditorPrimitiveType.Sphere => "◉",
                         EditorPrimitiveType.GlbReference => "◈",
+                        EditorPrimitiveType.Camera => "📷",
+                        EditorPrimitiveType.Light => "☀",
+                        EditorPrimitiveType.Sky => "☁",
                         _ => "◇",
                     };
                     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth;
                     if (isSelected) flags |= ImGuiTreeNodeFlags.Selected;
                     ImGui.TreeNodeEx($"{icon} {obj.Name}", flags);
+
+                    // ── Multi-select highlight for non-primary members ──
+                    if (isSelected && !isPrimary)
+                    {
+                        var dl = ImGui.GetWindowDrawList();
+                        var min = ImGui.GetItemRectMin();
+                        var max = ImGui.GetItemRectMax();
+                        dl.AddRectFilled(min, max, ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.5f, 0.8f, 0.18f)));
+                    }
+
                     if (ImGui.IsItemClicked())
                     {
-                        _bridge.SelectedEditorObject = obj;
-                        _bridge.SelectedUIElement = null;
-                        _bridge.SelectedUIElements.Clear();
-                        _bridge.SelectedObject = null;
-                        _bridge.SelectedAgent = null;
+                        Handle3DObjectClick(i, obj);
                     }
                     if (ImGui.BeginPopupContextItem())
                     {
                         if (ImGui.MenuItem("Delete"))
                         {
-                            if (_bridge.SelectedEditorObject == obj) _bridge.SelectedEditorObject = null;
-                            editorMgr.Remove(obj);
+                            if (_bridge.SelectedEditorObjects.Contains(obj))
+                            {
+                                DeleteSelectedElement();
+                            }
+                            else
+                            {
+                                _bridge.DeselectEditorObject(obj);
+                                editorMgr.Remove(obj);
+                            }
                         }
                         ImGui.EndPopup();
                     }
@@ -1441,7 +1541,7 @@ public class HierarchyPanel
         string objName = editorMgr.GetNextName(primType);
         var obj = editorMgr.AddPrimitive(primType, spawnPos);
         obj.Name = objName;
-        _bridge.SelectedEditorObject = obj;
+        _bridge.SelectEditorObject(obj);
         _bridge.SelectedUIElement = null;
         _bridge.SelectedUIElements.Clear();
         _bridge.SelectedObject = null;
@@ -1536,7 +1636,7 @@ public class HierarchyPanel
 
             var obj = editorMgr.AddPrimitive(primType, spawnPos);
             obj.Name = name;
-            _bridge.SelectedEditorObject = obj;
+            _bridge.SelectEditorObject(obj);
             _bridge.SelectedUIElement = null;
             _bridge.SelectedUIElements.Clear();
             _bridge.SelectedObject = null;
@@ -1702,19 +1802,70 @@ public class HierarchyPanel
     }
 
     // ──────────────────────────────────────────────
+    //  3D Object Click Selection (plain / Ctrl / Shift)
+    // ──────────────────────────────────────────────
+
+    /// <summary>Handle a click on a 3D object row in the hierarchy tree:
+    /// - Plain click → select just this object (and set it as the Shift anchor).
+    /// - Ctrl+Click  → toggle this object in the multi-selection (anchor unchanged).
+    /// - Shift+Click → range-select from the last plain-clicked anchor to this row
+    ///   (standard file-explorer behaviour). Shift+Ctrl+Click keeps the existing
+    ///   selection and ADD-adds the whole range to it.</summary>
+    private void Handle3DObjectClick(int index, EditorObject obj)
+    {
+        bool ctrlHeld = ImGui.GetIO().KeyCtrl;
+        bool shiftHeld = ImGui.GetIO().KeyShift;
+        var objects = _bridge.EditorObjectManager?.Objects;
+
+        if (shiftHeld && _last3DClickIndex >= 0 && objects != null)
+        {
+            // Range select from anchor to clicked index (inclusive), ordered
+            int a = Math.Min(_last3DClickIndex, index);
+            int b = Math.Max(_last3DClickIndex, index);
+            a = Math.Clamp(a, 0, objects.Count - 1);
+            b = Math.Clamp(b, 0, objects.Count - 1);
+
+            if (!ctrlHeld)
+                _bridge.SelectEditorObject(null); // replace selection with the range
+            for (int i = a; i <= b; i++)
+                _bridge.SelectEditorObject(objects[i], additive: true);
+            // The clicked object becomes the primary (drives the gizmo + Inspector)
+            _bridge.SelectEditorObject(obj, additive: true);
+            _last3DClickIndex = index;
+        }
+        else if (ctrlHeld)
+        {
+            _bridge.ToggleEditorObjectSelection(obj);
+            // Ctrl+click without shift does not move the range anchor
+        }
+        else
+        {
+            _bridge.SelectEditorObject(obj);
+            _last3DClickIndex = index;
+        }
+
+        _bridge.SelectedUIElement = null;
+        _bridge.SelectedUIElements.Clear();
+        _bridge.SelectedObject = null;
+        _bridge.SelectedAgent = null;
+    }
+
+    // ──────────────────────────────────────────────
     //  Delete Element
     // ──────────────────────────────────────────────
 
-    /// <summary>Delete the currently selected element(s). Supports multi-delete.</summary>
+    /// <summary>Delete the currently selected element(s). Supports multi-delete (UI + 3D objects).</summary>
     private void DeleteSelectedElement()
     {
-        // ── Handle 3D object deletion first ──
-        var editorObj = _bridge.SelectedEditorObject;
-        if (editorObj != null)
+        // ── Handle 3D object deletion first (deletes ALL selected) ──
+        var editorObjs = _bridge.SelectedEditorObjects;
+        if (editorObjs != null && editorObjs.Count > 0)
         {
-            _bridge.EditorObjectManager?.Remove(editorObj);
-            _bridge.SelectedEditorObject = null;
-            Console.WriteLine($"[SceneDetail] Deleted 3D object: {editorObj.Name}");
+            var toDelete = editorObjs.ToArray();
+            foreach (var obj in toDelete)
+                _bridge.EditorObjectManager?.Remove(obj);
+            _bridge.SelectEditorObject(null);
+            Console.WriteLine($"[SceneDetail] Deleted {toDelete.Length} 3D object(s)");
             return;
         }
 
@@ -1852,15 +2003,31 @@ public class HierarchyPanel
     /// Processes elements from last to first to preserve insert indices. Selects all clones afterwards.</summary>
     private void DuplicateAllSelected()
     {
-        // ── 3D object duplication (Ctrl+D) ──
-        var editorObj = _bridge.SelectedEditorObject;
-        if (editorObj != null)
+        // ── 3D object duplication (Ctrl+D) — duplicates ALL selected ──
+        var editorObjs = _bridge.SelectedEditorObjects;
+        if (editorObjs != null && editorObjs.Count > 0)
         {
-            var dup = _bridge.EditorObjectManager?.Duplicate(editorObj);
-            if (dup != null)
+            var dups = new List<EditorObject>();
+            int dupIdx = 0;
+            foreach (var obj in editorObjs.ToArray())
             {
-                _bridge.SelectedEditorObject = dup;
-                Console.WriteLine($"[SceneDetail] Duplicated 3D object: '{editorObj.Name}' → '{dup.Name}'");
+                var dup = _bridge.EditorObjectManager?.Duplicate(obj);
+                if (dup != null)
+                {
+                    // Spread clones out so they don't stack on top of each other
+                    dup.Position += new Vector3(dupIdx, 0f, 0f);
+                    dupIdx++;
+                    dups.Add(dup);
+                    Console.WriteLine($"[SceneDetail] Duplicated 3D object: '{obj.Name}' → '{dup.Name}'");
+                }
+            }
+            if (dups.Count > 0)
+            {
+                // Select all duplicated objects (last becomes primary)
+                _bridge.SelectEditorObject(null);
+                foreach (var d in dups)
+                    _bridge.SelectEditorObject(d, additive: true);
+                Console.WriteLine($"[SceneDetail] Duplicated {dups.Count} 3D object(s)");
             }
             return;
         }
@@ -2078,7 +2245,45 @@ public class HierarchyPanel
                     action.EditorObj.Scale = action.OldScale;
                     action.EditorObj.GizmoPivotOverride = action.OldPivot;
                     Console.WriteLine($"[SceneDetail] Undo Gizmo: '{action.EditorObj.Name}' → pos {action.OldPos:F2}");
-                    _bridge.SelectedEditorObject = action.EditorObj;
+                    _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
+                }
+                break;
+
+            case UndoRedoAction.ActionType.EditorTransformGroup:
+                // Restore ALL 3D editor objects from the multi-drag in ONE undo step
+                if (action.EditorObjs != null)
+                {
+                    int n = action.EditorObjs.Length;
+                    if (action.OldPositions != null) n = Math.Min(n, action.OldPositions.Length);
+                    if (action.OldRotations != null) n = Math.Min(n, action.OldRotations.Length);
+                    if (action.OldScales != null) n = Math.Min(n, action.OldScales.Length);
+                    if (action.OldPivots != null) n = Math.Min(n, action.OldPivots.Length);
+                    for (int i = 0; i < n; i++)
+                    {
+                        var obj = action.EditorObjs[i];
+                        if (obj == null) continue;
+                        obj.Position = action.OldPositions?[i] ?? obj.Position;
+                        obj.RotationEuler = action.OldRotations?[i] ?? obj.RotationEuler;
+                        obj.Scale = action.OldScales?[i] ?? obj.Scale;
+                        // Assign directly (may be null) so a pivot can be cleared back too
+                        obj.GizmoPivotOverride = action.OldPivots?[i];
+                        Console.WriteLine($"[SceneDetail] Undo Gizmo Group: '{obj.Name}' → pos {obj.Position:F2}");
+                    }
+                    // Restore the multi-selection set (last becomes primary)
+                    _bridge.SelectEditorObject(null);
+                    foreach (var obj in action.EditorObjs)
+                        if (obj != null)
+                            _bridge.SelectEditorObject(obj, additive: true);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.EditorPivotChange:
+                // Restore the 3D editor object's previous gizmo pivot override (or clear it)
+                if (action.EditorObj != null)
+                {
+                    action.EditorObj.GizmoPivotOverride = action.OldPivot;
+                    Console.WriteLine($"[SceneDetail] Undo Gizmo Pivot: '{action.EditorObj.Name}' → {(action.OldPivot?.ToString() ?? "none")}");
+                    _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
                 }
                 break;
         }
@@ -2187,7 +2392,45 @@ public class HierarchyPanel
                     action.EditorObj.Scale = action.NewScale;
                     action.EditorObj.GizmoPivotOverride = action.NewPivot;
                     Console.WriteLine($"[SceneDetail] Redo Gizmo: '{action.EditorObj.Name}' → pos {action.NewPos:F2}");
-                    _bridge.SelectedEditorObject = action.EditorObj;
+                    _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
+                }
+                break;
+
+            case UndoRedoAction.ActionType.EditorTransformGroup:
+                // Re-apply ALL 3D editor objects' new transforms in ONE redo step
+                if (action.EditorObjs != null)
+                {
+                    int n = action.EditorObjs.Length;
+                    if (action.NewPositions != null) n = Math.Min(n, action.NewPositions.Length);
+                    if (action.NewRotations != null) n = Math.Min(n, action.NewRotations.Length);
+                    if (action.NewScales != null) n = Math.Min(n, action.NewScales.Length);
+                    if (action.NewPivots != null) n = Math.Min(n, action.NewPivots.Length);
+                    for (int i = 0; i < n; i++)
+                    {
+                        var obj = action.EditorObjs[i];
+                        if (obj == null) continue;
+                        obj.Position = action.NewPositions?[i] ?? obj.Position;
+                        obj.RotationEuler = action.NewRotations?[i] ?? obj.RotationEuler;
+                        obj.Scale = action.NewScales?[i] ?? obj.Scale;
+                        // Assign directly (may be null) so a pivot can be cleared back too
+                        obj.GizmoPivotOverride = action.NewPivots?[i];
+                        Console.WriteLine($"[SceneDetail] Redo Gizmo Group: '{obj.Name}' → pos {obj.Position:F2}");
+                    }
+                    // Restore the multi-selection set (last becomes primary)
+                    _bridge.SelectEditorObject(null);
+                    foreach (var obj in action.EditorObjs)
+                        if (obj != null)
+                            _bridge.SelectEditorObject(obj, additive: true);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.EditorPivotChange:
+                // Re-apply the 3D editor object's new gizmo pivot override (or clear it)
+                if (action.EditorObj != null)
+                {
+                    action.EditorObj.GizmoPivotOverride = action.NewPivot;
+                    Console.WriteLine($"[SceneDetail] Redo Gizmo Pivot: '{action.EditorObj.Name}' → {(action.NewPivot?.ToString() ?? "none")}");
+                    _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
                 }
                 break;
         }

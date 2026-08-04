@@ -1,1 +1,0 @@
-buatkan ketika di add object Z nya = 0, ubah CTRL enter freefly mode menjadi button toggle aja, sama tambahkan tombol duplicate, unuk movement via gizmo activekan snap nya, untk grid sesuaikan kotaknya plane 5x5 harusnya pas 5 kotak x 5 kotak di grid

@@ -41,6 +41,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>Delegate to fire when an object is selected via raycast.</summary>
         public Action<EditorObject?>? OnObjectSelected;
 
+        /// <summary>Delegate fired whenever ANY editor object is removed (any removal path,
+        /// not just the primary selection) so the IDE can prune its multi-selection set.</summary>
+        public Action<EditorObject>? OnObjectRemoved;
+
         public EditorObjectManager()
         {
             _shaderProgram = Shader.GetShaderProgram();
@@ -76,7 +80,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 OnObjectSelected?.Invoke(null);
             }
             obj.Dispose();
-            return _objects.Remove(obj);
+            bool removed = _objects.Remove(obj);
+            if (removed)
+                OnObjectRemoved?.Invoke(obj);
+            return removed;
         }
 
         /// <summary>Move an editor object from one index to another (for drag-drop reorder).</summary>
@@ -99,13 +106,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         {
             if (index >= 0 && index < _objects.Count)
             {
-                if (SelectedObject == _objects[index])
+                var obj = _objects[index];
+                if (SelectedObject == obj)
                 {
                     SelectedObject = null;
                     OnObjectSelected?.Invoke(null);
                 }
-                _objects[index].Dispose();
+                obj.Dispose();
                 _objects.RemoveAt(index);
+                OnObjectRemoved?.Invoke(obj);
             }
         }
 
@@ -196,6 +205,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 LightDirection = source.LightDirection,
                 LightIntensity = source.LightIntensity,
                 SkyTimeOfDay = source.SkyTimeOfDay,
+                SkySunPitch = source.SkySunPitch,
+                SkySunYaw = source.SkySunYaw,
+                SkyCloudCoverage = source.SkyCloudCoverage,
+                SkySunIntensity = source.SkySunIntensity,
+                SkyTimeAnimSpeed = source.SkyTimeAnimSpeed,
+                SkyTimeAnimPaused = source.SkyTimeAnimPaused,
+                ShowFrustum = source.ShowFrustum,
+                ShowLightGizmo = source.ShowLightGizmo,
+                ShowSkyGizmo = source.ShowSkyGizmo,
                 GizmoPivotOverride = null,
             };
             if (clone.PrimitiveType != EditorPrimitiveType.GlbReference)
@@ -205,10 +223,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>Draw all editor objects (called from the game scene rendering loop).
-        /// If <paramref name="wireframeColor"/> is set and an object is selected,
-        /// the selected object is also rendered as a wireframe line outline in that color.
+        /// If <paramref name="wireframeColor"/> is set and objects are selected,
+        /// every selected object is also rendered as a wireframe line outline in that color
+        /// (multi-select supported via <paramref name="selectedObjects"/>).
         /// </summary>
-        public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null)
+        public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
+            IReadOnlyCollection<EditorObject>? selectedObjects = null)
         {
             if (_objects.Count == 0) return;
 
@@ -272,15 +292,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             GL.BindVertexArray(0);
 
-            // ── Stencil-based inverted-hull outline on the selected object (with pulsing effect) ──
-            if (SelectedObject != null && wireframeColor.HasValue)
+            // ── Editor gizmos for special marker types (drawn after the solid objects so
+            // the wireframe lines always render on top; depth test is disabled internally
+            // so they show through terrain): real-camera frustum for cameras, a direction
+            // ray + spotlight cone for lights, and a horizon + sun icon for skies. ──
+            foreach (var obj in _objects)
+            {
+                if (obj == null) continue;
+                if (obj.PrimitiveType == EditorPrimitiveType.Camera)
+                {
+                    if (obj.ShowFrustum)
+                        obj.DrawCameraFrustum(camera);
+                }
+                else if (obj.PrimitiveType == EditorPrimitiveType.Light)
+                {
+                    if (obj.ShowLightGizmo)
+                        obj.DrawLightGizmo(camera);
+                }
+                else if (obj.PrimitiveType == EditorPrimitiveType.Sky)
+                {
+                    if (obj.ShowSkyGizmo)
+                        obj.DrawSkyGizmo(camera);
+                }
+            }
+
+            // ── Stencil-based inverted-hull outline on ALL selected objects (with pulsing effect) ──
+            var outlineSet = selectedObjects is { Count: > 0 }
+                ? selectedObjects
+                : (SelectedObject != null ? [SelectedObject] : null);
+            if (outlineSet != null && wireframeColor.HasValue)
             {
                 // Pulsing effect: oscillates between 0.6 and 1.0 brightness
                 float t = Environment.TickCount / 1000f;
                 float pulse = 0.6f + 0.4f * MathF.Sin(t * 4f);
                 Vector3 outlineCol = wireframeColor.Value * pulse;
 
-                // ── Pass 1: Write stencil mask (set stencil to 1 where object depth passes) ──
+                // ── Pass 1: Write stencil mask (set stencil to 1 where objects' depth passes) ──
                 GL.Enable(Const.GL_STENCIL_TEST);
                 GL.StencilMask(0xFF);
                 GL.Clear(Const.GL_STENCIL_BUFFER_BIT);
@@ -288,7 +335,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.StencilOp(Const.GL_KEEP, Const.GL_KEEP, Const.GL_REPLACE);
                 GL.ColorMask(false, false, false, false);
 
-                SelectedObject.DrawOutlineStencil(camera);
+                foreach (var sel in outlineSet)
+                    sel.DrawOutlineStencil(camera);
 
                 GL.ColorMask(true, true, true, true);
 
@@ -296,7 +344,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.StencilFunc(Const.GL_NOTEQUAL, 1, 0xFF);
                 GL.StencilOp(Const.GL_KEEP, Const.GL_KEEP, Const.GL_KEEP);
 
-                SelectedObject.DrawOutline(camera, outlineCol);
+                foreach (var sel in outlineSet)
+                    sel.DrawOutline(camera, outlineCol);
 
                 GL.Disable(Const.GL_STENCIL_TEST);
                 // NOTE: DrawOutline() leaves GL_CULL_FACE disabled (needed for the inverted-hull

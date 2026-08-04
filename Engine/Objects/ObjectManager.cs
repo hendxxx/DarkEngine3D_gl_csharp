@@ -200,8 +200,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OnLoadProgress?.Invoke(0.15f, "AI: done");            // ─────────────────────────────────────
             // PHASE 2: STATIC OBJECTS (15% → 85%)
             // ─────────────────────────────────────
-            var treesManager = new StaticObjectManager {};
-            var wallManager = new StaticObjectManager {};
+            var treesManager = new StaticObjectManager { Label = "Trees" };
+            var wallManager = new StaticObjectManager { Label = "Wall" };
 
             staticObjectManagers.Add(treesManager);
             staticObjectManagers.Add(wallManager);
@@ -620,6 +620,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             foreach (var obj in _objects) obj.Play(clipName, blendTime);
         }
 
+        /// <summary>Per-object render times from the LAST draw pass, newest frame first.
+        /// Filled inside <see cref="Draw"/> so the Render Time panel can show which objects
+        /// cost the most to draw. Cleared at the start of every Draw(). Only captured when
+        /// <see cref="CaptureRenderTimings"/> is true so the main render path stays
+        /// allocation-free when the profiling panel is closed.</summary>
+        public List<RenderTimingSample> LastRenderTimings { get; } = [];
+        /// <summary>When true, Draw() records per-object timings into <see cref="LastRenderTimings"/>
+        /// (set by GameScene from IDEBridge.CaptureRenderTimings while the Render Time panel is open).</summary>
+        public bool CaptureRenderTimings { get; set; }
+
         public void Draw(Camera camera, Lights light, CSM csm = null)
         {
             DrawnObjects = 0;
@@ -627,6 +637,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             CulledByFrustum = 0;
             CulledByOcclusion = 0;
             RenderedTriangles = 0;
+            LastRenderTimings.Clear();
 
             GL.UseProgram(_shaderProgram);
 
@@ -727,21 +738,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                
 
                 // Count rendered triangles for this animated object
+                int trianglesDrawnThisObject = 0;
                 var meshes = obj.GpuData.Data.Meshes;
                 if (meshes != null)
                 {
                     for (int mi = 0; mi < meshes.Length; mi++)
                     {
                         if (meshes[mi].Vertices.Length >= 3 && meshes[mi].Indices.Length >= 3)
-                            RenderedTriangles += meshes[mi].Indices.Length / 3;
+                        {
+                            int tri = meshes[mi].Indices.Length / 3;
+                            trianglesDrawnThisObject += tri;
+                            RenderedTriangles += tri;
+                        }
                     }
                 }
 
+                // ── Per-object render timing (animated characters) — only when profiling ──
+                long t0 = 0, t1 = 0;
+                if (CaptureRenderTimings) t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 obj.Draw(_modelLoc, _baseColorFactorLoc, _useAlbedoLoc, _albedoMapLoc,
                          _metallicFactorLoc, _roughnessFactorLoc, _normalScaleLoc,
                          _occlusionStrengthLoc, _emissiveFactorLoc,
                          _hasNormalTextureLoc, _hasMetallicRoughnessTextureLoc,
                          _hasOcclusionTextureLoc, _hasEmissiveTextureLoc);
+                if (CaptureRenderTimings)
+                {
+                    t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                    double objMs = (t1 - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                    string objName = obj.CurrentClipName;
+                    if (string.IsNullOrEmpty(objName)) objName = $"Object {i}";
+                    LastRenderTimings.Add(new RenderTimingSample
+                    {
+                        Name = objName,
+                        TimeMs = (float)objMs,
+                        Triangles = trianglesDrawnThisObject,
+                        IsAnimated = true,
+                    });
+                }
                 DrawnObjects++;
             }
 
@@ -751,12 +784,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 if (manager != null)
                 {
+                    long s0 = 0, s1 = 0;
+                    if (CaptureRenderTimings) s0 = System.Diagnostics.Stopwatch.GetTimestamp();
                     if (CullFreezeEnabled)
                         manager.Draw(camera, light, csm, CullFreezeViewProj, true);
                     else
                         manager.Draw(camera, light, csm);
-                    DrawnObjects = DrawnObjects + manager.GetObjectDrawn;
-                    RenderedTriangles += manager.RenderedTriangles;
+                    if (CaptureRenderTimings)
+                    {
+                        s1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                        double mgrMs = (s1 - s0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                        DrawnObjects = DrawnObjects + manager.GetObjectDrawn;
+                        RenderedTriangles += manager.RenderedTriangles;
+                        LastRenderTimings.Add(new RenderTimingSample
+                        {
+                            Name = manager.Label ?? "Static",
+                            TimeMs = (float)mgrMs,
+                            Triangles = manager.RenderedTriangles,
+                            IsAnimated = false,
+                        });
+                    }
+                    else
+                    {
+                        DrawnObjects = DrawnObjects + manager.GetObjectDrawn;
+                        RenderedTriangles += manager.RenderedTriangles;
+                    }
                 }
             }
 

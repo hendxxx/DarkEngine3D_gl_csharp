@@ -25,10 +25,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         /// <summary>Axis currently hovered by the mouse (set by HitTest for visual feedback).</summary>
         public Axis HoverAxis { get; private set; } = Axis.None;
-
-        /// <summary>The EditorObject currently being dragged (null when not dragging).
-        /// Used by ViewportPanel to record undo for the correct object on drag end.</summary>
-        public EditorObject? DragTarget => _dragTarget;
+        /// <summary>World position of the gizmo that was hit-tested last (set by HitTest).
+        /// With multiple gizmos rendered (multi-select) the shared HoverAxis is only applied
+        /// to the gizmo drawn at this exact position, so hovering one object's gizmo doesn't
+        /// highlight the same axis on every other selected gizmo.</summary>
+        private Vector3? _hoverWorldPos;
+        /// <summary>World position of the gizmo currently being rendered (set at the start of
+        /// Render), used to scope the hover highlight to the correct gizmo.</summary>
+        private Vector3 _renderWorldPos;
 
         // ── Translate snap (movement via gizmo) ──
         /// <summary>When true, translate drags snap to <see cref="SnapValue"/> world-unit increments.</summary>
@@ -60,11 +64,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private static readonly Vector3 ColorHoverZ = new(0.5f, 0.75f, 1f);
 
         /// <summary>Pick the color for an axis: active while dragging, hover-brightened while
-        /// the mouse hovers it, otherwise its base color.</summary>
+        /// the mouse hovers THIS gizmo (multi-select aware), otherwise its base color.</summary>
         private Vector3 AxisColor(Axis axis, Vector3 baseColor, Vector3 hoverColor)
         {
             if (_dragAxis == axis) return ColorActive;
-            if (HoverAxis == axis && !IsDragging) return hoverColor;
+            // Only the gizmo at the exact hovered world position gets the hover highlight,
+            // so hovering one selected object's gizmo doesn't light up the same axis on all
+            // the other selected gizmos.
+            if (HoverAxis == axis && !IsDragging && _hoverWorldPos == _renderWorldPos)
+                return hoverColor;
             return baseColor;
         }
 
@@ -78,8 +86,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private Vector2 _dragStartMouse;
         private Vector3 _dragStartValue;
         private Vector3 _dragObjPos;
-        private Vector3? _dragStartPivot;   // pivot override captured once at drag start (avoids cumulative drift)
-        private EditorObject? _dragTarget;
+        private EditorObject? _dragTarget;   // primary (gizmo-handle) target
+        private EditorObject[] _dragTargets = [];      // all objects moved by this drag (multi-select)
+        private Vector3[] _dragStartValues = [];       // per-target start value (position/rotation/scale)
+        private Vector3?[] _dragStartPivots = [];      // per-target start pivot override
+        private Vector3[] _dragStartPositions = [];    // per-target start world position
+        /// <summary>Center of the dragged selection at drag start (average of target
+        /// positions). Scale/rotate operations orbit/scatter around this pivot so the
+        /// whole group transforms as one unit.</summary>
+        private Vector3 _dragGroupCenter;
+        /// <summary>Distance from the object's Position (pivot) down to the bottom of its
+        /// world-space AABB, captured at drag start. Y-axis snapping uses this so the
+        /// object's BASE lands on the grid (Y=0 = resting on the ground) instead of its center.</summary>
+        private float _dragStartBottomOffset;
 
         // ── Gizmo never clips to bottom; it follows the object's projected screen position ──
         // (BottomMargin constant removed — center is now computed from object world position)
@@ -154,17 +173,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Enable(Const.GL_BLEND);
             GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
 
+            // Remember which gizmo is being drawn so hover highlighting (scoped via
+            // _hoverWorldPos) only applies to the gizmo the mouse is actually over.
+            _renderWorldPos = worldPosition;
+
             // Project the object's world position to screen coordinates
             Vector2 center = ProjectToScreen(camera, worldPosition, viewportWidth, viewportHeight);
 
-            // ── Halo backing: a translucent dark disc behind the gizmo so it pops
-            // against bright scenes and overlapping geometry. Drawn first (behind). ──
-            float haloR = RingRadius * 1.05f * Size;
-            if (Mode == GizmoMode.Translate || Mode == GizmoMode.Scale)
-                haloR = AxisLength * 0.72f * Size;
-            DrawCircle(center, haloR, 36, new Vector3(0.06f, 0.06f, 0.10f), colorLoc);
-            // Outer rim ring to clearly mark the selected gizmo bounds
-            DrawRing(center, haloR + 2.5f, 3.0f, 48, new Vector3(1f, 1f, 1f) * 0.9f, colorLoc);
+            // NOTE: no dark halo/backing disc behind the gizmo anymore — it made the
+            // gizmo look like it sat on a black background. The axes now draw cleanly
+            // over the scene.
 
             switch (Mode)
             {
@@ -448,7 +466,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// Project a 3D world position to 2D screen coordinates (Y=0=bottom).
         /// Uses the camera's view-projection matrix.
         /// </summary>
-        private static Vector2 ProjectToScreen(Camera camera, Vector3 worldPos,
+        public static Vector2 ProjectToScreen(Camera camera, Vector3 worldPos,
                                                  int viewportWidth, int viewportHeight)
         {
             Matrix4x4 viewMatrix = camera.GetViewMatrix();
@@ -543,6 +561,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
 
             HoverAxis = result;
+            _hoverWorldPos = worldPosition;
             return result;
         }
 
@@ -560,8 +579,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         //  Drag Operations
         // ════════════════════════════════════════════════════════════
 
-        /// <summary>Start a drag operation on the given axis.</summary>
-        public void StartDrag(Axis axis, Vector2 mouseScreen, EditorObject target)
+        /// <summary>Start a drag operation on the given axis.
+        /// The primary <paramref name="target"/> drives the gizmo handle and snapping;
+        /// when <paramref name="targets"/> is supplied (multi-select) every object in the
+        /// set moves by the SAME delta so they keep their relative layout (no overlap).</summary>
+        public void StartDrag(Axis axis, Vector2 mouseScreen, EditorObject target,
+                              IReadOnlyList<EditorObject>? targets = null)
         {
             if (axis == Axis.None) return;
             _dragAxis = axis;
@@ -570,25 +593,54 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _dragStartMouse = mouseScreen;
             _dragTarget = target;
             _dragObjPos = target.Position;
-            _dragStartPivot = target.GizmoPivotOverride;
+
+            // Build the drag set: the given multi-selection (if any), else just the primary.
+            var set = new List<EditorObject> { target };
+            if (targets != null)
+            {
+                foreach (var t in targets)
+                    if (t != null && !set.Contains(t))
+                        set.Add(t);
+            }
+            _dragTargets = set.ToArray();
+
+            // Per-target start values are mode-dependent; pivot overrides are always captured
+            // so the translate branch stays safe even if the gizmo mode changes mid-drag.
+            _dragStartPivots = _dragTargets.Select(o => o.GizmoPivotOverride).ToArray();
+            _dragStartPositions = _dragTargets.Select(o => o.Position).ToArray();
+
+            // Group pivot = average of all target start positions (selection center).
+            // For a single object this equals its own position (relative offset = 0),
+            // so scale/rotate behave exactly as before.
+            _dragGroupCenter = Vector3.Zero;
+            for (int i = 0; i < _dragStartPositions.Length; i++)
+                _dragGroupCenter += _dragStartPositions[i];
+            _dragGroupCenter /= MathF.Max(1, _dragStartPositions.Length);
 
             switch (Mode)
             {
                 case GizmoMode.Translate:
                     _dragStartValue = target.Position;
+                    // Capture how far the AABB bottom sits below the position pivot so Y-axis
+                    // snapping can align the object's BASE to the grid instead of its center.
+                    _dragStartBottomOffset = target.WorldAABB.Min.Y - target.Position.Y;
+                    _dragStartValues = _dragTargets.Select(o => o.Position).ToArray();
                     break;
                 case GizmoMode.Rotate:
                     _dragStartValue = target.RotationEuler;
+                    _dragStartValues = _dragTargets.Select(o => o.RotationEuler).ToArray();
                     break;
                 case GizmoMode.Scale:
                     _dragStartValue = target.Scale;
+                    _dragStartValues = _dragTargets.Select(o => o.Scale).ToArray();
                     break;
             }
         }
 
-        /// <summary>Update the drag with current mouse position.</summary>
-        public void UpdateDrag(Vector2 mouseScreen, EditorObject target,
-                                Camera camera, int viewportWidth, int viewportHeight)
+        /// <summary>Update the drag with current mouse position.
+        /// Moves EVERY object captured at drag start (multi-select) by the same delta,
+        /// so the whole group follows the gizmo while keeping its relative layout.</summary>
+        public void UpdateDrag(Vector2 mouseScreen, Camera camera, int viewportWidth, int viewportHeight)
         {
             if (!IsDragging || _dragAxis == Axis.None || _dragTarget == null)
                 return;
@@ -604,8 +656,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             float proj = 0f;
             switch (_dragAxis)
             {
+                // Mouse arrives in screen space with Y-up (same as the gizmo's render space),
+                // so dragging along an arrow's screen direction moves the object the same way
+                // in world space — exactly like the X axis (drag right = +X, drag up = +Y).
                 case Axis.X: proj = deltaScreen.X * sens; break;
-                case Axis.Y: proj = -deltaScreen.Y * sens; break; // Y inverted in screen vs world
+                case Axis.Y: proj = deltaScreen.Y * sens; break;
                 case Axis.Z: proj = (deltaScreen.X - deltaScreen.Y) * 0.5f * sens; break;
             }
 
@@ -620,55 +675,109 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 };
                 Vector3 newPos = _dragStartValue + axisDir * proj;
 
-                // Snap only the dragged axis so movement stays aligned to the grid
+                // Snap only the dragged axis so movement stays aligned to the grid.
+                // The X/Z axes snap the object's center; the Y axis snaps the object's
+                // BOTTOM (same 1-unit grid as X) so Y=0 rests the base on the ground
+                // instead of putting the pivot in the middle of the object.
                 if (SnapEnabled && SnapValue > 0f)
                 {
                     switch (_dragAxis)
                     {
                         case Axis.X: newPos.X = SnapAxis(newPos.X); break;
-                        case Axis.Y: newPos.Y = SnapAxis(newPos.Y); break;
+                        case Axis.Y:
+                            newPos.Y = SnapAxis(newPos.Y + _dragStartBottomOffset) - _dragStartBottomOffset;
+                            break;
                         case Axis.Z: newPos.Z = SnapAxis(newPos.Z); break;
                     }
                 }
-                target.Position = newPos;
 
-                // Keep the gizmo pivot override attached to the object while translating:
-                // shift the pivot (captured at drag start) by the same (snapped) delta so the
-                // gizmo stays where the user placed it relative to the object and the handle
-                // keeps tracking the mouse.
-                if (_dragStartPivot is Vector3 startPivot)
+                // Apply the SAME (snapped) delta to every selected object so the group
+                // moves together while each object keeps its own relative position.
+                Vector3 delta = newPos - _dragStartValue;
+                for (int i = 0; i < _dragTargets.Length; i++)
                 {
-                    target.GizmoPivotOverride = startPivot + (newPos - _dragStartValue);
+                    var t = _dragTargets[i];
+                    t.Position = _dragStartValues[i] + delta;
+
+                    // Keep each object's own gizmo pivot override attached while translating:
+                    // shift it by the same (snapped) delta so gizmos stay where the user placed
+                    // them relative to their objects.
+                    if (_dragStartPivots[i] is Vector3 startPivot)
+                        t.GizmoPivotOverride = startPivot + delta;
                 }
             }
             else if (Mode == GizmoMode.Scale)
             {
                 float scaleFactor = 1f + proj * 0.5f;
                 scaleFactor = MathF.Max(0.05f, scaleFactor);
-                Vector3 sv = _dragStartValue;
+                Vector3 factor = Vector3.One;
                 switch (_dragAxis)
                 {
-                    case Axis.X: target.Scale = new Vector3(sv.X * scaleFactor, sv.Y, sv.Z); break;
-                    case Axis.Y: target.Scale = new Vector3(sv.X, sv.Y * scaleFactor, sv.Z); break;
-                    case Axis.Z: target.Scale = new Vector3(sv.X, sv.Y, sv.Z * scaleFactor); break;
+                    case Axis.X: factor = new Vector3(scaleFactor, 1f, 1f); break;
+                    case Axis.Y: factor = new Vector3(1f, scaleFactor, 1f); break;
+                    case Axis.Z: factor = new Vector3(1f, 1f, scaleFactor); break;
+                }
+                for (int i = 0; i < _dragTargets.Length; i++)
+                {
+                    var t = _dragTargets[i];
+
+                    // Scale the object itself...
+                    t.Scale = _dragStartValues[i] * factor;
+
+                    // ...AND its distance from the group center, so a multi-selection
+                    // scatters/collects around the shared pivot instead of each object
+                    // growing around its own origin.
+                    Vector3 rel = _dragStartPositions[i] - _dragGroupCenter;
+                    t.Position = _dragGroupCenter + rel * factor;
+
+                    // Pivot overrides follow their object (same relative transform)
+                    if (_dragStartPivots[i] is Vector3 startPivot)
+                        t.GizmoPivotOverride = _dragGroupCenter + (startPivot - _dragGroupCenter) * factor;
                 }
             }
             else if (Mode == GizmoMode.Rotate)
             {
                 float angle = proj * 60f; // rotation sensitivity
-                Vector3 ev = _dragStartValue;
+                Vector3 rotDelta = Vector3.Zero;
+                Vector3 axisVec = Vector3.Zero;
                 switch (_dragAxis)
                 {
-                    case Axis.X: ev.X += angle; break;
-                    case Axis.Y: ev.Y += angle; break;
-                    case Axis.Z: ev.Z += angle; break;
+                    case Axis.X: rotDelta.X = angle; axisVec = Vector3.UnitX; break;
+                    case Axis.Y: rotDelta.Y = angle; axisVec = Vector3.UnitY; break;
+                    case Axis.Z: rotDelta.Z = angle; axisVec = Vector3.UnitZ; break;
                 }
-                target.RotationEuler = ev;
+                // Orbit each object around the group center (world-axis rotation)
+                // AND rotate the object itself by the same angle, so the whole
+                // selection spins as a rigid unit around the shared pivot.
+                float angleRad = angle * MathF.PI / 180f;
+                Quaternion rotQ = Quaternion.CreateFromAxisAngle(axisVec, angleRad);
+                for (int i = 0; i < _dragTargets.Length; i++)
+                {
+                    var t = _dragTargets[i];
+                    Vector3 rel = _dragStartPositions[i] - _dragGroupCenter;
+                    t.Position = _dragGroupCenter + Vector3.Transform(rel, rotQ);
+                    t.RotationEuler = _dragStartValues[i] + rotDelta;
+                    if (_dragStartPivots[i] is Vector3 startPivot)
+                        t.GizmoPivotOverride = _dragGroupCenter + Vector3.Transform(startPivot - _dragGroupCenter, rotQ);
+                }
             }
         }
 
         /// <summary>Snap a value to the nearest multiple of <see cref="SnapValue"/>.</summary>
         private float SnapAxis(float value) => MathF.Round(value / SnapValue) * SnapValue;
+
+        /// <summary>All objects moved by the current drag (primary first). Empty when not dragging.
+        /// Used by ViewportPanel to report every dragged object for undo support.</summary>
+        public IReadOnlyList<EditorObject> DragTargets => _dragTargets;
+
+        /// <summary>Center of the selection being dragged (average of target start
+        /// positions). Only meaningful while dragging a MULTI selection in scale/rotate
+        /// mode — the fixed pivot the group orbits around. Null otherwise (translate
+        /// drags move the whole group so there is no fixed pivot; the marker should
+        /// follow the objects' live average instead).</summary>
+        public Vector3? GroupCenter =>
+            IsDragging && _dragTargets.Length > 1 && Mode != GizmoMode.Translate
+                ? _dragGroupCenter : null;
 
         /// <summary>End the current drag operation.</summary>
         public void EndDrag()
@@ -677,7 +786,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             IsDragging = false;
             ActiveAxis = Axis.None;
             _dragTarget = null;
-            _dragStartPivot = null;
+            _dragStartBottomOffset = 0f;
+            _dragTargets = [];
+            _dragStartValues = [];
+            _dragStartPivots = [];
+            _dragStartPositions = [];
+            _dragGroupCenter = Vector3.Zero;
         }
     }
 }

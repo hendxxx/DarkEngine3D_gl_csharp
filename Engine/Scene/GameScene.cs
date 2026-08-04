@@ -200,6 +200,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bridge.Fps = Glfw.GetLastFPS();
             bridge.FrameMs = deltaTime * 1000f;
 
+            // Render-time breakdown (ms) for the in-game overlay debug panel
+            bridge.RenderTerrainMs = (float)_terrainTimeMs;
+            bridge.RenderObjectsMs = (float)_objectsTimeMs;
+            bridge.RenderPostFxMs = (float)_postProcessTimeMs;
+            bridge.RenderTotalMs = (float)_totalRenderTimeMs;
+
+            // Per-object render timings for the Render Time panel
+            bridge.ObjectRenderTimings = _objectManager?.LastRenderTimings;
+
             // Camera
             bridge.Camera = _camera;
             bridge.CameraPosition = _camera.Position;
@@ -290,9 +299,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
 
                     // ── Also raycast against editor objects ──
-                    // Gizmo priority: if the click hit the currently-selected object's gizmo,
-                    // keep that selection (gizmo wins over overlapping objects). Only pick by
-                    // nearest ray when the gizmo was NOT hit.
+                    // Gizmo priority: if the click hit the SINGLE selection gizmo (one gizmo
+                    // at the group center for multi-select), keep that selection (gizmo wins
+                    // over overlapping objects). Only pick by nearest ray when no gizmo was hit.
                     bool gizmoClaimedClick = false;
                     if (bridge.SelectedEditorObject != null && bridge.EditorGizmo != null
                         && bridge.SceneTextureWidth > 0 && bridge.SceneTextureHeight > 0)
@@ -300,10 +309,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         int vpwG = bridge.SceneTextureWidth;
                         int vphG = bridge.SceneTextureHeight;
                         float glClickYG = vphG - bridge.ViewportClickY;
-                        Vector3 gizmoPosG = bridge.GizmoOverridePosition ?? bridge.SelectedEditorObject.Position;
-                        gizmoClaimedClick = bridge.EditorGizmo.HitTest(
-                            new Vector2(bridge.ViewportClickX, glClickYG),
-                            _camera, gizmoPosG, vpwG, vphG) != TransformGizmo.Axis.None;
+                        var clickScreen = new Vector2(bridge.ViewportClickX, glClickYG);
+                        if (bridge.GetEditorGizmoCenter() is Vector3 gizmoCenterG)
+                        {
+                            if (bridge.EditorGizmo.HitTest(clickScreen, _camera, gizmoCenterG, vpwG, vphG)
+                                != TransformGizmo.Axis.None)
+                            {
+                                gizmoClaimedClick = true;
+                            }
+                        }
                     }
 
                     var editorMgr = bridge.EditorObjectManager;
@@ -315,7 +329,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         if (hitEditor != null && editorHitDist > 0f && editorHitDist < closestHit)
                         {
                             closestHit = editorHitDist;
-                            bridge.SelectedEditorObject = hitEditor;
+                            // Ctrl/Shift+Click adds to the multi-selection (primary = last clicked);
+                            // plain click replaces the selection with just this object.
+                            bridge.SelectEditorObject(hitEditor, bridge.ViewportCtrlHeld || bridge.ViewportShiftHeld);
                             bridge.SelectedObject = null;
                             bridge.SelectedAgent = null;
                             bridge.SelectedUIElement = null;
@@ -324,8 +340,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         else
                         {
                             // Clear editor selection when clicking anywhere that doesn't hit an editor object
-                            // (empty space / grid / game object / static object)
-                            bridge.SelectedEditorObject = null;
+                            // (empty space / grid / game object / static object) — unless Ctrl/Shift is held,
+                            // which keeps the current multi-selection intact.
+                            if (!bridge.ViewportCtrlHeld && !bridge.ViewportShiftHeld)
+                                bridge.SelectEditorObject(null);
                         }
                     }
 
@@ -824,6 +842,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             // 6. Update Light (always runs)
+            // Apply the first placed Light/Sky marker to the in-game lights + skybox so the
+            // scene lighting, sun position, cloud coverage and time of day match the editor.
+            var envBridge = _sceneManager.Bridge;
+            if (envBridge?.EditorObjectManager is { } envMgr)
+            {
+                EditorObject? skyM = null, lightM = null;
+                foreach (var obj in envMgr.Objects)
+                {
+                    if (skyM == null && obj.PrimitiveType == EditorPrimitiveType.Sky) skyM = obj;
+                    if (lightM == null && obj.PrimitiveType == EditorPrimitiveType.Light) lightM = obj;
+                }
+                EditorObject.ApplyEnvironmentMarkers(lightM, skyM, _light, _skybox, deltaTime);
+            }
             _light.Update(deltaTime, _camera.Position);
 
             //  CSM Shadow Pass (always runs for visual updates behind menu) 
@@ -1007,6 +1038,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _objectManager.CullFreezeEnabled = Keyboard.GetCullFreezeMode();
                 _objectManager.CullFreezeViewProj = Keyboard.GetCullFreezeViewProj();
 
+                // Only capture per-object render timings while the Render Time panel is open
+                _objectManager.CaptureRenderTimings = _sceneManager.Bridge?.CaptureRenderTimings ?? false;
+
                 _objectManager.Draw(_camera, _light, _csm);
                 _objectManager.DrawHealthBars(_camera, _hud);
             }
@@ -1016,9 +1050,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var editorMgr = editorMgrBridge?.EditorObjectManager;
             if (editorMgr != null)
             {
-                // Pass selection highlight color so selected object gets a mesh wireframe outline
-                Vector3? wireCol = editorMgr.SelectedObject != null ? editorMgrBridge?.SelectionHighlights.EditorObject : null;
-                editorMgr.Draw(_camera, _light, _csm, wireCol);
+                // Pass selection highlight color so selected objects get a mesh wireframe outline
+                Vector3? wireCol = editorMgrBridge is { SelectedEditorObjects.Count: > 0 }
+                    ? editorMgrBridge.SelectionHighlights.EditorObject : null;
+                editorMgr.Draw(_camera, _light, _csm, wireCol, editorMgrBridge?.SelectedEditorObjects);
+            }
+
+            // ── Editor debug grid (edit mode only, toggled from the viewport toolbar) ──
+            if (editorMgrBridge is { ShowDebugGrid: true, InGameActive: false })
+            {
+                TerrainChunk.DrawDebugGrid(_camera);
             }
 
             //  Record objects timing, start post-process timing
@@ -1267,7 +1308,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Flush all queued HUD commands ──
             _hud.Flush();
 
-            Glfw.ShowFPS(_deltaTime, _renderedTris, totalMapTris, gTime);
+            // NOTE: The rolling FPS counter is driven by SceneManager's central main loop
+            // (Glfw.UpdateFPS) so it stays live in every scene — do NOT call Glfw.ShowFPS
+            // here anymore, it would double-count frames while GameScene is active.
 
             //  Populate IDEBridge AFTER rendering, so DrawnObjects/RenderedTriangles are current-frame
             UpdateBridgeData(_deltaTime);

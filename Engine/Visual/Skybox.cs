@@ -60,6 +60,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private float totalTime = 0.0f;
         private float exposureState = 0.0f;
 
+        /// <summary>Optional cloud-coverage override (0..1). When set, this replaces
+        /// <see cref="Keyboard.GetCurrentWeather()"/> as the sky shader's weather mode.
+        /// Set by the editor from a placed Sky object's SkyCloudCoverage.</summary>
+        public float? WeatherOverride = null;
+
 
         public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk? terrain)
         {    
@@ -88,7 +93,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             //exposureState = Math.Clamp(exposureState, 0.6f, 2.0f);
 
             // === WEATHER ===
-            float currentWeatherVal = Keyboard.GetCurrentWeather();
+            float currentWeatherVal = WeatherOverride ?? Keyboard.GetCurrentWeather();
             GL.Uniform1f(weatherModeLoc, currentWeatherVal);
 
             // === TIME ===

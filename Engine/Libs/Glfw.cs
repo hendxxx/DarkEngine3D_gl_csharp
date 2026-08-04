@@ -281,19 +281,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             UpdateWindowSize(width, height);
         }
 
-        public static void ShowFPS(float deltaTime, int renderedTris, int totalMapTris, string gameTime)
+        /// <summary>Advance the rolling FPS counter with this frame's delta time.
+        /// Call ONCE per rendered frame from the central main loop so the FPS
+        /// readout stays live in EVERY scene (GameScene, MainMenu, Loading) and
+        /// in bare editor mode — previously only GameScene updated it, so the
+        /// SceneView panel and in-game overlay showed 0 everywhere else.</summary>
+        public static void UpdateFPS(float deltaTime)
         {
-            //FPS
             timer += deltaTime;
             frameCount++;
 
             if (timer >= 1.0f) // Setiap 1 detik
             {
                 lastFPS = frameCount;
-                 
                 frameCount = 0;
                 timer = 0;
             }
+        }
+
+        public static void ShowFPS(float deltaTime, int renderedTris, int totalMapTris, string gameTime)
+        {
+            // Delegate to the shared counter so GameScene's debug HUD keeps working
+            UpdateFPS(deltaTime);
         }
 
 

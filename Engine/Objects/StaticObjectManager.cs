@@ -68,6 +68,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
     public unsafe class StaticObjectManager
     {
+        /// <summary>Display label used by the Render Time panel (e.g. "Trees", "Wall").</summary>
+        public string Label { get; set; } = "Static";
         public int GetObjectDrawn => ObjectDrawn;
         public int GetTotalObject => TotalObject;
         public int RenderedTriangles => _renderedTriangles;

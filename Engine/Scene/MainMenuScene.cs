@@ -1044,10 +1044,10 @@ public unsafe class MainMenuScene : IScene
             var editorBridge = _sceneManager.Bridge;
             if (editorBridge?.EditorObjectManager != null)
             {
-                // Pass selection highlight color so selected object gets a mesh wireframe outline
-                Vector3? wireCol = editorBridge.EditorObjectManager.SelectedObject != null
+                // Pass selection highlight color so selected objects get a mesh wireframe outline
+                Vector3? wireCol = editorBridge is { SelectedEditorObjects.Count: > 0 }
                     ? editorBridge.SelectionHighlights.EditorObject : null;
-                editorBridge.EditorObjectManager.Draw(_camera, _light, null, wireCol);
+                editorBridge.EditorObjectManager.Draw(_camera, _light, null, wireCol, editorBridge.SelectedEditorObjects);
             }
         }            // ── Update bridge with scene data (always, so IDE panels have current state) ──
             var bridge = _sceneManager.Bridge;

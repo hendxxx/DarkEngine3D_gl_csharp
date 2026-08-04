@@ -51,6 +51,13 @@ public unsafe class ViewportPanel
     // ── Model Editor Gizmo ──
     private readonly TransformGizmo _gizmo = new();
 
+    // ── Marquee (rubber-band) multi-select state ──
+    /// <summary>Scene-space (0..texW, 0..texH, Y-down) position where the left button
+    /// was pressed to start a marquee selection. Null when no marquee is in progress.</summary>
+    private Vector2? _marqueeStart = null;
+    private Vector2 _marqueeCurrent;
+    private bool _marqueeActive = false;
+
     // ── Cached conversion data (set each frame in overlay) ──
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
@@ -1206,6 +1213,65 @@ public unsafe class ViewportPanel
 
     
 
+    /// <summary>True when the mouse currently hovers the SINGLE selection gizmo
+    /// (group-center gizmo for multi-select). Used to keep marquee selection from
+    /// stealing a click that is really meant to grab the gizmo.</summary>
+    private bool IsGizmoHitAtMouse()
+    {
+        if (_bridge.SelectedEditorObject == null || _bridge.EditorGizmo == null || _bridge.Camera == null)
+            return false;
+        if (_bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0)
+            return false;
+        if (_bridge.GetEditorGizmoCenter() is not Vector3 gz)
+            return false;
+
+        int vpw = _bridge.SceneTextureWidth;
+        int vph = _bridge.SceneTextureHeight;
+        // Flip Y: ImGui Y=0=top → GL Y=0=bottom
+        float glY = vph - _bridge.ViewportMouseY;
+        var mouseScreen = new Vector2(_bridge.ViewportMouseX, glY);
+        return _bridge.EditorGizmo.HitTest(mouseScreen, _bridge.Camera, gz, vpw, vph) != TransformGizmo.Axis.None;
+    }
+
+    /// <summary>Select every editor object whose projected screen position falls inside
+    /// the marquee rectangle (scene coords, Y-down). Shift/Ctrl held at release ADDS the
+    /// marquee result to the current selection; otherwise the selection is replaced.</summary>
+    private void ApplyMarqueeSelection(Vector2 startScene, Vector2 endScene)
+    {
+        var mgr = _bridge.EditorObjectManager;
+        var cam = _bridge.Camera;
+        if (mgr == null || cam == null) return;
+        int texW = _bridge.SceneTextureWidth;
+        int texH = _bridge.SceneTextureHeight;
+        if (texW <= 0 || texH <= 0) return;
+
+        float x0 = MathF.Max(0f, MathF.Min(startScene.X, endScene.X));
+        float x1 = MathF.Min(texW, MathF.Max(startScene.X, endScene.X));
+        float y0 = MathF.Max(0f, MathF.Min(startScene.Y, endScene.Y));
+        float y1 = MathF.Min(texH, MathF.Max(startScene.Y, endScene.Y));
+        // Degenerate (zero-area) marquee — nothing to select
+        if (x1 - x0 < 1f || y1 - y0 < 1f) return;
+
+        bool additive = ImGui.GetIO().KeyCtrl || ImGui.GetIO().KeyShift;
+        if (!additive)
+            _bridge.SelectEditorObject(null);
+
+        int hitCount = 0;
+        foreach (var obj in mgr.Objects)
+        {
+            if (obj == null) continue;
+            // Project to viewport pixels (Y=0=bottom in GL), then flip to scene Y-down
+            Vector2 p = TransformGizmo.ProjectToScreen(cam, obj.GizmoPivotOverride ?? obj.Position, texW, texH);
+            float sy = texH - p.Y;
+            if (p.X >= x0 && p.X <= x1 && sy >= y0 && sy <= y1)
+            {
+                _bridge.SelectEditorObject(obj, additive: true);
+                hitCount++;
+            }
+        }
+        Console.WriteLine($"[Viewport] Marquee selected {hitCount} object(s)");
+    }
+
     public void Render()
     {
         // ── Initial sync: ensure InGameActive matches _previewMode on first frame ──
@@ -1246,6 +1312,11 @@ public unsafe class ViewportPanel
 
         // Track whether the viewport is focused
         _bridge.IsViewportFocused = ImGui.IsWindowFocused();
+
+        // ── Camera view preset shortcuts (1–7 on the main row / numpad) ──
+        // Only active while the viewport window has focus and we're NOT in preview
+        // mode, so number keys never hijack gameplay input.
+        HandleCameraViewShortcuts();
 
         if (!_fullscreenMode)
         {
@@ -1366,6 +1437,53 @@ ImGui.PushStyleColor(ImGuiCol.Button, gizmoMode == gi
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Toggle gizmo movement snap (1 world unit grid)");
 
+                    // ── Debug grid toggle ──
+                    ImGui.SameLine();
+                    bool debugGrid = _bridge.ShowDebugGrid;
+                    ImGui.PushStyleColor(ImGuiCol.Button, debugGrid
+                        ? new Vector4(0.25f, 0.45f, 0.30f, 1f)
+                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
+                    if (ImGui.Button(debugGrid ? "Grid: On" : "Grid: Off"))
+                    {
+                        _bridge.ShowDebugGrid = !debugGrid;
+                        Console.WriteLine($"[Viewport] Debug grid {(debugGrid ? "disabled" : "enabled")}");
+                    }
+                    ImGui.PopStyleColor(1);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Toggle the editor debug grid (XZ plane at Y=0, major lines every 5 units)");
+
+                    // ── Camera view presets (top-down, bottom-up, side views) ──
+                    ImGui.SameLine();
+                    ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.30f, 0.30f, 0.45f, 1f));
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.42f, 0.42f, 0.62f, 1f));
+                    if (ImGui.Button("◉ Views"))
+                        ImGui.OpenPopup("camera_views");
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Camera view presets: top-down, bottom-up, front/back, left/right");
+                    if (ImGui.BeginPopup("camera_views"))
+                    {
+                        string[] viewLabels =
+                        [
+                            "◉ Perspective", "⬆ Top-Down", "⬇ Bottom-Up",
+                            "➤ Front", "⬅ Back", "→ Left", "← Right",
+                        ];
+                        Camera.EditorViewPreset[] viewPresets =
+                        [
+                            Camera.EditorViewPreset.Perspective, Camera.EditorViewPreset.Top, Camera.EditorViewPreset.Bottom,
+                            Camera.EditorViewPreset.Front, Camera.EditorViewPreset.Back, Camera.EditorViewPreset.Left, Camera.EditorViewPreset.Right,
+                        ];
+                        for (int vi = 0; vi < viewPresets.Length; vi++)
+                        {
+                            if (ImGui.MenuItem(viewLabels[vi]))
+                            {
+                                _bridge.Camera?.SetEditorViewPreset(viewPresets[vi]);
+                                Console.WriteLine($"[Viewport] Camera preset: {viewPresets[vi]}");
+                            }
+                        }
+                        ImGui.EndPopup();
+                    }
+
                     // Primitive creation buttons
                     ImGui.SameLine();
                     ImGui.TextDisabled("|");
@@ -1374,21 +1492,21 @@ if (ImGui.Button("+Box"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Box);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Box, pos);
-                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                        if (obj != null) _bridge.SelectEditorObject(obj);
                     }
                     ImGui.SameLine();
 if (ImGui.Button("+Sphere"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Sphere);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sphere, pos);
-                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                        if (obj != null) _bridge.SelectEditorObject(obj);
                     }
 ImGui.SameLine();
                     if (ImGui.Button("+Plane"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Plane);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Plane, pos);
-                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                        if (obj != null) _bridge.SelectEditorObject(obj);
                     }
 
                     // ── Camera / Light / Sky scene elements ──
@@ -1397,7 +1515,7 @@ ImGui.SameLine();
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Camera);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Camera, pos);
-                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                        if (obj != null) _bridge.SelectEditorObject(obj);
                     }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Add a Camera marker (eye-height spawn, teal)");
@@ -1406,7 +1524,7 @@ ImGui.SameLine();
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Light);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Light, pos);
-                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                        if (obj != null) _bridge.SelectEditorObject(obj);
                     }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Add a Light marker (overrides editor sun color/direction, yellow)");
@@ -1415,22 +1533,43 @@ ImGui.SameLine();
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Sky);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sky, pos);
-                        if (obj != null) _bridge.SelectedEditorObject = obj;
+                        if (obj != null) _bridge.SelectEditorObject(obj);
                     }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Add a Sky marker (renders the procedural skybox in the viewport, blue)");
 
-                    // ── Duplicate selected 3D object ──
+                    // ── Duplicate selected 3D object(s) — duplicates ALL selected ──
                     ImGui.SameLine();
-                    ImGui.BeginDisabled(_bridge.SelectedEditorObject == null);
-                    if (ImGui.Button("⧉ Duplicate"))
+                    ImGui.BeginDisabled(_bridge.SelectedEditorObjects.Count == 0);
+                    if (ImGui.Button(_bridge.SelectedEditorObjects.Count > 1 ? $"⧉ Duplicate ({_bridge.SelectedEditorObjects.Count})" : "⧉ Duplicate"))
                     {
-                        var dup = _bridge.EditorObjectManager.Duplicate(_bridge.SelectedEditorObject!);
-                        if (dup != null) _bridge.SelectedEditorObject = dup;
+                        var mgr = _bridge.EditorObjectManager;
+                        if (mgr != null)
+                        {
+                            var dups = new List<EditorObject>();
+                            int dupIdx = 0;
+                            foreach (var obj in _bridge.SelectedEditorObjects.ToArray())
+                            {
+                                var dup = mgr.Duplicate(obj);
+                                if (dup != null)
+                                {
+                                    // Spread clones out so they don't stack on top of each other
+                                    dup.Position += new Vector3(dupIdx, 0f, 0f);
+                                    dupIdx++;
+                                    dups.Add(dup);
+                                }
+                            }
+                            if (dups.Count > 0)
+                            {
+                                _bridge.SelectEditorObject(null);
+                                foreach (var d in dups)
+                                    _bridge.SelectEditorObject(d, additive: true);
+                            }
+                        }
                     }
                     ImGui.EndDisabled();
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Duplicate the selected 3D object");
+                        ImGui.SetTooltip("Duplicate the selected 3D object(s)");
                 }
             } // end toolbar block
         } // end if (!_fullscreenMode)
@@ -1914,10 +2053,10 @@ ImGui.SameLine();
                 bool mouseReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
                 if (!mouseDown && !mouseReleased)
                 {
-                    var draggedObj = _bridge.EditorGizmo.DragTarget;
+                    var draggedSet = _bridge.EditorGizmo.DragTargets.ToArray();
                     _bridge.EditorGizmo.EndDrag();
                     // Record undo for the partial movement that happened before the interruption
-                    _bridge.OnGizmoDragEnded?.Invoke(draggedObj!);
+                    _bridge.OnGizmoDragEnded?.Invoke(draggedSet);
                     Console.WriteLine("[Viewport] Gizmo drag reset (interrupted)");
                 }
             }
@@ -1953,7 +2092,14 @@ ImGui.SameLine();
                 // Reset click flag each frame — set to true below if left-click occurs
                 _bridge.IsViewportClicked = false;
 
-                if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None)
+                // Track Ctrl/Shift state each frame so click-to-select can do additive multi-select
+                _bridge.ViewportCtrlHeld = ImGui.GetIO().KeyCtrl;
+                _bridge.ViewportShiftHeld = ImGui.GetIO().KeyShift;
+
+                // Clicks on the floating "◉ Views" overlay button must NOT count as
+                // viewport clicks (no raycast select / deselect on empty space).
+                if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
+                    && !IsMouseOverViewportViewsButton())
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
@@ -1993,8 +2139,12 @@ ImGui.SameLine();
 
                     if (hitPoint.HasValue && _bridge.SelectedEditorObject != null)
                     {
-                        _bridge.SelectedEditorObject.GizmoPivotOverride = hitPoint.Value;
-                        Console.WriteLine($"[Viewport] Gizmo pivot for '{_bridge.SelectedEditorObject.Name}' set to {hitPoint.Value:F2}");
+                        var pivotObj = _bridge.SelectedEditorObject;
+                        var oldPivot = pivotObj.GizmoPivotOverride;
+                        pivotObj.GizmoPivotOverride = hitPoint.Value;
+                        // Record undo so Ctrl+Z reverts the pivot placement (consistent with gizmo drags)
+                        _bridge.OnGizmoPivotChanged?.Invoke(pivotObj, oldPivot, hitPoint.Value);
+                        Console.WriteLine($"[Viewport] Gizmo pivot for '{pivotObj.Name}' set to {hitPoint.Value:F2}");
                     }
                 }
                 // IsViewportClicked is reset on the next frame (set to false at start of each
@@ -2007,6 +2157,64 @@ ImGui.SameLine();
                 _bridge.ViewportMouseX = -1;
                 _bridge.ViewportMouseY = -1;
                 _bridge.IsViewportClicked = false;
+            }
+
+            // ── Marquee (rubber-band) multi-select for 3D editor objects ──
+            // Left-press on empty viewport space starts a drag rectangle; on release
+            // every object whose projected screen position lands inside the rect is
+            // selected (Shift/Ctrl held = added to the current selection).
+            if (!_previewMode && hasSceneTexture && _bridge.EditorObjectManager != null
+                && _bridge.Camera != null && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+            {
+                bool leftPressedNow = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+                bool leftDownNow = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+                bool leftReleasedNow = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+
+                // Start the marquee: press on the image while NOT grabbing the gizmo,
+                // NOT hovering the views button, and NOT dragging a UI element.
+                if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
+                    && !IsGizmoHitAtMouse() && !IsMouseOverViewportViewsButton())
+                {
+                    _marqueeStart = new Vector2(_bridge.ViewportMouseX, _bridge.ViewportMouseY);
+                    _marqueeCurrent = _marqueeStart.Value;
+                    _marqueeActive = false;
+                }
+
+                if (_marqueeStart != null)
+                {
+                    if (leftDownNow && _bridge.ViewportMouseX >= 0f && _bridge.ViewportMouseY >= 0f)
+                    {
+                        _marqueeCurrent = new Vector2(_bridge.ViewportMouseX, _bridge.ViewportMouseY);
+                        // Only treat it as a marquee once the mouse actually moves a few px
+                        if (!_marqueeActive && Vector2.Distance(_marqueeCurrent, _marqueeStart.Value) > 4f)
+                            _marqueeActive = true;
+                    }
+
+                    if (leftReleasedNow || (!leftDownNow && !leftReleasedNow))
+                    {
+                        if (_marqueeActive)
+                        {
+                            ApplyMarqueeSelection(_marqueeStart.Value, _marqueeCurrent);
+                            // The marquee already handled selection — don't let the click
+                            // raycast below also deselect on this empty-space release.
+                            _bridge.IsViewportClicked = false;
+                        }
+                        _marqueeStart = null;
+                        _marqueeActive = false;
+                    }
+                }
+
+                // ── Draw the marquee rectangle overlay (screen space) ──
+                if (_marqueeActive && _marqueeStart != null)
+                {
+                    var dl = ImGui.GetWindowDrawList();
+                    var a = SceneToScreen(_marqueeStart.Value.X, _marqueeStart.Value.Y);
+                    var b = SceneToScreen(_marqueeCurrent.X, _marqueeCurrent.Y);
+                    uint fill = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.6f, 1f, 0.12f));
+                    uint border = ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.7f, 1f, 0.9f));
+                    dl.AddRectFilled(a, b, fill);
+                    dl.AddRect(a, b, border, 0f, ImDrawFlags.None, 1.5f);
+                }
             }
 
             // ── 3D Object click-to-select (raycast) ──
@@ -2023,8 +2231,9 @@ ImGui.SameLine();
                 var cam = _bridge.Camera;
                 var mgr = _bridge.EditorObjectManager;
 
-                // ── Step 1: gizmo priority — if the click lands on the selected object's
-                // gizmo, keep the current selection (gizmo wins over overlapping objects).
+                // ── Step 1: gizmo priority — if the click lands on the SINGLE gizmo
+                // (one gizmo at the group center for multi-select), keep the current
+                // selection (gizmo wins over overlapping objects).
                 bool gizmoClaimedClick = false;
                 if (_bridge.SelectedEditorObject != null && _bridge.EditorGizmo != null)
                 {
@@ -2032,11 +2241,12 @@ ImGui.SameLine();
                     int vphG = _bridge.SceneTextureHeight > 0 ? _bridge.SceneTextureHeight : 1080;
                     // Flip Y: ImGui Y=0=top → GL Y=0=bottom
                     float glClickYG = vphG - _bridge.ViewportClickY;
-                    Vector3 gizmoPosG = _bridge.GizmoOverridePosition ?? _bridge.SelectedEditorObject.Position;
-                    var gizmoAxisG = _bridge.EditorGizmo.HitTest(
-                        new Vector2(_bridge.ViewportClickX, glClickYG),
-                        cam, gizmoPosG, vpwG, vphG);
-                    gizmoClaimedClick = gizmoAxisG != TransformGizmo.Axis.None;
+                    var clickScreen = new Vector2(_bridge.ViewportClickX, glClickYG);
+                    if (_bridge.GetEditorGizmoCenter() is Vector3 gizmoCenterG)
+                    {
+                        if (_bridge.EditorGizmo.HitTest(clickScreen, cam, gizmoCenterG, vpwG, vphG) != TransformGizmo.Axis.None)
+                            gizmoClaimedClick = true;
+                    }
                 }
 
                 if (!gizmoClaimedClick)
@@ -2050,18 +2260,25 @@ ImGui.SameLine();
 
                     if (mgr.Raycast(rayOrigin, rayDir, out float hitDist, out Vector3 hitPoint) is EditorObject hitObj)
                     {
-                        // Don't clear gizmo pivot — each object stores its own
-                        _bridge.SelectedEditorObject = hitObj;
+                        // Don't clear gizmo pivot — each object stores its own.
+                        // Ctrl/Shift+Click toggles the object in the multi-selection set;
+                        // plain click replaces the selection with just this object.
+                        bool ctrlHeld = _bridge.ViewportCtrlHeld;
+                        bool shiftHeld = _bridge.ViewportShiftHeld;
+                        if (ctrlHeld || shiftHeld)
+                            _bridge.ToggleEditorObjectSelection(hitObj);
+                        else
+                            _bridge.SelectEditorObject(hitObj);
                         _bridge.SelectedUIElement = null;
                         _bridge.SelectedUIElements.Clear();
                         _bridge.SelectedObject = null;
                         _bridge.SelectedAgent = null;
                         Console.WriteLine($"[Viewport] Raycast selected 3D object: {hitObj.Name}");
                     }
-                    else if (_bridge.SelectedEditorObject != null)
+                    else if (_bridge.SelectedEditorObjects.Count > 0 && !_bridge.ViewportCtrlHeld && !_bridge.ViewportShiftHeld)
                     {
-                        // No object hit and no gizmo hit → deselect
-                        _bridge.SelectedEditorObject = null;
+                        // No object hit and no gizmo hit → deselect (Ctrl/Shift-click keeps the selection)
+                        _bridge.SelectEditorObject(null);
                         Console.WriteLine("[Viewport] Deselected 3D object (empty click)");
                     }
                 }
@@ -2092,34 +2309,39 @@ ImGui.SameLine();
 
                 if (gizmo.IsDragging)
                 {
-                    // Update gizmo drag with screen-space mouse
-                    gizmo.UpdateDrag(mouseScreen, selected, cam, vpw, vph);
+                    // Update gizmo drag with screen-space mouse (moves ALL dragged objects together)
+                    gizmo.UpdateDrag(mouseScreen, cam, vpw, vph);
                     if (leftReleased)
                     {
+                        // Capture the full dragged set BEFORE EndDrag clears it, so undo can
+                        // restore every object that was moved (multi-select aware).
+                        var draggedSet = gizmo.DragTargets.ToArray();
                         gizmo.EndDrag();
-                        // Record undo for the gizmo transform change
-                        _bridge.OnGizmoDragEnded?.Invoke(selected);
-                        Console.WriteLine($"[Viewport] Gizmo drag ended on '{selected.Name}'");
+                        // Record undo for the gizmo transform change(s)
+                        _bridge.OnGizmoDragEnded?.Invoke(draggedSet);
+                        Console.WriteLine($"[Viewport] Gizmo drag ended on {draggedSet.Length} object(s)");
                     }
                 }
                 else
                 {
-                    // Hit test the gizmo at the object's projected screen position
-                    Vector3 gizmoPos2 = _bridge.GizmoOverridePosition ?? selected.Position;
-                    var hitAxis = gizmo.HitTest(mouseScreen, cam, gizmoPos2, vpw, vph);
-                    if (leftClicked && hitAxis != TransformGizmo.Axis.None)
+                    // Hit test the SINGLE gizmo (one gizmo at the group center for
+                    // multi-select). Dragging it moves ALL selected objects together.
+                    TransformGizmo.Axis hitAxis = TransformGizmo.Axis.None;
+                    if (_bridge.GetEditorGizmoCenter() is Vector3 gizmoPos2)
+                        hitAxis = gizmo.HitTest(mouseScreen, cam, gizmoPos2, vpw, vph);
+                    if (leftClicked && hitAxis != TransformGizmo.Axis.None && selected != null)
                     {
-                        // Keep the per-object gizmo pivot override so the gizmo stays where the
-                        // user moved it (middle-click) instead of snapping back to the object's
-                        // default position when manipulation starts. The override is translated
-                        // along with the object in TransformGizmo.UpdateDrag so it stays attached.
-                        // Snapshot transform + pivot override BEFORE dragging so undo can restore them
-                        selected.LastGizmoPosition = selected.Position;
-                        selected.LastGizmoRotation = selected.RotationEuler;
-                        selected.LastGizmoScale = selected.Scale;
-                        selected.LastGizmoPivot = selected.GizmoPivotOverride;
-                        gizmo.StartDrag(hitAxis, mouseScreen, selected);
-                        Console.WriteLine($"[Viewport] Gizmo drag started on '{selected.Name}' axis={hitAxis}");
+                        // Snapshot transform + pivot override BEFORE dragging for EVERY selected
+                        // object so undo can restore the whole multi-select drag.
+                        foreach (var obj in _bridge.SelectedEditorObjects)
+                        {
+                            obj.LastGizmoPosition = obj.Position;
+                            obj.LastGizmoRotation = obj.RotationEuler;
+                            obj.LastGizmoScale = obj.Scale;
+                            obj.LastGizmoPivot = obj.GizmoPivotOverride;
+                        }
+                        gizmo.StartDrag(hitAxis, mouseScreen, selected, _bridge.SelectedEditorObjects.ToArray());
+                        Console.WriteLine($"[Viewport] Gizmo drag started on '{selected.Name}' (+{_bridge.SelectedEditorObjects.Count - 1} selected) axis={hitAxis}");
                     }
                 }
             }
@@ -2136,7 +2358,311 @@ ImGui.SameLine();
                 "No Scene");
         }
 
+        // ── Camera view menu overlay (top-left corner of the viewport image) ──
+        DrawViewportCameraOverlay(hasSceneTexture);
+
+        // ── Active view label (Top / Front / Left / …) — top-right corner ──
+        DrawViewportViewLabel(hasSceneTexture);
+
+        // ── Type labels above placed Camera markers (edit mode only) ──
+        DrawEditorObjectTypeLabels(hasSceneTexture);
+
         ImGui.End();
+    }
+
+    /// <summary>Draw a small type tag ("Camera" / "Light" / "Sky") above every placed
+    /// camera, light and sky marker so it's obvious which editor object is which.
+    /// Edit mode only.</summary>
+    private void DrawEditorObjectTypeLabels(bool hasSceneTexture)
+    {
+        if (_previewMode || !hasSceneTexture || _bridge.Camera == null) return;
+        if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
+
+        var mgr = _bridge.EditorObjectManager;
+        if (mgr == null || mgr.Objects.Count == 0) return;
+
+        var cam = _bridge.Camera;
+        var dl = ImGui.GetWindowDrawList();
+        var font = ImGui.GetFont();
+        float fontSize = 13f;
+
+        foreach (var obj in mgr.Objects)
+        {
+            if (obj == null) continue;
+            if (obj.PrimitiveType != EditorPrimitiveType.Camera &&
+                obj.PrimitiveType != EditorPrimitiveType.Light &&
+                obj.PrimitiveType != EditorPrimitiveType.Sky) continue;
+            if (!obj.IsVisible) continue;
+
+            // Project the marker's world position to scene pixel coords (Y-up from GL).
+            // Uses the same pivot logic as marquee selection so the tag follows the gizmo.
+            var p = TransformGizmo.ProjectToScreen(cam, obj.GizmoPivotOverride ?? obj.Position, (int)_texW, (int)_texH);
+            if (p.X < 0 || p.X > _texW || p.Y < 0 || p.Y > _texH) continue;
+
+            // Flip to scene Y-down, then to ImGui screen space
+            float sceneY = _texH - p.Y;
+            var screen = SceneToScreen(p.X, sceneY);
+
+            bool isCamera = obj.PrimitiveType == EditorPrimitiveType.Camera;
+            bool isLight = obj.PrimitiveType == EditorPrimitiveType.Light;
+            string tag = isCamera ? "Camera" : (isLight ? "Light" : "Sky");
+            var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, tag);
+            float padX = 5f, padY = 2f;
+            var tagMin = new Vector2(screen.X - textSize.X * 0.5f - padX, screen.Y - textSize.Y - 16f);
+            var tagMax = new Vector2(screen.X + textSize.X * 0.5f + padX, tagMin.Y + textSize.Y + padY * 2f);
+
+            // Skip if the tag would be drawn outside the visible image
+            if (tagMax.X < _imageMin.X || tagMin.X > _imageMax.X ||
+                tagMax.Y < _imageMin.Y || tagMin.Y > _imageMax.Y) continue;
+
+            // Camera → teal, Light → warm amber, Sky → sky blue
+            uint bg = ImGui.ColorConvertFloat4ToU32(isCamera
+                ? new Vector4(0.1f, 0.35f, 0.4f, 0.85f)
+                : isLight
+                    ? new Vector4(0.45f, 0.32f, 0.06f, 0.85f)
+                    : new Vector4(0.08f, 0.22f, 0.42f, 0.85f));
+            uint border = ImGui.ColorConvertFloat4ToU32(isCamera
+                ? new Vector4(0.3f, 0.8f, 1f, 0.9f)
+                : isLight
+                    ? new Vector4(1f, 0.75f, 0.3f, 0.9f)
+                    : new Vector4(0.4f, 0.65f, 1f, 0.9f));
+            uint textCol = ImGui.ColorConvertFloat4ToU32(isCamera
+                ? new Vector4(0.7f, 1f, 1f, 1f)
+                : isLight
+                    ? new Vector4(1f, 0.95f, 0.7f, 1f)
+                    : new Vector4(0.75f, 0.85f, 1f, 1f));
+            dl.AddRectFilled(tagMin, tagMax, bg, 3f);
+            dl.AddRect(tagMin, tagMax, border, 3f, ImDrawFlags.None, 1f);
+            dl.AddText(font, fontSize, tagMin + new Vector2(padX, padY),
+                textCol, tag);
+        }
+    }
+
+    /// <summary>Static mapping of (main-row key, numpad key) → view preset, allocated once
+    /// so the per-frame shortcut check doesn't allocate a fresh array each frame.</summary>
+    private static readonly (ImGuiKey main, ImGuiKey numpad, Camera.EditorViewPreset preset)[] CameraViewShortcuts =
+    [
+        (ImGuiKey._1, ImGuiKey.Keypad1, Camera.EditorViewPreset.Top),
+        (ImGuiKey._2, ImGuiKey.Keypad2, Camera.EditorViewPreset.Front),
+        (ImGuiKey._3, ImGuiKey.Keypad3, Camera.EditorViewPreset.Left),
+        (ImGuiKey._4, ImGuiKey.Keypad4, Camera.EditorViewPreset.Right),
+        (ImGuiKey._5, ImGuiKey.Keypad5, Camera.EditorViewPreset.Back),
+        (ImGuiKey._6, ImGuiKey.Keypad6, Camera.EditorViewPreset.Bottom),
+        (ImGuiKey._7, ImGuiKey.Keypad7, Camera.EditorViewPreset.Perspective),
+    ];
+
+    /// <summary>Handle number-key shortcuts for camera view presets while the viewport
+    /// is focused in editor mode: 1=Top, 2=Front, 3=Left, 4=Right, 5=Back, 6=Bottom,
+    /// 7=Perspective. Works with both the main number row and the numpad.</summary>
+    private void HandleCameraViewShortcuts()
+    {
+        if (_previewMode || _fullscreenMode || _bridge.Camera == null) return;
+        if (!_bridge.IsViewportFocused) return;
+
+        // Skip when an ImGui text input / editing field is focused (don't steal typing)
+        if (ImGui.GetIO().WantTextInput) return;
+        // Don't snap the camera while the user is mid-gizmo-drag
+        if (_bridge.EditorGizmo?.IsDragging == true) return;
+
+        for (int i = 0; i < CameraViewShortcuts.Length; i++)
+        {
+            var (main, numpad, preset) = CameraViewShortcuts[i];
+            if (ImGui.IsKeyPressed(main) || ImGui.IsKeyPressed(numpad))
+            {
+                _bridge.Camera?.SetEditorViewPreset(preset);
+                Console.WriteLine($"[Viewport] Shortcut camera preset: {preset}");
+                return;
+            }
+        }
+    }
+
+    /// <summary>Determine the editor view label from the current camera orientation.
+    /// Uses the camera's Front vector: near-vertical pitch → Top/Bottom; otherwise the
+    /// dominant horizontal axis decides Front/Back/Left/Right; anything in between is
+    /// reported as Perspective (a 3/4 view).</summary>
+    private string GetActiveViewLabel(out Vector4 labelColor)
+    {
+        var cam = _bridge.Camera;
+        if (cam == null)
+        {
+            labelColor = new Vector4(0.9f, 0.9f, 0.9f, 1f);
+            return "Perspective";
+        }
+
+        Vector3 f = cam.Front;
+        float ay = MathF.Abs(f.Y);
+        float ax = MathF.Abs(f.X);
+        float az = MathF.Abs(f.Z);
+
+        var axisCol = new Vector4(0.55f, 0.9f, 1f, 1f);
+        var diagCol = new Vector4(0.9f, 0.9f, 0.9f, 1f);
+
+        if (ay > 0.7f)
+        {
+            labelColor = axisCol;
+            return f.Y < 0f ? "Top" : "Bottom";
+        }
+        if (ay < 0.3f)
+        {
+            if (az > 0.7f)
+            {
+                labelColor = axisCol;
+                return f.Z < 0f ? "Front" : "Back";
+            }
+            if (ax > 0.7f)
+            {
+                labelColor = axisCol;
+                return f.X > 0f ? "Right" : "Left";
+            }
+        }
+
+        labelColor = diagCol;
+        return "Perspective";
+    }
+
+    /// <summary>Draw the active view label (e.g. "Top", "Front", "Left") in the top-right
+    /// corner of the viewport image, so the user always knows which orientation the camera
+    /// is in — even after free-flying around. Hidden in preview mode.</summary>
+    private void DrawViewportViewLabel(bool hasSceneTexture)
+    {
+        if (_previewMode || !hasSceneTexture || _bridge.Camera == null) return;
+        if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
+
+        string label = GetActiveViewLabel(out Vector4 col);
+        bool isOrtho = _bridge.Camera?.IsOrthographic ?? false;
+        string text = isOrtho ? $"{label} · Ortho" : $"{label} · Persp";
+
+        var font = ImGui.GetFont();
+        float fontSize = 16f;
+        var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, text);
+
+        var dl = ImGui.GetWindowDrawList();
+        // Top-right corner of the rendered image, inside the image bounds
+        float pad = 8f;
+        var bgMin = new Vector2(_imageMax.X - textSize.X - pad * 2f, _imageMin.Y + pad);
+        var bgMax = new Vector2(_imageMax.X - pad, bgMin.Y + textSize.Y + pad);
+
+        dl.AddRectFilled(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.45f)), 4f);
+        dl.AddRect(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.15f)), 4f, ImDrawFlags.None, 1f);
+        dl.AddText(font, fontSize, bgMin + new Vector2(pad, pad * 0.5f),
+            ImGui.ColorConvertFloat4ToU32(col), text);
+    }
+
+    /// <summary>Render a compact "◉ Views" menu floating in the top-left corner of the
+    /// viewport image (editor mode only). Lets the user snap the fly-camera to top-down,
+    /// bottom-up, front/back, left/right or perspective views without leaving the viewport.
+    /// Uses SetCursorScreenPos so it overlays the scene without disturbing the layout.</summary>
+    /// <summary>Screen-space rect of the floating "◉ Views" button (top-left of the image).
+    /// Shared by the overlay renderer and the marquee/click guards so a click on the
+    /// button never also starts a marquee or a viewport raycast.</summary>
+    private (Vector2 min, Vector2 max) GetViewportViewsButtonRect()
+    {
+        float padX = 8f, padY = 6f;
+        var font = ImGui.GetFont();
+        var textSize = font.CalcTextSizeA(15f, float.MaxValue, 0f, "◉ Views");
+        var min = new Vector2(_imageMin.X + 8f, _imageMin.Y + 8f);
+        var max = min + new Vector2(textSize.X + padX * 2f, textSize.Y + padY * 1.6f);
+        return (min, max);
+    }
+
+    /// <summary>True when the mouse currently hovers the floating "◉ Views" button.
+    /// Used to suppress marquee/raycast selection while interacting with the overlay.</summary>
+    private bool IsMouseOverViewportViewsButton()
+    {
+        var (min, max) = GetViewportViewsButtonRect();
+        var mouse = ImGui.GetMousePos();
+        return mouse.X >= min.X && mouse.X <= max.X && mouse.Y >= min.Y && mouse.Y <= max.Y;
+    }
+
+    private void DrawViewportCameraOverlay(bool hasSceneTexture)
+    {
+        if (_previewMode || !hasSceneTexture || _bridge.Camera == null) return;
+        if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
+
+        // ── Draw the floating button with the draw list (NO SetCursorScreenPos — that
+        // triggers ImGui's "extend window boundaries" assertion). Hit-testing is manual. ──
+        var (btnMin, btnMax) = GetViewportViewsButtonRect();
+        var mouse = ImGui.GetMousePos();
+        bool hovered = mouse.X >= btnMin.X && mouse.X <= btnMax.X &&
+                       mouse.Y >= btnMin.Y && mouse.Y <= btnMax.Y;
+        bool clicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+
+        var dl = ImGui.GetWindowDrawList();
+        uint bgCol = ImGui.ColorConvertFloat4ToU32(hovered
+            ? new Vector4(0.30f, 0.34f, 0.50f, 0.92f)
+            : new Vector4(0.14f, 0.16f, 0.24f, 0.88f));
+        uint borderCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 0.55f, 0.8f, 0.7f));
+        dl.AddRectFilled(btnMin, btnMax, bgCol, 5f);
+        dl.AddRect(btnMin, btnMax, borderCol, 5f, ImDrawFlags.None, 1f);
+
+        var font = ImGui.GetFont();
+        float fontSize = 15f;
+        var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, "◉ Views");
+        dl.AddText(font, fontSize, btnMin + new Vector2(8f, (btnMax.Y - btnMin.Y - textSize.Y) * 0.5f),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.9f, 0.9f, 1f, 1f)), "◉ Views");
+
+        if (hovered)
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip("Camera view presets\nShortcuts: 1=Top 2=Front 3=Left 4=Right 5=Back 6=Bottom 7=Perspective");
+        }
+
+        if (clicked)
+            ImGui.OpenPopup("viewport_camera_views");
+
+        // Position the popup just below the button
+        ImGui.SetNextWindowPos(new Vector2(btnMin.X, btnMax.Y + 2f), ImGuiCond.Appearing);
+        if (ImGui.BeginPopup("viewport_camera_views"))
+        {
+            string[] viewLabels =
+            [
+                "◉ Perspective    \t7", "⬆ Top-Down       \t1", "⬇ Bottom-Up      \t6",
+                "➤ Front          \t2", "⬅ Back           \t5", "→ Left            \t3", "← Right           \t4",
+            ];
+            Camera.EditorViewPreset[] viewPresets =
+            [
+                Camera.EditorViewPreset.Perspective, Camera.EditorViewPreset.Top, Camera.EditorViewPreset.Bottom,
+                Camera.EditorViewPreset.Front, Camera.EditorViewPreset.Back, Camera.EditorViewPreset.Left, Camera.EditorViewPreset.Right,
+            ];
+            for (int vi = 0; vi < viewPresets.Length; vi++)
+            {
+                if (ImGui.MenuItem(viewLabels[vi]))
+                {
+                    _bridge.Camera?.SetEditorViewPreset(viewPresets[vi]);
+                    Console.WriteLine($"[Viewport] Camera preset: {viewPresets[vi]}");
+                }
+            }
+            ImGui.Separator();
+
+            // ── Projection: Perspective vs Orthographic ──
+            bool isOrtho = _bridge.Camera?.IsOrthographic ?? false;
+            if (ImGui.MenuItem("⊞ Perspective", null, !isOrtho))
+            {
+                if (isOrtho) _bridge.Camera?.ToggleProjection();
+                Console.WriteLine("[Viewport] Projection: perspective");
+            }
+            if (ImGui.MenuItem("▦ Orthographic", null, isOrtho))
+            {
+                if (!isOrtho) _bridge.Camera?.ToggleProjection();
+                Console.WriteLine("[Viewport] Projection: orthographic");
+            }
+            if (isOrtho)
+            {
+                // Ortho zoom — adjusts the ortho view volume half-height
+                float orthoSize = _bridge.Camera?.OrthoSize ?? 20f;
+                if (ImGui.SliderFloat("Ortho Zoom", ref orthoSize, 2f, 100f, "%.0f"))
+                {
+                    if (_bridge.Camera != null) _bridge.Camera.OrthoSize = orthoSize;
+                }
+            }
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("⌂ Focus Selection", _bridge.SelectedEditorObjects.Count > 0))
+            {
+                _bridge.FocusCameraOnSelected?.Invoke();
+            }
+            ImGui.EndPopup();
+        }
     }
 
     /// <summary>Render an animated gradient background for the viewport canvas when no scene texture is available.</summary>

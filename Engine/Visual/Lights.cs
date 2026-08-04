@@ -44,6 +44,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Vector3? LightColorOverride { get; set; }
         /// <summary>Brightness multiplier applied to LightColorOverride. Default 1.</summary>
         public float LightIntensity { get; set; } = 1f;
+        /// <summary>Sun brightness multiplier applied to the procedural/overridden sun color.
+        /// Set by the editor from a placed Sky object's SkySunIntensity. Default 1.</summary>
+        public float SunBrightness { get; set; } = 1f;
 
         // smoothing shadowDir: makin besar, makin cepat ngejar matahari
         // Dengan sun speed 30x, nilai 5.0 terlalu agresif → shadow flicker.
@@ -129,9 +132,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             const float nightBrightness = 0.55f;
 
             Vector3 lightColor =
-                dayLight * (dayBrightness * tDay) +
-                duskLight * (duskBrightness * tDusk) +
-                nightLight * (nightBrightness * tNight);
+                (dayLight * (dayBrightness * tDay) +
+                 duskLight * (duskBrightness * tDusk) +
+                 nightLight * (nightBrightness * tNight)) * SunBrightness;
 
             // ── Horizon fog color (sama persis dengan GetHorizonFogColor di shader) ──
             // Computed AFTER the override block below so the fog color follows the
@@ -154,7 +157,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
             if (LightColorOverride.HasValue)
             {
-                lightColor = LightColorOverride.Value * LightIntensity;
+                // Sky sun brightness still applies on top of the light-marker color so the
+                // intensity slider keeps working even when a Light object is present.
+                lightColor = LightColorOverride.Value * LightIntensity * SunBrightness;
             }
 
             Vector3 horizonFogColor = ComputeHorizonFogColor(sunDir);

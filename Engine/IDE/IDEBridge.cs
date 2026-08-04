@@ -21,6 +21,20 @@ public class IDEBridge
     public int StaticObjectCount { get; set; }
     public float Fps { get; set; }
     public float FrameMs { get; set; }
+    /// <summary>Terrain render time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
+    public float RenderTerrainMs { get; set; }
+    /// <summary>Objects render time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
+    public float RenderObjectsMs { get; set; }
+    /// <summary>Post-process pass time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
+    public float RenderPostFxMs { get; set; }
+    /// <summary>Total frame render time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
+    public float RenderTotalMs { get; set; }
+    /// <summary>Per-object render timings from the last frame (animated characters + static groups).
+    /// Set by GameScene each frame; consumed by the Render Time panel.</summary>
+    public IReadOnlyList<RenderTimingSample>? ObjectRenderTimings { get; set; }
+    /// <summary>True while the Render Time panel is open. When false, GameScene skips
+    /// per-object timing capture so the main render path stays allocation-free.</summary>
+    public bool CaptureRenderTimings { get; set; }
 
     // ── Selected object for inspector ──
     public GltfObject? SelectedObject { get; set; }
@@ -73,6 +87,9 @@ public class IDEBridge
     // ── F9 toggle — when false, game input is blocked ──
     public bool InGameActive { get; set; }
 
+    // ── Editor debug grid toggle (shown in the viewport while editing) ──
+    public bool ShowDebugGrid { get; set; } = true;
+
     // ── Action to select object ──
     public Action<int>? SelectObjectByIndex { get; set; }
     public Action? FocusCameraOnSelected { get; set; }
@@ -105,33 +122,158 @@ public class IDEBridge
         {
             // Unwire old manager
             if (_editorObjectManager != null)
+            {
                 _editorObjectManager.OnObjectSelected -= OnManagerSelectionChanged;
+                _editorObjectManager.OnObjectRemoved -= OnManagerObjectRemoved;
+            }
+
+            // If the manager instance changes (e.g. scene switch), the previous selection
+            // belongs to the old manager's objects — clear it so no stale refs linger.
+            if (_editorObjectManager != value)
+            {
+                _selectedEditorObject = null;
+                SelectedEditorObjects.Clear();
+            }
 
             _editorObjectManager = value;
 
             // Wire new manager
             if (_editorObjectManager != null)
+            {
                 _editorObjectManager.OnObjectSelected += OnManagerSelectionChanged;
+                _editorObjectManager.OnObjectRemoved += OnManagerObjectRemoved;
+            }
         }
+    }
+
+    /// <summary>Prune the multi-selection set when any object is removed from the manager
+    /// (prevents stale references to disposed objects from lingering in the set).</summary>
+    private void OnManagerObjectRemoved(EditorObject obj)
+    {
+        DeselectEditorObject(obj);
     }
 
     private void OnManagerSelectionChanged(EditorObject? obj)
     {
         _selectedEditorObject = obj;
+        // Keep the multi-selection set in sync with the manager's primary selection
+        if (obj == null)
+            SelectedEditorObjects.Clear();
+        else if (!SelectedEditorObjects.Contains(obj))
+            SelectedEditorObjects.Add(obj);
     }
 
     private EditorObject? _selectedEditorObject;
-    /// <summary>Currently selected editor-placed 3D object (for inspector + gizmo).
-    /// Setting this also syncs to EditorObjectManager.SelectedObject automatically.</summary>
+    /// <summary>All currently selected editor-placed 3D objects (multi-select).
+    /// The primary (last-clicked / gizmo-driven) selection is <see cref="SelectedEditorObject"/>.</summary>
+    public HashSet<EditorObject> SelectedEditorObjects { get; set; } = [];
+
+    /// <summary>Currently selected editor-placed 3D object (primary — drives the Inspector + gizmo).
+    /// Setting this also syncs to EditorObjectManager.SelectedObject and keeps the multi-set in sync.
+    /// Use <see cref="SelectEditorObject"/> for ctrl-additive selection instead of this setter.</summary>
     public EditorObject? SelectedEditorObject
     {
         get => _selectedEditorObject;
         set
         {
             _selectedEditorObject = value;
+            // Keep the multi-set in sync: primary is always a member
+            if (value == null)
+                SelectedEditorObjects.Clear();
+            else if (!SelectedEditorObjects.Contains(value))
+                SelectedEditorObjects.Add(value);
             // Keep EditorObjectManager.SelectedObject in sync
             if (_editorObjectManager != null && _editorObjectManager.SelectedObject != value)
                 _editorObjectManager.SelectedObject = value;
+        }
+    }
+
+    /// <summary>True when Ctrl is held over the viewport (set each frame by ViewportPanel).
+    /// Used by GameScene's click-to-select so ctrl-click adds to the multi-selection.</summary>
+    public bool ViewportCtrlHeld { get; set; }
+    /// <summary>True when Shift is held over the viewport (set each frame by ViewportPanel).
+    /// Used by GameScene's click-to-select so shift-click also adds to the multi-selection.</summary>
+    public bool ViewportShiftHeld { get; set; }
+
+    /// <summary>Compute the single gizmo anchor position for the current selection.
+    /// One object → its pivot override (or position). Multi-select → the average of all
+    /// selected positions (group center), so ONE gizmo drives the whole group.
+    /// Returns null when nothing is selected.</summary>
+    public Vector3? GetEditorGizmoCenter()
+    {
+        if (SelectedEditorObjects.Count == 0) return null;
+        if (SelectedEditorObjects.Count == 1)
+        {
+            var sole = SelectedEditorObjects.First();
+            if (sole == null) return null;
+            return sole.GizmoPivotOverride ?? sole.Position;
+        }
+        Vector3 sum = Vector3.Zero;
+        int n = 0;
+        foreach (var s in SelectedEditorObjects)
+        {
+            if (s == null) continue;
+            sum += s.Position;
+            n++;
+        }
+        return n > 0 ? sum / n : null;
+    }
+
+    /// <summary>Set the primary editor object selection. When <paramref name="additive"/> is true
+    /// (Ctrl+Click) the object is added to the multi-selection set and becomes primary;
+    /// otherwise the set is replaced with just this object.</summary>
+    public void SelectEditorObject(EditorObject? obj, bool additive = false)
+    {
+        if (obj == null)
+        {
+            SelectedEditorObject = null; // clears set + manager sync
+            return;
+        }
+        if (!additive)
+        {
+            SelectedEditorObjects.Clear();
+            _selectedEditorObject = obj;
+            SelectedEditorObjects.Add(obj);
+            if (_editorObjectManager != null) _editorObjectManager.SelectedObject = obj;
+        }
+        else
+        {
+            if (!SelectedEditorObjects.Contains(obj)) SelectedEditorObjects.Add(obj);
+            _selectedEditorObject = obj;
+            if (_editorObjectManager != null) _editorObjectManager.SelectedObject = obj;
+        }
+    }
+
+    /// <summary>Toggle an object in the multi-selection set (Ctrl+Click). If the removed object
+    /// was the primary, the last remaining member becomes the new primary.</summary>
+    public void ToggleEditorObjectSelection(EditorObject obj)
+    {
+        if (SelectedEditorObjects.Contains(obj))
+        {
+            SelectedEditorObjects.Remove(obj);
+            if (_selectedEditorObject == obj)
+            {
+                _selectedEditorObject = SelectedEditorObjects.Count > 0 ? SelectedEditorObjects.Last() : null;
+                if (_editorObjectManager != null) _editorObjectManager.SelectedObject = _selectedEditorObject;
+            }
+        }
+        else
+        {
+            SelectedEditorObjects.Add(obj);
+            _selectedEditorObject = obj;
+            if (_editorObjectManager != null) _editorObjectManager.SelectedObject = obj;
+        }
+    }
+
+    /// <summary>Remove a (deleted) object from the multi-selection set, updating the primary.
+    /// Safe to call on objects that were never in the set.</summary>
+    public void DeselectEditorObject(EditorObject obj)
+    {
+        if (!SelectedEditorObjects.Remove(obj)) return;
+        if (_selectedEditorObject == obj)
+        {
+            _selectedEditorObject = SelectedEditorObjects.Count > 0 ? SelectedEditorObjects.Last() : null;
+            if (_editorObjectManager != null) _editorObjectManager.SelectedObject = _selectedEditorObject;
         }
     }
 
@@ -140,11 +282,6 @@ public class IDEBridge
 
     /// <summary>Shared TransformGizmo instance for viewport interaction.</summary>
     public TransformGizmo? EditorGizmo { get; set; }
-
-    /// <summary>When set, the gizmo renders at this world position instead of the selected object's position.
-    /// Delegates to SelectedEditorObject.GizmoPivotOverride so each object remembers its own pivot.
-    /// Set by middle-clicking in the viewport. Persists across selection changes.</summary>
-    public Vector3? GizmoOverridePosition => SelectedEditorObject?.GizmoPivotOverride;
 
     /// <summary>Compute a spawn position aligned to the editor grid for newly created objects.
     /// Z is forced to 0 and X is snapped to the nearest 1-unit grid column so primitives
@@ -168,9 +305,16 @@ public class IDEBridge
     }
 
     /// <summary>Called by ViewportPanel when a gizmo drag ends (for undo support).
-    /// Passes the EditorObject that was actually dragged (not whatever is currently selected),
-    /// so undo stays correct even if selection changed mid-drag.</summary>
-    public Action<EditorObject>? OnGizmoDragEnded { get; set; }
+    /// Passes ALL EditorObjects that were actually dragged (multi-select aware,
+    /// primary first) — not whatever is currently selected — so undo stays correct
+    /// even if selection changed mid-drag.</summary>
+    public Action<IReadOnlyList<EditorObject>>? OnGizmoDragEnded { get; set; }
+
+    /// <summary>Called by ViewportPanel when a gizmo pivot is placed via middle-click
+    /// (for undo support). Passes the object, the previous pivot override (may be null),
+    /// and the new pivot override — consistent with OnGizmoDragEnded.
+    /// HierarchyPanel records this as an undo/redo action so Ctrl+Z can revert pivot placement.</summary>
+    public Action<EditorObject, Vector3?, Vector3?>? OnGizmoPivotChanged { get; set; }
 
     // ── Viewport mouse state (tracked per frame for 3D gizmo interaction) ──
     /// <summary>True when the left mouse button is held down over the viewport.</summary>
