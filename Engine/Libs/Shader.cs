@@ -14,6 +14,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint shadowSkinnedShaderProgram;
         static uint shadowStaticAlphaShaderProgram;
 
+        // Editor terrain (Plane → advanced terrain) — separate program so the game's
+        // terrain fragment shader (with hardcoded height/slope bands) stays untouched.
+        static uint editorTerrainShaderProgram;
+
         static uint rainStreakShaderProgram;
         static uint rainOverlayShaderProgram;
         static uint rainGlassShaderProgram; 
@@ -78,6 +82,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             shadowStaticAlphaShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/shadow_static_vertex.glsl",
                 "Artifacts/shaders/shadow_static_alpha_fragment.glsl");
+
+            // Reuse the standard vertex shader (same layout: pos/normal/color/uv) with a
+            // custom fragment shader that blends 4 custom terrain layers by height + slope.
+            editorTerrainShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/vertex_shader.glsl",
+                "Artifacts/shaders/terrainEditor_fragment.glsl");
         }
 
         public void Use()
@@ -98,6 +108,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetShadowStaticAlphaShaderProgram()
         {
             return shadowStaticAlphaShaderProgram;
+        }
+
+        /// <summary>Shader program used to render editor terrain planes (custom 4-layer texturing).</summary>
+        public static uint GetEditorTerrainShaderProgram()
+        {
+            return editorTerrainShaderProgram;
         }
 
         public static uint GetRainStreakShaderProgram()

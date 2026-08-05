@@ -674,7 +674,29 @@ public class SceneManagerPanel
                         ShowSkyGizmo = obj.ShowSkyGizmo,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
-                        PivotOverrideZ = obj.GizmoPivotOverride?.Z
+                        PivotOverrideZ = obj.GizmoPivotOverride?.Z,
+                        TerrainEnabled = obj.TerrainEnabled,
+                        TerrainHeightmapPath = obj.TerrainHeightmapPath,
+                        TerrainChunkSize = obj.TerrainChunkSize,
+                        TerrainHeightScale = obj.TerrainHeightScale,
+                        TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
+                        TerrainTexTiling = obj.TerrainTexTiling,
+                        TerrainLayerAirTop = obj.TerrainLayerAirTop,
+                        TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
+                        TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
+                        TerrainLayerSnowTop = obj.TerrainLayerSnowTop,
+                        TerrainTextureAirPath = obj.TerrainTextureAirPath,
+                        TerrainTextureDirtPath = obj.TerrainTextureDirtPath,
+                        TerrainTextureGrassPath = obj.TerrainTextureGrassPath,
+                        TerrainTextureSnowPath = obj.TerrainTextureSnowPath,
+                        TerrainBrushSize = obj.TerrainBrushSize,
+                        TerrainBrushStrength = obj.TerrainBrushStrength,
+                        TerrainBrushSoftness = obj.TerrainBrushSoftness,
+                        TerrainBrushFalloff = obj.TerrainBrushFalloff,
+                        TerrainPaintedData = obj.TerrainPaintedData,
+                        TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
+                        TerrainPaintStrength = obj.TerrainPaintStrength,
+                        TerrainSplatData = obj.TerrainSplatData
                     });
                 }
             }
@@ -929,6 +951,34 @@ public class SceneManagerPanel
                         if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)
                             obj.GizmoPivotOverride = new Vector3(objData.PivotOverrideX.Value, objData.PivotOverrideY.Value, objData.PivotOverrideZ.Value);
 
+                        // ── Restore advanced terrain settings (Plane) — backward compatible ──
+                        obj.TerrainEnabled = objData.TerrainEnabled;
+                        if (!string.IsNullOrEmpty(objData.TerrainHeightmapPath))
+                            obj.TerrainHeightmapPath = objData.TerrainHeightmapPath;
+                        obj.TerrainChunkSize = objData.TerrainChunkSize;
+                        obj.TerrainHeightScale = objData.TerrainHeightScale;
+                        obj.TerrainSlopeThreshold = objData.TerrainSlopeThreshold;
+                        obj.TerrainTexTiling = objData.TerrainTexTiling;
+                        obj.TerrainLayerAirTop = objData.TerrainLayerAirTop;
+                        obj.TerrainLayerDirtTop = objData.TerrainLayerDirtTop;
+                        obj.TerrainLayerGrassTop = objData.TerrainLayerGrassTop;
+                        obj.TerrainLayerSnowTop = objData.TerrainLayerSnowTop;
+                        obj.TerrainTextureAirPath = objData.TerrainTextureAirPath;
+                        obj.TerrainTextureDirtPath = objData.TerrainTextureDirtPath;
+                        obj.TerrainTextureGrassPath = objData.TerrainTextureGrassPath;
+                        obj.TerrainTextureSnowPath = objData.TerrainTextureSnowPath;
+                        obj.TerrainBrushSize = objData.TerrainBrushSize;
+                        obj.TerrainBrushStrength = objData.TerrainBrushStrength;
+                        obj.TerrainBrushSoftness = objData.TerrainBrushSoftness;
+                        obj.TerrainBrushFalloff = objData.TerrainBrushFalloff;
+                        if (!string.IsNullOrEmpty(objData.TerrainPaintedData))
+                            obj.TerrainPaintedData = objData.TerrainPaintedData; // applied after heightmap path is set
+                        obj.TerrainPaintLayerIndex = objData.TerrainPaintLayerIndex;
+                        obj.TerrainPaintStrength = objData.TerrainPaintStrength;
+                        if (!string.IsNullOrEmpty(objData.TerrainSplatData))
+                            obj.TerrainSplatData = objData.TerrainSplatData;
+                        obj.MarkDirty();
+
                         Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
                     }
                 }
@@ -1010,7 +1060,21 @@ public class SceneManagerPanel
                             IsVisible = obj.IsVisible,
                             PivotOverrideX = obj.GizmoPivotOverride?.X,
                             PivotOverrideY = obj.GizmoPivotOverride?.Y,
-                            PivotOverrideZ = obj.GizmoPivotOverride?.Z
+                            PivotOverrideZ = obj.GizmoPivotOverride?.Z,
+                            TerrainEnabled = obj.TerrainEnabled,
+                            TerrainHeightmapPath = obj.TerrainHeightmapPath,
+                            TerrainChunkSize = obj.TerrainChunkSize,
+                            TerrainHeightScale = obj.TerrainHeightScale,
+                            TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
+                            TerrainTexTiling = obj.TerrainTexTiling,
+                            TerrainLayerAirTop = obj.TerrainLayerAirTop,
+                            TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
+                            TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
+                            TerrainLayerSnowTop = obj.TerrainLayerSnowTop,
+                            TerrainTextureAirPath = obj.TerrainTextureAirPath,
+                            TerrainTextureDirtPath = obj.TerrainTextureDirtPath,
+                            TerrainTextureGrassPath = obj.TerrainTextureGrassPath,
+                            TerrainTextureSnowPath = obj.TerrainTextureSnowPath
                         });
                     }
                 }

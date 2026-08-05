@@ -165,6 +165,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _ => new Vector3(0.8f, 0.8f, 0.8f),
                 }
             };
+            // New planes spawn as advanced terrain by default (the whole point of the
+            // feature) — every setting stays editable in the Inspector, and terrain can be
+            // toggled off to get back a plain flat plane.
+            if (type == EditorPrimitiveType.Plane)
+            {
+                obj.TerrainEnabled = true;
+                obj.TerrainHeightmapPath = "Artifacts/Maps/photoreal_v1.raw";
+                obj.TerrainTextureDirtPath = "Artifacts/Textures/aerial rock/aerial_rocks_04_diff_4k.jpg";
+                obj.TerrainTextureGrassPath = "Artifacts/Textures/aerial grass/aerial_grass_rock_diff_4k.jpg";
+                obj.TerrainTextureSnowPath = "Artifacts/Textures/snow/snow_01_diff_4k.jpg";
+            }
+
             if (type != EditorPrimitiveType.GlbReference)
                 obj.InitGPU();
             _objects.Add(obj);
@@ -215,6 +227,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 ShowLightGizmo = source.ShowLightGizmo,
                 ShowSkyGizmo = source.ShowSkyGizmo,
                 GizmoPivotOverride = null,
+                // ── Terrain (Plane) ──
+                TerrainEnabled = source.TerrainEnabled,
+                TerrainHeightmapPath = source.TerrainHeightmapPath,
+                TerrainChunkSize = source.TerrainChunkSize,
+                TerrainHeightScale = source.TerrainHeightScale,
+                TerrainSlopeThreshold = source.TerrainSlopeThreshold,
+                TerrainTexTiling = source.TerrainTexTiling,
+                TerrainLayerAirTop = source.TerrainLayerAirTop,
+                TerrainLayerDirtTop = source.TerrainLayerDirtTop,
+                TerrainLayerGrassTop = source.TerrainLayerGrassTop,
+                TerrainLayerSnowTop = source.TerrainLayerSnowTop,
+                TerrainTextureAirPath = source.TerrainTextureAirPath,
+                TerrainTextureDirtPath = source.TerrainTextureDirtPath,
+                TerrainTextureGrassPath = source.TerrainTextureGrassPath,
+                TerrainTextureSnowPath = source.TerrainTextureSnowPath,
+                TerrainBrushSize = source.TerrainBrushSize,
+                TerrainBrushStrength = source.TerrainBrushStrength,
+                TerrainBrushSoftness = source.TerrainBrushSoftness,
+                TerrainBrushFalloff = source.TerrainBrushFalloff,
+                TerrainPaintedData = source.TerrainPaintedData,
+                TerrainPaintLayerIndex = source.TerrainPaintLayerIndex,
+                TerrainPaintStrength = source.TerrainPaintStrength,
+                TerrainSplatData = source.TerrainSplatData,
             };
             if (clone.PrimitiveType != EditorPrimitiveType.GlbReference)
                 clone.InitGPU();

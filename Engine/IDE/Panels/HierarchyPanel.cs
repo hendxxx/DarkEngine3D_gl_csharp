@@ -83,7 +83,7 @@ public class HierarchyPanel
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
     {
-        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform, EditorTransformGroup, EditorPivotChange }
+        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform, EditorTransformGroup, EditorPivotChange, SkySunChange, TerrainPaint, TerrainLayerPaint }
         public ActionType Type;
 
         // For Add / Delete / Move: the element involved
@@ -120,6 +120,14 @@ public class HierarchyPanel
         public Vector3[]? OldPositions, OldRotations, OldScales;
         public Vector3[]? NewPositions, NewRotations, NewScales;
         public Vector3?[]? OldPivots, NewPivots;
+
+        // For TerrainPaint (height brush stroke on an advanced terrain plane).
+        public EditorObject? TerrainObj;
+        public float[]? OldHeights, NewHeights; // height snapshots before / after the stroke
+        // For TerrainLayerPaint (🎨 layer brush stroke) — splat snapshots.
+        public byte[]? OldSplat, NewSplat;
+        // For SkySunChange (sun drag on the sky gizmo) — pitch/yaw before/after (null = time-of-day).
+        public float? OldPitch, NewPitch, OldYaw, NewYaw;
     }
 
     public HierarchyPanel(IDEBridge bridge)
@@ -220,6 +228,27 @@ public class HierarchyPanel
             Console.WriteLine($"[SceneDetail] Recorded gizmo pivot undo for '{obj.Name}'");
         };
 
+        // Wire up the sky-sun drag delegate so ViewportPanel sun-handle drags on the sky
+        // gizmo record an undo/redo (restores the pitch/yaw override, or back to time-of-day).
+        // Params: (skyObj, oldPitch, oldYaw, newPitch, newYaw) — each nullable float.
+        _bridge.OnSkySunChanged = (obj, oldPitch, oldYaw, newPitch, newYaw) =>
+        {
+            if (obj == null) return;
+            // Skip no-op drags (grabbed and released without moving the sun).
+            if (oldPitch == newPitch && oldYaw == newYaw) return;
+
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.SkySunChange,
+                EditorObj = obj,
+                OldPitch = oldPitch,
+                NewPitch = newPitch,
+                OldYaw = oldYaw,
+                NewYaw = newYaw,
+            });
+            Console.WriteLine($"[SceneDetail] Recorded sky sun undo for '{obj.Name}'");
+        };
+
         // Wire up the color undo delegate so InspectorPanel can record color undos
         _bridge.RecordColorUndo = (elem, propName, oldColor, newColor) =>
         {
@@ -231,6 +260,56 @@ public class HierarchyPanel
                 OldColor = oldColor,
                 NewColor = newColor,
             });
+        };
+
+        // Wire up the terrain brush delegate so ViewportPanel paint strokes record an
+        // undo/redo (restores the full height snapshots taken before/after the stroke).
+        _bridge.OnTerrainPainted = (obj, before, after) =>
+        {
+            if (obj == null || before == null || after == null) return;
+            if (before.Length != after.Length) return;
+
+            // Skip no-op strokes (mouse moved but no height actually changed).
+            bool same = true;
+            for (int i = 0; i < before.Length; i++)
+            {
+                if (before[i] != after[i]) { same = false; break; }
+            }
+            if (same) return;
+
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.TerrainPaint,
+                TerrainObj = obj,
+                OldHeights = before,
+                NewHeights = after,
+            });
+            Console.WriteLine($"[SceneDetail] Recorded terrain paint undo for '{obj.Name}' ({before.Length} heights)");
+        };
+
+        // Wire up the terrain LAYER paint delegate so 🎨 brush strokes record an undo/redo
+        // (restores the full splat snapshots taken before/after the stroke).
+        _bridge.OnTerrainLayerPainted = (obj, before, after) =>
+        {
+            if (obj == null || before == null || after == null) return;
+            if (before.Length != after.Length) return;
+
+            // Skip no-op strokes (painted with the eraser on a clean area, etc.).
+            bool same = true;
+            for (int i = 0; i < before.Length; i++)
+            {
+                if (before[i] != after[i]) { same = false; break; }
+            }
+            if (same) return;
+
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.TerrainLayerPaint,
+                TerrainObj = obj,
+                OldSplat = before,
+                NewSplat = after,
+            });
+            Console.WriteLine($"[SceneDetail] Recorded terrain layer-paint undo for '{obj.Name}' ({before.Length} splat bytes)");
         };
     }
 
@@ -2286,6 +2365,37 @@ public class HierarchyPanel
                     _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
                 }
                 break;
+
+            case UndoRedoAction.ActionType.SkySunChange:
+                // Restore the sky's previous sun pitch/yaw override (null = back to time-of-day).
+                if (action.EditorObj != null)
+                {
+                    action.EditorObj.SkySunPitch = action.OldPitch;
+                    action.EditorObj.SkySunYaw = action.OldYaw;
+                    Console.WriteLine($"[SceneDetail] Undo Sky Sun: '{action.EditorObj.Name}' → pitch={action.OldPitch?.ToString() ?? "time-of-day"}, yaw={action.OldYaw?.ToString() ?? "time-of-day"}");
+                    _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
+                }
+                break;
+
+            case UndoRedoAction.ActionType.TerrainPaint:
+                // Restore the terrain's heightmap to its pre-stroke state.
+                if (action.TerrainObj != null && action.OldHeights != null)
+                {
+                    action.TerrainObj.RestoreTerrainHeights(action.OldHeights);
+                    Console.WriteLine($"[SceneDetail] Undo Terrain Paint: '{action.TerrainObj.Name}' heights restored");
+                    _bridge.SelectEditorObject(action.TerrainObj);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.TerrainLayerPaint:
+                // Restore the terrain's splat map to its pre-stroke state.
+                if (action.TerrainObj != null && action.OldSplat != null)
+                {
+                    action.TerrainObj.RestoreTerrainSplat(action.OldSplat);
+                    Console.WriteLine($"[SceneDetail] Undo Terrain Layer Paint: '{action.TerrainObj.Name}' splat restored");
+                    _bridge.SelectEditorObject(action.TerrainObj);
+                }
+                break;
         }
 
         // Push onto redo stack for redo
@@ -2431,6 +2541,37 @@ public class HierarchyPanel
                     action.EditorObj.GizmoPivotOverride = action.NewPivot;
                     Console.WriteLine($"[SceneDetail] Redo Gizmo Pivot: '{action.EditorObj.Name}' → {(action.NewPivot?.ToString() ?? "none")}");
                     _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
+                }
+                break;
+
+            case UndoRedoAction.ActionType.SkySunChange:
+                // Re-apply the sky's post-drag sun pitch/yaw override.
+                if (action.EditorObj != null)
+                {
+                    action.EditorObj.SkySunPitch = action.NewPitch;
+                    action.EditorObj.SkySunYaw = action.NewYaw;
+                    Console.WriteLine($"[SceneDetail] Redo Sky Sun: '{action.EditorObj.Name}' → pitch={action.NewPitch?.ToString() ?? "time-of-day"}, yaw={action.NewYaw?.ToString() ?? "time-of-day"}");
+                    _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
+                }
+                break;
+
+            case UndoRedoAction.ActionType.TerrainPaint:
+                // Re-apply the terrain's post-stroke heights.
+                if (action.TerrainObj != null && action.NewHeights != null)
+                {
+                    action.TerrainObj.RestoreTerrainHeights(action.NewHeights);
+                    Console.WriteLine($"[SceneDetail] Redo Terrain Paint: '{action.TerrainObj.Name}' heights re-applied");
+                    _bridge.SelectEditorObject(action.TerrainObj);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.TerrainLayerPaint:
+                // Re-apply the terrain's post-stroke splat map.
+                if (action.TerrainObj != null && action.NewSplat != null)
+                {
+                    action.TerrainObj.RestoreTerrainSplat(action.NewSplat);
+                    Console.WriteLine($"[SceneDetail] Redo Terrain Layer Paint: '{action.TerrainObj.Name}' splat re-applied");
+                    _bridge.SelectEditorObject(action.TerrainObj);
                 }
                 break;
         }

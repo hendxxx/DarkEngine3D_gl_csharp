@@ -1354,6 +1354,12 @@ public class InspectorPanel
                 ImGui.SetTooltip("Remove the custom pivot — the gizmo follows the object position");
         }
 
+        // ── Terrain properties (Plane only) ──
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Plane)
+        {
+            RenderTerrainInspector(editorObj);
+        }
+
         // ── Type-specific properties (Camera / Light / Sky) ──
         if (editorObj.PrimitiveType == EditorPrimitiveType.Camera &&
             ImGui.CollapsingHeader("Camera Settings", ImGuiTreeNodeFlags.DefaultOpen))
@@ -1581,6 +1587,371 @@ public class InspectorPanel
             if (ImGui.Checkbox("Cast Shadow", ref shadow))
                 editorObj.CastShadow = shadow;
         }
+    }
+
+    /// <summary>Render the advanced terrain settings for a Plane object: heightmap,
+    /// 4 layer textures (air/dirt/grass/snow), slope, chunk size and height bands.
+    /// Every change marks the object dirty so the terrain mesh rebuilds.</summary>
+    private unsafe void RenderTerrainInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Terrain", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        // ── Enable / disable advanced terrain ──
+        bool enabled = editorObj.TerrainEnabled;
+        if (ImGui.Checkbox("Advanced Terrain", ref enabled))
+        {
+            editorObj.TerrainEnabled = enabled;
+            editorObj.MarkDirty();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Render this plane as a heightmapped terrain with 4 custom layers. "
+                           + "Disable to get back a plain flat plane.");
+
+        ImGui.BeginDisabled(!enabled);
+        {
+            // ── Heightmap ──
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Heightmap");
+            string hmPath = editorObj.TerrainHeightmapPath;
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputText("##ter_hm", ref hmPath, 512))
+            {
+                editorObj.TerrainHeightmapPath = hmPath;
+                editorObj.MarkDirty();
+            }
+
+            // Drag-drop from Asset Browser
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                {
+                    editorObj.TerrainHeightmapPath = AssetBrowserPanel._dragImagePath;
+                    editorObj.MarkDirty();
+                    Console.WriteLine($"[Inspector] Set terrain heightmap → {editorObj.TerrainHeightmapPath}");
+                    AssetBrowserPanel._dragImagePath = null;
+                }
+                ImGui.EndDragDropTarget();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Heightmap file (.raw 8-bit or any image). White = high, black = low.");
+
+            // Pick from bundled maps
+            string[] maps = ScanMapsFolder();
+            if (maps.Length > 0)
+            {
+                int mapIdx = Array.FindIndex(maps, m =>
+                    string.Equals(m, Path.GetFileName(editorObj.TerrainHeightmapPath), StringComparison.OrdinalIgnoreCase));
+                if (mapIdx < 0) mapIdx = 0;
+                if (ImGui.Combo("##ter_hm_combo", ref mapIdx, maps, maps.Length))
+                {
+                    string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+                    editorObj.TerrainHeightmapPath = Path.Combine(mapsDir, maps[mapIdx]);
+                    editorObj.MarkDirty();
+                }
+            }
+
+            // Generate a fresh heightmap with MapLoader's procedural generator
+            if (ImGui.Button("🎲 Generate Random Heightmap", new Vector2(-1, 24)))
+            {
+                try
+                {
+                    string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+                    Directory.CreateDirectory(mapsDir);
+                    string path = Path.Combine(mapsDir, $"editor_terrain_{DateTime.Now:HHmmss}.raw");
+                    DarkEngine3D_gl_csharp.Engine.Terrains.MapLoader.GeneratePhotorealHeightmap(path, 257);
+                    editorObj.TerrainHeightmapPath = path;
+                    editorObj.MarkDirty();
+                    Console.WriteLine($"[Inspector] Generated terrain heightmap → {path}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Inspector] Heightmap generation failed: {ex.Message}");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Create a new procedural alpine heightmap and use it for this terrain.");
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Mesh detail ──
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Mesh");
+            int chunk = editorObj.TerrainChunkSize;
+            if (ImGui.SliderInt("Chunk Size", ref chunk, 4, 128))
+            {
+                editorObj.TerrainChunkSize = chunk;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Grid resolution per side. 32 ≈ 2k triangles, 128 ≈ 32k triangles.");
+
+            float hScale = editorObj.TerrainHeightScale;
+            if (ImGui.DragFloat("Height Scale", ref hScale, 0.5f, 1f, 500f, "%.1f"))
+            {
+                editorObj.TerrainHeightScale = Math.Max(1f, hScale);
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Vertical exaggeration — full-white heightmap pixels reach this height.");
+
+            float slope = editorObj.TerrainSlopeThreshold;
+            if (ImGui.SliderFloat("Slope", ref slope, 0.02f, 0.98f, "%.2f"))
+            {
+                editorObj.TerrainSlopeThreshold = slope;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Steepness threshold: steeper slopes show the dirt/rock layer (like cliffs).");
+
+            float tiling = editorObj.TerrainTexTiling;
+            if (ImGui.SliderFloat("Texture Tiling", ref tiling, 0.05f, 2.0f, "%.2f"))
+            {
+                editorObj.TerrainTexTiling = tiling;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("World-space texture repetition frequency.");
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Brush painting (viewport tool) ──
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Brush (Viewport)");
+            ImGui.TextDisabled("Tools: ⛰ Sculpt (B) = raise/lower, 🌀 Smooth (S),\n⏹ Flatten (F) = level to first-click height, 🎨 Paint (C).\nLeft-drag = apply · Ctrl = reverse · Shift = fine control.");
+
+            float bSize = editorObj.TerrainBrushSize;
+            if (ImGui.DragFloat("Brush Size", ref bSize, 0.1f, 0.5f, 50f, "%.1f"))
+                editorObj.TerrainBrushSize = Math.Clamp(bSize, 0.5f, 50f);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Brush radius in world units (shared by all brush tools). Ctrl+scroll in the viewport resizes it.");
+
+            float bStr = editorObj.TerrainBrushStrength;
+            if (ImGui.DragFloat("Brush Strength", ref bStr, 0.005f, 0.01f, 2f, "%.3f"))
+                editorObj.TerrainBrushStrength = Math.Clamp(bStr, 0.01f, 2f);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("⛰ Height added/removed per 60fps-frame (world units); 🌀/⏹ blend amount per stamp (0..1).\nHold Shift in the viewport for 15% strength (fine strokes).");
+
+            float bSoft = editorObj.TerrainBrushSoftness;
+            if (ImGui.SliderFloat("Brush Softness", ref bSoft, 0f, 1f, "%.2f"))
+                editorObj.TerrainBrushSoftness = bSoft;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Falloff amount: 0 = hard edge, 1 = the full falloff curve below.");
+
+            // Falloff curve presets (Unreal-style brush falloff selection)
+            string[] falloffNames = ["Linear", "Smooth", "Sharp", "Spherical", "Soft"];
+            int falloffIdx = Math.Clamp(editorObj.TerrainBrushFalloff, 0, falloffNames.Length - 1);
+            if (ImGui.Combo("Falloff Curve", ref falloffIdx, falloffNames, falloffNames.Length))
+                editorObj.TerrainBrushFalloff = falloffIdx;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("How the brush weight falls off toward its edge (like Unreal's brush falloff presets).\nLinear = cone · Smooth = round center · Sharp = strong center · Spherical = classic · Soft = gentle edges.");
+
+            // Editor-only height shading overlay
+            bool heatmap = editorObj.TerrainShowHeatmap;
+            if (ImGui.Checkbox("Show Height Shading (heatmap)", ref heatmap))
+                editorObj.TerrainShowHeatmap = heatmap;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Overlay a height heatmap (low=blue → high=red) with contour lines, lit by the sun.\nMakes high/low areas obvious while sculpting. Not saved with the scene.");
+
+            // Editor-only height contour lines (no heatmap colors)
+            bool contours = editorObj.TerrainShowContours;
+            if (ImGui.Checkbox("Show Height Contours", ref contours))
+                editorObj.TerrainShowContours = contours;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Draw dark contour lines every 10% of the height range — the texture stays\nfully visible while the relief reads clearly. Not saved with the scene.");
+
+            // ── Layer paint (🎨 brush) ──
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layer Paint (🎨 Brush)");
+            string[] layerNames = ["1 · Air", "2 · Tanah", "3 · Rumput", "4 · Salju"];
+            int layerIdx = Math.Clamp(editorObj.TerrainPaintLayerIndex, 0, 3);
+            if (ImGui.Combo("Paint Layer", ref layerIdx, layerNames, layerNames.Length))
+            {
+                editorObj.TerrainPaintLayerIndex = layerIdx;
+                _bridge.TerrainPaintLayerIndex = layerIdx; // sync the viewport tool
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Layer drawn by the 🎨 Paint brush. Pick the layer in the viewport toolbar too.");
+
+            float pStr = editorObj.TerrainPaintStrength;
+            if (ImGui.SliderFloat("Paint Strength", ref pStr, 0.05f, 1f, "%.2f"))
+                editorObj.TerrainPaintStrength = pStr;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Weight added to the layer per 🎨 brush stamp (0..1). More stamps = stronger paint.");
+
+            if (ImGui.Button("🧹 Clear Layer Paint", new Vector2(-1, 24)))
+            {
+                // Record undo (before = painted splat, after = cleared) so Ctrl+Z restores.
+                var beforeSplat = editorObj.CaptureTerrainSplat();
+                editorObj.ClearTerrainLayerPaint();
+                var afterSplat = editorObj.CaptureTerrainSplat();
+                if (beforeSplat != null && afterSplat != null && beforeSplat.Length == afterSplat.Length)
+                    _bridge.OnTerrainLayerPainted?.Invoke(editorObj, beforeSplat, afterSplat);
+                Console.WriteLine($"[Inspector] Cleared layer paint on '{editorObj.Name}' (back to auto texturing)");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(editorObj.TerrainSplatIsModified
+                    ? "Remove ALL manual layer paint — terrain returns to automatic height+slope texturing."
+                    : "No manual layer paint on this terrain yet.");
+
+            // ── Save painted heights back to a .raw file ──
+            if (ImGui.Button("💾 Save Painted Heightmap", new Vector2(-1, 24)))
+            {
+                if (editorObj.TerrainIsModified)
+                {
+                    string path = editorObj.TerrainHeightmapPath;
+                    if (string.IsNullOrEmpty(path) || !Path.HasExtension(path))
+                    {
+                        string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+                        Directory.CreateDirectory(mapsDir);
+                        path = Path.Combine(mapsDir, $"painted_{DateTime.Now:HHmmss}.raw");
+                    }
+                    else if (!path.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
+                    {
+                        path = Path.ChangeExtension(path, ".raw");
+                    }
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? "");
+                        if (editorObj.SaveTerrainHeightmap(path))
+                            Console.WriteLine($"[Inspector] Saved painted heightmap → {path}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Inspector] Failed to save heightmap: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[Inspector] No painted changes to save.");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Write the current painted heights back to a .raw file and point this terrain at it.\nScene saves (.ing) already persist painted heights automatically.");
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Height bands (normalized 0..1) ──
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Height Bands (0..1)");
+            float airTop = editorObj.TerrainLayerAirTop;
+            if (ImGui.DragFloat("Air Top", ref airTop, 0.005f, 0f, 1f, "%.3f"))
+            {
+                editorObj.TerrainLayerAirTop = Math.Clamp(airTop, 0f, 1f);
+                editorObj.MarkDirty();
+            }
+            float dirtTop = editorObj.TerrainLayerDirtTop;
+            if (ImGui.DragFloat("Dirt Top", ref dirtTop, 0.005f, 0f, 1f, "%.3f"))
+            {
+                editorObj.TerrainLayerDirtTop = Math.Clamp(dirtTop, 0f, 1f);
+                editorObj.MarkDirty();
+            }
+            float grassTop = editorObj.TerrainLayerGrassTop;
+            if (ImGui.DragFloat("Grass Top", ref grassTop, 0.005f, 0f, 1f, "%.3f"))
+            {
+                editorObj.TerrainLayerGrassTop = Math.Clamp(grassTop, 0f, 1f);
+                editorObj.MarkDirty();
+            }
+            float snowTop = editorObj.TerrainLayerSnowTop;
+            if (ImGui.DragFloat("Snow Top", ref snowTop, 0.005f, 0f, 1f, "%.3f"))
+            {
+                editorObj.TerrainLayerSnowTop = Math.Clamp(snowTop, 0f, 1f);
+                editorObj.MarkDirty();
+            }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── 4 layer textures (air, tanah, rumput, salju) ──
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layer Textures (1–4)");
+            ImGui.TextDisabled("Empty = solid color fallback.");
+
+            DrawTerrainLayerField(editorObj, "1 · Air",
+                () => editorObj.TerrainTextureAirPath,
+                v => editorObj.TerrainTextureAirPath = v,
+                new Vector4(0.25f, 0.55f, 0.9f, 1f));
+            DrawTerrainLayerField(editorObj, "2 · Tanah",
+                () => editorObj.TerrainTextureDirtPath,
+                v => editorObj.TerrainTextureDirtPath = v,
+                new Vector4(0.65f, 0.5f, 0.3f, 1f));
+            DrawTerrainLayerField(editorObj, "3 · Rumput",
+                () => editorObj.TerrainTextureGrassPath,
+                v => editorObj.TerrainTextureGrassPath = v,
+                new Vector4(0.3f, 0.7f, 0.35f, 1f));
+            DrawTerrainLayerField(editorObj, "4 · Salju",
+                () => editorObj.TerrainTextureSnowPath,
+                v => editorObj.TerrainTextureSnowPath = v,
+                new Vector4(0.9f, 0.92f, 0.98f, 1f));
+        }
+        ImGui.EndDisabled();
+    }
+
+    /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>
+    private static string[] ScanMapsFolder()
+    {
+        try
+        {
+            string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+            if (!Directory.Exists(mapsDir)) return [];
+            var files = Directory.GetFiles(mapsDir)
+                .Where(f => f.EndsWith(".raw", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase))
+                .Select(Path.GetFileName)
+                .OrderBy(n => n)
+                .ToArray();
+            return files;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Draw a single terrain layer texture field (label chip + path + drag-drop + clear).
+    /// Uses getter/setter delegates so callers can pass property-backed paths.</summary>
+    private static unsafe void DrawTerrainLayerField(EditorObject editorObj, string label,
+        Func<string> getter, Action<string> setter, Vector4 chipColor)
+    {
+        ImGui.Spacing();
+        ImGui.TextColored(chipColor, label);
+        string path = getter() ?? "";
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputText($"##ter_tex_{label}", ref path, 512))
+        {
+            setter(path);
+            editorObj.MarkDirty();
+        }
+
+        // Drag-drop from Asset Browser
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+            {
+                setter(AssetBrowserPanel._dragImagePath);
+                editorObj.MarkDirty();
+                Console.WriteLine($"[Inspector] Set terrain layer '{label}' → {AssetBrowserPanel._dragImagePath}");
+                AssetBrowserPanel._dragImagePath = null;
+            }
+            ImGui.EndDragDropTarget();
+        }
+
+        ImGui.SameLine();
+        bool hasTexture = !string.IsNullOrEmpty(path) && File.Exists(path);
+        if (ImGui.Button($"X##ter_tex_clear_{label}", new Vector2(24, 0)) && hasTexture)
+        {
+            setter("");
+            editorObj.MarkDirty();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clear texture (uses solid color)");
+
+        if (hasTexture)
+            ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $"✓ {Path.GetFileName(path)}");
+        else
+            ImGui.TextDisabled("Drop image here or type path");
     }
 
     private void RenderObjectInspector(GltfObject obj, CharacterAgent? agent)

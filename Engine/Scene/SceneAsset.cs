@@ -176,6 +176,48 @@ public class EditorObjectData
     public float? PivotOverrideX { get; set; }
     public float? PivotOverrideY { get; set; }
     public float? PivotOverrideZ { get; set; }
+
+    // ── Advanced terrain (Plane) ──
+    /// <summary>Whether this plane renders as an advanced heightmapped terrain.</summary>
+    public bool TerrainEnabled { get; set; } = false;
+    /// <summary>Heightmap file path (.raw / image).</summary>
+    public string TerrainHeightmapPath { get; set; } = "";
+    /// <summary>Grid resolution per side.</summary>
+    public int TerrainChunkSize { get; set; } = 32;
+    /// <summary>Vertical height scale (world units).</summary>
+    public float TerrainHeightScale { get; set; } = 30f;
+    /// <summary>Slope threshold for the dirt/cliff layer.</summary>
+    public float TerrainSlopeThreshold { get; set; } = 0.35f;
+    /// <summary>World-space texture tiling.</summary>
+    public float TerrainTexTiling { get; set; } = 0.5f;
+    /// <summary>Normalized height bands for the 4 layers.</summary>
+    public float TerrainLayerAirTop { get; set; } = 0.18f;
+    public float TerrainLayerDirtTop { get; set; } = 0.45f;
+    public float TerrainLayerGrassTop { get; set; } = 0.75f;
+    public float TerrainLayerSnowTop { get; set; } = 1.0f;
+    /// <summary>Layer texture paths (1=air, 2=tanah, 3=rumput, 4=salju).</summary>
+    public string TerrainTextureAirPath { get; set; } = "";
+    public string TerrainTextureDirtPath { get; set; } = "";
+    public string TerrainTextureGrassPath { get; set; } = "";
+    public string TerrainTextureSnowPath { get; set; } = "";
+    /// <summary>Brush radius in world units (viewport paint tool).</summary>
+    public float TerrainBrushSize { get; set; } = 4f;
+    /// <summary>Height delta per painted frame (world units).</summary>
+    public float TerrainBrushStrength { get; set; } = 0.1f;
+    /// <summary>Brush edge falloff 0..1.</summary>
+    public float TerrainBrushSoftness { get; set; } = 0.6f;
+    /// <summary>Brush falloff curve: 0=Linear, 1=Smooth, 2=Sharp, 3=Spherical, 4=Soft.</summary>
+    public int TerrainBrushFalloff { get; set; } = 1;
+    /// <summary>Base64-encoded painted heightmap blob (only set after brush edits, so
+    /// brush paint survives scene save/load without touching the source .raw file).</summary>
+    public string TerrainPaintedData { get; set; } = "";
+    /// <summary>Layer drawn by the 🎨 paint brush (0=air, 1=tanah, 2=rumput, 3=salju).</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 2;
+    /// <summary>Weight added to the painted layer per 🎨 brush stamp (0..1).</summary>
+    public float TerrainPaintStrength { get; set; } = 0.45f;
+    /// <summary>Base64-encoded manual layer-paint splat blob (empty = no manual paint).
+    /// Persisted so layer paint survives scene save/load.</summary>
+    public string TerrainSplatData { get; set; } = "";
 }
 
 /// <summary>

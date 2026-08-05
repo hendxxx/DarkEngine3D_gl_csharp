@@ -332,6 +332,28 @@ public class IDEBridge
     /// HierarchyPanel records this as an undo/redo action so Ctrl+Z can revert pivot placement.</summary>
     public Action<EditorObject, Vector3?, Vector3?>? OnGizmoPivotChanged { get; set; }
 
+    /// <summary>Called by ViewportPanel when a sky-sun gizmo drag ends (for undo support).
+    /// Passes the sky object, the pitch/yaw BEFORE the drag (null = followed time of day),
+    /// and the pitch/yaw AFTER. HierarchyPanel records this as an undo/redo action so
+    /// Ctrl+Z can revert a sun drag.</summary>
+    public Action<EditorObject, float?, float?, float?, float?>? OnSkySunChanged { get; set; }
+
+    // ── Terrain brush paint tool (ViewportPanel) ──
+    /// <summary>True while the terrain brush tool is active in the viewport
+    /// (toolbar button or B shortcut). Left-drag raises, Ctrl+left-drag lowers.</summary>
+    public bool TerrainBrushActive { get; set; }
+    /// <summary>Active brush tool: 0 = ⛰ height (raise/lower), 1 = 🎨 layer paint (air/tanah/rumput/salju).</summary>
+    public int TerrainBrushMode { get; set; } = 0;
+    /// <summary>Active layer for the 🎨 paint brush: 0=air, 1=tanah, 2=rumput, 3=salju.</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 2;
+    /// <summary>Called by ViewportPanel when a terrain height-paint stroke ends (for undo support).
+    /// Passes the painted object plus the height snapshots taken BEFORE and AFTER the stroke
+    /// (a no-op stroke with identical arrays is filtered out by HierarchyPanel).</summary>
+    public Action<EditorObject, float[], float[]>? OnTerrainPainted { get; set; }
+    /// <summary>Called by ViewportPanel when a terrain LAYER-paint stroke ends (for undo support).
+    /// Passes the painted object plus the splat snapshots taken BEFORE and AFTER the stroke.</summary>
+    public Action<EditorObject, byte[], byte[]>? OnTerrainLayerPainted { get; set; }
+
     // ── Viewport mouse state (tracked per frame for 3D gizmo interaction) ──
     /// <summary>True when the left mouse button is held down over the viewport.</summary>
     public bool IsViewportMouseDown { get; set; }

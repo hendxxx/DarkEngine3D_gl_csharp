@@ -66,6 +66,66 @@ public unsafe class EditorObject
     /// <summary>Whether the direction-ray + spotlight-cone gizmo is drawn in the viewport.</summary>
     public bool ShowLightGizmo { get; set; } = true;
 
+    // ── Terrain (only used when PrimitiveType == Plane && TerrainEnabled) ──
+    /// <summary>When true, this Plane renders as an advanced heightmapped terrain instead
+    /// of a flat plane. All terrain settings below are editable in the Inspector.</summary>
+    public bool TerrainEnabled { get; set; } = false;
+    /// <summary>Heightmap file (.raw 8-bit or any image). Determines the terrain shape.</summary>
+    public string TerrainHeightmapPath { get; set; } = "Artifacts/Maps/photoreal_v1.raw";
+    /// <summary>Grid resolution per side (4..256). Higher = more detail, more triangles.</summary>
+    public int TerrainChunkSize { get; set; } = 32;
+    /// <summary>Vertical exaggeration of the heightmap (world units for full white).</summary>
+    public float TerrainHeightScale { get; set; } = 30f;
+    /// <summary>Slope steepness (1 - normal.y) above which the dirt/rock layer takes over.</summary>
+    public float TerrainSlopeThreshold { get; set; } = 0.35f;
+    /// <summary>World-space tiling frequency of the layer textures.</summary>
+    public float TerrainTexTiling { get; set; } = 0.5f;
+    /// <summary>Normalized height where the air layer ends (water level).</summary>
+    public float TerrainLayerAirTop { get; set; } = 0.18f;
+    /// <summary>Normalized height where the dirt layer ends.</summary>
+    public float TerrainLayerDirtTop { get; set; } = 0.45f;
+    /// <summary>Normalized height where the grass layer ends (snow starts after).</summary>
+    public float TerrainLayerGrassTop { get; set; } = 0.75f;
+    /// <summary>Normalized height where the snow layer is fully dominant.</summary>
+    public float TerrainLayerSnowTop { get; set; } = 1.0f;
+    /// <summary>Texture for layer 1 — air / water.</summary>
+    public string TerrainTextureAirPath { get; set; } = "";
+    /// <summary>Texture for layer 2 — tanah / dirt.</summary>
+    public string TerrainTextureDirtPath { get; set; } = "";
+    /// <summary>Texture for layer 3 — rumput / grass.</summary>
+    public string TerrainTextureGrassPath { get; set; } = "";
+    /// <summary>Texture for layer 4 — salju / snow.</summary>
+    public string TerrainTextureSnowPath { get; set; } = "";
+    /// <summary>Brush radius in world units (viewport paint tool).</summary>
+    public float TerrainBrushSize { get; set; } = 4f;
+    /// <summary>Height delta per painted frame, in world units (viewport paint tool).</summary>
+    public float TerrainBrushStrength { get; set; } = 0.1f;
+    /// <summary>Brush edge falloff 0..1 (0 = hard edge, 1 = very soft).</summary>
+    public float TerrainBrushSoftness { get; set; } = 0.6f;
+    /// <summary>Layer painted with the 🎨 texture brush: 0=air, 1=tanah, 2=rumput, 3=salju.</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 2;
+    /// <summary>Weight added to the painted layer per 🎨 brush stamp (0..1).</summary>
+    public float TerrainPaintStrength { get; set; } = 0.45f;
+    /// <summary>Brush falloff curve used by every brush tool: 0=Linear, 1=Smooth,
+    /// 2=Sharp, 3=Spherical, 4=Soft.</summary>
+    public int TerrainBrushFalloff { get; set; } = 1;
+    /// <summary>Editor-only overlay: colorize the terrain by height (low=blue → high=red)
+    /// with contour lines so the relief reads clearly. Transient — not saved to the scene.</summary>
+    public bool TerrainShowHeatmap { get; set; } = false;
+    /// <summary>Editor-only overlay: draw dark topographic contour lines every 10% height
+    /// WITHOUT the heatmap colors — the terrain texture stays fully visible while the
+    /// relief reads clearly. Transient — not saved to the scene.</summary>
+    public bool TerrainShowContours { get; set; } = false;
+
+    // ── Brush ring indicator (transient — set by ViewportPanel each frame while the
+    // brush tool hovers this terrain; NOT serialized) ──
+    /// <summary>World-space brush center on this terrain's surface (null = hide ring).</summary>
+    public Vector3? BrushIndicatorPos { get; set; }
+    /// <summary>Ring color: green = height brush, layer color = 🎨 paint, red = Ctrl (lower/erase).</summary>
+    public Vector3 BrushIndicatorColor { get; set; } = new(0.3f, 0.9f, 0.5f);
+    /// <summary>Whether the brush ring should be drawn on this terrain.</summary>
+    public bool ShowBrushIndicator { get; set; }
+
     // ── Sky (only used when PrimitiveType == Sky) ──
     /// <summary>Time of day in hours (0..24). 12 = midday.</summary>
     public float SkyTimeOfDay { get; set; } = 12f;
@@ -90,6 +150,23 @@ public unsafe class EditorObject
     private Object3D? _object3D;
     private uint _textureID = 0;
     private bool _dirty = true;
+
+    // ── Advanced terrain resources (Plane only) ──
+    private EditorTerrainMesh? _terrainMesh;
+    private string _terrainCacheKey = "";
+    /// <summary>Base64-encoded painted heightmap blob (persisted in the scene file so
+    /// brush edits survive save/load). Empty = no user edits.</summary>
+    private byte[]? _terrainPaintedCache;
+    /// <summary>Heightmap path the painted cache belongs to — only restored when the
+    /// terrain still points at the same heightmap (switching maps discards old edits).</summary>
+    private string? _terrainPaintedSourcePath;
+    /// <summary>Heightmap path the CURRENT mesh was actually built from. Used when
+    /// stashing the painted cache on rebuild so the cache is keyed to the OLD path,
+    /// not the (possibly changed) TerrainHeightmapPath property.</summary>
+    private string _terrainLoadedPath = "";
+    /// <summary>Serialized manual layer-paint blob (persisted in the scene file). Carried
+    /// across mesh rebuilds independently of the heightmap path.</summary>
+    private byte[]? _terrainSplatCache;
 
     // ── Vertex cache for wireframe outline rendering ──
     private Vertex[]? _vertexCache;
@@ -244,12 +321,33 @@ public unsafe class EditorObject
         }
     }
 
+    /// <summary>Model matrix for the advanced terrain mesh: XZ footprint follows
+    /// Scale.X/Z (the thin Scale.Y must NOT flatten the terrain), Y keeps world height.
+    /// Shared by rendering, AABB and brush raycasting so they all agree.</summary>
+    private Matrix4x4 TerrainModelMatrix =>
+        Matrix4x4.CreateScale(Scale.X, 1f, Scale.Z)
+        * Matrix4x4.CreateFromYawPitchRoll(
+            RotationEuler.Y * MathF.PI / 180f,
+            RotationEuler.X * MathF.PI / 180f,
+            RotationEuler.Z * MathF.PI / 180f)
+        * Matrix4x4.CreateTranslation(Position);
+
     /// <summary>Compute world-space AABB for selection/culling.
     /// Accounts for scale and rotation (transforms 8 corners through WorldMatrix).</summary>
     public AABB WorldAABB
     {
         get
         {
+            // Advanced terrain: heightmap mesh spans the full Scale footprint and rises up
+            // to TerrainHeightScale — transform with the same model used for rendering.
+            if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
+            {
+                var terrainModel = TerrainModelMatrix;
+                float top = Math.Max(1f, TerrainHeightScale);
+                return new AABB(new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, top, 0.5f))
+                    .Transform(terrainModel);
+            }
+
             // Local-space AABB for each primitive type (before transform)
             AABB localAABB = PrimitiveType switch
             {
@@ -273,9 +371,97 @@ public unsafe class EditorObject
         }
     }
 
+    /// <summary>Compute a cache key from the mesh-affecting terrain settings so the mesh is
+    /// only rebuilt when something actually changed (Inspector edits, scale, textures).
+    /// Uniform-only settings (slope, tiling, height bands) are deliberately excluded — they
+    /// don't change the mesh, so editing them must NOT trigger an expensive rebuild.</summary>
+    private string TerrainMeshCacheKey
+    {
+        get
+        {
+            return $"{TerrainEnabled}|{TerrainHeightmapPath}|{TerrainChunkSize}|{TerrainHeightScale:F2}|"
+                 + $"{Scale.X:F2}|{Scale.Z:F2}|"
+                 + $"{TerrainTextureAirPath}|{TerrainTextureDirtPath}|{TerrainTextureGrassPath}|{TerrainTextureSnowPath}";
+        }
+    }
+
+    /// <summary>Build (or rebuild) the advanced terrain mesh when TerrainEnabled.
+    /// Returns true if a valid terrain mesh is available, false if it fell back to flat.</summary>
+    private bool EnsureTerrainMesh()
+    {
+        string key = TerrainMeshCacheKey;
+        if (_terrainMesh != null && _terrainCacheKey == key)
+            return true;
+
+        // Keep user brush edits across mesh rebuilds (chunk size / scale / texture edits):
+        // stash the painted blob before tearing down, restore it after the fresh load
+        // as long as the heightmap path didn't change (switching maps discards edits).
+        // NOTE: tag the cache with the OLD loaded path — TerrainHeightmapPath may already
+        // point at a NEW file (e.g. the user just changed it in the Inspector).
+        if (_terrainMesh is { IsModified: true } oldMesh)
+        {
+            _terrainPaintedCache = oldMesh.GetModifiedRaw();
+            _terrainPaintedSourcePath = _terrainLoadedPath;
+        }
+        // Layer paint (splat) is independent of the heightmap — always carry it over.
+        if (_terrainMesh is { SplatModified: true } oldMesh2)
+            _terrainSplatCache = oldMesh2.GetModifiedSplatRaw();
+
+        _terrainMesh?.Dispose();
+        _terrainMesh = null;
+        _terrainCacheKey = key;
+
+        if (!TerrainEnabled) return false;
+
+        var mesh = new EditorTerrainMesh();
+        if (!mesh.LoadHeightmap(TerrainHeightmapPath))
+        {
+            Console.WriteLine($"[EditorObject] '{Name}': heightmap not found — rendering flat plane ({TerrainHeightmapPath})");
+            mesh.Dispose();
+            _terrainCacheKey = "";
+            return false;
+        }
+        if (_terrainPaintedCache != null && _terrainPaintedSourcePath == TerrainHeightmapPath)
+            mesh.RestoreModifiedRaw(_terrainPaintedCache);
+        if (_terrainSplatCache != null)
+            mesh.RestoreModifiedSplatRaw(_terrainSplatCache);
+        _terrainLoadedPath = TerrainHeightmapPath;
+        mesh.SetLayerTextures(
+            TerrainTextureAirPath,
+            TerrainTextureDirtPath,
+            TerrainTextureGrassPath,
+            TerrainTextureSnowPath);
+        mesh.Generate(TerrainChunkSize, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
+        _terrainMesh = mesh;
+
+        // When switching a plane to terrain mode, release the flat-plane Object3D so it
+        // doesn't linger on the GPU until Dispose().
+        if (_object3D != null)
+        {
+            if (_object3D.VAO != 0)
+            {
+                uint vao = _object3D.VAO;
+                GL.DeleteVertexArrays(1, &vao);
+            }
+            if (_object3D.VBO != 0)
+            {
+                uint vbo = _object3D.VBO;
+                GL.DeleteBuffers(1, &vbo);
+            }
+            _object3D = null;
+        }
+        return true;
+    }
+
     /// <summary>Initialize GPU resources (VAO, VBO) if needed.</summary>
     public void EnsureResources()
     {
+        // Advanced terrain planes use a dedicated mesh + shader, not Object3D.
+        // If the heightmap is missing we fall back to a flat plane (EnsureTerrainMesh
+        // returns false), so continue into the normal primitive path below.
+        if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && EnsureTerrainMesh())
+            return;
+
         if (_object3D != null && !_dirty) return;
 
         // Cleanup old GPU resources (VAO/VBO) so repeated color changes don't leak buffers.
@@ -302,6 +488,15 @@ public unsafe class EditorObject
         {
             case EditorPrimitiveType.Plane:
             {
+                // If terrain mode is active AND a valid terrain mesh exists, the mesh is
+                // managed by EnsureTerrainMesh() — no flat Object3D is needed. Otherwise
+                // (terrain disabled, or heightmap missing) build the classic flat plane.
+                if (TerrainEnabled && _terrainMesh is { IsReady: true })
+                {
+                    _object3D = null;
+                    _vertexCache = null;
+                    break;
+                }
                 var verts = Object3D.CreatePlaneVertices(1f, 1f, Color);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
@@ -357,7 +552,286 @@ public unsafe class EditorObject
     public void InitGPU()
     {
         EnsureResources();
-    }    /// <summary>Draw using individual uniform locations (matching EditorObjectManager's call pattern).</summary>
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Terrain brush paint (viewport tool) + painted-data persistence
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>True when this terrain has been edited with the paint brush.</summary>
+    public bool TerrainIsModified => _terrainMesh is { IsModified: true };
+
+    /// <summary>Base64-encoded painted heightmap blob for scene persistence.
+    /// Empty string = no user edits (nothing to save).</summary>
+    public string TerrainPaintedData
+    {
+        get
+        {
+            // Live-capture from the mesh so edits made this session are always current.
+            if (_terrainMesh is { IsModified: true } m)
+            {
+                _terrainPaintedCache = m.GetModifiedRaw();
+                _terrainPaintedSourcePath = TerrainHeightmapPath;
+            }
+            // Never persist a cache that belongs to a different heightmap file.
+            if (_terrainPaintedCache == null || _terrainPaintedSourcePath != TerrainHeightmapPath)
+                return "";
+            return Convert.ToBase64String(_terrainPaintedCache);
+        }
+        set
+        {
+            _terrainPaintedCache = null;
+            if (string.IsNullOrEmpty(value)) return;
+            try
+            {
+                _terrainPaintedCache = Convert.FromBase64String(value);
+                // Only restored while the terrain points at the same heightmap file.
+                _terrainPaintedSourcePath = TerrainHeightmapPath;
+            }
+            catch
+            {
+                _terrainPaintedCache = null;
+            }
+        }
+    }
+
+    /// <summary>Raycast this terrain's surface. Returns the world-space surface point
+    /// (brush cursor / placement) or null when the ray misses the footprint.</summary>
+    /// <summary>Transform the ray into this terrain's local space and intersect the Y=0 base
+    /// plane. Returns the local XZ point (in [-0.5, 0.5]²) when the ray hits the footprint.
+    /// Shared by every brush operation so ray math stays consistent.</summary>
+    private bool TryGetTerrainLocalPoint(Vector3 rayOrigin, Vector3 rayDir, out Vector2 local)
+    {
+        local = Vector2.Zero;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true })
+            return false;
+        var model = TerrainModelMatrix;
+        if (!Matrix4x4.Invert(model, out var invModel))
+            return false;
+        var localOrigin = Vector3.Transform(rayOrigin, invModel);
+        var localDir = Vector3.TransformNormal(rayDir, invModel);
+        if (Math.Abs(localDir.Y) < 1e-6f)
+            return false;
+        float t = -localOrigin.Y / localDir.Y;
+        if (t <= 0f)
+            return false;
+        var localHit = localOrigin + localDir * t;
+        if (localHit.X < -0.5f || localHit.X > 0.5f || localHit.Z < -0.5f || localHit.Z > 0.5f)
+            return false;
+        local = new Vector2(localHit.X, localHit.Z);
+        return true;
+    }
+
+    /// <summary>Brush radius converted to local units (world brush size ÷ footprint).</summary>
+    private float LocalBrushRadius =>
+        Math.Max(0.02f, TerrainBrushSize) / MathF.Max(MathF.Max(0.1f, Scale.X), MathF.Max(0.1f, Scale.Z));
+
+    /// <summary>World-space surface point under the ray (brush cursor / placement).</summary>
+    public Vector3? RaycastTerrainSurface(Vector3 rayOrigin, Vector3 rayDir)
+    {
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return null;
+        // Quick reject against the world AABB before the precise intersection.
+        if (!AABB.RayIntersectsAABB(rayOrigin, rayDir, GetWorldAABB(), out _, out _))
+            return null;
+        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
+            return null;
+        float h = m.SampleLocalHeight(local.X, local.Y);
+        return Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
+    }
+
+    /// <summary>Paint one brush stamp into the terrain at the ray's intersection.
+    /// <paramref name="deltaWorld"/> is the height delta in world units (positive =
+    /// raise, negative = lower). Returns true + the world hit point when painted.</summary>
+    public bool TryPaintTerrainSurface(Vector3 rayOrigin, Vector3 rayDir, float deltaWorld, out Vector3 worldHitPoint)
+    {
+        worldHitPoint = Vector3.Zero;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return false;
+        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
+            return false;
+        // Convert the world delta (sculpt strength in world units) to normalized height.
+        float deltaNorm = deltaWorld / Math.Max(1f, TerrainHeightScale);
+        m.PaintHeight(local.X, local.Y, LocalBrushRadius, deltaNorm, TerrainBrushSoftness, TerrainBrushFalloff);
+
+        float h = m.SampleLocalHeight(local.X, local.Y);
+        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
+        return true;
+    }
+
+    /// <summary>Smooth one brush stamp at the ray's terrain intersection (averages the
+    /// heights in the brush area). <paramref name="strength"/> 0..1 blend per stamp.</summary>
+    public bool TrySmoothTerrainSurface(Vector3 rayOrigin, Vector3 rayDir, float strength, out Vector3 worldHitPoint)
+    {
+        worldHitPoint = Vector3.Zero;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return false;
+        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
+            return false;
+        m.SmoothHeight(local.X, local.Y, LocalBrushRadius, strength, TerrainBrushFalloff);
+
+        float h = m.SampleLocalHeight(local.X, local.Y);
+        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
+        return true;
+    }
+
+    /// <summary>Flatten one brush stamp at the ray's terrain intersection toward
+    /// <paramref name="targetNorm"/> (normalized 0..1 height). <paramref name="strength"/>
+    /// 0..1 blend per stamp.</summary>
+    public bool TryFlattenTerrainSurface(Vector3 rayOrigin, Vector3 rayDir, float targetNorm, float strength, out Vector3 worldHitPoint)
+    {
+        worldHitPoint = Vector3.Zero;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return false;
+        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
+            return false;
+        m.FlattenHeight(local.X, local.Y, LocalBrushRadius, targetNorm, strength, TerrainBrushFalloff);
+
+        float h = m.SampleLocalHeight(local.X, local.Y);
+        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
+        return true;
+    }
+
+    /// <summary>Normalized (0..1) terrain height under the ray — the flatten tool captures
+    /// this from the first stamp of a stroke as its level target.</summary>
+    public bool TryGetTerrainNormalizedHeight(Vector3 rayOrigin, Vector3 rayDir, out float targetNorm)
+    {
+        targetNorm = 0f;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return false;
+        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
+            return false;
+        targetNorm = m.SampleLocalHeightNorm(local.X, local.Y);
+        return true;
+    }
+
+    /// <summary>Snapshot the terrain's height array (undo support).</summary>
+    public float[]? CaptureTerrainHeights() => _terrainMesh?.GetHeightSnapshot();
+
+    /// <summary>Restore a height snapshot (undo/redo) and rebuild the GPU mesh.</summary>
+    public void RestoreTerrainHeights(float[]? heights)
+    {
+        if (_terrainMesh != null && heights != null)
+            _terrainMesh.RestoreHeightSnapshot(heights);
+    }
+
+    /// <summary>Write the current painted heights to a .raw file (returns success).</summary>
+    public bool SaveTerrainHeightmap(string path)
+    {
+        if (_terrainMesh == null || string.IsNullOrEmpty(path)) return false;
+        bool ok = _terrainMesh.SaveHeightmapFile(path);
+        if (ok)
+        {
+            // Point the terrain at the saved file so future rebuilds read the edits.
+            TerrainHeightmapPath = path;
+            MarkDirty();
+        }
+        return ok;
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Manual layer paint (splat) — 🎨 brush
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>True when this terrain has manual layer paint to show.</summary>
+    public bool TerrainSplatIsModified => _terrainMesh is { SplatModified: true };
+
+    /// <summary>Serialized splat blob (base64) for scene persistence. Empty = no paint.</summary>
+    public string TerrainSplatData
+    {
+        get
+        {
+            if (_terrainMesh is { SplatModified: true } m)
+                _terrainSplatCache = m.GetModifiedSplatRaw();
+            return _terrainSplatCache == null ? "" : Convert.ToBase64String(_terrainSplatCache);
+        }
+        set
+        {
+            _terrainSplatCache = null;
+            if (string.IsNullOrEmpty(value)) return;
+            try { _terrainSplatCache = Convert.FromBase64String(value); }
+            catch { _terrainSplatCache = null; }
+        }
+    }
+
+    /// <summary>Paint one splat stamp (layer 0..3) at the ray's terrain intersection.
+    /// <paramref name="erase"/> decays painted weights back toward automatic texturing.
+    /// Returns true + the world hit point when painted.</summary>
+    public bool TryPaintLayerSurface(Vector3 rayOrigin, Vector3 rayDir, int layerIndex, float strength, bool erase, out Vector3 worldHitPoint)
+    {
+        worldHitPoint = Vector3.Zero;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return false;
+        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
+            return false;
+        m.PaintLayer(local.X, local.Y, LocalBrushRadius, layerIndex, strength, TerrainBrushSoftness, TerrainBrushFalloff, erase);
+
+        float h = m.SampleLocalHeight(local.X, local.Y);
+        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
+        return true;
+    }
+
+    /// <summary>Snapshot the splat bytes (undo support).</summary>
+    public byte[]? CaptureTerrainSplat() => _terrainMesh?.GetSplatSnapshot();
+
+    /// <summary>Restore a splat snapshot (undo/redo).</summary>
+    public void RestoreTerrainSplat(byte[]? splat)
+    {
+        if (_terrainMesh != null && splat != null)
+            _terrainMesh.RestoreSplatSnapshot(splat);
+    }
+
+    /// <summary>Clear ALL manual layer paint (back to automatic height+slope texturing).</summary>
+    public void ClearTerrainLayerPaint()
+    {
+        _terrainMesh?.ClearSplatPaint();
+    }
+
+    /// <summary>
+    /// Draw the brush ring ON this terrain's surface — a circle that follows the heightmap
+    /// (sampled every segment), so the user sees exactly which area of the plane the brush
+    /// will affect. Ring radius = TerrainBrushSize (same footprint mapping as painting).
+    /// Depth test is disabled so the ring never z-fights with the terrain mesh.
+    /// </summary>
+    public void DrawTerrainBrushIndicator(Camera camera)
+    {
+        if (!ShowBrushIndicator || BrushIndicatorPos is not Vector3 center)
+            return;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return;
+
+        var model = TerrainModelMatrix;
+        if (!Matrix4x4.Invert(model, out var invModel))
+            return;
+        var localCenter = Vector3.Transform(center, invModel);
+
+        float footprint = MathF.Max(MathF.Max(0.1f, Scale.X), MathF.Max(0.1f, Scale.Z));
+        float rLocal = Math.Max(0.02f, TerrainBrushSize) / footprint;
+
+        const int Segments = 48;
+        var ring = new List<Vector3>(Segments * 2);
+        var prev = Vector3.Zero;
+        for (int i = 0; i <= Segments; i++)
+        {
+            float a = (float)i / Segments * MathF.PI * 2f;
+            float lx = Math.Clamp(localCenter.X + MathF.Cos(a) * rLocal, -0.5f, 0.5f);
+            float lz = Math.Clamp(localCenter.Z + MathF.Sin(a) * rLocal, -0.5f, 0.5f);
+            float h = m.SampleLocalHeight(lx, lz);
+            var p = Vector3.Transform(new Vector3(lx, h, lz), model);
+            if (i > 0)
+            {
+                ring.Add(prev);
+                ring.Add(p);
+            }
+            prev = p;
+        }
+        // i goes 0..Segments inclusive, so the last pair closes the loop (segment 48 == point 0).
+
+        GL.Disable(Const.GL_DEPTH_TEST);
+        Terrains.TerrainChunk.DrawLineSegments(ring, BrushIndicatorColor, camera);
+        GL.Enable(Const.GL_DEPTH_TEST);
+    }
+    /// <summary>Draw using individual uniform locations (matching EditorObjectManager's call pattern).</summary>
         public void Draw(
             int modelLoc, int viewLoc, int projLoc,
             int sunDirLoc, int lightColorLoc, int viewPosLoc,
@@ -369,6 +843,27 @@ public unsafe class EditorObject
             // Rebuild GPU resources if MarkDirty() was called (e.g. color changed in the
             // Inspector) — otherwise the old vertices/color would keep rendering forever.
             EnsureResources();
+
+            // ── Advanced terrain plane: render with the dedicated terrain shader. ──
+            if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
+            {
+                // XZ footprint follows Scale.X/Z; Y stays at real world height (the
+                // plane's thin Scale.Y must NOT flatten the terrain).
+                _terrainMesh.Draw(TerrainModelMatrix, camera, light, this);
+
+                // ── Brush ring indicator ON the terrain surface (while the brush tool
+                // hovers this terrain) — drawn after the mesh so it's always on top. ──
+                DrawTerrainBrushIndicator(camera);
+
+                // The terrain shader switches the active program — restore the main
+                // shader so subsequent editor objects render correctly.
+                GL.UseProgram(Shader.GetShaderProgram());
+                return;
+            }
+
+            // Terrain enabled but no valid mesh (missing heightmap): fall back to the
+            // flat plane mesh so the object stays visible and editable.
+
             if (_object3D == null) return;
 
             // Set correct model matrix (WorldMatrix includes position, scale, rotation)
@@ -604,6 +1099,92 @@ public unsafe class EditorObject
         DrawEditorLines(beamVerts, camera, new Vector3(1.0f, 0.92f, 0.35f)); // beam on top
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  Sky sun manipulation (gizmo drag handle)
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>World-space sun direction this sky object currently renders — honors the
+    /// SkySunPitch/SkySunYaw override when set, otherwise follows the time-of-day cycle.
+    /// Shared by the gizmo drawing and the sun-handle drag math so they always agree.</summary>
+    public Vector3 GetSkySunDirection()
+    {
+        if (SkySunPitch.HasValue && SkySunYaw.HasValue)
+        {
+            float p = SkySunPitch.Value * MathF.PI / 180f;
+            float y = SkySunYaw.Value * MathF.PI / 180f;
+            return Vector3.Normalize(new Vector3(
+                MathF.Sin(y) * MathF.Cos(p), MathF.Sin(p), MathF.Cos(y) * MathF.Cos(p)));
+        }
+        float hours = Math.Clamp(SkyTimeOfDay, 0f, 24f);
+        float sunAngle = (hours / 24f) * (MathF.PI * 2f) - (MathF.PI * 0.5f);
+        return Vector3.Normalize(new Vector3(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f));
+    }
+
+    /// <summary>World-space center of the sun handle drawn by the sky gizmo (null when this
+    /// object is not a Sky). Matches DrawSkyGizmo's sun icon placement exactly.</summary>
+    public Vector3? GetSkySunHandleCenter()
+    {
+        if (PrimitiveType != EditorPrimitiveType.Sky) return null;
+        float horizonR = 3.5f * MathF.Max(Scale.X, MathF.Max(Scale.Y, Scale.Z));
+        return Position + GetSkySunDirection() * (horizonR * 0.85f);
+    }
+
+    /// <summary>Set the SkySunPitch/SkySunYaw override from a world-space direction (used by
+    /// the sun-handle drag). When <paramref name="snap"/> is set, pitch snaps to 5° and yaw
+    /// to 15° increments for precise alignment.</summary>
+    public void SetSkySunFromDirection(Vector3 worldDir, bool snap = false)
+    {
+        if (worldDir.LengthSquared() < 1e-6f) return;
+        var d = Vector3.Normalize(worldDir);
+        float pitch = MathF.Asin(Math.Clamp(d.Y, -1f, 1f)) * 180f / MathF.PI;
+        float yaw = MathF.Atan2(d.X, d.Z) * 180f / MathF.PI;
+        if (yaw < 0f) yaw += 360f;
+        if (snap)
+        {
+            pitch = MathF.Round(pitch / 5f) * 5f;
+            yaw = MathF.Round(yaw / 15f) * 15f;
+            if (yaw >= 360f) yaw -= 360f;
+        }
+        SkySunPitch = Math.Clamp(pitch, -90f, 90f);
+        SkySunYaw = yaw % 360f;
+    }
+
+    /// <summary>Aim the sun at the given world ray (dragging the sun handle): intersect the
+    /// sun orbit sphere around the marker; on a miss (viewed edge-on) fall back to the
+    /// closest point on the ray to the sphere center. Returns false when nothing changed.</summary>
+    public bool AimSkySunFromRay(Vector3 rayOrigin, Vector3 rayDir, bool snap = false)
+    {
+        if (PrimitiveType != EditorPrimitiveType.Sky) return false;
+        Vector3 center = Position;
+        float horizonR = 3.5f * MathF.Max(Scale.X, MathF.Max(Scale.Y, Scale.Z));
+        float r = MathF.Max(0.5f, horizonR * 0.85f);
+
+        var dir = Vector3.Normalize(rayDir);
+        var oc = rayOrigin - center;
+        float b = Vector3.Dot(oc, dir);
+        float c = Vector3.Dot(oc, oc) - r * r;
+        float disc = b * b - c;
+
+        Vector3 hit;
+        if (disc >= 0f)
+        {
+            float t = -b - MathF.Sqrt(disc);
+            if (t < 0f) t = -b + MathF.Sqrt(disc);
+            if (t < 0f) return false;
+            hit = rayOrigin + dir * t;
+        }
+        else
+        {
+            // Ray misses the sphere — aim along the closest point of the ray to the center.
+            float t = Vector3.Dot(center - rayOrigin, dir);
+            if (t < 0f) return false;
+            hit = rayOrigin + dir * t;
+        }
+
+        SetSkySunFromDirection(hit - center, snap);
+        return true;
+    }
+
     /// <summary>
     /// Draw a sky gizmo for this placed sky marker: a horizon circle in the XZ plane
     /// around the marker, a small vertical zenith axis, and a sun icon placed in the
@@ -615,20 +1196,7 @@ public unsafe class EditorObject
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sky) return;
 
         // ── Sun direction: same math as SceneManager/editor lights ──
-        Vector3 sunDir;
-        if (SkySunPitch.HasValue && SkySunYaw.HasValue)
-        {
-            float p = SkySunPitch.Value * MathF.PI / 180f;
-            float y = SkySunYaw.Value * MathF.PI / 180f;
-            sunDir = Vector3.Normalize(new Vector3(
-                MathF.Sin(y) * MathF.Cos(p), MathF.Sin(p), MathF.Cos(y) * MathF.Cos(p)));
-        }
-        else
-        {
-            float hours = Math.Clamp(SkyTimeOfDay, 0f, 24f);
-            float sunAngle = (hours / 24f) * (MathF.PI * 2f) - (MathF.PI * 0.5f);
-            sunDir = Vector3.Normalize(new Vector3(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f));
-        }
+        Vector3 sunDir = GetSkySunDirection();
 
         var verts = new List<Vector3>(96);
         void Line(Vector3 a, Vector3 b) { verts.Add(a); verts.Add(b); }
@@ -967,6 +1535,8 @@ public unsafe class EditorObject
     {
         _dirty = true;
         _vertexCache = null; // Invalidate wireframe cache until EnsureResources() rebuilds it
+        // Terrain cache key is compared against the live settings, so a rebuild happens
+        // automatically next time EnsureResources() runs if anything changed.
     }
 
     /// <summary>Draw the primitive using Object3D's rendering pipeline.</summary>
@@ -1026,6 +1596,8 @@ public unsafe class EditorObject
             }
             _textureID = 0;
         }
+        _terrainMesh?.Dispose();
+        _terrainMesh = null;
         // Object3D cleanup is handled externally
         _object3D = null;
     }

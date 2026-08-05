@@ -443,6 +443,9 @@
     <None Update="Artifacts\shaders\static_vertex.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\shaders\terrainEditor_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\shaders\vertex_shader.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
