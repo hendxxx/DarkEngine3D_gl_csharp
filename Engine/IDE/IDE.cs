@@ -122,6 +122,7 @@ public class IDE : IDisposable
             Console.WriteLine("[IDE] ImGuiController OK");
 
             _viewport = new ViewportPanel(Bridge);
+
             _sceneView = new SceneViewPanel(Bridge);
             _inspector = new InspectorPanel(Bridge);
             _assetBrowser = new AssetBrowserPanel(Bridge);
@@ -398,7 +399,10 @@ public class IDE : IDisposable
                 // ── Snap to Grid toggle ──
                 bool snap = _viewport.SnapEnabled;
                 if (ImGui.MenuItem("Snap to Grid", null, snap))
+                {
                     _viewport.SnapEnabled = !snap;
+                    _viewport.PersistViewportPrefs();
+                }
 
                 ImGui.Separator();
 
@@ -793,6 +797,13 @@ public class IDE : IDisposable
     private Vector3 GetSpawnPosition(EditorPrimitiveType type)
     {
         return IDEBridge.GetGridSpawnPosition(Bridge.Camera, type);
+    }
+
+    /// <summary>Apply persisted viewport snap/grid prefs at startup (called by Program.cs).</summary>
+    public void SetViewportSnap(bool enabled, float gridSize)
+    {
+        _viewport.SnapEnabled = enabled;
+        _viewport.SnapGridSize = gridSize;
     }
 
     /// <summary>Whether the IDE overlay is currently active. Always true since F2 toggle is disabled.</summary>

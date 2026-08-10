@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
@@ -655,6 +656,7 @@ public class SceneManagerPanel
                         ColorB = obj.Color.Z,
                         CastShadow = obj.CastShadow,
                         IsVisible = obj.IsVisible,
+                        GlbFilePath = PathHelpers.MakeRelative(obj.GlbFilePath ?? ""),
                         CameraFov = obj.CameraFov,
                         CameraNear = obj.CameraNear,
                         CameraFar = obj.CameraFar,
@@ -676,7 +678,7 @@ public class SceneManagerPanel
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z,
                         TerrainEnabled = obj.TerrainEnabled,
-                        TerrainHeightmapPath = obj.TerrainHeightmapPath,
+                        TerrainHeightmapPath = PathHelpers.MakeRelative(obj.TerrainHeightmapPath),
                         TerrainChunkSize = obj.TerrainChunkSize,
                         TerrainHeightScale = obj.TerrainHeightScale,
                         TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
@@ -685,10 +687,10 @@ public class SceneManagerPanel
                         TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
                         TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
                         TerrainLayerSnowTop = obj.TerrainLayerSnowTop,
-                        TerrainTextureAirPath = obj.TerrainTextureAirPath,
-                        TerrainTextureDirtPath = obj.TerrainTextureDirtPath,
-                        TerrainTextureGrassPath = obj.TerrainTextureGrassPath,
-                        TerrainTextureSnowPath = obj.TerrainTextureSnowPath,
+                        TerrainTextureAirPath = PathHelpers.MakeRelative(obj.TerrainTextureAirPath),
+                        TerrainTextureDirtPath = PathHelpers.MakeRelative(obj.TerrainTextureDirtPath),
+                        TerrainTextureGrassPath = PathHelpers.MakeRelative(obj.TerrainTextureGrassPath),
+                        TerrainTextureSnowPath = PathHelpers.MakeRelative(obj.TerrainTextureSnowPath),
                         TerrainBrushSize = obj.TerrainBrushSize,
                         TerrainBrushStrength = obj.TerrainBrushStrength,
                         TerrainBrushSoftness = obj.TerrainBrushSoftness,
@@ -931,6 +933,9 @@ public class SceneManagerPanel
                         obj.Color = new Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
                         obj.CastShadow = objData.CastShadow;
                         obj.IsVisible = objData.IsVisible;
+                        // Restore GLB model path (resolved against the exe folder).
+                        if (!string.IsNullOrEmpty(objData.GlbFilePath))
+                            obj.GlbFilePath = PathHelpers.Resolve(objData.GlbFilePath);
                         obj.CameraFov = objData.CameraFov;
                         obj.CameraNear = objData.CameraNear;
                         obj.CameraFar = objData.CameraFar;
@@ -954,7 +959,7 @@ public class SceneManagerPanel
                         // ── Restore advanced terrain settings (Plane) — backward compatible ──
                         obj.TerrainEnabled = objData.TerrainEnabled;
                         if (!string.IsNullOrEmpty(objData.TerrainHeightmapPath))
-                            obj.TerrainHeightmapPath = objData.TerrainHeightmapPath;
+                            obj.TerrainHeightmapPath = PathHelpers.Resolve(objData.TerrainHeightmapPath);
                         obj.TerrainChunkSize = objData.TerrainChunkSize;
                         obj.TerrainHeightScale = objData.TerrainHeightScale;
                         obj.TerrainSlopeThreshold = objData.TerrainSlopeThreshold;
@@ -963,10 +968,10 @@ public class SceneManagerPanel
                         obj.TerrainLayerDirtTop = objData.TerrainLayerDirtTop;
                         obj.TerrainLayerGrassTop = objData.TerrainLayerGrassTop;
                         obj.TerrainLayerSnowTop = objData.TerrainLayerSnowTop;
-                        obj.TerrainTextureAirPath = objData.TerrainTextureAirPath;
-                        obj.TerrainTextureDirtPath = objData.TerrainTextureDirtPath;
-                        obj.TerrainTextureGrassPath = objData.TerrainTextureGrassPath;
-                        obj.TerrainTextureSnowPath = objData.TerrainTextureSnowPath;
+                        obj.TerrainTextureAirPath = PathHelpers.Resolve(objData.TerrainTextureAirPath);
+                        obj.TerrainTextureDirtPath = PathHelpers.Resolve(objData.TerrainTextureDirtPath);
+                        obj.TerrainTextureGrassPath = PathHelpers.Resolve(objData.TerrainTextureGrassPath);
+                        obj.TerrainTextureSnowPath = PathHelpers.Resolve(objData.TerrainTextureSnowPath);
                         obj.TerrainBrushSize = objData.TerrainBrushSize;
                         obj.TerrainBrushStrength = objData.TerrainBrushStrength;
                         obj.TerrainBrushSoftness = objData.TerrainBrushSoftness;
@@ -1058,11 +1063,12 @@ public class SceneManagerPanel
                             ColorB = obj.Color.Z,
                             CastShadow = obj.CastShadow,
                             IsVisible = obj.IsVisible,
+                            GlbFilePath = PathHelpers.MakeRelative(obj.GlbFilePath ?? ""),
                             PivotOverrideX = obj.GizmoPivotOverride?.X,
                             PivotOverrideY = obj.GizmoPivotOverride?.Y,
                             PivotOverrideZ = obj.GizmoPivotOverride?.Z,
                             TerrainEnabled = obj.TerrainEnabled,
-                            TerrainHeightmapPath = obj.TerrainHeightmapPath,
+                            TerrainHeightmapPath = PathHelpers.MakeRelative(obj.TerrainHeightmapPath),
                             TerrainChunkSize = obj.TerrainChunkSize,
                             TerrainHeightScale = obj.TerrainHeightScale,
                             TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
@@ -1071,10 +1077,10 @@ public class SceneManagerPanel
                             TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
                             TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
                             TerrainLayerSnowTop = obj.TerrainLayerSnowTop,
-                            TerrainTextureAirPath = obj.TerrainTextureAirPath,
-                            TerrainTextureDirtPath = obj.TerrainTextureDirtPath,
-                            TerrainTextureGrassPath = obj.TerrainTextureGrassPath,
-                            TerrainTextureSnowPath = obj.TerrainTextureSnowPath
+                            TerrainTextureAirPath = PathHelpers.MakeRelative(obj.TerrainTextureAirPath),
+                            TerrainTextureDirtPath = PathHelpers.MakeRelative(obj.TerrainTextureDirtPath),
+                            TerrainTextureGrassPath = PathHelpers.MakeRelative(obj.TerrainTextureGrassPath),
+                            TerrainTextureSnowPath = PathHelpers.MakeRelative(obj.TerrainTextureSnowPath)
                         });
                     }
                 }

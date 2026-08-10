@@ -31,6 +31,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         // ── Default camera + lights for rendering editor objects when no scene is active ──
         private Camera? _editorCamera;
         private Lights? _editorLights;
+        // ── CSM shadow maps for the bare-editor viewport (mirrors GameScene's shadow pass
+        // so editor objects cast shadows matching the sky/light sun in this view too) ──
+        private CSM? _editorCsm;
 
         // ── Editor skybox (rendered when a Sky editor object exists in the active scene) ──
         private Skybox? _editorSkybox;
@@ -448,13 +451,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (bridge?.ShowDebugGrid ?? true)
                         RenderEditorGrid();
 
-                    // ── Render editor 3D objects ──
-                    if (bridge?.EditorObjectManager != null && bridge.EditorObjectManager.Count > 0)
+                    // ── CSM shadow pass + render editor 3D objects (only when the editor
+                    // actually has objects — EditorObjectManager may be null when no editor
+                    // scene with an object manager is loaded yet) ──
+                    if (bridge?.EditorObjectManager is { Count: > 0 } editorObjMgr)
                     {
+                        _editorCsm ??= new CSM(Config.ShadowConfig.CascadeSizes[0]);
+                        editorObjMgr.RenderShadowPass(_editorCamera, _editorLights, _editorCsm);
+
+                        // Restore the shared FBO + scene render state after the depth-only shadow pass
+                        GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
+                        GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        if (editorProps != null)
+                            editorProps.Apply();
+                        GL.Enable(Const.GL_DEPTH_TEST);
+
+                        // Bind the cascade shadow maps (units 6..8 — matches the main shader)
+                        GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, _editorCsm.ShadowTextures[0]);
+                        GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, _editorCsm.ShadowTextures[1]);
+                        GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+                        GL.BindTexture(Const.GL_TEXTURE_2D, _editorCsm.ShadowTextures[2]);
+
                         // Pass selection highlight color so selected objects get a mesh wireframe outline
                         Vector3? wireCol = bridge is { SelectedEditorObjects.Count: > 0 }
                             ? bridge.SelectionHighlights.EditorObject : null;
-                        bridge.EditorObjectManager.Draw(_editorCamera, _editorLights, null, wireCol, bridge.SelectedEditorObjects);
+                        editorObjMgr.Draw(_editorCamera, _editorLights, _editorCsm, wireCol, bridge.SelectedEditorObjects);
                     }
 
                     // ── Render ONE gizmo at the selection center (group average for
@@ -565,6 +588,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Cleanup shared FBO + editor grid
             DestroySharedFBO();
             CleanupEditorGrid();
+            _editorCsm?.Dispose();
+            _editorCsm = null;
 
             // Cleanup IDE
             Glfw.OnWindowResized -= OnSharedFboResized;

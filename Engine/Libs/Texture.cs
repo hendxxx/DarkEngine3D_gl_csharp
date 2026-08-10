@@ -1,4 +1,5 @@
-﻿using StbImageSharp;
+﻿using DarkEngine3D_gl_csharp.Engine.Helpers;
+using StbImageSharp;
 
 namespace DarkEngine3D_gl_csharp.Engine.Libs
 {
@@ -19,6 +20,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         private unsafe uint LoadTexture(string path)
         {
+            // Resolve relative paths against the exe folder so textures load anywhere.
+            path = PathHelpers.Resolve(path);
+
             uint textureID;
             GL.GenTextures(1, &textureID);
             GL.BindTexture(Const.GL_TEXTURE_2D, textureID);

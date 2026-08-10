@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.IO;
 
@@ -130,6 +131,9 @@ public static class SceneAssetSerializer
             BackgroundObjects = bgObjects ?? []
         };
 
+        // Store asset paths relative to the exe so the .ing is portable.
+        NormalizeBgForSave(asset.BackgroundObjects);
+
         string json = JsonSerializer.Serialize(asset, JsonOptions);
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
         File.WriteAllText(filePath, json);
@@ -236,7 +240,7 @@ public static class SceneAssetSerializer
                 _ => ImageMode.Stretch,
             },
             FontSize = data.FontSize,
-            FontPath = data.FontPath,
+            FontPath = PathHelpers.Resolve(data.FontPath),
             TextColor = ArrayToVec3(data.TextColor, new Vector3(0.95f, 0.95f, 1f)),
             BgColor = ArrayToVec3(data.BgColor, new Vector3(0.10f, 0.12f, 0.18f)),
             BorderColor = ArrayToVec3(data.BorderColor, new Vector3(0.15f, 0.18f, 0.25f)),
@@ -336,7 +340,7 @@ public static class SceneAssetSerializer
                 _ => "Stretch",
             },
             FontSize = elem.FontSize,
-            FontPath = elem.FontPath,
+            FontPath = PathHelpers.MakeRelative(elem.FontPath),
             TextColor = Vec3ToArray(elem.TextColor),
             BgColor = Vec3ToArray(elem.BgColor),
             BorderColor = Vec3ToArray(elem.BorderColor),
@@ -412,43 +416,45 @@ public static class SceneAssetSerializer
 
     private static float[] Vec3ToArray(Vector3 v) => [v.X, v.Y, v.Z];
 
-    /// <summary>Base directory used for relative image paths (so .ing files are portable).</summary>
+    /// <summary>Base directory used for relative asset paths (so .ing files are portable).</summary>
     private static string AppBaseDir => AppDomain.CurrentDomain.BaseDirectory;
 
-    /// <summary>
-    /// Convert an absolute image path to a relative path (for saving to .ing).
-    /// If the path is empty or already relative, return as-is.
-    /// </summary>
-    private static string MakeRelativePath(string path)
+    /// <summary>Convert an absolute image path to an exe-relative path (for saving to .ing).
+    /// Empty or already-relative paths pass through.</summary>
+    private static string MakeRelativePath(string path) => PathHelpers.MakeRelative(path);
+
+    /// <summary>Resolve a possibly-relative image path to an absolute path (for runtime use).
+    /// Empty or already-absolute paths pass through.</summary>
+    private static string ResolveImagePath(string path) => PathHelpers.Resolve(path);
+
+    /// <summary>Normalize a BackgroundObjectData's model path to exe-relative form (for saving).</summary>
+    public static BackgroundObjectData NormalizeBgForSave(BackgroundObjectData bg)
     {
-        if (string.IsNullOrEmpty(path)) return path;
-        if (!Path.IsPathRooted(path)) return path; // already relative
-        try
-        {
-            return Path.GetRelativePath(AppBaseDir, path);
-        }
-        catch
-        {
-            return path; // fallback: keep original
-        }
+        if (bg != null) bg.ModelPath = PathHelpers.MakeRelative(bg.ModelPath);
+        return bg;
     }
 
-    /// <summary>
-    /// Resolve a possibly-relative image path to an absolute path (for runtime use).
-    /// If the path is empty or already absolute, return as-is.
-    /// </summary>
-    private static string ResolveImagePath(string path)
+    /// <summary>Normalize a list of background objects' model paths to exe-relative form (for saving).</summary>
+    public static void NormalizeBgForSave(List<BackgroundObjectData>? bgObjects)
     {
-        if (string.IsNullOrEmpty(path)) return path;
-        if (Path.IsPathRooted(path)) return path; // already absolute
-        try
-        {
-            return Path.GetFullPath(Path.Combine(AppBaseDir, path));
-        }
-        catch
-        {
-            return path; // fallback: keep original
-        }
+        if (bgObjects == null) return;
+        foreach (var bg in bgObjects)
+            NormalizeBgForSave(bg);
+    }
+
+    /// <summary>Resolve a BackgroundObjectData's model path to an absolute path (for runtime use).</summary>
+    public static BackgroundObjectData NormalizeBgForLoad(BackgroundObjectData bg)
+    {
+        if (bg != null) bg.ModelPath = PathHelpers.Resolve(bg.ModelPath);
+        return bg;
+    }
+
+    /// <summary>Resolve a list of background objects' model paths to absolute paths (for runtime use).</summary>
+    public static void NormalizeBgForLoad(List<BackgroundObjectData>? bgObjects)
+    {
+        if (bgObjects == null) return;
+        foreach (var bg in bgObjects)
+            NormalizeBgForLoad(bg);
     }
 
     // ── Registered scene roots (for IDE Save All) ──
@@ -502,6 +508,9 @@ public static class SceneAssetSerializer
                 Elements = [ToData(root)],
                 BackgroundObjects = bgObjects
             });
+
+            // Store asset paths relative to the exe so the .ing is portable.
+            NormalizeBgForSave(manifest.Scenes[^1].BackgroundObjects);
         }
 
         string json = JsonSerializer.Serialize(manifest, JsonOptions);

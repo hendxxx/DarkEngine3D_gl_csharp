@@ -126,8 +126,11 @@ public class HierarchyPanel
         public float[]? OldHeights, NewHeights; // height snapshots before / after the stroke
         // For TerrainLayerPaint (🎨 layer brush stroke) — splat snapshots.
         public byte[]? OldSplat, NewSplat;
-        // For SkySunChange (sun drag on the sky gizmo) — pitch/yaw before/after (null = time-of-day).
+        // For SkySunChange (sun drag on the sky gizmo) — pitch/yaw before/after (null = time-of-day),
+        // plus the Light marker whose direction follows the sun drag (null = none).
         public float? OldPitch, NewPitch, OldYaw, NewYaw;
+        public EditorObject? LightObj;
+        public Vector3? OldLightDir, NewLightDir;
     }
 
     public HierarchyPanel(IDEBridge bridge)
@@ -230,8 +233,10 @@ public class HierarchyPanel
 
         // Wire up the sky-sun drag delegate so ViewportPanel sun-handle drags on the sky
         // gizmo record an undo/redo (restores the pitch/yaw override, or back to time-of-day).
-        // Params: (skyObj, oldPitch, oldYaw, newPitch, newYaw) — each nullable float.
-        _bridge.OnSkySunChanged = (obj, oldPitch, oldYaw, newPitch, newYaw) =>
+        // When a Light marker overrides the sky sun, its direction follows the drag — the
+        // old/new light direction rides along so Ctrl+Z restores the lighting too.
+        // Params: (skyObj, oldPitch, oldYaw, newPitch, newYaw, lightObj, oldLightDir, newLightDir).
+        _bridge.OnSkySunChanged = (obj, oldPitch, oldYaw, newPitch, newYaw, lightObj, oldLightDir, newLightDir) =>
         {
             if (obj == null) return;
             // Skip no-op drags (grabbed and released without moving the sun).
@@ -245,8 +250,12 @@ public class HierarchyPanel
                 NewPitch = newPitch,
                 OldYaw = oldYaw,
                 NewYaw = newYaw,
+                LightObj = lightObj,
+                OldLightDir = oldLightDir,
+                NewLightDir = newLightDir,
             });
-            Console.WriteLine($"[SceneDetail] Recorded sky sun undo for '{obj.Name}'");
+            Console.WriteLine($"[SceneDetail] Recorded sky sun undo for '{obj.Name}'"
+                + (lightObj != null ? $" + light '{lightObj.Name}'" : ""));
         };
 
         // Wire up the color undo delegate so InspectorPanel can record color undos
@@ -2375,6 +2384,12 @@ public class HierarchyPanel
                     Console.WriteLine($"[SceneDetail] Undo Sky Sun: '{action.EditorObj.Name}' → pitch={action.OldPitch?.ToString() ?? "time-of-day"}, yaw={action.OldYaw?.ToString() ?? "time-of-day"}");
                     _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
                 }
+                // Restore the synced Light marker's direction to its pre-drag value.
+                if (action.LightObj != null && action.OldLightDir.HasValue)
+                {
+                    action.LightObj.LightDirection = action.OldLightDir.Value;
+                    Console.WriteLine($"[SceneDetail] Undo Sky Sun light: '{action.LightObj.Name}' direction restored");
+                }
                 break;
 
             case UndoRedoAction.ActionType.TerrainPaint:
@@ -2552,6 +2567,12 @@ public class HierarchyPanel
                     action.EditorObj.SkySunYaw = action.NewYaw;
                     Console.WriteLine($"[SceneDetail] Redo Sky Sun: '{action.EditorObj.Name}' → pitch={action.NewPitch?.ToString() ?? "time-of-day"}, yaw={action.NewYaw?.ToString() ?? "time-of-day"}");
                     _bridge.SelectEditorObject(action.EditorObj); // non-additive: replaces the multi-set
+                }
+                // Re-apply the synced Light marker's post-drag direction.
+                if (action.LightObj != null && action.NewLightDir.HasValue)
+                {
+                    action.LightObj.LightDirection = action.NewLightDir.Value;
+                    Console.WriteLine($"[SceneDetail] Redo Sky Sun light: '{action.LightObj.Name}' direction re-applied");
                 }
                 break;
 

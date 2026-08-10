@@ -16,7 +16,7 @@
           "imagePath": "",
           "imageMode": "Stretch",
           "fontSize": 13,
-          "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+          "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
           "textColor": [
             0.95,
             0.95,
@@ -67,7 +67,7 @@
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
-              "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
                 0.95,
                 0.95,
@@ -119,7 +119,7 @@
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
-              "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
                 0.95,
                 0.95,
@@ -171,7 +171,7 @@
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
-              "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
                 0.95,
                 0.95,
@@ -222,7 +222,7 @@
                   "imagePath": "",
                   "imageMode": "Stretch",
                   "fontSize": 13,
-                  "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
                     0.95,
@@ -274,7 +274,7 @@
                   "imagePath": "",
                   "imageMode": "Stretch",
                   "fontSize": 13,
-                  "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
                     0.95,
@@ -337,7 +337,7 @@
           "imagePath": "",
           "imageMode": "Stretch",
           "fontSize": 13,
-          "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+          "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
           "textColor": [
             0.95,
             0.95,
@@ -388,7 +388,7 @@
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
-              "fontPath": "Artifacts\\\\fonts\\\\Worldstar.ttf",
+              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
                 0.95,
                 0.95,

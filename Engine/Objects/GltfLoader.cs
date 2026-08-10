@@ -126,6 +126,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         public static GltfData Load(string path)
         {
+            // Resolve relative model paths against the exe folder.
+            path = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(path);
+
             var raw = File.ReadAllBytes(path);
             string baseDir = Path.GetDirectoryName(path) ?? "";
             return new GltfLoader().ParseGlb(raw, baseDir);

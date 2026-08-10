@@ -25,7 +25,7 @@ public class SceneElementData
     public string ImageMode { get; set; } = "Stretch"; // Stretch, Zoom, Fill
 
     public float FontSize { get; set; } = 13f;
-    public string FontPath { get; set; } = "Artifacts\\\\\\\\fonts\\\\\\\\Worldstar.ttf";
+    public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
 
     // Colors as arrays [r, g, b] — Vector3 is not directly serializable
     public float[] TextColor { get; set; } = [0.95f, 0.95f, 1f];
@@ -123,6 +123,8 @@ public class EditorObjectData
 {
     public string Name { get; set; } = "EditorObject";
     public string PrimitiveType { get; set; } = "Box"; // Box, Sphere, Plane, GlbReference
+    /// <summary>GLB model path (only used when PrimitiveType == GlbReference). Stored relative to the exe.</summary>
+    public string GlbFilePath { get; set; } = "";
     public float PosX { get; set; }
     public float PosY { get; set; }
     public float PosZ { get; set; }

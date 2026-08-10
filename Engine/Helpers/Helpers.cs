@@ -176,6 +176,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
 
         public static uint LoadShader(string vertexPath, string fragmentPath)
         {
+            // Resolve shader paths relative to the exe folder (shaders ship in
+            // "Artifacts/shaders" next to the executable).
+            vertexPath = PathHelpers.Resolve(vertexPath);
+            fragmentPath = PathHelpers.Resolve(fragmentPath);
+
             string vSource = File.ReadAllText(vertexPath);
             string fSource = File.ReadAllText(fragmentPath);
 

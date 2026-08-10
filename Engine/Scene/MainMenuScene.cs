@@ -146,6 +146,10 @@ public unsafe class MainMenuScene : IScene
     private uint _axisVAO = 0;
     private uint _axisVBO = 0;
 
+    // ── CSM shadow maps for the IDE viewport (editor objects cast shadows matching
+    // the sky sun / light marker, same shadow pass GameScene uses) ──
+    private CSM? _csm;
+
     public MainMenuScene(SceneManager sceneManager, Camera camera, Lights light)
     {
         _sceneManager = sceneManager;
@@ -318,6 +322,27 @@ public unsafe class MainMenuScene : IScene
         _gridOffsetX += deltaTime * 2f;
         if (_gridOffsetX > 40f)
             _gridOffsetX -= 40f;
+
+        // ── Apply the first Sky/Light editor marker to the scene lights so the viewport
+        // lighting follows the sky-sun gizmo drag IMMEDIATELY (same helper GameScene uses
+        // every frame). Runs in both edit and game mode. No Sky object → falls back to the
+        // procedural sun (SunDirOverride cleared, brightness restored). ──
+        var envMgr = _sceneManager.Bridge?.EditorObjectManager;
+        if (envMgr != null)
+        {
+            EditorObject? skyObj = null;
+            EditorObject? lightObj = null;
+            foreach (var obj in envMgr.Objects)
+            {
+                if (skyObj == null && obj.PrimitiveType == EditorPrimitiveType.Sky) skyObj = obj;
+                if (lightObj == null && obj.PrimitiveType == EditorPrimitiveType.Light) lightObj = obj;
+            }
+            EditorObject.ApplyEnvironmentMarkers(lightObj, skyObj, _light, null, deltaTime);
+        }
+
+        // Always advance the scene lights (procedural sun + fog), independent of whether
+        // any editor markers exist — keeps ShadowDirStable valid for the viewport CSM pass.
+        _light.Update(deltaTime, _camera.Position);
 
         // ── Sync UIElement positions from hierarchy (always, even when input locked) ──
         SyncHierarchyPositions();
@@ -1042,12 +1067,33 @@ public unsafe class MainMenuScene : IScene
         if (_sceneManager.IsIdeActive)
         {
             var editorBridge = _sceneManager.Bridge;
-            if (editorBridge?.EditorObjectManager != null)
+            if (editorBridge?.EditorObjectManager is { Count: > 0 } editorObjMgr)
             {
+                // ── CSM shadow pass so editor objects cast shadows matching the sun
+                // direction (sky gizmo / light marker) in this viewport ──
+                _csm ??= new CSM(Config.ShadowConfig.CascadeSizes[0]);
+                editorObjMgr.RenderShadowPass(_camera, _light, _csm);
+
+                // Restore the shared FBO + scene render state after the depth-only shadow
+                // pass (re-apply this scene's render properties, then force depth on for
+                // the 3D content — same effective state the grid/objects already rely on)
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sceneManager.SharedFBO);
+                GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                _renderProperties.Apply();
+                GL.Enable(Const.GL_DEPTH_TEST);
+
+                // Bind the cascade shadow maps (units 6..8 — matches the main shader)
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _csm.ShadowTextures[0]);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _csm.ShadowTextures[1]);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _csm.ShadowTextures[2]);
+
                 // Pass selection highlight color so selected objects get a mesh wireframe outline
                 Vector3? wireCol = editorBridge is { SelectedEditorObjects.Count: > 0 }
                     ? editorBridge.SelectionHighlights.EditorObject : null;
-                editorBridge.EditorObjectManager.Draw(_camera, _light, null, wireCol, editorBridge.SelectedEditorObjects);
+                editorBridge.EditorObjectManager.Draw(_camera, _light, _csm, wireCol, editorBridge.SelectedEditorObjects);
             }
         }            // ── Update bridge with scene data (always, so IDE panels have current state) ──
             var bridge = _sceneManager.Bridge;
@@ -1463,6 +1509,8 @@ public unsafe class MainMenuScene : IScene
         _hud?.Cleanup();
         CleanupImageTextures();
         CleanupEditorGrid();
+        _csm?.Dispose();
+        _csm = null;
 
         // Clear IDE bridge references
         var bridge = _sceneManager.Bridge;

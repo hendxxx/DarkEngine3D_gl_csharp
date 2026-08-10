@@ -336,6 +336,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public GltfModelGpuData LoadModel(string path)
         {
+            // Resolve relative model paths against the exe folder (cache key = resolved path).
+            path = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(path);
             if (_modelCache.TryGetValue(path, out var cached)) return cached;
             var data = GltfLoader.Load(path);
             var gpuData = new GltfModelGpuData(data);
@@ -345,6 +347,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public static GltfData LoadAnimationFile(string path)
         {
+            path = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(path);
             try
             {
                 return GltfLoader.Load(path);

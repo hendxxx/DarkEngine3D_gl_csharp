@@ -401,6 +401,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
+        /// <summary>Render the full CSM shadow pass for all editor objects (all cascades).
+        /// Caller must restore its framebuffer afterwards and bind the cascade shadow maps
+        /// to texture units 6/7/8 before calling <see cref="Draw"/> with the same CSM.
+        /// Shared by GameScene (via RenderShadow per cascade), MainMenuScene and the
+        /// SceneManager bare-editor viewport so shadows match the sun in every view.</summary>
+        public void RenderShadowPass(Camera camera, Lights light, CSM csm)
+        {
+            csm.UpdateMatrices(camera, light.ShadowDirStable);
+
+            for (int i = 0; i < CSM.NumCascades; i++)
+            {
+                csm.BindFramebuffer(i);
+                RenderShadow(camera, csm, i);
+            }
+        }
+
         /// <summary>Render shadow for all editor objects (called from shadow pass).</summary>
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex)
         {

@@ -1,4 +1,6 @@
 
+using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
@@ -76,6 +78,12 @@ public unsafe class ViewportPanel
     /// <summary>Pitch/yaw captured when the sun drag started (for undo; null = followed time of day).</summary>
     private float? _skySunDragOldPitch = null;
     private float? _skySunDragOldYaw = null;
+    /// <summary>First Light marker kept in sync with the sun drag (null = none). A placed
+    /// Light marker overrides the sky sun for actual lighting, so its direction follows
+    /// the sun being dragged — lighting then matches the gizmo in real time.</summary>
+    private EditorObject? _skySunDragLightObj = null;
+    /// <summary>Light marker direction captured when the drag started (for undo).</summary>
+    private Vector3? _skySunDragOldLightDir = null;
     /// <summary>Splat snapshot taken when the stroke began (for undo, 🎨 mode).</summary>
     private byte[]? _brushSplatBefore = null;
     /// <summary>Terrain currently showing the 3D brush ring (cleared when the hover moves
@@ -118,6 +126,8 @@ public unsafe class ViewportPanel
         _skySunDragObj = null;
         _skySunDragOldPitch = null;
         _skySunDragOldYaw = null;
+        _skySunDragLightObj = null;
+        _skySunDragOldLightDir = null;
         ClearBrushIndicator();
         if (_bridge.Camera != null)
             _bridge.Camera.FlyMouseLook = false;
@@ -805,6 +815,9 @@ public unsafe class ViewportPanel
 
     private unsafe uint LoadOrGetPreviewTexture(string path)
     {
+        // Resolve relative image paths against the exe folder.
+        path = PathHelpers.Resolve(path);
+
         if (_previewTextureCache.TryGetValue(path, out uint cached))
             return cached;
 
@@ -1260,6 +1273,27 @@ public unsafe class ViewportPanel
     /// <summary>Whether snap-to-grid is enabled.</summary>
     public bool SnapEnabled { get => _snapEnabled; set => _snapEnabled = value; }
 
+    /// <summary>Current snap grid size (px).</summary>
+    public float SnapGridSize { get => _snapGridSize; set => _snapGridSize = value; }
+
+    /// <summary>Persist the viewport grid/snap prefs to settings.json so they survive restarts.
+    /// The grid on/off and snap values previously reset to their defaults (on/20px) every launch.</summary>
+    public void PersistViewportPrefs()
+    {
+        try
+        {
+            var settings = SettingsSave.Load();
+            settings.ShowDebugGrid = _bridge.ShowDebugGrid;
+            settings.SnapEnabled = _snapEnabled;
+            settings.SnapGridSize = _snapGridSize;
+            SettingsSave.Save(settings);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Viewport] Failed to persist viewport prefs: {ex.Message}");
+        }
+    }
+
     /// <summary>Toggle preview mode on/off.</summary>
     public void TogglePreviewMode()
     {
@@ -1325,24 +1359,49 @@ public unsafe class ViewportPanel
         return _bridge.EditorGizmo.HitTest(mouseScreen, _bridge.Camera, gz, vpw, vph) != TransformGizmo.Axis.None;
     }
 
-    /// <summary>True when the mouse hovers the selected sky object's sun handle (the gold
-    /// sun disc on the sky gizmo). Keeps click-to-select / marquee / transform gizmo from
-    /// stealing a click that is really meant to grab the sun.</summary>
-    private bool IsSkySunHandleHitAtMouse()
+    /// <summary>Return the Sky object whose sun handle (the gold sun disc on the sky gizmo)
+    /// is under the mouse — null when none. Checks EVERY placed Sky marker, so the sun can
+    /// be grabbed even when the Sky object isn't currently selected (grabbing selects it).
+    /// Keeps click-to-select / marquee / transform gizmo from stealing a sun grab.</summary>
+    private EditorObject? SkySunHandleAtMouse()
     {
-        if (_bridge.SelectedEditorObject is not { PrimitiveType: EditorPrimitiveType.Sky } sky) return false;
-        if (_bridge.Camera == null || _bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0) return false;
-        if (_bridge.ViewportMouseX < 0f || _bridge.ViewportMouseY < 0f) return false;
-        if (sky.GetSkySunHandleCenter() is not Vector3 sunWorld) return false;
+        if (_bridge.Camera == null || _bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0) return null;
+        if (_bridge.ViewportMouseX < 0f || _bridge.ViewportMouseY < 0f) return null;
+        var mgr = _bridge.EditorObjectManager;
+        if (mgr == null) return null;
 
         int vpw = _bridge.SceneTextureWidth;
         int vph = _bridge.SceneTextureHeight;
         // Flip Y: ImGui Y=0=top → GL Y=0=bottom
         float glY = vph - _bridge.ViewportMouseY;
         var mouseScreen = new Vector2(_bridge.ViewportMouseX, glY);
-        var p = TransformGizmo.ProjectToScreen(_bridge.Camera, sunWorld, vpw, vph);
-        if (p.X < -20f || p.X > vpw + 20f || p.Y < -20f || p.Y > vph + 20f) return false;
-        return Vector2.Distance(mouseScreen, p) <= 14f;
+
+        EditorObject? best = null;
+        float bestDist = float.MaxValue;
+        foreach (var obj in mgr.Objects)
+        {
+            if (obj == null || obj.PrimitiveType != EditorPrimitiveType.Sky || !obj.IsVisible) continue;
+            if (obj.GetSkySunHandleCenter() is not Vector3 sunWorld) continue;
+            var p = TransformGizmo.ProjectToScreen(_bridge.Camera, sunWorld, vpw, vph);
+            if (p.X < -40f || p.X > vpw + 40f || p.Y < -40f || p.Y > vph + 40f) continue;
+
+            // Hit tolerance = the sun disc's PROJECTED radius (same size math as
+            // DrawSkyGizmo's sun icon, shared via SkySunDiscRadius) plus a comfortable
+            // margin. Previously a fixed 18px around the center point was used, so clicking
+            // the visible gold disc surface — but not its exact center — missed and the
+            // drag never started.
+            float sunRadius = obj.SkySunDiscRadius;
+            var sunDir = obj.GetSkySunDirection();
+            var upRef = MathF.Abs(sunDir.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitZ;
+            var sunRight = Vector3.Normalize(Vector3.Cross(sunDir, upRef));
+            var pEdge = TransformGizmo.ProjectToScreen(_bridge.Camera, sunWorld + sunRight * sunRadius, vpw, vph);
+            float discRadiusPx = Vector2.Distance(p, pEdge);
+            float tol = MathF.Max(18f, discRadiusPx + 10f);
+
+            float dist = Vector2.Distance(mouseScreen, p);
+            if (dist <= tol && dist < bestDist) { bestDist = dist; best = obj; }
+        }
+        return best;
     }
 
     /// <summary>Select every editor object whose projected screen position falls inside
@@ -1466,7 +1525,9 @@ public unsafe class ViewportPanel
                 ImGui.TextDisabled("|");
                 ImGui.SameLine();
 
+                bool snapBefore = _snapEnabled;
                 ImGui.Checkbox("Snap", ref _snapEnabled);
+                if (_snapEnabled != snapBefore) PersistViewportPrefs();
                 ImGui.SameLine();
 
                 string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "—";
@@ -1480,6 +1541,7 @@ public unsafe class ViewportPanel
                         {
                             _snapGridSize = SnapOptions[si];
                             _snapEnabled = true;
+                            PersistViewportPrefs();
                         }
                     }
                     ImGui.EndCombo();
@@ -1696,6 +1758,7 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                     if (ImGui.Button(debugGrid ? "Grid: On" : "Grid: Off"))
                     {
                         _bridge.ShowDebugGrid = !debugGrid;
+                        PersistViewportPrefs();
                         Console.WriteLine($"[Viewport] Debug grid {(debugGrid ? "disabled" : "enabled")}");
                     }
                     ImGui.PopStyleColor(1);
@@ -2349,7 +2412,7 @@ ImGui.SameLine();
                 // Clicks on the floating "◉ Views" overlay button must NOT count as
                 // viewport clicks (no raycast select / deselect on empty space).
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
-                    && !IsMouseOverViewportViewsButton() && !IsSkySunHandleHitAtMouse())
+                    && !IsMouseOverViewportViewsButton() && SkySunHandleAtMouse() == null)
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
@@ -2643,7 +2706,7 @@ ImGui.SameLine();
                 // painting with the terrain brush.
                 if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
                     && !_bridge.TerrainBrushActive && _brushObj == null
-                    && !IsGizmoHitAtMouse() && !IsSkySunHandleHitAtMouse() && !IsMouseOverViewportViewsButton())
+                    && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null && !IsMouseOverViewportViewsButton())
                 {
                     _marqueeStart = new Vector2(_bridge.ViewportMouseX, _bridge.ViewportMouseY);
                     _marqueeCurrent = _marqueeStart.Value;
@@ -2777,22 +2840,36 @@ ImGui.SameLine();
                         cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
                             out Vector3 sunOrigin, out Vector3 sunDir);
                         _skySunDragObj.AimSkySunFromRay(sunOrigin, sunDir, ImGui.GetIO().KeyShift);
+                        // Keep any placed Light marker's direction in sync with the sun being
+                        // dragged, so the actual lighting follows the gizmo live (the Light
+                        // marker overrides the sky sun in ApplyEnvironmentMarkers).
+                        if (_skySunDragLightObj != null)
+                            _skySunDragLightObj.LightDirection = _skySunDragObj.GetSkySunDirection();
                     }
                     if (leftReleased || !leftDown)
                     {
                         var skyEnd = _skySunDragObj;
-                        // Record undo (old pitch/yaw → new) so Ctrl+Z reverts the drag.
+                        var lightEnd = _skySunDragLightObj;
+                        // Record undo (old pitch/yaw → new) so Ctrl+Z reverts the drag. When a
+                        // Light marker was synced, its old/new direction rides along too.
                         _bridge.OnSkySunChanged?.Invoke(skyEnd, _skySunDragOldPitch, _skySunDragOldYaw,
-                            skyEnd.SkySunPitch, skyEnd.SkySunYaw);
+                            skyEnd.SkySunPitch, skyEnd.SkySunYaw,
+                            lightEnd, _skySunDragOldLightDir, lightEnd?.LightDirection);
                         Console.WriteLine($"[Viewport] Sun aimed on '{skyEnd.Name}' → pitch={skyEnd.SkySunPitch:F1}°, yaw={skyEnd.SkySunYaw:F1}°");
                         _skySunDragObj = null;
                         _skySunDragOldPitch = null;
                         _skySunDragOldYaw = null;
+                        _skySunDragLightObj = null;
+                        _skySunDragOldLightDir = null;
                     }
                 }
-                else if (mouseOverImage && leftClicked && IsSkySunHandleHitAtMouse()
-                    && _bridge.SelectedEditorObject is { PrimitiveType: EditorPrimitiveType.Sky } skyDrag)
+                else if (mouseOverImage && leftClicked && SkySunHandleAtMouse() is { } skyDrag)
                 {
+                    // Grabbing the sun handle also selects the Sky marker when it isn't
+                    // already part of the selection, so the drag works even when the Sky
+                    // wasn't the active object — without clobbering an existing multi-select.
+                    if (!_bridge.SelectedEditorObjects.Contains(skyDrag))
+                        _bridge.SelectEditorObject(skyDrag);
                     _skySunDragObj = skyDrag;
                     _skySunDragOldPitch = skyDrag.SkySunPitch;
                     _skySunDragOldYaw = skyDrag.SkySunYaw;
@@ -2800,25 +2877,33 @@ ImGui.SameLine();
                     // position so the drag starts exactly where the sun is drawn.
                     if (!skyDrag.SkySunPitch.HasValue || !skyDrag.SkySunYaw.HasValue)
                         skyDrag.SetSkySunFromDirection(skyDrag.GetSkySunDirection());
-                    // A placed Light marker takes precedence over the sky sun for the actual
-                    // lighting — warn once so the gizmo/lighting mismatch isn't a mystery.
+                    // A placed Light marker overrides the sky sun for the actual lighting —
+                    // capture it so the drag keeps its direction in sync (lighting follows the
+                    // gizmo) and undo can restore its pre-drag direction.
+                    _skySunDragLightObj = null;
+                    _skySunDragOldLightDir = null;
                     if (_bridge.EditorObjectManager != null)
                     {
-                        bool hasLightMarker = false;
                         foreach (var o in _bridge.EditorObjectManager.Objects)
                         {
-                            if (o != null && o.PrimitiveType == EditorPrimitiveType.Light) { hasLightMarker = true; break; }
+                            if (o != null && o.PrimitiveType == EditorPrimitiveType.Light)
+                            {
+                                _skySunDragLightObj = o;
+                                _skySunDragOldLightDir = o.LightDirection;
+                                break; // first Light marker wins, matching ApplyEnvironmentMarkers
+                            }
                         }
-                        if (hasLightMarker)
-                            Console.WriteLine("[Viewport] Note: a Light marker is placed — it overrides the sky sun for actual lighting.");
                     }
-                    Console.WriteLine($"[Viewport] Sun drag started on '{skyDrag.Name}'");
+                    Console.WriteLine($"[Viewport] Sun drag started on '{skyDrag.Name}'"
+                        + (_skySunDragLightObj != null
+                            ? $" (Light marker '{_skySunDragLightObj.Name}' direction will follow)"
+                            : ""));
                 }
 
                 // ── Sun handle hover highlight (also shown while dragging) ──
-                if (mouseOverImage && _bridge.SelectedEditorObject is { PrimitiveType: EditorPrimitiveType.Sky } skyHover
-                    && skyHover.GetSkySunHandleCenter() is Vector3 sunHoverWorld
-                    && (_skySunDragObj != null || IsSkySunHandleHitAtMouse()))
+                var hoverSky = _skySunDragObj ?? SkySunHandleAtMouse();
+                if (mouseOverImage && hoverSky is { } skyHover
+                    && skyHover.GetSkySunHandleCenter() is Vector3 sunHoverWorld)
                 {
                     var p = TransformGizmo.ProjectToScreen(cam, sunHoverWorld, vpw, vph);
                     if (p.X >= -20f && p.X <= vpw + 20f && p.Y >= -20f && p.Y <= vph + 20f)
@@ -2844,7 +2929,7 @@ ImGui.SameLine();
             if (!_previewMode && _bridge.Camera != null && _bridge.EditorGizmo != null
                 && _bridge.SelectedEditorObject != null && mouseOverImage
                 && !_bridge.TerrainBrushActive && _brushObj == null
-                && _skySunDragObj == null && !IsSkySunHandleHitAtMouse()
+                && _skySunDragObj == null && SkySunHandleAtMouse() == null
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
                 var cam = _bridge.Camera;

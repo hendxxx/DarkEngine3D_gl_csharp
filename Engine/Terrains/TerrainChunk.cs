@@ -12,8 +12,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         // Global LOD level (1..3). Higher = more subdivisions. 1 = 128x128, 2 = 256x256, 3 = 512x512 (per chunk).
         // LOD mapping implemented in GetSubdivisionsForLOD
         public static int GlobalLODLevel { get; set; } = 1;
-        public static int MapSize { get; set; } = 256;
-        public static int ChunkSize { get; set; } = (int)Math.Sqrt(MapSize);
+        public static int MapSize { get; set; } = 512;   // default map size (photoreal maps are ~512/1024)
+        public static int ChunkSize { get; set; } = Math.Max(MapSize / 8, 32);  // grid = map/8, min 32
         public static int ChunksPerSide { get; set; } = MapSize / ChunkSize;
         public static float TerrainScale { get; set; } = 1.0f;  // Tambahkan ini
         public static float HeightScale { get; set; } = 80.0f;  // Tambahkan ini
@@ -104,11 +104,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // Update static MapSize dari image
             MapSize = mapLoader.Width;
 
-            // Recalculate ChunkSize based on actual map dimensions
-            ChunkSize = (int)Math.Sqrt(MapSize);
-            if (ChunkSize < 2) ChunkSize = 2;
+            // Grid (chunk) size = map size / 8, with a minimum of 32:
+            //   512 → 64, 128 → 32, 1024 → 128.
+            ChunkSize = Math.Max(MapSize / 8, 32);
+            if (ChunkSize > MapSize) ChunkSize = Math.Max(1, MapSize); // tiny maps → single chunk
 
-            ChunksPerSide = MapSize / ChunkSize;
+            ChunksPerSide = Math.Max(1, MapSize / ChunkSize);
             _halfMapSize = (ChunksPerSide * ChunkSize) / 2;
 
             Console.WriteLine($"[TerrainChunk] Init: MapSize={MapSize}, ChunkSize={ChunkSize}, ChunksPerSide={ChunksPerSide}, halfMapSize={_halfMapSize}");

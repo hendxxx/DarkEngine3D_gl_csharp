@@ -108,6 +108,11 @@ public unsafe class Program
         // Restore persisted input lock state from settings
         ide.Bridge.InGameActive = settings.InGameActive;
 
+        // Restore viewport grid/snap prefs so the grid on/off + snap values
+        // stay consistent across restarts (previously reset to defaults).
+        ide.Bridge.ShowDebugGrid = settings.ShowDebugGrid;
+        ide.SetViewportSnap(settings.SnapEnabled, settings.SnapGridSize);
+
         SceneManager sceneManager = new();
         sceneManager.AttachIde(ide);
 

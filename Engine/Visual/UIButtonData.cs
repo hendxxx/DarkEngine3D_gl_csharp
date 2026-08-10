@@ -91,7 +91,7 @@ public class UIElement
     public ImageMode ImageMode { get; set; } = ImageMode.Stretch;
 
     // ── Font ──
-    public string FontPath { get; set; } = "Artifacts\\\\fonts\\\\Worldstar.ttf";
+    public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
     public float FontSize { get; set; } = 13f;
 
     // ── Colors ──
@@ -366,7 +366,7 @@ public class UIButtonData
     public string ImagePath { get; set; } = "";
     public ImageMode ImageMode { get; set; } = ImageMode.Stretch;
 
-    public string FontPath { get; set; } = "Artifacts\\\\fonts\\\\Worldstar.ttf";
+    public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
     public float FontSize { get; set; } = 13f;
     public Vector3 TextColor { get; set; } = new(0.95f, 0.95f, 1f);
     public Vector3 BgColor { get; set; } = new(0.10f, 0.12f, 0.18f);

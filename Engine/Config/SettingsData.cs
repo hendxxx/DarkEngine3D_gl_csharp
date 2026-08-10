@@ -14,6 +14,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public int Fov { get; set; } = 60;
         public int MouseSensitivity { get; set; } = 3;  // 0=0.25×, 1=0.50×, 2=0.75×, 3=1.0×, 4=1.5×, 5=2.0×, 6=3.0×
         public bool InGameActive { get; set; } = false;   // F9 toggle — persists IDE input lock state
+
+        // ── Viewport editor prefs (persisted so they survive restarts) ──
+        /// <summary>Editor debug grid on/off (viewport toolbar "Grid").</summary>
+        public bool ShowDebugGrid { get; set; } = true;
+        /// <summary>UI snap-to-grid on/off (viewport toolbar "Snap").</summary>
+        public bool SnapEnabled { get; set; } = true;
+        /// <summary>UI snap grid size in px (viewport toolbar grid combo).</summary>
+        public float SnapGridSize { get; set; } = 20f;
     }
 
     /// <summary>Loads/saves SettingsData to a JSON file next to the executable.</summary>

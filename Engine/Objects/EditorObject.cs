@@ -1129,6 +1129,12 @@ public unsafe class EditorObject
         return Position + GetSkySunDirection() * (horizonR * 0.85f);
     }
 
+    /// <summary>World-space radius of the sun disc drawn by the sky gizmo. Shared by
+    /// DrawSkyGizmo (rendering) and the viewport hit test (grabbing the handle) so they
+    /// can never drift apart.</summary>
+    public float SkySunDiscRadius =>
+        0.35f + 0.25f * Math.Clamp(SkySunIntensity, 0.1f, 3f);
+
     /// <summary>Set the SkySunPitch/SkySunYaw override from a world-space direction (used by
     /// the sun-handle drag). When <paramref name="snap"/> is set, pitch snaps to 5° and yaw
     /// to 15° increments for precise alignment.</summary>
@@ -1151,7 +1157,7 @@ public unsafe class EditorObject
 
     /// <summary>Aim the sun at the given world ray (dragging the sun handle): intersect the
     /// sun orbit sphere around the marker; on a miss (viewed edge-on) fall back to the
-    /// closest point on the ray to the sphere center. Returns false when nothing changed.</summary>
+    /// closest point on the ray to the sphere center so the drag never freezes.</summary>
     public bool AimSkySunFromRay(Vector3 rayOrigin, Vector3 rayDir, bool snap = false)
     {
         if (PrimitiveType != EditorPrimitiveType.Sky) return false;
@@ -1165,23 +1171,28 @@ public unsafe class EditorObject
         float c = Vector3.Dot(oc, oc) - r * r;
         float disc = b * b - c;
 
-        Vector3 hit;
+        Vector3 toHit;
         if (disc >= 0f)
         {
             float t = -b - MathF.Sqrt(disc);
             if (t < 0f) t = -b + MathF.Sqrt(disc);
             if (t < 0f) return false;
-            hit = rayOrigin + dir * t;
+            toHit = rayOrigin + dir * t - center;
         }
         else
         {
-            // Ray misses the sphere — aim along the closest point of the ray to the center.
+            // Ray misses the small orbit sphere — aim along the direction from the marker to
+            // the closest point on the cursor ray. This keeps the drag ALIVE across the whole
+            // sweep (previously a miss with the closest point behind the camera returned false,
+            // freezing the sun at its last position mid-drag). At the sphere silhouette this
+            // matches the tangent-hit direction, so there is no visible jump.
             float t = Vector3.Dot(center - rayOrigin, dir);
-            if (t < 0f) return false;
-            hit = rayOrigin + dir * t;
+            toHit = rayOrigin + dir * t - center;
+            if (toHit.LengthSquared() < 1e-6f)
+                toHit = dir; // cursor exactly at the marker — fall back to the raw ray direction
         }
 
-        SetSkySunFromDirection(hit - center, snap);
+        SetSkySunFromDirection(toHit, snap);
         return true;
     }
 
@@ -1221,7 +1232,7 @@ public unsafe class EditorObject
 
         // ── Sun icon: small circle + rays placed along the sun direction, radius scaled
         //    by intensity (brighter/larger sun = more intense) ──
-        float sunRadius = 0.35f + 0.25f * Math.Clamp(SkySunIntensity, 0.1f, 3f);
+        float sunRadius = SkySunDiscRadius;
         Vector3 sunCenter = Position + sunDir * (horizonR * 0.85f);
 
         // Build an orthonormal basis around the sun direction for the circle/rays

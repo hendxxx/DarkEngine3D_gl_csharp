@@ -334,9 +334,11 @@ public class IDEBridge
 
     /// <summary>Called by ViewportPanel when a sky-sun gizmo drag ends (for undo support).
     /// Passes the sky object, the pitch/yaw BEFORE the drag (null = followed time of day),
-    /// and the pitch/yaw AFTER. HierarchyPanel records this as an undo/redo action so
-    /// Ctrl+Z can revert a sun drag.</summary>
-    public Action<EditorObject, float?, float?, float?, float?>? OnSkySunChanged { get; set; }
+    /// and the pitch/yaw AFTER. When a Light marker was placed it overrides the sky sun for
+    /// actual lighting, so the drag keeps its direction in sync — the light object and its
+    /// old/new world direction ride along so Ctrl+Z can revert both. HierarchyPanel records
+    /// this as an undo/redo action.</summary>
+    public Action<EditorObject, float?, float?, float?, float?, EditorObject?, Vector3?, Vector3?>? OnSkySunChanged { get; set; }
 
     // ── Terrain brush paint tool (ViewportPanel) ──
     /// <summary>True while the terrain brush tool is active in the viewport

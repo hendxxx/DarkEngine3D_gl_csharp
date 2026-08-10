@@ -79,6 +79,9 @@ public unsafe class EditorTerrainMesh : IDisposable
     /// <summary>Load a heightmap file (.raw 8-bit or any stb-supported image).</summary>
     public bool LoadHeightmap(string path)
     {
+        // Resolve relative heightmap paths against the exe folder.
+        path = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(path);
+
         _heights = [];
         _hmWidth = 2;
         _hmHeight = 2;
@@ -514,7 +517,14 @@ public unsafe class EditorTerrainMesh : IDisposable
     /// fall back to a solid color texture so the layer still renders distinctly.</summary>
     public void SetLayerTextures(string air, string dirt, string grass, string snow)
     {
-        string[] paths = [air ?? "", dirt ?? "", grass ?? "", snow ?? ""];
+        // Resolve relative texture paths against the exe folder.
+        string[] paths =
+        [
+            DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(air),
+            DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(dirt),
+            DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(grass),
+            DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(snow),
+        ];
         for (int i = 0; i < 4; i++)
         {
             if (_layerPaths[i] == paths[i]) continue;

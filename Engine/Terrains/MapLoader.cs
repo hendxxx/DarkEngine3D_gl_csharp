@@ -24,6 +24,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             HeightScale = heightScale;
             channels = 4;
 
+            // Resolve relative heightmap paths against the exe folder.
+            path = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(path);
+
             if (path.EndsWith(".raw", StringComparison.OrdinalIgnoreCase))
             {
                 // === PROSES RAW 8-BIT YANG BENAR ===

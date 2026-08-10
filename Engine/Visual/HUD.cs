@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using StbTrueTypeSharp;
@@ -144,6 +145,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>Find or create a font slot for the given (fontPath, fontSize). Returns the slot index.</summary>
         public int GetOrCreateFontSlot(string fontPath, float fontSize)
         {
+            // Resolve relative paths against the exe folder (also normalizes the old
+            // double-backslash "Artifacts\\fonts\\..." forms) so fonts load anywhere.
+            fontPath = PathHelpers.Resolve(fontPath);
+
             // O(1) lookup via dictionary cache
             var key = (fontPath, fontSize);
             if (_fontSlotLookup.TryGetValue(key, out int cachedIdx))

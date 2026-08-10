@@ -135,6 +135,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public static GlbAsset? Load(
             StaticObjectManager manager,
             string path,
+
             Vector3 position,
             float yawDegrees = 0f,
             float scale = 1.0f,
