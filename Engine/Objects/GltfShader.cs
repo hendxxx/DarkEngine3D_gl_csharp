@@ -6,7 +6,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     public static class GltfShader
     {
         private static uint _shaderProgram;
-        private static readonly bool _initialized = false;
+        private static bool _initialized = false;
 
         public static uint GetShaderProgram()
         {
@@ -50,7 +50,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             //Console.WriteLine($"[GltfShader] Program ID={_program}. Ready.");
             _shaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/gltf_vertex.glsl",
                                       "Artifacts/shaders/gltf_fragment.glsl");
-
+            _initialized = true;
         } 
     }
 }

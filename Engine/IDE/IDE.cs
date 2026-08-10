@@ -28,6 +28,9 @@ public class IDE : IDisposable
     private readonly SceneManagerPanel _sceneManagerPanel;
     private readonly HierarchyPanel _hierarchy;
     private readonly RenderTimePanel _renderTime;
+    private readonly ShadowPanel _shadowPanel;
+    /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
+    private readonly ImGuiFileDialog _glbDialog = new();
 
     // ── Transform Gizmo ──
     private readonly TransformGizmo _gizmo = new();
@@ -130,6 +133,7 @@ public class IDE : IDisposable
             _sceneManagerPanel = new SceneManagerPanel(Bridge);
             _hierarchy = new HierarchyPanel(Bridge);
             _renderTime = new RenderTimePanel(Bridge);
+            _shadowPanel = new ShadowPanel(Bridge);
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -210,6 +214,19 @@ public class IDE : IDisposable
                 }
                 Bridge.EditorObjectManager = mgr;
                 Bridge.SelectedEditorObject = null;
+            }
+        }
+
+        // ── Model > Add GLB Reference... file dialog + placement ──
+        _glbDialog.Render();
+        if (_glbDialog.IsConfirmed && _glbDialog.SelectedPath != null)
+        {
+            string path = _glbDialog.SelectedPath;
+            _glbDialog.Close();
+            if (File.Exists(path))
+            {
+                var glbObj = Bridge.EditorObjectManager?.AddGlbReference(path, GetSpawnPosition(EditorPrimitiveType.GlbReference));
+                if (glbObj != null) Bridge.SelectEditorObject(glbObj);
             }
         }
 
@@ -315,6 +332,10 @@ public class IDE : IDisposable
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sky, GetSpawnPosition(EditorPrimitiveType.Sky));
                     if (obj != null) Bridge.SelectEditorObject(obj);
                 }
+                if (ImGui.MenuItem("Add GLB Reference..."))
+                {
+                    _glbDialog.OpenForLoad("*.glb", "Open GLB model");
+                }
                 ImGui.Separator();
                 if (ImGui.MenuItem("Gizmo: Translate", null, Bridge.GizmoMode == 0))
                     Bridge.GizmoMode = 0;
@@ -404,6 +425,15 @@ public class IDE : IDisposable
                     _viewport.PersistViewportPrefs();
                 }
 
+                // ── Viewport shadows (CSM) toggle ──
+                bool shadows = Bridge.ShowShadows;
+                if (ImGui.MenuItem("Viewport Shadows", null, shadows))
+                {
+                    Bridge.ShowShadows = !shadows;
+                    _viewport.PersistViewportPrefs();
+                    Console.WriteLine($"[IDE] Viewport shadows {(shadows ? "disabled" : "enabled")}");
+                }
+
                 ImGui.Separator();
 
                 // ── Panel visibility toggles ──
@@ -414,6 +444,7 @@ public class IDE : IDisposable
                 _console.ShowInMenu();
                 _hierarchy.ShowInMenu();
                 _renderTime.ShowInMenu();
+                _shadowPanel.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
                 ImGui.EndMenu();
@@ -451,6 +482,7 @@ public class IDE : IDisposable
         _sceneView.Render();
         _inspector.Render();
         _renderTime.Render();
+        _shadowPanel.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
         _console.Render();

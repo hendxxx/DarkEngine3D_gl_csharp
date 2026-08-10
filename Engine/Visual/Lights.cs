@@ -191,6 +191,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             int shadowFilterMode = GL.GetUniformLocation(shaderProgram, "shadowFilterMode");
             GL.Uniform1i(shadowFilterMode, Keyboard.GetIsHardShadow());
 
+            // ── Live shadow bias / blend tuning (Shadow Settings panel). The main shader
+            // program is shared by game terrain, game primitives and editor objects, so one
+            // upload here covers every main-shader render path. ──
+            ShadowUniforms.UploadMain(shaderProgram);
+
             GL.ClearColor(FogColor.X, FogColor.Y, FogColor.Z, 1.0f);
         }
 

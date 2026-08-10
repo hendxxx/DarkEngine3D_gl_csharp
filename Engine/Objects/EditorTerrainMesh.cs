@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using StbImageSharp;
@@ -69,6 +70,12 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
     private static readonly int[] _texLocs = new int[4];
+    // ── CSM shadow uniforms (editor viewport) ──
+    private static int _shadowFilterLoc = -1, _shadowDirLoc = -1;
+    private static int _showCSMCascadeColorLoc = -1;
+    private static int _shadowMap0Loc = -1, _shadowMap1Loc = -1, _shadowMap2Loc = -1;
+    private static int _lightSpace0Loc = -1, _lightSpace1Loc = -1, _lightSpace2Loc = -1;
+    private static int _cascadeEnds0Loc = -1, _cascadeEnds1Loc = -1, _cascadeEnds2Loc = -1;
 
     /// <summary>True once a valid heightmap + mesh have been generated.</summary>
     public bool IsReady => _gpuReady;
@@ -200,8 +207,19 @@ public unsafe class EditorTerrainMesh : IDisposable
                 float hr = Sample((cx + e) / footprintX + 0.5f, cz / footprintZ + 0.5f) * heightScale;
                 float hd = Sample(cx / footprintX + 0.5f, (cz - e) / footprintZ + 0.5f) * heightScale;
                 float hu = Sample(cx / footprintX + 0.5f, (cz + e) / footprintZ + 0.5f) * heightScale;
-                var normal = Vector3.Normalize(new Vector3(hl - hr, 2f * e, hd - hu));
-                if (normal == Vector3.Zero) normal = Vector3.UnitY;
+
+                // Normal in LOCAL mesh space (XZ in [-0.5, 0.5], Y in world units) — the same
+                // space the vertex positions live in. The vertex shader then applies the model
+                // matrix's inverse-transpose (Scale(X, 1, Z) × rotation), which lands back on
+                // the TRUE world slope. Computing the normal directly in world-XZ units was the
+                // bug: after the inverse-transpose the XZ slope got divided by the footprint
+                // (25×), so every slope read as nearly vertical in the shader — the slope
+                // shadow bias (1 - N·L) and the shadow mask never engaged, causing acne on
+                // slopes and wrong relief shading.
+                float gx = (hl - hr) / (2f * e) * footprintX;
+                float gz = (hd - hu) / (2f * e) * footprintZ;
+                var normal = Vector3.Normalize(new Vector3(gx, 1f, gz));
+                if (normal == Vector3.Zero || !float.IsFinite(normal.Y)) normal = Vector3.UnitY;
 
                 var n00 = new Vertex(lx0, h00, lz0, normal.X, normal.Y, normal.Z, 1, 1, 1, lx0, lz0);
                 var n10 = new Vertex(lx1, h10, lz0, normal.X, normal.Y, normal.Z, 1, 1, 1, lx1, lz0);
@@ -600,10 +618,26 @@ public unsafe class EditorTerrainMesh : IDisposable
         _tex4Loc = GL.GetUniformLocation(_program, "tex4");
         for (int i = 0; i < 4; i++)
             _texLocs[i] = GL.GetUniformLocation(_program, $"tex{i}");
+
+        // CSM shadow uniforms
+        _shadowFilterLoc = GL.GetUniformLocation(_program, "shadowFilterMode");
+        _shadowDirLoc = GL.GetUniformLocation(_program, "shadowDir");
+        _showCSMCascadeColorLoc = GL.GetUniformLocation(_program, "showCSMCascadeColor");
+        _shadowMap0Loc = GL.GetUniformLocation(_program, "shadowMap0");
+        _shadowMap1Loc = GL.GetUniformLocation(_program, "shadowMap1");
+        _shadowMap2Loc = GL.GetUniformLocation(_program, "shadowMap2");
+        _lightSpace0Loc = GL.GetUniformLocation(_program, "lightSpaceMatrices[0]");
+        _lightSpace1Loc = GL.GetUniformLocation(_program, "lightSpaceMatrices[1]");
+        _lightSpace2Loc = GL.GetUniformLocation(_program, "lightSpaceMatrices[2]");
+        _cascadeEnds0Loc = GL.GetUniformLocation(_program, "cascadeEnds[0]");
+        _cascadeEnds1Loc = GL.GetUniformLocation(_program, "cascadeEnds[1]");
+        _cascadeEnds2Loc = GL.GetUniformLocation(_program, "cascadeEnds[2]");
     }
 
-    /// <summary>Render the terrain mesh with the editor terrain shader.</summary>
-    public void Draw(Matrix4x4 model, Camera camera, Lights light, EditorObject owner)
+    /// <summary>Render the terrain mesh with the editor terrain shader. When
+    /// <paramref name="csm"/> is provided the terrain receives CSM shadows from the
+    /// editor viewport shadow pass (bound to texture units 6/7/8).</summary>
+    public void Draw(Matrix4x4 model, Camera camera, Lights light, EditorObject owner, CSM? csm = null)
     {
         if (!_gpuReady) return;
         EnsureShader();
@@ -622,6 +656,43 @@ public unsafe class EditorTerrainMesh : IDisposable
         GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
         GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
         GL.Uniform3f(_fogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+        if (_showCSMCascadeColorLoc >= 0)
+            GL.Uniform1i(_showCSMCascadeColorLoc, Inputs.Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+
+        // Live shadow bias / blend tuning (Shadow Settings panel) — terrain-editor shader
+        // uses the same uniform names as the main shader.
+        Visual.ShadowUniforms.UploadMain(_program);
+
+        // ── CSM shadow uniforms (viewport shadow pass → units 6/7/8) ──
+        if (csm != null)
+        {
+            if (_shadowFilterLoc >= 0) GL.Uniform1i(_shadowFilterLoc, Inputs.Keyboard.GetIsHardShadow());
+            if (_shadowDirLoc >= 0) GL.Uniform3f(_shadowDirLoc, light.ShadowDirStable.X, light.ShadowDirStable.Y, light.ShadowDirStable.Z);
+
+            unsafe
+            {
+                fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                    GL.UniformMatrix4fv(_lightSpace0Loc, 1, false, p0);
+                fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                    GL.UniformMatrix4fv(_lightSpace1Loc, 1, false, p1);
+                fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                    GL.UniformMatrix4fv(_lightSpace2Loc, 1, false, p2);
+            }
+            GL.Uniform1f(_cascadeEnds0Loc, csm.CascadeEnds[0]);
+            GL.Uniform1f(_cascadeEnds1Loc, csm.CascadeEnds[1]);
+            GL.Uniform1f(_cascadeEnds2Loc, csm.CascadeEnds[2]);
+
+            GL.Uniform1i(_shadowMap0Loc, 6);
+            GL.Uniform1i(_shadowMap1Loc, 7);
+            GL.Uniform1i(_shadowMap2Loc, 8);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[1]);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
+            GL.ActiveTexture(Const.GL_TEXTURE0);
+        }
 
         float heightScale = Math.Max(1f, owner.TerrainHeightScale);
         GL.Uniform3f(_heightScaleLoc, heightScale, 0f, 0f);
@@ -658,6 +729,50 @@ public unsafe class EditorTerrainMesh : IDisposable
         GL.BindVertexArray(0);
 
         GL.ActiveTexture(Const.GL_TEXTURE0);
+    }
+
+    /// <summary>Render the terrain mesh into a CSM shadow map (depth-only pass). Uses the
+    /// shared static shadow shader — the terrain VAO's layout (position at 0, normal at 1)
+    /// matches shadow_vertex.glsl exactly. The model matrix keeps XZ from the object's
+    /// Scale while Y stays real world height (same as the main draw pass).</summary>
+    public void RenderShadow(Matrix4x4 model, CSM csm, int cascadeIndex)
+    {
+        if (!_gpuReady || _vertexCount == 0) return;
+
+        uint shadowShader = Shader.GetShadowShaderProgram();
+        GL.UseProgram(shadowShader);
+
+        // Live normal-bias tuning (Shadow Settings panel) — static shadow shader. A
+        // heightmap terrain is a huge ground surface (default 25×25 footprint with up to
+        // 30 units of relief), so its shadow-map texels cover far more world space than
+        // unit-sized editor primitives — the standard 0.02 extrusion is not enough to keep
+        // steep slopes acne-free. Boost by how much larger this terrain is than the
+        // baseline (shared helper); default-sized terrains keep the consistent 0.02.
+        float sx = new Vector3(model.M11, model.M21, model.M31).Length();
+        float sz = new Vector3(model.M13, model.M23, model.M33).Length();
+        float footprint = MathF.Max(sx, sz);
+        float boost = MathF.Min(
+            MathF.Max(1f, MathF.Max(footprint / 25f, _lastHeightScale / 30f)), 6f);
+        // The extrusion happens in MODEL space (shadow_vertex.glsl) and this mesh's XZ is
+        // scaled by the footprint — a fixed value would push the world offset footprint×
+        // too far on the XZ axes (the slopes' normals are near-horizontal after the local-
+        // space normal fix). Divide by the footprint so the world extrusion matches the
+        // game terrain's (identity-model) 0.02·boost in every direction.
+        Visual.ShadowUniforms.UploadNormalBias(shadowShader,
+            ShadowSettings.NormalBias * boost / MathF.Max(footprint, 1f));
+
+        var lightSpace = csm.LightSpaceMatrices[cascadeIndex];
+        GL.UniformMatrix4fv(GL.GetUniformLocation(shadowShader, "model"), 1, false, (float*)&model);
+        GL.UniformMatrix4fv(GL.GetUniformLocation(shadowShader, "lightSpaceMatrix"), 1, false, (float*)&lightSpace);
+
+        GL.BindVertexArray(_vao);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount);
+        GL.BindVertexArray(0);
+
+        // Restore the standard normal bias so subsequent objects drawn in this cascade pass
+        // don't inherit the terrain's boosted value (the shadow program is shared and the
+        // uniform value persists between draws).
+        Visual.ShadowUniforms.UploadNormalBias(shadowShader);
     }
 
     // ════════════════════════════════════════════════════════════════════

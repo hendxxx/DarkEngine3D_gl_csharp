@@ -839,6 +839,11 @@ public void BuildSpatialGrid()
                 int shadowFilterLoc = GL.GetUniformLocation(_shaderProgram, "shadowFilterMode");
                 if (shadowFilterLoc != -1)
                     GL.Uniform1i(shadowFilterLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsHardShadow());
+
+                // CSM LOD color overlay (L key) — same transparent cascade tint as the main shader
+                int showCsmLoc = GL.GetUniformLocation(_shaderProgram, "showCSMCascadeColor");
+                if (showCsmLoc != -1)
+                    GL.Uniform1i(showCsmLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
             }
 
             ObjectDrawn = 0;
@@ -1206,6 +1211,10 @@ public void BuildSpatialGrid()
             if (_objects.Count == 0 || !CastShadow) return;
 
             GL.UseProgram(shadowShader);
+
+            // Live normal-bias tuning (Shadow Settings panel) — instanced static shadow shader.
+            Visual.ShadowUniforms.UploadNormalBias(shadowShader);
+
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.Enable(Const.GL_CULL_FACE);
             GL.CullFace(Const.GL_BACK);

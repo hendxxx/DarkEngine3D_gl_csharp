@@ -183,7 +183,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return obj;
         }
 
-        /// <summary>Add a glb reference object.</summary>
+        /// <summary>Add a glb reference object (renders the GLB model in the viewport,
+        /// casts shadows, and supports the gizmo/outline like other primitives).</summary>
         public EditorObject AddGlbReference(string glbPath, Vector3 position)
         {
             var obj = new EditorObject(EditorPrimitiveType.GlbReference)
@@ -192,7 +193,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GlbFilePath = glbPath,
                 Scale = Vector3.One,
                 Color = new Vector3(1f, 1f, 1f),
+                CastShadow = true,
+                IsVisible = true,
             };
+            // Snapshot initial state for undo
+            obj.LastGizmoPosition = obj.Position;
+            obj.LastGizmoRotation = obj.RotationEuler;
+            obj.LastGizmoScale = obj.Scale;
+            obj.LastGizmoPivot = obj.GizmoPivotOverride;
             _objects.Add(obj);
             return obj;
         }
@@ -322,10 +330,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _modelLoc, _viewLoc, _projLoc,
                     _sunDirLoc, _lightColorLoc, _viewPosLoc,
                     _useFogLoc, _fogColorLoc,
-                    camera, light);
+                    camera, light, csm);
             }
 
             GL.BindVertexArray(0);
+
+            // ── GLB reference models (gltf shader — PBR + CSM shadow reception) ──
+            DrawGlbReferences(camera, light, csm);
 
             // ── Editor gizmos for special marker types (drawn after the solid objects so
             // the wireframe lines always render on top; depth test is disabled internally
@@ -401,6 +412,176 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
+        // ────────────────────────────────────────────────────────────────
+        //  GLB reference rendering (gltf shader — mirrors ObjectManager.Draw)
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>Cached uniform locations for the gltf shader used to draw GLB reference
+        /// editor objects (mirrors ObjectManager's setup for game objects).</summary>
+        private static class GlbUniforms
+        {
+            public static bool Ready;
+            public static uint Program;
+            public static int View, Proj, SunDir, LightColor, FogColor, ViewPos, UseFog;
+            public static int ShadowMap0, ShadowMap1, ShadowMap2;
+            public static int LightSpace0, LightSpace1, LightSpace2;
+            public static int CascadeEnds0, CascadeEnds1, CascadeEnds2, ShadowFilter;
+            public static int Model, BaseColor, UseAlbedo, AlbedoMap;
+            public static int MetallicFactor, RoughnessFactor, NormalScale, OcclusionStrength, EmissiveFactor;
+            public static int HasNormalTexture, HasMetallicRoughnessTexture, HasOcclusionTexture, HasEmissiveTexture;
+            public static int NormalMap, MetallicRoughnessMap, OcclusionMap, EmissiveMap, Joints;
+            public static int ShowCSMCascadeColor;
+
+            public static void Ensure()
+            {
+                if (Ready) return;
+                Program = GltfShader.GetShaderProgram();
+                View = GL.GetUniformLocation(Program, "view");
+                Proj = GL.GetUniformLocation(Program, "projection");
+                SunDir = GL.GetUniformLocation(Program, "sunDir");
+                LightColor = GL.GetUniformLocation(Program, "lightColor");
+                FogColor = GL.GetUniformLocation(Program, "fogColor");
+                ViewPos = GL.GetUniformLocation(Program, "viewPos");
+                UseFog = GL.GetUniformLocation(Program, "useFog");
+                ShadowMap0 = GL.GetUniformLocation(Program, "shadowMap0");
+                ShadowMap1 = GL.GetUniformLocation(Program, "shadowMap1");
+                ShadowMap2 = GL.GetUniformLocation(Program, "shadowMap2");
+                LightSpace0 = GL.GetUniformLocation(Program, "lightSpaceMatrices[0]");
+                LightSpace1 = GL.GetUniformLocation(Program, "lightSpaceMatrices[1]");
+                LightSpace2 = GL.GetUniformLocation(Program, "lightSpaceMatrices[2]");
+                CascadeEnds0 = GL.GetUniformLocation(Program, "cascadeEnds[0]");
+                CascadeEnds1 = GL.GetUniformLocation(Program, "cascadeEnds[1]");
+                CascadeEnds2 = GL.GetUniformLocation(Program, "cascadeEnds[2]");
+                ShadowFilter = GL.GetUniformLocation(Program, "shadowFilterMode");
+                ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
+                Model = GL.GetUniformLocation(Program, "model");
+                BaseColor = GL.GetUniformLocation(Program, "baseColorFactor");
+                UseAlbedo = GL.GetUniformLocation(Program, "useAlbedo");
+                AlbedoMap = GL.GetUniformLocation(Program, "albedoMap");
+                MetallicFactor = GL.GetUniformLocation(Program, "metallicFactor");
+                RoughnessFactor = GL.GetUniformLocation(Program, "roughnessFactor");
+                NormalScale = GL.GetUniformLocation(Program, "normalScale");
+                OcclusionStrength = GL.GetUniformLocation(Program, "occlusionStrength");
+                EmissiveFactor = GL.GetUniformLocation(Program, "emissiveFactor");
+                HasNormalTexture = GL.GetUniformLocation(Program, "hasNormalTexture");
+                HasMetallicRoughnessTexture = GL.GetUniformLocation(Program, "hasMetallicRoughnessTexture");
+                HasOcclusionTexture = GL.GetUniformLocation(Program, "hasOcclusionTexture");
+                HasEmissiveTexture = GL.GetUniformLocation(Program, "hasEmissiveTexture");
+                NormalMap = GL.GetUniformLocation(Program, "normalMap");
+                MetallicRoughnessMap = GL.GetUniformLocation(Program, "metallicRoughnessMap");
+                OcclusionMap = GL.GetUniformLocation(Program, "occlusionMap");
+                EmissiveMap = GL.GetUniformLocation(Program, "emissiveMap");
+                Joints = GL.GetUniformLocation(Program, "u_Joints");
+                Ready = true;
+            }
+        }
+
+        /// <summary>Render all visible GLB reference editor objects with the gltf shader
+        /// (PBR materials + CSM shadow reception), mirroring ObjectManager.Draw's uniform
+        /// setup. Called once per frame from <see cref="Draw"/> so all GLB refs share a
+        /// single shader bind. Restores the main shader afterwards.</summary>
+        private void DrawGlbReferences(Camera camera, Lights light, CSM? csm)
+        {
+            bool any = false;
+            for (int i = 0; i < _objects.Count; i++)
+            {
+                var o = _objects[i];
+                if (o.PrimitiveType == EditorPrimitiveType.GlbReference && o.IsVisible) { any = true; break; }
+            }
+            if (!any) return;
+
+            GlbUniforms.Ensure();
+            if (GlbUniforms.Program == 0) return;
+
+            GL.UseProgram(GlbUniforms.Program);
+            GL.Enable(Const.GL_DEPTH_TEST);
+
+            var view = camera.GetViewMatrix();
+            var proj = camera.GetProjectionMatrix();
+            GL.UniformMatrix4fv(GlbUniforms.View, 1, false, (float*)&view);
+            GL.UniformMatrix4fv(GlbUniforms.Proj, 1, false, (float*)&proj);
+            GL.Uniform3f(GlbUniforms.SunDir, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
+            GL.Uniform3f(GlbUniforms.LightColor, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
+            GL.Uniform3f(GlbUniforms.FogColor, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+            GL.Uniform3f(GlbUniforms.ViewPos, camera.Position.X, camera.Position.Y, camera.Position.Z);
+            GL.Uniform1i(GlbUniforms.UseFog, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+
+            // Live shadow bias / blend tuning (Shadow Settings panel) — gltf shader values.
+            ShadowUniforms.UploadGltf(GlbUniforms.Program);
+            if (GlbUniforms.ShowCSMCascadeColor >= 0)
+                GL.Uniform1i(GlbUniforms.ShowCSMCascadeColor, Inputs.Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+
+            if (csm != null)
+            {
+                GL.Uniform1i(GlbUniforms.ShadowMap0, 6);
+                GL.Uniform1i(GlbUniforms.ShadowMap1, 7);
+                GL.Uniform1i(GlbUniforms.ShadowMap2, 8);
+                fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                    GL.UniformMatrix4fv(GlbUniforms.LightSpace0, 1, false, p0);
+                fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                    GL.UniformMatrix4fv(GlbUniforms.LightSpace1, 1, false, p1);
+                fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                    GL.UniformMatrix4fv(GlbUniforms.LightSpace2, 1, false, p2);
+                GL.Uniform1f(GlbUniforms.CascadeEnds0, csm.CascadeEnds[0]);
+                GL.Uniform1f(GlbUniforms.CascadeEnds1, csm.CascadeEnds[1]);
+                GL.Uniform1f(GlbUniforms.CascadeEnds2, csm.CascadeEnds[2]);
+                GL.Uniform1i(GlbUniforms.ShadowFilter, Inputs.Keyboard.GetIsHardShadow());
+            }
+
+            // Sampler units + default PBR values (overridden per-mesh by GltfObject.Draw)
+            GL.Uniform1i(GlbUniforms.NormalMap, 3);
+            GL.Uniform1i(GlbUniforms.MetallicRoughnessMap, 4);
+            GL.Uniform1i(GlbUniforms.OcclusionMap, 5);
+            GL.Uniform1i(GlbUniforms.EmissiveMap, 6);
+            GL.Uniform1f(GlbUniforms.MetallicFactor, 1.0f);
+            GL.Uniform1f(GlbUniforms.RoughnessFactor, 0.3f);
+            GL.Uniform1f(GlbUniforms.NormalScale, 1.0f);
+            GL.Uniform1f(GlbUniforms.OcclusionStrength, 1.0f);
+            GL.Uniform3f(GlbUniforms.EmissiveFactor, 0f, 0f, 0f);
+            GL.Uniform1i(GlbUniforms.HasNormalTexture, 0);
+            GL.Uniform1i(GlbUniforms.HasMetallicRoughnessTexture, 0);
+            GL.Uniform1i(GlbUniforms.HasOcclusionTexture, 0);
+            GL.Uniform1i(GlbUniforms.HasEmissiveTexture, 0);
+
+            for (int i = 0; i < _objects.Count; i++)
+            {
+                var obj = _objects[i];
+                if (obj.PrimitiveType != EditorPrimitiveType.GlbReference || !obj.IsVisible) continue;
+
+                // A GLB mesh with an emissive texture binds it to unit 6 (GltfObject.Draw,
+                // same as the game) which would clobber shadowMap0 — re-bind the cascade maps
+                // before every object so cascade-0 shadows stay correct for all of them.
+                if (csm != null)
+                {
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[1]);
+                    GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                }
+
+                // Skinned models: upload joint matrices before drawing (mirrors ObjectManager).
+                var joints = obj.GetGlbJointMatrices();
+                if (joints is { Length: > 0 } && GlbUniforms.Joints >= 0)
+                {
+                    fixed (Matrix4x4* p = &joints[0])
+                        GL.UniformMatrix4fv(GlbUniforms.Joints, joints.Length, false, (float*)p);
+                }
+
+                obj.DrawGlb(
+                    GlbUniforms.Model, GlbUniforms.BaseColor, GlbUniforms.UseAlbedo, GlbUniforms.AlbedoMap,
+                    GlbUniforms.MetallicFactor, GlbUniforms.RoughnessFactor, GlbUniforms.NormalScale,
+                    GlbUniforms.OcclusionStrength, GlbUniforms.EmissiveFactor,
+                    GlbUniforms.HasNormalTexture, GlbUniforms.HasMetallicRoughnessTexture,
+                    GlbUniforms.HasOcclusionTexture, GlbUniforms.HasEmissiveTexture);
+            }
+
+            // Restore the main shader for subsequent editor content (gizmos/outlines).
+            GL.UseProgram(_shaderProgram);
+        }
+
         /// <summary>Render the full CSM shadow pass for all editor objects (all cascades).
         /// Caller must restore its framebuffer afterwards and bind the cascade shadow maps
         /// to texture units 6/7/8 before calling <see cref="Draw"/> with the same CSM.
@@ -424,18 +605,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             GL.UseProgram(_shadowShader);
 
+            // Live normal-bias tuning (Shadow Settings panel) — static shadow shader.
+            ShadowUniforms.UploadNormalBias(_shadowShader);
+
             var planes = CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
 
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
                 if (!obj.CastShadow || !obj.IsVisible) continue;
-                if (obj.PrimitiveType == EditorPrimitiveType.GlbReference) continue;
 
-                // Simple frustum culling for shadow
-                if (planes != null)
+                // Simple frustum culling for shadow. Terrain-enabled planes are huge
+                // ground surfaces (default 25×25 footprint) — a point-sphere test around
+                // their center would cull them whenever the camera sits near the terrain
+                // edge, so they are always kept in the shadow pass. GLB references use a
+                // radius derived from their actual mesh AABB.
+                if (planes != null
+                    && !(obj.PrimitiveType == EditorPrimitiveType.Plane && obj.TerrainEnabled))
                 {
-                    const float boundRadius = 3f;
+                    float boundRadius = obj.PrimitiveType == EditorPrimitiveType.GlbReference
+                        ? obj.GetGlbBoundRadius()
+                        : 3f;
                     bool outside = false;
                     foreach (var plane in planes)
                     {

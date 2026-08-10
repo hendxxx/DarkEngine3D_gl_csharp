@@ -1354,6 +1354,48 @@ public class InspectorPanel
                 ImGui.SetTooltip("Remove the custom pivot — the gizmo follows the object position");
         }
 
+        // ── Height overlays (heatmap / contours) — available for ANY editor object;
+        // auto-selects the first terrain plane when none is selected (matches the
+        // viewport toolbar's Shade/Contours buttons). ──
+        if (ImGui.CollapsingHeader("Height Overlays", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var overlayTerrain = _bridge.SelectedEditorObject is { TerrainEnabled: true } ot ? ot : null;
+
+            bool heatmap = overlayTerrain?.TerrainShowHeatmap ?? false;
+            if (ImGui.Checkbox("Show Height Shading (heatmap)", ref heatmap))
+            {
+                var t = _bridge.ResolveTerrainForOverlay();
+                if (t != null)
+                {
+                    t.TerrainShowHeatmap = heatmap;
+                    Console.WriteLine($"[Inspector] Height shading on '{t.Name}' → {heatmap}");
+                }
+                else
+                {
+                    Console.WriteLine("[Inspector] No terrain plane found to toggle height shading");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Overlay a height heatmap (low=blue → high=red) with contour lines, lit by the sun.\nMakes high/low areas obvious while sculpting. Auto-selects the first terrain if none is selected. Not saved with the scene.");
+
+            bool contours = overlayTerrain?.TerrainShowContours ?? false;
+            if (ImGui.Checkbox("Show Height Contours", ref contours))
+            {
+                var t = _bridge.ResolveTerrainForOverlay();
+                if (t != null)
+                {
+                    t.TerrainShowContours = contours;
+                    Console.WriteLine($"[Inspector] Height contours on '{t.Name}' → {contours}");
+                }
+                else
+                {
+                    Console.WriteLine("[Inspector] No terrain plane found to toggle height contours");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Draw dark contour lines every 10% of the height range — the texture stays\nfully visible while the relief reads clearly. Auto-selects the first terrain if none is selected. Not saved with the scene.");
+        }
+
         // ── Terrain properties (Plane only) ──
         if (editorObj.PrimitiveType == EditorPrimitiveType.Plane)
         {
@@ -1718,7 +1760,7 @@ public class InspectorPanel
 
             // ── Brush painting (viewport tool) ──
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Brush (Viewport)");
-            ImGui.TextDisabled("Tools: ⛰ Sculpt (B) = raise/lower, 🌀 Smooth (S),\n⏹ Flatten (F) = level to first-click height, 🎨 Paint (C).\nLeft-drag = apply · Ctrl = reverse · Shift = fine control.");
+            ImGui.TextDisabled("Tools: ⛰ Sculpt = raise/lower, 🌀 Smooth,\n⏹ Flatten = level to first-click height, 🎨 Paint.\nLeft-drag = apply · Ctrl = reverse · Shift = fine control.");
 
             float bSize = editorObj.TerrainBrushSize;
             if (ImGui.DragFloat("Brush Size", ref bSize, 0.1f, 0.5f, 50f, "%.1f"))
@@ -1745,20 +1787,6 @@ public class InspectorPanel
                 editorObj.TerrainBrushFalloff = falloffIdx;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("How the brush weight falls off toward its edge (like Unreal's brush falloff presets).\nLinear = cone · Smooth = round center · Sharp = strong center · Spherical = classic · Soft = gentle edges.");
-
-            // Editor-only height shading overlay
-            bool heatmap = editorObj.TerrainShowHeatmap;
-            if (ImGui.Checkbox("Show Height Shading (heatmap)", ref heatmap))
-                editorObj.TerrainShowHeatmap = heatmap;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Overlay a height heatmap (low=blue → high=red) with contour lines, lit by the sun.\nMakes high/low areas obvious while sculpting. Not saved with the scene.");
-
-            // Editor-only height contour lines (no heatmap colors)
-            bool contours = editorObj.TerrainShowContours;
-            if (ImGui.Checkbox("Show Height Contours", ref contours))
-                editorObj.TerrainShowContours = contours;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Draw dark contour lines every 10% of the height range — the texture stays\nfully visible while the relief reads clearly. Not saved with the scene.");
 
             // ── Layer paint (🎨 brush) ──
             ImGui.Spacing();

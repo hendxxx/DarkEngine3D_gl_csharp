@@ -43,10 +43,11 @@ public class ImGuiFileDialog
     /// <summary>True if the dialog is in Save mode (vs Open mode).</summary>
     public bool IsSaveMode => _mode == DialogMode.Save;
 
-    public void OpenForLoad()
+    public void OpenForLoad(string filter = "*.ing", string title = "Open .ing file")
     {
         _mode = DialogMode.Open;
-        Title = "Open .ing file";
+        Title = title;
+        _filter = filter;
         _fileNameBuffer = "";
         _selectedIdx = -1;
         SelectedPath = null;

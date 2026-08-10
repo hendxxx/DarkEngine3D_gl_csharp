@@ -316,6 +316,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
             GL.UseProgram(shadowShader);
+
+            // Live normal-bias tuning (Shadow Settings panel) — game primitive shadows.
+            Visual.ShadowUniforms.UploadNormalBias(shadowShader);
+
             // Culling state is set by the CSM shadow pass — do not override it here.
 
             fixed (float* ptr = &modelMatrix.M11)

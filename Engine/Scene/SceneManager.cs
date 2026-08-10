@@ -456,8 +456,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // scene with an object manager is loaded yet) ──
                     if (bridge?.EditorObjectManager is { Count: > 0 } editorObjMgr)
                     {
-                        _editorCsm ??= new CSM(Config.ShadowConfig.CascadeSizes[0]);
-                        editorObjMgr.RenderShadowPass(_editorCamera, _editorLights, _editorCsm);
+                        // The CSM self-rebuilds when the Shadow Settings panel changes
+                        // cascade sizes/splits (CSM.EnsureCurrent runs inside UpdateMatrices,
+                        // called from RenderShadowPass below).
+                        _editorCsm ??= new CSM(Config.ShadowSettings.CascadeSizes[0]);
+                        if (bridge.ShowShadows)
+                            editorObjMgr.RenderShadowPass(_editorCamera, _editorLights, _editorCsm);
+                        else
+                            _editorCsm.ClearShadowMaps();
 
                         // Restore the shared FBO + scene render state after the depth-only shadow pass
                         GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);

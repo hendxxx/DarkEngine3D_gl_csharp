@@ -400,7 +400,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
-            GL.UseProgram(shadowShader); 
+            GL.UseProgram(shadowShader);
+
+            // Live normal-bias tuning (Shadow Settings panel) — game terrain shadows. Same
+            // size-based boost as the editor terrain (shared helper): the map is a huge
+            // heightmap (default 512×512 units, 80 units of relief). The per-chunk world
+            // footprint is the local scale that matters for shadow texels — a taller relief
+            // gets proportionally more normal bias while the clamp keeps peter-panning in
+            // check (whole-map footprint would saturate the clamp for every real map).
+            Visual.ShadowUniforms.UploadTerrainNormalBias(
+                shadowShader, ChunkSize * TerrainScale, HeightScale);
 
             // Model matrix (identity)
             Matrix4x4 model = Matrix4x4.Identity;
@@ -443,7 +452,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
                     worldMap[x, z].Draw(lodIndex, false);
                 }
-            } 
+            }
+
+            // Restore the standard normal bias so subsequent casters drawn with this
+            // program in the same cascade don't inherit the terrain's boosted value.
+            Visual.ShadowUniforms.UploadNormalBias(shadowShader);
         }
 
         private static bool IsAABBInsideFrustumWorld(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)

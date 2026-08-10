@@ -8,7 +8,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public class CSM : IDisposable
     {
         public const int NumCascades = 3;
-        private readonly int[] CascadeSizes = Config.ShadowConfig.CascadeSizes;
+
+        /// <summary>Cascade resolutions — taken from ShadowSettings at construction and
+        /// refreshed automatically when the Shadow panel changes the quality preset.</summary>
+        private int[] CascadeSizes = Config.ShadowSettings.CascadeSizes;
 
         public int ShadowSize { get; private set; }
 
@@ -17,12 +20,53 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Matrix4x4[] LightSpaceMatrices = new Matrix4x4[NumCascades];
         public Vector3[][] OrthoCorners = new Vector3[NumCascades][];
 
-        // Pastikan Config.ShadowConfig.CascadeLayer minimal punya NumCascades elemen.
-        public float[] CascadeEnds = Config.ShadowConfig.CascadeLayer;
+        // Copy the cascade split distances into a private array so every CSM instance
+        // (GameScene / MainMenuScene / SceneManager editor) has its own copy instead of
+        // mutating the shared static ShadowSettings.CascadeLayer.
+        public float[] CascadeEnds = (float[])Config.ShadowSettings.CascadeLayer.Clone();
+
+        /// <summary>World depth range (zFar − zNear) of the LAST-computed ortho projection
+        /// per cascade, updated by every UpdateMatrices call. The fragment shaders divide
+        /// their NDC bias by this so the WORLD-space bias offset stays consistent across
+        /// cascades — a far cascade's ortho depth range is 10×+ larger than the near one's,
+        /// so a fixed NDC bias would push shadows tens of world units away and they would
+        /// vanish at distance. Shared across all scenes (set by whichever CSM renders last).</summary>
+        public static float[] LastDepthRanges = [1f, 1f, 1f];
+
+        /// <summary>World-space size of ONE shadow-map texel per cascade, from the LAST
+        /// UpdateMatrices call (texel = XY ortho extent ÷ resolution, max of X/Y so the
+        /// bias stays conservative). The fragment shaders scale their bias by
+        /// texel_i / texel_0 so the WORLD bias offset is proportional to the local texel
+        /// size — i.e. a constant number of texels at every distance — instead of the old
+        /// fixed 1.5×/3× multipliers, which under-shot the far cascades (sub-texel bias →
+        /// acne) and over-shot them at close range. Shared across scenes like
+        /// <see cref="LastDepthRanges"/>.</summary>
+        public static float[] LastTexelWorld = [1f, 1f, 1f];
+
+        /// <summary>Precomputed texel ratio per cascade (LastTexelWorld[i] / LastTexelWorld[0],
+        /// floored at 1, clamped at 128). Read by ShadowUniforms.UploadNormalBias so the
+        /// vertex-extrusion bias scales with the active cascade's texel size without dividing
+        /// on every upload.</summary>
+        public static float[] LastTexelScale = [1f, 1f, 1f];
+
+        /// <summary>Index of the cascade whose FBO is currently bound (set by
+        /// <see cref="BindFramebuffer"/>). ShadowUniforms.UploadNormalBias reads it to scale
+        /// the vertex-extrusion bias by that cascade's texel ratio — so the WORLD extrusion
+        /// stays a constant texel count at every distance, matching the texel-proportional
+        /// fragment bias. Default 0 = no scaling (backward compatible).</summary>
+        public static int ActiveCascadeIndex = 0;
+
+        // ShadowSettings versions this instance was built with — used to detect when the
+        // Shadow panel changed cascade sizes/splits (full rebuild) or just the texture
+        // filter (cheap TexParameteri) so changes apply without scene wiring.
+        private int _sizeVersion = -1;
+        private int _filterVersion = -1;
 
         public CSM(int shadowSize = 1024)
         {
             ShadowSize = shadowSize;
+            _sizeVersion = Config.ShadowSettings.Version;
+            _filterVersion = Config.ShadowSettings.FilterVersion;
             CreateShadowMaps();
         }
 
@@ -50,9 +94,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     Const.GL_FLOAT,
                     (void*)0);
 
-                // Filtering depth map. LINEAR cocok kalau shadow di-sample manual (PCF/PCSS di shader).
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
-                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
+                // Filtering depth map. LINEAR cocok kalau shadow di-sample manual (PCF/PCSS di shader);
+                // the toggle lives in the Shadow Settings panel (ShadowSettings.LinearShadowMap).
+                int depthFilter = Config.ShadowSettings.LinearShadowMap
+                    ? (int)Const.GL_LINEAR
+                    : (int)Const.GL_NEAREST;
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, depthFilter);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, depthFilter);
 
                 // Depth map sebaiknya border = 1.0 (fully lit) saat sample keluar area.
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_BORDER);
@@ -103,8 +151,46 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return m;
         }
 
+        /// <summary>Rebuild the depth maps (or re-apply the filter) when the Shadow panel
+        /// changes cascade sizes / splits / filtering. Called at the top of UpdateMatrices
+        /// so every scene's shadow pass picks up changes on the next frame automatically.</summary>
+        private unsafe void EnsureCurrent()
+        {
+            if (_sizeVersion != Config.ShadowSettings.Version)
+            {
+                CascadeSizes = Config.ShadowSettings.CascadeSizes;
+                CascadeEnds = (float[])Config.ShadowSettings.CascadeLayer.Clone();
+                Dispose();
+                CreateShadowMaps();
+                _sizeVersion = Config.ShadowSettings.Version;
+                _filterVersion = Config.ShadowSettings.FilterVersion;
+            }
+            else if (_filterVersion != Config.ShadowSettings.FilterVersion)
+            {
+                ApplyFilter();
+                _filterVersion = Config.ShadowSettings.FilterVersion;
+            }
+        }
+
+        /// <summary>Apply the depth-map texture filter (NEAREST/LINEAR) without a rebuild.</summary>
+        private unsafe void ApplyFilter()
+        {
+            int filter = Config.ShadowSettings.LinearShadowMap
+                ? (int)Const.GL_LINEAR
+                : (int)Const.GL_NEAREST;
+
+            for (int i = 0; i < NumCascades; i++)
+            {
+                GL.BindTexture(Const.GL_TEXTURE_2D, ShadowTextures[i]);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, filter);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, filter);
+            }
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+        }
+
         public void UpdateMatrices(Camera camera, Vector3 lightDir)
         {
+            EnsureCurrent();
             lightDir = Vector3.Normalize(lightDir);
 
             // Cascade terakhir menutup sampai far plane kamera.
@@ -192,6 +278,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // (Tidak ada clamping disini – precision tetap OK karena GL_DEPTH_COMPONENT32F)
                 // Pastikan zNear tidak terlalu positif (bisa balik sign):
                 if (zNear > zFar - 1.0f) zNear = zFar - 1.0f;
+
+                // Expose the world depth range + texel size for the fragment bias scaling
+                // (see LastDepthRanges / LastTexelWorld docs). Guarded so degenerate values
+                // can never produce a division-by-zero in the shaders.
+                LastDepthRanges[i] = MathF.Max(zFar - zNear, 1f);
+                float texelX = (maxX - minX) / CascadeSizes[i];
+                float texelY = (maxY - minY) / CascadeSizes[i];
+                LastTexelWorld[i] = MathF.Max(MathF.Max(texelX, texelY), 1e-4f);
+                // Precompute the texel ratio for the normal-bias scaling (floored at 1 so a
+                // cascade never gets less extrusion than cascade 0; clamped at 8 so the world
+                // extrusion stays ≤ ~0.25 m — higher would detach far shadows from their
+                // casters (the bright peter-panning outline around objects).
+                LastTexelScale[i] = MathF.Min(
+                    MathF.Max(LastTexelWorld[i] / MathF.Max(LastTexelWorld[0], 1e-5f), 1f), 8f);
 
                 // Stable CSM: snap CENTER ortho ke texel grid, lebih stabil dari snap min/max terpisah.
                 float extentX = 0.5f * (maxX - minX);
@@ -283,16 +383,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, FBOs[index]);
             GL.Viewport(0, 0, CascadeSizes[index], CascadeSizes[index]);
 
+            // Remember which cascade we're rendering so normal-bias uploads can scale to
+            // its texel size (see ActiveCascadeIndex docs).
+            ActiveCascadeIndex = index;
+
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.DepthMask(true);
 
-            // Best practice umum untuk shadow pass directional light:
-            // render front faces agar mengurangi shadow acne.
-            GL.Enable(Const.GL_CULL_FACE);
-            GL.CullFace(Const.GL_FRONT);
-            GL.FrontFace(Const.GL_CCW);
+            // Shadow pass renders BOTH faces (culling disabled). The old CullFace(GL_FRONT)
+            // (render back faces) is the classic anti-acne trick for CLOSED meshes, but it
+            // culled single-sided CCW casters — editor plane/terrain, game terrain, skinned
+            // GLB, and mirrored (negative-scale) objects — out of the depth map entirely, so
+            // hills never cast shadows on objects behind them. With culling off, every caster
+            // contributes; the depth test's LESS keeps the light-facing surface winning for
+            // closed meshes (identical depth map to back-face culling), and anti-acne stays
+            // under control via the normal-bias extrusion every shadow vertex shader applies.
+            GL.Disable(Const.GL_CULL_FACE);
 
             GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
+        }
+
+        /// <summary>Clear every cascade depth map to the maximum depth (1.0) so all shadow
+        /// samples read as fully lit. Used when the viewport shadows toggle is OFF — the
+        /// main shader still samples the maps, so they must be cleared instead of left stale
+        /// (a stale map would keep showing last frame's shadows). NOTE: relies on the GL
+        /// depth clear value being 1.0 (the default) — do not set glClearDepth elsewhere.
+        /// Callers must re-bind their framebuffer + viewport after this (as the shadow
+        /// pass path already does).</summary>
+        public void ClearShadowMaps()
+        {
+            for (int i = 0; i < NumCascades; i++)
+            {
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, FBOs[i]);
+                GL.Viewport(0, 0, CascadeSizes[i], CascadeSizes[i]);
+                GL.DepthMask(true);
+                GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
+            }
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
         }
 
         public void UnbindFramebuffer(int viewportWidth, int viewportHeight)

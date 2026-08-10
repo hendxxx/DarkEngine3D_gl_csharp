@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using ImGuiNET;
 using System.Numerics;
@@ -17,6 +18,16 @@ public class RenderTimePanel
     // Sort order: 0 = time desc, 1 = name asc, 2 = triangles desc
     private int _sortMode = 0;
 
+    // ── CSM on/off performance sampling — measures the real cost of the shadow
+    // pass by accumulating frame ms separately while shadows are ON vs OFF, and
+    // resets both buckets whenever the toggle changes (Shadow panel OR viewport
+    // toolbar — both write the same IDEBridge.ShowShadows flag). ──
+    private bool? _perfLastShadows = null;   // last sampled ShowShadows state (edge detect)
+    private float _perfSumOn = 0f;            // accumulated frame ms with shadows ON
+    private float _perfSumOff = 0f;           // accumulated frame ms with shadows OFF
+    private int _perfFramesOn = 0;            // frame count in the ON bucket
+    private int _perfFramesOff = 0;           // frame count in the OFF bucket
+
     public RenderTimePanel(IDEBridge bridge) => _bridge = bridge;
 
     public void ShowInMenu() => ImGui.MenuItem("Render Time", null, ref _visible);
@@ -26,6 +37,11 @@ public class RenderTimePanel
         // Only ask GameScene to capture per-object timings while this panel is open,
         // so the main render path stays allocation-free when profiling is off.
         _bridge.CaptureRenderTimings = _visible;
+
+        // Sample the CSM on/off frame-time buckets EVERY frame (even when the panel is
+        // closed) so the averages are already populated when the panel is opened.
+        SamplePerformance();
+
         if (!_visible) return;
 
         ImGui.Begin("Render Time", ref _visible);
@@ -48,6 +64,50 @@ public class RenderTimePanel
             DrawStageRow("Total", total, total, bold: true);
 
             ImGui.TextDisabled($"Frame: {_bridge.FrameMs:F1} ms  ({_bridge.Fps:F0} FPS)");
+
+            // ── CSM shadow pass cost (measured, not estimated) — toggle the shadow
+            // pass off for a few seconds then on; the buckets average each state and
+            // the delta below shows exactly what shadows cost. ──
+            bool on = _bridge.ShowShadows;
+            float onMs = _perfFramesOn > 0 ? _perfSumOn / _perfFramesOn : 0f;
+            float offMs = _perfFramesOff > 0 ? _perfSumOff / _perfFramesOff : 0f;
+
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.7f, 0.8f, 1f, 1f), "CSM Shadows (A/B):");
+            if (_perfFramesOn > 0)
+                ImGui.Text($"  ON  : {onMs:F1} ms  ({_perfFramesOn} frames)");
+            else
+                ImGui.TextDisabled("  ON  : — (no frames sampled yet)");
+            if (_perfFramesOff > 0)
+                ImGui.Text($"  OFF : {offMs:F1} ms  ({_perfFramesOff} frames)");
+            else
+                ImGui.TextDisabled("  OFF : — (no frames sampled yet)");
+
+            if (_perfFramesOn > 0 && _perfFramesOff > 0)
+            {
+                float saved = onMs - offMs;
+                if (saved > 0.05f)
+                {
+                    float pct = 100f * saved / onMs;
+                    ImGui.TextColored(new Vector4(0.45f, 0.9f, 0.5f, 1f),
+                        $"Shadow pass cost: {saved:F1} ms (~{pct:F0}% of the ON frame) → toggle OFF gains ~{MathF.Round(1000f / MathF.Max(offMs, 0.01f) - 1000f / MathF.Max(onMs, 0.01f))} fps");
+                }
+                else if (saved < -0.05f)
+                {
+                    ImGui.TextColored(new Vector4(0.9f, 0.6f, 0.3f, 1f),
+                        $"OFF is {-saved:F1} ms SLOWER than ON (variance — samples are noisy at low frame times)");
+                }
+                else
+                {
+                    ImGui.TextColored(new Vector4(0.8f, 0.8f, 0.8f, 1f),
+                        $"No measurable difference ({MathF.Abs(saved):F1} ms) — shadow pass cost is negligible here.");
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled("Tip: toggle shadows OFF for a few seconds, then back ON to measure the difference.");
+            }
+            ImGui.TextDisabled("Averages reset when the CSM toggle changes (Shadow panel or viewport toolbar).");
         }
 
         // ── Per-object breakdown ──
@@ -135,6 +195,41 @@ public class RenderTimePanel
         }
 
         ImGui.End();
+    }
+
+    /// <summary>Accumulate the current frame ms into the ON or OFF bucket, matching
+    /// the live CSM state. Detects state changes (Shadow panel OR viewport toolbar)
+    /// and resets both buckets so the averages compare clean runs of each state.
+    /// Called every frame from Render(), even when the panel is closed.</summary>
+    private void SamplePerformance()
+    {
+        bool shadowsOn = _bridge.ShowShadows;
+
+        // State changed (or first frame) → reset both buckets so each average
+        // reflects a continuous run of that state only.
+        if (_perfLastShadows != shadowsOn)
+        {
+            _perfLastShadows = shadowsOn;
+            _perfSumOn = 0f;
+            _perfSumOff = 0f;
+            _perfFramesOn = 0;
+            _perfFramesOff = 0;
+        }
+
+        float dtMs = Glfw.GetDeltaTime() * 1000f;
+        // Guard against pathological frame spikes so one hitch doesn't poison the average.
+        if (dtMs <= 0f || dtMs > 250f) return;
+
+        if (shadowsOn)
+        {
+            _perfSumOn += dtMs;
+            _perfFramesOn++;
+        }
+        else
+        {
+            _perfSumOff += dtMs;
+            _perfFramesOff++;
+        }
     }
 
     /// <summary>Draw one stage-breakdown row with an inline bar proportional to total time.</summary>

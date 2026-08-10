@@ -153,6 +153,7 @@ public unsafe class ViewportPanel
         }
     }
 
+
     /// <summary>Layer chip color as RGB (the brush ring and 2D cursor reuse the tint).</summary>
     private static Vector3 TerrainLayerColor3(int index)
     {
@@ -1284,6 +1285,7 @@ public unsafe class ViewportPanel
         {
             var settings = SettingsSave.Load();
             settings.ShowDebugGrid = _bridge.ShowDebugGrid;
+            settings.ShowShadows = _bridge.ShowShadows;
             settings.SnapEnabled = _snapEnabled;
             settings.SnapGridSize = _snapGridSize;
             SettingsSave.Save(settings);
@@ -1635,7 +1637,7 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                     }
                     ImGui.PopStyleColor(1);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Sculpt (B): left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control — Ctrl+scroll resizes the brush.");
+                        ImGui.SetTooltip("Sculpt: left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control — Ctrl+scroll resizes the brush.");
 
                     ImGui.SameLine();
                     bool paintTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 1;
@@ -1649,7 +1651,7 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                     }
                     ImGui.PopStyleColor(1);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Layer paint (C): paints the selected layer (air/tanah/rumput/salju).\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.");
+                        ImGui.SetTooltip("Layer paint: paints the selected layer (air/tanah/rumput/salju).\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.");
 
                     ImGui.SameLine();
                     bool smoothTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 2;
@@ -1663,7 +1665,7 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                     }
                     ImGui.PopStyleColor(1);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Smooth (S): averages the heights in the brush area — removes spikes and terraced steps.\nHold Shift for fine control.");
+                        ImGui.SetTooltip("Smooth: averages the heights in the brush area — removes spikes and terraced steps.\nHold Shift for fine control.");
 
                     ImGui.SameLine();
                     bool flattenTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 3;
@@ -1677,7 +1679,7 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                     }
                     ImGui.PopStyleColor(1);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Flatten (F): levels the terrain to the height of the FIRST click of the stroke,\nlike Unreal's flatten tool. Hold Shift for fine control.");
+                        ImGui.SetTooltip("Flatten: levels the terrain to the height of the FIRST click of the stroke,\nlike Unreal's flatten tool. Hold Shift for fine control.");
 
                     // ── Height shading overlay (heatmap) toggle — applies to the selected terrain ──
                     ImGui.SameLine();
@@ -1688,19 +1690,22 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                         : new Vector4(0.25f, 0.25f, 0.30f, 1f));
                     if (ImGui.Button(shadeOn ? "🗺 Shade ON" : "🗺 Shade"))
                     {
-                        if (shadedSel != null)
+                        // Auto-select the first terrain plane when none is selected, so the
+                        // toggle works without clicking the plane first.
+                        var shadeTerrain = _bridge.ResolveTerrainForOverlay();
+                        if (shadeTerrain != null)
                         {
-                            shadedSel.TerrainShowHeatmap = !shadedSel.TerrainShowHeatmap;
-                            Console.WriteLine($"[Viewport] Height shading on '{shadedSel.Name}' → {shadedSel.TerrainShowHeatmap}");
+                            shadeTerrain.TerrainShowHeatmap = !shadeTerrain.TerrainShowHeatmap;
+                            Console.WriteLine($"[Viewport] Height shading on '{shadeTerrain.Name}' → {shadeTerrain.TerrainShowHeatmap}");
                         }
                         else
                         {
-                            Console.WriteLine("[Viewport] Select a terrain first to toggle height shading");
+                            Console.WriteLine("[Viewport] No terrain plane found to toggle height shading");
                         }
                     }
                     ImGui.PopStyleColor(1);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun — makes high/low areas obvious while sculpting.\nSelect a terrain to use it (also in the Inspector).");
+                        ImGui.SetTooltip("Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun — makes high/low areas obvious while sculpting.\nAuto-selects the first terrain plane if none is selected (also in the Inspector).");
 
                     // ── Height contour lines overlay (no heatmap) toggle — applies to the selected terrain ──
                     ImGui.SameLine();
@@ -1711,19 +1716,22 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                         : new Vector4(0.25f, 0.25f, 0.30f, 1f));
                     if (ImGui.Button(contourOn ? "≡ Contours ON" : "≡ Contours"))
                     {
-                        if (contourSel != null)
+                        // Auto-select the first terrain plane when none is selected, so the
+                        // toggle works without clicking the plane first.
+                        var contourTerrain = _bridge.ResolveTerrainForOverlay();
+                        if (contourTerrain != null)
                         {
-                            contourSel.TerrainShowContours = !contourSel.TerrainShowContours;
-                            Console.WriteLine($"[Viewport] Height contours on '{contourSel.Name}' → {contourSel.TerrainShowContours}");
+                            contourTerrain.TerrainShowContours = !contourTerrain.TerrainShowContours;
+                            Console.WriteLine($"[Viewport] Height contours on '{contourTerrain.Name}' → {contourTerrain.TerrainShowContours}");
                         }
                         else
                         {
-                            Console.WriteLine("[Viewport] Select a terrain first to toggle height contours");
+                            Console.WriteLine("[Viewport] No terrain plane found to toggle height contours");
                         }
                     }
                     ImGui.PopStyleColor(1);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Draw dark topographic contour lines every 10% height on the selected terrain\n(no heatmap colors — the texture stays fully visible).\nGreat for sculpting precision — select a terrain to use it.");
+                        ImGui.SetTooltip("Draw dark topographic contour lines every 10% height on the selected terrain\n(no heatmap colors — the texture stays fully visible).\nGreat for sculpting precision — auto-selects the first terrain plane if none is selected.");
 
                     // ── Layer chips (only while the 🎨 paint tool is active) ──
                     if (paintTool)
@@ -1764,6 +1772,22 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                     ImGui.PopStyleColor(1);
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Toggle the editor debug grid (XZ plane at Y=0, major lines every 5 units)");
+
+                    // ── Shadow (CSM) toggle ──
+                    ImGui.SameLine();
+                    bool shadowsOn = _bridge.ShowShadows;
+                    ImGui.PushStyleColor(ImGuiCol.Button, shadowsOn
+                        ? new Vector4(0.55f, 0.45f, 0.20f, 1f)
+                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
+                    if (ImGui.Button(shadowsOn ? "☀ Shadow: On" : "☀ Shadow: Off"))
+                    {
+                        _bridge.ShowShadows = !shadowsOn;
+                        PersistViewportPrefs();
+                        Console.WriteLine($"[Viewport] Shadows {(shadowsOn ? "disabled" : "enabled")}");
+                    }
+                    ImGui.PopStyleColor(1);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Toggle CSM shadows in the viewport\nOff = skip the shadow pass (fully lit, faster)");
 
                     // ── Camera view presets (top-down, bottom-up, side views) ──
                     ImGui.SameLine();
@@ -3113,28 +3137,9 @@ ImGui.SameLine();
         // Don't snap the camera while the user is mid-gizmo-drag
         if (_bridge.EditorGizmo?.IsDragging == true) return;
 
-        // Terrain brush shortcuts — edit mode only.
-        // B: ⛰ sculpt, C: 🎨 layer paint, S: 🌀 smooth, F: ⏹ flatten (toggle each).
-        if (ImGui.IsKeyPressed(ImGuiKey.B))
-        {
-            ToggleTerrainBrushMode(0);
-            Console.WriteLine($"[Viewport] ⛰ Sculpt brush → {_bridge.TerrainBrushActive}");
-        }
-        if (ImGui.IsKeyPressed(ImGuiKey.C))
-        {
-            ToggleTerrainBrushMode(1);
-            Console.WriteLine($"[Viewport] 🎨 Layer paint → {_bridge.TerrainBrushActive}");
-        }
-        if (ImGui.IsKeyPressed(ImGuiKey.S))
-        {
-            ToggleTerrainBrushMode(2);
-            Console.WriteLine($"[Viewport] 🌀 Smooth brush → {_bridge.TerrainBrushActive}");
-        }
-        if (ImGui.IsKeyPressed(ImGuiKey.F))
-        {
-            ToggleTerrainBrushMode(3);
-            Console.WriteLine($"[Viewport] ⏹ Flatten brush → {_bridge.TerrainBrushActive}");
-        }
+        // Terrain brush tools are toolbar-only (no keyboard shortcuts) — the previous
+        // B/C/S/F toggles were removed because S collided with fly-camera movement and the
+        // user wanted terrain-editor key assignments disabled entirely.
 
         for (int i = 0; i < CameraViewShortcuts.Length; i++)
         {

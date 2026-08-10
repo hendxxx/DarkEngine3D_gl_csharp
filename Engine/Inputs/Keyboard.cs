@@ -99,6 +99,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             return showCSMCascadeColor;
         }
 
+        /// <summary>Set the CSM cascade debug overlay (L key) directly. The IDE Shadow
+        /// panel uses this so its checkbox stays in sync with the keyboard toggle.</summary>
+        public static void SetShowCSMCascadeColor(bool value)
+        {
+            showCSMCascadeColor = value;
+        }
+
 
         public static bool GetShowLODColor()
         {
@@ -117,6 +124,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         public static int GetIsHardShadow()
         {
             return shadowFilterMode;
+        }
+
+        /// <summary>Set the shadow filter mode directly (0-9). The IDE Shadow Settings panel
+        /// uses this instead of cycling with the H key.</summary>
+        public static void SetShadowFilterMode(int mode)
+        {
+            shadowFilterMode = Math.Clamp(mode, 0, 9);
         }
 
         public static unsafe void Init(nint glfwLib)

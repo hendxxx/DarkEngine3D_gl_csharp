@@ -494,7 +494,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ppStack.AddPass(invertPass);
 
             //  CSM
-            _csm = new CSM(Config.ShadowConfig.CascadeSizes[0]);
+            _csm = new CSM(Config.ShadowSettings.CascadeSizes[0]);
 
             // Cache terrain shader uniform locations
             _terrainShader = Shader.GetShaderProgram();
@@ -566,12 +566,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 { _inGameSettingValues[1] = m; break; }
             }
 
-            // Shadow quality: map cascade size to preset index
-            _inGameSettingValues[2] = Config.ShadowConfig.CascadeSizes[0] switch
-            {
-                2048 => 0, 4096 => (Config.ShadowConfig.CascadeSizes[1] == 2048) ? 1 : 2,
-                _ => 3
-            };
+            // Shadow quality: read the live preset index (shared with the IDE Shadow panel).
+            _inGameSettingValues[2] = Config.ShadowSettings.Quality;
 
             //  Load pending save (set by MainMenuScene Continue/Load Game) 
             if (PendingLoadSlot >= 0)
@@ -869,12 +865,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     Matrix4x4 lightSpace = _csm.LightSpaceMatrices[i];
 
                     GL.UseProgram(_shadowShader);
+                    Visual.ShadowUniforms.UploadNormalBias(_shadowShader);
                     unsafe
                     {
                         GL.UniformMatrix4fv(_shadowLightSpaceLoc, 1, false, (float*)&lightSpace);
                     }
 
                     GL.UseProgram(_shadowSkinnedShader);
+                    Visual.ShadowUniforms.UploadNormalBias(_shadowSkinnedShader);
                     unsafe
                     {
                         GL.UniformMatrix4fv(_shadowSkinnedLightSpaceLoc, 1, false, (float*)&lightSpace);
@@ -892,9 +890,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                     _gameTerrainChunk?.RenderShadow(_camera, _csm, i, _shadowShader, _shadowModelLoc);
 
-                    // ── EditorObjectManager shadow pass ──
+                    // ── EditorObjectManager shadow pass (skipped when the viewport
+                    // "Shadow" toggle is off — editor objects stop casting shadows). ──
                     var editorObjMgr = _sceneManager.Bridge?.EditorObjectManager;
-                    if (editorObjMgr != null)
+                    if (editorObjMgr != null && (_sceneManager.Bridge?.ShowShadows ?? true))
                     {
                         editorObjMgr.RenderShadow(_camera, _csm, i);
                     }
@@ -1741,9 +1740,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 case 2: // Shadow Quality
                 {
-                    Config.ShadowConfig.CascadeSizes = Config.ShadowPresets.CascadeSizes[val];
+                    // Route through ShadowSettings so the in-game menu, the IDE Shadow panel
+                    // and the CSM instances all stay in sync.
+                    Config.ShadowSettings.ApplyQuality(val);
                     _csm?.Dispose();
-                    _csm = new CSM(Config.ShadowConfig.CascadeSizes[0]);
+                    _csm = new CSM(Config.ShadowSettings.CascadeSizes[0]);
                     break;
                 }
                 case 3: // VSync

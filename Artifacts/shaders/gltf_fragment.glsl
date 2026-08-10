@@ -19,6 +19,21 @@ uniform sampler2D shadowMap2;
 uniform mat4 lightSpaceMatrices[3];
 uniform float cascadeEnds[3];
 
+// ── LIVE SHADOW TUNING (uploaded from the IDE Shadow Settings panel; the defaults
+// match the values that were previously hardcoded here) ──
+uniform float u_ConstantBias = 0.0;   // always-added bias (all surfaces)
+uniform float u_SlopeBias = 0.0004;  // slope-scaled bias coefficient (~5 texels steep)
+uniform float u_MinBias = 0.0002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
+uniform float u_BlendRange = 0.10;   // cascade blend width, fraction of the split distance
+uniform vec3 u_DepthRange = vec3(1.0); // world ortho depth range per cascade (zFar - zNear)
+uniform vec3 u_TexelWorld = vec3(1.0); // world size of one shadow-map texel per cascade
+uniform vec3 u_MaxWorldBias = vec3(0.15, 0.25, 0.5); // per-cascade cap on the bias' WORLD offset (m)
+
+// Debug overlay (L key): tint each cascade with a transparent color code.
+uniform int showCSMCascadeColor;
+
+// Cascade overlay strength (L key debug tint), 0..1 — adjustable from the Shadow panel.
+uniform float u_CascadeOverlayAlpha = 0.15;
 // ── Base Color ─────────────────────────────────────────────────────────────
 uniform sampler2D albedoMap;
 uniform int useAlbedo;
@@ -230,7 +245,7 @@ float SearchBlocker(sampler2D shadowMap, vec2 uv, float zReceiver, float searchR
 }
 
 // PCSS with Poisson sampling
-float pcss(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int sampleCount, float maxRadius)
+float pcss(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int sampleCount, float maxRadius, float radiusScale)
 {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
@@ -239,12 +254,12 @@ float pcss(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int sampleCo
     vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
     float zReceiver = projCoords.z - bias;
 
-    float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, 8.0);
+    float avgBlocker = SearchBlocker(shadowMap, uv, zReceiver, 8.0 * radiusScale);
     if (avgBlocker < 0.0) return 1.0;
 
     float penumbra = (zReceiver - avgBlocker) / max(avgBlocker, 0.0001);
     penumbra = clamp(penumbra * 4.0, 0.0, 8.0);
-    float filterRadius = clamp(penumbra * 0.006 * 350.0, 1.5, maxRadius);
+    float filterRadius = clamp(penumbra * 0.006 * 350.0 * radiusScale, 1.5 * radiusScale, maxRadius * radiusScale);
 
     vec2 texel = 1.0 / textureSize(shadowMap, 0);
     float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
@@ -265,18 +280,18 @@ float pcss(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int sampleCo
 
 // Dispatch — 10 modes consistent across all shaders
 // 0=PCF 16, 1=Hard, 2=PCF 16, 3=PCF 16 Soft, 4=PCF 32, 5=PCF 32 Soft, 6=PCSS 16, 7=PCSS 16 Soft, 8=PCSS 32, 9=PCSS 32 Soft
-float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
+float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float radiusScale)
 {
     if (shadowFilterMode == 1) return hardShadow(fragPosLightSpace, shadowMap, bias);
-    if (shadowFilterMode == 2) return poisson16(fragPosLightSpace, shadowMap, bias, 5.0);
-    if (shadowFilterMode == 3) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0);
-    if (shadowFilterMode == 4) return poisson32(fragPosLightSpace, shadowMap, bias, 5.0);
-    if (shadowFilterMode == 5) return poisson32(fragPosLightSpace, shadowMap, bias, 10.0);
-    if (shadowFilterMode == 6) return pcss(shadowMap, fragPosLightSpace, bias, 16, 6.0);
-    if (shadowFilterMode == 7) return pcss(shadowMap, fragPosLightSpace, bias, 16, 12.0);
-    if (shadowFilterMode == 8) return pcss(shadowMap, fragPosLightSpace, bias, 32, 6.0);
-    if (shadowFilterMode == 9) return pcss(shadowMap, fragPosLightSpace, bias, 32, 12.0);
-    return poisson16(fragPosLightSpace, shadowMap, bias, 5.0); // default mode 0  
+    if (shadowFilterMode == 2) return poisson16(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale);
+    if (shadowFilterMode == 3) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
+    if (shadowFilterMode == 4) return poisson32(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale);
+    if (shadowFilterMode == 5) return poisson32(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
+    if (shadowFilterMode == 6) return pcss(shadowMap, fragPosLightSpace, bias, 16, 6.0, radiusScale);
+    if (shadowFilterMode == 7) return pcss(shadowMap, fragPosLightSpace, bias, 16, 12.0, radiusScale);
+    if (shadowFilterMode == 8) return pcss(shadowMap, fragPosLightSpace, bias, 32, 6.0, radiusScale);
+    if (shadowFilterMode == 9) return pcss(shadowMap, fragPosLightSpace, bias, 32, 12.0, radiusScale);
+    return poisson16(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale); // default mode 0  
 }
 
 void main()
@@ -314,29 +329,68 @@ void main()
 
     // ── Shadow Calculation ────────────────────────────────────────────────
     float depth = length(viewPos - FragPos);
-    float blendRange0 = cascadeEnds[0] * 0.1;
-    float blendRange1 = cascadeEnds[1] * 0.1;
-    float bias0 = max(0.002 * (1.0 - dot(N, L)), 0.0001);
-    float bias1 = bias0 * 1.5;
-    float bias2 = bias0 * 3.0;
+    float blendRange0 = cascadeEnds[0] * u_BlendRange;
+    float blendRange1 = cascadeEnds[1] * u_BlendRange;
+    // Slope-scaled bias — the base term is raised to kill self-shadow acne on detailed
+    // geometry (the minimum clamps the bias so flat, light-facing surfaces stay acne-free).
+    // Uses the GEOMETRIC normal (not the normal-mapped N) so bump detail never spikes the
+    // bias into patchy peter-panning.
+    float bias0 = max(u_ConstantBias + u_SlopeBias * (1.0 - max(dot(normalize(Normal), L), 0.0)), u_MinBias);
+    // Normalize the NDC bias by each cascade's ortho depth range (uploaded from CSM):
+    // worldOffset = bias_ndc × depthRange, and far cascades have 10×+ larger Z ranges — a
+    // fixed NDC bias would push shadows tens of world units away and they vanish at distance.
+    // World bias offset proportional to the LOCAL texel size (texel_i / texel_0): a constant
+    // texel count at every distance, so far cascades get proportionally more bias instead of
+    // the old fixed 1.5×/3× (which under-shot far cascades → sub-texel acne). The depth-range
+    // term converts that world offset into NDC; the ratio is clamped so a pathological small
+    // cascade-0 range can never explode the far-cascade bias.
+    float bias1 = bias0 * max(u_TexelWorld.y / max(u_TexelWorld.x, 1e-5), 1.0)
+                * clamp(u_DepthRange.x / u_DepthRange.y, 0.02, 4.0);
+    float bias2 = bias0 * max(u_TexelWorld.z / max(u_TexelWorld.x, 1e-5), 1.0)
+                * clamp(u_DepthRange.x / u_DepthRange.z, 0.02, 4.0);
+    // Peter-panning guard: the texel-proportional scaling keeps a constant TEXEL count,
+    // but in the far cascades a texel is ~0.5-1 m, so the bias' WORLD offset (bias × range)
+    // would reach meters and the shadow detaches from its caster (bright outline). Cap
+    // the world offset directly, per cascade — cascade 0 tight (kills the outline at
+    // object bases), cascade 2 loose (keeps anti-acne at distance).
+    bias0 = min(bias0, u_MaxWorldBias.x / max(u_DepthRange.x, 1e-4));
+    bias1 = min(bias1, u_MaxWorldBias.y / max(u_DepthRange.y, 1e-4));
+    bias2 = min(bias2, u_MaxWorldBias.z / max(u_DepthRange.z, 1e-4));
+
+    // PCF/PCSS radii are in TEXELS — scale per cascade by the texel-size ratio so the
+    // WORLD penumbra stays constant at every distance (a fixed 5-texel disk covers 0.15 m
+    // in cascade 0 but ~6 m in cascade 2). worldWidth = radius × texelWorld stays the same
+    // when radius ∝ texel0/texel_i; clamped so a pathological tiny near texel can't blow
+    // the far-cascade radius up (ratio > 1 is capped at 1.0).
+    float rScale1 = clamp(u_TexelWorld.x / max(u_TexelWorld.y, 1e-5), 0.25, 1.0);
+    float rScale2 = clamp(u_TexelWorld.x / max(u_TexelWorld.z, 1e-5), 0.25, 1.0);
     
+    int cascadeIndex = 0;
+    float cascadeBlendT = 0.0;
     float shadow;
     if (depth < cascadeEnds[0] - blendRange0) {
-        shadow = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
+        shadow = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0, 1.0);
+        cascadeIndex = 0;
     } else if (depth < cascadeEnds[0]) {
         float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
-        float s0 = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0);
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
+        float s0 = CalculateShadow(lightSpaceMatrices[0] * vec4(FragPos, 1.0), shadowMap0, bias0, 1.0);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1, rScale1);
         shadow = mix(s0, s1, t);
+        cascadeIndex = 1;
+        cascadeBlendT = t;
     } else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
+        shadow = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1, rScale1);
+        cascadeIndex = 1;
     } else if (depth < cascadeEnds[1]) {
         float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1);
-        float s2 = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * vec4(FragPos, 1.0), shadowMap1, bias1, rScale1);
+        float s2 = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2, rScale2);
         shadow = mix(s1, s2, t);
+        cascadeIndex = 2;
+        cascadeBlendT = t;
     } else {
-        shadow = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2);
+        shadow = CalculateShadow(lightSpaceMatrices[2] * vec4(FragPos, 1.0), shadowMap2, bias2, rScale2);
+        cascadeIndex = 2;
     }
     
     // ── Cook-Torrance PBR Lighting ───────────────────────────────────────────
@@ -395,6 +449,22 @@ void main()
         float fogFactor = exp(-pow(dist * fogDensity, 2.0));
         fogFactor = clamp(fogFactor, 0.0, 1.0);
         result = mix(fogColor, result, fogFactor);
+    }
+
+    // ── DEBUG CSM COLOR (transparent cascade overlay, same palette as the main shader) ──
+    if (showCSMCascadeColor == 1) {
+        vec3 cascadeColors[3] = vec3[](
+            vec3(0.0, 1.0, 1.0),   // cyan   — cascade 0
+            vec3(1.0, 1.0, 0.0),   // yellow — cascade 1
+            vec3(1.0, 0.0, 1.0)    // magenta— cascade 2
+        );
+
+        vec3 cColor = cascadeColors[cascadeIndex];
+        if (cascadeBlendT > 0.0 && cascadeIndex > 0) {
+            vec3 prevColor = cascadeColors[cascadeIndex - 1];
+            cColor = mix(prevColor, cColor, cascadeBlendT);
+        }
+        result = mix(result, cColor, u_CascadeOverlayAlpha);
     }
 
     // ── Tone mapping + gamma ──────────────────────────────────────────────────

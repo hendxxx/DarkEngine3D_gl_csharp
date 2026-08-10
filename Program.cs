@@ -38,10 +38,14 @@ public unsafe class Program
         Glfw.WindowWidth = ResolutionConfig.GetWidth(settings.Resolution);
         Glfw.WindowHeight = ResolutionConfig.GetHeight(settings.Resolution);
 
-        // Apply Shadow Quality to config immediately
-        // 0=Low, 1=Medium, 2=High, 3=Ultra
-        int sq = Math.Clamp(settings.ShadowQuality, 0, ShadowPresets.CascadeSizes.Length - 1);
-        ShadowConfig.CascadeSizes = ShadowPresets.CascadeSizes[sq];
+        // Apply all persisted shadow settings immediately (quality preset, cascade splits
+        // and every bias/blend/filter value tuned in the IDE Shadow Settings panel).
+        ShadowSettings.Apply(settings);
+
+        // Write-through: persist the (possibly default) shadow values back to settings.json
+        // so the file always contains the full shadow field set from the very first run.
+        // (Previously the fields only appeared after the first change in the Shadow panel.)
+        ShadowSettings.Persist();
 
         // Apply Occlusion Mode to config immediately
         switch (settings.OcclusionMode)
@@ -111,6 +115,7 @@ public unsafe class Program
         // Restore viewport grid/snap prefs so the grid on/off + snap values
         // stay consistent across restarts (previously reset to defaults).
         ide.Bridge.ShowDebugGrid = settings.ShowDebugGrid;
+        ide.Bridge.ShowShadows = settings.ShowShadows;
         ide.SetViewportSnap(settings.SnapEnabled, settings.SnapGridSize);
 
         SceneManager sceneManager = new();

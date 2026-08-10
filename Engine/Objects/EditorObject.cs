@@ -2,6 +2,7 @@ using System.IO;
 using System.Numerics;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects;
@@ -44,6 +45,51 @@ public unsafe class EditorObject
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
     public string? GlbFilePath { get; set; } = null;
+
+    // ── glb reference GPU object (loaded lazily from GlbFilePath) ──
+    private GltfObject? _glbObject;
+    private string? _glbLoadedPath;
+    /// <summary>Shared GPU data cache (Flyweight) so multiple GLB references to the same
+    /// file reuse one set of GPU buffers. Keyed by the resolved absolute path.</summary>
+    private static readonly Dictionary<string, GltfModelGpuData> GlbGpuCache = new();
+
+    // Cached uniforms of the SKINNED shadow shader (shadow_skinned_vertex.glsl). GLB
+    // references must use this shader — not the static shadow_vertex.glsl — because it
+    // applies bone skinning, so a skinned model casts a shadow matching its animated
+    // pose instead of the raw bind pose, and it has no normal-bias extrusion that would
+    // be scaled incorrectly by large model transforms.
+    private static uint _glbShadowShader;
+    private static int _glbShadowModelLoc = -1, _glbShadowLightSpaceLoc = -1, _glbShadowJointsLoc = -1;
+
+    private static void EnsureGlbShadowLocations()
+    {
+        if (_glbShadowShader != 0) return;
+        _glbShadowShader = Shader.GetShadowSkinnedShaderProgram();
+        _glbShadowModelLoc = GL.GetUniformLocation(_glbShadowShader, "model");
+        _glbShadowLightSpaceLoc = GL.GetUniformLocation(_glbShadowShader, "lightSpaceMatrix");
+        _glbShadowJointsLoc = GL.GetUniformLocation(_glbShadowShader, "u_Joints");
+    }
+
+    /// <summary>Render the GLB reference into the given cascade's shadow map using the
+    /// SKINNED shadow shader (the same one the game uses for GltfObjects) so skinned
+    /// models cast a silhouette matching their animated pose instead of the raw bind pose,
+    /// and static meshes match their node transforms without a scaled normal-bias offset.</summary>
+    private void DrawGlbShadow(CSM csm, int cascadeIndex)
+    {
+        EnsureGlb();
+        if (_glbObject == null) return;
+        SyncGlbTransform();
+
+        EnsureGlbShadowLocations();
+        GL.UseProgram(_glbShadowShader);
+
+        // Live normal-bias tuning (Shadow Settings panel) — skinned shadow shader.
+        Visual.ShadowUniforms.UploadNormalBias(_glbShadowShader);
+
+        var glbLightSpace = csm.LightSpaceMatrices[cascadeIndex];
+        GL.UniformMatrix4fv(_glbShadowLightSpaceLoc, 1, false, (float*)&glbLightSpace);
+        _glbObject.DrawShadow(_glbShadowModelLoc, _glbShadowJointsLoc);
+    }
 
     // ── Camera (only used when PrimitiveType == Camera) ──
     /// <summary>Vertical FOV in degrees for the placed camera.</summary>
@@ -836,7 +882,7 @@ public unsafe class EditorObject
             int modelLoc, int viewLoc, int projLoc,
             int sunDirLoc, int lightColorLoc, int viewPosLoc,
             int useFogLoc, int fogColorLoc,
-            Camera camera, Lights light)
+            Camera camera, Lights light, CSM? csm = null)
         {
             if (!IsVisible) return;
 
@@ -849,7 +895,7 @@ public unsafe class EditorObject
             {
                 // XZ footprint follows Scale.X/Z; Y stays at real world height (the
                 // plane's thin Scale.Y must NOT flatten the terrain).
-                _terrainMesh.Draw(TerrainModelMatrix, camera, light, this);
+                _terrainMesh.Draw(TerrainModelMatrix, camera, light, this, csm);
 
                 // ── Brush ring indicator ON the terrain surface (while the brush tool
                 // hovers this terrain) — drawn after the mesh so it's always on top. ──
@@ -1372,8 +1418,19 @@ public unsafe class EditorObject
     /// </summary>
     public void DrawWireframe(Camera camera, Vector3 lineColor)
     {
-        if (!IsVisible || _vertexCache == null || _vertexCache.Length < 3
-            || PrimitiveType == EditorPrimitiveType.GlbReference) return;
+        if (!IsVisible) return;
+
+        // ── GLB reference: walk the model's CPU triangle edges (capped at 100k). ──
+        if (PrimitiveType == EditorPrimitiveType.GlbReference)
+        {
+            EnsureGlb();
+            if (_glbObject == null) return;
+            SyncGlbTransform();
+            _glbObject.DrawWireframe(camera, lineColor);
+            return;
+        }
+
+        if (_vertexCache == null || _vertexCache.Length < 3) return;
 
         var worldMatrix = WorldMatrix;
         int triCount = _vertexCache.Length / 3;
@@ -1436,8 +1493,19 @@ public unsafe class EditorObject
     /// </summary>
     public void DrawOutlineStencil(Camera camera)
     {
-        if (!IsVisible || _object3D == null
-            || PrimitiveType == EditorPrimitiveType.GlbReference) return;
+        if (!IsVisible) return;
+
+        // ── GLB reference: draw the model's own meshes into the stencil mask. ──
+        if (PrimitiveType == EditorPrimitiveType.GlbReference)
+        {
+            EnsureGlb();
+            if (_glbObject == null) return;
+            SyncGlbTransform();
+            _glbObject.DrawOutlineStencil(camera);
+            return;
+        }
+
+        if (_object3D == null) return;
 
         uint prog = Shader.GetOutlineShaderProgram();
         if (prog == 0) return;
@@ -1478,8 +1546,19 @@ public unsafe class EditorObject
     /// </summary>
     public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
     {
-        if (!IsVisible || _object3D == null
-            || PrimitiveType == EditorPrimitiveType.GlbReference) return;
+        if (!IsVisible) return;
+
+        // ── GLB reference: inverted-hull outline over the model's meshes. ──
+        if (PrimitiveType == EditorPrimitiveType.GlbReference)
+        {
+            EnsureGlb();
+            if (_glbObject == null) return;
+            SyncGlbTransform();
+            _glbObject.DrawOutline(camera, outlineColor, outlineScale);
+            return;
+        }
+
+        if (_object3D == null) return;
 
         uint prog = Shader.GetOutlineShaderProgram();
         if (prog == 0) return;
@@ -1522,22 +1601,144 @@ public unsafe class EditorObject
     /// <summary>Get world-space AABB (method version for API compatibility).</summary>
     public AABB GetWorldAABB() => WorldAABB;
 
+    // ════════════════════════════════════════════════════════════════════
+    //  GLB reference (PrimitiveType == GlbReference)
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>Lazily load the GLB model referenced by <see cref="GlbFilePath"/> into a
+    /// reusable <see cref="GltfObject"/>. GPU data is cached per file (flyweight) so many
+    /// references to the same model share one set of buffers.</summary>
+    private void EnsureGlb()
+    {
+        if (PrimitiveType != EditorPrimitiveType.GlbReference) return;
+
+        // Compare against the RESOLVED path so different relative/absolute spellings of the
+        // same file (e.g. after a load/save roundtrip) don't trigger a needless reload.
+        string resolvedPath = string.IsNullOrEmpty(GlbFilePath) ? "" : PathHelpers.Resolve(GlbFilePath);
+        if (_glbObject != null && _glbLoadedPath == resolvedPath) return;
+
+        _glbObject = null;
+        _glbLoadedPath = null;
+        if (string.IsNullOrEmpty(resolvedPath)) return;
+
+        try
+        {
+            if (!File.Exists(resolvedPath))
+            {
+                Console.WriteLine($"[EditorObject] GLB not found: {resolvedPath}");
+                return;
+            }
+            if (!GlbGpuCache.TryGetValue(resolvedPath, out var gpuData))
+            {
+                var data = GltfLoader.Load(resolvedPath);
+                gpuData = new GltfModelGpuData(data);
+                GlbGpuCache[resolvedPath] = gpuData;
+            }
+            _glbObject = new GltfObject(gpuData, Position, Quaternion.Identity, 1f)
+            {
+                IsStatic = true,
+            };
+            _glbObject.Update(0f); // bake node hierarchy transforms for the bind pose
+            _glbLoadedPath = resolvedPath;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[EditorObject] Failed to load GLB '{GlbFilePath}': {ex.Message}");
+            _glbObject = null;
+        }
+    }
+
+    /// <summary>Push the current editor transform (position/rotation/scale) into the GLB
+    /// object so Draw/DrawShadow/outline render at the gizmo transform. GLB scale is uniform
+    /// (uses Scale.X — non-uniform editor scale is approximated by the X component).</summary>
+    private void SyncGlbTransform()
+    {
+        if (_glbObject == null) return;
+        _glbObject.Position = Position;
+        _glbObject.Rotation = Quaternion.CreateFromYawPitchRoll(
+            RotationEuler.Y * MathF.PI / 180f,
+            RotationEuler.X * MathF.PI / 180f,
+            RotationEuler.Z * MathF.PI / 180f);
+        _glbObject.Scale = Math.Max(0.001f, Scale.X);
+    }
+
+    /// <summary>Approximate world-space bounding radius of the GLB mesh (for shadow-frustum
+    /// culling). Falls back to a scale-based sphere when the model isn't loaded yet.</summary>
+    public float GetGlbBoundRadius()
+    {
+        EnsureGlb();
+        if (_glbObject?.GpuData != null)
+        {
+            var aabb = _glbObject.GpuData.LocalAABB;
+            float modelRadius = (aabb.Max - aabb.Min).Length() * 0.5f;
+            float maxScale = Math.Max(Scale.X, Math.Max(Scale.Y, Scale.Z));
+            return Math.Max(1f, modelRadius * Math.Max(1f, maxScale));
+        }
+        return Math.Max(1f, 1.5f * Scale.Length() * 0.5f);
+    }
+
+    /// <summary>Skinned joint matrices of the loaded GLB (or null when not skinned/loaded).</summary>
+    public Matrix4x4[]? GetGlbJointMatrices()
+    {
+        EnsureGlb();
+        return _glbObject?.GetJointMatrices();
+    }
+
+    /// <summary>Render the GLB reference meshes with the gltf shader. The caller
+    /// (EditorObjectManager) has already bound the gltf program and uploaded the shared
+    /// view/proj/light/shadow/sampler uniforms.</summary>
+    public void DrawGlb(
+        int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc,
+        int metallicFactorLoc = -1, int roughnessFactorLoc = -1, int normalScaleLoc = -1,
+        int occlusionStrengthLoc = -1, int emissiveFactorLoc = -1,
+        int hasNormalTextureLoc = -1, int hasMetallicRoughnessTextureLoc = -1,
+        int hasOcclusionTextureLoc = -1, int hasEmissiveTextureLoc = -1)
+    {
+        if (!IsVisible) return;
+        EnsureGlb();
+        if (_glbObject == null) return;
+        SyncGlbTransform();
+        _glbObject.Draw(modelLoc, baseColorFactorLoc, useAlbedoLoc, albedoMapLoc,
+            metallicFactorLoc, roughnessFactorLoc, normalScaleLoc,
+            occlusionStrengthLoc, emissiveFactorLoc,
+            hasNormalTextureLoc, hasMetallicRoughnessTextureLoc,
+            hasOcclusionTextureLoc, hasEmissiveTextureLoc);
+    }
+
     /// <summary>Render shadow using individual uniform locations (matching EditorObjectManager's call pattern).</summary>
     public void RenderShadow(int shadowModelLoc, Camera camera, CSM csm, int cascadeIndex)
     {
-        if (!IsVisible || !CastShadow || _object3D == null) return;
+        if (!IsVisible || !CastShadow) return;
+
+        // ── Advanced terrain planes cast shadows through their dedicated mesh. ──
+        if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
+        {
+            _terrainMesh.RenderShadow(TerrainModelMatrix, csm, cascadeIndex);
+            return;
+        }
+
+        // ── GLB reference: skinned shadow shader (matches the animated pose). ──
+        if (PrimitiveType == EditorPrimitiveType.GlbReference)
+        {
+            DrawGlbShadow(csm, cascadeIndex);
+            return;
+        }
+
+        if (_object3D == null) return;
 
         // Use the internally stored shadow shader (provided by manager)
         uint shadowShader = Shader.GetShadowShaderProgram();
         GL.UseProgram(shadowShader);
 
         var lightSpace = csm.LightSpaceMatrices[cascadeIndex];
-        GL.UniformMatrix4fv(shadowModelLoc, 1, false, (float*)&lightSpace);
         GL.UniformMatrix4fv(GL.GetUniformLocation(shadowShader, "lightSpaceMatrix"), 1, false, (float*)&lightSpace);
 
-        var model = WorldMatrix;
-        GL.UniformMatrix4fv(shadowModelLoc, 1, false, (float*)&model);
-
+        // CRITICAL: Object3D.RenderShadow uploads its INTERNAL modelMatrix to the "model"
+        // uniform. That matrix is only kept fresh by the legacy Draw(float dt, ...) path,
+        // which the manager no longer calls — so shadows were rendered with the stale
+        // constructor-default matrix (identity at the origin) and the stale-matrix frustum
+        // culling culled everything out. Sync it with the current editor transform here.
+        _object3D.UpdateModelMatriC(WorldMatrix);
         _object3D.RenderShadow(camera, csm, cascadeIndex, shadowShader, shadowModelLoc);
     }
 
@@ -1572,8 +1773,27 @@ public unsafe class EditorObject
     /// <summary>Render shadow for this object.</summary>
     public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
     {
-        if (!IsVisible || !CastShadow || _object3D == null) return;
+        if (!IsVisible || !CastShadow) return;
 
+        // ── Advanced terrain planes cast shadows through their dedicated mesh. ──
+        if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
+        {
+            _terrainMesh.RenderShadow(TerrainModelMatrix, csm, cascadeIndex);
+            return;
+        }
+
+        // ── GLB reference: skinned shadow shader (matches the animated pose). ──
+        if (PrimitiveType == EditorPrimitiveType.GlbReference)
+        {
+            DrawGlbShadow(csm, cascadeIndex);
+            return;
+        }
+
+        if (_object3D == null) return;
+
+        // Keep the internal model matrix in sync (see the other overload for details) so
+        // the shadow pass renders at the object's current position/scale/rotation.
+        _object3D.UpdateModelMatriC(WorldMatrix);
         _object3D.RenderShadow(camera, csm, cascadeIndex, shadowShader, modelLoc);
     }
 

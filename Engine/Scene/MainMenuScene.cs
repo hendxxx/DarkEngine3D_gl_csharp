@@ -894,6 +894,19 @@ public unsafe class MainMenuScene : IScene
             _camera.FoV = fovVal;
         }
         if (settingIdx == 6) ApplyMouseSensitivity(_settingValues[6]);
+        if (settingIdx == 3) ApplyShadowQualityImmediate();
+    }
+
+    /// <summary>Rebuild the viewport CSM when the Shadow Quality setting changes so the
+    /// new cascade resolutions take effect immediately (the CSM captures the cascade-size
+    /// array at construction, so a quality change must recreate it).</summary>
+    private void ApplyShadowQualityImmediate()
+    {
+        // Route through ShadowSettings so the IDE Shadow panel and the settings menu stay
+        // in sync (CSM instances rebuild themselves via ShadowSettings.Version).
+        Config.ShadowSettings.ApplyQuality(_settingValues[3]);
+        _csm?.Dispose();
+        _csm = null;
     }
 
     private void ApplySettings()
@@ -905,20 +918,22 @@ public unsafe class MainMenuScene : IScene
         int oc = _settingValues[4];
         int fovVal = int.Parse(_settingOptions[5][_settingValues[5]]);
 
-        var data = new SettingsData
-        {
-            Resolution = res,
-            Fullscreen = displayMode != 2,
-            BorderlessFullscreen = displayMode == 1,
-            VSync = vs,
-            ShadowQuality = sq,
-            OcclusionMode = oc,
-            Fov = fovVal,
-            MouseSensitivity = _settingValues[6],
-        };
+        // Load first so the persisted Shadow Settings panel prefs (biases, cascade splits,
+        // normal bias, filter mode) are preserved — a fresh SettingsData would reset them.
+        var data = SettingsSave.Load();
+        data.Resolution = res;
+        data.Fullscreen = displayMode != 2;
+        data.BorderlessFullscreen = displayMode == 1;
+        data.VSync = vs;
+        data.ShadowQuality = sq;
+        data.OcclusionMode = oc;
+        data.Fov = fovVal;
+        data.MouseSensitivity = _settingValues[6];
         SettingsSave.Save(data);
 
-        Config.ShadowConfig.CascadeSizes = Config.ShadowPresets.CascadeSizes[sq];
+        Config.ShadowSettings.ApplyQuality(sq);
+        _csm?.Dispose();
+        _csm = null; // rebuild CSM with the new cascade resolutions
         ApplyOcclusionMode(oc);
         _camera.BaseFoV = fovVal;
         _camera.FoV = fovVal;
@@ -1070,9 +1085,13 @@ public unsafe class MainMenuScene : IScene
             if (editorBridge?.EditorObjectManager is { Count: > 0 } editorObjMgr)
             {
                 // ── CSM shadow pass so editor objects cast shadows matching the sun
-                // direction (sky gizmo / light marker) in this viewport ──
-                _csm ??= new CSM(Config.ShadowConfig.CascadeSizes[0]);
-                editorObjMgr.RenderShadowPass(_camera, _light, _csm);
+                // direction (sky gizmo / light marker) in this viewport. Skipped when the
+                // viewport "Shadow" toggle is off (maps are cleared to fully-lit instead). ──
+                _csm ??= new CSM(Config.ShadowSettings.CascadeSizes[0]);
+                if (editorBridge.ShowShadows)
+                    editorObjMgr.RenderShadowPass(_camera, _light, _csm);
+                else
+                    _csm.ClearShadowMaps();
 
                 // Restore the shared FBO + scene render state after the depth-only shadow
                 // pass (re-apply this scene's render properties, then force depth on for

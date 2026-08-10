@@ -48,6 +48,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _shadowMap0Loc;
         private readonly int _shadowMap1Loc;
         private readonly int _shadowMap2Loc;
+        private int _showCSMCascadeColorLoc = -1;
         private readonly int _lightSpaceLoc0;
         private readonly int _lightSpaceLoc1;
         private readonly int _lightSpaceLoc2;
@@ -116,6 +117,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _shadowMap1Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap1");
             _shadowMap2Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap2");
             _lightSpaceLoc0 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[0]");
+            _showCSMCascadeColorLoc = GL.GetUniformLocation(_shaderProgram, "showCSMCascadeColor");
             _lightSpaceLoc1 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[1]");
             _lightSpaceLoc2 = GL.GetUniformLocation(_shaderProgram, "lightSpaceMatrices[2]");
             _cascadeEndsLoc0 = GL.GetUniformLocation(_shaderProgram, "cascadeEnds[0]");
@@ -679,6 +681,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 int shadowFilterLoc = GL.GetUniformLocation(_shaderProgram, "shadowFilterMode");
                 if (shadowFilterLoc != -1)
                     GL.Uniform1i(shadowFilterLoc, Inputs.Keyboard.GetIsHardShadow());
+
+            // Live shadow bias / blend tuning (Shadow Settings panel) — gltf shader values.
+            Visual.ShadowUniforms.UploadGltf(_shaderProgram);
+            if (_showCSMCascadeColorLoc >= 0)
+                GL.Uniform1i(_showCSMCascadeColorLoc, Inputs.Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
             }
             
             // Set default PBR uniforms
@@ -822,6 +829,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowSkinnedShader, int modelLoc, int jointsLoc, uint shadowStaticAlphaShader, int shadowStaticAlphaModelLoc)
         {
             GL.UseProgram(shadowSkinnedShader);
+
+            // Live normal-bias tuning (Shadow Settings panel) — skinned shadow shader.
+            Visual.ShadowUniforms.UploadNormalBias(shadowSkinnedShader);
 
             // Build light-space frustum planes for this cascade to cull objects.
             // Objects outside the light frustum cannot cast shadows into this cascade.

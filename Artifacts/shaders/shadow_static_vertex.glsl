@@ -11,6 +11,9 @@ layout(location = 8) in vec4 aModelRow3;
 
 uniform mat4 lightSpaceMatrix;
 
+// Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
+uniform float u_NormalBias = 0.03;
+
 out vec2 TexCoord;
 
 void main()
@@ -19,7 +22,7 @@ void main()
     TexCoord = aTexCoord;
 
     // Fix Projection artefacts — push vertex slightly along normal to prevent self-shadowing
-    float normalBias = 0.02;
+    float normalBias = u_NormalBias;
     vec3 extrudedPos = aPos + aNormal * normalBias;
     gl_Position = lightSpaceMatrix * model * vec4(extrudedPos, 1.0);
 }

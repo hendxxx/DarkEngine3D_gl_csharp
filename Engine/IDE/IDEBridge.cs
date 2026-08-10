@@ -90,6 +90,9 @@ public class IDEBridge
     // ── Editor debug grid toggle (shown in the viewport while editing) ──
     public bool ShowDebugGrid { get; set; } = true;
 
+    // ── Editor viewport shadows toggle (CSM on/off for editor objects) ──
+    public bool ShowShadows { get; set; } = true;
+
     // ── Action to select object ──
     public Action<int>? SelectObjectByIndex { get; set; }
     public Action? FocusCameraOnSelected { get; set; }
@@ -258,6 +261,29 @@ public class IDEBridge
         }
     }
 
+    /// <summary>Resolve the terrain the height-overlay toggles (heatmap/contours) should act
+    /// on. Returns the currently selected terrain if there is one; otherwise auto-selects the
+    /// first visible terrain-enabled plane so the toggles work without manually selecting the
+    /// plane first. Shared by the viewport toolbar (Shade/Contours) and the Inspector.</summary>
+    public EditorObject? ResolveTerrainForOverlay()
+    {
+        if (SelectedEditorObject is { TerrainEnabled: true } sObj)
+            return sObj;
+
+        if (EditorObjectManager != null)
+        {
+            foreach (var obj in EditorObjectManager.Objects)
+            {
+                if (obj is { TerrainEnabled: true, IsVisible: true })
+                {
+                    SelectEditorObject(obj);
+                    return obj;
+                }
+            }
+        }
+        return null;
+    }
+
     /// <summary>Toggle an object in the multi-selection set (Ctrl+Click). If the removed object
     /// was the primary, the last remaining member becomes the new primary.</summary>
     public void ToggleEditorObjectSelection(EditorObject obj)
@@ -342,7 +368,8 @@ public class IDEBridge
 
     // ── Terrain brush paint tool (ViewportPanel) ──
     /// <summary>True while the terrain brush tool is active in the viewport
-    /// (toolbar button or B shortcut). Left-drag raises, Ctrl+left-drag lowers.</summary>
+    /// (toolbar button only — keyboard shortcuts are disabled). Left-drag raises,
+    /// Ctrl+left-drag lowers.</summary>
     public bool TerrainBrushActive { get; set; }
     /// <summary>Active brush tool: 0 = ⛰ height (raise/lower), 1 = 🎨 layer paint (air/tanah/rumput/salju).</summary>
     public int TerrainBrushMode { get; set; } = 0;
