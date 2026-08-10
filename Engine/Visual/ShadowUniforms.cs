@@ -2,6 +2,7 @@ using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
@@ -119,6 +120,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // clamped at 128 there, so a cascade never gets less extrusion than cascade 0.
             int active = Math.Clamp(CSM.ActiveCascadeIndex, 0, CSM.LastTexelScale.Length - 1);
             GL.Uniform1f(n, value * CSM.LastTexelScale[active]);
+        }
+
+        /// <summary>Upload the inverse-transpose of the given model matrix as u_NormalMatrix
+        /// (mat3) to the shadow vertex shaders. The shadow shaders extrude each vertex along
+        /// its normal to prevent self-shadow acne; without this matrix the extrusion follows
+        /// the MODEL-space normal, which is wrong on non-uniform scale / rotation and pushes
+        /// surfaces INTO the shadow map (dark stripes following the geometry).
+        /// Identity-safe: for pure rotation/translation the result is the same rotation.</summary>
+        public static unsafe void UploadShadowNormalMatrix(uint program, in Matrix4x4 model)
+        {
+            int loc = Loc(program, "u_NormalMatrix");
+            if (loc < 0) return;
+
+            // Normal matrix = inverse-transpose of the upper-left 3×3.
+            var m33 = new Matrix4x4(
+                model.M11, model.M12, model.M13, 0f,
+                model.M21, model.M22, model.M23, 0f,
+                model.M31, model.M32, model.M33, 0f,
+                0f, 0f, 0f, 1f);
+            Matrix4x4.Invert(m33, out var inv);
+
+            // GL.UniformMatrix3fv takes column-major 9 floats; System.Numerics is
+            // row-major. Reading the COLUMNS of `inv` and storing them contiguously
+            // uploads `inv` itself in column-major order — which is the transpose of
+            // the matrix the row-vector convention would write, i.e. exactly what
+            // the shader needs for `u_NormalMatrix * normal` (column-vector math).
+            float* m = stackalloc float[9];
+            m[0] = inv.M11; m[1] = inv.M21; m[2] = inv.M31;
+            m[3] = inv.M12; m[4] = inv.M22; m[5] = inv.M32;
+            m[6] = inv.M13; m[7] = inv.M23; m[8] = inv.M33;
+            GL.UniformMatrix3fv(loc, 1, false, m);
         }
 
         /// <summary>Upload the normal bias for a terrain shadow pass, boosted by how much

@@ -765,6 +765,11 @@ public unsafe class EditorTerrainMesh : IDisposable
         GL.UniformMatrix4fv(GL.GetUniformLocation(shadowShader, "model"), 1, false, (float*)&model);
         GL.UniformMatrix4fv(GL.GetUniformLocation(shadowShader, "lightSpaceMatrix"), 1, false, (float*)&lightSpace);
 
+        // The terrain's model matrix carries non-uniform XZ scale (footprint) and rotation,
+        // so the shadow shader's normal-bias extrusion needs the inverse-transpose to stay
+        // on the true surface normal — otherwise faces push INTO the shadow map.
+        Visual.ShadowUniforms.UploadShadowNormalMatrix(shadowShader, model);
+
         GL.BindVertexArray(_vao);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount);
         GL.BindVertexArray(0);

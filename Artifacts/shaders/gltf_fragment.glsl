@@ -21,13 +21,13 @@ uniform float cascadeEnds[3];
 
 // ── LIVE SHADOW TUNING (uploaded from the IDE Shadow Settings panel; the defaults
 // match the values that were previously hardcoded here) ──
-uniform float u_ConstantBias = 0.0;   // always-added bias (all surfaces)
+uniform float u_ConstantBias = 0.000001;   // always-added bias (all surfaces)
 uniform float u_SlopeBias = 0.0004;  // slope-scaled bias coefficient (~5 texels steep)
 uniform float u_MinBias = 0.0002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
 uniform float u_BlendRange = 0.10;   // cascade blend width, fraction of the split distance
 uniform vec3 u_DepthRange = vec3(1.0); // world ortho depth range per cascade (zFar - zNear)
 uniform vec3 u_TexelWorld = vec3(1.0); // world size of one shadow-map texel per cascade
-uniform vec3 u_MaxWorldBias = vec3(0.15, 0.25, 0.5); // per-cascade cap on the bias' WORLD offset (m)
+uniform vec3 u_MaxWorldBias = vec3(0.15, 0.25, 1.0); // per-cascade cap on the bias' WORLD offset (m)
 
 // Debug overlay (L key): tint each cascade with a transparent color code.
 uniform int showCSMCascadeColor;

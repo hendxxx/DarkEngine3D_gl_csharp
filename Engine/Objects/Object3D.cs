@@ -327,6 +327,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.UniformMatrix4fv(modelLoc, 1, false, ptr);
             }
 
+            // Upload the inverse-transpose (normal matrix) so the shadow shader's normal-bias
+            // extrusion stays correct under non-uniform scale / rotation. Without it the
+            // extrusion follows the raw model-space normal, pushing some faces INTO the
+            // shadow map — the dark stripes that follow the geometry.
+            Visual.ShadowUniforms.UploadShadowNormalMatrix(shadowShader, modelMatrix);
+
             Plane[]? orthoPlanes = CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
 
             if (!IsObjectInsideOrthoFrustum(orthoPlanes)) return;

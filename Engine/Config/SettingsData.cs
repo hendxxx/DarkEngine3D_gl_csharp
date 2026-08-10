@@ -33,26 +33,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float ShadowCascade1 { get; set; } = 70f;
         public float ShadowCascade2 { get; set; } = 140f;
         /// <summary>Always-added fragment bias (all surfaces).</summary>
-        public float ShadowConstantBias { get; set; } = 0.0f;
+        public float ShadowConstantBias { get; set; } = 0.000001f;
         /// <summary>Slope-scaled fragment bias (main + terrain shaders). ~4 texels on steep faces.</summary>
         public float ShadowSlopeBias { get; set; } = 0.0003f;
         /// <summary>Minimum fragment bias (flat, light-facing surfaces). ~2.5 texels.</summary>
         public float ShadowMinBias { get; set; } = 0.0002f;
         /// <summary>Always-added fragment bias (gltf / GLB shader).</summary>
-        public float ShadowGltfConstantBias { get; set; } = 0.0f;
+        public float ShadowGltfConstantBias { get; set; } = 0.000001f;
         /// <summary>Slope-scaled fragment bias (gltf / GLB shader). ~5 texels on steep faces.</summary>
         public float ShadowGltfSlopeBias { get; set; } = 0.0004f;
         /// <summary>Minimum fragment bias (gltf / GLB shader). ~2.5 texels.</summary>
         public float ShadowGltfMinBias { get; set; } = 0.0002f;
         /// <summary>Cascade blend width, as a fraction of the split distance.</summary>
         public float ShadowBlendRange { get; set; } = 0.10f;
-        /// <summary>Normal bias — vertex extrusion when casting shadows. ~1 cascade-0 texel.</summary>
-        public float ShadowNormalBias { get; set; } = 0.03f;
+        /// <summary>Normal bias — vertex extrusion when casting shadows.</summary>
+        public float ShadowNormalBias { get; set; } = 0.000001f;
         /// <summary>Hard cap on the fragment bias' WORLD offset, per cascade (m) — kills
-        /// peter-panning outline; cascade 0 tight, cascade 2 loose.</summary>
+        /// peter-panning outline; cascade 0 tight, cascade 2 loose (1.0 m ≈ 2 far texels
+        /// even at the game camera's 2800 m far plane keeps the far cascade acne-free).</summary>
         public float ShadowMaxWorldBias0 { get; set; } = 0.15f;
         public float ShadowMaxWorldBias1 { get; set; } = 0.25f;
-        public float ShadowMaxWorldBias2 { get; set; } = 0.5f;
+        public float ShadowMaxWorldBias2 { get; set; } = 1.0f;
         /// <summary>Strength of the CSM LOD color overlay (L key debug tint), 0..1.</summary>
         public float ShadowCascadeOverlayAlpha { get; set; } = 0.15f;
         /// <summary>Depth-map texture filtering: true = LINEAR, false = NEAREST.</summary>

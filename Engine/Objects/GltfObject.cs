@@ -1293,6 +1293,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
 
+                // The shadow shader extrudes the (skinned) vertex along its normal to prevent
+                // self-shadow acne. Under non-uniform scale / rotation the raw model-space
+                // normal points the wrong way, pushing surfaces INTO the shadow map (dark
+                // stripes). Upload the inverse-transpose per mesh so the extrusion stays on
+                // the true surface normal.
+                // The shadow program is bound by the caller (GameScene / EditorObject) —
+                // query it so the uniform cache keys on the right program.
+                int boundProgram = 0;
+                GL.GetIntegerv(Const.GL_CURRENT_PROGRAM, &boundProgram);
+                Visual.ShadowUniforms.UploadShadowNormalMatrix((uint)boundProgram, modelMat);
+
                 GL.BindVertexArray(mesh.VAO);
                 if (mesh.IndexCount > 0) 
                     GL.DrawElements(Const.GL_TRIANGLES, mesh.IndexCount, Const.GL_UNSIGNED_INT, null);

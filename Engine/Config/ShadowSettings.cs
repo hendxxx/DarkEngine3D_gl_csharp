@@ -35,12 +35,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // texel ≈ 0.03 m): ~2.5 texels flat (Min), ~4 texels on steep faces (Slope).
         // The texel-proportional per-cascade scaling keeps this texel count at every
         // distance, so these defaults stay the ideal anti-acne/peter-panning balance.
-        public static float ConstantBias = 0.0f;   // always-added term (uniform across all surfaces)
+        public static float ConstantBias = 0.000001f;   // always-added term (uniform across all surfaces)
         public static float SlopeBias = 0.0003f;   // extra bias on steep faces (slope-scaled)
         public static float MinBias = 0.0002f;     // safety floor for flat, light-facing surfaces
 
         // ── Fragment bias — gltf (PBR) shader (separate tuning values) ──
-        public static float GltfConstantBias = 0.0f;
+        public static float GltfConstantBias = 0.000001f;
         public static float GltfSlopeBias = 0.0004f;   // ~5 texels on steep faces
         public static float GltfMinBias = 0.0002f;     // ~2.5 texels flat
 
@@ -52,7 +52,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// scale is capped in CSM.LastTexelScale (8×) so the world extrusion never reaches
         /// meters in the far cascades (that would detach the shadow from the object —
         /// the bright "outline" peter-panning artifact).</summary>
-        public static float NormalBias = 0.03f;
+        public static float NormalBias = 0.000001f;
 
         /// <summary>Hard cap on the fragment bias' WORLD offset (bias_ndc × depthRange),
         /// per cascade. The texel-proportional per-cascade scaling keeps a constant TEXEL
@@ -60,9 +60,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// meters-scale world offset and shadows detach from their casters (bright outline).
         /// Capping the world offset directly bounds the peter-panning while keeping the
         /// near cascade tight: cascade 0 (0.15 m) stays barely above its natural ≈0.08 m
-        /// offset (kills the thin outline at object bases), cascade 2 (0.5 m) keeps room
-        /// for anti-acne at distance. Set individually in the panel.</summary>
-        public static float[] MaxWorldBias = [0.15f, 0.25f, 0.5f];
+        /// offset (kills the thin outline at object bases), cascade 2 (1.0 m) keeps room
+        /// for anti-acne at distance — ~2 texels even for the game camera's far plane
+        /// (2800 m, cascade-2 texel ≈0.5 m) and ~4 texels in the editor viewport (500 m).
+        /// Set individually in the panel.</summary>
+        public static float[] MaxWorldBias = [0.15f, 0.25f, 1.0f];
 
         /// <summary>Depth-map texture filtering: LINEAR softens hard-shadow sampling slightly.</summary>
         public static bool LinearShadowMap = false;
@@ -125,15 +127,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             Quality = QualityMedium;
             CascadeSizes = ShadowPresets.CascadeSizes[QualityMedium];
             CascadeLayer = [30f, 70f, 140f];
-            ConstantBias = 0.0f;
+            ConstantBias = 0.000001f;
             SlopeBias = 0.0003f;
             MinBias = 0.0002f;
-            GltfConstantBias = 0.0f;
+            GltfConstantBias = 0.000001f;
             GltfSlopeBias = 0.0004f;
             GltfMinBias = 0.0002f;
             BlendRange = 0.10f;
-            NormalBias = 0.03f;
-            MaxWorldBias = [0.15f, 0.25f, 0.5f];
+            NormalBias = 0.000001f;
+            MaxWorldBias = [0.15f, 0.25f, 1.0f];
             CascadeOverlayAlpha = 0.15f;
             LinearShadowMap = false;
             Version++;
