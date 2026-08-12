@@ -374,8 +374,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.UniformMatrix4fv(projectionLocation, 1, false, (float*)&projection);
             }
         }
-        /// <summary>Free-fly camera with WASD + mouse look (button toggle, or hold CTRL for mouse look).
-        /// Pressing ESC cancels fly mouse-look. While CTRL is held, both mouse-look and WASD movement
+        /// <summary>Free-fly camera with WASD + mouse look. Mouse look is active when the ✈ Fly
+        /// toggle (FlyMouseLook) is on, OR while the Right Mouse Button is held in the viewport — the
+        /// RMB hold is a TEMPORARY freefly-style look that never enables FlyMouseLook/FlyMode itself.
+        /// Pressing ESC cancels the Fly toggle. While CTRL is held, both mouse-look and WASD movement
         /// are suppressed so editor shortcuts (Ctrl+D duplicate, Ctrl+Z undo, etc.) don't move the camera.</summary>
         public void SetCameraFlyMode(nint window, float dt, bool processInput = true)
         {
@@ -398,8 +400,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
                                 Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
 
-                // ── Mouse look: only active when the Fly toggle is ON (and CTRL not held) ──
-                if (FlyMouseLook && !ctrlHeld)
+                // ── Mouse look: active when the ✈ Fly toggle is ON (and CTRL not held) OR while
+                // the Right Mouse Button is held in the viewport. The RMB hold is a temporary
+                // freefly-style look — it never flips FlyMouseLook/FlyMode, so releasing the button
+                // returns to normal editing and the ✈ button state stays untouched.
+                bool rightLook = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT);
+                if (!ctrlHeld && (FlyMouseLook || rightLook))
                 {
                     // Use configurable sensitivity from CameraConfig
                     float sens = Config.CameraConfig.FlyMouseSensitivity;
@@ -410,6 +416,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     if (!_mouseLookWasActive)
                     {
                         Mouse.ShowMouse(false);
+                        // GLFW re-centers the hidden cursor (disabled mode) — drop the stale
+                        // delta so the camera doesn't snap on the first look frame.
+                        Mouse.ResetState();
                         _mouseLookWasActive = true;
                     }
                 }

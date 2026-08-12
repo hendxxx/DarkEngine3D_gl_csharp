@@ -18,6 +18,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // terrain fragment shader (with hardcoded height/slope bands) stays untouched.
         static uint editorTerrainShaderProgram;
 
+        // Editor primitives with a PBR material (Box/Sphere/flat plane) — dedicated
+        // program with 7 optional maps + tuning (reuses the shared vertex shader).
+        static uint objectPbrShaderProgram;
+
         static uint rainStreakShaderProgram;
         static uint rainOverlayShaderProgram;
         static uint rainGlassShaderProgram; 
@@ -88,6 +92,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             editorTerrainShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/vertex_shader.glsl",
                 "Artifacts/shaders/terrainEditor_fragment.glsl");
+
+            // Editor primitives with PBR material — same vertex layout, UV-based PBR
+            // fragment shader with optional albedo/normal/metallic/roughness/AO/height/
+            // emission maps and per-map-type tuning.
+            objectPbrShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/vertex_shader.glsl",
+                "Artifacts/shaders/objectPbr_fragment.glsl");
         }
 
         public void Use()
@@ -114,6 +125,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetEditorTerrainShaderProgram()
         {
             return editorTerrainShaderProgram;
+        }
+
+        /// <summary>Shader program used to render editor primitives with a PBR material
+        /// (optional albedo/normal/metallic/roughness/AO/height/emission maps + tuning).</summary>
+        public static uint GetObjectPbrShaderProgram()
+        {
+            return objectPbrShaderProgram;
         }
 
         public static uint GetRainStreakShaderProgram()

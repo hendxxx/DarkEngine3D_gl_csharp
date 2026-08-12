@@ -90,8 +90,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_TEXTURE8 = 0x84C8;
 
         public const uint GL_TEXTURE_2D = 0x0DE1;
+        public const uint GL_TEXTURE_2D_ARRAY = 0x806B;
         public const uint GL_TEXTURE_WRAP_S = 0x2802;
         public const uint GL_TEXTURE_WRAP_T = 0x2803;
+        public const uint GL_TEXTURE_WRAP_R = 0x8072;
         public const uint GL_TEXTURE_MIN_FILTER = 0x2801;
         public const uint GL_TEXTURE_MAG_FILTER = 0x2800;
         public const uint GL_TEXTURE_BORDER_COLOR = 0x1004;

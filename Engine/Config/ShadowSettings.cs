@@ -48,11 +48,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static float BlendRange = 0.10f;
 
         /// <summary>Normal bias — vertex extrusion when casting shadows (anti-acne).
-        /// ~1 cascade-0 texel (≈0.03 m) — scaled per cascade by the texel ratio, but the
-        /// scale is capped in CSM.LastTexelScale (8×) so the world extrusion never reaches
-        /// meters in the far cascades (that would detach the shadow from the object —
-        /// the bright "outline" peter-panning artifact).</summary>
-        public static float NormalBias = 0.000001f;
+        /// Extrusion happens in WORLD space (after the model transform — the shadow vertex
+        /// shaders now extrude worldPos, not aPos), so this value is directly in world
+        /// units for identity-model casters (game terrain, primitives); the terrain shadow
+        /// passes multiply it by a size-based boost (EditorTerrainMesh / TerrainChunk) so
+        /// large heightmap surfaces get proportionally more. Scaled per cascade by the
+        /// texel ratio, but the scale is capped in CSM.LastTexelScale (8×) so the world
+        /// extrusion never reaches meters in the far cascades (that would detach the
+        /// shadow from the object — the bright "outline" peter-panning artifact).</summary>
+        public static float NormalBias = 0.0010f;
 
         /// <summary>Hard cap on the fragment bias' WORLD offset (bias_ndc × depthRange),
         /// per cascade. The texel-proportional per-cascade scaling keeps a constant TEXEL
@@ -134,7 +138,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             GltfSlopeBias = 0.0004f;
             GltfMinBias = 0.0002f;
             BlendRange = 0.10f;
-            NormalBias = 0.000001f;
+            NormalBias = 0.0010f;
             MaxWorldBias = [0.15f, 0.25f, 1.0f];
             CascadeOverlayAlpha = 0.15f;
             LinearShadowMap = false;

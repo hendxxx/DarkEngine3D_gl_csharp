@@ -165,16 +165,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _ => new Vector3(0.8f, 0.8f, 0.8f),
                 }
             };
-            // New planes spawn as advanced terrain by default (the whole point of the
-            // feature) — every setting stays editable in the Inspector, and terrain can be
-            // toggled off to get back a plain flat plane.
+            // Planes are ALWAYS advanced heightmapped terrain (the old toggle was removed) —
+            // every setting stays editable in the Inspector. All 5 layer textures get a real
+            // file by default so the height-banded + slope texturing renders immediately.
             if (type == EditorPrimitiveType.Plane)
             {
                 obj.TerrainEnabled = true;
                 obj.TerrainHeightmapPath = "Artifacts/Maps/photoreal_v1.raw";
+                obj.TerrainTextureAirPath = "Artifacts/Textures/floor.jpg";
                 obj.TerrainTextureDirtPath = "Artifacts/Textures/aerial rock/aerial_rocks_04_diff_4k.jpg";
                 obj.TerrainTextureGrassPath = "Artifacts/Textures/aerial grass/aerial_grass_rock_diff_4k.jpg";
                 obj.TerrainTextureSnowPath = "Artifacts/Textures/snow/snow_01_diff_4k.jpg";
+                obj.TerrainTextureSlopePath = "Artifacts/Textures/cliff side/cliff_side_diff_4k.jpg";
             }
 
             if (type != EditorPrimitiveType.GlbReference)
@@ -250,6 +252,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 TerrainTextureDirtPath = source.TerrainTextureDirtPath,
                 TerrainTextureGrassPath = source.TerrainTextureGrassPath,
                 TerrainTextureSnowPath = source.TerrainTextureSnowPath,
+                TerrainTextureSlopePath = source.TerrainTextureSlopePath,
+                TerrainPbrAlbedoBrightness = source.TerrainPbrAlbedoBrightness,
+                TerrainPbrAlbedoSaturation = source.TerrainPbrAlbedoSaturation,
+                TerrainPbrAlbedoContrast = source.TerrainPbrAlbedoContrast,
+                TerrainPbrNormalStrength = source.TerrainPbrNormalStrength,
+                TerrainPbrNormalBlur = source.TerrainPbrNormalBlur,
+                TerrainPbrMetallicThreshold = source.TerrainPbrMetallicThreshold,
+                TerrainPbrMetallicSoftness = source.TerrainPbrMetallicSoftness,
+                TerrainPbrMetallicStrength = source.TerrainPbrMetallicStrength,
+                TerrainPbrRoughnessStrength = source.TerrainPbrRoughnessStrength,
+                TerrainPbrRoughnessInvert = source.TerrainPbrRoughnessInvert,
+                TerrainPbrAoStrength = source.TerrainPbrAoStrength,
+                TerrainPbrAoBrightness = source.TerrainPbrAoBrightness,
+                TerrainPbrHeightStrength = source.TerrainPbrHeightStrength,
+                TerrainPbrHeightInvert = source.TerrainPbrHeightInvert,
+                TerrainPbrHeightBlur = source.TerrainPbrHeightBlur,
+                TerrainPbrEmissionIntensity = source.TerrainPbrEmissionIntensity,
+                TerrainLayers = source.TerrainLayers == null || source.TerrainLayers.Length != 5
+                    ? [new(), new(), new(), new(), new()]
+                    : Array.ConvertAll(source.TerrainLayers, l => (l ?? new TerrainPbrLayerData()).Clone()),
+                // ── PBR material (Box/Sphere/flat plane) ──
+                PbrAlbedoPath = source.PbrAlbedoPath,
+                PbrNormalPath = source.PbrNormalPath,
+                PbrMetallicPath = source.PbrMetallicPath,
+                PbrRoughnessPath = source.PbrRoughnessPath,
+                PbrAoPath = source.PbrAoPath,
+                PbrHeightPath = source.PbrHeightPath,
+                PbrEmissionPath = source.PbrEmissionPath,
+                PbrTexTiling = source.PbrTexTiling,
                 TerrainBrushSize = source.TerrainBrushSize,
                 TerrainBrushStrength = source.TerrainBrushStrength,
                 TerrainBrushSoftness = source.TerrainBrushSoftness,

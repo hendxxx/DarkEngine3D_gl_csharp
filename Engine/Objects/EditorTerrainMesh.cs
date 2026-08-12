@@ -180,8 +180,51 @@ public unsafe class EditorTerrainMesh : IDisposable
         int vertsPerSide = n + 1;
         var verts = new List<Vertex>(vertsPerSide * vertsPerSide * 6);
 
-        // Height sample offset for normal computation (world units).
-        float e = MathF.Max(footprintX, footprintZ) / n;
+        // ── Smooth per-vertex normals ──
+        // One normal per GRID VERTEX, computed with central differences of the heightmap
+        // (2 grid cells wide; forward/backward difference at the borders). Neighboring
+        // quads share their corner normals, so lighting and shadow shading stay
+        // continuous — the old code gave every quad the SAME normal to all 4 corners
+        // (flat-shaded per quad), which made lighting/shadows step in visible boxes.
+        // Normals are expressed in LOCAL mesh space (XZ in [-0.5, 0.5], Y in world units);
+        // the vertex shader's inverse-transpose (Scale(X,1,Z) × rotation) turns them back
+        // into the true world slope. (Computing in world-XZ units was the old bug: after
+        // the inverse-transpose the XZ slope got divided by the footprint, so every slope
+        // read as near-vertical in the shader and slope bias / relief shading never
+        // engaged.)
+        int vs = vertsPerSide;
+        var gridNormals = new Vector3[vs * vs];
+        float cellX = footprintX / n;   // world size of one grid step in X
+        float cellZ = footprintZ / n;   // world size of one grid step in Z
+        for (int vz = 0; vz < vs; vz++)
+        {
+            float v = (float)vz / n;
+            float vLo = Math.Max(0f, (float)(vz - 1) / n);
+            float vHi = Math.Min(1f, (float)(vz + 1) / n);
+            int stepZ = (vz > 0 && vz < n) ? 2 : 1;
+            for (int vx = 0; vx < vs; vx++)
+            {
+                float u = (float)vx / n;
+                float uLo = Math.Max(0f, (float)(vx - 1) / n);
+                float uHi = Math.Min(1f, (float)(vx + 1) / n);
+                int stepX = (vx > 0 && vx < n) ? 2 : 1;
+
+                float hL = Sample(uLo, v) * heightScale;
+                float hR = Sample(uHi, v) * heightScale;
+                float hD = Sample(u, vLo) * heightScale;
+                float hU = Sample(u, vHi) * heightScale;
+
+                // World slope (dy/dx_world) → local slope (× footprint, since local X spans
+                // [-0.5, 0.5] over footprintX world units). Sign: the surface tangent is
+                // (1, dh/dlx, 0), so the normal (nx, 1, nz) must satisfy nx = -dh/dlx —
+                // hence LEFT minus RIGHT (hL - hR), NOT right minus left.
+                float gx = (hL - hR) / (stepX * cellX) * footprintX;
+                float gz = (hD - hU) / (stepZ * cellZ) * footprintZ;
+                var nrm = Vector3.Normalize(new Vector3(gx, 1f, gz));
+                if (nrm == Vector3.Zero || !float.IsFinite(nrm.Y)) nrm = Vector3.UnitY;
+                gridNormals[vz * vs + vx] = nrm;
+            }
+        }
 
         for (int iz = 0; iz < n; iz++)
         {
@@ -201,30 +244,18 @@ public unsafe class EditorTerrainMesh : IDisposable
                 float h01 = Sample(wx0 / footprintX + 0.5f, wz1 / footprintZ + 0.5f) * heightScale;
                 float h11 = Sample(wx1 / footprintX + 0.5f, wz1 / footprintZ + 0.5f) * heightScale;
 
-                // Normal from heightmap gradient at the cell center.
-                float cx = (wx0 + wx1) * 0.5f, cz = (wz0 + wz1) * 0.5f;
-                float hl = Sample((cx - e) / footprintX + 0.5f, cz / footprintZ + 0.5f) * heightScale;
-                float hr = Sample((cx + e) / footprintX + 0.5f, cz / footprintZ + 0.5f) * heightScale;
-                float hd = Sample(cx / footprintX + 0.5f, (cz - e) / footprintZ + 0.5f) * heightScale;
-                float hu = Sample(cx / footprintX + 0.5f, (cz + e) / footprintZ + 0.5f) * heightScale;
+                // Smooth per-vertex normals: each corner takes the normal of its own grid
+                // vertex (precomputed above), so adjacent quads share normals and shading
+                // stays continuous — no more per-quad flat-shaded "boxes".
+                Vector3 nm00 = gridNormals[iz * vs + ix];
+                Vector3 nm10 = gridNormals[iz * vs + (ix + 1)];
+                Vector3 nm11 = gridNormals[(iz + 1) * vs + (ix + 1)];
+                Vector3 nm01 = gridNormals[(iz + 1) * vs + ix];
 
-                // Normal in LOCAL mesh space (XZ in [-0.5, 0.5], Y in world units) — the same
-                // space the vertex positions live in. The vertex shader then applies the model
-                // matrix's inverse-transpose (Scale(X, 1, Z) × rotation), which lands back on
-                // the TRUE world slope. Computing the normal directly in world-XZ units was the
-                // bug: after the inverse-transpose the XZ slope got divided by the footprint
-                // (25×), so every slope read as nearly vertical in the shader — the slope
-                // shadow bias (1 - N·L) and the shadow mask never engaged, causing acne on
-                // slopes and wrong relief shading.
-                float gx = (hl - hr) / (2f * e) * footprintX;
-                float gz = (hd - hu) / (2f * e) * footprintZ;
-                var normal = Vector3.Normalize(new Vector3(gx, 1f, gz));
-                if (normal == Vector3.Zero || !float.IsFinite(normal.Y)) normal = Vector3.UnitY;
-
-                var n00 = new Vertex(lx0, h00, lz0, normal.X, normal.Y, normal.Z, 1, 1, 1, lx0, lz0);
-                var n10 = new Vertex(lx1, h10, lz0, normal.X, normal.Y, normal.Z, 1, 1, 1, lx1, lz0);
-                var n11 = new Vertex(lx1, h11, lz1, normal.X, normal.Y, normal.Z, 1, 1, 1, lx1, lz1);
-                var n01 = new Vertex(lx0, h01, lz1, normal.X, normal.Y, normal.Z, 1, 1, 1, lx0, lz1);
+                var n00 = new Vertex(lx0, h00, lz0, nm00.X, nm00.Y, nm00.Z, 1, 1, 1, lx0, lz0);
+                var n10 = new Vertex(lx1, h10, lz0, nm10.X, nm10.Y, nm10.Z, 1, 1, 1, lx1, lz0);
+                var n11 = new Vertex(lx1, h11, lz1, nm11.X, nm11.Y, nm11.Z, 1, 1, 1, lx1, lz1);
+                var n01 = new Vertex(lx0, h01, lz1, nm01.X, nm01.Y, nm01.Z, 1, 1, 1, lx0, lz1);
 
                 // Two triangles per quad, CCW when viewed from above (+Y) — identical to
                 // Object3D.CreatePlaneVertices so back-face culling (the scene default is
@@ -745,21 +776,20 @@ public unsafe class EditorTerrainMesh : IDisposable
         // Live normal-bias tuning (Shadow Settings panel) — static shadow shader. A
         // heightmap terrain is a huge ground surface (default 25×25 footprint with up to
         // 30 units of relief), so its shadow-map texels cover far more world space than
-        // unit-sized editor primitives — the standard 0.02 extrusion is not enough to keep
+        // unit-sized editor primitives — the standard extrusion is not enough to keep
         // steep slopes acne-free. Boost by how much larger this terrain is than the
-        // baseline (shared helper); default-sized terrains keep the consistent 0.02.
+        // baseline; default-sized terrains keep the consistent base value.
         float sx = new Vector3(model.M11, model.M21, model.M31).Length();
         float sz = new Vector3(model.M13, model.M23, model.M33).Length();
         float footprint = MathF.Max(sx, sz);
         float boost = MathF.Min(
             MathF.Max(1f, MathF.Max(footprint / 25f, _lastHeightScale / 30f)), 6f);
-        // The extrusion happens in MODEL space (shadow_vertex.glsl) and this mesh's XZ is
-        // scaled by the footprint — a fixed value would push the world offset footprint×
-        // too far on the XZ axes (the slopes' normals are near-horizontal after the local-
-        // space normal fix). Divide by the footprint so the world extrusion matches the
-        // game terrain's (identity-model) 0.02·boost in every direction.
+        // The extrusion now happens in WORLD space (after the model transform, see
+        // shadow_vertex.glsl), so u_NormalBias is directly in world units — no footprint
+        // division needed. A fixed world offset applies uniformly to XZ and Y, matching
+        // the game terrain's identity-model behavior.
         Visual.ShadowUniforms.UploadNormalBias(shadowShader,
-            ShadowSettings.NormalBias * boost / MathF.Max(footprint, 1f));
+            ShadowSettings.NormalBias * boost);
 
         var lightSpace = csm.LightSpaceMatrices[cascadeIndex];
         GL.UniformMatrix4fv(GL.GetUniformLocation(shadowShader, "model"), 1, false, (float*)&model);

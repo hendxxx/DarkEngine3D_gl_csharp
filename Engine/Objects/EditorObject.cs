@@ -3,6 +3,7 @@ using System.Numerics;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects;
@@ -26,6 +27,94 @@ public enum EditorPrimitiveType
 /// Can be a Plane, Box, Sphere, or a reference to a .glb file.
 /// Contains all properties needed for rendering, shadow casting, and gizmo interaction.
 /// </summary>
+/// <summary>
+/// Per-layer PBR configuration for advanced terrain. PBR is per texture: each of the
+/// 5 layers (air, dirt, grass, snow, slope) owns its own 6 companion maps (normal /
+/// metallic / roughness / AO / height / emission) and its own unique tuning values —
+/// there is no shared "global" PBR look anymore. A layer's albedo lives in the matching
+/// TerrainTexture*Path property.
+/// <para>Map paths are nullable: <c>null</c> = not set yet (auto-discovered next to the
+/// albedo when the terrain builds), <c>""</c> = explicitly cleared (neutral default, no
+/// map loaded), any other value = explicit path.</para>
+/// </summary>
+public class TerrainPbrLayerData
+{
+    public string? NormalPath { get; set; }
+    public string? MetallicPath { get; set; }
+    public string? RoughnessPath { get; set; }
+    public string? AoPath { get; set; }
+    public string? HeightPath { get; set; }
+    public string? EmissionPath { get; set; }
+
+    public float AlbedoBrightness { get; set; } = 1f;
+    public float AlbedoSaturation { get; set; } = 1f;
+    public float AlbedoContrast { get; set; } = 1f;
+    public float NormalStrength { get; set; } = 1f;
+    public float NormalBlur { get; set; } = 0f;
+    public float MetallicThreshold { get; set; } = 0.5f;
+    public float MetallicSoftness { get; set; } = 0.1f;
+    public float MetallicStrength { get; set; } = 1f;
+    public float RoughnessStrength { get; set; } = 1f;
+    public bool RoughnessInvert { get; set; } = false;
+    public float AoStrength { get; set; } = 1f;
+    public float AoBrightness { get; set; } = 0f;
+    public float HeightStrength { get; set; } = 1f;
+    public bool HeightInvert { get; set; } = false;
+    public float HeightBlur { get; set; } = 0f;
+    public float EmissionIntensity { get; set; } = 1f;
+
+    public TerrainPbrLayerData Clone() => (TerrainPbrLayerData)MemberwiseClone();
+
+    /// <summary>Map type index → path (1=normal … 6=emission). 0 = albedo — lives in the
+    /// matching TerrainTexture*Path property, so it returns null here.</summary>
+    public string? GetPath(int t) => t switch
+    {
+        0 => null,
+        1 => NormalPath, 2 => MetallicPath, 3 => RoughnessPath,
+        4 => AoPath, 5 => HeightPath, _ => EmissionPath,
+    };
+
+    public void SetPath(int t, string? path)
+    {
+        switch (t)
+        {
+            case 0: return; // albedo lives in the matching TerrainTexture*Path property
+            case 1: NormalPath = path; break;
+            case 2: MetallicPath = path; break;
+            case 3: RoughnessPath = path; break;
+            case 4: AoPath = path; break;
+            case 5: HeightPath = path; break;
+            default: EmissionPath = path; break;
+        }
+    }
+
+    /// <summary>Clone with all map paths stored relative to the exe (for saving).</summary>
+    public TerrainPbrLayerData WithRelativePaths()
+    {
+        var c = Clone();
+        c.NormalPath = NormalPath == null ? null : PathHelpers.MakeRelative(NormalPath);
+        c.MetallicPath = MetallicPath == null ? null : PathHelpers.MakeRelative(MetallicPath);
+        c.RoughnessPath = RoughnessPath == null ? null : PathHelpers.MakeRelative(RoughnessPath);
+        c.AoPath = AoPath == null ? null : PathHelpers.MakeRelative(AoPath);
+        c.HeightPath = HeightPath == null ? null : PathHelpers.MakeRelative(HeightPath);
+        c.EmissionPath = EmissionPath == null ? null : PathHelpers.MakeRelative(EmissionPath);
+        return c;
+    }
+
+    /// <summary>Clone with all map paths resolved to absolute (for loading).</summary>
+    public TerrainPbrLayerData WithResolvedPaths()
+    {
+        var c = Clone();
+        c.NormalPath = NormalPath == null ? null : PathHelpers.Resolve(NormalPath);
+        c.MetallicPath = MetallicPath == null ? null : PathHelpers.Resolve(MetallicPath);
+        c.RoughnessPath = RoughnessPath == null ? null : PathHelpers.Resolve(RoughnessPath);
+        c.AoPath = AoPath == null ? null : PathHelpers.Resolve(AoPath);
+        c.HeightPath = HeightPath == null ? null : PathHelpers.Resolve(HeightPath);
+        c.EmissionPath = EmissionPath == null ? null : PathHelpers.Resolve(EmissionPath);
+        return c;
+    }
+}
+
 public unsafe class EditorObject
 {
     // ── Identity ──
@@ -42,6 +131,33 @@ public unsafe class EditorObject
     public string? TexturePath { get; set; } = null;
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
+
+    // ── PBR material (Box/Sphere/flat-plane) — dedicated PBR shader with 7 optional
+    //    maps + tuning. Every map is optional: missing maps keep neutral defaults
+    //    (vertex color albedo, flat normal, 0 metallic, 0.6 roughness, 1 AO, no
+    //    parallax, no emission), so the material degrades gracefully. ──
+    /// <summary>Base-color / albedo map (optional). When empty, the vertex color is used.</summary>
+    public string PbrAlbedoPath { get; set; } = "";
+    /// <summary>Tangent-space normal map (optional; flat when absent).</summary>
+    public string PbrNormalPath { get; set; } = "";
+    /// <summary>Metallic mask (R channel) (optional; 0 when absent).</summary>
+    public string PbrMetallicPath { get; set; } = "";
+    /// <summary>Roughness map (R channel) (optional; 0.6 default when absent).</summary>
+    public string PbrRoughnessPath { get; set; } = "";
+    /// <summary>Ambient-occlusion map (R channel) (optional; 1 when absent).</summary>
+    public string PbrAoPath { get; set; } = "";
+    /// <summary>Height / displacement map (R channel, 0.5 = flat) (optional; drives parallax).</summary>
+    public string PbrHeightPath { get; set; } = "";
+    /// <summary>Emissive color map (optional; 0 when absent).</summary>
+    public string PbrEmissionPath { get; set; } = "";
+    /// <summary>UV tiling multiplier for all PBR maps on this object.</summary>
+    public float PbrTexTiling { get; set; } = 1f;
+    /// <summary>True when any PBR map is set — switches the object to the PBR shader.</summary>
+    public bool HasPbrMaterial =>
+        !string.IsNullOrEmpty(PbrAlbedoPath) || !string.IsNullOrEmpty(PbrNormalPath) ||
+        !string.IsNullOrEmpty(PbrMetallicPath) || !string.IsNullOrEmpty(PbrRoughnessPath) ||
+        !string.IsNullOrEmpty(PbrAoPath) || !string.IsNullOrEmpty(PbrHeightPath) ||
+        !string.IsNullOrEmpty(PbrEmissionPath);
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
     public string? GlbFilePath { get; set; } = null;
@@ -112,10 +228,17 @@ public unsafe class EditorObject
     /// <summary>Whether the direction-ray + spotlight-cone gizmo is drawn in the viewport.</summary>
     public bool ShowLightGizmo { get; set; } = true;
 
-    // ── Terrain (only used when PrimitiveType == Plane && TerrainEnabled) ──
-    /// <summary>When true, this Plane renders as an advanced heightmapped terrain instead
-    /// of a flat plane. All terrain settings below are editable in the Inspector.</summary>
-    public bool TerrainEnabled { get; set; } = false;
+    // ── Terrain (only used when PrimitiveType == Plane) ──
+    private bool _terrainEnabled = false;
+    /// <summary>Planes ALWAYS render as advanced heightmapped terrain — the "Advanced
+    /// Terrain" toggle was removed (planes are forced into advanced mode). The backing
+    /// flag is only kept settable so old scene files ("terrainEnabled": false) stay
+    /// compatible: any value assigned to a Plane is coerced back to true.</summary>
+    public bool TerrainEnabled
+    {
+        get => _terrainEnabled || PrimitiveType == EditorPrimitiveType.Plane;
+        set => _terrainEnabled = value || PrimitiveType == EditorPrimitiveType.Plane; // planes are always advanced terrain
+    }
     /// <summary>Heightmap file (.raw 8-bit or any image). Determines the terrain shape.</summary>
     public string TerrainHeightmapPath { get; set; } = "Artifacts/Maps/photoreal_v1.raw";
     /// <summary>Grid resolution per side (4..256). Higher = more detail, more triangles.</summary>
@@ -142,6 +265,47 @@ public unsafe class EditorObject
     public string TerrainTextureGrassPath { get; set; } = "";
     /// <summary>Texture for layer 4 — salju / snow.</summary>
     public string TerrainTextureSnowPath { get; set; } = "";
+    /// <summary>Texture for layer 5 — lereng / slope (steep cliffs). Replaces the dirt
+    /// layer on steep faces so cliffs get their own rock texture.</summary>
+    public string TerrainTextureSlopePath { get; set; } = "";
+
+    // ── PBR map tuning (global per map type — applies to ALL layers; uniforms only,
+    //    so editing these never triggers an expensive terrain rebuild) ──
+    /// <summary>Albedo brightness multiplier (0..2).</summary>
+    public float TerrainPbrAlbedoBrightness { get; set; } = 1f;
+    /// <summary>Albedo saturation (0 = grayscale, 1 = original, 2 = oversaturated).</summary>
+    public float TerrainPbrAlbedoSaturation { get; set; } = 1f;
+    /// <summary>Albedo contrast (1 = original, 0 = flat gray, 2 = high contrast).</summary>
+    public float TerrainPbrAlbedoContrast { get; set; } = 1f;
+    /// <summary>Normal map strength (0 = off, 1 = full, 2 = overdriven).</summary>
+    public float TerrainPbrNormalStrength { get; set; } = 1f;
+    /// <summary>Normal map blur in texels (0 = sharp, up to 8 = soft).</summary>
+    public float TerrainPbrNormalBlur { get; set; } = 0f;
+    /// <summary>Metallic mask threshold — values above become metal.</summary>
+    public float TerrainPbrMetallicThreshold { get; set; } = 0.5f;
+    /// <summary>Metallic threshold transition softness (0 = hard cut, 0.3 = wide blend).</summary>
+    public float TerrainPbrMetallicSoftness { get; set; } = 0.1f;
+    /// <summary>Metallic final strength (0 = never metal, 1 = as masked).</summary>
+    public float TerrainPbrMetallicStrength { get; set; } = 1f;
+    /// <summary>Roughness multiplier (0 = glossy, 1 = as mapped, 2 = very rough).</summary>
+    public float TerrainPbrRoughnessStrength { get; set; } = 1f;
+    /// <summary>Invert roughness (for smoothness maps that store gloss instead).</summary>
+    public bool TerrainPbrRoughnessInvert { get; set; } = false;
+    /// <summary>Ambient occlusion strength (0 = no AO, 1 = as mapped).</summary>
+    public float TerrainPbrAoStrength { get; set; } = 1f;
+    /// <summary>Ambient occlusion brightness offset (0 = as mapped, 1 = fully bright).</summary>
+    public float TerrainPbrAoBrightness { get; set; } = 0f;
+    /// <summary>Height / parallax strength (0 = flat, 1 = full displacement offset).</summary>
+    public float TerrainPbrHeightStrength { get; set; } = 1f;
+    /// <summary>Invert the height map (swap valleys/peaks).</summary>
+    public bool TerrainPbrHeightInvert { get; set; } = false;
+    /// <summary>Height map blur in texels (0 = sharp, up to 8 = soft).</summary>
+    public float TerrainPbrHeightBlur { get; set; } = 0f;
+    /// <summary>Emission intensity multiplier (0 = off, 1 = as mapped).</summary>
+    public float TerrainPbrEmissionIntensity { get; set; } = 1f;
+    /// <summary>Per-layer PBR data for the 5 terrain layers — 6 companion maps + unique
+    /// tuning per texture. The layer albedos live in the TerrainTexture*Path properties.</summary>
+    public TerrainPbrLayerData[] TerrainLayers { get; set; } = [new(), new(), new(), new(), new()];
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
     public float TerrainBrushSize { get; set; } = 4f;
     /// <summary>Height delta per painted frame, in world units (viewport paint tool).</summary>
@@ -196,6 +360,12 @@ public unsafe class EditorObject
     private Object3D? _object3D;
     private uint _textureID = 0;
     private bool _dirty = true;
+
+    // ── PBR material GPU resources (Box/Sphere/flat plane; index 0=albedo, 1=normal,
+    //    2=metallic, 3=roughness, 4=AO, 5=height, 6=emission) ──
+    private readonly uint[] _pbrTex = new uint[7];
+    private string _pbrCacheKey = "";
+    private static uint _pbrWhiteTex = 0;
 
     // ── Advanced terrain resources (Plane only) ──
     private EditorTerrainMesh? _terrainMesh;
@@ -427,7 +597,7 @@ public unsafe class EditorObject
         {
             return $"{TerrainEnabled}|{TerrainHeightmapPath}|{TerrainChunkSize}|{TerrainHeightScale:F2}|"
                  + $"{Scale.X:F2}|{Scale.Z:F2}|"
-                 + $"{TerrainTextureAirPath}|{TerrainTextureDirtPath}|{TerrainTextureGrassPath}|{TerrainTextureSnowPath}";
+                 + $"{TerrainTextureAirPath}|{TerrainTextureDirtPath}|{TerrainTextureGrassPath}|{TerrainTextureSnowPath}|{TerrainTextureSlopePath}";
         }
     }
 
@@ -472,11 +642,7 @@ public unsafe class EditorObject
         if (_terrainSplatCache != null)
             mesh.RestoreModifiedSplatRaw(_terrainSplatCache);
         _terrainLoadedPath = TerrainHeightmapPath;
-        mesh.SetLayerTextures(
-            TerrainTextureAirPath,
-            TerrainTextureDirtPath,
-            TerrainTextureGrassPath,
-            TerrainTextureSnowPath);
+        mesh.SetLayerTextures(TerrainTextureAirPath, TerrainTextureDirtPath, TerrainTextureGrassPath, TerrainTextureSnowPath);
         mesh.Generate(TerrainChunkSize, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
         _terrainMesh = mesh;
 
@@ -601,11 +767,234 @@ public unsafe class EditorObject
     }
 
     // ════════════════════════════════════════════════════════════════════
+    //  PBR material (Box/Sphere/flat plane) — GPU textures + dedicated shader
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>Force PBR textures to reload on the next draw (after a map path changed).</summary>
+    public void InvalidatePbrTextures() => _pbrCacheKey = "";
+
+    private void EnsurePbrTextures()
+    {
+        string key = $"{PbrAlbedoPath}|{PbrNormalPath}|{PbrMetallicPath}|{PbrRoughnessPath}|{PbrAoPath}|{PbrHeightPath}|{PbrEmissionPath}";
+        if (key == _pbrCacheKey) return;
+        DisposePbrTextures();
+        _pbrCacheKey = key;
+
+        string[] paths = [PbrAlbedoPath, PbrNormalPath, PbrMetallicPath, PbrRoughnessPath, PbrAoPath, PbrHeightPath, PbrEmissionPath];
+        string[] names = ["albedo", "normal", "metallic", "roughness", "ao", "height", "emission"];
+        var loaded = new List<string>();
+        for (int i = 0; i < 7; i++)
+        {
+            if (string.IsNullOrEmpty(paths[i])) continue;
+            string resolved = PathHelpers.Resolve(paths[i]);
+            if (!File.Exists(resolved))
+            {
+                Console.WriteLine($"[EditorObject] '{Name}' PBR {names[i]} map missing: {paths[i]}");
+                continue;
+            }
+            try
+            {
+                _pbrTex[i] = new Texture(resolved).ID;
+                loaded.Add($"{names[i]}:{Path.GetFileName(resolved)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EditorObject] '{Name}' PBR {names[i]} map load failed: {ex.Message}");
+            }
+        }
+        Console.WriteLine($"[EditorObject] '{Name}' PBR maps loaded: {(loaded.Count > 0 ? string.Join(", ", loaded) : "none")}");
+    }
+
+    private void DisposePbrTextures()
+    {
+        for (int i = 0; i < 7; i++)
+        {
+            if (_pbrTex[i] == 0) continue;
+            fixed (uint* p = &_pbrTex[i]) GL.DeleteTextures(1, p);
+            _pbrTex[i] = 0;
+        }
+    }
+
+    /// <summary>Shared 1×1 white texture bound to map units that have no texture, so
+    /// sampling an inactive unit never reads stale geometry data from another object.</summary>
+    private static uint EnsurePbrWhiteTex()
+    {
+        if (_pbrWhiteTex != 0) return _pbrWhiteTex;
+        uint t;
+        GL.GenTextures(1, &t);
+        GL.BindTexture(Const.GL_TEXTURE_2D, t);
+        byte[] white = [255, 255, 255, 255]; // RGBA — one full texel
+        fixed (byte* w = white)
+            GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA, 1, 1, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, w);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+        _pbrWhiteTex = t;
+        return t;
+    }
+
+    /// <summary>Cached uniform locations of the object PBR shader (one-time init, like
+    /// the GlbUniforms pattern used by EditorObjectManager).</summary>
+    private static class PbrUniforms
+    {
+        public static bool Ready;
+        public static uint Program;
+        public static int View, Proj, Model, SunDir, LightColor, ViewPos, FogColor, UseFog;
+        public static int TexTiling;
+        public static readonly int[] Maps = new int[7];     // albedo..emission (units 0-6)
+        public static readonly int[] UseMaps = new int[7];  // useAlbedo..useEmission
+        public static int AlbedoTune, NormalTune, MetallicTune, RoughnessTune, AoTune, HeightTune, EmissionIntensity;
+        public static int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
+        public static int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
+        public static int ShowCSMCascadeColor;
+
+        public static void Ensure()
+        {
+            if (Ready) return;
+            Program = Shader.GetObjectPbrShaderProgram();
+            View = GL.GetUniformLocation(Program, "view");
+            Proj = GL.GetUniformLocation(Program, "projection");
+            Model = GL.GetUniformLocation(Program, "model");
+            SunDir = GL.GetUniformLocation(Program, "sunDir");
+            LightColor = GL.GetUniformLocation(Program, "lightColor");
+            ViewPos = GL.GetUniformLocation(Program, "viewPos");
+            FogColor = GL.GetUniformLocation(Program, "fogColor");
+            UseFog = GL.GetUniformLocation(Program, "useFog");
+            TexTiling = GL.GetUniformLocation(Program, "u_texTiling");
+            string[] mapNames = ["albedoMap", "normalMap", "metallicMap", "roughnessMap", "aoMap", "heightMap", "emissionMap"];
+            string[] useNames = ["useAlbedo", "useNormal", "useMetallic", "useRoughness", "useAo", "useHeight", "useEmission"];
+            for (int i = 0; i < 7; i++)
+            {
+                Maps[i] = GL.GetUniformLocation(Program, mapNames[i]);
+                UseMaps[i] = GL.GetUniformLocation(Program, useNames[i]);
+            }
+            AlbedoTune = GL.GetUniformLocation(Program, "u_albedoTuning");
+            NormalTune = GL.GetUniformLocation(Program, "u_normalTuning");
+            MetallicTune = GL.GetUniformLocation(Program, "u_metallicTuning");
+            RoughnessTune = GL.GetUniformLocation(Program, "u_roughnessTuning");
+            AoTune = GL.GetUniformLocation(Program, "u_aoTuning");
+            HeightTune = GL.GetUniformLocation(Program, "u_heightTuning");
+            EmissionIntensity = GL.GetUniformLocation(Program, "u_emissionIntensity");
+            ShadowFilter = GL.GetUniformLocation(Program, "shadowFilterMode");
+            ShadowDir = GL.GetUniformLocation(Program, "shadowDir");
+            ShadowMap0 = GL.GetUniformLocation(Program, "shadowMap0");
+            ShadowMap1 = GL.GetUniformLocation(Program, "shadowMap1");
+            ShadowMap2 = GL.GetUniformLocation(Program, "shadowMap2");
+            LightSpace0 = GL.GetUniformLocation(Program, "lightSpaceMatrices[0]");
+            LightSpace1 = GL.GetUniformLocation(Program, "lightSpaceMatrices[1]");
+            LightSpace2 = GL.GetUniformLocation(Program, "lightSpaceMatrices[2]");
+            CascadeEnds0 = GL.GetUniformLocation(Program, "cascadeEnds[0]");
+            CascadeEnds1 = GL.GetUniformLocation(Program, "cascadeEnds[1]");
+            CascadeEnds2 = GL.GetUniformLocation(Program, "cascadeEnds[2]");
+            ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
+            Ready = true;
+        }
+    }
+
+    /// <summary>Render this primitive with the PBR material shader (maps on units 0-6,
+    /// CSM shadows on units 7/8/9). Restores the main shader and its shadow bindings so
+    /// the next object in the editor pass renders exactly as before.</summary>
+    private void DrawPbrPrimitive(Camera camera, Lights light, CSM? csm)
+    {
+        PbrUniforms.Ensure();
+        uint pbr = PbrUniforms.Program;
+        if (pbr == 0) return;
+
+        EnsurePbrTextures();
+        GL.UseProgram(pbr);
+
+        var model = WorldMatrix;
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+        GL.UniformMatrix4fv(PbrUniforms.Model, 1, false, (float*)&model);
+        GL.UniformMatrix4fv(PbrUniforms.View, 1, false, (float*)&view);
+        GL.UniformMatrix4fv(PbrUniforms.Proj, 1, false, (float*)&proj);
+        GL.Uniform3f(PbrUniforms.SunDir, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
+        GL.Uniform3f(PbrUniforms.LightColor, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
+        GL.Uniform3f(PbrUniforms.ViewPos, camera.Position.X, camera.Position.Y, camera.Position.Z);
+        GL.Uniform1i(PbrUniforms.UseFog, Keyboard.GetIsFogActive() ? 1 : 0);
+        GL.Uniform3f(PbrUniforms.FogColor, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+        if (PbrUniforms.ShowCSMCascadeColor >= 0)
+            GL.Uniform1i(PbrUniforms.ShowCSMCascadeColor, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+
+        // Live shadow bias / blend tuning (Shadow Settings panel).
+        Visual.ShadowUniforms.UploadMain(pbr);
+
+        // ── CSM shadow uniforms → units 7/8/9 ──
+        if (csm != null)
+        {
+            if (PbrUniforms.ShadowFilter >= 0) GL.Uniform1i(PbrUniforms.ShadowFilter, Keyboard.GetIsHardShadow());
+            if (PbrUniforms.ShadowDir >= 0) GL.Uniform3f(PbrUniforms.ShadowDir, light.ShadowDirStable.X, light.ShadowDirStable.Y, light.ShadowDirStable.Z);
+            unsafe
+            {
+                fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
+                    GL.UniformMatrix4fv(PbrUniforms.LightSpace0, 1, false, p0);
+                fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
+                    GL.UniformMatrix4fv(PbrUniforms.LightSpace1, 1, false, p1);
+                fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
+                    GL.UniformMatrix4fv(PbrUniforms.LightSpace2, 1, false, p2);
+            }
+            GL.Uniform1f(PbrUniforms.CascadeEnds0, csm.CascadeEnds[0]);
+            GL.Uniform1f(PbrUniforms.CascadeEnds1, csm.CascadeEnds[1]);
+            GL.Uniform1f(PbrUniforms.CascadeEnds2, csm.CascadeEnds[2]);
+            GL.Uniform1i(PbrUniforms.ShadowMap0, 7);
+            GL.Uniform1i(PbrUniforms.ShadowMap1, 8);
+            GL.Uniform1i(PbrUniforms.ShadowMap2, 9);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[1]);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 9);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
+        }
+
+        // ── PBR maps (units 0-6); missing maps get the shared white texture ──
+        uint white = EnsurePbrWhiteTex();
+        for (int i = 0; i < 7; i++)
+        {
+            GL.ActiveTexture(Const.GL_TEXTURE0 + (uint)i);
+            GL.BindTexture(Const.GL_TEXTURE_2D, _pbrTex[i] != 0 ? _pbrTex[i] : white);
+            GL.Uniform1i(PbrUniforms.Maps[i], i);
+            GL.Uniform1i(PbrUniforms.UseMaps[i], _pbrTex[i] != 0 ? 1 : 0);
+        }
+
+        // ── Tiling + tuning (shared PBR tuning properties — uniform-only, no reload) ──
+        GL.Uniform1f(PbrUniforms.TexTiling, PbrTexTiling);
+        GL.Uniform3f(PbrUniforms.AlbedoTune, TerrainPbrAlbedoBrightness, TerrainPbrAlbedoSaturation, TerrainPbrAlbedoContrast);
+        GL.Uniform2f(PbrUniforms.NormalTune, TerrainPbrNormalStrength, TerrainPbrNormalBlur);
+        GL.Uniform3f(PbrUniforms.MetallicTune, TerrainPbrMetallicThreshold, TerrainPbrMetallicSoftness, TerrainPbrMetallicStrength);
+        GL.Uniform2f(PbrUniforms.RoughnessTune, TerrainPbrRoughnessStrength, TerrainPbrRoughnessInvert ? 1f : 0f);
+        GL.Uniform2f(PbrUniforms.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
+        GL.Uniform3f(PbrUniforms.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
+        GL.Uniform1f(PbrUniforms.EmissionIntensity, TerrainPbrEmissionIntensity);
+
+        GL.BindVertexArray(_object3D!.VAO);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+        GL.BindVertexArray(0);
+
+        // ── Restore: main shader + its shadow bindings at units 6/7/8 (the main pass
+        //    bound them before this object; our maps clobbered 6 and shadows 7/8/9). ──
+        if (csm != null)
+        {
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[1]);
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+            GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
+        }
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        GL.UseProgram(Shader.GetShaderProgram());
+    }
+
+    // ════════════════════════════════════════════════════════════════════
     //  Terrain brush paint (viewport tool) + painted-data persistence
     // ════════════════════════════════════════════════════════════════════
 
     /// <summary>True when this terrain has been edited with the paint brush.</summary>
     public bool TerrainIsModified => _terrainMesh is { IsModified: true };
+
 
     /// <summary>Base64-encoded painted heightmap blob for scene persistence.
     /// Empty string = no user edits (nothing to save).</summary>
@@ -911,6 +1300,16 @@ public unsafe class EditorObject
             // flat plane mesh so the object stays visible and editable.
 
             if (_object3D == null) return;
+
+            // ── PBR material (Box/Sphere/flat plane): dedicated PBR shader with the
+            // optional maps + tuning. Only used when the shader compiled — otherwise
+            // fall through to the plain vertex-color path so the object never vanishes
+            // (and empty/absent maps are simply not applied). ──
+            if (HasPbrMaterial && Shader.GetObjectPbrShaderProgram() != 0)
+            {
+                DrawPbrPrimitive(camera, light, csm);
+                return;
+            }
 
             // Set correct model matrix (WorldMatrix includes position, scale, rotation)
             var model = WorldMatrix;
@@ -1751,6 +2150,15 @@ public unsafe class EditorObject
         // automatically next time EnsureResources() runs if anything changed.
     }
 
+    /// <summary>Get (creating if needed) the PBR data for terrain layer 0..4.</summary>
+    public TerrainPbrLayerData EnsureTerrainLayer(int index)
+    {
+        if (TerrainLayers == null || TerrainLayers.Length != 5)
+            TerrainLayers = [new(), new(), new(), new(), new()];
+        return TerrainLayers[index] ??= new TerrainPbrLayerData();
+    }
+
+
     /// <summary>Draw the primitive using Object3D's rendering pipeline.</summary>
     public void Draw(float dt, nint window, float moveSpeed)
     {
@@ -1829,6 +2237,7 @@ public unsafe class EditorObject
         }
         _terrainMesh?.Dispose();
         _terrainMesh = null;
+        DisposePbrTextures();
         // Object3D cleanup is handled externally
         _object3D = null;
     }

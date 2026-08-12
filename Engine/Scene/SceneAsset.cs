@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 
 namespace DarkEngine3D_gl_csharp.Engine.Scene;
@@ -197,11 +198,43 @@ public class EditorObjectData
     public float TerrainLayerDirtTop { get; set; } = 0.45f;
     public float TerrainLayerGrassTop { get; set; } = 0.75f;
     public float TerrainLayerSnowTop { get; set; } = 1.0f;
-    /// <summary>Layer texture paths (1=air, 2=tanah, 3=rumput, 4=salju).</summary>
+    /// <summary>Layer texture paths (1=air, 2=tanah, 3=rumput, 4=salju, 5=slope).</summary>
     public string TerrainTextureAirPath { get; set; } = "";
     public string TerrainTextureDirtPath { get; set; } = "";
     public string TerrainTextureGrassPath { get; set; } = "";
     public string TerrainTextureSnowPath { get; set; } = "";
+    /// <summary>Slope / cliff texture — applied to steep faces (replaces dirt on cliffs).</summary>
+    public string TerrainTextureSlopePath { get; set; } = "";
+    // ── PBR map tuning (global per map type, applies to all layers) ──
+    public float TerrainPbrAlbedoBrightness { get; set; } = 1f;
+    public float TerrainPbrAlbedoSaturation { get; set; } = 1f;
+    public float TerrainPbrAlbedoContrast { get; set; } = 1f;
+    public float TerrainPbrNormalStrength { get; set; } = 1f;
+    public float TerrainPbrNormalBlur { get; set; } = 0f;
+    public float TerrainPbrMetallicThreshold { get; set; } = 0.5f;
+    public float TerrainPbrMetallicSoftness { get; set; } = 0.1f;
+    public float TerrainPbrMetallicStrength { get; set; } = 1f;
+    public float TerrainPbrRoughnessStrength { get; set; } = 1f;
+    public bool TerrainPbrRoughnessInvert { get; set; } = false;
+    public float TerrainPbrAoStrength { get; set; } = 1f;
+    public float TerrainPbrAoBrightness { get; set; } = 0f;
+    public float TerrainPbrHeightStrength { get; set; } = 1f;
+    public bool TerrainPbrHeightInvert { get; set; } = false;
+    public float TerrainPbrHeightBlur { get; set; } = 0f;
+    public float TerrainPbrEmissionIntensity { get; set; } = 1f;
+    /// <summary>Per-layer PBR data — 6 companion maps + unique tuning per terrain layer
+    /// (PBR is per texture). Null/absent = legacy scene: layers auto-discover maps next to
+    /// their albedo and use the global tuning values above.</summary>
+    public TerrainPbrLayerData[]? TerrainLayers { get; set; }
+    /// <summary>PBR material maps (Box/Sphere/flat plane) — relative to the exe.</summary>
+    public string PbrAlbedoPath { get; set; } = "";
+    public string PbrNormalPath { get; set; } = "";
+    public string PbrMetallicPath { get; set; } = "";
+    public string PbrRoughnessPath { get; set; } = "";
+    public string PbrAoPath { get; set; } = "";
+    public string PbrHeightPath { get; set; } = "";
+    public string PbrEmissionPath { get; set; } = "";
+    public float PbrTexTiling { get; set; } = 1f;
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
     public float TerrainBrushSize { get; set; } = 4f;
     /// <summary>Height delta per painted frame (world units).</summary>

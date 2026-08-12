@@ -1639,19 +1639,12 @@ public class InspectorPanel
         if (!ImGui.CollapsingHeader("Terrain", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        // ── Enable / disable advanced terrain ──
-        bool enabled = editorObj.TerrainEnabled;
-        if (ImGui.Checkbox("Advanced Terrain", ref enabled))
-        {
-            editorObj.TerrainEnabled = enabled;
-            editorObj.MarkDirty();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Render this plane as a heightmapped terrain with 4 custom layers. "
-                           + "Disable to get back a plain flat plane.");
-
-        ImGui.BeginDisabled(!enabled);
-        {
+        // Planes are always advanced heightmapped terrain — the old "Advanced Terrain"
+        // toggle was removed (a Plane can no longer be switched back to a flat plane).
+        ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
+            "Plane = advanced heightmapped terrain (always on).");
+        ImGui.Spacing();
+        ImGui.Separator();
             // ── Heightmap ──
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Heightmap");
             string hmPath = editorObj.TerrainHeightmapPath;
@@ -1890,9 +1883,9 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── 4 layer textures (air, tanah, rumput, salju) ──
-            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layer Textures (1–4)");
-            ImGui.TextDisabled("Empty = solid color fallback.");
+            // ── 5 layer textures (air, tanah, rumput, salju, slope) ──
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layer Textures (1–5)");
+            ImGui.TextDisabled("Empty = solid color fallback. 5 · Slope = steep cliffs.");
 
             DrawTerrainLayerField(editorObj, "1 · Air",
                 () => editorObj.TerrainTextureAirPath,
@@ -1910,8 +1903,10 @@ public class InspectorPanel
                 () => editorObj.TerrainTextureSnowPath,
                 v => editorObj.TerrainTextureSnowPath = v,
                 new Vector4(0.9f, 0.92f, 0.98f, 1f));
-        }
-        ImGui.EndDisabled();
+            DrawTerrainLayerField(editorObj, "5 · Slope (Lereng)",
+                () => editorObj.TerrainTextureSlopePath,
+                v => editorObj.TerrainTextureSlopePath = v,
+                new Vector4(0.55f, 0.45f, 0.38f, 1f));
     }
 
     /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>

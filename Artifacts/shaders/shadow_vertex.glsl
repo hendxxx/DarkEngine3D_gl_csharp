@@ -6,7 +6,7 @@ uniform mat4 model;
 uniform mat4 lightSpaceMatrix;
 
 // Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
-uniform float u_NormalBias = 0.000001;
+uniform float u_NormalBias = 0.0010;
 
 // Inverse-transpose of the model matrix — transforms the model-space normal into the
 // same space as aPos BEFORE the model matrix is applied. Without this, extruding along
@@ -16,11 +16,15 @@ uniform mat3 u_NormalMatrix = mat3(1.0);
 
 void main()
 {
-    // Fix Projection artefacts — push vertex slightly along the (model-space) normal to
-    // prevent self-shadowing. Using u_NormalMatrix keeps the direction correct even when
-    // the object is non-uniformly scaled or rotated.
+    // Anti-acne: push the vertex slightly along its WORLD-space normal AFTER the model
+    // transform. Extruding in model space (aPos + n*bias, then × model) makes the world
+    // offset anisotropic under non-uniform scale — a terrain scaled (500,1,500) gets a
+    // 500× larger XZ extrusion than Y, so no single bias value fixes both acne (needs
+    // more Y) and peter-panning (XZ detaches the shadow). World-space extrusion is
+    // uniform in every direction, so u_NormalBias is directly in world units.
     float normalBias = u_NormalBias;
     vec3 n = normalize(u_NormalMatrix * aNormal);
-    vec3 extrudedPos = aPos + n * normalBias;
-    gl_Position = lightSpaceMatrix * model * vec4(extrudedPos, 1.0);
+    vec4 worldPos = model * vec4(aPos, 1.0);
+    worldPos.xyz += n * normalBias;
+    gl_Position = lightSpaceMatrix * worldPos;
 }

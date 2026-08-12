@@ -5,6 +5,7 @@ using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
 using System.Numerics;
+using System.Linq;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -691,6 +692,33 @@ public class SceneManagerPanel
                         TerrainTextureDirtPath = PathHelpers.MakeRelative(obj.TerrainTextureDirtPath),
                         TerrainTextureGrassPath = PathHelpers.MakeRelative(obj.TerrainTextureGrassPath),
                         TerrainTextureSnowPath = PathHelpers.MakeRelative(obj.TerrainTextureSnowPath),
+                        TerrainTextureSlopePath = PathHelpers.MakeRelative(obj.TerrainTextureSlopePath),
+                        TerrainPbrAlbedoBrightness = obj.TerrainPbrAlbedoBrightness,
+                        TerrainPbrAlbedoSaturation = obj.TerrainPbrAlbedoSaturation,
+                        TerrainPbrAlbedoContrast = obj.TerrainPbrAlbedoContrast,
+                        TerrainPbrNormalStrength = obj.TerrainPbrNormalStrength,
+                        TerrainPbrNormalBlur = obj.TerrainPbrNormalBlur,
+                        TerrainPbrMetallicThreshold = obj.TerrainPbrMetallicThreshold,
+                        TerrainPbrMetallicSoftness = obj.TerrainPbrMetallicSoftness,
+                        TerrainPbrMetallicStrength = obj.TerrainPbrMetallicStrength,
+                        TerrainPbrRoughnessStrength = obj.TerrainPbrRoughnessStrength,
+                        TerrainPbrRoughnessInvert = obj.TerrainPbrRoughnessInvert,
+                        TerrainPbrAoStrength = obj.TerrainPbrAoStrength,
+                        TerrainPbrAoBrightness = obj.TerrainPbrAoBrightness,
+                        TerrainPbrHeightStrength = obj.TerrainPbrHeightStrength,
+                        TerrainPbrHeightInvert = obj.TerrainPbrHeightInvert,
+                        TerrainPbrHeightBlur = obj.TerrainPbrHeightBlur,
+                        TerrainPbrEmissionIntensity = obj.TerrainPbrEmissionIntensity,
+                        TerrainLayers = obj.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithRelativePaths()).ToArray(),
+                        // ── PBR material (Box/Sphere/flat plane) ──
+                        PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
+                        PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
+                        PbrMetallicPath = PathHelpers.MakeRelative(obj.PbrMetallicPath),
+                        PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
+                        PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
+                        PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
+                        PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
+                        PbrTexTiling = obj.PbrTexTiling,
                         TerrainBrushSize = obj.TerrainBrushSize,
                         TerrainBrushStrength = obj.TerrainBrushStrength,
                         TerrainBrushSoftness = obj.TerrainBrushSoftness,
@@ -972,6 +1000,59 @@ public class SceneManagerPanel
                         obj.TerrainTextureDirtPath = PathHelpers.Resolve(objData.TerrainTextureDirtPath);
                         obj.TerrainTextureGrassPath = PathHelpers.Resolve(objData.TerrainTextureGrassPath);
                         obj.TerrainTextureSnowPath = PathHelpers.Resolve(objData.TerrainTextureSnowPath);
+                        obj.TerrainTextureSlopePath = PathHelpers.Resolve(objData.TerrainTextureSlopePath);
+                        obj.TerrainPbrAlbedoBrightness = objData.TerrainPbrAlbedoBrightness;
+                        obj.TerrainPbrAlbedoSaturation = objData.TerrainPbrAlbedoSaturation;
+                        obj.TerrainPbrAlbedoContrast = objData.TerrainPbrAlbedoContrast;
+                        obj.TerrainPbrNormalStrength = objData.TerrainPbrNormalStrength;
+                        obj.TerrainPbrNormalBlur = objData.TerrainPbrNormalBlur;
+                        obj.TerrainPbrMetallicThreshold = objData.TerrainPbrMetallicThreshold;
+                        obj.TerrainPbrMetallicSoftness = objData.TerrainPbrMetallicSoftness;
+                        obj.TerrainPbrMetallicStrength = objData.TerrainPbrMetallicStrength;
+                        obj.TerrainPbrRoughnessStrength = objData.TerrainPbrRoughnessStrength;
+                        obj.TerrainPbrRoughnessInvert = objData.TerrainPbrRoughnessInvert;
+                        obj.TerrainPbrAoStrength = objData.TerrainPbrAoStrength;
+                        obj.TerrainPbrAoBrightness = objData.TerrainPbrAoBrightness;
+                        obj.TerrainPbrHeightStrength = objData.TerrainPbrHeightStrength;
+                        obj.TerrainPbrHeightInvert = objData.TerrainPbrHeightInvert;
+                        obj.TerrainPbrHeightBlur = objData.TerrainPbrHeightBlur;
+                        obj.TerrainPbrEmissionIntensity = objData.TerrainPbrEmissionIntensity;
+                        // ── Per-layer PBR (PBR is per texture) ──
+                        obj.TerrainLayers = objData.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithResolvedPaths()).ToArray()
+                            ?? obj.TerrainLayers;
+                        // Legacy scenes were saved with a single global tuning — push it into
+                        // every layer so the per-layer system keeps the previously tuned look.
+                        if (objData.TerrainLayers == null && obj.TerrainLayers is { Length: 5 } legacyLayers)
+                        {
+                            foreach (var l in legacyLayers)
+                            {
+                                l.AlbedoBrightness = objData.TerrainPbrAlbedoBrightness;
+                                l.AlbedoSaturation = objData.TerrainPbrAlbedoSaturation;
+                                l.AlbedoContrast = objData.TerrainPbrAlbedoContrast;
+                                l.NormalStrength = objData.TerrainPbrNormalStrength;
+                                l.NormalBlur = objData.TerrainPbrNormalBlur;
+                                l.MetallicThreshold = objData.TerrainPbrMetallicThreshold;
+                                l.MetallicSoftness = objData.TerrainPbrMetallicSoftness;
+                                l.MetallicStrength = objData.TerrainPbrMetallicStrength;
+                                l.RoughnessStrength = objData.TerrainPbrRoughnessStrength;
+                                l.RoughnessInvert = objData.TerrainPbrRoughnessInvert;
+                                l.AoStrength = objData.TerrainPbrAoStrength;
+                                l.AoBrightness = objData.TerrainPbrAoBrightness;
+                                l.HeightStrength = objData.TerrainPbrHeightStrength;
+                                l.HeightInvert = objData.TerrainPbrHeightInvert;
+                                l.HeightBlur = objData.TerrainPbrHeightBlur;
+                                l.EmissionIntensity = objData.TerrainPbrEmissionIntensity;
+                            }
+                        }
+                        // ── PBR material (Box/Sphere/flat plane) ──
+                        obj.PbrAlbedoPath = PathHelpers.Resolve(objData.PbrAlbedoPath);
+                        obj.PbrNormalPath = PathHelpers.Resolve(objData.PbrNormalPath);
+                        obj.PbrMetallicPath = PathHelpers.Resolve(objData.PbrMetallicPath);
+                        obj.PbrRoughnessPath = PathHelpers.Resolve(objData.PbrRoughnessPath);
+                        obj.PbrAoPath = PathHelpers.Resolve(objData.PbrAoPath);
+                        obj.PbrHeightPath = PathHelpers.Resolve(objData.PbrHeightPath);
+                        obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
+                        obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
                         obj.TerrainBrushSize = objData.TerrainBrushSize;
                         obj.TerrainBrushStrength = objData.TerrainBrushStrength;
                         obj.TerrainBrushSoftness = objData.TerrainBrushSoftness;
@@ -1080,7 +1161,33 @@ public class SceneManagerPanel
                             TerrainTextureAirPath = PathHelpers.MakeRelative(obj.TerrainTextureAirPath),
                             TerrainTextureDirtPath = PathHelpers.MakeRelative(obj.TerrainTextureDirtPath),
                             TerrainTextureGrassPath = PathHelpers.MakeRelative(obj.TerrainTextureGrassPath),
-                            TerrainTextureSnowPath = PathHelpers.MakeRelative(obj.TerrainTextureSnowPath)
+                            TerrainTextureSnowPath = PathHelpers.MakeRelative(obj.TerrainTextureSnowPath),
+                            TerrainTextureSlopePath = PathHelpers.MakeRelative(obj.TerrainTextureSlopePath),
+                            TerrainPbrAlbedoBrightness = obj.TerrainPbrAlbedoBrightness,
+                            TerrainPbrAlbedoSaturation = obj.TerrainPbrAlbedoSaturation,
+                            TerrainPbrAlbedoContrast = obj.TerrainPbrAlbedoContrast,
+                            TerrainPbrNormalStrength = obj.TerrainPbrNormalStrength,
+                            TerrainPbrNormalBlur = obj.TerrainPbrNormalBlur,
+                            TerrainPbrMetallicThreshold = obj.TerrainPbrMetallicThreshold,
+                            TerrainPbrMetallicSoftness = obj.TerrainPbrMetallicSoftness,
+                            TerrainPbrMetallicStrength = obj.TerrainPbrMetallicStrength,
+                            TerrainPbrRoughnessStrength = obj.TerrainPbrRoughnessStrength,
+                            TerrainPbrRoughnessInvert = obj.TerrainPbrRoughnessInvert,
+                            TerrainPbrAoStrength = obj.TerrainPbrAoStrength,
+                            TerrainPbrAoBrightness = obj.TerrainPbrAoBrightness,
+                            TerrainPbrHeightStrength = obj.TerrainPbrHeightStrength,
+                            TerrainPbrHeightInvert = obj.TerrainPbrHeightInvert,
+                            TerrainPbrHeightBlur = obj.TerrainPbrHeightBlur,
+                            TerrainPbrEmissionIntensity = obj.TerrainPbrEmissionIntensity,
+                            TerrainLayers = obj.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithRelativePaths()).ToArray(),
+                            PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
+                            PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
+                            PbrMetallicPath = PathHelpers.MakeRelative(obj.PbrMetallicPath),
+                            PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
+                            PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
+                            PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
+                            PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
+                            PbrTexTiling = obj.PbrTexTiling
                         });
                     }
                 }

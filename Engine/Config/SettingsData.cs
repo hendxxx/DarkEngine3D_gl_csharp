@@ -46,8 +46,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float ShadowGltfMinBias { get; set; } = 0.0002f;
         /// <summary>Cascade blend width, as a fraction of the split distance.</summary>
         public float ShadowBlendRange { get; set; } = 0.10f;
-        /// <summary>Normal bias — vertex extrusion when casting shadows.</summary>
-        public float ShadowNormalBias { get; set; } = 0.000001f;
+        /// <summary>Normal bias — vertex extrusion when casting shadows (world units).</summary>
+        public float ShadowNormalBias { get; set; } = 0.0010f;
         /// <summary>Hard cap on the fragment bias' WORLD offset, per cascade (m) — kills
         /// peter-panning outline; cascade 0 tight, cascade 2 loose (1.0 m ≈ 2 far texels
         /// even at the game camera's 2800 m far plane keeps the far cascade acne-free).</summary>
@@ -78,7 +78,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                     var data = JsonSerializer.Deserialize<SettingsData>(json);
                     if (data != null)
                     {
-                        //Console.WriteLine($"[SettingsSave] Loaded from {FilePath}");
+                        Console.WriteLine($"[SettingsSave] Loaded from {FilePath}");
                         return data;
                     }
                 }

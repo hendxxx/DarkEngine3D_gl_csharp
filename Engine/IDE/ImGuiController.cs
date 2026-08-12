@@ -25,6 +25,11 @@ public unsafe class ImGuiController : IDisposable
 
     private bool _hasVtxOffset = false;
 
+    /// <summary>imgui.ini path pinned for ImGui's whole lifetime. Set to the exe folder
+    /// (bin) instead of ImGui's CWD-relative default "imgui.ini" so the IDE layout is
+    /// loaded/saved next to the executable and never pollutes the project folder.</summary>
+    private byte* _iniFilenamePtr;
+
     private readonly Dictionary<int, ImGuiKey> _glfwToImGuiKey = [];
 
     // ── Character input for ImGui text/edit widgets (DragFloat, InputText, etc.) ──
@@ -49,6 +54,16 @@ public unsafe class ImGuiController : IDisposable
 
         var io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
+
+        // ── imgui.ini lives NEXT TO THE EXE (bin folder), not in the working directory,
+        // so the IDE layout persists no matter where the app is launched from and the
+        // project folder never gets a stray imgui.ini. ImGui loads this on the first
+        // NewFrame and saves it on exit / periodically — the pointer must stay valid
+        // until DestroyContext, so it is freed in Dispose(). ──
+        string iniPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "imgui.ini");
+        _iniFilenamePtr = (byte*)Marshal.StringToCoTaskMemUTF8(iniPath);
+        io.NativePtr->IniFilename = _iniFilenamePtr;
+        Console.WriteLine($"[ImGui] imgui.ini: {iniPath}");
 
         _hasVtxOffset = GL.DrawElementsBaseVertexPtr != IntPtr.Zero;
         if (_hasVtxOffset)
@@ -176,7 +191,14 @@ public unsafe class ImGuiController : IDisposable
         if (_shader != 0) GL.DeleteProgram(_shader);
         if (_vertShader != 0) GL.DeleteShader(_vertShader);
         if (_fragShader != 0) GL.DeleteShader(_fragShader);
+        // DestroyContext saves the ini (if dirty) using io.IniFilename — free the pinned
+        // pointer only AFTER the context teardown has finished with it.
         ImGui.DestroyContext();
+        if (_iniFilenamePtr != null)
+        {
+            Marshal.FreeCoTaskMem((nint)_iniFilenamePtr);
+            _iniFilenamePtr = null;
+        }
         Console.WriteLine("[ImGuiController] Shutdown.");
     }
 

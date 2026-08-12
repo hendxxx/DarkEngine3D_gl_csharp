@@ -20,7 +20,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float GltfSlopeBias { get; set; } = 0.0004f; // ~5 texels steep
         public float GltfMinBias { get; set; } = 0.0002f;   // ~2.5 texels flat
         public float BlendRange { get; set; } = 0.10f;
-        public float NormalBias { get; set; } = 0.000001f; // vertex extrusion
+        public float NormalBias { get; set; } = 0.0010f; // vertex extrusion (world units, anti-acne)
         public float MaxWorldBias0 { get; set; } = 0.15f;  // cap on fragment bias WORLD offset (m), per cascade
         public float MaxWorldBias1 { get; set; } = 0.25f;
         public float MaxWorldBias2 { get; set; } = 1.0f;  // far cascade: ~2 far texels even at 2800 m camera far

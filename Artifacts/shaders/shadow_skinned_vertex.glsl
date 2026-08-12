@@ -12,7 +12,7 @@ const int MAX_JOINTS = 128;
 uniform mat4 u_Joints[MAX_JOINTS];
 
 // Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
-uniform float u_NormalBias = 0.000001;
+uniform float u_NormalBias = 0.0010;
 
 // Inverse-transpose of the model matrix. The skinned normal is in MODEL space after
 // skinning, so it must be rotated by this before extrusion to stay correct under
@@ -46,15 +46,17 @@ void main()
         skinnedNormal = mat3(skinMat) * aNormal;
     }
 
-    // Push the vertex slightly along its (skinned) normal so surfaces never self-shadow
-    // against their own shadow-map texels — prevents acne on skinned/GLB geometry
-    // (same anti-acne trick the static shadow shaders use). The normal matrix keeps the
-    // extrusion direction correct under non-uniform scale / rotation.
+    // Anti-acne: push the vertex slightly along its WORLD-space normal AFTER the model
+    // transform. Extruding in model space (aPos + n*bias, then × model) makes the world
+    // offset anisotropic under non-uniform scale — a terrain scaled (500,1,500) gets a
+    // 500× larger XZ extrusion than Y, so no single bias value fixes both acne (needs
+    // more Y) and peter-panning (XZ detaches the shadow). World-space extrusion is
+    // uniform in every direction, so u_NormalBias is directly in world units.
     float normalBias = u_NormalBias;
     vec3 skinnedNormalWorld = u_NormalMatrix * skinnedNormal;
     vec3 n = length(skinnedNormalWorld) > 1e-6 ? normalize(skinnedNormalWorld) : vec3(0.0, 1.0, 0.0);
-    vec3 extrudedPos = skinnedPos.xyz + n * normalBias;
 
-    vec4 worldPos = model * vec4(extrudedPos, 1.0);
+    vec4 worldPos = model * vec4(skinnedPos, 1.0);
+    worldPos.xyz += n * normalBias;
     gl_Position   = lightSpaceMatrix * worldPos;
 }

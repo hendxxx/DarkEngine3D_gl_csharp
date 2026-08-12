@@ -29,6 +29,7 @@ public class IDE : IDisposable
     private readonly HierarchyPanel _hierarchy;
     private readonly RenderTimePanel _renderTime;
     private readonly ShadowPanel _shadowPanel;
+    private readonly PbrPanel _pbrPanel;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
     private readonly ImGuiFileDialog _glbDialog = new();
 
@@ -134,6 +135,7 @@ public class IDE : IDisposable
             _hierarchy = new HierarchyPanel(Bridge);
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
+            _pbrPanel = new PbrPanel(Bridge);
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -445,6 +447,7 @@ public class IDE : IDisposable
                 _hierarchy.ShowInMenu();
                 _renderTime.ShowInMenu();
                 _shadowPanel.ShowInMenu();
+                _pbrPanel.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
                 ImGui.EndMenu();
@@ -483,6 +486,7 @@ public class IDE : IDisposable
         _inspector.Render();
         _renderTime.Render();
         _shadowPanel.Render();
+        _pbrPanel.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
         _console.Render();

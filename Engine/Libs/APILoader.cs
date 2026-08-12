@@ -46,6 +46,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr DeleteTexturesPtr = IntPtr.Zero;
         internal static IntPtr BindTexturePtr;
         internal static IntPtr TexImage2DPtr;
+        internal static IntPtr TexImage3DPtr;
+        internal static IntPtr TexSubImage3DPtr;
         internal static IntPtr TexParameteriPtr;
         internal static IntPtr GenerateMipmapPtr;
         internal static IntPtr ActiveTexturePtr;
@@ -424,6 +426,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void TexImage2D(uint target, int level, int internalFormat, int width, int height, int border, uint format, uint type, void* data)
             => ((delegate* unmanaged[Cdecl]<uint, int, int, int, int, int, uint, uint, void*, void>)TexImage2DPtr)(target, level, internalFormat, width, height, border, format, type, data);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void TexImage3D(uint target, int level, int internalFormat, int width, int height, int depth, int border, uint format, uint type, void* data)
+            => ((delegate* unmanaged[Cdecl]<uint, int, int, int, int, int, int, uint, uint, void*, void>)TexImage3DPtr)(target, level, internalFormat, width, height, depth, border, format, type, data);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void TexSubImage3D(uint target, int level, int xoffset, int yoffset, int zoffset, int width, int height, int depth, uint format, uint type, void* data)
+            => ((delegate* unmanaged[Cdecl]<uint, int, int, int, int, int, int, int, uint, uint, void*, void>)TexSubImage3DPtr)(target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, data);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void TexParameteri(uint target, uint pname, int param)

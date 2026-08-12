@@ -1590,7 +1590,8 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                         if (gi < 2) ImGui.SameLine();
                     }
 
-                    // ── Freefly mouse-look toggle (replaces holding CTRL) ──
+                    // ── Freefly mouse-look toggle. Mouse look is also available temporarily
+                    // by holding Right-Click in the viewport — without enabling the mode. ──
                     ImGui.SameLine();
                     ImGui.TextDisabled("|");
                     ImGui.SameLine();
@@ -1607,7 +1608,7 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip(flyLook
                             ? "Freefly mouse-look ON — click to turn off"
-                            : "Freefly mouse-look OFF — click to turn on (WASD + mouse look)");
+                            : "Freefly mouse-look OFF — click to turn on, or hold Right-Click in the viewport for a temporary look");
 
                     // ── Gizmo translate snap toggle ──
                     ImGui.SameLine();
