@@ -16,10 +16,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects;
 public unsafe class EditorTerrainMesh : IDisposable
 {
     // ── GPU resources ──
-    private uint _vao = 0;
-    private uint _vbo = 0;
-    private int _vertexCount = 0;
+    /// <summary>One entry per chunk (chunksPerSide × chunksPerSide). Each chunk is an
+    /// independent grid mesh rendered as quads through an index buffer (4 unique corner
+    /// vertices per cell + 6 indices = 2 triangles), so the whole terrain is quad-based
+    /// while staying compatible with the core-profile shaders.</summary>
+    private readonly List<ChunkGpu> _chunks = [];
     private bool _gpuReady = false;
+
+    /// <summary>GPU handles + index count of one chunk sub-mesh.</summary>
+    private struct ChunkGpu
+    {
+        public uint Vao;
+        public uint Vbo;
+        public uint Ebo;
+        public int IndexCount;
+    }
 
     // ── Heightmap data (normalized 0..1) ──
     private float[] _heights = [];
@@ -28,6 +39,7 @@ public unsafe class EditorTerrainMesh : IDisposable
 
     // ── Last Generate() params — reused to rebuild the mesh after brush edits ──
     private int _lastChunkSize = 32;
+    private int _lastChunksPerSide = 1;
     private float _lastHeightScale = 30f;
     private float _lastFootprintX = 25f;
     private float _lastFootprintZ = 25f;
@@ -80,8 +92,16 @@ public unsafe class EditorTerrainMesh : IDisposable
     /// <summary>True once a valid heightmap + mesh have been generated.</summary>
     public bool IsReady => _gpuReady;
 
-    /// <summary>Number of triangles in the generated mesh.</summary>
-    public int TriangleCount => _vertexCount / 3;
+    /// <summary>Number of triangles in the generated mesh (all chunks combined).</summary>
+    public int TriangleCount
+    {
+        get
+        {
+            int total = 0;
+            foreach (var c in _chunks) total += c.IndexCount;
+            return total / 3;
+        }
+    }
 
     /// <summary>Load a heightmap file (.raw 8-bit or any stb-supported image).</summary>
     public bool LoadHeightmap(string path)
@@ -153,145 +173,160 @@ public unsafe class EditorTerrainMesh : IDisposable
     }
 
     /// <summary>
-    /// Generate a grid mesh. Local XZ range is [-0.5, 0.5] (matching the plane's local
-    /// space); Y holds the heightmap height × <paramref name="heightScale"/> in WORLD units.
-    /// The draw pass applies a model matrix of Scale(X, 1, Z) × rotation × translation so
-    /// XZ stretch comes from the object's Scale while Y keeps real world height.
+    /// Generate the terrain as a <paramref name="chunksPerSide"/> × <paramref name="chunksPerSide"/>
+    /// grid of chunk sub-meshes, each chunk a grid of <paramref name="chunkSize"/> ×
+    /// <paramref name="chunkSize"/> quads. Every quad is stored as 4 unique corner vertices
+    /// + a 6-index element buffer (2 triangles), so the terrain is quad-based while staying
+    /// compatible with the core-profile shaders. More chunks = more sub-meshes, and a bigger
+    /// chunkSize = more quads/triangles per chunk — both make the terrain more detailed.
+    /// Local XZ range is [-0.5, 0.5] (matching the plane's local space); Y holds the heightmap
+    /// height × <paramref name="heightScale"/> in WORLD units. The draw pass applies a model
+    /// matrix of Scale(X, 1, Z) × rotation × translation so XZ stretch comes from the object's
+    /// Scale while Y keeps real world height.
     /// </summary>
-    public void Generate(int chunkSize, float heightScale, float footprintX, float footprintZ)
+    public void Generate(int chunkSize, int chunksPerSide, float heightScale, float footprintX, float footprintZ)
     {
         // Tear down any previous GPU buffers.
-        if (_vao != 0) { uint v = _vao; GL.DeleteVertexArrays(1, &v); _vao = 0; }
-        if (_vbo != 0) { uint b = _vbo; GL.DeleteBuffers(1, &b); _vbo = 0; }
-        _vertexCount = 0;
+        foreach (var c in _chunks)
+        {
+            if (c.Vao != 0) { uint v = c.Vao; GL.DeleteVertexArrays(1, &v); }
+            if (c.Vbo != 0) { uint b = c.Vbo; GL.DeleteBuffers(1, &b); }
+            if (c.Ebo != 0) { uint b = c.Ebo; GL.DeleteBuffers(1, &b); }
+        }
+        _chunks.Clear();
         _gpuReady = false;
 
         chunkSize = Math.Clamp(chunkSize, 4, 256);
+        chunksPerSide = Math.Clamp(chunksPerSide, 1, 128);
         if (footprintX < 0.01f) footprintX = 1f;
         if (footprintZ < 0.01f) footprintZ = 1f;
 
         // Remember the params so PaintHeight can rebuild the mesh after editing heights.
         _lastChunkSize = chunkSize;
+        _lastChunksPerSide = chunksPerSide;
         _lastHeightScale = heightScale;
         _lastFootprintX = footprintX;
         _lastFootprintZ = footprintZ;
 
-        int n = chunkSize;
-        int vertsPerSide = n + 1;
-        var verts = new List<Vertex>(vertsPerSide * vertsPerSide * 6);
+        int n = chunkSize;         // quads per chunk side
+        int cs = chunksPerSide;    // chunks per terrain side
+        int vs = n + 1;            // vertices per chunk side
+        float cellLocal = 1f / (cs * n); // local-space size of one grid step
+        float cellX = footprintX * cellLocal; // world size of one grid step in X
+        float cellZ = footprintZ * cellLocal; // world size of one grid step in Z
 
-        // ── Smooth per-vertex normals ──
-        // One normal per GRID VERTEX, computed with central differences of the heightmap
-        // (2 grid cells wide; forward/backward difference at the borders). Neighboring
-        // quads share their corner normals, so lighting and shadow shading stay
-        // continuous — the old code gave every quad the SAME normal to all 4 corners
-        // (flat-shaded per quad), which made lighting/shadows step in visible boxes.
-        // Normals are expressed in LOCAL mesh space (XZ in [-0.5, 0.5], Y in world units);
-        // the vertex shader's inverse-transpose (Scale(X,1,Z) × rotation) turns them back
-        // into the true world slope. (Computing in world-XZ units was the old bug: after
-        // the inverse-transpose the XZ slope got divided by the footprint, so every slope
-        // read as near-vertical in the shader and slope bias / relief shading never
-        // engaged.)
-        int vs = vertsPerSide;
-        var gridNormals = new Vector3[vs * vs];
-        float cellX = footprintX / n;   // world size of one grid step in X
-        float cellZ = footprintZ / n;   // world size of one grid step in Z
-        for (int vz = 0; vz < vs; vz++)
+        for (int cz = 0; cz < cs; cz++)
         {
-            float v = (float)vz / n;
-            float vLo = Math.Max(0f, (float)(vz - 1) / n);
-            float vHi = Math.Min(1f, (float)(vz + 1) / n);
-            int stepZ = (vz > 0 && vz < n) ? 2 : 1;
-            for (int vx = 0; vx < vs; vx++)
+            for (int cx = 0; cx < cs; cx++)
             {
-                float u = (float)vx / n;
-                float uLo = Math.Max(0f, (float)(vx - 1) / n);
-                float uHi = Math.Min(1f, (float)(vx + 1) / n);
-                int stepX = (vx > 0 && vx < n) ? 2 : 1;
+                // ── Smooth per-vertex normals for THIS chunk ──
+                // One normal per GRID VERTEX, computed with central differences of the
+                // heightmap (2 grid cells wide; forward/backward difference at the chunk
+                // borders). Neighboring quads share their corner normals, so lighting and
+                // shadow shading stay continuous. Normals are expressed in LOCAL mesh space
+                // (XZ in [-0.5, 0.5], Y in world units); the vertex shader's inverse-transpose
+                // (Scale(X,1,Z) × rotation) turns them back into the true world slope.
+                var gridNormals = new Vector3[vs * vs];
+                for (int vz = 0; vz < vs; vz++)
+                {
+                    float v = (cz + (float)vz / n) / cs;
+                    float vLo = Math.Max(0f, (cz + Math.Max(0, vz - 1) / (float)n) / cs);
+                    float vHi = Math.Min(1f, (cz + Math.Min(n, vz + 1) / (float)n) / cs);
+                    int stepZ = (vz > 0 && vz < n) ? 2 : 1;
+                    for (int vx = 0; vx < vs; vx++)
+                    {
+                        float u = (cx + (float)vx / n) / cs;
+                        float uLo = Math.Max(0f, (cx + Math.Max(0, vx - 1) / (float)n) / cs);
+                        float uHi = Math.Min(1f, (cx + Math.Min(n, vx + 1) / (float)n) / cs);
+                        int stepX = (vx > 0 && vx < n) ? 2 : 1;
 
-                float hL = Sample(uLo, v) * heightScale;
-                float hR = Sample(uHi, v) * heightScale;
-                float hD = Sample(u, vLo) * heightScale;
-                float hU = Sample(u, vHi) * heightScale;
+                        float hL = Sample(uLo, v) * heightScale;
+                        float hR = Sample(uHi, v) * heightScale;
+                        float hD = Sample(u, vLo) * heightScale;
+                        float hU = Sample(u, vHi) * heightScale;
 
-                // World slope (dy/dx_world) → local slope (× footprint, since local X spans
-                // [-0.5, 0.5] over footprintX world units). Sign: the surface tangent is
-                // (1, dh/dlx, 0), so the normal (nx, 1, nz) must satisfy nx = -dh/dlx —
-                // hence LEFT minus RIGHT (hL - hR), NOT right minus left.
-                float gx = (hL - hR) / (stepX * cellX) * footprintX;
-                float gz = (hD - hU) / (stepZ * cellZ) * footprintZ;
-                var nrm = Vector3.Normalize(new Vector3(gx, 1f, gz));
-                if (nrm == Vector3.Zero || !float.IsFinite(nrm.Y)) nrm = Vector3.UnitY;
-                gridNormals[vz * vs + vx] = nrm;
+                        // World slope (dy/dx_world) → local slope (× footprint, since local X
+                        // spans [-0.5, 0.5] over footprintX world units). Sign: the surface
+                        // tangent is (1, dh/dlx, 0), so the normal (nx, 1, nz) must satisfy
+                        // nx = -dh/dlx — hence LEFT minus RIGHT (hL - hR), NOT right minus left.
+                        float gx = (hL - hR) / (stepX * cellX) * footprintX;
+                        float gz = (hD - hU) / (stepZ * cellZ) * footprintZ;
+                        var nrm = Vector3.Normalize(new Vector3(gx, 1f, gz));
+                        if (nrm == Vector3.Zero || !float.IsFinite(nrm.Y)) nrm = Vector3.UnitY;
+                        gridNormals[vz * vs + vx] = nrm;
+                    }
+                }
+
+                // ── Build the chunk's quad grid: 4 unique vertices per cell + 6 indices ──
+                var verts = new List<Vertex>(vs * vs);
+                var indices = new List<uint>(n * n * 6);
+                for (int iz = 0; iz <= n; iz++)
+                {
+                    for (int ix = 0; ix <= n; ix++)
+                    {
+                        // Local position of this grid vertex within the whole terrain.
+                        float u = (cx + (float)ix / n) / cs;
+                        float v = (cz + (float)iz / n) / cs;
+                        float lx = u - 0.5f;
+                        float lz = v - 0.5f;
+                        float h = Sample(u, v) * heightScale;
+
+                        // Smooth per-vertex normal from the precomputed chunk grid.
+                        Vector3 nm = gridNormals[iz * vs + ix];
+                        verts.Add(new Vertex(lx, h, lz, nm.X, nm.Y, nm.Z, 1, 1, 1, lx, lz));
+                    }
+                }
+
+                for (int iz = 0; iz < n; iz++)
+                {
+                    for (int ix = 0; ix < n; ix++)
+                    {
+                        int i00 = iz * vs + ix;
+                        int i10 = iz * vs + (ix + 1);
+                        int i11 = (iz + 1) * vs + (ix + 1);
+                        int i01 = (iz + 1) * vs + ix;
+
+                        // Two triangles per quad, CCW when viewed from above (+Y) — identical
+                        // to Object3D.CreatePlaneVertices so back-face culling (the scene
+                        // default is CullMode.Back + FrontFaceWinding.CCW) keeps the terrain
+                        // front-facing. Tri 1: n00 → n11 → n10 | Tri 2: n00 → n01 → n11
+                        indices.Add((uint)i00); indices.Add((uint)i11); indices.Add((uint)i10);
+                        indices.Add((uint)i00); indices.Add((uint)i01); indices.Add((uint)i11);
+                    }
+                }
+
+                // ── Upload this chunk's GPU resources ──
+                uint vao = 0, vbo = 0, ebo = 0;
+                GL.GenVertexArrays(1, &vao);
+                GL.GenBuffers(1, &vbo);
+                GL.GenBuffers(1, &ebo);
+                GL.BindVertexArray(vao);
+                GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                fixed (void* ptr = verts.ToArray())
+                {
+                    // DYNAMIC because brush painting rebuilds this buffer on every stamp.
+                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(verts.Count * sizeof(Vertex)), ptr, Const.GL_DYNAMIC_DRAW);
+                }
+                GL.BindBuffer(Const.GL_ELEMENT_ARRAY_BUFFER, ebo);
+                fixed (void* ptr = indices.ToArray())
+                {
+                    GL.BufferData(Const.GL_ELEMENT_ARRAY_BUFFER, (nuint)(indices.Count * sizeof(uint)), ptr, Const.GL_STATIC_DRAW);
+                }
+
+                int stride = sizeof(Vertex);
+                GL.EnableVertexAttribArray(0);
+                GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+                GL.EnableVertexAttribArray(1);
+                GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)sizeof(Vector3));
+                GL.EnableVertexAttribArray(2);
+                GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 2));
+                GL.EnableVertexAttribArray(3);
+                GL.VertexAttribPointer(3, 2, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 3));
+                GL.BindVertexArray(0);
+
+                _chunks.Add(new ChunkGpu { Vao = vao, Vbo = vbo, Ebo = ebo, IndexCount = indices.Count });
             }
         }
-
-        for (int iz = 0; iz < n; iz++)
-        {
-            for (int ix = 0; ix < n; ix++)
-            {
-                float lx0 = -0.5f + (float)ix / n;
-                float lx1 = -0.5f + (float)(ix + 1) / n;
-                float lz0 = -0.5f + (float)iz / n;
-                float lz1 = -0.5f + (float)(iz + 1) / n;
-
-                // World-space corners (for heightmap sampling).
-                float wx0 = lx0 * footprintX, wx1 = lx1 * footprintX;
-                float wz0 = lz0 * footprintZ, wz1 = lz1 * footprintZ;
-
-                float h00 = Sample(wx0 / footprintX + 0.5f, wz0 / footprintZ + 0.5f) * heightScale;
-                float h10 = Sample(wx1 / footprintX + 0.5f, wz0 / footprintZ + 0.5f) * heightScale;
-                float h01 = Sample(wx0 / footprintX + 0.5f, wz1 / footprintZ + 0.5f) * heightScale;
-                float h11 = Sample(wx1 / footprintX + 0.5f, wz1 / footprintZ + 0.5f) * heightScale;
-
-                // Smooth per-vertex normals: each corner takes the normal of its own grid
-                // vertex (precomputed above), so adjacent quads share normals and shading
-                // stays continuous — no more per-quad flat-shaded "boxes".
-                Vector3 nm00 = gridNormals[iz * vs + ix];
-                Vector3 nm10 = gridNormals[iz * vs + (ix + 1)];
-                Vector3 nm11 = gridNormals[(iz + 1) * vs + (ix + 1)];
-                Vector3 nm01 = gridNormals[(iz + 1) * vs + ix];
-
-                var n00 = new Vertex(lx0, h00, lz0, nm00.X, nm00.Y, nm00.Z, 1, 1, 1, lx0, lz0);
-                var n10 = new Vertex(lx1, h10, lz0, nm10.X, nm10.Y, nm10.Z, 1, 1, 1, lx1, lz0);
-                var n11 = new Vertex(lx1, h11, lz1, nm11.X, nm11.Y, nm11.Z, 1, 1, 1, lx1, lz1);
-                var n01 = new Vertex(lx0, h01, lz1, nm01.X, nm01.Y, nm01.Z, 1, 1, 1, lx0, lz1);
-
-                // Two triangles per quad, CCW when viewed from above (+Y) — identical to
-                // Object3D.CreatePlaneVertices so back-face culling (the scene default is
-                // CullMode.Back + FrontFaceWinding.CCW) keeps the terrain front-facing.
-                // Tri 1: n00 → n11 → n10 | Tri 2: n00 → n01 → n11
-                verts.Add(n00); verts.Add(n11); verts.Add(n10);
-                verts.Add(n00); verts.Add(n01); verts.Add(n11);
-            }
-        }
-
-        Vertex[] data = [.. verts];
-        _vertexCount = data.Length;
-
-        uint vao = 0, vbo = 0;
-        GL.GenVertexArrays(1, &vao);
-        GL.GenBuffers(1, &vbo);
-        _vao = vao;
-        _vbo = vbo;
-        GL.BindVertexArray(_vao);
-        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _vbo);
-        fixed (void* ptr = data)
-        {
-            // DYNAMIC because brush painting rebuilds this buffer on every stamp.
-            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(data.Length * sizeof(Vertex)), ptr, Const.GL_DYNAMIC_DRAW);
-        }
-
-        int stride = sizeof(Vertex);
-        GL.EnableVertexAttribArray(0);
-        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
-        GL.EnableVertexAttribArray(1);
-        GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, stride, (void*)sizeof(Vector3));
-        GL.EnableVertexAttribArray(2);
-        GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 2));
-        GL.EnableVertexAttribArray(3);
-        GL.VertexAttribPointer(3, 2, Const.GL_FLOAT, false, stride, (void*)(sizeof(Vector3) * 3));
-        GL.BindVertexArray(0);
 
         _gpuReady = true;
     }
@@ -346,7 +381,7 @@ public unsafe class EditorTerrainMesh : IDisposable
         }
 
         IsModified = true;
-        Generate(_lastChunkSize, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
+        Generate(_lastChunkSize, _lastChunksPerSide, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -452,7 +487,7 @@ public unsafe class EditorTerrainMesh : IDisposable
         }
 
         IsModified = true;
-        Generate(_lastChunkSize, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
+        Generate(_lastChunkSize, _lastChunksPerSide, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
     }
 
     /// <summary>
@@ -498,7 +533,7 @@ public unsafe class EditorTerrainMesh : IDisposable
         }
 
         IsModified = true;
-        Generate(_lastChunkSize, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
+        Generate(_lastChunkSize, _lastChunksPerSide, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
     }
 
     /// <summary>Snapshot the current height data (for undo).</summary>
@@ -511,7 +546,7 @@ public unsafe class EditorTerrainMesh : IDisposable
         if (heights.Length != _hmWidth * _hmHeight) return;
         _heights = (float[])heights.Clone();
         IsModified = true;
-        Generate(_lastChunkSize, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
+        Generate(_lastChunkSize, _lastChunksPerSide, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
     }
 
     /// <summary>Return the current (painted) heightmap as a compact binary blob:
@@ -540,7 +575,7 @@ public unsafe class EditorTerrainMesh : IDisposable
         for (int i = 0; i < _heights.Length; i++)
             _heights[i] = data[8 + i] / 255f;
         IsModified = true;
-        Generate(_lastChunkSize, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
+        Generate(_lastChunkSize, _lastChunksPerSide, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
     }
 
     /// <summary>Write the current (painted) heights back to a .raw heightmap file.</summary>
@@ -755,8 +790,12 @@ public unsafe class EditorTerrainMesh : IDisposable
         GL.BindTexture(Const.GL_TEXTURE_2D, _splatTex);
         GL.Uniform1i(_tex4Loc, 4);
 
-        GL.BindVertexArray(_vao);
-        GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount);
+        // Draw every chunk as quads (2 triangles each, via the index buffer).
+        foreach (var c in _chunks)
+        {
+            GL.BindVertexArray(c.Vao);
+            GL.DrawElements(Const.GL_TRIANGLES, c.IndexCount, Const.GL_UNSIGNED_INT, null);
+        }
         GL.BindVertexArray(0);
 
         GL.ActiveTexture(Const.GL_TEXTURE0);
@@ -768,7 +807,7 @@ public unsafe class EditorTerrainMesh : IDisposable
     /// Scale while Y stays real world height (same as the main draw pass).</summary>
     public void RenderShadow(Matrix4x4 model, CSM csm, int cascadeIndex)
     {
-        if (!_gpuReady || _vertexCount == 0) return;
+        if (!_gpuReady || _chunks.Count == 0) return;
 
         uint shadowShader = Shader.GetShadowShaderProgram();
         GL.UseProgram(shadowShader);
@@ -800,8 +839,12 @@ public unsafe class EditorTerrainMesh : IDisposable
         // on the true surface normal — otherwise faces push INTO the shadow map.
         Visual.ShadowUniforms.UploadShadowNormalMatrix(shadowShader, model);
 
-        GL.BindVertexArray(_vao);
-        GL.DrawArrays(Const.GL_TRIANGLES, 0, _vertexCount);
+        // Draw every chunk as quads (2 triangles each, via the index buffer).
+        foreach (var c in _chunks)
+        {
+            GL.BindVertexArray(c.Vao);
+            GL.DrawElements(Const.GL_TRIANGLES, c.IndexCount, Const.GL_UNSIGNED_INT, null);
+        }
         GL.BindVertexArray(0);
 
         // Restore the standard normal bias so subsequent objects drawn in this cascade pass
@@ -960,8 +1003,13 @@ public unsafe class EditorTerrainMesh : IDisposable
 
     public void Dispose()
     {
-        if (_vao != 0) { uint v = _vao; GL.DeleteVertexArrays(1, &v); _vao = 0; }
-        if (_vbo != 0) { uint b = _vbo; GL.DeleteBuffers(1, &b); _vbo = 0; }
+        foreach (var c in _chunks)
+        {
+            if (c.Vao != 0) { uint v = c.Vao; GL.DeleteVertexArrays(1, &v); }
+            if (c.Vbo != 0) { uint b = c.Vbo; GL.DeleteBuffers(1, &b); }
+            if (c.Ebo != 0) { uint b = c.Ebo; GL.DeleteBuffers(1, &b); }
+        }
+        _chunks.Clear();
         if (_splatTex != 0)
         {
             uint t = _splatTex;
@@ -978,7 +1026,6 @@ public unsafe class EditorTerrainMesh : IDisposable
             }
             _layerPaths[i] = "";
         }
-        _vertexCount = 0;
         _gpuReady = false;
         GC.SuppressFinalize(this);
     }

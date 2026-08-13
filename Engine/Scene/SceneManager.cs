@@ -179,6 +179,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         {
                             float aspect = (float)Glfw.WindowWidth / Math.Max(1, Glfw.WindowHeight);
                             _editorCamera = new Camera(0f, 10f, 15f, 180f, -33.7f, aspect, 60f, 0.1f, 500f);
+                            ApplyPendingEditorCamera(_editorCamera, bridge);
                         }
                         if (_editorLights == null)
                         {
@@ -372,6 +373,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     {
                         float aspect = (float)Glfw.WindowWidth / Math.Max(1, Glfw.WindowHeight);
                         _editorCamera = new Camera(0f, 10f, 15f, 180f, -33.7f, aspect, 60f, 0.1f, 500f);
+                        ApplyPendingEditorCamera(_editorCamera, bridge);
                     }
                     if (_editorLights == null)
                     {
@@ -541,6 +543,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                     // Update bridge camera so the IDE panels can show camera info
                     bridge.Camera = _editorCamera;
+                    ApplyPendingEditorCamera(_editorCamera, bridge); // restore saved freefly pos when available
                     bridge.CameraPosition = _editorCamera.Position;
 
                     // Mark texture as rendered so the fallback below doesn't override with a cleared FBO
@@ -700,6 +703,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             _editorGridCreated = true;
             Console.WriteLine("[SceneManager] Editor grid created.");
+        }
+
+        /// <summary>Apply a pending saved freefly-camera restore (set by SceneManagerPanel
+        /// when a .ing file with a saved camera is loaded) to the editor camera, then clear
+        /// it so it only fires once. Safe to call every frame — no-op when nothing pending.</summary>
+        private static void ApplyPendingEditorCamera(Camera cam, IDEBridge bridge)
+        {
+            if (bridge?.PendingCameraPos is not Vector3 pos) return;
+            cam.Position = pos;
+            cam.Yaw = bridge.PendingCameraYaw ?? cam.Yaw;
+            cam.Pitch = bridge.PendingCameraPitch ?? cam.Pitch;
+            bridge.PendingCameraPos = null;
+            bridge.PendingCameraYaw = null;
+            bridge.PendingCameraPitch = null;
         }
 
         /// Render the editor ground-plane grid centered on the camera's XZ position.

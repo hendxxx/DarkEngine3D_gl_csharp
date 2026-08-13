@@ -470,6 +470,15 @@ public class SceneManagerPanel
                     {
                         if (_bridge.EditorScenes.TryGetValue(oldName, out var oldEditorScene))
                         {
+                            // Keep the live camera attached to the renamed scene so the
+                            // rename doesn't reset the view (the SelectedEditorScene setter
+                            // restores the scene's saved camera on switch).
+                            if (_bridge.Camera != null && _bridge.SelectedEditorScene == oldName)
+                            {
+                                oldEditorScene.CameraPos = _bridge.Camera.Position;
+                                oldEditorScene.CameraYaw = _bridge.Camera.Yaw;
+                                oldEditorScene.CameraPitch = _bridge.Camera.Pitch;
+                            }
                             _bridge.EditorScenes.Remove(oldName);
                             var renamedRoot = oldEditorScene.Root;
                             renamedRoot.Name = newName;
@@ -623,6 +632,10 @@ public class SceneManagerPanel
         manifest.SelectionHighlightColor = [_bridge.SelectionHighlights.GltfObject.X, _bridge.SelectionHighlights.GltfObject.Y, _bridge.SelectionHighlights.GltfObject.Z];
         manifest.EditorObjectHighlightColor = [_bridge.SelectionHighlights.EditorObject.X, _bridge.SelectionHighlights.EditorObject.Y, _bridge.SelectionHighlights.EditorObject.Z];
 
+        // NOTE: the freefly camera is now saved PER SCENE (SceneAsset.EditorCameraPosition),
+        // so each scene keeps its own view. The legacy manifest-level fields are only read
+        // for old .ing files (see LoadFromIngFile).
+
         foreach (var (name, editorScene) in _bridge.EditorScenes)
         {
             var asset = new SceneAsset
@@ -632,6 +645,23 @@ public class SceneManagerPanel
                 BackgroundObjects = [],
                 EditorObjects = []
             };
+
+            // ── Per-scene freefly camera: snapshot the LIVE camera for the currently
+            // selected scene, and keep each other scene's saved camera as-is. ──
+            if (string.Equals(name, _bridge.SelectedEditorScene, StringComparison.OrdinalIgnoreCase)
+                && _bridge.Camera != null)
+            {
+                var cam = _bridge.Camera;
+                editorScene.CameraPos = cam.Position;
+                editorScene.CameraYaw = cam.Yaw;
+                editorScene.CameraPitch = cam.Pitch;
+            }
+            if (editorScene.CameraPos is Vector3 camPos)
+            {
+                asset.EditorCameraPosition = [camPos.X, camPos.Y, camPos.Z];
+                asset.EditorCameraYaw = editorScene.CameraYaw;
+                asset.EditorCameraPitch = editorScene.CameraPitch;
+            }
 
             // ── Save 3D editor objects ──
             var objMgr = editorScene.ObjectManager;
@@ -681,6 +711,7 @@ public class SceneManagerPanel
                         TerrainEnabled = obj.TerrainEnabled,
                         TerrainHeightmapPath = PathHelpers.MakeRelative(obj.TerrainHeightmapPath),
                         TerrainChunkSize = obj.TerrainChunkSize,
+                        TerrainChunksPerSide = obj.TerrainChunksPerSide,
                         TerrainHeightScale = obj.TerrainHeightScale,
                         TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
                         TerrainTexTiling = obj.TerrainTexTiling,
@@ -723,6 +754,8 @@ public class SceneManagerPanel
                         TerrainBrushStrength = obj.TerrainBrushStrength,
                         TerrainBrushSoftness = obj.TerrainBrushSoftness,
                         TerrainBrushFalloff = obj.TerrainBrushFalloff,
+                        TerrainBrushColor = [obj.BrushIndicatorColor.X, obj.BrushIndicatorColor.Y, obj.BrushIndicatorColor.Z],
+                        TerrainBrushAlpha = obj.BrushIndicatorAlpha,
                         TerrainPaintedData = obj.TerrainPaintedData,
                         TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                         TerrainPaintStrength = obj.TerrainPaintStrength,
@@ -880,6 +913,10 @@ public class SceneManagerPanel
             if (manifest.EditorObjectHighlightColor?.Length == 3)
                 _bridge.SelectionHighlights.EditorObject = new Vector3(manifest.EditorObjectHighlightColor[0], manifest.EditorObjectHighlightColor[1], manifest.EditorObjectHighlightColor[2]);
 
+            // NOTE: the freefly camera is restored PER SCENE below (each scene keeps its
+            // own view). Legacy manifest-level fields are only used as a fallback for
+            // scenes saved before per-scene cameras existed.
+
             // Clear existing editor scenes AND the panel's scene list — we're replacing
             // everything with the loaded data. Without clearing AvailableScenes, scenes from
             // a previously loaded file would linger and mix with the newly loaded ones.
@@ -989,6 +1026,7 @@ public class SceneManagerPanel
                         if (!string.IsNullOrEmpty(objData.TerrainHeightmapPath))
                             obj.TerrainHeightmapPath = PathHelpers.Resolve(objData.TerrainHeightmapPath);
                         obj.TerrainChunkSize = objData.TerrainChunkSize;
+                        obj.TerrainChunksPerSide = objData.TerrainChunksPerSide;
                         obj.TerrainHeightScale = objData.TerrainHeightScale;
                         obj.TerrainSlopeThreshold = objData.TerrainSlopeThreshold;
                         obj.TerrainTexTiling = objData.TerrainTexTiling;
@@ -1057,6 +1095,11 @@ public class SceneManagerPanel
                         obj.TerrainBrushStrength = objData.TerrainBrushStrength;
                         obj.TerrainBrushSoftness = objData.TerrainBrushSoftness;
                         obj.TerrainBrushFalloff = objData.TerrainBrushFalloff;
+                        if (objData.TerrainBrushColor is { Length: 3 } brushCol)
+                        {
+                            obj.BrushIndicatorColor = new Vector3(brushCol[0], brushCol[1], brushCol[2]);
+                            obj.BrushIndicatorAlpha = Math.Clamp(objData.TerrainBrushAlpha, 0f, 1f);
+                        }
                         if (!string.IsNullOrEmpty(objData.TerrainPaintedData))
                             obj.TerrainPaintedData = objData.TerrainPaintedData; // applied after heightmap path is set
                         obj.TerrainPaintLayerIndex = objData.TerrainPaintLayerIndex;
@@ -1069,11 +1112,28 @@ public class SceneManagerPanel
                     }
                 }
 
-                _bridge.EditorScenes[sceneName] = new IDEBridge.EditorScene(
+                var loadedScene = new IDEBridge.EditorScene(
                     sceneName, IDEBridge.SceneType.MainMenu, sceneRoot)
                 {
                     ObjectManager = editorMgr
                 };
+
+                // ── Restore per-scene freefly camera (each scene keeps its own view) ──
+                if (asset.EditorCameraPosition is { Length: 3 } camArr)
+                {
+                    loadedScene.CameraPos = new Vector3(camArr[0], camArr[1], camArr[2]);
+                    loadedScene.CameraYaw = asset.EditorCameraYaw;
+                    loadedScene.CameraPitch = asset.EditorCameraPitch;
+                }
+                // Legacy fallback: pre-per-scene .ing files stored ONE global camera on
+                // the manifest — apply it to every scene that has no per-scene camera.
+                else if (manifest.EditorCameraPosition is { Length: 3 } legacyArr)
+                {
+                    loadedScene.CameraPos = new Vector3(legacyArr[0], legacyArr[1], legacyArr[2]);
+                    loadedScene.CameraYaw = manifest.EditorCameraYaw;
+                    loadedScene.CameraPitch = manifest.EditorCameraPitch;
+                }
+                _bridge.EditorScenes[sceneName] = loadedScene;
 
                 // Track the first loaded scene for auto-selection
                 firstLoadedScene ??= sceneName;
@@ -1085,6 +1145,20 @@ public class SceneManagerPanel
             if (sceneCount > 0 && firstLoadedScene != null)
             {
                 SelectEditorScene(firstLoadedScene);
+
+                // ── Apply the first scene's saved camera. If the editor camera isn't
+                // created yet, stash it on the bridge so SceneManager applies it the
+                // moment the camera exists (SelectEditorScene already restored it when
+                // Bridge.Camera was alive). ──
+                if (_bridge.Camera == null
+                    && _bridge.EditorScenes.TryGetValue(firstLoadedScene, out var firstScene)
+                    && firstScene.CameraPos is Vector3 fp)
+                {
+                    _bridge.PendingCameraPos = fp;
+                    _bridge.PendingCameraYaw = firstScene.CameraYaw;
+                    _bridge.PendingCameraPitch = firstScene.CameraPitch;
+                }
+
                 Console.WriteLine($"[SceneManagerPanel] Loaded {sceneCount} scene(s) from {filePath}");
             }
         }
@@ -1120,6 +1194,23 @@ public class SceneManagerPanel
                     EditorObjects = []
                 };
 
+                // ── Per-scene freefly camera: snapshot the LIVE camera for the currently
+                // selected scene, and keep each other scene's saved camera as-is. ──
+                if (string.Equals(name, _bridge.SelectedEditorScene, StringComparison.OrdinalIgnoreCase)
+                    && _bridge.Camera != null)
+                {
+                    var cam = _bridge.Camera;
+                    editorScene.CameraPos = cam.Position;
+                    editorScene.CameraYaw = cam.Yaw;
+                    editorScene.CameraPitch = cam.Pitch;
+                }
+                if (editorScene.CameraPos is Vector3 camPos)
+                {
+                    asset.EditorCameraPosition = [camPos.X, camPos.Y, camPos.Z];
+                    asset.EditorCameraYaw = editorScene.CameraYaw;
+                    asset.EditorCameraPitch = editorScene.CameraPitch;
+                }
+
                 // Save 3D editor objects
                 var objMgr = editorScene.ObjectManager;
                 if (objMgr != null)
@@ -1151,6 +1242,7 @@ public class SceneManagerPanel
                             TerrainEnabled = obj.TerrainEnabled,
                             TerrainHeightmapPath = PathHelpers.MakeRelative(obj.TerrainHeightmapPath),
                             TerrainChunkSize = obj.TerrainChunkSize,
+                            TerrainChunksPerSide = obj.TerrainChunksPerSide,
                             TerrainHeightScale = obj.TerrainHeightScale,
                             TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
                             TerrainTexTiling = obj.TerrainTexTiling,

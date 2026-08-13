@@ -900,6 +900,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         /// Used for BVH mesh visualization and debug wireframes.
         /// </summary>
         public static unsafe void DrawLineSegments(List<Vector3> vertices, Vector3 color, Camera camera)
+            => DrawLineSegments(vertices, color, camera, 1f);
+
+        /// <summary>Same as <see cref="DrawLineSegments(List{Vector3}, Vector3, Camera)"/> but with
+        /// a transparency factor (0..1). Enables alpha blending while drawing, so translucent
+        /// overlays (e.g. the terrain brush ring highlight) blend over the scene.</summary>
+        public static unsafe void DrawLineSegments(List<Vector3> vertices, Vector3 color, Camera camera, float alpha)
         {
             if (vertices == null || vertices.Count == 0)
                 return;
@@ -926,6 +932,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
             GL.Uniform3f(colorLoc, color.X, color.Y, color.Z);
+            int alphaLoc = GL.GetUniformLocation(lineShader, "lineAlpha");
+            if (alphaLoc != -1)
+                GL.Uniform1f(alphaLoc, Math.Clamp(alpha, 0f, 1f));
+
+            bool blendingEnabled = GL.IsEnabled(Const.GL_BLEND);
+            if (alpha < 0.999f)
+            {
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+            }
 
             int vLoc = GL.GetUniformLocation(lineShader, "view");
             int pLoc = GL.GetUniformLocation(lineShader, "projection");
@@ -949,6 +965,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
             GL.DrawArrays(Const.GL_LINES, 0, vertices.Count);
             GL.BindVertexArray(0);
+
+            if (alpha < 0.999f && !blendingEnabled)
+                GL.Disable(Const.GL_BLEND);
         }
 
         /// <summary>

@@ -61,6 +61,13 @@ public class IDEBridge
     public float CameraYaw { get; set; }
     public float CameraPitch { get; set; }
 
+    // ── Pending freefly-camera restore (set by SceneManagerPanel when a .ing file with a
+    // saved camera position is loaded BEFORE the editor camera exists; SceneManager applies
+    // it as soon as the editor camera is created, then clears it) ──
+    public Vector3? PendingCameraPos { get; set; }
+    public float? PendingCameraYaw { get; set; }
+    public float? PendingCameraPitch { get; set; }
+
     // ── Object list (for hierarchy) ──
     public IReadOnlyList<GltfObject>? AllObjects { get; set; }
 
@@ -428,13 +435,56 @@ public class IDEBridge
 
         /// <summary>Per-scene render properties (background color, VSync, face culling, wireframe, etc.).</summary>
         public SceneRenderProperties? RenderProperties { get; set; }
+
+        // ── Per-scene freefly camera (each scene remembers its own view) ──
+        /// <summary>Saved freefly camera position (null = use default view).</summary>
+        public Vector3? CameraPos { get; set; }
+        /// <summary>Saved freefly camera yaw (degrees).</summary>
+        public float? CameraYaw { get; set; }
+        /// <summary>Saved freefly camera pitch (degrees).</summary>
+        public float? CameraPitch { get; set; }
     }
 
     /// <summary>All scenes created/managed by the UI Editor. Keyed by scene name.</summary>
     public Dictionary<string, EditorScene> EditorScenes { get; } = [];
 
-    /// <summary>Name of the currently selected editor scene (displayed in SceneDetail).</summary>
-    public string? SelectedEditorScene { get; set; }
+    private string? _selectedEditorScene;
+
+    /// <summary>Name of the currently selected editor scene (displayed in SceneDetail).
+    /// Setting this stashes the live freefly camera into the outgoing scene and restores
+    /// the incoming scene's saved view, so every scene keeps its own camera.</summary>
+    public string? SelectedEditorScene
+    {
+        get => _selectedEditorScene;
+        set
+        {
+            if (string.Equals(value, _selectedEditorScene, StringComparison.Ordinal))
+                return;
+
+            // Stash the live editor camera into the outgoing scene before switching
+            if (_selectedEditorScene != null
+                && EditorScenes.TryGetValue(_selectedEditorScene, out var prev)
+                && Camera != null)
+            {
+                prev.CameraPos = Camera.Position;
+                prev.CameraYaw = Camera.Yaw;
+                prev.CameraPitch = Camera.Pitch;
+            }
+
+            _selectedEditorScene = value;
+
+            // Restore the incoming scene's saved camera (if any)
+            if (value != null
+                && EditorScenes.TryGetValue(value, out var next)
+                && Camera != null
+                && next.CameraPos is Vector3 p)
+            {
+                Camera.Position = p;
+                Camera.Yaw = next.CameraYaw ?? Camera.Yaw;
+                Camera.Pitch = next.CameraPitch ?? Camera.Pitch;
+            }
+        }
+    }
 
     /// <summary>Get the currently selected editor scene's root element, or null.</summary>
     public UIElement? GetSelectedEditorRoot()

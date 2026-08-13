@@ -187,6 +187,8 @@ public class EditorObjectData
     public string TerrainHeightmapPath { get; set; } = "";
     /// <summary>Grid resolution per side.</summary>
     public int TerrainChunkSize { get; set; } = 32;
+    /// <summary>Chunk sub-meshes per side (1..8).</summary>
+    public int TerrainChunksPerSide { get; set; } = 1;
     /// <summary>Vertical height scale (world units).</summary>
     public float TerrainHeightScale { get; set; } = 30f;
     /// <summary>Slope threshold for the dirt/cliff layer.</summary>
@@ -236,11 +238,11 @@ public class EditorObjectData
     public string PbrEmissionPath { get; set; } = "";
     public float PbrTexTiling { get; set; } = 1f;
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
-    public float TerrainBrushSize { get; set; } = 4f;
+    public float TerrainBrushSize { get; set; } = 10f;
     /// <summary>Height delta per painted frame (world units).</summary>
-    public float TerrainBrushStrength { get; set; } = 0.1f;
+    public float TerrainBrushStrength { get; set; } = 1f;
     /// <summary>Brush edge falloff 0..1.</summary>
-    public float TerrainBrushSoftness { get; set; } = 0.6f;
+    public float TerrainBrushSoftness { get; set; } = 1f;
     /// <summary>Brush falloff curve: 0=Linear, 1=Smooth, 2=Sharp, 3=Spherical, 4=Soft.</summary>
     public int TerrainBrushFalloff { get; set; } = 1;
     /// <summary>Base64-encoded painted heightmap blob (only set after brush edits, so
@@ -253,6 +255,10 @@ public class EditorObjectData
     /// <summary>Base64-encoded manual layer-paint splat blob (empty = no manual paint).
     /// Persisted so layer paint survives scene save/load.</summary>
     public string TerrainSplatData { get; set; } = "";
+    /// <summary>Brush ring highlight color [r, g, b] — user-editable, saved with the scene.</summary>
+    public float[]? TerrainBrushColor { get; set; }
+    /// <summary>Brush ring highlight transparency 0..1 — user-editable, saved with the scene.</summary>
+    public float TerrainBrushAlpha { get; set; } = 0.35f;
 }
 
 /// <summary>
@@ -269,6 +275,14 @@ public class SceneAsset
     public List<BackgroundObjectData> BackgroundObjects { get; set; } = [];
     /// <summary>Editor-placed 3D primitives (Box, Sphere, Plane) — saved per scene.</summary>
     public List<EditorObjectData> EditorObjects { get; set; } = [];
+
+    // ── Freefly camera (per scene, so each scene remembers its own view) ──
+    /// <summary>Editor camera position [x, y, z] — null = keep the default camera.</summary>
+    public float[]? EditorCameraPosition { get; set; }
+    /// <summary>Editor camera yaw (degrees).</summary>
+    public float? EditorCameraYaw { get; set; }
+    /// <summary>Editor camera pitch (degrees).</summary>
+    public float? EditorCameraPitch { get; set; }
 }
 
 /// <summary>
@@ -287,4 +301,13 @@ public class SceneManifest
     public float[] SelectionHighlightColor { get; set; } = [1f, 0.8f, 0.1f];
     /// <summary>Selection highlight color for editor objects [r, g, b]. Default: cyan (0.1, 0.8, 1.0).</summary>
     public float[] EditorObjectHighlightColor { get; set; } = [0.1f, 0.8f, 1.0f];
+
+    // ── LEGACY: pre-per-scene saves stored the freefly camera globally on the manifest.
+    // Kept only so old .ing files can still restore a camera; new saves store it per scene.
+    /// <summary>Legacy global editor camera position [x, y, z] (old .ing format).</summary>
+    public float[]? EditorCameraPosition { get; set; }
+    /// <summary>Legacy global editor camera yaw (degrees).</summary>
+    public float? EditorCameraYaw { get; set; }
+    /// <summary>Legacy global editor camera pitch (degrees).</summary>
+    public float? EditorCameraPitch { get; set; }
 }

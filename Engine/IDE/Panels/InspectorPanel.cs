@@ -1712,14 +1712,34 @@ public class InspectorPanel
 
             // ── Mesh detail ──
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Mesh");
-            int chunk = editorObj.TerrainChunkSize;
-            if (ImGui.SliderInt("Chunk Size", ref chunk, 4, 128))
+            int chunksSide = editorObj.TerrainChunksPerSide;
+            if (ImGui.SliderInt("Chunks per Side", ref chunksSide, 1, 128))
             {
-                editorObj.TerrainChunkSize = chunk;
+                editorObj.TerrainChunksPerSide = chunksSide;
                 editorObj.MarkDirty();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Grid resolution per side. 32 ≈ 2k triangles, 128 ≈ 32k triangles.");
+                ImGui.SetTooltip("Split the terrain into N×N chunk sub-meshes (1..128). More chunks = more sub-meshes = more total triangles (more detail).");
+
+            // Triangles per Chunk — slider + editable field. The grid resolution always
+            // snaps to a multiple of 4, so the triangle count stays a multiple of 32
+            // (grid² × 2: 4→32, 8→128, 12→288, 16→512, …).
+            int triPerChunk = editorObj.TerrainChunkSize * editorObj.TerrainChunkSize * 2;
+            if (ImGui.SliderInt("Triangles per Chunk##sl", ref triPerChunk, 32, 32768))
+            {
+                editorObj.TerrainChunkSize = GridFromTriangles(triPerChunk);
+                editorObj.MarkDirty();
+            }
+            ImGui.SameLine();
+            if (ImGui.InputInt("##tri_per_chunk_edit", ref triPerChunk, 32, 128))
+            {
+                editorObj.TerrainChunkSize = GridFromTriangles(triPerChunk);
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Triangles in each chunk (edit box or slider) — snapped to multiples of 32.\n32×32 grid ≈ 2k, 128×128 ≈ 32k triangles per chunk.");
+            int totalTri = editorObj.TerrainChunkSize * editorObj.TerrainChunkSize * 2 * editorObj.TerrainChunksPerSide * editorObj.TerrainChunksPerSide;
+            ImGui.TextDisabled($"Total: {totalTri:N0} triangles ({editorObj.TerrainChunksPerSide}×{editorObj.TerrainChunksPerSide} chunks)");
 
             float hScale = editorObj.TerrainHeightScale;
             if (ImGui.DragFloat("Height Scale", ref hScale, 0.5f, 1f, 500f, "%.1f"))
@@ -1751,69 +1771,11 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Brush painting (viewport tool) ──
-            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Brush (Viewport)");
-            ImGui.TextDisabled("Tools: ⛰ Sculpt = raise/lower, 🌀 Smooth,\n⏹ Flatten = level to first-click height, 🎨 Paint.\nLeft-drag = apply · Ctrl = reverse · Shift = fine control.");
-
-            float bSize = editorObj.TerrainBrushSize;
-            if (ImGui.DragFloat("Brush Size", ref bSize, 0.1f, 0.5f, 50f, "%.1f"))
-                editorObj.TerrainBrushSize = Math.Clamp(bSize, 0.5f, 50f);
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Brush radius in world units (shared by all brush tools). Ctrl+scroll in the viewport resizes it.");
-
-            float bStr = editorObj.TerrainBrushStrength;
-            if (ImGui.DragFloat("Brush Strength", ref bStr, 0.005f, 0.01f, 2f, "%.3f"))
-                editorObj.TerrainBrushStrength = Math.Clamp(bStr, 0.01f, 2f);
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("⛰ Height added/removed per 60fps-frame (world units); 🌀/⏹ blend amount per stamp (0..1).\nHold Shift in the viewport for 15% strength (fine strokes).");
-
-            float bSoft = editorObj.TerrainBrushSoftness;
-            if (ImGui.SliderFloat("Brush Softness", ref bSoft, 0f, 1f, "%.2f"))
-                editorObj.TerrainBrushSoftness = bSoft;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Falloff amount: 0 = hard edge, 1 = the full falloff curve below.");
-
-            // Falloff curve presets (Unreal-style brush falloff selection)
-            string[] falloffNames = ["Linear", "Smooth", "Sharp", "Spherical", "Soft"];
-            int falloffIdx = Math.Clamp(editorObj.TerrainBrushFalloff, 0, falloffNames.Length - 1);
-            if (ImGui.Combo("Falloff Curve", ref falloffIdx, falloffNames, falloffNames.Length))
-                editorObj.TerrainBrushFalloff = falloffIdx;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("How the brush weight falls off toward its edge (like Unreal's brush falloff presets).\nLinear = cone · Smooth = round center · Sharp = strong center · Spherical = classic · Soft = gentle edges.");
-
-            // ── Layer paint (🎨 brush) ──
+            // ── Brush settings now live in the dedicated Terrain Brush panel ──
+            ImGui.TextColored(new Vector4(0.6f, 0.8f, 0.7f, 1f),
+                "Brush settings → Terrain Brush panel (menu: Window ▸ Terrain Brush).");
             ImGui.Spacing();
-            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layer Paint (🎨 Brush)");
-            string[] layerNames = ["1 · Air", "2 · Tanah", "3 · Rumput", "4 · Salju"];
-            int layerIdx = Math.Clamp(editorObj.TerrainPaintLayerIndex, 0, 3);
-            if (ImGui.Combo("Paint Layer", ref layerIdx, layerNames, layerNames.Length))
-            {
-                editorObj.TerrainPaintLayerIndex = layerIdx;
-                _bridge.TerrainPaintLayerIndex = layerIdx; // sync the viewport tool
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Layer drawn by the 🎨 Paint brush. Pick the layer in the viewport toolbar too.");
-
-            float pStr = editorObj.TerrainPaintStrength;
-            if (ImGui.SliderFloat("Paint Strength", ref pStr, 0.05f, 1f, "%.2f"))
-                editorObj.TerrainPaintStrength = pStr;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Weight added to the layer per 🎨 brush stamp (0..1). More stamps = stronger paint.");
-
-            if (ImGui.Button("🧹 Clear Layer Paint", new Vector2(-1, 24)))
-            {
-                // Record undo (before = painted splat, after = cleared) so Ctrl+Z restores.
-                var beforeSplat = editorObj.CaptureTerrainSplat();
-                editorObj.ClearTerrainLayerPaint();
-                var afterSplat = editorObj.CaptureTerrainSplat();
-                if (beforeSplat != null && afterSplat != null && beforeSplat.Length == afterSplat.Length)
-                    _bridge.OnTerrainLayerPainted?.Invoke(editorObj, beforeSplat, afterSplat);
-                Console.WriteLine($"[Inspector] Cleared layer paint on '{editorObj.Name}' (back to auto texturing)");
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(editorObj.TerrainSplatIsModified
-                    ? "Remove ALL manual layer paint — terrain returns to automatic height+slope texturing."
-                    : "No manual layer paint on this terrain yet.");
+            ImGui.Separator();
 
             // ── Save painted heights back to a .raw file ──
             if (ImGui.Button("💾 Save Painted Heightmap", new Vector2(-1, 24)))
@@ -1910,6 +1872,16 @@ public class InspectorPanel
     }
 
     /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>
+    /// <summary>Convert a "Triangles per Chunk" value to a grid resolution per side that
+    /// is a multiple of 4 — so the resulting triangle count (grid² × 2) is always a
+    /// multiple of 32 (4→32, 8→128, 12→288, 16→512, 20→800, 24→1152, …).</summary>
+    private static int GridFromTriangles(int triangles)
+    {
+        int grid = Math.Clamp((int)MathF.Round(MathF.Sqrt(MathF.Max(2, triangles) / 2f)), 4, 128);
+        grid = ((grid + 2) / 4) * 4;               // snap to nearest multiple of 4
+        return Math.Clamp(grid, 4, 128);
+    }
+
     private static string[] ScanMapsFolder()
     {
         try

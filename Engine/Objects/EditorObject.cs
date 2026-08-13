@@ -243,6 +243,10 @@ public unsafe class EditorObject
     public string TerrainHeightmapPath { get; set; } = "Artifacts/Maps/photoreal_v1.raw";
     /// <summary>Grid resolution per side (4..256). Higher = more detail, more triangles.</summary>
     public int TerrainChunkSize { get; set; } = 32;
+    /// <summary>How many chunk sub-meshes per side (1..128). The terrain is split into
+    /// ChunksPerSide × ChunksPerSide chunks, each one a grid of TerrainChunkSize quads —
+    /// more chunks = more sub-meshes and more total triangles = more detail.</summary>
+    public int TerrainChunksPerSide { get; set; } = 1;
     /// <summary>Vertical exaggeration of the heightmap (world units for full white).</summary>
     public float TerrainHeightScale { get; set; } = 30f;
     /// <summary>Slope steepness (1 - normal.y) above which the dirt/rock layer takes over.</summary>
@@ -307,11 +311,11 @@ public unsafe class EditorObject
     /// tuning per texture. The layer albedos live in the TerrainTexture*Path properties.</summary>
     public TerrainPbrLayerData[] TerrainLayers { get; set; } = [new(), new(), new(), new(), new()];
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
-    public float TerrainBrushSize { get; set; } = 4f;
+    public float TerrainBrushSize { get; set; } = 10f; 
     /// <summary>Height delta per painted frame, in world units (viewport paint tool).</summary>
-    public float TerrainBrushStrength { get; set; } = 0.1f;
+    public float TerrainBrushStrength { get; set; } = 1f;
     /// <summary>Brush edge falloff 0..1 (0 = hard edge, 1 = very soft).</summary>
-    public float TerrainBrushSoftness { get; set; } = 0.6f;
+    public float TerrainBrushSoftness { get; set; } = 1f;
     /// <summary>Layer painted with the 🎨 texture brush: 0=air, 1=tanah, 2=rumput, 3=salju.</summary>
     public int TerrainPaintLayerIndex { get; set; } = 2;
     /// <summary>Weight added to the painted layer per 🎨 brush stamp (0..1).</summary>
@@ -327,12 +331,14 @@ public unsafe class EditorObject
     /// relief reads clearly. Transient — not saved to the scene.</summary>
     public bool TerrainShowContours { get; set; } = false;
 
-    // ── Brush ring indicator (transient — set by ViewportPanel each frame while the
-    // brush tool hovers this terrain; NOT serialized) ──
+    // ── Brush ring indicator (set by ViewportPanel each frame while the brush tool hovers
+    // this terrain; color + alpha are user-editable and SAVED with the scene) ──
     /// <summary>World-space brush center on this terrain's surface (null = hide ring).</summary>
     public Vector3? BrushIndicatorPos { get; set; }
     /// <summary>Ring color: green = height brush, layer color = 🎨 paint, red = Ctrl (lower/erase).</summary>
     public Vector3 BrushIndicatorColor { get; set; } = new(0.3f, 0.9f, 0.5f);
+    /// <summary>Ring transparency 0..1 (0 = invisible, 1 = opaque). Default 0.35 = translucent highlight.</summary>
+    public float BrushIndicatorAlpha { get; set; } = 0.35f;
     /// <summary>Whether the brush ring should be drawn on this terrain.</summary>
     public bool ShowBrushIndicator { get; set; }
 
@@ -595,7 +601,7 @@ public unsafe class EditorObject
     {
         get
         {
-            return $"{TerrainEnabled}|{TerrainHeightmapPath}|{TerrainChunkSize}|{TerrainHeightScale:F2}|"
+            return $"{TerrainEnabled}|{TerrainHeightmapPath}|{TerrainChunkSize}|{TerrainChunksPerSide}|{TerrainHeightScale:F2}|"
                  + $"{Scale.X:F2}|{Scale.Z:F2}|"
                  + $"{TerrainTextureAirPath}|{TerrainTextureDirtPath}|{TerrainTextureGrassPath}|{TerrainTextureSnowPath}|{TerrainTextureSlopePath}";
         }
@@ -643,7 +649,7 @@ public unsafe class EditorObject
             mesh.RestoreModifiedSplatRaw(_terrainSplatCache);
         _terrainLoadedPath = TerrainHeightmapPath;
         mesh.SetLayerTextures(TerrainTextureAirPath, TerrainTextureDirtPath, TerrainTextureGrassPath, TerrainTextureSnowPath);
-        mesh.Generate(TerrainChunkSize, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
+        mesh.Generate(TerrainChunkSize, TerrainChunksPerSide, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
         _terrainMesh = mesh;
 
         // When switching a plane to terrain mode, release the flat-plane Object3D so it
@@ -995,6 +1001,10 @@ public unsafe class EditorObject
     /// <summary>True when this terrain has been edited with the paint brush.</summary>
     public bool TerrainIsModified => _terrainMesh is { IsModified: true };
 
+    /// <summary>Total triangles of this terrain mesh (sum over ALL chunk sub-meshes).
+    /// 0 when this object is not an active terrain.</summary>
+    public int TerrainTriangleCount => _terrainMesh is { IsReady: true } m ? m.TriangleCount : 0;
+
 
     /// <summary>Base64-encoded painted heightmap blob for scene persistence.
     /// Empty string = no user edits (nothing to save).</summary>
@@ -1223,10 +1233,12 @@ public unsafe class EditorObject
     }
 
     /// <summary>
-    /// Draw the brush ring ON this terrain's surface — a circle that follows the heightmap
-    /// (sampled every segment), so the user sees exactly which area of the plane the brush
-    /// will affect. Ring radius = TerrainBrushSize (same footprint mapping as painting).
-    /// Depth test is disabled so the ring never z-fights with the terrain mesh.
+    /// Draw the brush ring ON this terrain's surface — a translucent highlight disc that
+    /// follows the heightmap (sampled every segment), so the user sees exactly which area
+    /// of the plane the brush will affect. Ring radius = TerrainBrushSize (same footprint
+    /// mapping as painting). Depth test is disabled so the ring never z-fights with the
+    /// terrain mesh. Color + transparency come from BrushIndicatorColor/BrushIndicatorAlpha
+    /// (editable in the Terrain Brush panel and saved with the scene).
     /// </summary>
     public void DrawTerrainBrushIndicator(Camera camera)
     {
@@ -1244,26 +1256,44 @@ public unsafe class EditorObject
         float rLocal = Math.Max(0.02f, TerrainBrushSize) / footprint;
 
         const int Segments = 48;
-        var ring = new List<Vector3>(Segments * 2);
-        var prev = Vector3.Zero;
+
+        // Sample the ring points ON the terrain surface (height-following).
+        var ringPts = new List<Vector3>(Segments + 1);
         for (int i = 0; i <= Segments; i++)
         {
             float a = (float)i / Segments * MathF.PI * 2f;
             float lx = Math.Clamp(localCenter.X + MathF.Cos(a) * rLocal, -0.5f, 0.5f);
             float lz = Math.Clamp(localCenter.Z + MathF.Sin(a) * rLocal, -0.5f, 0.5f);
             float h = m.SampleLocalHeight(lx, lz);
-            var p = Vector3.Transform(new Vector3(lx, h, lz), model);
-            if (i > 0)
-            {
-                ring.Add(prev);
-                ring.Add(p);
-            }
-            prev = p;
+            ringPts.Add(Vector3.Transform(new Vector3(lx, h, lz), model));
         }
-        // i goes 0..Segments inclusive, so the last pair closes the loop (segment 48 == point 0).
+        // The last point (segment Segments == point 0) closes the loop.
+
+        // ── Translucent fill: spokes from the brush center to every ring point. Drawing
+        // them as semi-transparent lines makes the whole disc read as a soft highlight
+        // instead of a hard wire circle. The center height is sampled at the hover point.
+        float hCenter = m.SampleLocalHeight(localCenter.X, localCenter.Z);
+        var centerWorld = Vector3.Transform(new Vector3(localCenter.X, hCenter, localCenter.Z), model);
+        var fill = new List<Vector3>(Segments * 2);
+        for (int i = 0; i < Segments; i++)
+        {
+            fill.Add(centerWorld);
+            fill.Add(ringPts[i]);
+        }
+
+        // ── Bright outline: the ring edge itself, drawn on top of the fill. ──
+        var outline = new List<Vector3>(Segments * 2);
+        for (int i = 0; i < Segments; i++)
+        {
+            outline.Add(ringPts[i]);
+            outline.Add(ringPts[i + 1]);
+        }
 
         GL.Disable(Const.GL_DEPTH_TEST);
-        Terrains.TerrainChunk.DrawLineSegments(ring, BrushIndicatorColor, camera);
+        float fillAlpha = Math.Clamp(BrushIndicatorAlpha * 0.6f, 0f, 0.85f);
+        float outlineAlpha = Math.Clamp(BrushIndicatorAlpha + 0.35f, 0f, 1f);
+        Terrains.TerrainChunk.DrawLineSegments(fill, BrushIndicatorColor, camera, fillAlpha);
+        Terrains.TerrainChunk.DrawLineSegments(outline, BrushIndicatorColor, camera, outlineAlpha);
         GL.Enable(Const.GL_DEPTH_TEST);
     }
     /// <summary>Draw using individual uniform locations (matching EditorObjectManager's call pattern).</summary>

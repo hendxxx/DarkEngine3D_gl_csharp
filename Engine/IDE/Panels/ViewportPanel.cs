@@ -154,13 +154,6 @@ public unsafe class ViewportPanel
     }
 
 
-    /// <summary>Layer chip color as RGB (the brush ring and 2D cursor reuse the tint).</summary>
-    private static Vector3 TerrainLayerColor3(int index)
-    {
-        var c = TerrainLayerColors[Math.Clamp(index, 0, 3)];
-        return new Vector3(c.X, c.Y, c.Z);
-    }
-
     // ── Cached conversion data (set each frame in overlay) ──
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
@@ -2632,24 +2625,12 @@ ImGui.SameLine();
 
                 // ── 3D brush ring ON the terrain surface + Ctrl+scroll resize ──
                 {
-                    // Ring color by tool + modifier: red = Ctrl (lower/erase), otherwise
-                    // cyan = sculpt, layer tint = paint, violet = smooth, gold = flatten.
-                    Vector3 ringCol;
-                    if (ImGui.GetIO().KeyCtrl)
-                        ringCol = new Vector3(1f, 0.30f, 0.20f);
-                    else
-                        ringCol = brushMode switch
-                        {
-                            1 => TerrainLayerColor3(_bridge.TerrainPaintLayerIndex),
-                            2 => new Vector3(0.55f, 0.40f, 0.95f),
-                            3 => new Vector3(0.95f, 0.80f, 0.25f),
-                            _ => new Vector3(0.20f, 0.85f, 1.00f),
-                        };
-
+                    // The ring color + transparency come from the terrain's own properties
+                    // (editable in the Terrain Brush panel and saved with the scene) — the
+                    // viewport no longer overrides them per tool.
                     if (hoverTerrain != null && hoverPoint.HasValue)
                     {
                         hoverTerrain.BrushIndicatorPos = hoverPoint.Value;
-                        hoverTerrain.BrushIndicatorColor = ringCol;
                         hoverTerrain.ShowBrushIndicator = true;
                         if (_brushIndicatorObj != null && _brushIndicatorObj != hoverTerrain)
                             _brushIndicatorObj.ShowBrushIndicator = false;
@@ -2672,44 +2653,25 @@ ImGui.SameLine();
                     }
                 }
 
-                // ── Brush cursor overlay: circle + crosshair sized by brush radius ──
+                // ── Brush cursor overlay: the ortho (screen-space) circle is GONE — only
+                // the 3D translucent ring on the terrain surface (DrawTerrainBrushIndicator)
+                // shows the brush area, using the user-editable ring color. A tiny center
+                // dot + size readout remain so the exact hover point and radius are visible.
                 if (hoverPoint.HasValue && hoverTerrain != null)
                 {
                     var p = TransformGizmo.ProjectToScreen(cam, hoverPoint.Value, vpw, vph);
                     if (p.X >= 0f && p.X <= vpw && p.Y >= 0f && p.Y <= vph)
                     {
-                        float brushSize = Math.Max(0.5f, hoverTerrain.TerrainBrushSize);
-                        var pEdge = TransformGizmo.ProjectToScreen(
-                            cam, hoverPoint.Value + cam.Right * brushSize, vpw, vph);
                         var center = SceneToScreen(p.X, vph - p.Y);
-                        var edge = SceneToScreen(pEdge.X, vph - pEdge.Y);
-                        float radiusPx = Vector2.Distance(center, edge);
-
-                        bool lowering = ImGui.GetIO().KeyCtrl;
-                        Vector4 cursorCol = brushMode switch
-                        {
-                            1 => lowering
-                                ? new Vector4(1f, 0.30f, 0.20f, 0.90f)
-                                : new Vector4(TerrainLayerColor3(_bridge.TerrainPaintLayerIndex), 0.90f),
-                            2 => new Vector4(0.55f, 0.40f, 0.95f, 0.90f), // violet = smooth
-                            3 => new Vector4(0.95f, 0.80f, 0.25f, 0.90f), // gold = flatten
-                            _ => lowering
-                                ? new Vector4(1f, 0.30f, 0.20f, 0.90f)
-                                : new Vector4(0.25f, 0.85f, 0.45f, 0.90f), // green = raise
-                        };
-                        uint col = ImGui.ColorConvertFloat4ToU32(cursorCol);
+                        uint col = ImGui.ColorConvertFloat4ToU32(
+                            new Vector4(hoverTerrain.BrushIndicatorColor, 0.95f));
                         var dl = ImGui.GetWindowDrawList();
-                        dl.AddCircle(center, Math.Max(2f, radiusPx), col, 48, 2f);
                         dl.AddCircleFilled(center, 2.5f, col);
-                        dl.AddLine(center - new Vector2(radiusPx + 8f, 0f), center - new Vector2(radiusPx - 4f, 0f), col, 1.5f);
-                        dl.AddLine(center + new Vector2(radiusPx + 8f, 0f), center + new Vector2(radiusPx - 4f, 0f), col, 1.5f);
-                        dl.AddLine(center - new Vector2(0f, radiusPx + 8f), center - new Vector2(0f, radiusPx - 4f), col, 1.5f);
-                        dl.AddLine(center + new Vector2(0f, radiusPx + 8f), center + new Vector2(0f, radiusPx - 4f), col, 1.5f);
 
                         // Brush size readout under the cursor (resize with Ctrl+scroll).
                         string sizeLabel = $"Brush {hoverTerrain.TerrainBrushSize:F1} · Ctrl+Scroll";
                         var sizeSize = ImGui.CalcTextSize(sizeLabel);
-                        dl.AddText(center + new Vector2(-sizeSize.X * 0.5f, radiusPx + 10f),
+                        dl.AddText(center + new Vector2(-sizeSize.X * 0.5f, 14f),
                             ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.95f)), sizeLabel);
                     }
                 }
@@ -3038,6 +3000,9 @@ ImGui.SameLine();
         // ── Active view label (Top / Front / Left / …) — top-right corner ──
         DrawViewportViewLabel(hasSceneTexture);
 
+        // ── Terrain triangle-count HUD (bottom-left corner, edit mode only) ──
+        DrawViewportTerrainStats(hasSceneTexture);
+
         // ── Type labels above placed Camera markers (edit mode only) ──
         DrawEditorObjectTypeLabels(hasSceneTexture);
 
@@ -3224,6 +3189,73 @@ ImGui.SameLine();
         dl.AddRect(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.15f)), 4f, ImDrawFlags.None, 1f);
         dl.AddText(font, fontSize, bgMin + new Vector2(pad, pad * 0.5f),
             ImGui.ColorConvertFloat4ToU32(col), text);
+    }
+
+    /// <summary>Draw a compact terrain-stats HUD in the bottom-left corner of the viewport
+    /// image (edit mode only): total triangles of ALL terrain planes in the editor scene,
+    /// plus a per-terrain breakdown when a plane is selected. Hidden in preview mode.</summary>
+    private void DrawViewportTerrainStats(bool hasSceneTexture)
+    {
+        if (_previewMode || !hasSceneTexture) return;
+        if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
+
+        var mgr = _bridge.EditorObjectManager;
+        if (mgr == null || mgr.Objects.Count == 0) return;
+
+        // Collect terrain planes: total triangles + the selected one (if any).
+        int totalTri = 0;
+        int terrainCount = 0;
+        EditorObject? selected = null;
+        foreach (var obj in mgr.Objects)
+        {
+            if (obj.PrimitiveType != EditorPrimitiveType.Plane || !obj.TerrainEnabled) continue;
+            terrainCount++;
+            totalTri += obj.TerrainTriangleCount;
+            if (_bridge.SelectedEditorObjects.Contains(obj))
+                selected = obj;
+        }
+        if (terrainCount == 0) return;
+
+        var font = ImGui.GetFont();
+        float fontSize = 15f;
+        float lineHeight = 19f;
+        float pad = 6f;
+
+        string[] lines =
+        [
+            $"Terrain TRIS: {totalTri:N0}",
+            $"Planes: {terrainCount}",
+        ];
+        if (selected != null)
+        {
+            lines = [
+                $"Terrain TRIS: {totalTri:N0}",
+                $"Planes: {terrainCount}",
+                $"Selected '{selected.Name}': {selected.TerrainTriangleCount:N0}  ({selected.TerrainChunksPerSide}×{selected.TerrainChunksPerSide} chunks)",
+            ];
+        }
+
+        float panelW = 0f;
+        for (int li = 0; li < lines.Length; li++)
+            panelW = MathF.Max(panelW, font.CalcTextSizeA(fontSize, float.MaxValue, 0f, lines[li]).X);
+        float panelH = lineHeight * lines.Length + pad * 2f;
+
+        // Bottom-left corner of the rendered image.
+        var dl = ImGui.GetWindowDrawList();
+        var bgMin = new Vector2(_imageMin.X + 8f, _imageMax.Y - panelH - 8f);
+        var bgMax = new Vector2(bgMin.X + panelW + pad * 2f, bgMin.Y + panelH);
+        dl.AddRectFilled(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.45f)), 5f);
+        dl.AddRect(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.12f)), 5f, ImDrawFlags.None, 1f);
+
+        float ty = bgMin.Y + pad;
+        for (int li = 0; li < lines.Length; li++)
+        {
+            var col = li == 0
+                ? ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.7f, 0.3f, 1f))   // total tris (orange, like TRIS stat)
+                : ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.7f, 0.8f, 1f));
+            dl.AddText(font, fontSize, new Vector2(bgMin.X + pad, ty), col, lines[li]);
+            ty += lineHeight;
+        }
     }
 
     /// <summary>Render a compact "◉ Views" menu floating in the top-left corner of the
