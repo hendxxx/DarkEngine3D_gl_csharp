@@ -589,7 +589,7 @@ public class SceneManagerPanel
             ImGui.EndPopup();
         }
 
-        // ── File dialog (Load / Save As) ──
+         // ── File dialog (Load / Save As) ──
         _fileDialog.Render();
         if (_fileDialog.IsConfirmed && _fileDialog.SelectedPath != null)
         {
@@ -1166,9 +1166,18 @@ public class SceneManagerPanel
         {
             Console.WriteLine($"[SceneManagerPanel] Failed to load {filePath}: {ex.Message}");
         }
-    }        /// <summary>Save all editor scenes to a specific .ing file path (Save As), including 3D objects.</summary>
+    }
+
+    /// <summary>Save all editor scenes to a specific .ing file path (Save As), including 3D objects.
+    /// Automatically creates parent directories if they don't exist. Shows error dialog on failure.</summary>
     private void SaveToIngFile(string filePath)
     {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            Console.WriteLine("[SceneManagerPanel] Save cancelled - no path selected.");
+            return;
+        }
+
         if (_bridge.EditorScenes.Count == 0)
         {
             Console.WriteLine("[SceneManagerPanel] No editor scenes to save.");
@@ -1177,6 +1186,20 @@ public class SceneManagerPanel
 
         try
         {
+            // Ensure the directory exists - create all parent directories if needed
+            string? dirPath = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dirPath))
+            {
+                Directory.CreateDirectory(dirPath);
+                Console.WriteLine($"[SceneManagerPanel] Created directory: {dirPath}");
+            }
+
+            // Verify write permissions
+            if (!Directory.Exists(dirPath ?? AppDomain.CurrentDomain.BaseDirectory))
+            {
+                throw new UnauthorizedAccessException($"Cannot create directory: {dirPath}");
+            }
+
             // Build manifest from editor scenes with 3D objects
             var manifest = new SceneManifest();
 
@@ -1289,14 +1312,37 @@ public class SceneManagerPanel
 
             string json = System.Text.Json.JsonSerializer.Serialize(manifest,
                 SceneAssetSerializer.GetJsonOptions());
-            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+
+            // Write to file with error handling
             File.WriteAllText(filePath, json);
 
-            Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} scene(s) (+ 3D objects) to {filePath}");
+            // Verify file was created successfully
+            if (!File.Exists(filePath))
+            {
+                throw new IOException($"File was not created: {filePath}");
+            }
+
+            long fileSize = new FileInfo(filePath).Length;
+            Console.WriteLine($"[SceneManagerPanel] ✅ Saved {_bridge.EditorScenes.Count} scene(s) (+ 3D objects) to {filePath}");
+            Console.WriteLine($"[SceneManagerPanel] File size: {fileSize} bytes");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Console.WriteLine($"[SceneManagerPanel] ❌ Permission denied: {ex.Message}");
+            Console.WriteLine($"[SceneManagerPanel] Cannot write to: {filePath}");
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            Console.WriteLine($"[SceneManagerPanel] ❌ Directory not found: {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"[SceneManagerPanel] ❌ File I/O error: {ex.Message}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SceneManagerPanel] Failed to save to {filePath}: {ex.Message}");
+            Console.WriteLine($"[SceneManagerPanel] ❌ Failed to save to {filePath}: {ex.GetType().Name}");
+            Console.WriteLine($"[SceneManagerPanel] Error details: {ex.Message}");
         }
     }
 

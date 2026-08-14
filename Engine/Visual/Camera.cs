@@ -199,6 +199,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             UpdateVectors();
             _projectionDirty = true;
         }
+
+        /// <summary>
+        /// Reset camera to origin (0,0,0) with default orientation.
+        /// Applies to all camera modes including freefly.
+        /// Position: 0, 0, 0
+        /// Rotation: Yaw = 180°, Pitch = 0° (looking down -Z axis, same as editor default)
+        /// </summary>
+        public void ResetToOrigin()
+        {
+            Position = Vector3.Zero;
+            Yaw = 180f;
+            Pitch = 0f;
+
+            // Sync smoothing targets for fly mode so it doesn't snap back
+            smoothCamPos = Position;
+            smoothYaw = Yaw;
+            smoothPitch = Pitch;
+
+            UpdateVectors();
+            _projectionDirty = true;
+        }
         public void UpdateAspectRatio(float newWidth, float newHeight)
         {
             if (newHeight <= 0) newHeight = 1;

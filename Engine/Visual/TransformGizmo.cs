@@ -60,11 +60,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // ── Gizmo dimensions (in viewport pixels) ──
         private const float GizmoRadius = 75f;
         private const float AxisLength = 58f;
-        private const float ShaftWidth = 4f;
+        private const float ShaftWidth = 5f;      // Increased from 4f for better visibility
         private const float HeadRadius = 10f;
         private const float HeadLength = 16f;
         private const float HandleRadius = 6f;
-        private const float RingThickness = 3f;
+        private const float RingThickness = 5f;      // Increased from 3f for better visibility
         private const float RingRadius = 52f;
         private const float CubeHalfSize = 5f;
 

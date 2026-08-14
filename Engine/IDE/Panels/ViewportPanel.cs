@@ -193,11 +193,18 @@ public unsafe class ViewportPanel
 
             // Auto-fill window: force element to cover the entire viewport
             if (elem.AutoFillWindow)
-            // Auto-center: center the element in the viewport
+            {
+                elem.X = 0f;
+                elem.Y = 0f;
+                elem.Width = _texW;
+                elem.Height = _texH;
+            }
+
+            // Auto-center: center the element in the viewport (in texture coordinates)
             if (elem.AutoCenter)
             {
-                elem.X = (_texW - elem.Width) * 0.5f;
-                elem.Y = (_texH - elem.Height) * 0.5f;
+                elem.X = Math.Max(0f, (_texW - elem.Width) * 0.5f);
+                elem.Y = Math.Max(0f, (_texH - elem.Height) * 0.5f);
             }
 
             // Convert scene coords to screen coords (no Y-flip — scene Y=0 is top)
@@ -1602,6 +1609,19 @@ ImGui.PushStyleColor(ImGuiCol.Button, isActive
                         ImGui.SetTooltip(flyLook
                             ? "Freefly mouse-look ON — click to turn off"
                             : "Freefly mouse-look OFF — click to turn on, or hold Right-Click in the viewport for a temporary look");
+
+                    // ── Camera reset to origin button ──
+                    ImGui.SameLine();
+                    if (ImGui.Button("⌂ Reset"))
+                    {
+                        if (_bridge.Camera != null)
+                        {
+                            _bridge.Camera.ResetToOrigin();
+                            Console.WriteLine("[Viewport] Camera reset to origin (0,0,0)");
+                        }
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Reset camera to origin (0,0,0) with default orientation — works with all camera modes including freefly");
 
                     // ── Gizmo translate snap toggle ──
                     ImGui.SameLine();

@@ -23,6 +23,16 @@ public enum EditorPrimitiveType
 }
 
 /// <summary>
+/// Type of light source for directional, point, or spotlight effects.
+/// </summary>
+public enum LightType
+{
+    Direct = 0,      // Directional light (sun-like, parallel rays)
+    Point = 1,       // Point light (omnidirectional from a location)
+    Spotlight = 2    // Directional spotlight with cone angle
+}
+
+/// <summary>
 /// Represents a user-placed 3D object in the editor scene.
 /// Can be a Plane, Box, Sphere, or a reference to a .glb file.
 /// Contains all properties needed for rendering, shadow casting, and gizmo interaction.
@@ -227,6 +237,10 @@ public unsafe class EditorObject
     public float LightConeAngle { get; set; } = 30f;
     /// <summary>Whether the direction-ray + spotlight-cone gizmo is drawn in the viewport.</summary>
     public bool ShowLightGizmo { get; set; } = true;
+    /// <summary>Type of light source: Direct (sun-like), Point (omnidirectional), or Spotlight (cone-based).</summary>
+    public LightType LightTypeEnum { get; set; } = LightType.Direct;
+    /// <summary>For Point lights: falloff distance in world units (0 = no falloff, uses intensity only).</summary>
+    public float LightPointRadius { get; set; } = 50f;
 
     // ── Terrain (only used when PrimitiveType == Plane) ──
     private bool _terrainEnabled = false;
