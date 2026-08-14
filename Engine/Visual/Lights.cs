@@ -1,6 +1,8 @@
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
@@ -8,7 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public unsafe class Lights
     {
         uint shaderProgram;
-        int sunDirLoc, viewPosLoc, lightColorLoc, fogColorLoc, weatherModeLoc;
+        int sunDirLoc, viewPosLoc, lightColorLoc, weatherModeLoc;
 
         Vector3 vsunDirLoc;
         Vector3 vviewPosLoc;
@@ -53,6 +55,132 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // 0.8 = smooth tapi tetap update cepat saat matahari bergerak
         private const float ShadowSmoothSpeed = 0.95f;
 
+        // ════════════════════════════════════════════════════════════
+        //  LOCAL LIGHTS (Point / Spot from editor Light markers)
+        //  The sun (Direct) stays the global directional light with CSM
+        //  shadows; every Point/Spot marker is uploaded as a local light
+        //  so it contributes its own color/brightness to all objects.
+        // ════════════════════════════════════════════════════════════
+        /// <summary>Maximum number of local (point/spot) lights uploaded to the shaders.</summary>
+        public const int MaxLocalLights = 8;
+
+        /// <summary>A single point or spot light, as uploaded to the shaders.</summary>
+        public struct LocalLightData
+        {
+            /// <summary>1 = Point, 2 = Spotlight (Direct drives the sun instead).</summary>
+            public int Type;
+            public Vector3 Position;
+            /// <summary>Direction the light POINTS TOWARD (world space), for spots.</summary>
+            public Vector3 Direction;
+            public Vector3 Color;
+            public float Intensity;
+            /// <summary>Falloff range in world units (0 = default 50).</summary>
+            public float Range;
+            /// <summary>Spot cone half-angle in degrees.</summary>
+            public float ConeAngleDeg;
+            /// <summary>Whether this light casts its own shadow map (LocalLightShadow).</summary>
+            public bool CastShadow;
+        }
+
+        /// <summary>Local point/spot lights for the current frame. Cleared and re-filled
+        /// by <see cref="CollectLocalLights"/> each frame from the scene's Light markers.</summary>
+        public List<LocalLightData> LocalLights { get; } = [];
+
+        /// <summary>Shadow maps for the local (point/spot) lights, owned by this Lights
+        /// instance. The scenes render the depth pass (RenderShadowPass) and this uploads
+        /// the maps + matrices to every shader via <see cref="UploadLocalLights"/>.</summary>
+        public LocalLightShadow? LocalShadow { get; set; }
+
+        /// <summary>Master switch for the local-light shadow maps (set by the scenes from
+        /// the viewport "Shadow" toggle). When off, all per-light shadow indices are
+        /// uploaded as -1 so the shaders never sample the maps — cheaper than disposing
+        /// the GPU resources, and avoids stale-buffer sampling on re-enable.</summary>
+        public bool LocalShadowsEnabled { get; set; } = true;
+
+        /// <summary>Gather all Point/Spot Light editor objects into <see cref="LocalLights"/>
+        /// (Direct lights drive the global sun instead, so they are excluded).</summary>
+        public void CollectLocalLights(IEnumerable<EditorObject> objects)
+        {
+            LocalLights.Clear();
+            foreach (var obj in objects)
+            {
+                if (obj == null || obj.PrimitiveType != EditorPrimitiveType.Light || !obj.IsVisible)
+                    continue;
+                if (obj.LightTypeEnum != LightType.Point && obj.LightTypeEnum != LightType.Spotlight)
+                    continue;
+                if (LocalLights.Count >= MaxLocalLights) break;
+
+                LocalLights.Add(new LocalLightData
+                {
+                    Type = obj.LightTypeEnum == LightType.Point ? 1 : 2,
+                    Position = obj.Position,
+                    Direction = obj.LightDirection,
+                    Color = obj.Color,
+                    Intensity = MathF.Max(0f, obj.LightIntensity),
+                    Range = obj.LightPointRadius > 0f ? obj.LightPointRadius : 50f,
+                    ConeAngleDeg = Math.Clamp(obj.LightConeAngle, 1f, 89f),
+                    CastShadow = obj.CastShadow,
+                });
+            }
+        }
+
+        /// <summary>Upload the local (point/spot) light uniforms to the given program.
+        /// Shared by every render path (main / objectPbr / gltf / terrainEditor) so all
+        /// objects are lit by the same light set. Uses scalar calls so no new GL bindings
+        /// are needed; only runs when at least one local light exists.</summary>
+        public void UploadLocalLights(uint program)
+        {
+            if (program == 0) return;
+
+            int countLoc = GL.GetUniformLocation(program, "u_lightCount");
+            if (countLoc < 0) return; // program doesn't support local lights
+
+            int count = Math.Min(LocalLights.Count, MaxLocalLights);
+            GL.Uniform1i(countLoc, count);
+
+            // Shadow maps + per-light shadow data for the local lights (point/spot).
+            // Eagerly created on first upload so the per-light indices are always valid
+            // (never the GLSL default 0) and the maps exist before the first shadow pass.
+            LocalShadow ??= new LocalLightShadow();
+            LocalShadow.Update(LocalLights);
+            LocalShadow.UploadShadows(program, LocalShadowsEnabled);
+
+            if (count == 0) return;
+
+            for (int i = 0; i < count; i++)
+            {
+                var l = LocalLights[i];
+                int typeLoc = GL.GetUniformLocation(program, $"u_lightType[{i}]");
+                int posLoc = GL.GetUniformLocation(program, $"u_lightPos[{i}]");
+                int dirLoc = GL.GetUniformLocation(program, $"u_lightDir[{i}]");
+                int colLoc = GL.GetUniformLocation(program, $"u_lightColor[{i}]");
+                int intLoc = GL.GetUniformLocation(program, $"u_lightIntensity[{i}]");
+                int rangeLoc = GL.GetUniformLocation(program, $"u_lightRange[{i}]");
+                int coneLoc = GL.GetUniformLocation(program, $"u_lightCone[{i}]");
+
+                if (typeLoc >= 0) GL.Uniform1i(typeLoc, l.Type);
+                if (posLoc >= 0) GL.Uniform3f(posLoc, l.Position.X, l.Position.Y, l.Position.Z);
+                if (dirLoc >= 0) GL.Uniform3f(dirLoc, l.Direction.X, l.Direction.Y, l.Direction.Z);
+                if (colLoc >= 0) GL.Uniform3f(colLoc, l.Color.X, l.Color.Y, l.Color.Z);
+                if (intLoc >= 0) GL.Uniform1f(intLoc, l.Intensity);
+                if (rangeLoc >= 0) GL.Uniform1f(rangeLoc, l.Range);
+                if (coneLoc >= 0)
+                {
+                    float half = l.ConeAngleDeg * MathF.PI / 180f;
+                    float cosOuter = MathF.Cos(half);
+                    float cosInner = MathF.Cos(MathF.Min(half, half * 0.85f));
+                    GL.Uniform2f(coneLoc, cosOuter, cosInner);
+                }
+            }
+        }
+
+        /// <summary>Dispose the local-light shadow resources (called by the scenes on exit).</summary>
+        public void DisposeLocalShadow()
+        {
+            LocalShadow?.Dispose();
+            LocalShadow = null;
+        }
+
         public Lights(Vector3 _sundir, Vector3 _lightColor, Vector3 _viewpos, string? startTime = null)
         {
             vsunDirLoc = _sundir;
@@ -80,7 +208,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             sunDirLoc = GL.GetUniformLocation(shaderProgram, "sunDir");
             viewPosLoc = GL.GetUniformLocation(shaderProgram, "viewPos");
             lightColorLoc = GL.GetUniformLocation(shaderProgram, "lightColor");
-            fogColorLoc = GL.GetUniformLocation(shaderProgram, "fogColor");
             weatherModeLoc = GL.GetUniformLocation(Shader.GetSkyShaderProgram(), "weatherMode");
         }
 
@@ -183,10 +310,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.Uniform3f(lightColorLoc, LightColor.X, LightColor.Y, LightColor.Z);
             GL.Uniform3f(viewPosLoc, currentViewPos.X, currentViewPos.Y, currentViewPos.Z);
-            GL.Uniform3f(fogColorLoc, FogColor.X, FogColor.Y, FogColor.Z);
 
-            int useFogLocation = GL.GetUniformLocation(shaderProgram, "useFog");
-            GL.Uniform1i(useFogLocation, Keyboard.GetIsFogActive() ? 1 : 0);
+            // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+            FogUniforms.UploadMain(shaderProgram, this);
 
             int shadowFilterMode = GL.GetUniformLocation(shaderProgram, "shadowFilterMode");
             GL.Uniform1i(shadowFilterMode, Keyboard.GetIsHardShadow());
@@ -195,6 +321,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // program is shared by game terrain, game primitives and editor objects, so one
             // upload here covers every main-shader render path. ──
             ShadowUniforms.UploadMain(shaderProgram);
+
+            // ── Local point/spot lights (from editor Light markers) ──
+            UploadLocalLights(shaderProgram);
 
             GL.ClearColor(FogColor.X, FogColor.Y, FogColor.Z, 1.0f);
         }

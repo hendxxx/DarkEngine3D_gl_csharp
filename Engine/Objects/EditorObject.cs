@@ -160,8 +160,39 @@ public unsafe class EditorObject
     public string PbrHeightPath { get; set; } = "";
     /// <summary>Emissive color map (optional; 0 when absent).</summary>
     public string PbrEmissionPath { get; set; } = "";
-    /// <summary>UV tiling multiplier for all PBR maps on this object.</summary>
+    /// <summary>UV tiling multiplier for all PBR maps on this object (legacy — new scenes
+    /// store per-map tiling in <see cref="PbrTexSettings"/>; kept for old files).</summary>
     public float PbrTexTiling { get; set; } = 1f;
+    /// <summary>Sampling settings for the SIMPLE texture (<see cref="TexturePath"/>):
+    /// min/mag filter, mipmapping & anisotropy, wrapping, UV tiling/offset.</summary>
+    public Libs.TextureSettings TexSettings { get; set; } = new();
+
+    private Libs.TextureSettings[]? _pbrTexSettings;
+    /// <summary>Per-PBR-map sampling settings (index 0..6 = albedo, normal, metallic,
+    /// roughness, ao, height, emission). Lazily cloned from <see cref="TexSettings"/> so
+    /// objects created before this feature keep one shared default per map.</summary>
+    public Libs.TextureSettings[] PbrTexSettings
+    {
+        get => _pbrTexSettings ??= InitSlotSettings(7);
+        set => _pbrTexSettings = value;
+    }
+
+    private Libs.TextureSettings[]? _terrainLayerSettings;
+    /// <summary>Per-terrain-layer sampling settings (index 0..3 = air, dirt, grass, snow).
+    /// Lazily cloned from <see cref="TexSettings"/> so legacy objects keep defaults.</summary>
+    public Libs.TextureSettings[] TerrainLayerSettings
+    {
+        get => _terrainLayerSettings ??= InitSlotSettings(4);
+        set => _terrainLayerSettings = value;
+    }
+
+    private Libs.TextureSettings[] InitSlotSettings(int count)
+    {
+        var arr = new Libs.TextureSettings[count];
+        for (int i = 0; i < count; i++)
+            arr[i] = TexSettings.Clone();
+        return arr;
+    }
     /// <summary>True when any PBR map is set — switches the object to the PBR shader.</summary>
     public bool HasPbrMaterial =>
         !string.IsNullOrEmpty(PbrAlbedoPath) || !string.IsNullOrEmpty(PbrNormalPath) ||
@@ -253,8 +284,8 @@ public unsafe class EditorObject
         get => _terrainEnabled || PrimitiveType == EditorPrimitiveType.Plane;
         set => _terrainEnabled = value || PrimitiveType == EditorPrimitiveType.Plane; // planes are always advanced terrain
     }
-    /// <summary>Heightmap file (.raw 8-bit or any image). Determines the terrain shape.</summary>
-    public string TerrainHeightmapPath { get; set; } = "Artifacts/Maps/photoreal_v1.raw";
+    /// <summary>Heightmap file (.raw 8-bit or any image). Empty = flat plane (height 0 everywhere).</summary>
+    public string TerrainHeightmapPath { get; set; } = "";
     /// <summary>Grid resolution per side (4..256). Higher = more detail, more triangles.</summary>
     public int TerrainChunkSize { get; set; } = 32;
     /// <summary>How many chunk sub-meshes per side (1..128). The terrain is split into
@@ -267,6 +298,9 @@ public unsafe class EditorObject
     public float TerrainSlopeThreshold { get; set; } = 0.35f;
     /// <summary>World-space tiling frequency of the layer textures.</summary>
     public float TerrainTexTiling { get; set; } = 0.5f;
+    /// <summary>Stochastic (random per-tile) sampling — OFF by default so the default plane
+    /// tiles deterministically. ON breaks up the repeating pattern.</summary>
+    public bool TerrainUseStochasticSampling { get; set; } = false;
     /// <summary>Normalized height where the air layer ends (water level).</summary>
     public float TerrainLayerAirTop { get; set; } = 0.18f;
     /// <summary>Normalized height where the dirt layer ends.</summary>
@@ -275,8 +309,8 @@ public unsafe class EditorObject
     public float TerrainLayerGrassTop { get; set; } = 0.75f;
     /// <summary>Normalized height where the snow layer is fully dominant.</summary>
     public float TerrainLayerSnowTop { get; set; } = 1.0f;
-    /// <summary>Texture for layer 1 — air / water.</summary>
-    public string TerrainTextureAirPath { get; set; } = "";
+    /// <summary>Texture for layer 1 — air / water. Defaults to default.jpg for new planes.</summary>
+    public string TerrainTextureAirPath { get; set; } = "Artifacts/Textures/default.jpg";
     /// <summary>Texture for layer 2 — tanah / dirt.</summary>
     public string TerrainTextureDirtPath { get; set; } = "";
     /// <summary>Texture for layer 3 — rumput / grass.</summary>
@@ -438,7 +472,7 @@ public unsafe class EditorObject
         // Set reasonable defaults based on type
         Scale = type switch
         {
-            EditorPrimitiveType.Plane => new Vector3(25f, 0.05f, 25f),
+            EditorPrimitiveType.Plane => new Vector3(500f, 0.05f, 500f),
             EditorPrimitiveType.Camera => new Vector3(0.5f, 0.4f, 0.6f),
             _ => Vector3.One,
         };
@@ -466,6 +500,21 @@ public unsafe class EditorObject
                      RotationEuler.Z * MathF.PI / 180f)
                  * Matrix4x4.CreateTranslation(Position);
         }
+    }
+
+    /// <summary>Pick the Light marker that should drive the global sun: the first DIRECT
+    /// light, or null when there is none (the procedural sun takes over). Point/Spot
+    /// markers never drive the sun — they are local lights. Scenes saved before the
+    /// light-type feature load with LightTypeEnum = Direct, so they still work.</summary>
+    public static EditorObject? PickSunLight(IEnumerable<EditorObject> objects)
+    {
+        foreach (var obj in objects)
+        {
+            if (obj != null && obj.PrimitiveType == EditorPrimitiveType.Light
+                && obj.LightTypeEnum == LightType.Direct)
+                return obj;
+        }
+        return null;
     }
 
     /// <summary>
@@ -664,6 +713,7 @@ public unsafe class EditorObject
         _terrainLoadedPath = TerrainHeightmapPath;
         mesh.SetLayerTextures(TerrainTextureAirPath, TerrainTextureDirtPath, TerrainTextureGrassPath, TerrainTextureSnowPath);
         mesh.Generate(TerrainChunkSize, TerrainChunksPerSide, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
+        mesh.ApplyTextureSettings(TerrainLayerSettings);
         _terrainMesh = mesh;
 
         // When switching a plane to terrain mode, release the flat-plane Object3D so it
@@ -771,6 +821,8 @@ public unsafe class EditorObject
         {
             var tex = new Texture(TexturePath);
             _textureID = tex.ID;
+            TexSettings.Apply(_textureID);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
         }
         else
         {
@@ -792,6 +844,28 @@ public unsafe class EditorObject
 
     /// <summary>Force PBR textures to reload on the next draw (after a map path changed).</summary>
     public void InvalidatePbrTextures() => _pbrCacheKey = "";
+
+    /// <summary>Re-apply the per-texture sampling settings (filter / wrapping / mipmapping)
+    /// to every GPU texture this object owns: the simple texture uses <see cref="TexSettings"/>,
+    /// each PBR map uses its own slot in <see cref="PbrTexSettings"/> and each terrain layer
+    /// uses its own slot in <see cref="TerrainLayerSettings"/>. Called by the Inspector when
+    /// the settings change — no reload needed.</summary>
+    public void ApplyTextureSettings()
+    {
+        if (_textureID != 0)
+        {
+            TexSettings.Apply(_textureID);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+        }
+        for (int i = 0; i < 7; i++)
+        {
+            if (_pbrTex[i] == 0) continue;
+            PbrTexSettings[i].Apply(_pbrTex[i]);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+        }
+        if (_terrainMesh != null)
+            _terrainMesh.ApplyTextureSettings(TerrainLayerSettings);
+    }
 
     private void EnsurePbrTextures()
     {
@@ -815,6 +889,8 @@ public unsafe class EditorObject
             try
             {
                 _pbrTex[i] = new Texture(resolved).ID;
+                PbrTexSettings[i].Apply(_pbrTex[i]);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
                 loaded.Add($"{names[i]}:{Path.GetFileName(resolved)}");
             }
             catch (Exception ex)
@@ -861,7 +937,8 @@ public unsafe class EditorObject
         public static bool Ready;
         public static uint Program;
         public static int View, Proj, Model, SunDir, LightColor, ViewPos, FogColor, UseFog;
-        public static int TexTiling;
+        public static readonly int[] UvScale = new int[7];   // per-map u_uvScale[i]
+        public static readonly int[] UvOffset = new int[7];  // per-map u_uvOffset[i]
         public static readonly int[] Maps = new int[7];     // albedo..emission (units 0-6)
         public static readonly int[] UseMaps = new int[7];  // useAlbedo..useEmission
         public static int AlbedoTune, NormalTune, MetallicTune, RoughnessTune, AoTune, HeightTune, EmissionIntensity;
@@ -881,7 +958,11 @@ public unsafe class EditorObject
             ViewPos = GL.GetUniformLocation(Program, "viewPos");
             FogColor = GL.GetUniformLocation(Program, "fogColor");
             UseFog = GL.GetUniformLocation(Program, "useFog");
-            TexTiling = GL.GetUniformLocation(Program, "u_texTiling");
+            for (int i = 0; i < 7; i++)
+            {
+                UvScale[i] = GL.GetUniformLocation(Program, $"u_uvScale[{i}]");
+                UvOffset[i] = GL.GetUniformLocation(Program, $"u_uvOffset[{i}]");
+            }
             string[] mapNames = ["albedoMap", "normalMap", "metallicMap", "roughnessMap", "aoMap", "heightMap", "emissionMap"];
             string[] useNames = ["useAlbedo", "useNormal", "useMetallic", "useRoughness", "useAo", "useHeight", "useEmission"];
             for (int i = 0; i < 7; i++)
@@ -933,10 +1014,15 @@ public unsafe class EditorObject
         GL.Uniform3f(PbrUniforms.SunDir, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
         GL.Uniform3f(PbrUniforms.LightColor, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
         GL.Uniform3f(PbrUniforms.ViewPos, camera.Position.X, camera.Position.Y, camera.Position.Z);
-        GL.Uniform1i(PbrUniforms.UseFog, Keyboard.GetIsFogActive() ? 1 : 0);
-        GL.Uniform3f(PbrUniforms.FogColor, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+
+        // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+        Visual.FogUniforms.UploadMain(PbrUniforms.Program, light);
+
         if (PbrUniforms.ShowCSMCascadeColor >= 0)
             GL.Uniform1i(PbrUniforms.ShowCSMCascadeColor, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+
+        // ── Local point/spot lights (from editor Light markers) ──
+        light.UploadLocalLights(pbr);
 
         // Live shadow bias / blend tuning (Shadow Settings panel).
         Visual.ShadowUniforms.UploadMain(pbr);
@@ -979,8 +1065,14 @@ public unsafe class EditorObject
             GL.Uniform1i(PbrUniforms.UseMaps[i], _pbrTex[i] != 0 ? 1 : 0);
         }
 
-        // ── Tiling + tuning (shared PBR tuning properties — uniform-only, no reload) ──
-        GL.Uniform1f(PbrUniforms.TexTiling, PbrTexTiling);
+        // ── UV tiling + offset per map (uniform-only, no texture reload) ──
+        for (int i = 0; i < 7; i++)
+        {
+            if (PbrUniforms.UvScale[i] >= 0)
+                GL.Uniform2f(PbrUniforms.UvScale[i], PbrTexSettings[i].TilingX, PbrTexSettings[i].TilingY);
+            if (PbrUniforms.UvOffset[i] >= 0)
+                GL.Uniform2f(PbrUniforms.UvOffset[i], PbrTexSettings[i].OffsetX, PbrTexSettings[i].OffsetY);
+        }
         GL.Uniform3f(PbrUniforms.AlbedoTune, TerrainPbrAlbedoBrightness, TerrainPbrAlbedoSaturation, TerrainPbrAlbedoContrast);
         GL.Uniform2f(PbrUniforms.NormalTune, TerrainPbrNormalStrength, TerrainPbrNormalBlur);
         GL.Uniform3f(PbrUniforms.MetallicTune, TerrainPbrMetallicThreshold, TerrainPbrMetallicSoftness, TerrainPbrMetallicStrength);
@@ -1518,35 +1610,67 @@ public unsafe class EditorObject
         var beamVerts = new List<Vector3>(32); // bright gold: THE direction axis
         var coneVerts = new List<Vector3>(64); // dim amber: spotlight spread
         var sunVerts  = new List<Vector3>(40); // object color: light anchor
+        var rangeVerts = new List<Vector3>(64); // point-light sphere / range
 
         void Line(List<Vector3> list, Vector3 a, Vector3 b) { list.Add(a); list.Add(b); }
 
         // ── Direction axis (the beam): origin → tip with a prominent arrowhead. ──
         // This is the line the user must spot first, so it gets the brightest color.
-        Vector3 tip = Position + beam * displayLen;
-        Line(beamVerts, Position, tip);
-        float head = displayLen * 0.10f;
-        Line(beamVerts, tip, tip - beam * head + right * head * 0.7f);
-        Line(beamVerts, tip, tip - beam * head - right * head * 0.7f);
-        Line(beamVerts, tip, tip - beam * head + up * head * 0.7f);
-        Line(beamVerts, tip, tip - beam * head - up * head * 0.7f);
+        // Direct lights always show the beam; spotlights show it too (cone on top).
+        if (LightTypeEnum != LightType.Point)
+        {
+            Vector3 tip = Position + beam * displayLen;
+            Line(beamVerts, Position, tip);
+            float head = displayLen * 0.10f;
+            Line(beamVerts, tip, tip - beam * head + right * head * 0.7f);
+            Line(beamVerts, tip, tip - beam * head - right * head * 0.7f);
+            Line(beamVerts, tip, tip - beam * head + up * head * 0.7f);
+            Line(beamVerts, tip, tip - beam * head - up * head * 0.7f);
+        }
 
         // ── Spotlight cone (dim): a circle at the beam tip whose radius grows with
         // distance, plus cone edge lines from the origin to that circle. ──
-        float coneHalf = Math.Clamp(LightConeAngle, 1f, 89f) * MathF.PI / 180f;
-        float coneRadius = MathF.Tan(coneHalf) * displayLen;
-        const int segs = 12;
-        var ring = new Vector3[segs];
-        for (int i = 0; i < segs; i++)
+        if (LightTypeEnum == LightType.Spotlight)
         {
-            float a = i * MathF.PI * 2f / segs;
-            ring[i] = tip + right * (MathF.Cos(a) * coneRadius)
-                          + up * (MathF.Sin(a) * coneRadius);
+            Vector3 tip = Position + beam * displayLen;
+            float coneHalf = Math.Clamp(LightConeAngle, 1f, 89f) * MathF.PI / 180f;
+            float coneRadius = MathF.Tan(coneHalf) * displayLen;
+            const int segs = 12;
+            var ring = new Vector3[segs];
+            for (int i = 0; i < segs; i++)
+            {
+                float a = i * MathF.PI * 2f / segs;
+                ring[i] = tip + right * (MathF.Cos(a) * coneRadius)
+                              + up * (MathF.Sin(a) * coneRadius);
+            }
+            for (int i = 0; i < segs; i++)
+            {
+                Line(coneVerts, ring[i], ring[(i + 1) % segs]); // ring edge
+                Line(coneVerts, Position, ring[i]);             // cone side
+            }
         }
-        for (int i = 0; i < segs; i++)
+
+        // ── Point light: wireframe sphere showing the falloff range (LightPointRadius),
+        // drawn in the object's color so the reach of the light is obvious. ──
+        if (LightTypeEnum == LightType.Point)
         {
-            Line(coneVerts, ring[i], ring[(i + 1) % segs]); // ring edge
-            Line(coneVerts, Position, ring[i]);             // cone side
+            float pr = MathF.Max(0.5f, LightPointRadius > 0f ? LightPointRadius : 50f);
+            // Three great circles around the anchor (XY, XZ, YZ planes).
+            const int psegs = 20;
+            void Ring(int axis)
+            {
+                for (int i = 0; i < psegs; i++)
+                {
+                    float a0 = i * MathF.PI * 2f / psegs;
+                    float a1 = (i + 1) * MathF.PI * 2f / psegs;
+                    var p0 = Position + new Vector3(MathF.Cos(a0), MathF.Sin(a0), 0f) * pr;
+                    var p1 = Position + new Vector3(MathF.Cos(a1), MathF.Sin(a1), 0f) * pr;
+                    if (axis == 1) { p0 = Position + new Vector3(MathF.Cos(a0), 0f, MathF.Sin(a0)) * pr; p1 = Position + new Vector3(MathF.Cos(a1), 0f, MathF.Sin(a1)) * pr; }
+                    else if (axis == 2) { p0 = Position + new Vector3(0f, MathF.Cos(a0), MathF.Sin(a0)) * pr; p1 = Position + new Vector3(0f, MathF.Cos(a1), MathF.Sin(a1)) * pr; }
+                    Line(rangeVerts, p0, p1);
+                }
+            }
+            Ring(0); Ring(1); Ring(2);
         }
 
         // ── Sun marker around the origin (circle + cross) in the object's color so the
@@ -1578,9 +1702,10 @@ public unsafe class EditorObject
         var zVerts = new List<Vector3>(2) { Position, Position + az * aLen };
 
         // Draw order matters (depth test is off, so later draws overwrite earlier ones):
-        // dim cone + sun + tripod first, then the bright beam LAST so the direction axis
-        // always wins where its line crosses the cone.
+        // dim cone/range + sun + tripod first, then the bright beam LAST so the direction
+        // axis always wins where its line crosses the cone.
         DrawEditorLines(coneVerts, camera, new Vector3(0.45f, 0.38f, 0.14f));
+        DrawEditorLines(rangeVerts, camera, Color);
         DrawEditorLines(sunVerts, camera, Color);
         DrawEditorLines(xVerts, camera, new Vector3(0.85f, 0.25f, 0.2f));  // X = red
         DrawEditorLines(yVerts, camera, new Vector3(0.3f, 0.8f, 0.3f));    // Y = green
@@ -2256,7 +2381,7 @@ public unsafe class EditorObject
         {
             Position = position,
             Scale = type == EditorPrimitiveType.Plane
-                ? new Vector3(25f, 0.05f, 25f)
+                ? new Vector3(500f, 0.05f, 500f)
                 : Vector3.One,
             CastShadow = true,
             IsVisible = true,

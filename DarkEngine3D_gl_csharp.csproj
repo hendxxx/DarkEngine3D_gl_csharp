@@ -491,6 +491,9 @@
     <None Update="Artifacts\Textures\dark_grass.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\Textures\default.jpg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Artifacts\Textures\floor.jpg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

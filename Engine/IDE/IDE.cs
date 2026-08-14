@@ -334,7 +334,12 @@ public class IDE : IDisposable
                 if (ImGui.MenuItem("Add Sky", "Ctrl+6"))
                 {
                     var obj = Bridge.EditorObjectManager?.AddPrimitive(EditorPrimitiveType.Sky, GetSpawnPosition(EditorPrimitiveType.Sky));
-                    if (obj != null) Bridge.SelectEditorObject(obj);
+                    if (obj != null)
+                    {
+                        // Sky automatically drives a DIRECT light — reuse or create one (bug #7).
+                        Bridge.EditorObjectManager?.EnsureDirectLightForSky(obj);
+                        Bridge.SelectEditorObject(obj);
+                    }
                 }
                 if (ImGui.MenuItem("Add GLB Reference..."))
                 {

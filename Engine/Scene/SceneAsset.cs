@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 
@@ -154,6 +155,12 @@ public class EditorObjectData
     public float LightDirZ { get; set; } = -0.3f;
     /// <summary>Light intensity multiplier (Light).</summary>
     public float LightIntensity { get; set; } = 1f;
+    /// <summary>Light type: Direct / Point / Spotlight (Light). Default Direct (sun-like).</summary>
+    public int LightType { get; set; } = 0;
+    /// <summary>Spotlight cone half-angle in degrees (Light, Spotlight).</summary>
+    public float LightConeAngle { get; set; } = 30f;
+    /// <summary>Point/Spot falloff range in world units (Light, Point/Spotlight).</summary>
+    public float LightPointRadius { get; set; } = 50f;
     /// <summary>Time of day in hours 0..24 (Sky).</summary>
     public float SkyTimeOfDay { get; set; } = 12f;
     /// <summary>Sun elevation override in degrees (Sky). null = follow time of day.</summary>
@@ -195,6 +202,8 @@ public class EditorObjectData
     public float TerrainSlopeThreshold { get; set; } = 0.35f;
     /// <summary>World-space texture tiling.</summary>
     public float TerrainTexTiling { get; set; } = 0.5f;
+    /// <summary>Stochastic (random per-tile) sampling toggle — OFF by default.</summary>
+    public bool TerrainUseStochasticSampling { get; set; } = false;
     /// <summary>Normalized height bands for the 4 layers.</summary>
     public float TerrainLayerAirTop { get; set; } = 0.18f;
     public float TerrainLayerDirtTop { get; set; } = 0.45f;
@@ -237,6 +246,17 @@ public class EditorObjectData
     public string PbrHeightPath { get; set; } = "";
     public string PbrEmissionPath { get; set; } = "";
     public float PbrTexTiling { get; set; } = 1f;
+    /// <summary>Sampling settings for the SIMPLE texture (min/mag filter, mipmapping,
+    /// anisotropy, wrapping, UV tiling/offset). Null/absent = legacy scene → defaults
+    /// (tiling falls back to <see cref="PbrTexTiling"/>).</summary>
+    public TextureSettingsData? TexSettings { get; set; }
+    /// <summary>Per-PBR-map sampling settings (7 entries: albedo, normal, metallic,
+    /// roughness, ao, height, emission). Null/absent = legacy scene → each map falls back
+    /// to <see cref="TexSettings"/> (or default).</summary>
+    public TextureSettingsData[]? PbrTexSettings { get; set; }
+    /// <summary>Per-terrain-layer sampling settings (4 entries: air, dirt, grass, snow).
+    /// Null/absent = legacy scene → each layer falls back to <see cref="TexSettings"/>.</summary>
+    public TextureSettingsData[]? TerrainLayerSettings { get; set; }
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
     public float TerrainBrushSize { get; set; } = 10f;
     /// <summary>Height delta per painted frame (world units).</summary>

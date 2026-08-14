@@ -654,10 +654,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.Uniform3f(_sunDirLoc, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
             if (_realSunDirLoc != -1) GL.Uniform3f(_realSunDirLoc, light.RealSunDir.X, light.RealSunDir.Y, light.RealSunDir.Z);
             GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
-            GL.Uniform3f(_fogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
             GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
-            GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
-            
+
+            // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+            Visual.FogUniforms.UploadMain(_shaderProgram, light);
+
             // Set shadow uniforms if CSM is provided
             if (csm != null)
             {
@@ -688,6 +689,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GL.Uniform1i(_showCSMCascadeColorLoc, Inputs.Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
             }
             
+            // ── Local point/spot lights (from editor Light markers) ──
+            light.UploadLocalLights(_shaderProgram);
+
             // Set default PBR uniforms
             if (_normalMapLoc != -1) GL.Uniform1i(_normalMapLoc, 3);
             if (_metallicRoughnessMapLoc != -1) GL.Uniform1i(_metallicRoughnessMapLoc, 4);

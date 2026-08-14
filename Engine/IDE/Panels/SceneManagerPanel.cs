@@ -29,6 +29,11 @@ public class SceneManagerPanel
     // ── File dialog for Load/Save As ──
     private readonly ImGuiFileDialog _fileDialog = new();
 
+    // ── Current save file: the .ing file this session is editing. Set when a file is
+    //    loaded (Load File) or saved via Save As. Save All + auto-save write here instead
+    //    of always overwriting game.ing. Falls back to game.ing when nothing was loaded. ──
+    private string? _currentSaveFile;
+
     // ── Popup state ──
     private bool _showAddPopup = false;
     private bool _showEditPopup = false;
@@ -287,7 +292,7 @@ public class SceneManagerPanel
             ImGui.EndDisabled();
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered() && canSave)
-                ImGui.SetTooltip($"Save {_bridge.EditorScenes.Count} scene(s) to {SceneAssetSerializer.GameIngPath}");
+                ImGui.SetTooltip($"Save {_bridge.EditorScenes.Count} scene(s) to {(_currentSaveFile ?? SceneAssetSerializer.GameIngPath)}");
 
             ImGui.SameLine();
 
@@ -565,15 +570,15 @@ public class SceneManagerPanel
                     }
                     else
                     {
-                        // No scenes left — write empty manifest to clear game.ing
+                        // No scenes left — write empty manifest to clear the current file
                         // (SaveGameIng() with no args would preserve old data, so write fresh)
                         Console.WriteLine($"[SceneManager] No scenes left, writing empty manifest");
                         var emptyManifest = new SceneManifest();
                         string json = System.Text.Json.JsonSerializer.Serialize(
                             emptyManifest, SceneAssetSerializer.GetJsonOptions());
-                        Directory.CreateDirectory(
-                            Path.GetDirectoryName(SceneAssetSerializer.GameIngPath)!);
-                        File.WriteAllText(SceneAssetSerializer.GameIngPath, json);
+                        string target = _currentSaveFile ?? SceneAssetSerializer.GameIngPath;
+                        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                        File.WriteAllText(target, json);
                     }
                 }
                 ImGui.CloseCurrentPopup();
@@ -695,6 +700,9 @@ public class SceneManagerPanel
                         LightDirY = obj.LightDirection.Y,
                         LightDirZ = obj.LightDirection.Z,
                         LightIntensity = obj.LightIntensity,
+                        LightType = (int)obj.LightTypeEnum,
+                        LightConeAngle = obj.LightConeAngle,
+                        LightPointRadius = obj.LightPointRadius,
                         SkyTimeOfDay = obj.SkyTimeOfDay,
                         SkySunPitch = obj.SkySunPitch,
                         SkySunYaw = obj.SkySunYaw,
@@ -715,6 +723,7 @@ public class SceneManagerPanel
                         TerrainHeightScale = obj.TerrainHeightScale,
                         TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
                         TerrainTexTiling = obj.TerrainTexTiling,
+                        TerrainUseStochasticSampling = obj.TerrainUseStochasticSampling,
                         TerrainLayerAirTop = obj.TerrainLayerAirTop,
                         TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
                         TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
@@ -750,6 +759,9 @@ public class SceneManagerPanel
                         PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
                         PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                         PbrTexTiling = obj.PbrTexTiling,
+                        TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
+                        PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
+                        TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                         TerrainBrushSize = obj.TerrainBrushSize,
                         TerrainBrushStrength = obj.TerrainBrushStrength,
                         TerrainBrushSoftness = obj.TerrainBrushSoftness,
@@ -767,12 +779,15 @@ public class SceneManagerPanel
             manifest.Scenes.Add(asset);
         }
 
-        // Write to game.ing
+        // Write to the CURRENT save file (the .ing this session is editing — loaded via
+        // Load File or chosen via Save As). Falls back to game.ing when nothing was loaded.
+        // The file is created if it doesn't exist yet (directories included).
+        string target = _currentSaveFile ?? SceneAssetSerializer.GameIngPath;
         string json = System.Text.Json.JsonSerializer.Serialize(manifest,
             SceneAssetSerializer.GetJsonOptions());
-        Directory.CreateDirectory(Path.GetDirectoryName(SceneAssetSerializer.GameIngPath)!);
-        File.WriteAllText(SceneAssetSerializer.GameIngPath, json);
-        Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} editor scenes (+ 3D objects) to game.ing");
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.WriteAllText(target, json);
+        Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} editor scenes (+ 3D objects) to {target}");
         // Cache auto-invalidates on next read by file timestamp change.
     }
 
@@ -907,6 +922,9 @@ public class SceneManagerPanel
                 return;
             }
 
+            // This file is now the active save target — Save All / auto-save go here.
+            _currentSaveFile = Path.GetFullPath(filePath);
+
             // ── Restore global IDE selection highlight colors ──
             if (manifest.SelectionHighlightColor?.Length == 3)
                 _bridge.SelectionHighlights.GltfObject = new Vector3(manifest.SelectionHighlightColor[0], manifest.SelectionHighlightColor[1], manifest.SelectionHighlightColor[2]);
@@ -1006,6 +1024,9 @@ public class SceneManagerPanel
                         obj.CameraFar = objData.CameraFar;
                         obj.LightDirection = new Vector3(objData.LightDirX, objData.LightDirY, objData.LightDirZ);
                         obj.LightIntensity = objData.LightIntensity;
+                        obj.LightTypeEnum = (LightType)Math.Clamp(objData.LightType, 0, 2);
+                        obj.LightConeAngle = Math.Clamp(objData.LightConeAngle, 1f, 89f);
+                        obj.LightPointRadius = Math.Max(0f, objData.LightPointRadius);
                         obj.SkyTimeOfDay = objData.SkyTimeOfDay;
                         obj.SkySunPitch = objData.SkySunPitch;
                         obj.SkySunYaw = objData.SkySunYaw;
@@ -1030,6 +1051,7 @@ public class SceneManagerPanel
                         obj.TerrainHeightScale = objData.TerrainHeightScale;
                         obj.TerrainSlopeThreshold = objData.TerrainSlopeThreshold;
                         obj.TerrainTexTiling = objData.TerrainTexTiling;
+                        obj.TerrainUseStochasticSampling = objData.TerrainUseStochasticSampling;
                         obj.TerrainLayerAirTop = objData.TerrainLayerAirTop;
                         obj.TerrainLayerDirtTop = objData.TerrainLayerDirtTop;
                         obj.TerrainLayerGrassTop = objData.TerrainLayerGrassTop;
@@ -1091,6 +1113,18 @@ public class SceneManagerPanel
                         obj.PbrHeightPath = PathHelpers.Resolve(objData.PbrHeightPath);
                         obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
                         obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
+                        // Per-texture sampling settings (min/mag, mipmap, wrapping, UV
+                        // tiling/offset). Legacy scenes have no TexSettings → fall back to
+                        // the old scalar tiling so existing scenes keep their look.
+                        obj.TexSettings = objData.TexSettings != null
+                            ? Libs.TextureSettingsData.ToSettings(objData.TexSettings)
+                            : new Libs.TextureSettings { TilingX = obj.PbrTexTiling, TilingY = obj.PbrTexTiling };
+                        // Per-texture sampling: new scenes carry per-map + per-layer arrays;
+                        // legacy scenes fall back to the shared TexSettings for every slot.
+                        if (objData.PbrTexSettings is { Length: 7 } pbr)
+                            obj.PbrTexSettings = pbr.Select(Libs.TextureSettingsData.ToSettings).ToArray();
+                        if (objData.TerrainLayerSettings is { Length: 4 } tls)
+                            obj.TerrainLayerSettings = tls.Select(Libs.TextureSettingsData.ToSettings).ToArray();
                         obj.TerrainBrushSize = objData.TerrainBrushSize;
                         obj.TerrainBrushStrength = objData.TerrainBrushStrength;
                         obj.TerrainBrushSoftness = objData.TerrainBrushSoftness;
@@ -1110,6 +1144,11 @@ public class SceneManagerPanel
 
                         Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
                     }
+
+                    // ── Sky → Direct light (bug #7): after ALL objects are restored, make
+                    // sure a Sky has a Direct light — reusing one from the scene file if
+                    // present, creating it only when missing (no duplicates). ──
+                    editorMgr.EnsureDirectLightForAnySky();
                 }
 
                 var loadedScene = new IDEBridge.EditorScene(
@@ -1269,6 +1308,7 @@ public class SceneManagerPanel
                             TerrainHeightScale = obj.TerrainHeightScale,
                             TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
                             TerrainTexTiling = obj.TerrainTexTiling,
+                            TerrainUseStochasticSampling = obj.TerrainUseStochasticSampling,
                             TerrainLayerAirTop = obj.TerrainLayerAirTop,
                             TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
                             TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
@@ -1302,7 +1342,10 @@ public class SceneManagerPanel
                             PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
                             PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
-                            PbrTexTiling = obj.PbrTexTiling
+                            PbrTexTiling = obj.PbrTexTiling,
+                            TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
+                            PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
+                            TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray()
                         });
                     }
                 }
@@ -1325,6 +1368,9 @@ public class SceneManagerPanel
             long fileSize = new FileInfo(filePath).Length;
             Console.WriteLine($"[SceneManagerPanel] ✅ Saved {_bridge.EditorScenes.Count} scene(s) (+ 3D objects) to {filePath}");
             Console.WriteLine($"[SceneManagerPanel] File size: {fileSize} bytes");
+
+            // Save As becomes the active save target for subsequent Save All operations.
+            _currentSaveFile = Path.GetFullPath(filePath);
         }
         catch (UnauthorizedAccessException ex)
         {

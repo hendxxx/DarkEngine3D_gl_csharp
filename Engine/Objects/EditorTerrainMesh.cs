@@ -77,7 +77,7 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _sunDirLoc = -1, _lightColorLoc = -1, _viewPosLoc = -1;
     private static int _useFogLoc = -1, _fogColorLoc = -1;
     private static int _heightScaleLoc = -1, _layerLevelsLoc = -1;
-    private static int _slopeThresholdLoc = -1, _texTilingLoc = -1;
+    private static int _slopeThresholdLoc = -1, _texTilingLoc = -1, _useStochasticSamplingLoc = -1;
     private static int _usePaintMaskLoc = -1, _tex4Loc = -1;
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
@@ -113,7 +113,11 @@ public unsafe class EditorTerrainMesh : IDisposable
         _hmWidth = 2;
         _hmHeight = 2;
         IsModified = false;
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        // Empty path = a valid "flat" heightmap (height 0 everywhere). The terrain mesh
+        // is still built so layer textures, painting and brushes all work on a flat plane.
+        if (string.IsNullOrEmpty(path))
+            return true;
+        if (!File.Exists(path))
             return false;
 
         try
@@ -633,6 +637,31 @@ public unsafe class EditorTerrainMesh : IDisposable
         return CreateSolidTexture(fallback);
     }
 
+    /// <summary>Re-apply the owner's per-layer <see cref="TextureSettings"/> (min/mag
+    /// filter, mipmapping, anisotropy, wrapping) to each loaded layer texture and the splat
+    /// mask. <paramref name="perLayer"/> has one entry per layer (air, dirt, grass, snow);
+    /// the splat mask keeps CLAMP_TO_EDGE (it is a paint-weight map, not a tileable
+    /// texture) — only its filters are changed. Called from EditorObject when the
+    /// settings change or after a rebuild loads fresh textures.</summary>
+    public void ApplyTextureSettings(Libs.TextureSettings[] perLayer)
+    {
+        if (perLayer == null) return;
+        for (int i = 0; i < _layerTextures.Length && i < perLayer.Length; i++)
+        {
+            if (_layerTextures[i] == 0 || perLayer[i] == null) continue;
+            perLayer[i].Apply(_layerTextures[i]);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+        }
+        if (_splatTex != 0 && perLayer.Length > 0 && perLayer[0] != null)
+        {
+            GL.BindTexture(Const.GL_TEXTURE_2D, _splatTex);
+            bool nearest = perLayer[0].MagFilterGL == Const.GL_NEAREST;
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)(nearest ? Const.GL_NEAREST : Const.GL_LINEAR));
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)perLayer[0].MagFilterGL);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+        }
+    }
+
     /// <summary>Create a tiny 1×1 solid-color texture (used when a layer has no image).</summary>
     private static unsafe uint CreateSolidTexture(Vector3 color)
     {
@@ -678,6 +707,7 @@ public unsafe class EditorTerrainMesh : IDisposable
         _layerLevelsLoc = GL.GetUniformLocation(_program, "layerLevels");
         _slopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
         _texTilingLoc = GL.GetUniformLocation(_program, "texTiling");
+        _useStochasticSamplingLoc = GL.GetUniformLocation(_program, "useStochasticSampling");
         _usePaintMaskLoc = GL.GetUniformLocation(_program, "usePaintMask");
         _showHeatmapLoc = GL.GetUniformLocation(_program, "showHeatmap");
         _showContoursLoc = GL.GetUniformLocation(_program, "showContours");
@@ -720,10 +750,14 @@ public unsafe class EditorTerrainMesh : IDisposable
         GL.Uniform3f(_sunDirLoc, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
         GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
         GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
-        GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
-        GL.Uniform3f(_fogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+
+        // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+        Visual.FogUniforms.UploadMain(_program, light);
         if (_showCSMCascadeColorLoc >= 0)
             GL.Uniform1i(_showCSMCascadeColorLoc, Inputs.Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+
+        // ── Local point/spot lights (from editor Light markers) ──
+        light.UploadLocalLights(_program);
 
         // Live shadow bias / blend tuning (Shadow Settings panel) — terrain-editor shader
         // uses the same uniform names as the main shader.
@@ -769,6 +803,7 @@ public unsafe class EditorTerrainMesh : IDisposable
             owner.TerrainLayerSnowTop);
         GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
         GL.Uniform1f(_texTilingLoc, Math.Max(0.01f, owner.TerrainTexTiling));
+        GL.Uniform1i(_useStochasticSamplingLoc, owner.TerrainUseStochasticSampling ? 1 : 0);
 
         uint[] units = [Const.GL_TEXTURE0, Const.GL_TEXTURE1, Const.GL_TEXTURE2, Const.GL_TEXTURE3];
         for (int i = 0; i < 4; i++)

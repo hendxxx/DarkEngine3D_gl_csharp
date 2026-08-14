@@ -19,6 +19,12 @@ public class InspectorPanel
     // ── UI editing state ──
     private System.Numerics.Vector2 _editVec2 = new();
 
+    // ── Per-texture settings: which slot/layer is being edited. Reset when the selected
+    //    object changes so a fresh selection always starts on the Simple / Air layer. ──
+    private EditorObject? _texSettingsObj;
+    private int _texSlotIdx;
+    private int _terrainLayerIdx;
+
     // ── Cached font list (scanned once) ──
     private string[]? _availableFonts;
     private bool _fontsScanned = false;
@@ -1041,6 +1047,93 @@ public class InspectorPanel
             ImGui.Separator();
 
             // ════════════════════════════════════════════
+            //  Fog (global — Config.FogSettings, applies to every scene & object)
+            // ════════════════════════════════════════════
+            if (ImGui.CollapsingHeader("Fog", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                bool fogChanged = false;
+
+                if (ImGui.Checkbox("Enable Fog", ref Config.FogSettings.Enabled))
+                    fogChanged = true;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Master fog switch (same as the F key quick-toggle in-game).");
+
+                string[] fogModes = ["Linear", "Exponential", "Exponential² + Height"];
+                int fogMode = Math.Clamp(Config.FogSettings.Mode - 1, 0, 2);
+                if (ImGui.Combo("Mode", ref fogMode, fogModes, fogModes.Length))
+                {
+                    Config.FogSettings.Mode = fogMode + 1;
+                    fogChanged = true;
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Linear = fades between Start and End distance.\nExponential = smooth density falloff.\nExp² + Height = the original terrain fog with height blending.");
+
+                if (ImGui.Checkbox("Use Sky Color", ref Config.FogSettings.UseSkyColor))
+                    fogChanged = true;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("When enabled the fog color follows the sun/horizon; disable to pick a manual color.");
+
+                if (!Config.FogSettings.UseSkyColor)
+                {
+                    var fogColor = Config.FogSettings.Color;
+                    if (ImGui.ColorEdit3("Fog Color", ref fogColor))
+                    {
+                        Config.FogSettings.Color = fogColor;
+                        fogChanged = true;
+                    }
+                }
+
+                float density = Config.FogSettings.Density;
+                if (ImGui.SliderFloat("Density", ref density, 0f, 0.05f, "%.4f"))
+                {
+                    Config.FogSettings.Density = density;
+                    fogChanged = true;
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Fog thickness (Exponential / Exp² modes).");
+
+                if (Config.FogSettings.Mode == 1)
+                {
+                    float start = Config.FogSettings.StartDistance;
+                    if (ImGui.DragFloat("Start Distance", ref start, 1f, 0f, 2000f))
+                    {
+                        Config.FogSettings.StartDistance = Math.Max(0f, start);
+                        fogChanged = true;
+                    }
+                    float end = Config.FogSettings.EndDistance;
+                    if (ImGui.DragFloat("End Distance", ref end, 1f, 0f, 5000f))
+                    {
+                        Config.FogSettings.EndDistance = Math.Max(Config.FogSettings.StartDistance + 1f, end);
+                        fogChanged = true;
+                    }
+                }
+
+                if (Config.FogSettings.Mode == 3)
+                {
+                    float height = Config.FogSettings.Height;
+                    if (ImGui.DragFloat("Fog Height", ref height, 0.5f, -100f, 500f))
+                    {
+                        Config.FogSettings.Height = height;
+                        fogChanged = true;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("World Y below which the fog is densest (height fog).");
+
+                    float range = Config.FogSettings.HeightRange;
+                    if (ImGui.DragFloat("Height Range", ref range, 0.5f, 1f, 500f))
+                    {
+                        Config.FogSettings.HeightRange = Math.Max(1f, range);
+                        fogChanged = true;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("How quickly the height fog fades above Fog Height.");
+                }
+
+                if (fogChanged)
+                    Config.FogSettings.Persist();
+            }
+
+            // ════════════════════════════════════════════
             //  Selection Highlight Colors (global IDE settings)
             // ════════════════════════════════════════════
             if (ImGui.CollapsingHeader("Selection Highlight", ImGuiTreeNodeFlags.DefaultOpen))
@@ -1454,11 +1547,46 @@ public class InspectorPanel
         if (editorObj.PrimitiveType == EditorPrimitiveType.Light &&
             ImGui.CollapsingHeader("Light Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            var dir = editorObj.LightDirection;
-            if (ImGui.DragFloat3("Direction", ref dir, 0.05f))
-                editorObj.LightDirection = Vector3.Normalize(dir);
+            // ── Light type: Direct (sun-like, parallel) / Point (omnidirectional) /
+            //    Spotlight (cone). The type drives which properties are shown below and
+            //    how the light affects the scene (see Lights.CollectLocalLights). ──
+            string[] lightTypes = ["Direct (Sun)", "Point", "Spotlight"];
+            int lightTypeIdx = (int)editorObj.LightTypeEnum;
+            if (ImGui.Combo("Type", ref lightTypeIdx, lightTypes, lightTypes.Length))
+            {
+                editorObj.LightTypeEnum = (LightType)lightTypeIdx;
+                Console.WriteLine($"[Inspector] '{editorObj.Name}' light type → {editorObj.LightTypeEnum}");
+            }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("World direction the light points toward (overrides the editor sun)");
+                ImGui.SetTooltip("Direct = parallel rays like the sun (drives the scene's global light + shadows).\nPoint = omnidirectional from the marker position with distance falloff.\nSpotlight = cone-shaped beam with angle + distance falloff.");
+
+            // ── Per-type properties ──
+            if (editorObj.LightTypeEnum is LightType.Direct or LightType.Spotlight)
+            {
+                var dir = editorObj.LightDirection;
+                if (ImGui.DragFloat3("Direction", ref dir, 0.05f))
+                    editorObj.LightDirection = Vector3.Normalize(dir);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("World direction the light points toward (Direct overrides the editor sun)");
+            }
+
+            if (editorObj.LightTypeEnum is LightType.Point or LightType.Spotlight)
+            {
+                float range = editorObj.LightPointRadius;
+                if (ImGui.DragFloat("Range", ref range, 0.5f, 1f, 500f, "%.1f"))
+                    editorObj.LightPointRadius = Math.Max(1f, range);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Distance (world units) the light reaches before fading out (distance falloff)");
+            }
+
+            if (editorObj.LightTypeEnum == LightType.Spotlight)
+            {
+                float cone = editorObj.LightConeAngle;
+                if (ImGui.SliderFloat("Cone Angle", ref cone, 1f, 89f, "%.0f°"))
+                    editorObj.LightConeAngle = cone;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Spotlight cone half-angle — how wide the beam spreads");
+            }
 
             float intensity = editorObj.LightIntensity;
             if (ImGui.DragFloat("Intensity", ref intensity, 0.05f, 0f, 10f, "%.2f"))
@@ -1466,21 +1594,15 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Brightness multiplier applied to the light color");
 
-            float cone = editorObj.LightConeAngle;
-            if (ImGui.SliderFloat("Cone Angle", ref cone, 1f, 89f, "%.0f°"))
-                editorObj.LightConeAngle = cone;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Spotlight cone half-angle visualized by the light gizmo in the viewport");
-
             bool showLightGizmo = editorObj.ShowLightGizmo;
             if (ImGui.Checkbox("Show Light Gizmo", ref showLightGizmo))
                 editorObj.ShowLightGizmo = showLightGizmo;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Show/hide the direction ray + spotlight cone gizmo for this light in the viewport");
+                ImGui.SetTooltip("Show/hide the light gizmo in the viewport (beam / sphere / cone per type)");
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(1.0f, 0.85f, 0.4f, 1f),
-                "Color = the object's Color in Visual section below.");
+                "Light color = the object's Color in the Visual section below.");
             ImGui.Separator();
         }
 
@@ -1615,6 +1737,41 @@ public class InspectorPanel
                     AssetBrowserPanel._dragImagePath = null;
                 }
                 ImGui.EndDragDropTarget();
+            }
+        }
+
+        // ── Texture Settings: min/mag filter, mipmapping & advanced filters (anisotropy,
+        //    LOD bias), common presets, wrapping, and UV tiling/offset. PER TEXTURE — pick
+        //    which texture slot to edit: Simple (TexturePath) or one of the 7 PBR maps.
+        //    Box/Sphere only — a Plane always renders as terrain, so its per-texture
+        //    sampling lives in the Terrain section ("Texture Sampling", per layer). ──
+        if (editorObj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere
+            && ImGui.CollapsingHeader("Texture Settings", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            if (!ReferenceEquals(_texSettingsObj, editorObj))
+            {
+                _texSettingsObj = editorObj;
+                _texSlotIdx = 0;
+            }
+
+            string[] slots =
+            [
+                "Simple (Texture Path)", "Albedo", "Normal", "Metallic",
+                "Roughness", "AO", "Height", "Emission",
+            ];
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.Combo("Texture##texslot", ref _texSlotIdx, slots, slots.Length))
+            {
+                // Slot switched — nothing to re-apply yet, the settings below are live.
+            }
+
+            var slotSettings = _texSlotIdx == 0
+                ? editorObj.TexSettings
+                : editorObj.PbrTexSettings[_texSlotIdx - 1];
+            if (DrawTextureSettings(slotSettings, showTiling: true))
+            {
+                editorObj.ApplyTextureSettings();
+                Console.WriteLine($"[Inspector] Updated {slots[_texSlotIdx]} texture settings on '{editorObj.Name}'");
             }
         }
 
@@ -1768,6 +1925,15 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("World-space texture repetition frequency.");
 
+            bool stochastic = editorObj.TerrainUseStochasticSampling;
+            if (ImGui.Checkbox("Random Tile Tiling", ref stochastic))
+            {
+                editorObj.TerrainUseStochasticSampling = stochastic;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern (OFF by default).");
+
             ImGui.Spacing();
             ImGui.Separator();
 
@@ -1869,6 +2035,30 @@ public class InspectorPanel
                 () => editorObj.TerrainTextureSlopePath,
                 v => editorObj.TerrainTextureSlopePath = v,
                 new Vector4(0.55f, 0.45f, 0.38f, 1f));
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ── Texture sampling (min/mag filter, mipmapping, wrapping) — PER LAYER.
+            // Tiling for the terrain is world-space (triplanar, TerrainTexTiling above)
+            // so UV tiling/offset is hidden here. ──
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Texture Sampling");
+            if (!ReferenceEquals(_texSettingsObj, editorObj))
+            {
+                _texSettingsObj = editorObj;
+                _terrainLayerIdx = 0;
+            }
+
+            string[] layerNames = ["Air", "Dirt", "Grass", "Snow"];
+            ImGui.SetNextItemWidth(-1);
+            ImGui.Combo("Layer##texlayer", ref _terrainLayerIdx, layerNames, layerNames.Length);
+
+            var layerSettings = editorObj.TerrainLayerSettings[Math.Clamp(_terrainLayerIdx, 0, 3)];
+            if (DrawTextureSettings(layerSettings, showTiling: false))
+            {
+                editorObj.ApplyTextureSettings();
+                Console.WriteLine($"[Inspector] Updated {layerNames[Math.Clamp(_terrainLayerIdx, 0, 3)]} layer sampling on '{editorObj.Name}'");
+            }
     }
 
     /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>
@@ -2005,5 +2195,128 @@ public class InspectorPanel
             else
                 ImGui.Text("Target: None");
         }
+    }
+
+    /// <summary>Shared "Texture Settings" editor used by primitives (with UV tiling/offset)
+    /// and terrains (world-space triplanar — filters/wrapping only). Groups:
+    /// 1) common filtering presets, 2) minification, 3) magnification, 4) mipmapping &
+    /// advanced filters (anisotropy, LOD bias), 5) wrapping, 6) tiling & offset.
+    /// Returns true when any value changed (caller re-applies the GL state).</summary>
+    private static bool DrawTextureSettings(TextureSettings s, bool showTiling)
+    {
+        bool changed = false;
+
+        // ── Common Filtering Methods (preset drives min/mag/mipmap/aniso together) ──
+        int preset = (int)s.FilterPreset;
+        if (ImGui.Combo("Filtering##texpreset", ref preset, TextureSettings.PresetNames, TextureSettings.PresetNames.Length))
+        {
+            s.FilterPreset = (TexFilterPreset)preset;
+            s.ApplyPreset();
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Common filtering methods:\nNearest = crisp pixels (no filtering)\nBilinear = smooth, no mipmaps\nTrilinear = mipmapped smooth\nAnisotropic 2x–16x = sharper at grazing angles");
+
+        // ── Minification / Magnification ──
+        int min = (int)s.MinFilter;
+        if (ImGui.Combo("Minification", ref min, TextureSettings.MinFilterNames, TextureSettings.MinFilterNames.Length))
+        {
+            s.MinFilter = (TexMinFilter)min;
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Filter used when the texture is smaller than its on-screen area (distant/angled surfaces).");
+
+        int mag = (int)s.MagFilter;
+        if (ImGui.Combo("Magnification", ref mag, TextureSettings.MagFilterNames, TextureSettings.MagFilterNames.Length))
+        {
+            s.MagFilter = (TexMagFilter)mag;
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Filter used when the texture is larger than its on-screen area (close-up).");
+
+        // ── Mipmapping & Advanced Filters ──
+        if (ImGui.Checkbox("Generate Mipmaps", ref s.GenerateMipmaps))
+            changed = true;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Build the mipmap chain. Off forces the min filter to Nearest/Linear (mipmap-based filters need mipmaps).");
+
+        float bias = s.MipmapBias;
+        if (ImGui.SliderFloat("Mipmap Bias", ref bias, -4f, 4f, "%.2f"))
+        {
+            s.MipmapBias = bias;
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Shifts which mip level is picked (negative = sharper / more detail).");
+
+        float aniso = s.Anisotropy;
+        if (ImGui.SliderFloat("Anisotropy", ref aniso, 1f, 16f, "%.0fx"))
+        {
+            s.Anisotropy = aniso;
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Anisotropic filtering strength — removes blur on surfaces viewed at an angle.");
+
+        // ── Texture Wrapping ──
+        int ws = (int)s.WrapS;
+        if (ImGui.Combo("Wrap S", ref ws, TextureSettings.WrapNames, TextureSettings.WrapNames.Length))
+        {
+            s.WrapS = (TexWrap)ws;
+            changed = true;
+        }
+        int wt = (int)s.WrapT;
+        if (ImGui.Combo("Wrap T", ref wt, TextureSettings.WrapNames, TextureSettings.WrapNames.Length))
+        {
+            s.WrapT = (TexWrap)wt;
+            changed = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("How UVs outside 0..1 are handled: Repeat = tile, Mirrored Repeat = tile mirrored, Clamp to Edge = stretch, Clamp to Border = border color.");
+
+        // ── Tiling & Offset (UV transform: uv × Tiling + Offset) ──
+        if (showTiling)
+        {
+            // ── Random Tiling toggle: ON = tiling/offset randomized to break up the
+            //    repeating tile pattern; OFF = back to manual tiling 1×1 / offset 0. ──
+            bool rand = s.RandomTiling;
+            if (rand)
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.75f, 0.45f, 0.10f, 1f));
+            if (ImGui.Button(rand ? "🎲 Random Tiling: ON" : "🎲 Random Tiling: OFF", new Vector2(-1, 24)))
+            {
+                if (rand) s.ResetTiling(); else s.ApplyRandomTiling();
+                changed = true;
+            }
+            if (rand)
+                ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Randomize this texture's tiling/offset so the tile pattern looks varied instead of repeating\nin a perfect grid. Click again to turn OFF and restore tiling 1×1 / offset 0.");
+
+            var tiling = new Vector2(s.TilingX, s.TilingY);
+            if (ImGui.DragFloat2("Tiling (UV Scale)", ref tiling, 0.05f, 0.05f, 100f, "%.2f"))
+            {
+                s.TilingX = tiling.X;
+                s.TilingY = tiling.Y;
+                s.RandomTiling = false;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Repeat frequency of the texture across the UV range (1 = once, 2 = twice, …).");
+
+            var offset = new Vector2(s.OffsetX, s.OffsetY);
+            if (ImGui.DragFloat2("Offset (UV)", ref offset, 0.05f, -100f, 100f, "%.2f"))
+            {
+                s.OffsetX = offset.X;
+                s.OffsetY = offset.Y;
+                s.RandomTiling = false;
+                changed = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Shifts the texture start point in UV space.");
+        }
+
+        return changed;
     }
 }

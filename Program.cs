@@ -47,6 +47,9 @@ public unsafe class Program
         // (Previously the fields only appeared after the first change in the Shadow panel.)
         ShadowSettings.Persist();
 
+        // Restore the global fog settings (Inspector "Fog" section).
+        FogSettings.Apply(settings);
+
         // Apply Occlusion Mode to config immediately
         switch (settings.OcclusionMode)
         {

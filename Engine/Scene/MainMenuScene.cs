@@ -331,13 +331,18 @@ public unsafe class MainMenuScene : IScene
         if (envMgr != null)
         {
             EditorObject? skyObj = null;
-            EditorObject? lightObj = null;
             foreach (var obj in envMgr.Objects)
-            {
                 if (skyObj == null && obj.PrimitiveType == EditorPrimitiveType.Sky) skyObj = obj;
-                if (lightObj == null && obj.PrimitiveType == EditorPrimitiveType.Light) lightObj = obj;
-            }
+            // Sky drives a DIRECT light — prefer it over other light types.
+            EditorObject? lightObj = EditorObject.PickSunLight(envMgr.Objects);
             EditorObject.ApplyEnvironmentMarkers(lightObj, skyObj, _light, null, deltaTime);
+
+            // ── Collect Point/Spot Light markers as local lights ──
+            _light.CollectLocalLights(envMgr.Objects);
+        }
+        else
+        {
+            _light.LocalLights.Clear();
         }
 
         // Always advance the scene lights (procedural sun + fog), independent of whether
@@ -498,18 +503,24 @@ public unsafe class MainMenuScene : IScene
     /// <summary>Rebuild the legacy _uiButtons flat list from the loaded UIElement hierarchy.</summary>
     private void RebuildUiButtonsFromHierarchy(List<UIElement> elements)
     {
+        // Auto-layout (auto-center / auto-fill) applies against the window size so the
+        // registered buttons render centered in-game exactly like the editor preview.
+        float canvasW = Glfw.WindowWidth;
+        float canvasH = Glfw.WindowHeight;
+
         foreach (var elem in elements)
         {
             if ((elem.Type == UIElementType.Button || elem.Type == UIElementType.Label) && !string.IsNullOrEmpty(elem.Text))
             {
+                var (ex, ey, ew, eh) = elem.GetLayoutBounds(canvasW, canvasH);
                 _uiButtons.Add(new UIButtonData
                 {
                     Name = elem.Name,
                     Text = elem.Text,
-                    X = elem.X,
-                    Y = elem.Y,
-                    Width = elem.Width,
-                    Height = elem.Height,
+                    X = ex,
+                    Y = ey,
+                    Width = ew,
+                    Height = eh,
                     FontSize = elem.FontSize,
                     FontPath = elem.FontPath,
                     TextColor = elem.TextColor,
@@ -1088,10 +1099,25 @@ public unsafe class MainMenuScene : IScene
                 // direction (sky gizmo / light marker) in this viewport. Skipped when the
                 // viewport "Shadow" toggle is off (maps are cleared to fully-lit instead). ──
                 _csm ??= new CSM(Config.ShadowSettings.CascadeSizes[0]);
+                _light.LocalShadowsEnabled = editorBridge.ShowShadows;
                 if (editorBridge.ShowShadows)
+                {
                     editorObjMgr.RenderShadowPass(_camera, _light, _csm);
+
+                    // Local light (Point/Spot) shadow pass — each light casts its own
+                    // shadow map. Editor-object renderers self-upload the face matrix from
+                    // the CSM shim, so no per-program uniform plumbing is needed here.
+                    _light.LocalShadow ??= new LocalLightShadow();
+                    _light.LocalShadow.RenderShadowPass(
+                        _camera, _light.LocalLights,
+                        Shader.GetShadowShaderProgram(), Shader.GetShadowSkinnedShaderProgram(),
+                        Shader.GetShadowStaticAlphaShaderProgram(),
+                        (CSM csm, int ci) => editorObjMgr.RenderShadow(_camera, csm, ci));
+                }
                 else
+                {
                     _csm.ClearShadowMaps();
+                }
 
                 // Restore the shared FBO + scene render state after the depth-only shadow
                 // pass (re-apply this scene's render properties, then force depth on for
@@ -1112,7 +1138,10 @@ public unsafe class MainMenuScene : IScene
                 // Pass selection highlight color so selected objects get a mesh wireframe outline
                 Vector3? wireCol = editorBridge is { SelectedEditorObjects.Count: > 0 }
                     ? editorBridge.SelectionHighlights.EditorObject : null;
-                editorBridge.EditorObjectManager.Draw(_camera, _light, _csm, wireCol, editorBridge.SelectedEditorObjects);
+                // Game-mode render: hide the sky gizmo (editor tool) — it only shows in
+                // the edit-mode viewport (SceneManager's bare-editor Draw call keeps the default).
+                editorBridge.EditorObjectManager.Draw(_camera, _light, _csm, wireCol,
+                    editorBridge.SelectedEditorObjects, showSkyGizmo: false);
             }
         }            // ── Update bridge with scene data (always, so IDE panels have current state) ──
             var bridge = _sceneManager.Bridge;
@@ -1253,9 +1282,18 @@ public unsafe class MainMenuScene : IScene
     {
         if (_hud == null) return;
 
+        // The HUD renders in window pixel space, so auto-layout centers against the
+        // actual window size (same as the editor preview's scene texture).
+        float canvasW = Glfw.WindowWidth;
+        float canvasH = Glfw.WindowHeight;
+
         foreach (var elem in elements)
         {
             if (!elem.IsVisible) continue;
+
+            // Auto-center / auto-fill MUST also apply in-game (bug #6) — compute the
+            // effective bounds without mutating the stored values.
+            var (ex, ey, ew, eh) = elem.GetLayoutBounds(canvasW, canvasH);
 
             if (!string.IsNullOrEmpty(elem.ImagePath))
             {
@@ -1268,7 +1306,7 @@ public unsafe class MainMenuScene : IScene
                         imgH = d.h;
                     }
                     var (drawX, drawY, drawW, drawH) = CalcImageRect(
-                        elem.X, elem.Y, elem.Width, elem.Height,
+                        ex, ey, ew, eh,
                         imgW, imgH, elem.ImageMode);
 
                     _hud.DrawImage(drawX, drawY, drawW, drawH, texID);
@@ -1278,7 +1316,7 @@ public unsafe class MainMenuScene : IScene
                     // Image not loaded — draw fallback text (separate from Text property)
                     if (!string.IsNullOrEmpty(elem.FallbackText) && elem.Opacity > 0.01f)
                     {
-                        _hud.DrawText(elem.FallbackText, elem.X, elem.Y, elem.TextColor);
+                        _hud.DrawText(elem.FallbackText, ex, ey, elem.TextColor);
                     }
                 }
             }
@@ -1530,6 +1568,7 @@ public unsafe class MainMenuScene : IScene
         CleanupEditorGrid();
         _csm?.Dispose();
         _csm = null;
+        _light?.DisposeLocalShadow();
 
         // Clear IDE bridge references
         var bridge = _sceneManager.Bridge;

@@ -843,13 +843,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var envBridge = _sceneManager.Bridge;
             if (envBridge?.EditorObjectManager is { } envMgr)
             {
-                EditorObject? skyM = null, lightM = null;
+                EditorObject? skyM = null;
                 foreach (var obj in envMgr.Objects)
-                {
                     if (skyM == null && obj.PrimitiveType == EditorPrimitiveType.Sky) skyM = obj;
-                    if (lightM == null && obj.PrimitiveType == EditorPrimitiveType.Light) lightM = obj;
-                }
+                // Sky drives a DIRECT light — prefer it over other light types.
+                EditorObject? lightM = EditorObject.PickSunLight(envMgr.Objects);
                 EditorObject.ApplyEnvironmentMarkers(lightM, skyM, _light, _skybox, deltaTime);
+
+                // ── Collect Point/Spot Light markers as local lights so they illuminate
+                //    every object in the game (terrain, models, primitives) ──
+                _light.CollectLocalLights(envMgr.Objects);
+            }
+            else
+            {
+                _light.LocalLights.Clear();
             }
             _light.Update(deltaTime, _camera.Position);
 
@@ -898,6 +905,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         editorObjMgr.RenderShadow(_camera, _csm, i);
                     }
                 }
+
+                // ── Local light (Point/Spot) shadow pass — each light renders the scene
+                // into its own shadow map (cube for point, perspective map for spot) so
+                // every light casts its own shadow, not just the sun. Reuses the same
+                // casters as the CSM pass above via the per-cascade draw callback. ──
+                _light.LocalShadow ??= new LocalLightShadow();
+                _light.LocalShadow.RenderShadowPass(
+                    _camera, _light.LocalLights,
+                    _shadowShader, _shadowSkinnedShader, _shadowStaticAlphaShader,
+                    (CSM csm, int ci) =>
+                    {
+                        _objectManager?.RenderShadow(_camera, csm, ci,
+                            _shadowSkinnedShader, _shadowSkinnedModelLoc, _shadowSkinnedJointsLoc,
+                            _shadowStaticAlphaShader, _shadowStaticAlphaModelLoc);
+                        _gameTerrainChunk?.RenderShadow(_camera, csm, ci, _shadowShader, _shadowModelLoc);
+                        var eo = _sceneManager.Bridge?.EditorObjectManager;
+                        if (eo != null && (_sceneManager.Bridge?.ShowShadows ?? true))
+                            eo.RenderShadow(_camera, csm, ci);
+                    });
 
                 // Restore default viewport and framebuffer
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
@@ -2110,6 +2136,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             _csm?.Dispose();
+            _light?.DisposeLocalShadow();
             Console.WriteLine("[GameScene] Exited.");
         }
 
@@ -2117,6 +2144,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             _hud?.Cleanup();
             _csm?.Dispose();
+            _light?.DisposeLocalShadow();
             _objectManager?.Dispose();
             _gameTerrainChunk?.Dispose();
             Console.WriteLine("[GameScene] Disposed.");

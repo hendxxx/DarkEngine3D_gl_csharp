@@ -1629,6 +1629,11 @@ public class HierarchyPanel
         string objName = editorMgr.GetNextName(primType);
         var obj = editorMgr.AddPrimitive(primType, spawnPos);
         obj.Name = objName;
+
+        // Sky automatically drives a DIRECT light — reuse or create one (bug #7).
+        if (primType == EditorPrimitiveType.Sky)
+            editorMgr.EnsureDirectLightForSky(obj);
+
         _bridge.SelectEditorObject(obj);
         _bridge.SelectedUIElement = null;
         _bridge.SelectedUIElements.Clear();

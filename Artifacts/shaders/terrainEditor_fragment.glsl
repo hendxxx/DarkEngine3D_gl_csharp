@@ -14,6 +14,30 @@ uniform float slopeThreshold;  // steepness (1 - n.y) above which dirt/rock take
 uniform float texTiling;       // world-space texture tiling
 uniform vec3 sunDir, lightColor, viewPos, fogColor;
 uniform int useFog;
+
+// ── FOG SETTINGS (Config.FogSettings — uploaded from the Inspector "Fog" section) ──
+uniform int u_fogMode = 3;            // 1 = Linear, 2 = Exponential, 3 = Exp2 + height blend
+uniform float u_fogDensity = 0.0035;
+uniform float u_fogStart = 50.0;
+uniform float u_fogEnd = 300.0;
+uniform float u_fogHeight = 10.0;
+uniform float u_fogHeightRange = 45.0;
+
+// Shared fog factor (0 = full fog, 1 = no fog).
+float calcFogFactor(float dist, vec3 worldPos) {
+    if (u_fogMode == 1) { // Linear
+        return clamp((u_fogEnd - dist) / max(u_fogEnd - u_fogStart, 0.001), 0.0, 1.0);
+    } else if (u_fogMode == 2) { // Exponential
+        return exp(-dist * u_fogDensity);
+    }
+    // Exp2 + height blend (default — matches the original terrain fog)
+    float d = exp(-pow(dist * u_fogDensity, 2.0));
+    float heightFactor = clamp(1.0 - (worldPos.y - u_fogHeight) / max(u_fogHeightRange, 0.001), 0.0, 1.0);
+    heightFactor = pow(heightFactor, 2.0);
+    float heightWeight = mix(heightFactor, 1.0, 1.0 - d);
+    return clamp(mix(1.0, d, heightWeight), 0.0, 1.0);
+}
+
 uniform sampler2D tex0, tex1, tex2, tex3; // air, dirt, grass, snow
 uniform sampler2D tex4;      // splat/control map: RGBA weights for air/dirt/grass/snow (manual paint)
 uniform int usePaintMask;    // 1 = the terrain has manual layer paint to apply
@@ -46,6 +70,104 @@ uniform int showCSMCascadeColor;
 
 // Cascade overlay strength (L key debug tint), 0..1 — adjustable from the Shadow panel.
 uniform float u_CascadeOverlayAlpha = 0.15;
+
+// ── LOCAL LIGHTS (Point / Spot from editor Light markers) ──
+#define MAX_LOCAL_LIGHTS 8
+uniform int u_lightCount;
+uniform int u_lightType[MAX_LOCAL_LIGHTS];     // 1 = Point, 2 = Spotlight
+uniform vec3 u_lightPos[MAX_LOCAL_LIGHTS];
+uniform vec3 u_lightDir[MAX_LOCAL_LIGHTS];     // spot: direction the light points toward
+uniform vec3 u_lightColor[MAX_LOCAL_LIGHTS];
+uniform float u_lightIntensity[MAX_LOCAL_LIGHTS];
+uniform float u_lightRange[MAX_LOCAL_LIGHTS];
+uniform vec2 u_lightCone[MAX_LOCAL_LIGHTS];    // x = cos(outer), y = cos(inner)
+
+// ── LOCAL LIGHT SHADOWS (per-light shadow maps for Point/Spot) ──
+uniform sampler2D u_localShadowSpot[4];
+uniform samplerCube u_localShadowPoint[3];
+uniform mat4 u_localLightSpace[MAX_LOCAL_LIGHTS];
+uniform int u_localShadowSpotIdx[MAX_LOCAL_LIGHTS];
+uniform int u_localShadowPointIdx[MAX_LOCAL_LIGHTS];
+uniform float u_localShadowFar[MAX_LOCAL_LIGHTS];
+uniform float u_localShadowBias = 0.004;
+uniform float u_localShadowPointBias = 0.02;
+
+vec3 calcLocalLights(vec3 N, vec3 V) {
+    vec3 acc = vec3(0.0);
+    for (int i = 0; i < MAX_LOCAL_LIGHTS; i++) {
+        if (i >= u_lightCount) break;
+        vec3 L;
+        float attenuation = 1.0;
+        if (u_lightType[i] == 1) { // Point
+            vec3 toLight = u_lightPos[i] - FragPos;
+            float dist = length(toLight);
+            L = toLight / max(dist, 0.0001);
+            float range = max(u_lightRange[i], 0.1);
+            float d = dist / range;
+            attenuation = clamp(1.0 - d * d, 0.0, 1.0);
+            attenuation *= attenuation;
+        } else if (u_lightType[i] == 2) { // Spotlight
+            vec3 toLight = u_lightPos[i] - FragPos;
+            float dist = length(toLight);
+            L = toLight / max(dist, 0.0001);
+            float range = max(u_lightRange[i], 0.1);
+            float d = dist / range;
+            attenuation = clamp(1.0 - d * d, 0.0, 1.0);
+            attenuation *= attenuation;
+            float theta = dot(-L, normalize(u_lightDir[i]));
+            float cosOuter = u_lightCone[i].x;
+            float cosInner = u_lightCone[i].y;
+            float epsilon = max(cosInner - cosOuter, 0.001);
+            attenuation *= clamp((theta - cosOuter) / epsilon, 0.0, 1.0);
+        } else {
+            continue; // Direct lights drive the sun, not the local set
+        }
+        if (attenuation <= 0.001) continue;
+        float diff = max(dot(N, L), 0.0);
+        if (diff <= 0.0) continue;
+        float shadowFactor = 1.0;
+        if (u_lightType[i] == 1) { // Point light shadow (cube map, linear depth compare)
+            int ci = u_localShadowPointIdx[i];
+            if (ci >= 0) {
+                vec3 toLight = FragPos - u_lightPos[i];
+                float dist = max(length(toLight), 1e-5);
+                vec3 dir = toLight / dist;
+                float far = max(u_localShadowFar[i], 0.1);
+                // The cube stores the perspective depth (near 0.05, far = range, remapped
+                // by the GL depth range); invert it back to a linear axis depth so the
+                // bias below is in constant world units.
+                float s = texture(u_localShadowPoint[ci], dir).r;
+                float zD3D = clamp(s * 2.0 - 1.0, 0.0, 1.0);
+                float zOcc = 0.05 / max(1.0 - zD3D * ((far - 0.05) / far), 1e-5);
+                float ad = max(abs(dir.x), max(abs(dir.y), abs(dir.z))) * dist;
+                float bias = max(u_localShadowPointBias * (1.0 - dot(N, L)), u_localShadowPointBias * 0.1);
+                if (zOcc < ad - bias) shadowFactor = 0.0;
+            }
+        } else if (u_lightType[i] == 2) { // Spotlight shadow (projective map, linear depth compare)
+            int si = u_localShadowSpotIdx[i];
+            if (si >= 0) {
+                vec4 clip = u_localLightSpace[i] * vec4(FragPos, 1.0);
+                vec3 ndc = clip.xyz / clip.w;
+                if (ndc.z > 0.0 && ndc.z < 1.0) {
+                    vec2 uv = ndc.xy * 0.5 + 0.5;
+                    float far = max(u_localShadowFar[i], 0.1);
+                    // Linear view depth of the fragment (clip.w = -view z for the RH
+                    // projection) vs. the occluder (inverted from the stored depth).
+                    float zFrag = clip.w;
+                    float s = texture(u_localShadowSpot[si], uv).r;
+                    float zD3D = clamp(s * 2.0 - 1.0, 0.0, 1.0);
+                    float zOcc = 0.05 / max(1.0 - zD3D * ((far - 0.05) / far), 1e-5);
+                    float bias = max(u_localShadowBias * (1.0 - dot(N, L)), u_localShadowBias * 0.1);
+                    if (zOcc < zFrag - bias) shadowFactor = 0.0;
+                }
+            }
+        }
+        vec3 H = normalize(L + V);
+        float spec = pow(max(dot(N, H), 0.0), 24.0) * 0.6;
+        acc += (diff + spec) * u_lightColor[i] * u_lightIntensity[i] * attenuation * shadowFactor;
+    }
+    return acc;
+}
 // ======================================================
 // NOISE & STOCHASTIC SAMPLING
 // ======================================================
@@ -65,7 +187,14 @@ float smoothNoise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+// 1 = stochastic (randomized per-tile) sampling — breaks up the repeating tile pattern.
+// 0 (default) = plain texture sampling (deterministic, no tile jitter).
+uniform int useStochasticSampling;
+
 vec3 sampleLayer(sampler2D tex, vec2 uv) {
+    if (useStochasticSampling == 0) {
+        return texture(tex, uv).rgb;
+    }
     vec2 p = floor(uv);
     vec2 f = fract(uv);
     vec3 res = vec3(0.0);
@@ -320,11 +449,14 @@ void main() {
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, shadowLightDir));
     vec3 result = (ambient + diffuse * shadowMask * shadow) * texColor;
 
+    // ── LOCAL LIGHTS (Point / Spot) — added on top of the sun lighting ──
+    result += calcLocalLights(norm, normalize(viewPos - FragPos)) * texColor;
+
     // ── FOG ──
     if (useFog == 1) {
         float dist = length(viewPos - FragPos);
-        float fogFactor = 1.0 - exp(-pow(dist * 0.0035, 2.0));
-        result = mix(result, fogColor, clamp(fogFactor, 0.0, 1.0));
+        float fogFactor = calcFogFactor(dist, FragPos);
+        result = mix(fogColor, result, fogFactor);
     }
 
     // ── DEBUG CSM COLOR (transparent cascade overlay, same palette as the main shader) ──

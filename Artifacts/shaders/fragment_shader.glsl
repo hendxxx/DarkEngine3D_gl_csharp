@@ -39,8 +39,139 @@ uniform int lodLevel;
 uniform int showCSMCascadeColor;
 uniform int useFog;
 
+// ── FOG SETTINGS (Config.FogSettings — uploaded from the Inspector "Fog" section) ──
+uniform int u_fogMode = 3;            // 1 = Linear, 2 = Exponential, 3 = Exp2 + height blend
+uniform float u_fogDensity = 0.0035;  // density (Exp / Exp2)
+uniform float u_fogStart = 50.0;      // linear start distance
+uniform float u_fogEnd = 300.0;       // linear end distance
+uniform float u_fogHeight = 10.0;     // height fog floor (world Y)
+uniform float u_fogHeightRange = 45.0;// height fog falloff range
+
+// Shared fog factor (0 = full fog, 1 = no fog).
+float calcFogFactor(float dist, vec3 worldPos) {
+    if (u_fogMode == 1) { // Linear
+        return clamp((u_fogEnd - dist) / max(u_fogEnd - u_fogStart, 0.001), 0.0, 1.0);
+    } else if (u_fogMode == 2) { // Exponential
+        return exp(-dist * u_fogDensity);
+    }
+    // Exp2 + height blend (default — matches the original terrain fog)
+    float d = exp(-pow(dist * u_fogDensity, 2.0));
+    float heightFactor = clamp(1.0 - (worldPos.y - u_fogHeight) / max(u_fogHeightRange, 0.001), 0.0, 1.0);
+    heightFactor = pow(heightFactor, 2.0);
+    // Height only clears fog at close range; at the horizon fog always applies.
+    float heightWeight = mix(heightFactor, 1.0, 1.0 - d);
+    return clamp(mix(1.0, d, heightWeight), 0.0, 1.0);
+}
+
 uniform vec3 realSunDir;   // arah matahari asli dari CPU
 uniform vec3 shadowDir;    // arah shadow (sun/moon blend)
+
+// ── LOCAL LIGHTS (Point / Spot from editor Light markers) ──
+// The sun (Direct) stays the global directional light; every Point/Spot marker
+// adds its own colored light with distance falloff + spot cone.
+#define MAX_LOCAL_LIGHTS 8
+uniform int u_lightCount;
+uniform int u_lightType[MAX_LOCAL_LIGHTS];     // 1 = Point, 2 = Spotlight
+uniform vec3 u_lightPos[MAX_LOCAL_LIGHTS];
+uniform vec3 u_lightDir[MAX_LOCAL_LIGHTS];     // spot: direction the light points toward
+uniform vec3 u_lightColor[MAX_LOCAL_LIGHTS];
+uniform float u_lightIntensity[MAX_LOCAL_LIGHTS];
+uniform float u_lightRange[MAX_LOCAL_LIGHTS];
+uniform vec2 u_lightCone[MAX_LOCAL_LIGHTS];    // x = cos(outer), y = cos(inner)
+
+// ── LOCAL LIGHT SHADOWS (per-light shadow maps for Point/Spot) ──
+// Spot maps are 2D depth textures on units 9..12, point maps are cube depth maps on
+// units 13..15. u_localShadowSpotIdx/PointIdx[i] = shadow slot for local light i
+// (-1 = this light casts no shadow). u_localLightSpace[i] is the spot light's
+// view-projection; point shadows compare depth along the fragment→light direction.
+uniform sampler2D u_localShadowSpot[4];
+uniform samplerCube u_localShadowPoint[3];
+uniform mat4 u_localLightSpace[MAX_LOCAL_LIGHTS];
+uniform int u_localShadowSpotIdx[MAX_LOCAL_LIGHTS];
+uniform int u_localShadowPointIdx[MAX_LOCAL_LIGHTS];
+uniform float u_localShadowFar[MAX_LOCAL_LIGHTS];
+uniform float u_localShadowBias = 0.004;
+uniform float u_localShadowPointBias = 0.02;
+
+// Accumulate diffuse + blinn-phong specular from all local lights.
+vec3 calcLocalLights(vec3 N, vec3 V) {
+    vec3 acc = vec3(0.0);
+    for (int i = 0; i < MAX_LOCAL_LIGHTS; i++) {
+        if (i >= u_lightCount) break;
+        vec3 L;
+        float attenuation = 1.0;
+        if (u_lightType[i] == 1) { // Point
+            vec3 toLight = u_lightPos[i] - FragPos;
+            float dist = length(toLight);
+            L = toLight / max(dist, 0.0001);
+            float range = max(u_lightRange[i], 0.1);
+            float d = dist / range;
+            attenuation = clamp(1.0 - d * d, 0.0, 1.0);
+            attenuation *= attenuation;
+        } else if (u_lightType[i] == 2) { // Spotlight
+            vec3 toLight = u_lightPos[i] - FragPos;
+            float dist = length(toLight);
+            L = toLight / max(dist, 0.0001);
+            float range = max(u_lightRange[i], 0.1);
+            float d = dist / range;
+            attenuation = clamp(1.0 - d * d, 0.0, 1.0);
+            attenuation *= attenuation;
+            // Cone: -L points from the light toward the fragment; compare with the
+            // light's aim direction (u_lightDir) via the cosine of the half-angle.
+            float theta = dot(-L, normalize(u_lightDir[i]));
+            float cosOuter = u_lightCone[i].x;
+            float cosInner = u_lightCone[i].y;
+            float epsilon = max(cosInner - cosOuter, 0.001);
+            attenuation *= clamp((theta - cosOuter) / epsilon, 0.0, 1.0);
+        } else {
+            continue; // Direct lights drive the sun, not the local set
+        }
+        if (attenuation <= 0.001) continue;
+        float diff = max(dot(N, L), 0.0);
+        if (diff <= 0.0) continue;
+        float shadowFactor = 1.0;
+        if (u_lightType[i] == 1) { // Point light shadow (cube map, linear depth compare)
+            int ci = u_localShadowPointIdx[i];
+            if (ci >= 0) {
+                vec3 toLight = FragPos - u_lightPos[i];
+                float dist = max(length(toLight), 1e-5);
+                vec3 dir = toLight / dist;
+                float far = max(u_localShadowFar[i], 0.1);
+                // The cube stores the perspective depth (near 0.05, far = range, remapped
+                // by the GL depth range); invert it back to a linear axis depth so the
+                // bias below is in constant world units.
+                float s = texture(u_localShadowPoint[ci], dir).r;
+                float zD3D = clamp(s * 2.0 - 1.0, 0.0, 1.0);
+                float zOcc = 0.05 / max(1.0 - zD3D * ((far - 0.05) / far), 1e-5);
+                float ad = max(abs(dir.x), max(abs(dir.y), abs(dir.z))) * dist;
+                float bias = max(u_localShadowPointBias * (1.0 - dot(N, L)), u_localShadowPointBias * 0.1);
+                if (zOcc < ad - bias) shadowFactor = 0.0;
+            }
+        } else if (u_lightType[i] == 2) { // Spotlight shadow (projective map, linear depth compare)
+            int si = u_localShadowSpotIdx[i];
+            if (si >= 0) {
+                vec4 clip = u_localLightSpace[i] * vec4(FragPos, 1.0);
+                vec3 ndc = clip.xyz / clip.w;
+                if (ndc.z > 0.0 && ndc.z < 1.0) {
+                    vec2 uv = ndc.xy * 0.5 + 0.5;
+                    float far = max(u_localShadowFar[i], 0.1);
+                    // Linear view depth of the fragment (clip.w = -view z for the RH
+                    // projection) vs. the occluder (inverted from the stored depth).
+                    float zFrag = clip.w;
+                    float s = texture(u_localShadowSpot[si], uv).r;
+                    float zD3D = clamp(s * 2.0 - 1.0, 0.0, 1.0);
+                    float zOcc = 0.05 / max(1.0 - zD3D * ((far - 0.05) / far), 1e-5);
+                    float bias = max(u_localShadowBias * (1.0 - dot(N, L)), u_localShadowBias * 0.1);
+                    if (zOcc < zFrag - bias) shadowFactor = 0.0;
+                }
+            }
+        }
+        vec3 H = normalize(L + V);
+        float spec = pow(max(dot(N, H), 0.0), 24.0) * 0.6;
+        acc += (diff + spec) * u_lightColor[i] * u_lightIntensity[i] * attenuation * shadowFactor;
+    }
+    return acc;
+}
 
 // ======================================================
 // NOISE & STOCHASTIC
@@ -411,6 +542,11 @@ void main() {
         result = lit * activeLightColor * texColor;
     }
 
+    // ── LOCAL LIGHTS (Point / Spot) — added on top of the sun lighting, tinted by
+    //    the object's own albedo so every object keeps its color. ──
+    vec3 localLighting = calcLocalLights(norm, normalize(viewPos - FragPos));
+    result += localLighting * texColor;
+
     // DEBUG CSM COLOR
     if (showCSMCascadeColor == 1) {
         // High-contrast palette (cyan / yellow / magenta) — distinct from the scene's
@@ -451,22 +587,9 @@ void main() {
 
     if (useFog == 1) {
         float dist = length(viewPos - FragPos);
-        float fogDensity = 0.0035;
-        float distanceFactor = exp(-pow(dist * fogDensity, 2.0));
-
-        float fogFloor = 10.0;
-        float fogHeightRange = 45.0;
-        float heightFactor = clamp(1.0 - (FragPos.y - fogFloor) / fogHeightRange, 0.0, 1.0);
-        heightFactor = pow(heightFactor, 2.0);
-
-        // Height hanya membersihkan fog di jarak dekat.
-        // Di horizon (jarak jauh), fog selalu apply meski di ketinggian.
-        float heightWeight = mix(heightFactor, 1.0, 1.0 - distanceFactor);
-        float fogFactor = mix(1.0, distanceFactor, heightWeight);
-        fogFactor = clamp(fogFactor, 0.0, 1.0);
-
+        float fogFactor = calcFogFactor(dist, FragPos);
         terrainWithFog = mix(fogColor, result, fogFactor);
-    } 
+    }
     else {
         terrainWithFog = result;
     }

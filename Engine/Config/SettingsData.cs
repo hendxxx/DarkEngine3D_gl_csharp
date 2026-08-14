@@ -60,6 +60,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public bool ShadowLinearMap { get; set; } = false;
         /// <summary>Shadow filter mode (0-9: PCF 16, Hard, PCF, PCSS...).</summary>
         public int ShadowFilterMode { get; set; } = 0;
+
+        // ── Fog (Inspector "Fog" section) ──
+        public bool FogEnabled { get; set; } = true;
+        /// <summary>1 = Linear, 2 = Exponential, 3 = Exp2 + height blend.</summary>
+        public int FogMode { get; set; } = 3;
+        public bool FogUseSkyColor { get; set; } = true;
+        public float FogColorR { get; set; } = 0.55f;
+        public float FogColorG { get; set; } = 0.72f;
+        public float FogColorB { get; set; } = 0.90f;
+        public float FogDensity { get; set; } = 0.0035f;
+        public float FogStart { get; set; } = 50f;
+        public float FogEnd { get; set; } = 300f;
+        public float FogHeight { get; set; } = 10f;
+        public float FogHeightRange { get; set; } = 45f;
     }
 
     /// <summary>Loads/saves SettingsData to a JSON file next to the executable.</summary>

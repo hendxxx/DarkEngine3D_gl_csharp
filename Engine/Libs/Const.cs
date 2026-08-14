@@ -91,6 +91,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_TEXTURE_2D = 0x0DE1;
         public const uint GL_TEXTURE_2D_ARRAY = 0x806B;
+        public const uint GL_TEXTURE_CUBE_MAP = 0x8513;
+        public const uint GL_TEXTURE_CUBE_MAP_POSITIVE_X = 0x8515;
+        public const uint GL_MIRRORED_REPEAT = 0x8370;
+        public const uint GL_NEAREST_MIPMAP_NEAREST = 0x2700;
+        public const uint GL_LINEAR_MIPMAP_NEAREST = 0x2701;
+        public const uint GL_NEAREST_MIPMAP_LINEAR = 0x2702;
+        public const uint GL_TEXTURE_LOD_BIAS = 0x8501;
         public const uint GL_TEXTURE_WRAP_S = 0x2802;
         public const uint GL_TEXTURE_WRAP_T = 0x2803;
         public const uint GL_TEXTURE_WRAP_R = 0x8072;

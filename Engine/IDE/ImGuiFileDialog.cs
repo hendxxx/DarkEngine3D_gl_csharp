@@ -234,7 +234,8 @@ public class ImGuiFileDialog
 
         SelectedPath = Path.Combine(_currentDir, fileName);
         IsConfirmed = true;
-        _mode = DialogMode.None;
+        // NOTE: keep _mode as-is (Save/Open) so the caller can still read
+        // IsSaveMode after confirmation. Close() resets it to None.
 
         Console.WriteLine($"[FileDialog] Selected: {SelectedPath}");
     }

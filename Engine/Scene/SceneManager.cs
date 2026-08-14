@@ -415,12 +415,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if (bridge?.EditorObjectManager != null)
                     {
                         EditorObject? skyObj = null;
-                        EditorObject? lightObj = null;
                         foreach (var obj in bridge.EditorObjectManager.Objects)
-                        {
                             if (skyObj == null && obj.PrimitiveType == EditorPrimitiveType.Sky) skyObj = obj;
-                            if (lightObj == null && obj.PrimitiveType == EditorPrimitiveType.Light) lightObj = obj;
-                        }
+                        // Sky drives a DIRECT light — prefer it over other light types.
+                        EditorObject? lightObj = EditorObject.PickSunLight(bridge.EditorObjectManager.Objects);
 
                         // ── Light + Sky override: apply the first Light/Sky marker settings to
                         //    the editor lights (shared helper — same code drives in-game mode).
@@ -431,6 +429,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         if (_editorLights != null)
                         {
                             EditorObject.ApplyEnvironmentMarkers(lightObj, skyObj, _editorLights, _editorSkybox, dt);
+
+                            // ── Collect Point/Spot Light markers as local lights so they
+                            //    illuminate every object in the viewport ──
+                            _editorLights.CollectLocalLights(bridge.EditorObjectManager.Objects);
 
                             // Ensure lighting uniforms are computed for the editor lights
                             _editorLights.Update(dt, _editorCamera.Position);
@@ -462,10 +464,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // cascade sizes/splits (CSM.EnsureCurrent runs inside UpdateMatrices,
                         // called from RenderShadowPass below).
                         _editorCsm ??= new CSM(Config.ShadowSettings.CascadeSizes[0]);
+                        _editorLights.LocalShadowsEnabled = bridge.ShowShadows;
                         if (bridge.ShowShadows)
+                        {
                             editorObjMgr.RenderShadowPass(_editorCamera, _editorLights, _editorCsm);
+
+                            // Local light (Point/Spot) shadow pass — each light casts its
+                            // own shadow map (editor objects are the only casters here).
+                            _editorLights.LocalShadow ??= new LocalLightShadow();
+                            _editorLights.LocalShadow.RenderShadowPass(
+                                _editorCamera, _editorLights.LocalLights,
+                                Shader.GetShadowShaderProgram(), Shader.GetShadowSkinnedShaderProgram(),
+                                Shader.GetShadowStaticAlphaShaderProgram(),
+                                (CSM csm, int ci) => editorObjMgr.RenderShadow(_editorCamera, csm, ci));
+                        }
                         else
+                        {
                             _editorCsm.ClearShadowMaps();
+                        }
 
                         // Restore the shared FBO + scene render state after the depth-only shadow pass
                         GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
@@ -599,6 +615,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             CleanupEditorGrid();
             _editorCsm?.Dispose();
             _editorCsm = null;
+            _editorLights?.DisposeLocalShadow();
 
             // Cleanup IDE
             Glfw.OnWindowResized -= OnSharedFboResized;

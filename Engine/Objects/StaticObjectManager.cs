@@ -811,10 +811,11 @@ public void BuildSpatialGrid()
             GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
             GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
 
-            int fogColLoc = GL.GetUniformLocation(_shaderProgram, "fogColor");
-            if (fogColLoc != -1) GL.Uniform3f(fogColLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
-            int useFogLoc = GL.GetUniformLocation(_shaderProgram, "useFog");
-            if (useFogLoc != -1) GL.Uniform1i(useFogLoc, DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+            // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+            Visual.FogUniforms.UploadMain(_shaderProgram, light);
+
+            // ── Local point/spot lights (from editor Light markers) ──
+            light.UploadLocalLights(_shaderProgram);
 
             // Shadow uniforms
             if (csm != null)

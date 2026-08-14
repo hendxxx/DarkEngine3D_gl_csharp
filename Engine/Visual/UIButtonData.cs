@@ -330,6 +330,18 @@ public class UIElement
         return SceneAssetSerializer.ToUIElement(data);
     }
 
+    /// <summary>Compute the effective X/Y/W/H after applying AutoFillWindow and
+    /// AutoCenter against the given canvas size (does NOT mutate the element).
+    /// Shared by the editor preview and the game renderer so auto-layout behaves
+    /// identically everywhere.</summary>
+    public (float X, float Y, float W, float H) GetLayoutBounds(float canvasW, float canvasH)
+    {
+        float x = X, y = Y, w = Width, h = Height;
+        if (AutoFillWindow) { x = 0f; y = 0f; w = canvasW; h = canvasH; }
+        if (AutoCenter) { x = Math.Max(0f, (canvasW - w) * 0.5f); y = Math.Max(0f, (canvasH - h) * 0.5f); }
+        return (x, y, w, h);
+    }
+
     /// <summary>Get the display icon for this element type (for hierarchy tree).</summary>
     public string GetIcon()
     {

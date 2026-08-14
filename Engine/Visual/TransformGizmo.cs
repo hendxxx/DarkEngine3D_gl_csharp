@@ -60,11 +60,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // ── Gizmo dimensions (in viewport pixels) ──
         private const float GizmoRadius = 75f;
         private const float AxisLength = 58f;
-        private const float ShaftWidth = 5f;      // Increased from 4f for better visibility
+        private const float ShaftWidth = 6f;      // Thicker shafts so the axis reads clearly
         private const float HeadRadius = 10f;
         private const float HeadLength = 16f;
         private const float HandleRadius = 6f;
-        private const float RingThickness = 5f;      // Increased from 3f for better visibility
+        private const float RingThickness = 7f;   // Thicker rings (Unreal-style) — the axis to rotate is obvious
         private const float RingRadius = 52f;
         private const float CubeHalfSize = 5f;
 
@@ -204,13 +204,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             switch (EffectiveMode)
             {
                 case GizmoMode.Translate:
-                    DrawTranslateGizmo(center, colorLoc);
+                    DrawTranslateGizmo(camera, worldPosition, center, viewportWidth, viewportHeight, colorLoc);
                     break;
                 case GizmoMode.Rotate:
-                    DrawRotateGizmo(center, colorLoc);
+                    DrawRotateGizmo(camera, worldPosition, center, viewportWidth, viewportHeight, colorLoc);
                     break;
                 case GizmoMode.Scale:
-                    DrawScaleGizmo(center, colorLoc);
+                    DrawScaleGizmo(camera, worldPosition, center, viewportWidth, viewportHeight, colorLoc);
                     break;
             }
 
@@ -223,81 +223,149 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         //  Gizmo Drawing Helpers
         // ════════════════════════════════════════════════════════════
 
-        private void DrawTranslateGizmo(Vector2 center, int colorLoc)
+        private void DrawTranslateGizmo(Camera camera, Vector3 worldPosition, Vector2 center,
+                                        int viewportWidth, int viewportHeight, int colorLoc)
         {
             float s = Size;
             Vector3 colX = AxisColor(Axis.X, ColorX, ColorHoverX);
             Vector3 colY = AxisColor(Axis.Y, ColorY, ColorHoverY);
             Vector3 colZ = AxisColor(Axis.Z, ColorZ, ColorHoverZ);
 
-            // Z axis (into screen) — drawn first so it's behind others
-            Vector2 zDir = Vector2.Normalize(new Vector2(-1, -1));
-            Vector2 zEnd = center + zDir * AxisLength * 0.6f * s;
-            DrawArrowShaft(center, zEnd, ShaftWidth * 0.7f * s, HeadRadius * 0.7f * s, HeadLength * 0.7f * s, colZ, colorLoc);
+            float worldLen = PixelRadiusToWorld(camera, worldPosition, AxisLength * s, viewportHeight);
+            if (worldLen < 0.05f) worldLen = 0.05f;
 
-            // Y axis (up)
-            Vector2 yEnd = center + new Vector2(0, AxisLength * s);
-            DrawArrowShaft(center, yEnd, ShaftWidth * s, HeadRadius * s, HeadLength * s, colY, colorLoc);
-
-            // X axis (right)
-            Vector2 xEnd = center + new Vector2(AxisLength * s, 0);
-            DrawArrowShaft(center, xEnd, ShaftWidth * s, HeadRadius * s, HeadLength * s, colX, colorLoc);
+            // Each axis points along its PROJECTED world direction (camera-relative) and
+            // shrinks when it points into the camera, so the gizmo reads correctly from any angle.
+            DrawProjectedArrow(camera, worldPosition, Vector3.UnitZ, worldLen, center, colorLoc,
+                ShaftWidth * 0.7f * s, HeadRadius * 0.7f * s, HeadLength * 0.7f * s, colZ, viewportWidth, viewportHeight, 0.35f);
+            DrawProjectedArrow(camera, worldPosition, Vector3.UnitY, worldLen, center, colorLoc,
+                ShaftWidth * s, HeadRadius * s, HeadLength * s, colY, viewportWidth, viewportHeight, 0.75f);
+            DrawProjectedArrow(camera, worldPosition, Vector3.UnitX, worldLen, center, colorLoc,
+                ShaftWidth * s, HeadRadius * s, HeadLength * s, colX, viewportWidth, viewportHeight, 0.75f);
 
             // Center circle
             Vector3 cc = _dragAxis != Axis.None ? ColorCenterActive : ColorCenter;
             DrawCircle(center, HandleRadius * 0.8f * s, 12, cc, colorLoc);
         }
 
-        private void DrawRotateGizmo(Vector2 center, int colorLoc)
+        /// <summary>Draw an arrow along a world axis, projected to screen. The screen
+        /// length is the projected length, clamped to a minimum so axes pointing away from
+        /// the camera stay visible (Unreal-style).</summary>
+        private void DrawProjectedArrow(Camera camera, Vector3 worldPosition, Vector3 axis,
+                                        float worldLen, Vector2 center, int colorLoc,
+                                        float shaftWidth, float headRadius, float headLength,
+                                        Vector3 color, int viewportWidth, int viewportHeight,
+                                        float minScale)
+        {
+            float projLen = ProjectAxisScreenLength(camera, worldPosition, axis, worldLen,
+                                                    viewportWidth, viewportHeight);
+            if (projLen < 1.5f)
+            {
+                // Axis points nearly straight into the camera — draw a small dot so the
+                // axis is still visible and grab-able.
+                DrawCircle(center, 4f, 10, color, colorLoc);
+                return;
+            }
+
+            Vector2 dir = ProjectAxisToScreen(camera, worldPosition, axis, worldLen,
+                                              viewportWidth, viewportHeight);
+            // Keep a minimum drawn length so the handle never collapses to nothing.
+            float drawLen = MathF.Max(projLen, AxisLength * 0.45f);
+            Vector2 end = center + dir * drawLen;
+            DrawArrowShaft(center, end, shaftWidth, headRadius, headLength, color, colorLoc);
+        }
+
+        private void DrawRotateGizmo(Camera camera, Vector3 worldPosition, Vector2 center,
+                                     int viewportWidth, int viewportHeight, int colorLoc)
         {
             float s = Size;
             Vector3 colX = AxisColor(Axis.X, ColorX, ColorHoverX);
             Vector3 colY = AxisColor(Axis.Y, ColorY, ColorHoverY);
             Vector3 colZ = AxisColor(Axis.Z, ColorZ, ColorHoverZ);
 
-            float r = RingRadius * s;
+            // World radius that projects to ~RingRadius px at the object's distance.
+            float worldR = PixelRadiusToWorld(camera, worldPosition, RingRadius * s, viewportHeight);
+            const int segs = 48;
 
-            // Draw rings with elliptical projection to simulate 3D orientation
-            // X ring (red) — vertical ellipse (YZ plane)
-            DrawEllipticalRing(center, r, RingThickness * s, 0.3f, 1.0f, 0f, 32, colX, colorLoc);
-
-            // Y ring (green) — horizontal ellipse (XZ plane)
-            DrawEllipticalRing(center, r, RingThickness * s, 1.0f, 0.3f, 0f, 32, colY, colorLoc);
-
-            // Z ring (blue) — full circle (XY plane)
-            DrawRing(center, r, RingThickness * s, 32, colZ, colorLoc);
+            // True 3D rings (world axes), projected — Unreal style. Z drawn last (topmost).
+            DrawProjectedRing(camera, worldPosition, Vector3.UnitX, worldR, segs, viewportWidth, viewportHeight,
+                              RingThickness * s, colX, colorLoc);
+            DrawProjectedRing(camera, worldPosition, Vector3.UnitY, worldR, segs, viewportWidth, viewportHeight,
+                              RingThickness * s, colY, colorLoc);
+            DrawProjectedRing(camera, worldPosition, Vector3.UnitZ, worldR, segs, viewportWidth, viewportHeight,
+                              RingThickness * s, colZ, colorLoc);
 
             // Center dot
             Vector3 cc = _dragAxis != Axis.None ? ColorCenterActive : ColorCenter;
             DrawCircle(center, HandleRadius * 0.6f * s, 12, cc, colorLoc);
         }
 
-        private void DrawScaleGizmo(Vector2 center, int colorLoc)
+        /// <summary>Draw a thick ring from projected 3D circle samples (thicker than the
+        /// old rings so the axis to rotate is obvious, per bug #5).</summary>
+        private void DrawProjectedRing(Camera camera, Vector3 worldPosition, Vector3 axis,
+                                       float worldR, int segments, int viewportWidth, int viewportHeight,
+                                       float thickness, Vector3 color, int colorLoc)
+        {
+            var pts = SampleWorldRing(camera, worldPosition, axis, worldR, segments,
+                                      viewportWidth, viewportHeight);
+            _vertBuffer.Clear();
+            float halfT = thickness * 0.5f;
+            for (int i = 0; i < segments; i++)
+            {
+                Vector2 p0 = pts[i];
+                Vector2 p1 = pts[(i + 1) % segments];
+                Vector2 seg = p1 - p0;
+                Vector2 n = seg.LengthSquared() > 1e-6f
+                    ? new Vector2(-seg.Y, seg.X) / seg.Length()
+                    : new Vector2(1f, 0f);
+                AddQuad(p0 - n * halfT, p0 + n * halfT, p1 - n * halfT, p1 + n * halfT);
+            }
+            FlushBatch(color, colorLoc);
+        }
+
+        private void DrawScaleGizmo(Camera camera, Vector3 worldPosition, Vector2 center,
+                                    int viewportWidth, int viewportHeight, int colorLoc)
         {
             float s = Size;
             Vector3 colX = AxisColor(Axis.X, ColorX, ColorHoverX);
             Vector3 colY = AxisColor(Axis.Y, ColorY, ColorHoverY);
             Vector3 colZ = AxisColor(Axis.Z, ColorZ, ColorHoverZ);
 
-            // Z shaft (into screen)
-            Vector2 zDir = Vector2.Normalize(new Vector2(-1, -1));
-            Vector2 zEnd = center + zDir * AxisLength * 0.6f * s;
-            DrawThickLine(center, zEnd, ShaftWidth * 0.6f * s, colZ, colorLoc);
-            DrawCube(zEnd, CubeHalfSize * 0.7f * s, colZ, colorLoc);
+            float worldLen = PixelRadiusToWorld(camera, worldPosition, AxisLength * s, viewportHeight);
+            if (worldLen < 0.05f) worldLen = 0.05f;
 
-            // Y shaft (up)
-            Vector2 yEnd = center + new Vector2(0, AxisLength * s);
-            DrawThickLine(center, yEnd, ShaftWidth * 0.8f * s, colY, colorLoc);
-            DrawCube(yEnd, CubeHalfSize * s, colY, colorLoc);
-
-            // X shaft (right)
-            Vector2 xEnd = center + new Vector2(AxisLength * s, 0);
-            DrawThickLine(center, xEnd, ShaftWidth * 0.8f * s, colX, colorLoc);
-            DrawCube(xEnd, CubeHalfSize * s, colX, colorLoc);
+            // Same camera-relative projection as translate; cube handles at the tips.
+            DrawProjectedLine(camera, worldPosition, Vector3.UnitZ, worldLen, center, colorLoc,
+                ShaftWidth * 0.6f * s, CubeHalfSize * 0.7f * s, colZ, viewportWidth, viewportHeight, 0.35f);
+            DrawProjectedLine(camera, worldPosition, Vector3.UnitY, worldLen, center, colorLoc,
+                ShaftWidth * 0.8f * s, CubeHalfSize * s, colY, viewportWidth, viewportHeight, 0.75f);
+            DrawProjectedLine(camera, worldPosition, Vector3.UnitX, worldLen, center, colorLoc,
+                ShaftWidth * 0.8f * s, CubeHalfSize * s, colX, viewportWidth, viewportHeight, 0.75f);
 
             // Center circle
             Vector3 cc = _dragAxis != Axis.None ? ColorCenterActive : ColorCenter;
             DrawCircle(center, HandleRadius * 0.8f * s, 12, cc, colorLoc);
+        }
+
+        /// <summary>Draw a shaft + cube handle along a projected world axis.</summary>
+        private void DrawProjectedLine(Camera camera, Vector3 worldPosition, Vector3 axis,
+                                       float worldLen, Vector2 center, int colorLoc,
+                                       float shaftWidth, float cubeHalf, Vector3 color,
+                                       int viewportWidth, int viewportHeight, float minScale)
+        {
+            float projLen = ProjectAxisScreenLength(camera, worldPosition, axis, worldLen,
+                                                    viewportWidth, viewportHeight);
+            if (projLen < 1.5f)
+            {
+                DrawCircle(center, 4f, 10, color, colorLoc);
+                return;
+            }
+            Vector2 dir = ProjectAxisToScreen(camera, worldPosition, axis, worldLen,
+                                              viewportWidth, viewportHeight);
+            float drawLen = MathF.Max(projLen, AxisLength * 0.45f);
+            Vector2 end = center + dir * drawLen;
+            DrawThickLine(center, end, shaftWidth, color, colorLoc);
+            DrawCube(end, cubeHalf, color, colorLoc);
         }
 
         // ════════════════════════════════════════════════════════════
@@ -356,71 +424,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 Vector2 p0 = center + new Vector2(MathF.Cos(a0) * radius, MathF.Sin(a0) * radius);
                 Vector2 p1 = center + new Vector2(MathF.Cos(a1) * radius, MathF.Sin(a1) * radius);
                 AddTri(center, p0, p1);
-            }
-            FlushBatch(color, colorLoc);
-        }
-
-        private void DrawRing(Vector2 center, float radius, float thickness,
-                               int segments, Vector3 color, int colorLoc)
-        {
-            _vertBuffer.Clear();
-            float halfT = thickness * 0.5f;
-            for (int i = 0; i < segments; i++)
-            {
-                float a0 = (float)i / segments * MathF.PI * 2f;
-                float a1 = (float)(i + 1) / segments * MathF.PI * 2f;
-                float c0 = MathF.Cos(a0), s0 = MathF.Sin(a0);
-                float c1 = MathF.Cos(a1), s1 = MathF.Sin(a1);
-                float ri = radius - halfT;
-                float ro = radius + halfT;
-                Vector2 i0 = center + new Vector2(c0 * ri, s0 * ri);
-                Vector2 o0 = center + new Vector2(c0 * ro, s0 * ro);
-                Vector2 i1 = center + new Vector2(c1 * ri, s1 * ri);
-                Vector2 o1 = center + new Vector2(c1 * ro, s1 * ro);
-                AddQuad(i0, o0, i1, o1);
-            }
-            FlushBatch(color, colorLoc);
-        }
-
-        private void DrawEllipticalRing(Vector2 center, float radius, float thickness,
-                                         float scaleX, float scaleY, float angle,
-                                         int segments, Vector3 color, int colorLoc)
-        {
-            _vertBuffer.Clear();
-            float halfT = thickness * 0.5f;
-            float ca = MathF.Cos(angle), sa = MathF.Sin(angle);
-            for (int i = 0; i < segments; i++)
-            {
-                float a0 = (float)i / segments * MathF.PI * 2f;
-                float a1 = (float)(i + 1) / segments * MathF.PI * 2f;
-                float c0 = MathF.Cos(a0), s0 = MathF.Sin(a0);
-                float c1 = MathF.Cos(a1), s1 = MathF.Sin(a1);
-
-                // Local point with elliptical scaling
-                float lx0 = c0 * (radius - halfT) * scaleX;
-                float ly0 = s0 * (radius - halfT) * scaleY;
-                float lx1 = c0 * (radius + halfT) * scaleX;
-                float ly1 = s0 * (radius + halfT) * scaleY;
-                float lx2 = c1 * (radius - halfT) * scaleX;
-                float ly2 = s1 * (radius - halfT) * scaleY;
-                float lx3 = c1 * (radius + halfT) * scaleX;
-                float ly3 = s1 * (radius + halfT) * scaleY;
-
-                // Rotate
-                float rx0 = lx0 * ca - ly0 * sa;
-                float ry0 = lx0 * sa + ly0 * ca;
-                float rx1 = lx1 * ca - ly1 * sa;
-                float ry1 = lx1 * sa + ly1 * ca;
-                float rx2 = lx2 * ca - ly2 * sa;
-                float ry2 = lx2 * sa + ly2 * ca;
-                float rx3 = lx3 * ca - ly3 * sa;
-                float ry3 = lx3 * sa + ly3 * ca;
-
-                Vector2 i0 = center + new Vector2(rx0, ry0);
-                Vector2 o0 = center + new Vector2(rx1, ry1);
-                Vector2 i1 = center + new Vector2(rx2, ry2);
-                Vector2 o1 = center + new Vector2(rx3, ry3);
-                AddQuad(i0, o0, i1, o1);
             }
             FlushBatch(color, colorLoc);
         }
@@ -505,6 +508,78 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return new Vector2(screenX, screenY);
         }
 
+        /// <summary>Screen-space direction of a world-space axis as seen from the camera.
+        /// Projects two points (worldPos and worldPos + dir·len) and returns the normalized
+        /// screen delta — so the gizmo axes are ALWAYS relative to the camera viewport, no
+        /// matter how the camera is rotated (bug #2).</summary>
+        private static Vector2 ProjectAxisToScreen(Camera camera, Vector3 worldPos, Vector3 dir,
+                                                   float len, int viewportWidth, int viewportHeight)
+        {
+            Vector2 a = ProjectToScreen(camera, worldPos, viewportWidth, viewportHeight);
+            Vector2 b = ProjectToScreen(camera, worldPos + dir * len, viewportWidth, viewportHeight);
+            Vector2 d = b - a;
+            // Degenerate (axis pointing straight into the camera) → fall back to a stable
+            // direction so drawing/hit-testing never produces NaN.
+            if (d.LengthSquared() < 1e-4f)
+                d = new Vector2(0f, 1f);
+            return Vector2.Normalize(d);
+        }
+
+        /// <summary>Projected screen-space length of a world axis segment of the given
+        /// world length, in pixels. Used to shrink axes that point away from the camera.</summary>
+        private static float ProjectAxisScreenLength(Camera camera, Vector3 worldPos, Vector3 dir,
+                                                     float len, int viewportWidth, int viewportHeight)
+        {
+            Vector2 a = ProjectToScreen(camera, worldPos, viewportWidth, viewportHeight);
+            Vector2 b = ProjectToScreen(camera, worldPos + dir * len, viewportWidth, viewportHeight);
+            return Vector2.Distance(a, b);
+        }
+
+        /// <summary>Sample a 3D circle (in the plane perpendicular to <paramref name="axis"/>
+        /// centered on <paramref name="center"/>) and project every point to screen space.
+        /// The projected points form the ellipse seen from the current camera — this is the
+        /// Unreal-style rotation ring (bug #5), and the SAME samples are used for hit-testing
+        /// so the ring is exactly grabbable where it is drawn (bug #4).</summary>
+        private static Vector2[] SampleWorldRing(Camera camera, Vector3 center, Vector3 axis,
+                                                 float worldRadius, int segments,
+                                                 int viewportWidth, int viewportHeight)
+        {
+            var pts = new Vector2[segments];
+            // Build an orthonormal basis in the ring plane
+            Vector3 axisN = Vector3.Normalize(axis);
+            Vector3 upRef = MathF.Abs(axisN.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitZ;
+            Vector3 u = Vector3.Normalize(Vector3.Cross(axisN, upRef));
+            Vector3 v = Vector3.Normalize(Vector3.Cross(axisN, u));
+            for (int i = 0; i < segments; i++)
+            {
+                float a = i * MathF.PI * 2f / segments;
+                Vector3 p = center + (u * MathF.Cos(a) + v * MathF.Sin(a)) * worldRadius;
+                pts[i] = ProjectToScreen(camera, p, viewportWidth, viewportHeight);
+            }
+            return pts;
+        }
+
+        /// <summary>World radius that projects to roughly <paramref name="pixelRadius"/> pixels
+        /// at the object's distance from the camera. Perspective uses the FOV; orthographic
+        /// uses the ortho view height.</summary>
+        private static float PixelRadiusToWorld(Camera camera, Vector3 worldPos, float pixelRadius,
+                                                int viewportHeight)
+        {
+            float camDist = Vector3.Distance(camera.Position, worldPos);
+            float pxToWorld;
+            if (camera.IsOrthographic)
+            {
+                pxToWorld = (camera.OrthoSize * 2f) / MathF.Max(1f, viewportHeight);
+            }
+            else
+            {
+                float fovRad = camera.FoV * MathF.PI / 180f;
+                pxToWorld = 2f * MathF.Tan(fovRad * 0.5f) * MathF.Max(0.001f, camDist)
+                            / MathF.Max(1f, viewportHeight);
+            }
+            return pixelRadius * pxToWorld;
+        }
+
         // ════════════════════════════════════════════════════════════
         //  Hit Testing (Screen-Space)
         // ════════════════════════════════════════════════════════════
@@ -526,13 +601,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             if (mode == GizmoMode.Translate)
             {
-                Vector2 xEnd = center + new Vector2(AxisLength * s, 0);
-                Vector2 yEnd = center + new Vector2(0, AxisLength * s);
-                Vector2 zEnd = center + Vector2.Normalize(new Vector2(-1, -1)) * AxisLength * 0.6f * s;
+                float worldLen = PixelRadiusToWorld(camera, worldPosition, AxisLength * s, viewportHeight);
+                if (worldLen < 0.05f) worldLen = 0.05f;
 
-                float dx = PointToSegmentDist(mouseScreen, center, xEnd);
-                float dy = PointToSegmentDist(mouseScreen, center, yEnd);
-                float dz = PointToSegmentDist(mouseScreen, center, zEnd);
+                // Hit-test the same projected arrows that are drawn (camera-relative).
+                float dx = DistanceToProjectedAxis(mouseScreen, camera, worldPosition, Vector3.UnitX, worldLen, center, viewportWidth, viewportHeight);
+                float dy = DistanceToProjectedAxis(mouseScreen, camera, worldPosition, Vector3.UnitY, worldLen, center, viewportWidth, viewportHeight);
+                float dz = DistanceToProjectedAxis(mouseScreen, camera, worldPosition, Vector3.UnitZ, worldLen, center, viewportWidth, viewportHeight);
 
                 float minDist = MathF.Min(dx, MathF.Min(dy, dz));
                 if (minDist <= hitRadius)
@@ -544,13 +619,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
             else if (mode == GizmoMode.Scale)
             {
-                Vector2 xEnd = center + new Vector2(AxisLength * s, 0);
-                Vector2 yEnd = center + new Vector2(0, AxisLength * s);
-                Vector2 zEnd = center + Vector2.Normalize(new Vector2(-1, -1)) * AxisLength * 0.6f * s;
+                float worldLen = PixelRadiusToWorld(camera, worldPosition, AxisLength * s, viewportHeight);
+                if (worldLen < 0.05f) worldLen = 0.05f;
 
-                float dx = Vector2.Distance(mouseScreen, xEnd);
-                float dy = Vector2.Distance(mouseScreen, yEnd);
-                float dz = Vector2.Distance(mouseScreen, zEnd);
+                // Scale handles sit at the projected arrow tips.
+                float dx = DistanceToProjectedAxis(mouseScreen, camera, worldPosition, Vector3.UnitX, worldLen, center, viewportWidth, viewportHeight, true);
+                float dy = DistanceToProjectedAxis(mouseScreen, camera, worldPosition, Vector3.UnitY, worldLen, center, viewportWidth, viewportHeight, true);
+                float dz = DistanceToProjectedAxis(mouseScreen, camera, worldPosition, Vector3.UnitZ, worldLen, center, viewportWidth, viewportHeight, true);
 
                 float minDist = MathF.Min(dx, MathF.Min(dy, dz));
                 if (minDist <= CubeHalfSize * 2.5f * s)
@@ -562,41 +637,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
             else if (mode == GizmoMode.Rotate)
             {
-                // Hit-test each ring against its ACTUAL drawn shape (X = vertical ellipse,
-                // Y = horizontal ellipse, Z = full circle). Sampling points along each ring
-                // and picking the closest one makes the rings selectable exactly where they
-                // are drawn — the old angle-slicing made Y/Z regions tiny and frustrating.
-                float r = RingRadius * s;
+                // Hit-test the REAL projected 3D rings (identical samples to DrawProjectedRing),
+                // so each ring is grabbable exactly where it is drawn. Z is drawn LAST
+                // (visually on top), so it's checked first and wins ties at the crossings.
+                float worldR = PixelRadiusToWorld(camera, worldPosition, RingRadius * s, viewportHeight);
                 float hitTol = RingThickness * 3.5f * s;
-                const int segs = 40;
+                const int segs = 48;
+
+                Span<(Vector3 axis, Axis gizmoAxis)> rings =
+                [
+                    (Vector3.UnitZ, Axis.Z),   // Z ring — drawn top-most
+                    (Vector3.UnitX, Axis.X),
+                    (Vector3.UnitY, Axis.Y),
+                ];
 
                 float bestDist = float.MaxValue;
                 Axis bestAxis = Axis.None;
-
-                // (scaleX, scaleY) per ring, matching DrawRotateGizmo. Z is drawn LAST
-                // (visually on top), so it's checked first and wins ties at the elbows.
-                Span<(float sx, float sy, Axis axis)> rings =
-                [
-                    (1.0f, 1.0f, Axis.Z),   // Z ring — full circle (top-most)
-                    (0.3f, 1.0f, Axis.X),   // X ring — vertical ellipse
-                    (1.0f, 0.3f, Axis.Y),   // Y ring — horizontal ellipse
-                ];
-
-                foreach (var (sx, sy, axis) in rings)
+                foreach (var (axisVec, gizmoAxis) in rings)
                 {
+                    var pts = SampleWorldRing(camera, worldPosition, axisVec, worldR, segs,
+                                              viewportWidth, viewportHeight);
                     float minD = float.MaxValue;
                     for (int i = 0; i < segs; i++)
                     {
-                        float a = i * MathF.PI * 2f / segs;
-                        float px = center.X + MathF.Cos(a) * r * sx;
-                        float py = center.Y + MathF.Sin(a) * r * sy;
-                        float d = Vector2.Distance(mouseScreen, new Vector2(px, py));
+                        float d = Vector2.Distance(mouseScreen, pts[i]);
                         if (d < minD) minD = d;
                     }
                     if (minD < bestDist)
                     {
                         bestDist = minD;
-                        bestAxis = axis;
+                        bestAxis = gizmoAxis;
                     }
                 }
 
@@ -607,6 +677,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             HoverAxis = result;
             _hoverWorldPos = worldPosition;
             return result;
+        }
+
+        /// <summary>Distance from the mouse to a projected world axis (matching the drawn
+        /// arrow/line). When <paramref name="handleOnly"/> is true, measures to the arrow TIP
+        /// (scale handles) instead of the whole shaft.</summary>
+        private static float DistanceToProjectedAxis(Vector2 mouseScreen, Camera camera,
+                                                     Vector3 worldPosition, Vector3 axis, float worldLen,
+                                                     Vector2 center, int viewportWidth, int viewportHeight,
+                                                     bool handleOnly = false)
+        {
+            float projLen = ProjectAxisScreenLength(camera, worldPosition, axis, worldLen,
+                                                    viewportWidth, viewportHeight);
+            if (projLen < 1.5f)
+                return Vector2.Distance(mouseScreen, center); // collapsed to a dot at center
+
+            Vector2 dir = ProjectAxisToScreen(camera, worldPosition, axis, worldLen,
+                                              viewportWidth, viewportHeight);
+            float drawLen = MathF.Max(projLen, AxisLength * 0.45f);
+            Vector2 end = center + dir * drawLen;
+
+            if (handleOnly)
+                return Vector2.Distance(mouseScreen, end);
+            return PointToSegmentDist(mouseScreen, center, end);
         }
 
         /// <summary>Distance from a point to a line segment.</summary>
@@ -691,33 +784,74 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             Vector2 deltaScreen = mouseScreen - _dragStartMouse;
 
-            // Convert screen pixels to world units based on camera distance
-            float camDist = Vector3.Distance(camera.Position, _dragObjPos);
-            if (camDist < 0.001f) camDist = 1f;
-            float fovRad = camera.FoV * MathF.PI / 180f;
-            float sens = camDist * MathF.Tan(fovRad * 0.5f) * 2f / viewportHeight;
-
-            float proj = 0f;
-            switch (_dragAxis)
+            // Convert screen pixels to world units based on camera distance. Orthographic
+            // cameras use the ortho view height instead of FOV so dragging stays 1:1 (bug #4).
+            float sens;
+            if (camera.IsOrthographic)
             {
-                // Mouse arrives in screen space with Y-up (same as the gizmo's render space),
-                // so dragging along an arrow's screen direction moves the object the same way
-                // in world space — exactly like the X axis (drag right = +X, drag up = +Y).
-                case Axis.X: proj = deltaScreen.X * sens; break;
-                case Axis.Y: proj = deltaScreen.Y * sens; break;
-                case Axis.Z: proj = (deltaScreen.X - deltaScreen.Y) * 0.5f * sens; break;
+                sens = (camera.OrthoSize * 2f) / MathF.Max(1f, viewportHeight);
+            }
+            else
+            {
+                float camDist = Vector3.Distance(camera.Position, _dragObjPos);
+                if (camDist < 0.001f) camDist = 1f;
+                float fovRad = camera.FoV * MathF.PI / 180f;
+                sens = camDist * MathF.Tan(fovRad * 0.5f) * 2f / viewportHeight;
+            }
+
+            Vector3 axisVec = _dragAxis switch
+            {
+                Axis.X => Vector3.UnitX,
+                Axis.Y => Vector3.UnitY,
+                Axis.Z => Vector3.UnitZ,
+                _ => Vector3.Zero,
+            };
+
+            // Project the dragged world axis onto the screen (camera-relative) and measure
+            // the mouse delta ALONG that screen direction — so the object stays glued to the
+            // cursor and the gizmo never drifts from it while dragging (bug #4).
+            float proj = 0f;
+            if (axisVec != Vector3.Zero)
+            {
+                if (EffectiveMode == GizmoMode.Rotate)
+                {
+                    // Rotate: convert pixels along the ring's screen tangent into degrees.
+                    float ringPx = RingRadius * Size;
+                    float worldR = PixelRadiusToWorld(camera, _dragObjPos, ringPx, viewportHeight);
+                    const int segs = 48;
+                    var pts = SampleWorldRing(camera, _dragObjPos, axisVec, worldR, segs,
+                                              viewportWidth, viewportHeight);
+                    // Nearest ring sample to the CURRENT mouse → ring tangent direction.
+                    int best = 0;
+                    float bestD = float.MaxValue;
+                    for (int i = 0; i < segs; i++)
+                    {
+                        float d = Vector2.DistanceSquared(mouseScreen, pts[i]);
+                        if (d < bestD) { bestD = d; best = i; }
+                    }
+                    Vector2 prev = pts[(best - 1 + segs) % segs];
+                    Vector2 next = pts[(best + 1) % segs];
+                    Vector2 tangent = next - prev;
+                    if (tangent.LengthSquared() < 1e-6f) tangent = new Vector2(1f, 0f);
+                    tangent = Vector2.Normalize(tangent);
+
+                    float pxAlongRing = Vector2.Dot(deltaScreen, tangent);
+                    // One full lap around the ring = 360°.
+                    proj = pxAlongRing * (180f / (MathF.PI * MathF.Max(8f, ringPx)));
+                }
+                else
+                {
+                    float worldLen = PixelRadiusToWorld(camera, _dragObjPos, AxisLength * Size, viewportHeight);
+                    if (worldLen < 0.05f) worldLen = 0.05f;
+                    Vector2 screenAxis = ProjectAxisToScreen(camera, _dragObjPos, axisVec, worldLen,
+                                                             viewportWidth, viewportHeight);
+                    proj = Vector2.Dot(deltaScreen, screenAxis) * sens;
+                }
             }
 
             if (EffectiveMode == GizmoMode.Translate)
             {
-                Vector3 axisDir = _dragAxis switch
-                {
-                    Axis.X => Vector3.UnitX,
-                    Axis.Y => Vector3.UnitY,
-                    Axis.Z => Vector3.UnitZ,
-                    _ => Vector3.Zero,
-                };
-                Vector3 newPos = _dragStartValue + axisDir * proj;
+                Vector3 newPos = _dragStartValue + axisVec * proj;
 
                 // Snap only the dragged axis so movement stays aligned to the grid.
                 // The X/Z axes snap the object's center; the Y axis snaps the object's
@@ -781,14 +915,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
             else if (EffectiveMode == GizmoMode.Rotate)
             {
-                float angle = proj * 60f; // rotation sensitivity
+                float angle = proj; // degrees, computed from the ring tangent above
                 Vector3 rotDelta = Vector3.Zero;
-                Vector3 axisVec = Vector3.Zero;
                 switch (_dragAxis)
                 {
-                    case Axis.X: rotDelta.X = angle; axisVec = Vector3.UnitX; break;
-                    case Axis.Y: rotDelta.Y = angle; axisVec = Vector3.UnitY; break;
-                    case Axis.Z: rotDelta.Z = angle; axisVec = Vector3.UnitZ; break;
+                    case Axis.X: rotDelta.X = angle; break;
+                    case Axis.Y: rotDelta.Y = angle; break;
+                    case Axis.Z: rotDelta.Z = angle; break;
                 }
                 // Orbit each object around the group center (world-axis rotation)
                 // AND rotate the object itself by the same angle, so the whole

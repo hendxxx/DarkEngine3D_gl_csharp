@@ -8,6 +8,29 @@ uniform vec3 sunDir;
 uniform vec3 lightColor;
 uniform vec3 fogColor;
 uniform int useFog;
+
+// ── FOG SETTINGS (Config.FogSettings — uploaded from the Inspector "Fog" section) ──
+uniform int u_fogMode = 3;            // 1 = Linear, 2 = Exponential, 3 = Exp2 + height blend
+uniform float u_fogDensity = 0.0035;
+uniform float u_fogStart = 50.0;
+uniform float u_fogEnd = 300.0;
+uniform float u_fogHeight = 10.0;
+uniform float u_fogHeightRange = 45.0;
+
+// Shared fog factor (0 = full fog, 1 = no fog).
+float calcFogFactor(float dist, vec3 worldPos) {
+    if (u_fogMode == 1) { // Linear
+        return clamp((u_fogEnd - dist) / max(u_fogEnd - u_fogStart, 0.001), 0.0, 1.0);
+    } else if (u_fogMode == 2) { // Exponential
+        return exp(-dist * u_fogDensity);
+    }
+    // Exp2 + height blend (default — matches the original terrain fog)
+    float d = exp(-pow(dist * u_fogDensity, 2.0));
+    float heightFactor = clamp(1.0 - (worldPos.y - u_fogHeight) / max(u_fogHeightRange, 0.001), 0.0, 1.0);
+    heightFactor = pow(heightFactor, 2.0);
+    float heightWeight = mix(heightFactor, 1.0, 1.0 - d);
+    return clamp(mix(1.0, d, heightWeight), 0.0, 1.0);
+}
 uniform float debugOpacity;   // 1.0 = opaque (normal), <1.0 = semi-transparent (debug)
 
 // ── CSM Shadow uniforms ──────────────────────────────────────────────────
@@ -261,9 +284,7 @@ void main()
     if (useFog == 1)
     {
         float dist = length(viewPos - center);
-        float fogDensity = 0.01;
-        float fogFactor = exp(-pow(dist * fogDensity, 2.0));
-        fogFactor = clamp(fogFactor, 0.0, 1.0);
+        float fogFactor = calcFogFactor(dist, center);
         result = mix(fogColor, result, fogFactor);
     }
 

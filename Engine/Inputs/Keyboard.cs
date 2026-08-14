@@ -113,7 +113,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         }
         public static bool GetIsFogActive()
         {
-            return isFogActive;
+            // The master switch lives in Config.FogSettings (edited from the Inspector
+            // "Fog" section); the F-key quick-toggle below flips it. The static flag is
+            // kept only as a mirror for the keyboard toggle history.
+            return Config.FogSettings.Enabled;
         }
 
         public static float GetCurrentWeather()
@@ -199,6 +202,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
                 if (!fPressed)
                 {
                     isFogActive = !isFogActive;
+                    Config.FogSettings.Enabled = isFogActive;
                     fPressed = true;
                     Console.WriteLine(isFogActive ? "Fog: ON" : "Fog: OFF");
                 }

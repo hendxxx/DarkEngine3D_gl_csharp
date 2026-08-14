@@ -703,9 +703,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.Uniform3f(_bbSunDirLoc, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
             GL.Uniform3f(_bbLightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
-            GL.Uniform3f(_bbFogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
-            if (_bbUseFogLoc != -1)
-                GL.Uniform1i(_bbUseFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+
+            // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+            FogUniforms.UploadMain(_impostorShader, light);
 
             // ── CSM Shadow uniforms ────────────────────────────────────────
             // Shadow textures are bound by GameScene.Render at units 6, 7, 8

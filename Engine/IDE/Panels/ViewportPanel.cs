@@ -158,6 +158,10 @@ public unsafe class ViewportPanel
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
 
+    // ── Left-edge floating toolbar bounds (edit mode, drawn over the image) ──
+    private Vector2 _leftToolbarMin, _leftToolbarMax;
+
+
     /// <summary>Convert ImGui screen coordinates to scene pixel coordinates.</summary>
     private Vector2 ScreenToScene(Vector2 screenPos)
     {
@@ -1561,280 +1565,12 @@ ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
                         $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
                 }
 
-                // ── Model Editor Gizmo Mode Buttons ──
+                // ── Editor tool buttons (gizmo mode, fly, reset, snap, terrain brushes,
+                // shade/contours, grid, shadow) moved to the floating LEFT toolbar —
+                // see DrawViewportLeftToolbar(). Camera view presets also live there via
+                // the floating ◉ Views overlay. ──
                 if (_bridge.EditorObjectManager != null)
                 {
-                    ImGui.SameLine();
-                    ImGui.TextDisabled("|");
-                    ImGui.SameLine();
-
-                    int gizmoMode = _bridge.GizmoMode;
-                    string[] gizmoLabels = ["Move", "Rotate", "Scale"];
-                    // Sky markers can't be rotated/scaled — lock the gizmo to Move while selected
-                    bool gizmoLocked = _bridge.SelectionHasSky;
-                    for (int gi = 0; gi < 3; gi++)
-                    {
-                        bool locked = gizmoLocked && gi != 0;
-                        if (locked) ImGui.BeginDisabled();
-                        bool isActive = (gizmoMode == gi) || (gizmoLocked && gi == 0);
-ImGui.PushStyleColor(ImGuiCol.Button, isActive
-                            ? new Vector4(0.25f, 0.50f, 0.80f, 1f)
-                            : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                        if (ImGui.Button(gizmoLabels[gi]))
-                        {
-                            _bridge.GizmoMode = gi;
-                            _gizmo.Mode = (TransformGizmo.GizmoMode)gi;
-                        }
-                        ImGui.PopStyleColor(1);
-                        if (locked) ImGui.EndDisabled();
-                        if (gi < 2) ImGui.SameLine();
-                    }
-
-                    // ── Freefly mouse-look toggle. Mouse look is also available temporarily
-                    // by holding Right-Click in the viewport — without enabling the mode. ──
-                    ImGui.SameLine();
-                    ImGui.TextDisabled("|");
-                    ImGui.SameLine();
-                    bool flyLook = _bridge.Camera?.FlyMouseLook ?? false;
-                    ImGui.PushStyleColor(ImGuiCol.Button, flyLook
-                        ? new Vector4(0.20f, 0.45f, 0.75f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(flyLook ? "✈ Fly ON" : "✈ Fly"))
-                    {
-                        if (_bridge.Camera != null)
-                            _bridge.Camera.FlyMouseLook = !_bridge.Camera.FlyMouseLook;
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip(flyLook
-                            ? "Freefly mouse-look ON — click to turn off"
-                            : "Freefly mouse-look OFF — click to turn on, or hold Right-Click in the viewport for a temporary look");
-
-                    // ── Camera reset to origin button ──
-                    ImGui.SameLine();
-                    if (ImGui.Button("⌂ Reset"))
-                    {
-                        if (_bridge.Camera != null)
-                        {
-                            _bridge.Camera.ResetToOrigin();
-                            Console.WriteLine("[Viewport] Camera reset to origin (0,0,0)");
-                        }
-                    }
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Reset camera to origin (0,0,0) with default orientation — works with all camera modes including freefly");
-
-                    // ── Gizmo translate snap toggle ──
-                    ImGui.SameLine();
-                    bool gizmoSnap = _bridge.EditorGizmo?.SnapEnabled ?? false;
-                    ImGui.PushStyleColor(ImGuiCol.Button, gizmoSnap
-                        ? new Vector4(0.15f, 0.55f, 0.30f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(gizmoSnap ? "Snap 1u" : "Snap off"))
-                    {
-                        if (_bridge.EditorGizmo != null)
-                            _bridge.EditorGizmo.SnapEnabled = !gizmoSnap;
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Toggle gizmo movement snap (1 world unit grid)");
-
-                    // ── Terrain brush tools: ⛰ sculpt, 🎨 paint, 🌀 smooth, ⏹ flatten ──
-                    ImGui.SameLine();
-                    bool sculptTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 0;
-                    ImGui.PushStyleColor(ImGuiCol.Button, sculptTool
-                        ? new Vector4(0.80f, 0.55f, 0.15f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(sculptTool ? "⛰ Sculpt ON" : "⛰ Sculpt"))
-                    {
-                        ToggleTerrainBrushMode(0);
-                        Console.WriteLine($"[Viewport] ⛰ Sculpt brush → {_bridge.TerrainBrushActive}");
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Sculpt: left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control — Ctrl+scroll resizes the brush.");
-
-                    ImGui.SameLine();
-                    bool paintTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 1;
-                    ImGui.PushStyleColor(ImGuiCol.Button, paintTool
-                        ? new Vector4(0.85f, 0.35f, 0.45f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(paintTool ? "🎨 Paint ON" : "🎨 Paint"))
-                    {
-                        ToggleTerrainBrushMode(1);
-                        Console.WriteLine($"[Viewport] 🎨 Layer paint → {_bridge.TerrainBrushActive}");
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Layer paint: paints the selected layer (air/tanah/rumput/salju).\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.");
-
-                    ImGui.SameLine();
-                    bool smoothTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 2;
-                    ImGui.PushStyleColor(ImGuiCol.Button, smoothTool
-                        ? new Vector4(0.45f, 0.30f, 0.75f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(smoothTool ? "🌀 Smooth ON" : "🌀 Smooth"))
-                    {
-                        ToggleTerrainBrushMode(2);
-                        Console.WriteLine($"[Viewport] 🌀 Smooth brush → {_bridge.TerrainBrushActive}");
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Smooth: averages the heights in the brush area — removes spikes and terraced steps.\nHold Shift for fine control.");
-
-                    ImGui.SameLine();
-                    bool flattenTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 3;
-                    ImGui.PushStyleColor(ImGuiCol.Button, flattenTool
-                        ? new Vector4(0.75f, 0.60f, 0.15f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(flattenTool ? "⏹ Flatten ON" : "⏹ Flatten"))
-                    {
-                        ToggleTerrainBrushMode(3);
-                        Console.WriteLine($"[Viewport] ⏹ Flatten brush → {_bridge.TerrainBrushActive}");
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Flatten: levels the terrain to the height of the FIRST click of the stroke,\nlike Unreal's flatten tool. Hold Shift for fine control.");
-
-                    // ── Height shading overlay (heatmap) toggle — applies to the selected terrain ──
-                    ImGui.SameLine();
-                    var shadedSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } sObj ? sObj : null;
-                    bool shadeOn = shadedSel?.TerrainShowHeatmap ?? false;
-                    ImGui.PushStyleColor(ImGuiCol.Button, shadeOn
-                        ? new Vector4(0.75f, 0.55f, 0.15f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(shadeOn ? "🗺 Shade ON" : "🗺 Shade"))
-                    {
-                        // Auto-select the first terrain plane when none is selected, so the
-                        // toggle works without clicking the plane first.
-                        var shadeTerrain = _bridge.ResolveTerrainForOverlay();
-                        if (shadeTerrain != null)
-                        {
-                            shadeTerrain.TerrainShowHeatmap = !shadeTerrain.TerrainShowHeatmap;
-                            Console.WriteLine($"[Viewport] Height shading on '{shadeTerrain.Name}' → {shadeTerrain.TerrainShowHeatmap}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("[Viewport] No terrain plane found to toggle height shading");
-                        }
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun — makes high/low areas obvious while sculpting.\nAuto-selects the first terrain plane if none is selected (also in the Inspector).");
-
-                    // ── Height contour lines overlay (no heatmap) toggle — applies to the selected terrain ──
-                    ImGui.SameLine();
-                    var contourSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } cObj ? cObj : null;
-                    bool contourOn = contourSel?.TerrainShowContours ?? false;
-                    ImGui.PushStyleColor(ImGuiCol.Button, contourOn
-                        ? new Vector4(0.45f, 0.55f, 0.30f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(contourOn ? "≡ Contours ON" : "≡ Contours"))
-                    {
-                        // Auto-select the first terrain plane when none is selected, so the
-                        // toggle works without clicking the plane first.
-                        var contourTerrain = _bridge.ResolveTerrainForOverlay();
-                        if (contourTerrain != null)
-                        {
-                            contourTerrain.TerrainShowContours = !contourTerrain.TerrainShowContours;
-                            Console.WriteLine($"[Viewport] Height contours on '{contourTerrain.Name}' → {contourTerrain.TerrainShowContours}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("[Viewport] No terrain plane found to toggle height contours");
-                        }
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Draw dark topographic contour lines every 10% height on the selected terrain\n(no heatmap colors — the texture stays fully visible).\nGreat for sculpting precision — auto-selects the first terrain plane if none is selected.");
-
-                    // ── Layer chips (only while the 🎨 paint tool is active) ──
-                    if (paintTool)
-                    {
-                        string[] layerNames = ["Air", "Tanah", "Rumput", "Salju"];
-                        ImGui.SameLine();
-                        ImGui.TextDisabled("|");
-                        for (int li = 0; li < 4; li++)
-                        {
-                            ImGui.SameLine();
-                            bool layerActive = _bridge.TerrainPaintLayerIndex == li;
-                            ImGui.PushStyleColor(ImGuiCol.Button, layerActive
-                                ? TerrainLayerColors[li]
-                                : TerrainLayerColors[li] * new Vector4(0.45f, 0.45f, 0.45f, 1f));
-                            if (ImGui.Button(layerNames[li]))
-                            {
-                                _bridge.TerrainPaintLayerIndex = li;
-                                if (_bridge.SelectedEditorObject is { TerrainEnabled: true } selT)
-                                    selT.TerrainPaintLayerIndex = li;
-                                Console.WriteLine($"[Viewport] Paint layer → {layerNames[li]}");
-                            }
-                            ImGui.PopStyleColor(1);
-                        }
-                    }
-
-                    // ── Debug grid toggle ──
-                    ImGui.SameLine();
-                    bool debugGrid = _bridge.ShowDebugGrid;
-                    ImGui.PushStyleColor(ImGuiCol.Button, debugGrid
-                        ? new Vector4(0.25f, 0.45f, 0.30f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(debugGrid ? "Grid: On" : "Grid: Off"))
-                    {
-                        _bridge.ShowDebugGrid = !debugGrid;
-                        PersistViewportPrefs();
-                        Console.WriteLine($"[Viewport] Debug grid {(debugGrid ? "disabled" : "enabled")}");
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Toggle the editor debug grid (XZ plane at Y=0, major lines every 5 units)");
-
-                    // ── Shadow (CSM) toggle ──
-                    ImGui.SameLine();
-                    bool shadowsOn = _bridge.ShowShadows;
-                    ImGui.PushStyleColor(ImGuiCol.Button, shadowsOn
-                        ? new Vector4(0.55f, 0.45f, 0.20f, 1f)
-                        : new Vector4(0.25f, 0.25f, 0.30f, 1f));
-                    if (ImGui.Button(shadowsOn ? "☀ Shadow: On" : "☀ Shadow: Off"))
-                    {
-                        _bridge.ShowShadows = !shadowsOn;
-                        PersistViewportPrefs();
-                        Console.WriteLine($"[Viewport] Shadows {(shadowsOn ? "disabled" : "enabled")}");
-                    }
-                    ImGui.PopStyleColor(1);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Toggle CSM shadows in the viewport\nOff = skip the shadow pass (fully lit, faster)");
-
-                    // ── Camera view presets (top-down, bottom-up, side views) ──
-                    ImGui.SameLine();
-                    ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.30f, 0.30f, 0.45f, 1f));
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.42f, 0.42f, 0.62f, 1f));
-                    if (ImGui.Button("◉ Views"))
-                        ImGui.OpenPopup("camera_views");
-                    ImGui.PopStyleColor(2);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Camera view presets: top-down, bottom-up, front/back, left/right");
-                    if (ImGui.BeginPopup("camera_views"))
-                    {
-                        string[] viewLabels =
-                        [
-                            "◉ Perspective", "⬆ Top-Down", "⬇ Bottom-Up",
-                            "➤ Front", "⬅ Back", "→ Left", "← Right",
-                        ];
-                        Camera.EditorViewPreset[] viewPresets =
-                        [
-                            Camera.EditorViewPreset.Perspective, Camera.EditorViewPreset.Top, Camera.EditorViewPreset.Bottom,
-                            Camera.EditorViewPreset.Front, Camera.EditorViewPreset.Back, Camera.EditorViewPreset.Left, Camera.EditorViewPreset.Right,
-                        ];
-                        for (int vi = 0; vi < viewPresets.Length; vi++)
-                        {
-                            if (ImGui.MenuItem(viewLabels[vi]))
-                            {
-                                _bridge.Camera?.SetEditorViewPreset(viewPresets[vi]);
-                                Console.WriteLine($"[Viewport] Camera preset: {viewPresets[vi]}");
-                            }
-                        }
-                        ImGui.EndPopup();
-                    }
-
                     // Primitive creation buttons
                     ImGui.SameLine();
                     ImGui.TextDisabled("|");
@@ -1884,7 +1620,12 @@ ImGui.SameLine();
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Sky);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sky, pos);
-                        if (obj != null) _bridge.SelectEditorObject(obj);
+                        if (obj != null)
+                        {
+                            // Sky automatically drives a DIRECT light — reuse or create one.
+                            _bridge.EditorObjectManager.EnsureDirectLightForSky(obj);
+                            _bridge.SelectEditorObject(obj);
+                        }
                     }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Add a Sky marker (renders the procedural skybox in the viewport, blue)");
@@ -2321,6 +2062,14 @@ ImGui.SameLine();
                             _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
                             _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
+
+                            // Auto-center owns the position — manually dragging the element
+                            // turns auto-center OFF so the drag isn't fought every frame (bug #6).
+                            if (selUiElem.AutoCenter)
+                            {
+                                selUiElem.AutoCenter = false;
+                                Console.WriteLine($"[Viewport] Auto-center disabled on '{selUiElem.Name}' (manual drag)");
+                            }
                         }
                     }
                 }
@@ -2450,7 +2199,8 @@ ImGui.SameLine();
                 // Clicks on the floating "◉ Views" overlay button must NOT count as
                 // viewport clicks (no raycast select / deselect on empty space).
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
-                    && !IsMouseOverViewportViewsButton() && SkySunHandleAtMouse() == null)
+                    && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar()
+                    && SkySunHandleAtMouse() == null)
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
@@ -2713,7 +2463,8 @@ ImGui.SameLine();
                 // painting with the terrain brush.
                 if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
                     && !_bridge.TerrainBrushActive && _brushObj == null
-                    && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null && !IsMouseOverViewportViewsButton())
+                    && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null
+                    && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar())
                 {
                     _marqueeStart = new Vector2(_bridge.ViewportMouseX, _bridge.ViewportMouseY);
                     _marqueeCurrent = _marqueeStart.Value;
@@ -2891,14 +2642,13 @@ ImGui.SameLine();
                     _skySunDragOldLightDir = null;
                     if (_bridge.EditorObjectManager != null)
                     {
-                        foreach (var o in _bridge.EditorObjectManager.Objects)
+                        // The sky drives a DIRECT light — sync that one (matching
+                        // EditorObject.PickSunLight). No Direct light → nothing to sync.
+                        var sunLight = EditorObject.PickSunLight(_bridge.EditorObjectManager.Objects);
+                        if (sunLight != null)
                         {
-                            if (o != null && o.PrimitiveType == EditorPrimitiveType.Light)
-                            {
-                                _skySunDragLightObj = o;
-                                _skySunDragOldLightDir = o.LightDirection;
-                                break; // first Light marker wins, matching ApplyEnvironmentMarkers
-                            }
+                            _skySunDragLightObj = sunLight;
+                            _skySunDragOldLightDir = sunLight.LightDirection;
                         }
                     }
                     Console.WriteLine($"[Viewport] Sun drag started on '{skyDrag.Name}'"
@@ -3016,6 +2766,9 @@ ImGui.SameLine();
 
         // ── Camera view menu overlay (top-left corner of the viewport image) ──
         DrawViewportCameraOverlay(hasSceneTexture);
+
+        // ── Editor tool toolbar (left edge of the viewport image) ──
+        DrawViewportLeftToolbar(hasSceneTexture);
 
         // ── Active view label (Top / Front / Left / …) — top-right corner ──
         DrawViewportViewLabel(hasSceneTexture);
@@ -3393,6 +3146,233 @@ ImGui.SameLine();
             }
             ImGui.EndPopup();
         }
+    }
+
+    /// <summary>True when the mouse currently hovers the floating left-edge toolbar.
+    /// Used to suppress marquee/raycast selection while interacting with the overlay.</summary>
+    private bool IsMouseOverLeftToolbar()
+    {
+        var mouse = ImGui.GetMousePos();
+        return mouse.X >= _leftToolbarMin.X && mouse.X <= _leftToolbarMax.X &&
+               mouse.Y >= _leftToolbarMin.Y && mouse.Y <= _leftToolbarMax.Y;
+    }
+
+    /// <summary>Draw the editor tool toolbar as a floating vertical strip on the LEFT edge
+    /// of the viewport image (edit mode only). Uses the window draw list + manual
+    /// hit-testing — same pattern as the floating ◉ Views button.</summary>
+    private void DrawViewportLeftToolbar(bool hasSceneTexture)
+    {
+        if (_previewMode || !hasSceneTexture || _bridge.EditorObjectManager == null) return;
+        if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
+
+        // Clear bounds until drawn below (guards stay inert if we bail early)
+        _leftToolbarMin = _leftToolbarMax = new Vector2(-1f, -1f);
+
+        const float btnW = 118f, btnH = 25f, gap = 5f, padX = 8f;
+        float x = _imageMin.X + padX;
+        // Start below the floating "◉ Views" button (top-left corner)
+        float y = GetViewportViewsButtonRect().max.Y + 6f;
+
+        var dl = ImGui.GetWindowDrawList();
+        var mouse = ImGui.GetMousePos();
+        var font = ImGui.GetFont();
+
+        // Small helper: draws one button, returns true when clicked this frame.
+        bool ToolButton(string label, bool active, Vector4 activeCol, string tooltip, out float nextY)
+        {
+            var min = new Vector2(x, y);
+            var max = new Vector2(x + btnW, y + btnH);
+            nextY = max.Y + gap;
+
+            bool hovered = mouse.X >= min.X && mouse.X <= max.X &&
+                           mouse.Y >= min.Y && mouse.Y <= max.Y;
+            bool clicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+
+            uint bg = ImGui.ColorConvertFloat4ToU32(hovered
+                ? (active ? activeCol : new Vector4(0.34f, 0.38f, 0.55f, 0.95f))
+                : (active ? activeCol : new Vector4(0.14f, 0.16f, 0.24f, 0.90f)));
+            uint border = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 0.55f, 0.8f, 0.75f));
+            dl.AddRectFilled(min, max, bg, 4f);
+            dl.AddRect(min, max, border, 4f, ImDrawFlags.None, 1f);
+
+            var textSize = font.CalcTextSizeA(12.5f, float.MaxValue, 0f, label);
+            dl.AddText(font, 12.5f, min + new Vector2((btnW - textSize.X) * 0.5f, (btnH - textSize.Y) * 0.5f),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.92f, 1f, 1f)), label);
+
+            if (hovered)
+            {
+                ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+                if (!string.IsNullOrEmpty(tooltip))
+                    ImGui.SetTooltip(tooltip);
+            }
+            return clicked;
+        }
+
+        // ── Gizmo mode ──
+        int gizmoMode = _bridge.GizmoMode;
+        bool gizmoLocked = _bridge.SelectionHasSky;
+        string[] gizmoLabels = ["Move", "Rotate", "Scale"];
+        Vector4[] gizmoCols =
+        [
+            new(0.25f, 0.50f, 0.80f, 0.95f),
+            new(0.30f, 0.72f, 0.40f, 0.95f),
+            new(0.85f, 0.55f, 0.25f, 0.95f),
+        ];
+        for (int gi = 0; gi < 3; gi++)
+        {
+            bool locked = gizmoLocked && gi != 0;
+            bool isActive = (gizmoMode == gi) || (gizmoLocked && gi == 0);
+            if (ToolButton(gizmoLabels[gi], isActive, gizmoCols[gi],
+                locked ? "Sky markers can only be moved" : "Gizmo mode", out y))
+            {
+                if (!locked)
+                {
+                    _bridge.GizmoMode = gi;
+                    _gizmo.Mode = (TransformGizmo.GizmoMode)gi;
+                }
+            }
+        }
+
+        // ── Freefly mouse-look toggle ──
+        bool flyLook = _bridge.Camera?.FlyMouseLook ?? false;
+        if (ToolButton(flyLook ? "✈ Fly ON" : "✈ Fly", flyLook, new Vector4(0.20f, 0.45f, 0.75f, 0.95f),
+            flyLook
+                ? "Freefly mouse-look ON — click to turn off"
+                : "Freefly mouse-look OFF — click to turn on, or hold Right-Click in the viewport for a temporary look", out y))
+        {
+            if (_bridge.Camera != null)
+                _bridge.Camera.FlyMouseLook = !_bridge.Camera.FlyMouseLook;
+        }
+
+        // ── Camera reset to origin ──
+        if (ToolButton("⌂ Reset", false, new Vector4(0.35f, 0.35f, 0.50f, 0.95f),
+            "Reset camera to origin (0,0,0) with default orientation — works with all camera modes including freefly", out y))
+        {
+            if (_bridge.Camera != null)
+            {
+                _bridge.Camera.ResetToOrigin();
+                Console.WriteLine("[Viewport] Camera reset to origin (0,0,0)");
+            }
+        }
+
+        // ── Gizmo translate snap toggle ──
+        bool gizmoSnap = _bridge.EditorGizmo?.SnapEnabled ?? false;
+        if (ToolButton(gizmoSnap ? "Snap 1u" : "Snap off", gizmoSnap, new Vector4(0.15f, 0.55f, 0.30f, 0.95f),
+            "Toggle gizmo movement snap (1 world unit grid)", out y))
+        {
+            if (_bridge.EditorGizmo != null)
+                _bridge.EditorGizmo.SnapEnabled = !gizmoSnap;
+        }
+
+        // ── Terrain brush tools ──
+        bool sculptTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 0;
+        if (ToolButton(sculptTool ? "⛰ Sculpt ON" : "⛰ Sculpt", sculptTool, new Vector4(0.80f, 0.55f, 0.15f, 0.95f),
+            "Sculpt: left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control — Ctrl+scroll resizes the brush.", out y))
+        {
+            ToggleTerrainBrushMode(0);
+            Console.WriteLine($"[Viewport] ⛰ Sculpt brush → {_bridge.TerrainBrushActive}");
+        }
+
+        bool paintTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 1;
+        if (ToolButton(paintTool ? "🎨 Paint ON" : "🎨 Paint", paintTool, new Vector4(0.85f, 0.35f, 0.45f, 0.95f),
+            "Layer paint: paints the selected layer (air/tanah/rumput/salju).\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.", out y))
+        {
+            ToggleTerrainBrushMode(1);
+            Console.WriteLine($"[Viewport] 🎨 Layer paint → {_bridge.TerrainBrushActive}");
+        }
+
+        bool smoothTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 2;
+        if (ToolButton(smoothTool ? "🌀 Smooth ON" : "🌀 Smooth", smoothTool, new Vector4(0.45f, 0.30f, 0.75f, 0.95f),
+            "Smooth: averages the heights in the brush area — removes spikes and terraced steps.\nHold Shift for fine control.", out y))
+        {
+            ToggleTerrainBrushMode(2);
+            Console.WriteLine($"[Viewport] 🌀 Smooth brush → {_bridge.TerrainBrushActive}");
+        }
+
+        bool flattenTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 3;
+        if (ToolButton(flattenTool ? "⏹ Flatten ON" : "⏹ Flatten", flattenTool, new Vector4(0.75f, 0.60f, 0.15f, 0.95f),
+            "Flatten: levels the terrain to the height of the FIRST click of the stroke,\nlike Unreal's flatten tool. Hold Shift for fine control.", out y))
+        {
+            ToggleTerrainBrushMode(3);
+            Console.WriteLine($"[Viewport] ⏹ Flatten brush → {_bridge.TerrainBrushActive}");
+        }
+
+        // ── Height shading + contours overlays ──
+        var shadedSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } sObj ? sObj : null;
+        bool shadeOn = shadedSel?.TerrainShowHeatmap ?? false;
+        if (ToolButton(shadeOn ? "🗺 Shade ON" : "🗺 Shade", shadeOn, new Vector4(0.75f, 0.55f, 0.15f, 0.95f),
+            "Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun — makes high/low areas obvious while sculpting.\nAuto-selects the first terrain plane if none is selected (also in the Inspector).", out y))
+        {
+            var shadeTerrain = _bridge.ResolveTerrainForOverlay();
+            if (shadeTerrain != null)
+            {
+                shadeTerrain.TerrainShowHeatmap = !shadeTerrain.TerrainShowHeatmap;
+                Console.WriteLine($"[Viewport] Height shading on '{shadeTerrain.Name}' → {shadeTerrain.TerrainShowHeatmap}");
+            }
+            else
+            {
+                Console.WriteLine("[Viewport] No terrain plane found to toggle height shading");
+            }
+        }
+
+        var contourSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } cObj ? cObj : null;
+        bool contourOn = contourSel?.TerrainShowContours ?? false;
+        if (ToolButton(contourOn ? "≡ Contours ON" : "≡ Contours", contourOn, new Vector4(0.45f, 0.55f, 0.30f, 0.95f),
+            "Draw dark topographic contour lines every 10% height on the selected terrain\n(no heatmap colors — the texture stays fully visible).\nGreat for sculpting precision — auto-selects the first terrain plane if none is selected.", out y))
+        {
+            var contourTerrain = _bridge.ResolveTerrainForOverlay();
+            if (contourTerrain != null)
+            {
+                contourTerrain.TerrainShowContours = !contourTerrain.TerrainShowContours;
+                Console.WriteLine($"[Viewport] Height contours on '{contourTerrain.Name}' → {contourTerrain.TerrainShowContours}");
+            }
+            else
+            {
+                Console.WriteLine("[Viewport] No terrain plane found to toggle height contours");
+            }
+        }
+
+        // ── Layer chips (only while the 🎨 paint tool is active) ──
+        if (paintTool)
+        {
+            string[] layerNames = ["Air", "Tanah", "Rumput", "Salju"];
+            for (int li = 0; li < 4; li++)
+            {
+                bool layerActive = _bridge.TerrainPaintLayerIndex == li;
+                Vector4 chipCol = TerrainLayerColors[li];
+                if (ToolButton(layerNames[li], layerActive, chipCol,
+                    $"Paint layer: {layerNames[li]}", out y))
+                {
+                    _bridge.TerrainPaintLayerIndex = li;
+                    if (_bridge.SelectedEditorObject is { TerrainEnabled: true } selT)
+                        selT.TerrainPaintLayerIndex = li;
+                    Console.WriteLine($"[Viewport] Paint layer → {layerNames[li]}");
+                }
+            }
+        }
+
+        // ── Debug grid + shadow toggles ──
+        bool debugGrid = _bridge.ShowDebugGrid;
+        if (ToolButton(debugGrid ? "Grid: On" : "Grid: Off", debugGrid, new Vector4(0.25f, 0.45f, 0.30f, 0.95f),
+            "Toggle the editor debug grid (XZ plane at Y=0, major lines every 5 units)", out y))
+        {
+            _bridge.ShowDebugGrid = !debugGrid;
+            PersistViewportPrefs();
+            Console.WriteLine($"[Viewport] Debug grid {(debugGrid ? "disabled" : "enabled")}");
+        }
+
+        bool shadowsOn = _bridge.ShowShadows;
+        if (ToolButton(shadowsOn ? "☀ Shadow: On" : "☀ Shadow: Off", shadowsOn, new Vector4(0.55f, 0.45f, 0.20f, 0.95f),
+            "Toggle CSM shadows in the viewport\nOff = skip the shadow pass (fully lit, faster)", out y))
+        {
+            _bridge.ShowShadows = !shadowsOn;
+            PersistViewportPrefs();
+            Console.WriteLine($"[Viewport] Shadows {(shadowsOn ? "disabled" : "enabled")}");
+        }
+
+        // Record the full toolbar bounds for the click-suppression guard.
+        _leftToolbarMin = new Vector2(x, GetViewportViewsButtonRect().max.Y + 6f);
+        _leftToolbarMax = new Vector2(x + btnW, y - gap + btnH);
     }
 
     /// <summary>Render an animated gradient background for the viewport canvas when no scene texture is available.</summary>

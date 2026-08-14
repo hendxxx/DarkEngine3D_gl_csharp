@@ -70,6 +70,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             CreateShadowMaps();
         }
 
+        /// <summary>Resource-free constructor — allocates no FBOs/textures. Used by
+        /// <see cref="LocalLightShadow"/> as a read-only data shim: the caster renderers
+        /// only read LightSpaceMatrices / OrthoCorners / CascadeEnds, never bind this
+        /// instance's FBOs, so no GPU allocations are needed.</summary>
+        protected CSM()
+        {
+            ShadowSize = 16;
+        }
+
         private unsafe void CreateShadowMaps()
         {
             fixed (uint* pFbos = FBOs)
@@ -431,7 +440,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.CullFace(Const.GL_BACK);
         }
 
-        public unsafe void Dispose()
+        public virtual unsafe void Dispose()
         {
             fixed (uint* pFbos = FBOs)
                 GL.DeleteFramebuffers(NumCascades, pFbos);

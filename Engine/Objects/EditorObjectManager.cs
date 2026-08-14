@@ -151,7 +151,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 Position = position,
                 Scale = type == EditorPrimitiveType.Sphere ? new Vector3(1f, 1f, 1f)
-                       : type == EditorPrimitiveType.Plane ? new Vector3(25f, 0.05f, 25f)
+                       : type == EditorPrimitiveType.Plane ? new Vector3(500f, 0.05f, 500f)
                        : type == EditorPrimitiveType.Camera ? new Vector3(0.5f, 0.4f, 0.6f)
                        : Vector3.One, // Box / Light / Sky
                 Color = type switch
@@ -166,23 +166,73 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
             };
             // Planes are ALWAYS advanced heightmapped terrain (the old toggle was removed) —
-            // every setting stays editable in the Inspector. All 5 layer textures get a real
-            // file by default so the height-banded + slope texturing renders immediately.
+            // every setting stays editable in the Inspector.
             if (type == EditorPrimitiveType.Plane)
             {
                 obj.TerrainEnabled = true;
-                obj.TerrainHeightmapPath = "Artifacts/Maps/photoreal_v1.raw";
-                obj.TerrainTextureAirPath = "Artifacts/Textures/floor.jpg";
-                obj.TerrainTextureDirtPath = "Artifacts/Textures/aerial rock/aerial_rocks_04_diff_4k.jpg";
-                obj.TerrainTextureGrassPath = "Artifacts/Textures/aerial grass/aerial_grass_rock_diff_4k.jpg";
-                obj.TerrainTextureSnowPath = "Artifacts/Textures/snow/snow_01_diff_4k.jpg";
-                obj.TerrainTextureSlopePath = "Artifacts/Textures/cliff side/cliff_side_diff_4k.jpg";
+                // Default plane: 500×500 with test.png heightmap. Layer textures are empty
+                // (render as solid colors) except Air which uses default.jpg.
+                obj.TerrainHeightmapPath = "Artifacts/Maps/test.png";
+                obj.TerrainTextureAirPath = "Artifacts/Textures/default.jpg";
+                obj.TerrainTextureDirtPath = "";
+                obj.TerrainTextureGrassPath = "";
+                obj.TerrainTextureSnowPath = "";
+                obj.TerrainTextureSlopePath = "";
             }
 
             if (type != EditorPrimitiveType.GlbReference)
                 obj.InitGPU();
             _objects.Add(obj);
             return obj;
+        }
+
+        /// <summary>Sky automatically drives a Direct light (bug #7): when a Sky is placed
+        /// (or a scene containing a Sky is loaded) this ensures a DIRECT light exists —
+        /// reusing an existing one if present, otherwise creating a new marker next to the
+        /// sky aimed at the sky's current sun direction.</summary>
+        public void EnsureDirectLightForSky(EditorObject skyObj)
+        {
+            foreach (var o in _objects)
+            {
+                if (o != null && o.PrimitiveType == EditorPrimitiveType.Light
+                    && o.LightTypeEnum == LightType.Direct)
+                {
+                    Console.WriteLine($"[EditorObjectManager] Sky '{skyObj.Name}' reuses existing Direct light '{o.Name}'");
+                    return;
+                }
+            }
+
+            var light = new EditorObject(EditorPrimitiveType.Light, GetNextName(EditorPrimitiveType.Light))
+            {
+                Position = skyObj.Position + new Vector3(0f, 6f, 0f),
+                Scale = Vector3.One,
+                Color = new Vector3(1.0f, 0.95f, 0.85f),
+                LightTypeEnum = LightType.Direct,
+                LightDirection = skyObj.GetSkySunDirection(),
+                LightIntensity = 1f,
+                ShowLightGizmo = true,
+            };
+            light.InitGPU();
+            _objects.Add(light);
+            Console.WriteLine($"[EditorObjectManager] Sky '{skyObj.Name}' created Direct light '{light.Name}'");
+        }
+
+        /// <summary>After a scene is loaded/edited, make sure every Sky has a Direct light
+        /// (bug #7). Runs as a single pass AFTER all objects are in place so it never
+        /// creates a duplicate when the scene file already contains its own Direct light.</summary>
+        public void EnsureDirectLightForAnySky()
+        {
+            EditorObject? sky = null;
+            bool hasDirect = false;
+            foreach (var o in _objects)
+            {
+                if (o == null) continue;
+                if (sky == null && o.PrimitiveType == EditorPrimitiveType.Sky) sky = o;
+                if (o.PrimitiveType == EditorPrimitiveType.Light && o.LightTypeEnum == LightType.Direct)
+                    hasDirect = true;
+            }
+            if (sky != null && !hasDirect)
+                EnsureDirectLightForSky(sky);
         }
 
         /// <summary>Add a glb reference object (renders the GLB model in the viewport,
@@ -226,6 +276,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 CameraFar = source.CameraFar,
                 LightDirection = source.LightDirection,
                 LightIntensity = source.LightIntensity,
+                LightTypeEnum = source.LightTypeEnum,
+                LightConeAngle = source.LightConeAngle,
+                LightPointRadius = source.LightPointRadius,
                 SkyTimeOfDay = source.SkyTimeOfDay,
                 SkySunPitch = source.SkySunPitch,
                 SkySunYaw = source.SkySunYaw,
@@ -245,6 +298,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 TerrainHeightScale = source.TerrainHeightScale,
                 TerrainSlopeThreshold = source.TerrainSlopeThreshold,
                 TerrainTexTiling = source.TerrainTexTiling,
+                TerrainUseStochasticSampling = source.TerrainUseStochasticSampling,
                 TerrainLayerAirTop = source.TerrainLayerAirTop,
                 TerrainLayerDirtTop = source.TerrainLayerDirtTop,
                 TerrainLayerGrassTop = source.TerrainLayerGrassTop,
@@ -292,6 +346,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 TerrainPaintLayerIndex = source.TerrainPaintLayerIndex,
                 TerrainPaintStrength = source.TerrainPaintStrength,
                 TerrainSplatData = source.TerrainSplatData,
+                TexSettings = source.TexSettings.Clone(),
+                PbrTexSettings = source.PbrTexSettings.Select(s => s.Clone()).ToArray(),
+                TerrainLayerSettings = source.TerrainLayerSettings.Select(s => s.Clone()).ToArray(),
             };
             if (clone.PrimitiveType != EditorPrimitiveType.GlbReference)
                 clone.InitGPU();
@@ -305,7 +362,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// (multi-select supported via <paramref name="selectedObjects"/>).
         /// </summary>
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
-            IReadOnlyCollection<EditorObject>? selectedObjects = null)
+            IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true)
         {
             if (_objects.Count == 0) return;
 
@@ -320,8 +377,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (_realSunDirLoc >= 0) GL.Uniform3f(_realSunDirLoc, light.RealSunDir.X, light.RealSunDir.Y, light.RealSunDir.Z);
             GL.Uniform3f(_lightColorLoc, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
             GL.Uniform3f(_viewPosLoc, camera.Position.X, camera.Position.Y, camera.Position.Z);
-            GL.Uniform1i(_useFogLoc, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
-            GL.Uniform3f(_fogColorLoc, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
+
+            // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+            Visual.FogUniforms.UploadMain(_shaderProgram, light);
+
+            // ── Local point/spot lights (from editor Light markers) ──
+            light.UploadLocalLights(_shaderProgram);
 
             // ── Send shadow uniforms if CSM provided ──
             if (csm != null)
@@ -400,7 +461,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                 else if (obj.PrimitiveType == EditorPrimitiveType.Sky)
                 {
-                    if (obj.ShowSkyGizmo)
+                    // Sky gizmo is an editor tool — hidden when the scene renders in game
+                    // mode (MainMenuScene passes showSkyGizmo: false).
+                    if (showSkyGizmo && obj.ShowSkyGizmo)
                         obj.DrawSkyGizmo(camera);
                 }
             }
@@ -536,9 +599,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.UniformMatrix4fv(GlbUniforms.Proj, 1, false, (float*)&proj);
             GL.Uniform3f(GlbUniforms.SunDir, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
             GL.Uniform3f(GlbUniforms.LightColor, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
-            GL.Uniform3f(GlbUniforms.FogColor, light.FogColor.X, light.FogColor.Y, light.FogColor.Z);
             GL.Uniform3f(GlbUniforms.ViewPos, camera.Position.X, camera.Position.Y, camera.Position.Z);
-            GL.Uniform1i(GlbUniforms.UseFog, Inputs.Keyboard.GetIsFogActive() ? 1 : 0);
+
+            // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
+            Visual.FogUniforms.UploadMain(GlbUniforms.Program, light);
+
+            // ── Local point/spot lights (from editor Light markers) ──
+            light.UploadLocalLights(GlbUniforms.Program);
 
             // Live shadow bias / blend tuning (Shadow Settings panel) — gltf shader values.
             ShadowUniforms.UploadGltf(GlbUniforms.Program);
