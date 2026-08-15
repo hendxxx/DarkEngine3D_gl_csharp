@@ -9,6 +9,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint invertPassShaderProgram;
         static uint blurPassShaderProgram;
         static uint outlineShaderProgram;
+
+        // ── AAA post-processing: bloom (bright-pass + separable blur) and final
+        // composite (scene + bloom → ACES tonemap → gamma) ──
+        static uint postFxBrightShaderProgram;
+        static uint postFxBlurShaderProgram;
+        static uint postFxCompositeShaderProgram;
         
         static uint shadowShaderProgram;
         static uint shadowSkinnedShaderProgram;
@@ -74,6 +80,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             outlineShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/outline_vertex.glsl",
                 "Artifacts/shaders/outline_fragment.glsl");
+
+            // AAA post-processing chain (shared fullscreen-quad vertex shader).
+            postFxBrightShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/postFxBright_fragment.glsl");
+            postFxBlurShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/postFxBlur_fragment.glsl");
+            postFxCompositeShaderProgram = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/postFxComposite_fragment.glsl");
              
             shadowShaderProgram = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/shadow_vertex.glsl",
@@ -151,6 +168,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetInvertPassShaderProgram()
         {
             return invertPassShaderProgram;
+        }
+
+        /// <summary>Shader used for the bloom bright-pass extraction.</summary>
+        public static uint GetPostFxBrightShaderProgram()
+        {
+            return postFxBrightShaderProgram;
+        }
+
+        /// <summary>Shader used for the separable bloom blur passes.</summary>
+        public static uint GetPostFxBlurShaderProgram()
+        {
+            return postFxBlurShaderProgram;
+        }
+
+        /// <summary>Shader used for the final composite (scene + bloom → ACES → gamma).</summary>
+        public static uint GetPostFxCompositeShaderProgram()
+        {
+            return postFxCompositeShaderProgram;
         }
 
         public static uint GetBlurPassShaderProgram()

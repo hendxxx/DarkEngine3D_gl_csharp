@@ -11,22 +11,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     public class ShadowPresetData
     {
         public string Name { get; set; } = "Preset";
-        public int Quality { get; set; } = ShadowSettings.QualityMedium;
-        public float[] CascadeLayer { get; set; } = [30f, 70f, 140f];
-        public float ConstantBias { get; set; } = 0.000001f;
-        public float SlopeBias { get; set; } = 0.0003f;   // ~4 texels steep (cascade-0 reference)
-        public float MinBias { get; set; } = 0.0002f;     // ~2.5 texels flat
+        public int Quality { get; set; } = ShadowSettings.QualityLow;
+        public float[] CascadeLayer { get; set; } = [38f, 117f, 342f];
+        public float ConstantBias { get; set; } = 0.00005f;
+        public float SlopeBias { get; set; } = 0.00008f;   // ~4 texels steep (cascade-0 reference)
+        public float MinBias { get; set; } = 0.00002f;     // ~2.5 texels flat
         public float GltfConstantBias { get; set; } = 0.000001f;
-        public float GltfSlopeBias { get; set; } = 0.0004f; // ~5 texels steep
-        public float GltfMinBias { get; set; } = 0.0002f;   // ~2.5 texels flat
-        public float BlendRange { get; set; } = 0.10f;
-        public float NormalBias { get; set; } = 0.0010f; // vertex extrusion (world units, anti-acne)
-        public float MaxWorldBias0 { get; set; } = 0.15f;  // cap on fragment bias WORLD offset (m), per cascade
-        public float MaxWorldBias1 { get; set; } = 0.25f;
-        public float MaxWorldBias2 { get; set; } = 1.0f;  // far cascade: ~2 far texels even at 2800 m camera far
+        public float GltfSlopeBias { get; set; } = 0f; // ~5 texels steep
+        public float GltfMinBias { get; set; } = 0f;   // ~2.5 texels flat
+        public float BlendRange { get; set; } = 0.5f;
+        public float NormalBias { get; set; } = 0f; // vertex extrusion (world units, anti-acne)
+        public float MaxWorldBias0 { get; set; } = 0.29f;  // cap on fragment bias WORLD offset (m), per cascade
+        public float MaxWorldBias1 { get; set; } = 0.43f;
+        public float MaxWorldBias2 { get; set; } = 1.5f;  // far cascade: keeps ~3-4 far texels of anti-acne bias
         /// <summary>Strength of the CSM LOD color overlay (L key debug tint), 0..1.</summary>
-        public float CascadeOverlayAlpha { get; set; } = 0.15f;
-        public bool LinearShadowMap { get; set; } = false;
+        public float CascadeOverlayAlpha { get; set; } = 0.36f;
+        public bool LinearShadowMap { get; set; } = true;
         public int FilterMode { get; set; } = 0;
     }
 

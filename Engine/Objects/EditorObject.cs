@@ -261,6 +261,26 @@ public unsafe class EditorObject
     // ── Light (only used when PrimitiveType == Light) ──
     /// <summary>Direction the light points toward (world space, not normalized).</summary>
     public Vector3 LightDirection { get; set; } = new(-0.5f, 0.8f, -0.3f);
+
+    /// <summary>The direction the light ACTUALLY points toward in the world:
+    /// <see cref="LightDirection"/> rotated by the marker's world rotation — the exact
+    /// same convention the light gizmo uses to draw its beam/cone. This is what the
+    /// lighting system reads (local light collection + the Direct-sun override), so
+    /// rotating a light marker with the gizmo really re-aims the light instead of only
+    /// rotating the gizmo.</summary>
+    public Vector3 WorldLightDirection
+    {
+        get
+        {
+            var rot = Matrix4x4.CreateFromYawPitchRoll(
+                RotationEuler.Y * MathF.PI / 180f,
+                RotationEuler.X * MathF.PI / 180f,
+                RotationEuler.Z * MathF.PI / 180f);
+            var dir = Vector3.Transform(LightDirection, rot);
+            float len = dir.Length();
+            return len > 1e-4f ? dir / len : new Vector3(0f, 1f, 0f);
+        }
+    }
     /// <summary>Brightness multiplier for the light color.</summary>
     public float LightIntensity { get; set; } = 1f;
     /// <summary>Spotlight cone half-angle in degrees — used by the viewport light gizmo
@@ -531,7 +551,7 @@ public unsafe class EditorObject
         // ── Light override: the Light marker's direction/color take priority over the sky sun ──
         if (lightObj != null)
         {
-            lights.SunDirOverride = lightObj.LightDirection;
+            lights.SunDirOverride = lightObj.WorldLightDirection;
             lights.LightColorOverride = lightObj.Color;
             lights.LightIntensity = lightObj.LightIntensity;
         }
@@ -556,6 +576,30 @@ public unsafe class EditorObject
 
             float hours = Math.Clamp(skyObj.SkyTimeOfDay, 0f, 24f);
             lights.WorldTime = (hours / 24f) * (MathF.PI * 2f);
+
+            // ── Day/night cycle with a Direct light: while the sky FOLLOWS time-of-day
+            // (no manual pitch/yaw override) keep the Direct light in sync with the sky's
+            // current sun, so ▶ Play Day/Night really orbits the light and the marker
+            // arrow always shows where the sun is. A manual pitch/yaw override pins the
+            // sun on purpose — and crucially, it must NOT snap a Direct light to a
+            // below-horizon (night) direction at startup: that would turn the whole
+            // scene black until the user presses Play again. The direction is written
+            // back through the inverse marker rotation so WorldLightDirection (what the
+            // gizmo and the Lighting use) matches the sky sun even for a rotated marker.
+            if (lightObj != null
+                && lightObj.LightTypeEnum == LightType.Direct
+                && !(skyObj.SkySunPitch.HasValue && skyObj.SkySunYaw.HasValue))
+            {
+                Vector3 skyDir = skyObj.GetSkySunDirection();
+                var rot = Matrix4x4.CreateFromYawPitchRoll(
+                    lightObj.RotationEuler.Y * MathF.PI / 180f,
+                    lightObj.RotationEuler.X * MathF.PI / 180f,
+                    lightObj.RotationEuler.Z * MathF.PI / 180f);
+                lightObj.LightDirection = Matrix4x4.Invert(rot, out var inv)
+                    ? Vector3.Transform(skyDir, inv)
+                    : skyDir;
+                lights.SunDirOverride = lightObj.WorldLightDirection;
+            }
 
             // Optional sun pitch/yaw override: aim the sun independently of the time-of-day
             // cycle. Only applied when there is no Light object (the Light marker's direction

@@ -12,7 +12,7 @@ const int MAX_JOINTS = 128;
 uniform mat4 u_Joints[MAX_JOINTS];
 
 // Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
-uniform float u_NormalBias = 0.0010;
+uniform float u_NormalBias = 0.0;
 
 // Inverse-transpose of the model matrix. The skinned normal is in MODEL space after
 // skinning, so it must be rotated by this before extrusion to stay correct under
@@ -53,10 +53,9 @@ void main()
     // more Y) and peter-panning (XZ detaches the shadow). World-space extrusion is
     // uniform in every direction, so u_NormalBias is directly in world units.
     float normalBias = u_NormalBias;
-    vec3 skinnedNormalWorld = u_NormalMatrix * skinnedNormal;
-    vec3 n = length(skinnedNormalWorld) > 1e-6 ? normalize(skinnedNormalWorld) : vec3(0.0, 1.0, 0.0);
+    vec3 n = normalize(u_NormalMatrix * skinnedNormal);
 
-    vec4 worldPos = model * vec4(skinnedPos, 1.0);
+    vec4 worldPos = model * skinnedPos;
     worldPos.xyz += n * normalBias;
     gl_Position   = lightSpaceMatrix * worldPos;
 }

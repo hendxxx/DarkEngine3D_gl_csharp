@@ -1626,6 +1626,10 @@ public class InspectorPanel
                     editorObj.SkyTimeAnimPaused = false;
                     if (editorObj.SkyTimeAnimSpeed <= 0f)
                         editorObj.SkyTimeAnimSpeed = 1f; // sensible default when first enabled
+                    // Playing the cycle means the sun ORBITS — clear any manual
+                    // pitch/yaw sun override so it isn't pinned in place.
+                    editorObj.SkySunPitch = null;
+                    editorObj.SkySunYaw = null;
                 }
             }
             if (ImGui.IsItemHovered())

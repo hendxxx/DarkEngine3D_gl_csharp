@@ -70,13 +70,13 @@ uniform vec3 shadowDir;
 
 // ── LIVE SHADOW TUNING (Shadow Settings panel — same uniform names as the terrain /
 //    main shaders so ShadowUniforms.UploadMain fills them; defaults are the fallback) ──
-uniform float u_ConstantBias = 0.000001;
-uniform float u_SlopeBias = 0.0003;
-uniform float u_MinBias = 0.0002;
-uniform float u_BlendRange = 0.10;
+uniform float u_ConstantBias = 0.00005;
+uniform float u_SlopeBias = 0.00008;
+uniform float u_MinBias = 0.00002;
+uniform float u_BlendRange = 0.5;
 uniform vec3 u_DepthRange = vec3(1.0);
 uniform vec3 u_TexelWorld = vec3(1.0);
-uniform vec3 u_MaxWorldBias = vec3(0.15, 0.25, 1.0);
+uniform vec3 u_MaxWorldBias = vec3(0.29, 0.43, 1.5);
 
 // Debug overlay (L key): tint each cascade with a transparent color code.
 uniform int showCSMCascadeColor;

@@ -22,13 +22,13 @@ uniform float cascadeEnds[3];
 
 // ── LIVE SHADOW TUNING (uploaded from the IDE Shadow Settings panel; the defaults
 // match the values that were previously hardcoded here) ──
-uniform float u_ConstantBias = 0.000001;   // always-added bias (all surfaces)
-uniform float u_SlopeBias = 0.0003;  // slope-scaled bias coefficient (~4 texels steep)
-uniform float u_MinBias = 0.0002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
-uniform float u_BlendRange = 0.10;   // cascade blend width, fraction of the split distance
+uniform float u_ConstantBias = 0.00005;   // always-added bias (all surfaces)
+uniform float u_SlopeBias = 0.00008;  // slope-scaled bias coefficient (~4 texels steep)
+uniform float u_MinBias = 0.00002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
+uniform float u_BlendRange = 0.5;   // cascade blend width, fraction of the split distance
 uniform vec3 u_DepthRange = vec3(1.0); // world ortho depth range per cascade (zFar - zNear)
 uniform vec3 u_TexelWorld = vec3(1.0); // world size of one shadow-map texel per cascade
-uniform vec3 u_MaxWorldBias = vec3(0.15, 0.25, 1.0); // per-cascade cap on the bias' WORLD offset (m)
+uniform vec3 u_MaxWorldBias = vec3(0.29, 0.43, 1.5); // per-cascade cap on the bias' WORLD offset (m)
 
 // DEBUG
 uniform int showLODColor;
@@ -80,8 +80,9 @@ uniform float u_lightRange[MAX_LOCAL_LIGHTS];
 uniform vec2 u_lightCone[MAX_LOCAL_LIGHTS];    // x = cos(outer), y = cos(inner)
 
 // ── LOCAL LIGHT SHADOWS (per-light shadow maps for Point/Spot) ──
-// Spot maps are 2D depth textures on units 9..12, point maps are cube depth maps on
-// units 13..15. u_localShadowSpotIdx/PointIdx[i] = shadow slot for local light i
+// Spot maps are 2D depth textures on units 10..13, point maps are cube depth maps on
+// units 14..15 (unit 9 is skipped: the PBR object shader binds its CSM cascade 2 there).
+// u_localShadowSpotIdx/PointIdx[i] = shadow slot for local light i
 // (-1 = this light casts no shadow). u_localLightSpace[i] is the spot light's
 // view-projection; point shadows compare depth along the fragment→light direction.
 uniform sampler2D u_localShadowSpot[4];
@@ -537,8 +538,15 @@ void main() {
         // Textured terrain: per-pixel normal-dependent lighting
         result = (ambient + diffuse) * texColor;
     } else {
-        // Vertex-colored: uniform lighting (no normal-dependent shading) with shadows
-        float lit = ambientStrength * (1.0 - shadow) + shadow;
+        // Vertex-colored: flat shading with shadows. The surface's facing toward the
+        // light (NdotL) still gates the lit term, so faces that point away from the
+        // light keep only the ambient floor even where the shadow map can't reach
+        // them — e.g. the thin bright rim the CSM bias leaves at an object's base
+        // when the sun is at grazing / below-horizon angles (the shadow map's bias
+        // keeps the self-shadow just short of the silhouette, and without the facing
+        // term that strip would glow with the full light color).
+        float ndl = max(dot(norm, activeLightDir), 0.0);
+        float lit = ambientStrength + shadow * max(ndl - ambientStrength, 0.0);
         result = lit * activeLightColor * texColor;
     }
 

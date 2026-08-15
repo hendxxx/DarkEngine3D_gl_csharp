@@ -80,6 +80,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr GenRenderbuffersPtr = IntPtr.Zero;
         internal static IntPtr BindRenderbufferPtr = IntPtr.Zero;
         internal static IntPtr RenderbufferStoragePtr = IntPtr.Zero;
+        internal static IntPtr RenderbufferStorageMultisamplePtr = IntPtr.Zero;
+        internal static IntPtr BlitFramebufferPtr = IntPtr.Zero;
         internal static IntPtr FramebufferRenderbufferPtr = IntPtr.Zero;
         internal static IntPtr DepthFuncPtr = IntPtr.Zero;
         internal static IntPtr VertexAttribDivisorPtr = IntPtr.Zero;
@@ -222,6 +224,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void RenderbufferStorage(uint target, uint internalformat, int width, int height)
             => ((delegate* unmanaged[Cdecl]<uint, uint, int, int, void>)RenderbufferStoragePtr)(target, internalformat, width, height);
+
+        /// <summary>glRenderbufferStorageMultisample — allocate a multisampled renderbuffer
+        /// (used for the MSAA scene FBO). Returns false when the extension isn't available.</summary>
+        public static unsafe bool RenderbufferStorageMultisample(uint target, int samples, uint internalformat, int width, int height)
+        {
+            if (RenderbufferStorageMultisamplePtr == IntPtr.Zero) return false;
+            ((delegate* unmanaged[Cdecl]<uint, int, uint, int, int, void>)RenderbufferStorageMultisamplePtr)(target, samples, internalformat, width, height);
+            return true;
+        }
+
+        /// <summary>glBlitFramebuffer — copy/resolve pixels between framebuffers (MSAA resolve).
+        /// Returns false when the extension isn't available.</summary>
+        public static unsafe bool BlitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
+                                                  int dstX0, int dstY0, int dstX1, int dstY1,
+                                                  uint mask, uint filter)
+        {
+            if (BlitFramebufferPtr == IntPtr.Zero) return false;
+            ((delegate* unmanaged[Cdecl]<int, int, int, int, int, int, int, int, uint, uint, void>)BlitFramebufferPtr)(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+            return true;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void FramebufferRenderbuffer(uint target, uint attachment, uint renderbuffertarget, uint renderbuffer)

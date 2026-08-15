@@ -4,6 +4,7 @@ using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
+using DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Scene
@@ -23,10 +24,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private IDE.IDE? _ide;
 
         // ── Shared scene FBO (for scenes without their own, e.g. MainMenuScene) ──
+        // MSAA: the scene renders into _sharedFBO (multisampled); ResolveSharedFBO()
+        // blits it into the single-sample _sharedColorTex the Viewport panel samples.
         private uint _sharedFBO = 0;
         private uint _sharedColorTex = 0;
         private uint _sharedDepthRBO = 0;
+        private uint _sharedMsaaColorRBO = 0;
+        private uint _sharedResolveFBO = 0;
+        private int _sharedMsaaSamples = 4;
         private bool _sharedFBOCreated = false;
+
+        // ── AAA post-FX chain applied to the shared viewport texture (same chain as
+        // GameScene) so the IDE Post FX panel sliders are live in the editor viewport ──
+        private PostFxProcessor? _postFx;
 
         // ── Default camera + lights for rendering editor objects when no scene is active ──
         private Camera? _editorCamera;
@@ -53,13 +63,47 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         private void EnsureSharedFBO()
         {
+            // Follow the unified quality preset: when the requested MSAA sample count
+            // changes (quality preset switched), destroy the FBO so it is rebuilt with
+            // the new sample count on the next EnsureSharedFBO call.
+            if (_sharedFBOCreated && _sharedMsaaSamples != Math.Max(1, Config.QualitySettings.MsaaSamples))
+                DestroySharedFBO();
+
             if (_sharedFBOCreated) return;
 
-            uint fbo = 0, color = 0, rbo = 0;
+            // Requested MSAA from the quality preset, clamped to the driver's max.
+            _sharedMsaaSamples = Math.Max(1, Config.QualitySettings.MsaaSamples);
+            int maxSamples = 0;
+            GL.GetIntegerv(Const.GL_MAX_SAMPLES, &maxSamples);
+            if (maxSamples > 0) _sharedMsaaSamples = Math.Min(_sharedMsaaSamples, maxSamples);
+
+            uint fbo = 0, color = 0, rbo = 0, msaaColorRbo = 0, resolveFbo = 0;
 
             GL.GenFramebuffers(1, &fbo);
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, fbo);
 
+            // Multisampled color + depth-stencil renderbuffers.
+            GL.GenRenderbuffers(1, &msaaColorRbo);
+            GL.BindRenderbuffer(Const.GL_RENDERBUFFER, msaaColorRbo);
+            bool msaaOk = GL.RenderbufferStorageMultisample(Const.GL_RENDERBUFFER, _sharedMsaaSamples, Const.GL_RGBA8,
+                                                            Glfw.WindowWidth, Glfw.WindowHeight);
+            GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
+                                       Const.GL_RENDERBUFFER, msaaColorRbo);
+
+            GL.GenRenderbuffers(1, &rbo);
+            GL.BindRenderbuffer(Const.GL_RENDERBUFFER, rbo);
+            GL.RenderbufferStorageMultisample(Const.GL_RENDERBUFFER, _sharedMsaaSamples, Const.GL_DEPTH24_STENCIL8,
+                                              Glfw.WindowWidth, Glfw.WindowHeight);
+            GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_STENCIL_ATTACHMENT,
+                                       Const.GL_RENDERBUFFER, rbo);
+
+            uint status = (uint)GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
+            if (status != Const.GL_FRAMEBUFFER_COMPLETE)
+                Console.WriteLine($"[SceneManager] Shared MSAA FBO incomplete: 0x{status:X}");
+
+            bool msaaUsable = msaaOk && _sharedMsaaSamples > 1 && status == Const.GL_FRAMEBUFFER_COMPLETE;
+
+            // Single-sample resolve target — the texture the Viewport panel samples.
             GL.GenTextures(1, &color);
             GL.BindTexture(Const.GL_TEXTURE_2D, color);
             GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA8,
@@ -67,35 +111,69 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                           Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (void*)0);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+
+            GL.GenFramebuffers(1, &resolveFbo);
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, resolveFbo);
             GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
                                     Const.GL_TEXTURE_2D, color, 0);
 
-            GL.GenRenderbuffers(1, &rbo);
-            GL.BindRenderbuffer(Const.GL_RENDERBUFFER, rbo);
-            GL.RenderbufferStorage(Const.GL_RENDERBUFFER, Const.GL_DEPTH24_STENCIL8,
-                                   Glfw.WindowWidth, Glfw.WindowHeight);
-            GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_STENCIL_ATTACHMENT,
-                                       Const.GL_RENDERBUFFER, rbo);
-
-            uint status = (uint)GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
-            if (status != Const.GL_FRAMEBUFFER_COMPLETE)
+            if (!msaaUsable)
             {
-                Console.WriteLine($"[SceneManager] Shared FBO incomplete: 0x{status:X} — cleaning up");
-                // 🛠️ FIX #7: Clean up resources on incomplete status instead of leaking them
+                // Fall back to single-sample: reuse the depth renderbuffer, render straight
+                // into the resolve FBO. Depth renderbuffer storage becomes plain.
+                GL.BindRenderbuffer(Const.GL_RENDERBUFFER, rbo);
+                GL.RenderbufferStorage(Const.GL_RENDERBUFFER, Const.GL_DEPTH24_STENCIL8,
+                                       Glfw.WindowWidth, Glfw.WindowHeight);
+                GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_STENCIL_ATTACHMENT,
+                                           Const.GL_RENDERBUFFER, rbo);
+            }
+
+            uint resolveStatus = (uint)GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
+            if (resolveStatus != Const.GL_FRAMEBUFFER_COMPLETE)
+            {
+                Console.WriteLine($"[SceneManager] Shared resolve FBO incomplete: 0x{resolveStatus:X} — cleaning up");
                 GL.DeleteFramebuffers(1, &fbo);
                 GL.DeleteTextures(1, &color);
                 GL.DeleteRenderbuffers(1, &rbo);
+                GL.DeleteRenderbuffers(1, &msaaColorRbo);
+                GL.DeleteFramebuffers(1, &resolveFbo);
                 return;
             }
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
 
-            _sharedFBO = fbo;
+            _sharedFBO = msaaUsable ? fbo : resolveFbo;
             _sharedColorTex = color;
             _sharedDepthRBO = rbo;
+            _sharedMsaaColorRBO = msaaColorRbo;
+            _sharedResolveFBO = resolveFbo;
             _sharedFBOCreated = true;
 
-            Console.WriteLine($"[SceneManager] Shared FBO created ({Glfw.WindowWidth}x{Glfw.WindowHeight})");
+            Console.WriteLine($"[SceneManager] Shared FBO created ({Glfw.WindowWidth}x{Glfw.WindowHeight}, MSAA {(_sharedMsaaSamples > 1 && msaaUsable ? _sharedMsaaSamples + "x" : "off")})");
+        }
+
+        /// <summary>Resolve the shared MSAA FBO into the single-sample _sharedColorTex the
+        /// Viewport panel samples, then apply the AAA post-FX chain (bloom + tonemap +
+        /// gamma) so the IDE Post FX panel is live in the editor viewport too. Call after
+        /// all scene rendering for the frame.</summary>
+        private void ResolveSharedFBO()
+        {
+            if (!_sharedFBOCreated || _sharedResolveFBO == 0 || _sharedFBO == _sharedResolveFBO) return;
+
+            GL.BindFramebuffer(Const.GL_READ_FRAMEBUFFER, _sharedFBO);
+            GL.BindFramebuffer(Const.GL_DRAW_FRAMEBUFFER, _sharedResolveFBO);
+            GL.BlitFramebuffer(0, 0, Glfw.WindowWidth, Glfw.WindowHeight,
+                               0, 0, Glfw.WindowWidth, Glfw.WindowHeight,
+                               Const.GL_COLOR_BUFFER_BIT, Const.GL_NEAREST);
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+
+            // Grade the viewport texture with the same post-FX chain the game uses.
+            if (Config.PostFxSettings.Enabled)
+            {
+                _postFx ??= new PostFxProcessor(Glfw.WindowWidth, Glfw.WindowHeight);
+                _postFx.Run(_sharedColorTex, _sharedResolveFBO, Glfw.WindowWidth, Glfw.WindowHeight);
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            }
         }
 
         /// <summary>Attach the IDE to this scene manager. Must be called before Run().</summary>
@@ -572,6 +650,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_ide != null && _ide.IsActive)
                 {
                     var bridge = _ide.Bridge;
+
+                    // Resolve the shared MSAA FBO into its single-sample texture so the
+                    // Viewport panel (and any scene that rendered into the shared FBO)
+                    // samples an antialiased, up-to-date frame.
+                    ResolveSharedFBO();
+
                     if (bridge != null && bridge.SceneTextureID == 0)
                     {
                         // Scene didn't set its own texture (MainMenuScene, etc.) — use shared FBO
@@ -664,9 +748,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             fixed (uint* p = &_sharedFBO) GL.DeleteFramebuffers(1, p);
             fixed (uint* p = &_sharedColorTex) GL.DeleteTextures(1, p);
             fixed (uint* p = &_sharedDepthRBO) GL.DeleteRenderbuffers(1, p);
+            fixed (uint* p = &_sharedMsaaColorRBO) GL.DeleteRenderbuffers(1, p);
+            fixed (uint* p = &_sharedResolveFBO) GL.DeleteFramebuffers(1, p);
             _sharedFBO = 0;
             _sharedColorTex = 0;
             _sharedDepthRBO = 0;
+            _sharedMsaaColorRBO = 0;
+            _sharedResolveFBO = 0;
             _sharedFBOCreated = false;
         }
 

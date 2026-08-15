@@ -12,17 +12,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
 
         /// <summary>Fog falloff model: 1 = Linear (start→end), 2 = Exponential,
         /// 3 = Exp2 + height blend (default — matches the original terrain fog).</summary>
-        public static int Mode = 3;
+        public static int Mode = 2;
 
         /// <summary>When true the fog color follows the sky/horizon (sun position);
         /// when false <see cref="Color"/> is used verbatim.</summary>
         public static bool UseSkyColor = true;
 
         /// <summary>Manual fog color (used when UseSkyColor is false).</summary>
-        public static Vector3 Color = new(0.55f, 0.72f, 0.90f);
+        public static Vector3 Color = new(0f, 0f, 0f);
 
         /// <summary>Density for Exponential / Exp2 fog (world units⁻¹).</summary>
-        public static float Density = 0.0035f;
+        public static float Density = 0.0034f;
 
         /// <summary>Linear fog start distance (world units).</summary>
         public static float StartDistance = 50f;
@@ -31,10 +31,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static float EndDistance = 300f;
 
         /// <summary>Height fog floor — the world Y below which fog is densest.</summary>
-        public static float Height = 10f;
+        public static float Height = 0f;
 
         /// <summary>Height falloff range — above Height + HeightRange the height fog fades out.</summary>
-        public static float HeightRange = 45f;
+        public static float HeightRange = 100f;
 
         /// <summary>Write the current fog values to settings.json (persist across restarts).</summary>
         public static bool Persist()

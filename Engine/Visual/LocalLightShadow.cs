@@ -17,7 +17,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// per-cascade draw callback the scene already uses for its CSM pass.
     ///
     /// Fragment side: <see cref="UploadShadows"/> binds the depth maps to texture units
-    /// 9..15 (free above the 0..8 the renderers use, within the guaranteed 16 fragment
+    /// 10..15 (free above the 0..9 the renderers/PBR use, within the guaranteed 16 fragment
     /// units of GL 3.3) and uploads per-light slot indices + spot light-space matrices,
     /// which the shaders sample in <c>calcLocalLights</c>.</summary>
     public unsafe class LocalLightShadow : CSM
@@ -25,22 +25,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>Maximum number of shadow-casting local lights supported.</summary>
         public const int MaxShadowLights = 4;
         /// <summary>Maximum number of POINT light shadows (limited by free texture units).</summary>
-        public const int MaxPointShadows = 3;
+        public const int MaxPointShadows = 2;
 
-        // Texture units for the shadow maps. Renderers use 0..8; these sit above them and
-        // below the guaranteed 16 fragment texture units of GL 3.3.
-        public const int SpotUnitBase = 9;
-        public const int PointUnitBase = 13;
+        // Texture units for the shadow maps. Renderers use 0..8 (the PBR object shader uses
+        // 0..6 for its maps and 7/8/9 for its CSM cascades), so these sit at 10..15 — unit 9
+        // is deliberately skipped because the PBR shader's CSM cascade 2 binds there and would
+        // clobber (and be clobbered by) the first spot shadow map.
+        public const int SpotUnitBase = 10;
+        public const int PointUnitBase = 14;
 
         private const int SpotRes = 1024;
         private const int PointRes = 512;
         private const float PointNear = 0.05f;
         private const float SpotNear = 0.05f;
 
-        // Spot shadows: one 2D depth texture + FBO per slot.
+        // Spot shadows: one 2D depth texture + FBO per slot (units 10..13).
         private uint[] _spotFbos = new uint[MaxShadowLights];
         private uint[] _spotTexs = new uint[MaxShadowLights];
-        // Point shadows: one cube depth texture + FBO per slot.
+        // Point shadows: one cube depth texture + FBO per slot (units 14..15).
         private uint[] _pointFbos = new uint[MaxShadowLights];
         private uint[] _pointCubes = new uint[MaxShadowLights];
 

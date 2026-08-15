@@ -29,6 +29,7 @@ public class IDE : IDisposable
     private readonly HierarchyPanel _hierarchy;
     private readonly RenderTimePanel _renderTime;
     private readonly ShadowPanel _shadowPanel;
+    private readonly PostFxPanel _postFxPanel;
     private readonly PbrPanel _pbrPanel;
     private readonly TerrainBrushPanel _terrainBrush;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
@@ -136,6 +137,7 @@ public class IDE : IDisposable
             _hierarchy = new HierarchyPanel(Bridge);
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
+            _postFxPanel = new PostFxPanel(Bridge);
             _pbrPanel = new PbrPanel(Bridge);
             _terrainBrush = new TerrainBrushPanel(Bridge);
 
@@ -454,6 +456,7 @@ public class IDE : IDisposable
                 _hierarchy.ShowInMenu();
                 _renderTime.ShowInMenu();
                 _shadowPanel.ShowInMenu();
+                _postFxPanel.ShowInMenu();
                 _pbrPanel.ShowInMenu();
                 _terrainBrush.ShowInMenu();
                 ImGui.Separator();
@@ -494,6 +497,7 @@ public class IDE : IDisposable
         _inspector.Render();
         _renderTime.Render();
         _shadowPanel.Render();
+        _postFxPanel.Render();
         _pbrPanel.Render();
         _terrainBrush.Render();
         _assetBrowser.Render();

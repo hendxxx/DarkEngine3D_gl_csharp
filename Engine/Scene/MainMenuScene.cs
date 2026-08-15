@@ -73,7 +73,7 @@ public unsafe class MainMenuScene : IScene
         "Resolution",
         "Display Mode",
         "VSync",
-        "Shadow Quality",
+        "Quality",
         "OC Mode",
         "FOV",
         "Mouse Sensitivity",
@@ -234,7 +234,7 @@ public unsafe class MainMenuScene : IScene
         _settingValues[0] = saved.Resolution;
         _settingValues[1] = saved.BorderlessFullscreen ? 1 : (saved.Fullscreen ? 0 : 2);
         _settingValues[2] = saved.VSync ? 1 : 0;
-        _settingValues[3] = saved.ShadowQuality;
+        _settingValues[3] = saved.QualityPreset;
         _settingValues[4] = saved.OcclusionMode;
         _settingValues[5] = (saved.Fov - 60) / 10;
         if (_settingValues[5] < 0) _settingValues[5] = 0;
@@ -908,14 +908,15 @@ public unsafe class MainMenuScene : IScene
         if (settingIdx == 3) ApplyShadowQualityImmediate();
     }
 
-    /// <summary>Rebuild the viewport CSM when the Shadow Quality setting changes so the
-    /// new cascade resolutions take effect immediately (the CSM captures the cascade-size
-    /// array at construction, so a quality change must recreate it).</summary>
+    /// <summary>Apply the unified quality preset immediately when the Quality setting
+    /// changes (MSAA + shadow quality + shadow filter together). Rebuilds the viewport
+    /// CSM so the new cascade resolutions take effect right away (the CSM captures the
+    /// cascade-size array at construction).</summary>
     private void ApplyShadowQualityImmediate()
     {
-        // Route through ShadowSettings so the IDE Shadow panel and the settings menu stay
-        // in sync (CSM instances rebuild themselves via ShadowSettings.Version).
-        Config.ShadowSettings.ApplyQuality(_settingValues[3]);
+        // Route through QualitySettings so the preset drives MSAA, shadow quality and
+        // shadow filter together (CSM instances rebuild via ShadowSettings.Version).
+        Config.QualitySettings.Apply(_settingValues[3]);
         _csm?.Dispose();
         _csm = null;
     }
@@ -937,12 +938,13 @@ public unsafe class MainMenuScene : IScene
         data.BorderlessFullscreen = displayMode == 1;
         data.VSync = vs;
         data.ShadowQuality = sq;
+        data.QualityPreset = sq;
         data.OcclusionMode = oc;
         data.Fov = fovVal;
         data.MouseSensitivity = _settingValues[6];
         SettingsSave.Save(data);
 
-        Config.ShadowSettings.ApplyQuality(sq);
+        Config.QualitySettings.Apply(sq);
         _csm?.Dispose();
         _csm = null; // rebuild CSM with the new cascade resolutions
         ApplyOcclusionMode(oc);

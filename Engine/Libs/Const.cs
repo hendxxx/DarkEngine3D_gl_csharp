@@ -124,6 +124,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_UNSIGNED_INT = 0x1405;
 
         public const uint GL_TEXTURE_MAX_ANISOTROPY = 0x84FE;
+        public const int GL_MAX_TEXTURE_SIZE = 0x0D33;
         public const int GL_POLYGON_OFFSET_FILL = 0x8037;
         // ======================
         // FRAMEBUFFER
@@ -143,6 +144,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_READ_FRAMEBUFFER = 0x8CA8;
         public const uint GL_DRAW_FRAMEBUFFER = 0x8CA9;
+
+        // ── Multisampling (GL 3.0 / ARB_framebuffer_multisample) ──
+        public const uint GL_TEXTURE_2D_MULTISAMPLE = 0x9100;
+        public const uint GL_RENDERBUFFER_SAMPLES = 0x8CAB;
+        public const uint GL_MAX_SAMPLES = 0x8D57;
 
         public const uint GL_DEPTH_STENCIL_ATTACHMENT = 0x821A;
         public const uint GL_DEPTH_STENCIL = 0x84F9;

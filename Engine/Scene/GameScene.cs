@@ -137,7 +137,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private readonly string[] _inGameSettingLabels = [
             "Field of View",
             "Mouse Sensitivity",
-            "Shadow Quality",
+            "Quality",
             "VSync",
             "BACK",
         ];
@@ -566,8 +566,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 { _inGameSettingValues[1] = m; break; }
             }
 
-            // Shadow quality: read the live preset index (shared with the IDE Shadow panel).
-            _inGameSettingValues[2] = Config.ShadowSettings.Quality;
+            // Quality preset: read the live preset index (MSAA + shadow + filter master).
+            _inGameSettingValues[2] = Config.QualitySettings.Current;
 
             //  Load pending save (set by MainMenuScene Continue/Load Game) 
             if (PendingLoadSlot >= 0)
@@ -615,10 +615,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             Console.WriteLine("[GameScene] Engine Running...");
         }
 
-        /// <summary>Handle window resize â€” update viewport and camera aspect ratio.</summary>
+        /// <summary>Handle window resize â€” update viewport, camera aspect ratio and
+        /// recreate the MSAA scene FBO at the new size (keeps the image crisp).</summary>
         private void OnWindowResized(int width, int height)
         {
             _camera.UpdateAspectRatio((float)width, (float)height);
+            _ppStack?.Resize(width, height);
         }
 
         public void Update(float deltaTime)
@@ -1764,13 +1766,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     Mouse.Sensitivity = 0.1f * multipliers[val];
                     break;
                 }
-                case 2: // Shadow Quality
+                case 2: // Quality preset (MSAA + shadow resolution + shadow filter)
                 {
-                    // Route through ShadowSettings so the in-game menu, the IDE Shadow panel
-                    // and the CSM instances all stay in sync.
-                    Config.ShadowSettings.ApplyQuality(val);
+                    // Route through QualitySettings so the whole preset (MSAA, shadow
+                    // quality, shadow filter) applies together; CSM instances rebuild
+                    // via ShadowSettings.Version, the scene FBO is recreated for MSAA.
+                    Config.QualitySettings.Apply(val);
                     _csm?.Dispose();
                     _csm = new CSM(Config.ShadowSettings.CascadeSizes[0]);
+                    _ppStack?.ApplyQuality();
                     break;
                 }
                 case 3: // VSync

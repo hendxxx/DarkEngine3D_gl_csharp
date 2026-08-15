@@ -114,7 +114,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 {
                     Type = obj.LightTypeEnum == LightType.Point ? 1 : 2,
                     Position = obj.Position,
-                    Direction = obj.LightDirection,
+                    // Rotated by the marker's world rotation (same as the gizmo), so
+                    // rotating a light marker actually re-aims the beam.
+                    Direction = obj.WorldLightDirection,
                     Color = obj.Color,
                     Intensity = MathF.Max(0f, obj.LightIntensity),
                     Range = obj.LightPointRadius > 0f ? obj.LightPointRadius : 50f,
@@ -279,8 +281,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (SunDirOverride.HasValue)
             {
                 sunDir = Vector3.Normalize(SunDirOverride.Value);
-                targetShadowDir = sunDir;
-                ShadowDirStable = sunDir;
+                // The overridden sun still drives the day/night blend the same way the
+                // shader does (nightBlendFactor from realSunDir): when it dips below the
+                // horizon the LIGHTING flips to the moon, so the shadow must flip with it
+                // — otherwise the CSM map is rendered from under the ground while the moon
+                // shines from above, self-occluding everything into darkness at night.
+                float overrideNight = Math.Clamp((0.15f - sunDir.Y) / 0.15f, 0.0f, 1.0f);
+                targetShadowDir = overrideNight > 0.5f ? -sunDir : sunDir;
+                targetShadowDir = Vector3.Normalize(targetShadowDir);
+                ShadowDirStable = targetShadowDir;
             }
             if (LightColorOverride.HasValue)
             {

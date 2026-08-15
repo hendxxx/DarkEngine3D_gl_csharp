@@ -65,9 +65,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public CSM(int shadowSize = 1024)
         {
             ShadowSize = shadowSize;
+            // Clamp the requested cascade sizes to what this GPU can actually allocate
+            // (GL_MAX_TEXTURE_SIZE) — otherwise the Ultra preset's 8192² maps silently
+            // fail on smaller GPUs and every shadow disappears with no error.
+            CascadeSizes = ClampToGpu(Config.ShadowSettings.CascadeSizes);
             _sizeVersion = Config.ShadowSettings.Version;
             _filterVersion = Config.ShadowSettings.FilterVersion;
             CreateShadowMaps();
+        }
+
+        /// <summary>GPU max texture size (queried once). At least 1024 so tiny/virtual
+        /// drivers still get usable maps.</summary>
+        private static int? _maxTexSize;
+        private static int MaxTexSize => _maxTexSize ??= QueryMaxTexSize();
+
+        private static unsafe int QueryMaxTexSize()
+        {
+            int v = 4096;
+            GL.GetIntegerv(Const.GL_MAX_TEXTURE_SIZE, &v);
+            return Math.Max(1024, v);
+        }
+
+        private static int[] ClampToGpu(int[] sizes)
+        {
+            if (sizes == null) return [1024, 1024, 1024];
+            var clamped = new int[sizes.Length];
+            for (int i = 0; i < sizes.Length; i++)
+                clamped[i] = Math.Min(sizes[i], MaxTexSize);
+            return clamped;
         }
 
         /// <summary>Resource-free constructor — allocates no FBOs/textures. Used by
@@ -136,11 +161,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.DrawBuffers(0, &none);
                 GL.ReadBuffer(Const.GL_NONE);
 
-                //uint status = GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
-                //if (status != Const.GL_FRAMEBUFFER_COMPLETE)
-                //{
-                //    Console.WriteLine($"[CSM] Shadow FBO {i} incomplete: 0x{status:X}");
-                //}
+                uint status = (uint)GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
+                if (status != Const.GL_FRAMEBUFFER_COMPLETE)
+                {
+                    Console.WriteLine($"[CSM] Shadow FBO cascade {i} incomplete ({CascadeSizes[i]}²): 0x{status:X} — shadows will be broken; lower the quality preset.");
+                }
             }
 
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
@@ -167,7 +192,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             if (_sizeVersion != Config.ShadowSettings.Version)
             {
-                CascadeSizes = Config.ShadowSettings.CascadeSizes;
+                CascadeSizes = ClampToGpu(Config.ShadowSettings.CascadeSizes);
                 CascadeEnds = (float[])Config.ShadowSettings.CascadeLayer.Clone();
                 Dispose();
                 CreateShadowMaps();

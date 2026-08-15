@@ -58,7 +58,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // ── Mipmapping & Advanced Filters ──
         public bool GenerateMipmaps = true;
         public float MipmapBias = 0f;
-        public float Anisotropy = 4f;
+        public float Anisotropy = 16f;   // AAA default — max supported anisotropic filtering
 
         // ── Texture Wrapping ──
         public TexWrap WrapS = TexWrap.Repeat;

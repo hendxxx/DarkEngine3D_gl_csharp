@@ -16,7 +16,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             [4096, 2048, 4096],  // Medium (cascade 2 raised 2048→4096: smaller far texels →
                                  //   consistent anti-acne bias without peter-panning outline)
             [4096, 4096, 2048],  // High
-            [8192, 4096, 2048],  // Ultra
+            [8192, 4096, 4096],  // Ultra (cascade 2 raised 2048→4096: matches the far-field
+                                 //   quality the Medium preset had, so the far cascade doesn't
+                                 //   turn soft/spotty at the Ultra preset's tighter splits)
         ];
     }
 }
