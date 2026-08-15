@@ -71,12 +71,12 @@ uniform vec3 shadowDir;
 // ── LIVE SHADOW TUNING (Shadow Settings panel — same uniform names as the terrain /
 //    main shaders so ShadowUniforms.UploadMain fills them; defaults are the fallback) ──
 uniform float u_ConstantBias = 0.00005;
-uniform float u_SlopeBias = 0.00008;
-uniform float u_MinBias = 0.00002;
-uniform float u_BlendRange = 0.5;
+uniform float u_SlopeBias = 0.0005;
+uniform float u_MinBias = 0.0002;
+uniform float u_BlendRange = 1.0;
 uniform vec3 u_DepthRange = vec3(1.0);
 uniform vec3 u_TexelWorld = vec3(1.0);
-uniform vec3 u_MaxWorldBias = vec3(0.29, 0.43, 1.5);
+uniform vec3 u_MaxWorldBias = vec3(50.5, 150.5, 350.5);
 
 // Debug overlay (L key): tint each cascade with a transparent color code.
 uniform int showCSMCascadeColor;
@@ -414,7 +414,13 @@ void main() {
     // ── CSM SHADOWS (editor viewport) ──
     vec3 shadowLightDir = normalize(shadowDir);
     float ndotl = max(dot(norm, shadowLightDir), 0.0);
-    float baseBias = max(u_ConstantBias + u_SlopeBias * (1.0 - ndotl), u_MinBias);
+    // Slope-scaled bias (OpenGL Tutorial 16): bias ∝ tan(acos(N·L)) — grows far faster
+    // than the old linear (1−N·L) on slopes turning away from the light, killing
+    // self-shadow acne on detailed geometry. tan(acos(x)) = sqrt(1−x²)/x, denominator
+    // clamped so N·L = 0 can't divide by zero.
+    float ndotlSafe = max(ndotl, 0.05);
+    float slopeFactor = sqrt(max(1.0 - ndotlSafe * ndotlSafe, 0.0)) / ndotlSafe;
+    float baseBias = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
     float bias0 = baseBias;
     float bias1 = baseBias * max(u_TexelWorld.y / max(u_TexelWorld.x, 1e-5), 1.0)
                 * clamp(u_DepthRange.x / u_DepthRange.y, 0.02, 4.0);

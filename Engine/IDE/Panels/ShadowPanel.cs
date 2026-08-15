@@ -147,7 +147,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
 
                 ImGui.Spacing();
                 ImGui.SetNextItemWidth(240);
-                if (ImGui.SliderFloat("Blend range##blend", ref _blendRange, 0.0f, 0.5f, "%.2f"))
+                if (ImGui.SliderFloat("Blend range##blend", ref _blendRange, 0.0f, 2.0f, "%.2f"))
                     ShadowSettings.BlendRange = _blendRange;
                 if (ImGui.IsItemDeactivatedAfterEdit()) PersistAndNotify();
                 ImGui.TextDisabled("Blend width of the cascade transition, as a fraction of each split distance.");
@@ -195,7 +195,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 for (int i = 0; i < 3; i++)
                 {
                     ImGui.SetNextItemWidth(240);
-                    if (ImGui.SliderFloat($"Max world bias c{i + 1} (m)##wb{i}", ref _maxWorldBias[i], 0.05f, 2.0f, "%.2f m"))
+                    if (ImGui.SliderFloat($"Max world bias c{i + 1} (m)##wb{i}", ref _maxWorldBias[i], 0.05f, 400.0f, "%.2f m"))
                         ShadowSettings.MaxWorldBias[i] = _maxWorldBias[i];
                     if (ImGui.IsItemDeactivatedAfterEdit()) PersistAndNotify();
                 }

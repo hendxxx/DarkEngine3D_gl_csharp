@@ -9,7 +9,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public bool Fullscreen { get; set; } = false;
         public bool BorderlessFullscreen { get; set; } = false;   // true = fullscreen windowed (borderless, uses work area)
         public bool VSync { get; set; } = false;
-        public int ShadowQuality { get; set; } = 0;    // 0=Low, 1=Medium, 2=High, 3=Ultra
+        public int ShadowQuality { get; set; } = 2;    // 0=Low, 1=Medium, 2=High, 3=Ultra
         /// <summary>Unified quality preset (0=Low, 1=Medium, 2=High, 3=Ultra) that
         /// drives MSAA samples + shadow quality + shadow filter together (QualitySettings).
         /// Defaults to Low so it runs clean on any GPU out of the box.</summary>
@@ -33,37 +33,40 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // ── Shadow Settings (tuned live in the IDE Shadow Settings panel; persisted so
         // they survive restarts — ShadowSettings.Persist()/Apply()) ──
         /// <summary>Cascade split distances in world units.</summary>
-        public float ShadowCascade0 { get; set; } = 38f;
-        public float ShadowCascade1 { get; set; } = 117f;
-        public float ShadowCascade2 { get; set; } = 342f;
+        public float ShadowCascade0 { get; set; } = 50f;
+        public float ShadowCascade1 { get; set; } = 150f;
+        public float ShadowCascade2 { get; set; } = 350f;
         /// <summary>Always-added fragment bias (all surfaces).</summary>
         public float ShadowConstantBias { get; set; } = 0.00005f;
-        /// <summary>Slope-scaled fragment bias (main + terrain shaders). ~4 texels on steep faces.</summary>
-        public float ShadowSlopeBias { get; set; } = 0.00008f;
+        /// <summary>Slope-scaled fragment bias (main + terrain shaders) — Tutorial 16 slope
+        /// formula: bias ∝ tan(acos(N·L)), so this coefficient ×~20 at grazing angles.</summary>
+        public float ShadowSlopeBias { get; set; } = 0.0005f;
         /// <summary>Minimum fragment bias (flat, light-facing surfaces). ~2.5 texels.</summary>
-        public float ShadowMinBias { get; set; } = 0.00002f;
+        public float ShadowMinBias { get; set; } = 0.0002f;
         /// <summary>Always-added fragment bias (gltf / GLB shader).</summary>
-        public float ShadowGltfConstantBias { get; set; } = 0.000001f;
+        public float ShadowGltfConstantBias { get; set; } = 0.00005f;
         /// <summary>Slope-scaled fragment bias (gltf / GLB shader). ~5 texels on steep faces.</summary>
-        public float ShadowGltfSlopeBias { get; set; } = 0f;
+        public float ShadowGltfSlopeBias { get; set; } = 0.0005f;
         /// <summary>Minimum fragment bias (gltf / GLB shader). ~2.5 texels.</summary>
-        public float ShadowGltfMinBias { get; set; } = 0f;
+        public float ShadowGltfMinBias { get; set; } = 0.0002f;
         /// <summary>Cascade blend width, as a fraction of the split distance.</summary>
-        public float ShadowBlendRange { get; set; } = 0.5f;
-        /// <summary>Normal bias — vertex extrusion when casting shadows (world units).</summary>
-        public float ShadowNormalBias { get; set; } = 0f;
+        public float ShadowBlendRange { get; set; } = 1.0f;
+        /// <summary>Normal bias — vertex extrusion when casting shadows (world units).
+        /// Primary anti-acne for self-shadowing (Tutorial 16's back-face culling can't be
+        /// used — the shadow pass renders both faces for single-sided casters).</summary>
+        public float ShadowNormalBias { get; set; } = 0.02f;
         /// <summary>Hard cap on the fragment bias' WORLD offset, per cascade (m) — kills
-        /// peter-panning outline; cascade 0 tight, cascade 2 loose (1.0 m ≈ 2 far texels
-        /// even at the game camera's 2800 m far plane keeps the far cascade acne-free).</summary>
-        public float ShadowMaxWorldBias0 { get; set; } = 0.29f;
-        public float ShadowMaxWorldBias1 { get; set; } = 0.43f;
-        public float ShadowMaxWorldBias2 { get; set; } = 1.5f;
+        /// peter-panning outline; roughly the cascade split distance, so the cap never
+        /// binds before the cascade's own split in typical scenes.</summary>
+        public float ShadowMaxWorldBias0 { get; set; } = 50.5f;
+        public float ShadowMaxWorldBias1 { get; set; } = 150.5f;
+        public float ShadowMaxWorldBias2 { get; set; } = 350.5f;
         /// <summary>Strength of the CSM LOD color overlay (L key debug tint), 0..1.</summary>
-        public float ShadowCascadeOverlayAlpha { get; set; } = 0.36f;
+        public float ShadowCascadeOverlayAlpha { get; set; } = 0.5f;
         /// <summary>Depth-map texture filtering: true = LINEAR, false = NEAREST.</summary>
         public bool ShadowLinearMap { get; set; } = true;
         /// <summary>Shadow filter mode (0-9: PCF 16, Hard, PCF, PCSS...).</summary>
-        public int ShadowFilterMode { get; set; } = 0;   // PCF 16 — minimal, clean-edged shadows
+        public int ShadowFilterMode { get; set; } = 1;   // Hard — crisp, unfiltered shadow edges
 
         // ── Post-Processing (AAA: bloom + ACES tonemapping + gamma; tuned live via
         // PostFxSettings, persisted here so the look survives restarts) ──

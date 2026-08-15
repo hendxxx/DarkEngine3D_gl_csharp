@@ -12,7 +12,7 @@ layout(location = 8) in vec4 aModelRow3;
 uniform mat4 lightSpaceMatrix;
 
 // Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
-uniform float u_NormalBias = 0.0;
+uniform float u_NormalBias = 0.02;
 
 out vec2 TexCoord;
 

@@ -56,14 +56,14 @@ uniform vec3 shadowDir;
 // ── LIVE SHADOW TUNING (uploaded from the IDE Shadow Settings panel; the defaults
 // match the values that were previously hardcoded here) ──
 uniform float u_ConstantBias = 0.00005;   // always-added bias (all surfaces)
-uniform float u_SlopeBias = 0.00008;  // slope-scaled bias coefficient (~4 texels steep)
-uniform float u_MinBias = 0.00002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
-uniform float u_BlendRange = 0.5;   // cascade blend width, fraction of the split distance
+uniform float u_SlopeBias = 0.0005;  // slope-scaled bias coefficient (Tutorial 16: bias ∝ tan(acos(N·L)))
+uniform float u_MinBias = 0.0002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
+uniform float u_BlendRange = 1.0;   // cascade blend width, fraction of the split distance
 uniform vec3 u_DepthRange = vec3(1.0); // world ortho depth range per cascade (zFar - zNear)
 // World size of one shadow-map texel per cascade. CPU MUST upload these two uniforms
 // (ShadowUniforms.UploadCascadeScales) — the vec3(1.0) defaults are only a fallback.
 uniform vec3 u_TexelWorld = vec3(1.0);
-uniform vec3 u_MaxWorldBias = vec3(0.29, 0.43, 1.5); // per-cascade cap on the bias' WORLD offset (m)
+uniform vec3 u_MaxWorldBias = vec3(50.5, 150.5, 350.5); // per-cascade cap on the bias' WORLD offset (m)
 
 // Debug overlay (L key): tint each cascade with a transparent color code.
 uniform int showCSMCascadeColor;
@@ -374,9 +374,13 @@ void main() {
     // acne on gently-sloped faces while keeping shadows tight on flat ground.
     vec3 shadowLightDir = normalize(shadowDir);
     float ndotl = max(dot(norm, shadowLightDir), 0.0);
-    // Slope-scaled bias (same tuning as fragment_shader.glsl): steeper faces get a larger
-    // bias so the heightmapped terrain doesn't show self-shadow acne on its slopes.
-    float baseBias = max(u_ConstantBias + u_SlopeBias * (1.0 - ndotl), u_MinBias);
+    // Slope-scaled bias (OpenGL Tutorial 16, same as fragment_shader.glsl): bias ∝
+    // tan(acos(N·L)) — grows far faster than the old linear (1−N·L) on slopes turning
+    // away from the light, which is what kills self-shadow acne on heightmapped terrain.
+    // tan(acos(x)) = sqrt(1−x²)/x, denominator clamped so N·L = 0 can't divide by zero.
+    float ndotlSafe = max(ndotl, 0.05);
+    float slopeFactor = sqrt(max(1.0 - ndotlSafe * ndotlSafe, 0.0)) / ndotlSafe;
+    float baseBias = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
     // Far cascades need proportionally more bias (same 1.5×/3× scaling as fragment_shader)
     // AND their ortho depth range is far larger, so normalize the NDC bias by the per-cascade
     // depth range (uploaded from CSM) — otherwise the same NDC bias pushes shadows tens of

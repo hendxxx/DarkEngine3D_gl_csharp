@@ -23,12 +23,12 @@ uniform float cascadeEnds[3];
 // ── LIVE SHADOW TUNING (uploaded from the IDE Shadow Settings panel; the defaults
 // match the values that were previously hardcoded here) ──
 uniform float u_ConstantBias = 0.00005;   // always-added bias (all surfaces)
-uniform float u_SlopeBias = 0.00008;  // slope-scaled bias coefficient (~4 texels steep)
-uniform float u_MinBias = 0.00002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
-uniform float u_BlendRange = 0.5;   // cascade blend width, fraction of the split distance
+uniform float u_SlopeBias = 0.0005;  // slope-scaled bias coefficient (Tutorial 16: bias ∝ tan(acos(N·L)))
+uniform float u_MinBias = 0.0002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
+uniform float u_BlendRange = 1.0;   // cascade blend width, fraction of the split distance
 uniform vec3 u_DepthRange = vec3(1.0); // world ortho depth range per cascade (zFar - zNear)
 uniform vec3 u_TexelWorld = vec3(1.0); // world size of one shadow-map texel per cascade
-uniform vec3 u_MaxWorldBias = vec3(0.29, 0.43, 1.5); // per-cascade cap on the bias' WORLD offset (m)
+uniform vec3 u_MaxWorldBias = vec3(50.5, 150.5, 350.5); // per-cascade cap on the bias' WORLD offset (m)
 
 // DEBUG
 uniform int showLODColor;
@@ -456,10 +456,14 @@ void main() {
 
     // FIX: bias harus pakai shadowLightDir 
     float ndotl = max(dot(norm, shadowLightDir), 0.0);
-    // Slope-scaled bias: steep surfaces (ndotl → 0) get a much larger bias so they don't
-    // show acne; flat light-facing surfaces stay tight. Raised from 0.0005 to kill the
-    // speckling that appeared on sloped terrain and detailed geometry.
-    float baseBias = max(u_ConstantBias + u_SlopeBias * (1.0 - ndotl), u_MinBias);
+    // Slope-scaled bias (OpenGL Tutorial 16): bias ∝ tan(acos(N·L)) — zero on flat,
+    // light-facing surfaces, growing far faster than the old linear (1−N·L) on slopes
+    // that turn away from the light. That aggressive growth is exactly what kills
+    // self-shadow acne on steep terrain. tan(acos(x)) = sqrt(1−x²)/x, computed directly
+    // with the denominator clamped so N·L = 0 can't divide by zero.
+    float ndotlSafe = max(ndotl, 0.05);
+    float slopeFactor = sqrt(max(1.0 - ndotlSafe * ndotlSafe, 0.0)) / ndotlSafe;
+    float baseBias = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
     float bias0 = baseBias;
     // Far cascades cover much more world space per shadow-map texel, so they need a
     // proportionally larger bias to stay acne-free (same 1.5×/3× scaling the gltf shader

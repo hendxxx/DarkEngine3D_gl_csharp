@@ -21,15 +21,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public const int QualityUltra = 3;
 
         /// <summary>Selected cascade-size preset (index into ShadowPresets.CascadeSizes).
-        /// Defaults to LOW so shadows work on any GPU out of the box.</summary>
-        public static int Quality = QualityLow;
+        /// Mirrors the settings.json default (High).</summary>
+        public static int Quality = QualityHigh;
 
         /// <summary>Per-cascade shadow-map resolutions. Replaced wholesale when Quality changes.</summary>
-        public static int[] CascadeSizes = ShadowPresets.CascadeSizes[QualityLow];
+        public static int[] CascadeSizes = ShadowPresets.CascadeSizes[QualityHigh];
 
         /// <summary>Cascade split distances in world units (cascade i covers [prev, CascadeLayer[i]]).
         /// Tuned to the game scene's camera range (game far plane 2800 m).</summary>
-        public static float[] CascadeLayer = [38f, 117f, 342f];
+        public static float[] CascadeLayer = [50f, 150f, 350f];
 
         // ── Fragment bias — main shader + terrain-editor shader ──
         // bias = max(ConstantBias + SlopeBias * (1 - N·L), MinBias)
@@ -38,16 +38,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // The texel-proportional per-cascade scaling keeps this texel count at every
         // distance, so these defaults stay the ideal anti-acne/peter-panning balance.
         public static float ConstantBias = 0.00005f;   // always-added term (uniform across all surfaces)
-        public static float SlopeBias = 0.00008f;   // extra bias on steep faces (slope-scaled)
-        public static float MinBias = 0.00002f;     // safety floor for flat, light-facing surfaces
+        public static float SlopeBias = 0.0005f;   // slope-scaled bias coefficient (Tutorial 16: bias ∝ tan(acos(N·L)); ×~20 slope factor at grazing angles → ~0.01 NDC, the tutorial's clamp)
+        public static float MinBias = 0.0002f;     // safety floor for flat, light-facing surfaces (~2.5 texels)
 
         // ── Fragment bias — gltf (PBR) shader (separate tuning values) ──
-        public static float GltfConstantBias = 0.000001f;
-        public static float GltfSlopeBias = 0f;   // ~5 texels on steep faces
-        public static float GltfMinBias = 0f;     // ~2.5 texels flat
+        public static float GltfConstantBias = 0.00005f;
+        public static float GltfSlopeBias = 0.0005f;   // ~5 texels on steep faces
+        public static float GltfMinBias = 0.0002f;     // ~2.5 texels flat
 
-        /// <summary>Cascade blend width, as a fraction of the split distance (0.5 = 50%).</summary>
-        public static float BlendRange = 0.5f;
+        /// <summary>Cascade blend width, as a fraction of the split distance (1.0 = full blend).</summary>
+        public static float BlendRange = 1.0f;
 
         /// <summary>Normal bias — vertex extrusion when casting shadows (anti-acne).
         /// Extrusion happens in WORLD space (after the model transform — the shadow vertex
@@ -61,10 +61,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// 0.02 m ≈ 1 texel of the near cascade in the editor viewport — the "standard
         /// 0.02 extrusion" the terrain-bias comment below references; anything much
         /// smaller lets geometry self-shadow acne through (the fragment bias alone
-        /// can't cover texel-size errors on the casters' own surfaces).
-        /// Tuned to 0 (extrusion off) for the game scene — the widened fragment bias
-        /// caps (MaxWorldBias) handle anti-acne without moving the shadow silhouette.</summary>
-        public static float NormalBias = 0f;
+        /// can't cover texel-size errors on the casters' own surfaces). 0.02 m ≈ 1 texel
+        /// of the near cascade — the "standard 0.02 extrusion" — and it's the primary
+        /// anti-acne for self-shadowing surfaces (the Tutorial 16 alternative, back-face
+        /// culling in the depth pass, can't be used here: this engine's shadow pass
+        /// intentionally renders both faces to support single-sided casters like the
+        /// editor plane / game terrain).</summary>
+        public static float NormalBias = 0.02f;
+
 
         /// <summary>Hard cap on the fragment bias' WORLD offset (bias_ndc × depthRange),
         /// per cascade. The texel-proportional per-cascade scaling keeps a constant TEXEL
@@ -77,7 +81,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// them at only ~1.7-2 texels, which is below the recommended 2-4 texel range and
         /// let acne speckle the terrain/objects in the mid-to-far cascades.
         /// Set individually in the panel.</summary>
-        public static float[] MaxWorldBias = [0.29f, 0.43f, 1.5f];
+        public static float[] MaxWorldBias = [50.5f, 150.5f, 350.5f];
 
         /// <summary>Depth-map texture filtering: LINEAR softens hard-shadow sampling slightly.</summary>
         public static bool LinearShadowMap = true;
@@ -85,7 +89,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Strength of the CSM LOD color overlay (L key), 0..1. The cascade
         /// debug tint is mixed at this alpha — low keeps the scene readable, high makes
         /// the cascade bands pop. Shared by all three fragment shaders.</summary>
-        public static float CascadeOverlayAlpha = 0.36f;
+        public static float CascadeOverlayAlpha = 0.5f;
 
         /// <summary>Bumped when cascade sizes or split distances change → CSM rebuilds.</summary>
         public static int Version = 0;
@@ -137,20 +141,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Restore the same values the shaders ship with as their GLSL defaults.</summary>
         public static void ResetToDefaults()
         {
-            Quality = QualityLow;
-            CascadeSizes = ShadowPresets.CascadeSizes[QualityLow];
-            CascadeLayer = [38f, 117f, 342f];
-            Keyboard.SetShadowFilterMode(0);   // PCF 16 — minimal-quality default
+            Quality = QualityHigh;
+            CascadeSizes = ShadowPresets.CascadeSizes[QualityHigh];
+            CascadeLayer = [50f, 150f, 350f];
+            Keyboard.SetShadowFilterMode(1);   // Hard — crisp, unfiltered shadow edges
             ConstantBias = 0.00005f;
-            SlopeBias = 0.00008f;
-            MinBias = 0.00002f;
-            GltfConstantBias = 0.000001f;
-            GltfSlopeBias = 0f;
-            GltfMinBias = 0f;
-            BlendRange = 0.5f;
-            NormalBias = 0f;
-            MaxWorldBias = [0.29f, 0.43f, 1.5f];
-            CascadeOverlayAlpha = 0.36f;
+            SlopeBias = 0.0005f;
+            MinBias = 0.0002f;
+            GltfConstantBias = 0.00005f;
+            GltfSlopeBias = 0.0005f;
+            GltfMinBias = 0.0002f;
+            BlendRange = 1.0f;
+            NormalBias = 0.02f;
+            MaxWorldBias = [50.5f, 150.5f, 350.5f];
+            CascadeOverlayAlpha = 0.5f;
             LinearShadowMap = true;
             Version++;
             FilterVersion++;
