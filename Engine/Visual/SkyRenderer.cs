@@ -32,7 +32,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // ── Uniform locations: Dome ──
         private int _domeViewLoc, _domeProjLoc;
         private int _domeTexLoc, _domeTintLoc, _domeHasTexLoc;
-        private int _domeRadiusLoc, _domeRotYLoc;
+        private int _domeRadiusLoc, _domeRotYLoc, _domeRotXLoc, _domeTimeLoc;
 
         // ── Uniform locations: Realtime ──
         private int _rtViewLoc, _rtProjLoc, _rtFogColorLoc, _rtSunDirLoc, _rtTimeLoc, _rtWeatherLoc, _rtAspectLoc;
@@ -133,6 +133,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _domeHasTexLoc = GL.GetUniformLocation(_domeShader, "hasTexture");
             _domeRadiusLoc = GL.GetUniformLocation(_domeShader, "domeRadius");
             _domeRotYLoc = GL.GetUniformLocation(_domeShader, "domeRotationY");
+            _domeRotXLoc = GL.GetUniformLocation(_domeShader, "domeRotationX");
+            _domeTimeLoc = GL.GetUniformLocation(_domeShader, "time");
 
             // ── Cache realtime uniform locations ──
             _rtViewLoc = GL.GetUniformLocation(_realtimeShader, "view");
@@ -318,6 +320,96 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         /// <summary>
+        /// Load a panoramic/dome texture with CLAMP_TO_EDGE and blended borders.
+        /// For panoramic textures, the left and right edges wrap around horizontally,
+        /// so we blend them together. Top/bottom borders use adjacent interior pixels.
+        /// </summary>
+        private unsafe uint LoadDomeTexture(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return 0;
+            if (_textureCache.TryGetValue(path, out uint cached) && cached != 0)
+                return cached;
+
+            try
+            {
+                path = PathHelpers.Resolve(path);
+                using var stream = File.OpenRead(path);
+                var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+
+                int w = image.Width;
+                int h = image.Height;
+                byte[] data = image.Data;
+
+                // Paint borders to prevent seam lines:
+                // 1. Top/bottom: copy from adjacent interior row
+                // 2. Left/right: blend with opposite edge (panoramic wrapping)
+                for (int x = 0; x < w; x++)
+                {
+                    // Top row ← y=1
+                    int topIdx = (0 * w + x) * 4;
+                    int srcIdx = (1 * w + x) * 4;
+                    data[topIdx + 0] = data[srcIdx + 0];
+                    data[topIdx + 1] = data[srcIdx + 1];
+                    data[topIdx + 2] = data[srcIdx + 2];
+                    data[topIdx + 3] = data[srcIdx + 3];
+
+                    // Bottom row ← y=h-2
+                    int botIdx = ((h - 1) * w + x) * 4;
+                    int srcBotIdx = ((h - 2) * w + x) * 4;
+                    data[botIdx + 0] = data[srcBotIdx + 0];
+                    data[botIdx + 1] = data[srcBotIdx + 1];
+                    data[botIdx + 2] = data[srcBotIdx + 2];
+                    data[botIdx + 3] = data[srcBotIdx + 3];
+                }
+                // Left/right columns: blend with opposite edge (horizontal wrap)
+                for (int y = 0; y < h; y++)
+                {
+                    int leftIdx = (y * w + 0) * 4;
+                    int rightIdx = (y * w + (w - 1)) * 4;
+                    int srcLeftIdx = (y * w + 1) * 4;
+                    int srcRightIdx = (y * w + (w - 2)) * 4;
+
+                    // Left ← average of right edge and interior-left
+                    data[leftIdx + 0] = (byte)((data[rightIdx + 0] + data[srcLeftIdx + 0]) / 2);
+                    data[leftIdx + 1] = (byte)((data[rightIdx + 1] + data[srcLeftIdx + 1]) / 2);
+                    data[leftIdx + 2] = (byte)((data[rightIdx + 2] + data[srcLeftIdx + 2]) / 2);
+                    data[leftIdx + 3] = (byte)((data[rightIdx + 3] + data[srcLeftIdx + 3]) / 2);
+
+                    // Right ← average of left edge and interior-right
+                    data[rightIdx + 0] = (byte)((data[leftIdx + 0] + data[srcRightIdx + 0]) / 2);
+                    data[rightIdx + 1] = (byte)((data[leftIdx + 1] + data[srcRightIdx + 1]) / 2);
+                    data[rightIdx + 2] = (byte)((data[leftIdx + 2] + data[srcRightIdx + 2]) / 2);
+                    data[rightIdx + 3] = (byte)((data[leftIdx + 3] + data[srcRightIdx + 3]) / 2);
+                }
+
+                // Upload to GL
+                uint textureID;
+                GL.GenTextures(1, &textureID);
+                GL.BindTexture(Const.GL_TEXTURE_2D, textureID);
+
+                fixed (byte* ptr = data)
+                {
+                    GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
+                                  w, h, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, ptr);
+                }
+
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+                GL.GenerateMipmap(Const.GL_TEXTURE_2D);
+
+                _textureCache[path] = textureID;
+                return textureID;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SkyRenderer] Failed to load dome texture '{path}': {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
         /// Bind a face texture to a texture unit, or unbind if path is empty.
         /// </summary>
         private void BindFaceTexture(string path, int unit, int texLoc, int hasLoc, uint shader)
@@ -419,9 +511,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.UniformMatrix4fv(_domeProjLoc, 1, false, (float*)&projection);
             GL.Uniform3f(_domeTintLoc, settings.Dome.TintColor.X, settings.Dome.TintColor.Y, settings.Dome.TintColor.Z);
             GL.Uniform1f(_domeRadiusLoc, settings.Dome.Radius);
-            GL.Uniform1f(_domeRotYLoc, settings.Dome.RotationY);
 
-            uint texID = LoadTextureCached(settings.Dome.TexturePath);
+            // Auto-rotate
+            float rotY = settings.Dome.RotationY;
+            float rotX = 0f;
+            if (settings.Dome.AutoRotate)
+            {
+                float speed = settings.Dome.RotateSpeed;
+                if (settings.Dome.PingPong)
+                {
+                    float amp = settings.Dome.PingPongAmplitude * (MathF.PI / 180f);
+                    float pingPong = MathF.Sin(_totalTime * speed * 0.02f) * amp;
+                    if (settings.Dome.RotateAxis == 0 || settings.Dome.RotateAxis == 2)
+                        rotY += pingPong;
+                    if (settings.Dome.RotateAxis == 1 || settings.Dome.RotateAxis == 2)
+                        rotX += pingPong * 0.5f;
+                }
+                else
+                {
+                    float angle = _totalTime * speed * (MathF.PI / 180f);
+                    if (settings.Dome.RotateAxis == 0 || settings.Dome.RotateAxis == 2)
+                        rotY += angle;
+                    if (settings.Dome.RotateAxis == 1 || settings.Dome.RotateAxis == 2)
+                        rotX += angle * 0.3f;
+                }
+            }
+
+            GL.Uniform1f(_domeRotYLoc, rotY);
+            GL.Uniform1f(_domeRotXLoc, rotX);
+            GL.Uniform1f(_domeTimeLoc, _totalTime);
+
+            uint texID = LoadDomeTexture(settings.Dome.TexturePath);
             GL.ActiveTexture(Const.GL_TEXTURE0);
             if (texID != 0)
             {
@@ -556,6 +676,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform1f(_rtSunRaysEnabledLoc, sunRays.Enabled ? 1.0f : 0.0f);
 
             // Draw
+            GL.Disable(Const.GL_CULL_FACE);
             GL.DepthMask(false);
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.DepthFunc(Const.GL_LEQUAL);
@@ -565,6 +686,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.DepthMask(true);
             GL.DepthFunc(Const.GL_LESS);
+            GL.Enable(Const.GL_CULL_FACE);
         }
     }
 }

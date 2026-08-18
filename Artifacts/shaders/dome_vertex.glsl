@@ -9,10 +9,12 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform float domeRadius;
 uniform float domeRotationY;
+uniform float domeRotationX;
+uniform float time;
 
 void main()
 {
-    // Apply Y rotation to get panoramic UV mapping
+    // Apply Y rotation (horizontal pan)
     float cosR = cos(domeRotationY);
     float sinR = sin(domeRotationY);
     vec3 rotated = vec3(
@@ -21,9 +23,20 @@ void main()
         -aPos.x * sinR + aPos.z * cosR
     );
 
+    // Apply X rotation (vertical tilt) if non-zero
+    if (abs(domeRotationX) > 0.0001) {
+        float cosX = cos(domeRotationX);
+        float sinX = sin(domeRotationX);
+        rotated = vec3(
+            rotated.x,
+            rotated.y * cosX - rotated.z * sinX,
+            rotated.y * sinX + rotated.z * cosX
+        );
+    }
+
     TexCoords = normalize(rotated);
     WorldPos = rotated * domeRadius;
 
     vec4 pos = projection * view * vec4(WorldPos, 1.0);
-    gl_Position = pos.xyww; // Force depth to far plane
+    gl_Position = pos.xyww;
 }

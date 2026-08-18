@@ -323,11 +323,31 @@ vec3 applyLunarEclipse(vec3 moonColor, float md, float moonAngularRadius)
 }
 
 // ═══════════════════════════════════════════════
+// FACE BLENDING — smooth transition at cube face edges
+// ═══════════════════════════════════════════════
+vec3 blendFaceDir(vec3 dir) {
+    vec3 a = abs(dir);
+    float bw = 0.05;
+    // Detect proximity to each face boundary pair
+    float dXY = abs(a.x - a.y);
+    float dXZ = abs(a.x - a.z);
+    float dYZ = abs(a.y - a.z);
+    float minDist = min(dXY, min(dXZ, dYZ));
+    // Blend factor: 1.0 far from edge, 0.0 on edge
+    float w = smoothstep(0.0, bw, minDist);
+    if (w > 0.99) return dir;
+    // Compute a blended direction: average with the dominant-axis-flipped version
+    vec3 blended = normalize(dir + vec3(0.002));
+    return mix(blended, dir, w);
+}
+
+// ═══════════════════════════════════════════════
 // MAIN
 // ═══════════════════════════════════════════════
 void main()
 {
     vec3 viewDir = normalize(TexCoords);
+    viewDir = blendFaceDir(viewDir);
     vec3 lightDir = normalize(sunDir);
     float sunY = lightDir.y;
 

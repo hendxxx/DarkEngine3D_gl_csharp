@@ -1848,6 +1848,40 @@ public class InspectorPanel
                 float domeRot = skySettings.Dome.RotationY * (180f / MathF.PI);
                 if (ImGui.SliderFloat("Rotation Y", ref domeRot, 0f, 360f, "%.1f°"))
                     skySettings.Dome.RotationY = domeRot * (MathF.PI / 180f);
+
+                ImGui.Spacing();
+                ImGui.Separator();
+
+                // ── Auto Rotate ──
+                ImGui.TextDisabled("Auto Rotate");
+                bool autoRot = skySettings.Dome.AutoRotate;
+                if (ImGui.Checkbox("Enable##auto_rot", ref autoRot)) skySettings.Dome.AutoRotate = autoRot;
+
+                ImGui.BeginDisabled(!autoRot);
+                float rotSpeed = skySettings.Dome.RotateSpeed;
+                if (ImGui.SliderFloat("Speed##dome", ref rotSpeed, 0.1f, 100f, "%.1f °/s")) skySettings.Dome.RotateSpeed = rotSpeed;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Rotation speed in degrees per second");
+
+                int rotAxis = skySettings.Dome.RotateAxis;
+                if (ImGui.Combo("Axis##dome", ref rotAxis, "Horizontal (Y)\0Vertical (X)\0Both (XY)\0"))
+                    skySettings.Dome.RotateAxis = rotAxis;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Which axis to rotate around");
+
+                float rotVar = skySettings.Dome.RotateVariation;
+                if (ImGui.SliderFloat("Variation##dome", ref rotVar, 0f, 1f, "%.2f")) skySettings.Dome.RotateVariation = rotVar;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Speed variation (0=constant, 1=random)");
+
+                bool pingPong = skySettings.Dome.PingPong;
+                if (ImGui.Checkbox("Ping-Pong##dome", ref pingPong)) skySettings.Dome.PingPong = pingPong;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Oscillate back and forth instead of full rotation");
+
+                ImGui.BeginDisabled(!pingPong);
+                float ppAmp = skySettings.Dome.PingPongAmplitude;
+                if (ImGui.SliderFloat("Amplitude##dome", ref ppAmp, 1f, 180f, "%.1f°")) skySettings.Dome.PingPongAmplitude = ppAmp;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Max swing angle in ping-pong mode");
+                ImGui.EndDisabled();
+
+                ImGui.EndDisabled();
                 ImGui.Separator();
             }
 
@@ -1859,13 +1893,13 @@ public class InspectorPanel
                 {
                     var sun = skySettings.Sun;
                     float sunSize = sun.Size;
-                    if (ImGui.SliderFloat("Size", ref sunSize, 0.1f, 3.0f, "%.2f")) sun.Size = sunSize;
+                    if (ImGui.SliderFloat("Size##sun", ref sunSize, 0.1f, 3.0f, "%.2f")) sun.Size = sunSize;
                     float sunSoft = sun.Softness;
-                    if (ImGui.SliderFloat("Softness", ref sunSoft, 0.0f, 1.0f, "%.2f")) sun.Softness = sunSoft;
+                    if (ImGui.SliderFloat("Softness##sun", ref sunSoft, 0.0f, 1.0f, "%.2f")) sun.Softness = sunSoft;
                     var sunCol = sun.Color;
-                    if (ImGui.ColorEdit3("Color", ref sunCol)) sun.Color = sunCol;
+                    if (ImGui.ColorEdit3("Color##sun", ref sunCol)) sun.Color = sunCol;
                     float glowInt = sun.GlowIntensity;
-                    if (ImGui.SliderFloat("Glow Intensity", ref glowInt, 0f, 3.0f, "%.2f")) sun.GlowIntensity = glowInt;
+                    if (ImGui.SliderFloat("Glow Intensity##sun", ref glowInt, 0f, 3.0f, "%.2f")) sun.GlowIntensity = glowInt;
                     ImGui.Separator();
                 }
 
@@ -1874,21 +1908,21 @@ public class InspectorPanel
                 {
                     var atmo = skySettings.Scattering;
                     float atmoInt = atmo.Intensity;
-                    if (ImGui.SliderFloat("Intensity", ref atmoInt, 0f, 3.0f, "%.2f")) atmo.Intensity = atmoInt;
+                    if (ImGui.SliderFloat("Intensity##atmo", ref atmoInt, 0f, 3.0f, "%.2f")) atmo.Intensity = atmoInt;
                     float rayleigh = atmo.Rayleigh;
-                    if (ImGui.SliderFloat("Rayleigh", ref rayleigh, 0f, 3.0f, "%.2f")) atmo.Rayleigh = rayleigh;
+                    if (ImGui.SliderFloat("Rayleigh##atmo", ref rayleigh, 0f, 3.0f, "%.2f")) atmo.Rayleigh = rayleigh;
                     var rayCol = atmo.RayColor;
-                    if (ImGui.ColorEdit3("Ray Color", ref rayCol)) atmo.RayColor = rayCol;
+                    if (ImGui.ColorEdit3("Ray Color##atmo", ref rayCol)) atmo.RayColor = rayCol;
                     float rayH = atmo.RayHeight;
-                    if (ImGui.SliderFloat("Ray Height", ref rayH, 1f, 20f, "%.1f")) atmo.RayHeight = rayH;
+                    if (ImGui.SliderFloat("Ray Height##atmo", ref rayH, 1f, 20f, "%.1f")) atmo.RayHeight = rayH;
                     float mie = atmo.Mie;
-                    if (ImGui.SliderFloat("Mie", ref mie, 0f, 3.0f, "%.2f")) atmo.Mie = mie;
+                    if (ImGui.SliderFloat("Mie##atmo", ref mie, 0f, 3.0f, "%.2f")) atmo.Mie = mie;
                     var mieCol = atmo.MieColor;
-                    if (ImGui.ColorEdit3("Mie Color", ref mieCol)) atmo.MieColor = mieCol;
+                    if (ImGui.ColorEdit3("Mie Color##atmo", ref mieCol)) atmo.MieColor = mieCol;
                     float mieFoc = atmo.MieFocus;
-                    if (ImGui.SliderFloat("Mie Focus", ref mieFoc, 0f, 0.99f, "%.3f")) atmo.MieFocus = mieFoc;
+                    if (ImGui.SliderFloat("Mie Focus##atmo", ref mieFoc, 0f, 0.99f, "%.3f")) atmo.MieFocus = mieFoc;
                     float mieH = atmo.MieHeight;
-                    if (ImGui.SliderFloat("Mie Height", ref mieH, 0.1f, 5f, "%.2f")) atmo.MieHeight = mieH;
+                    if (ImGui.SliderFloat("Mie Height##atmo", ref mieH, 0.1f, 5f, "%.2f")) atmo.MieHeight = mieH;
                     ImGui.Separator();
                 }
 
@@ -1897,25 +1931,25 @@ public class InspectorPanel
                 {
                     var vClouds = skySettings.Clouds;
                     bool vCloudsEn = vClouds.Enabled;
-                    if (ImGui.Checkbox("Enabled", ref vCloudsEn)) vClouds.Enabled = vCloudsEn;
+                    if (ImGui.Checkbox("Enabled##clouds", ref vCloudsEn)) vClouds.Enabled = vCloudsEn;
                     float vCDens = vClouds.Density;
-                    if (ImGui.SliderFloat("Density", ref vCDens, 0f, 1f, "%.2f")) vClouds.Density = vCDens;
+                    if (ImGui.SliderFloat("Density##clouds", ref vCDens, 0f, 1f, "%.2f")) vClouds.Density = vCDens;
                     float vCAlt = vClouds.Altitude;
-                    if (ImGui.SliderFloat("Altitude", ref vCAlt, 0.5f, 10f, "%.1f")) vClouds.Altitude = vCAlt;
+                    if (ImGui.SliderFloat("Altitude##clouds", ref vCAlt, 0.5f, 10f, "%.1f")) vClouds.Altitude = vCAlt;
                     float vCSpd = vClouds.Speed;
-                    if (ImGui.SliderFloat("Speed", ref vCSpd, 0f, 0.2f, "%.3f")) vClouds.Speed = vCSpd;
+                    if (ImGui.SliderFloat("Speed##clouds", ref vCSpd, 0f, 0.2f, "%.3f")) vClouds.Speed = vCSpd;
                     float vCDet = vClouds.Detail;
-                    if (ImGui.SliderFloat("Detail", ref vCDet, 0f, 1f, "%.2f")) vClouds.Detail = vCDet;
+                    if (ImGui.SliderFloat("Detail##clouds", ref vCDet, 0f, 1f, "%.2f")) vClouds.Detail = vCDet;
                     float vCEro = vClouds.Erosion;
-                    if (ImGui.SliderFloat("Erosion", ref vCEro, 0f, 1f, "%.2f")) vClouds.Erosion = vCEro;
+                    if (ImGui.SliderFloat("Erosion##clouds", ref vCEro, 0f, 1f, "%.2f")) vClouds.Erosion = vCEro;
                     float vCShd = vClouds.ShadowStrength;
-                    if (ImGui.SliderFloat("Shadow Strength", ref vCShd, 0f, 1f, "%.2f")) vClouds.ShadowStrength = vCShd;
+                    if (ImGui.SliderFloat("Shadow Strength##clouds", ref vCShd, 0f, 1f, "%.2f")) vClouds.ShadowStrength = vCShd;
                     float vCSca = vClouds.Scatter;
-                    if (ImGui.SliderFloat("Scatter", ref vCSca, 0f, 1f, "%.2f")) vClouds.Scatter = vCSca;
+                    if (ImGui.SliderFloat("Scatter##clouds", ref vCSca, 0f, 1f, "%.2f")) vClouds.Scatter = vCSca;
                     var vCTint = vClouds.TintColor;
-                    if (ImGui.ColorEdit3("Tint Color", ref vCTint)) vClouds.TintColor = vCTint;
+                    if (ImGui.ColorEdit3("Tint Color##clouds", ref vCTint)) vClouds.TintColor = vCTint;
                     float vCCir = vClouds.CirrusStrength;
-                    if (ImGui.SliderFloat("Cirrus Strength", ref vCCir, 0f, 1f, "%.2f")) vClouds.CirrusStrength = vCCir;
+                    if (ImGui.SliderFloat("Cirrus Strength##clouds", ref vCCir, 0f, 1f, "%.2f")) vClouds.CirrusStrength = vCCir;
                     ImGui.Separator();
                 }
 
@@ -1924,15 +1958,15 @@ public class InspectorPanel
                 {
                     var moon = skySettings.Moon;
                     float mBright = moon.Brightness;
-                    if (ImGui.SliderFloat("Brightness", ref mBright, 0f, 3f, "%.2f")) moon.Brightness = mBright;
+                    if (ImGui.SliderFloat("Brightness##moon", ref mBright, 0f, 3f, "%.2f")) moon.Brightness = mBright;
                     float mSize = moon.Size;
-                    if (ImGui.SliderFloat("Size", ref mSize, 0.1f, 3f, "%.2f")) moon.Size = mSize;
+                    if (ImGui.SliderFloat("Size##moon", ref mSize, 0.1f, 3f, "%.2f")) moon.Size = mSize;
                     float mGlow = moon.GlowRadius;
-                    if (ImGui.SliderFloat("Glow Radius", ref mGlow, 0f, 3f, "%.2f")) moon.GlowRadius = mGlow;
+                    if (ImGui.SliderFloat("Glow Radius##moon", ref mGlow, 0f, 3f, "%.2f")) moon.GlowRadius = mGlow;
                     var mTint = moon.TintColor;
-                    if (ImGui.ColorEdit3("Tint Color", ref mTint)) moon.TintColor = mTint;
+                    if (ImGui.ColorEdit3("Tint Color##moon", ref mTint)) moon.TintColor = mTint;
                     float mPhase = moon.PhaseOffset;
-                    if (ImGui.SliderFloat("Phase Offset", ref mPhase, 0f, 1f, "%.2f")) moon.PhaseOffset = mPhase;
+                    if (ImGui.SliderFloat("Phase Offset##moon", ref mPhase, 0f, 1f, "%.2f")) moon.PhaseOffset = mPhase;
                     string mTexPath = moon.TexturePath;
                     ImGui.Text("Texture:");
                     ImGui.TextDisabled("Drag & drop from Asset Browser ➜");
@@ -1956,15 +1990,15 @@ public class InspectorPanel
                 {
                     var stars = skySettings.Stars;
                     bool starsEn = stars.Enabled;
-                    if (ImGui.Checkbox("Enabled", ref starsEn)) stars.Enabled = starsEn;
+                    if (ImGui.Checkbox("Enabled##stars", ref starsEn)) stars.Enabled = starsEn;
                     float sBright = stars.Brightness;
-                    if (ImGui.SliderFloat("Brightness", ref sBright, 0f, 3f, "%.2f")) stars.Brightness = sBright;
+                    if (ImGui.SliderFloat("Brightness##stars", ref sBright, 0f, 3f, "%.2f")) stars.Brightness = sBright;
                     float sDens = stars.Density;
-                    if (ImGui.SliderFloat("Density", ref sDens, 0f, 3f, "%.2f")) stars.Density = sDens;
+                    if (ImGui.SliderFloat("Density##stars", ref sDens, 0f, 3f, "%.2f")) stars.Density = sDens;
                     float sTw = stars.TwinkleSpeed;
-                    if (ImGui.SliderFloat("Twinkle Speed", ref sTw, 0f, 5f, "%.2f")) stars.TwinkleSpeed = sTw;
+                    if (ImGui.SliderFloat("Twinkle Speed##stars", ref sTw, 0f, 5f, "%.2f")) stars.TwinkleSpeed = sTw;
                     var sCol = stars.Color;
-                    if (ImGui.ColorEdit3("Color", ref sCol)) stars.Color = sCol;
+                    if (ImGui.ColorEdit3("Color##stars", ref sCol)) stars.Color = sCol;
                     ImGui.Separator();
                 }
 
@@ -1990,15 +2024,15 @@ public class InspectorPanel
                 {
                     var sr = skySettings.SunRays;
                     bool srEn = sr.Enabled;
-                    if (ImGui.Checkbox("Enabled", ref srEn)) sr.Enabled = srEn;
+                    if (ImGui.Checkbox("Enabled##sunrays", ref srEn)) sr.Enabled = srEn;
                     float srInt = sr.Intensity;
-                    if (ImGui.SliderFloat("Intensity", ref srInt, 0f, 1f, "%.2f")) sr.Intensity = srInt;
+                    if (ImGui.SliderFloat("Intensity##sunrays", ref srInt, 0f, 1f, "%.2f")) sr.Intensity = srInt;
                     int srCount = sr.RayCount;
-                    if (ImGui.SliderInt("Ray Count", ref srCount, 3, 32)) sr.RayCount = srCount;
+                    if (ImGui.SliderInt("Ray Count##sunrays", ref srCount, 3, 32)) sr.RayCount = srCount;
                     float srLen = sr.Length;
-                    if (ImGui.SliderFloat("Length", ref srLen, 0f, 3f, "%.2f")) sr.Length = srLen;
+                    if (ImGui.SliderFloat("Length##sunrays", ref srLen, 0f, 3f, "%.2f")) sr.Length = srLen;
                     var srCol = sr.Color;
-                    if (ImGui.ColorEdit3("Color", ref srCol)) sr.Color = srCol;
+                    if (ImGui.ColorEdit3("Color##sunrays", ref srCol)) sr.Color = srCol;
                     ImGui.Separator();
                 }
             }

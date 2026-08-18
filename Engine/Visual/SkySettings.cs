@@ -22,8 +22,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float Size { get; set; } = 1.0f;
         /// <summary>Sun disc edge softness. Default 0.8.</summary>
         public float Softness { get; set; } = 0.8f;
-        /// <summary>Sun core color. Default warm white.</summary>
-        public Vector3 Color { get; set; } = new(1.0f, 0.95f, 0.85f);
+        /// <summary>Sun core color. Default white.</summary>
+        public Vector3 Color { get; set; } = new(1.0f, 1.0f, 1.0f);
         /// <summary>Sun glow intensity multiplier. Default 1.0.</summary>
         public float GlowIntensity { get; set; } = 1.0f;
 
@@ -46,15 +46,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         /// <summary>Rayleigh scattering strength. Default 1.0.</summary>
         public float Rayleigh { get; set; } = 1.0f;
-        /// <summary>Rayleigh color tint. Default (0.15, 0.35, 0.75).</summary>
-        public Vector3 RayColor { get; set; } = new(0.15f, 0.35f, 0.75f);
+        /// <summary>Rayleigh color tint. Default white.</summary>
+        public Vector3 RayColor { get; set; } = new(1.0f, 1.0f, 1.0f);
         /// <summary>Rayleigh height scale. Default 8.0.</summary>
         public float RayHeight { get; set; } = 8.0f;
 
         /// <summary>Mie scattering strength. Default 1.0.</summary>
         public float Mie { get; set; } = 1.0f;
-        /// <summary>Mie color tint. Default (0.9, 0.9, 0.9).</summary>
-        public Vector3 MieColor { get; set; } = new(0.9f, 0.9f, 0.9f);
+        /// <summary>Mie color tint. Default white.</summary>
+        public Vector3 MieColor { get; set; } = new(1.0f, 1.0f, 1.0f);
         /// <summary>Mie directionality (asymmetry factor g). Default 0.76.</summary>
         public float MieFocus { get; set; } = 0.76f;
         /// <summary>Mie height scale. Default 1.2.</summary>
@@ -92,8 +92,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float ShadowStrength { get; set; } = 0.65f;
         /// <summary>Cloud scatter (sun light through clouds). Default 0.25.</summary>
         public float Scatter { get; set; } = 0.25f;
-        /// <summary>Cloud tint color. Default warm white.</summary>
-        public Vector3 TintColor { get; set; } = new(0.88f, 0.92f, 1.0f);
+        /// <summary>Cloud tint color. Default white.</summary>
+        public Vector3 TintColor { get; set; } = new(1.0f, 1.0f, 1.0f);
         /// <summary>Cirrus cloud strength. Default 0.1.</summary>
         public float CirrusStrength { get; set; } = 0.1f;
         /// <summary>Enable/disable procedural volumetric clouds. Default true.</summary>
@@ -125,8 +125,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float Size { get; set; } = 1.0f;
         /// <summary>Moon glow radius multiplier. Default 1.0.</summary>
         public float GlowRadius { get; set; } = 1.0f;
-        /// <summary>Moon tint color. Default (0.9, 0.95, 1.0).</summary>
-        public Vector3 TintColor { get; set; } = new(0.9f, 0.95f, 1.0f);
+        /// <summary>Moon tint color. Default white.</summary>
+        public Vector3 TintColor { get; set; } = new(1.0f, 1.0f, 1.0f);
         /// <summary>Path to the moon texture file (.png, .jpg). Empty = default.</summary>
         public string TexturePath { get; set; } = "Artifacts/Textures/moon.png";
         /// <summary>Moon rotation speed (radians/sec around sky). Default 0.</summary>
@@ -157,8 +157,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float Density { get; set; } = 1.0f;
         /// <summary>Star twinkle speed. Default 1.0.</summary>
         public float TwinkleSpeed { get; set; } = 1.0f;
-        /// <summary>Star color tint. Default warm white.</summary>
-        public Vector3 Color { get; set; } = new(1.0f, 0.96f, 0.88f);
+        /// <summary>Star color tint. Default white.</summary>
+        public Vector3 Color { get; set; } = new(1.0f, 1.0f, 1.0f);
         /// <summary>Enable/disable stars. Default true.</summary>
         public bool Enabled { get; set; } = true;
 
@@ -181,8 +181,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float SolarEclipse { get; set; } = 0f;
         /// <summary>Lunar eclipse amount 0..1 (0=none, 1=total). Default 0.</summary>
         public float LunarEclipse { get; set; } = 0f;
-        /// <summary>Eclipse glow color. Default orange-red.</summary>
-        public Vector3 GlowColor { get; set; } = new(1.0f, 0.4f, 0.1f);
+        /// <summary>Eclipse glow color. Default white.</summary>
+        public Vector3 GlowColor { get; set; } = new(1.0f, 1.0f, 1.0f);
 
         public EclipseSettings Clone() => new()
         {
@@ -203,8 +203,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public int RayCount { get; set; } = 12;
         /// <summary>Ray length multiplier. Default 1.0.</summary>
         public float Length { get; set; } = 1.0f;
-        /// <summary>Ray color tint. Default sun color.</summary>
-        public Vector3 Color { get; set; } = new(1.0f, 0.9f, 0.7f);
+        /// <summary>Ray color tint. Default white.</summary>
+        public Vector3 Color { get; set; } = new(1.0f, 1.0f, 1.0f);
         /// <summary>Enable/disable sun rays. Default true.</summary>
         public bool Enabled { get; set; } = true;
 
@@ -257,16 +257,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>Dome radius (world units). Default 500.</summary>
         public float Radius { get; set; } = 500f;
         /// <summary>Dome color tint (multiplied with texture). Default white.</summary>
-        public Vector3 TintColor { get; set; } = Vector3.One;
-        /// <summary>Horizontal rotation offset (radians). Default 0.</summary>
+        public Vector3 TintColor { get; set; } = new(1.0f, 1.0f, 1.0f);
+        /// <summary>Manual rotation offset (radians). Default 0.</summary>
         public float RotationY { get; set; } = 0f;
+
+        // ── Auto Rotate ──
+        /// <summary>Enable automatic rotation. Default false.</summary>
+        public bool AutoRotate { get; set; } = false;
+        /// <summary>Rotation speed (degrees per second). Default 10.</summary>
+        public float RotateSpeed { get; set; } = 10f;
+        /// <summary>Rotation axis: 0=Horizontal(Y), 1=Vertical(X), 2=Both(XY). Default 0.</summary>
+        public int RotateAxis { get; set; } = 0;
+        /// <summary>Random variation in speed (0..1). 0=constant, 1=fully random. Default 0.</summary>
+        public float RotateVariation { get; set; } = 0f;
+        /// <summary>Ping-pong mode: oscillate between -amplitude and +amplitude instead of full rotation. Default false.</summary>
+        public bool PingPong { get; set; } = false;
+        /// <summary>Ping-pong amplitude in degrees. Default 30.</summary>
+        public float PingPongAmplitude { get; set; } = 30f;
 
         public DomeSettings Clone() => new()
         {
             TexturePath = TexturePath,
             Radius = Radius,
             TintColor = TintColor,
-            RotationY = RotationY
+            RotationY = RotationY,
+            AutoRotate = AutoRotate,
+            RotateSpeed = RotateSpeed,
+            RotateAxis = RotateAxis,
+            RotateVariation = RotateVariation,
+            PingPong = PingPong,
+            PingPongAmplitude = PingPongAmplitude
         };
     }
 
