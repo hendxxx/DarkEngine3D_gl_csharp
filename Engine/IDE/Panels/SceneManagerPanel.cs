@@ -38,6 +38,7 @@ public class SceneManagerPanel
     private bool _showAddPopup = false;
     private bool _showEditPopup = false;
     private bool _showDeleteConfirm = false;
+    private bool _showNewConfirm = false;
     private string _editNameBuffer = "";
     private string _editDescBuffer = "";
     private int _selectedNewSceneTypeIdx = 0;   // combo box index for Add popup
@@ -137,11 +138,21 @@ public class SceneManagerPanel
         ImGui.TextColored(ColGreen, $"Active: {currentName}");
         ImGui.Separator();
 
-        // ── Toolbar: Add / Edit / Delete ──
+        // ── Toolbar: New / Add / Edit / Delete ──
         {
             bool hasSelection = _selectedIdx >= 0 && _selectedIdx < _bridge.AvailableScenes.Count;
 
-            float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 2f) / 3f;
+            float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 3f) / 4f;
+
+            // New button (orange) — clears all scenes
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.85f, 0.55f, 0.15f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.95f, 0.65f, 0.25f, 1f));
+            if (ImGui.Button("New", new Vector2(btnWidth, 28)))
+            {
+                _showNewConfirm = true;
+            }
+            ImGui.PopStyleColor(2);
+            ImGui.SameLine();
 
             // Add button (green)
             ImGui.PushStyleColor(ImGuiCol.Button, ColAddBtn);
@@ -611,6 +622,37 @@ public class SceneManagerPanel
             ImGui.EndPopup();
         }
 
+        // ── New Scene Confirm popup ──
+        if (_showNewConfirm)
+        {
+            ImGui.OpenPopup("New Scene?");
+            _showNewConfirm = false;
+        }
+
+        bool newPopupOpen = true;
+        if (ImGui.BeginPopupModal("New Scene?", ref newPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), "Clear all scenes?");
+            ImGui.TextDisabled("All unsaved changes will be lost.");
+            ImGui.TextDisabled("This creates a fresh empty scene.");
+            ImGui.Separator();
+
+            if (ImGui.Button("New", new Vector2(120, 0)))
+            {
+                ClearAllScenes();
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.SameLine();
+
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.EndPopup();
+        }
+
          // ── File dialog (Load / Save As) ──
         _fileDialog.Render();
         if (_fileDialog.IsConfirmed && _fileDialog.SelectedPath != null)
@@ -637,6 +679,89 @@ public class SceneManagerPanel
 
     /// <summary>Public wrapper so IDE can wire it to IDEBridge.RequestSaveAsDialog delegate.</summary>
     public void OpenSaveAsDialog() => _fileDialog.OpenForSave("game.ing");
+
+    /// <summary>Clear everything and return to a fresh empty state — like a new app launch.</summary>
+    private void ClearAllScenes()
+    {
+        Console.WriteLine("[SceneManagerPanel] Clearing everything...");
+
+        // ── Clear all editor scenes & data ──
+        _bridge.EditorScenes.Clear();
+        _bridge.AvailableScenesInternal.Clear();
+        _bridge.SelectedEditorScene = null;
+        _bridge.EditorObjectManager = null;
+        _bridge.SelectedEditorObject = null;
+        _bridge.SelectedEditorObjects.Clear();
+        _bridge.SceneRoot = null;
+        _bridge.SceneRootElements = null;
+        _bridge.SelectedUIElement = null;
+        _bridge.SelectedUIElements?.Clear();
+        _selectedIdx = -1;
+        _currentSaveFile = null;
+
+        // ── Reset preview / in-game mode ──
+        _bridge.IsPreviewMode = false;
+        _bridge.InGameActive = false;
+
+        // ── Reset camera to default position ──
+        if (_bridge.Camera != null)
+        {
+            _bridge.Camera.Position = new Vector3(0f, 10f, 15f);
+            _bridge.Camera.Yaw = 180f * MathF.PI / 180f;
+            _bridge.Camera.Pitch = -33.7f * MathF.PI / 180f;
+            _bridge.Camera.UpdateVectors();
+        }
+
+        // ── Reset gizmo ──
+        if (_bridge.EditorGizmo != null)
+        {
+            _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
+            _bridge.EditorGizmo.EndDrag();
+        }
+
+        // ── Reset terrain brush ──
+        _bridge.TerrainBrushActive = false;
+        _bridge.TerrainBrushMode = 0;
+
+        // ── Create a fresh empty scene ──
+        string sceneName = "Scene";
+        var sceneRoot = new UIElement
+        {
+            Name = sceneName,
+            Type = UIElementType.Scene,
+            IsVisible = true,
+        };
+        var editorMgr = new EditorObjectManager();
+        var editorScene = new IDEBridge.EditorScene(
+            sceneName, IDEBridge.SceneType.MainMenu, sceneRoot)
+        {
+            ObjectManager = editorMgr
+        };
+        _bridge.EditorScenes[sceneName] = editorScene;
+        _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
+            sceneName, "Empty scene", false, IDEBridge.SceneType.MainMenu));
+
+        // ── Select the fresh scene ──
+        SelectEditorScene(sceneName);
+
+        // ── Clear game.ing file ──
+        try
+        {
+            string gameIngPath = SceneAssetSerializer.GameIngPath;
+            var emptyManifest = new SceneManifest();
+            string json = System.Text.Json.JsonSerializer.Serialize(
+                emptyManifest, SceneAssetSerializer.GetJsonOptions());
+            Directory.CreateDirectory(Path.GetDirectoryName(gameIngPath)!);
+            File.WriteAllText(gameIngPath, json);
+            Console.WriteLine($"[SceneManagerPanel] Cleared game.ing");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SceneManagerPanel] Failed to clear game.ing: {ex.Message}");
+        }
+
+        Console.WriteLine("[SceneManagerPanel] Everything cleared — fresh start");
+    }
 
     /// <summary>Save ALL editor scenes to game.ing file, including 3D editor objects.</summary>
     private void SaveAllEditorScenes()
@@ -1166,6 +1291,8 @@ public class SceneManagerPanel
                     // sure a Sky has a Direct light — reusing one from the scene file if
                     // present, creating it only when missing (no duplicates). ──
                     editorMgr.EnsureDirectLightForAnySky();
+                    // Sync counters so new objects never get duplicate names
+                    editorMgr.SyncCounters();
                 }
 
                 var loadedScene = new IDEBridge.EditorScene(

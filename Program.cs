@@ -123,8 +123,8 @@ public unsafe class Program
         // ── Initialize IDE ──
         IDE ide = new(window);
 
-        // Restore persisted input lock state from settings
-        ide.Bridge.InGameActive = settings.InGameActive;
+        // InGameActive always starts as false (edit mode). F8 toggles it.
+        ide.Bridge.InGameActive = false;
 
         // Restore viewport grid/snap prefs so the grid on/off + snap values
         // stay consistent across restarts (previously reset to defaults).

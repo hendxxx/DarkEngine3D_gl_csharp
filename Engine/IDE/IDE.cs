@@ -60,6 +60,7 @@ public class IDE : IDisposable
                     Console.WriteLine("[IDE] Saving editor scenes to game.ing before entering in-game mode...");
                     Bridge.SaveToGameIng?.Invoke();
                     LoadDefaultGameIng();
+                    Bridge.InGameActive = true;
                     _viewport.SetFullscreen(true);
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
@@ -67,6 +68,7 @@ public class IDE : IDisposable
                 else
                 {
                     // Reset fullscreen mode when exiting in-game mode
+                    Bridge.InGameActive = false;
                     _viewport.SetFullscreen(false);
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;

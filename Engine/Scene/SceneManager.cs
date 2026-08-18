@@ -530,7 +530,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                     // Debug grid toggle (shared with the GameScene DrawDebugGrid path) — the
                     // camera-centered editor grid hides when the viewport toolbar toggle is off.
-                    if (bridge?.ShowDebugGrid ?? true)
+                    // Also hidden in preview mode.
+                    if ((bridge?.ShowDebugGrid ?? true) && !(bridge?.IsPreviewMode ?? false))
                         RenderEditorGrid();
 
                     // ── CSM shadow pass + render editor 3D objects (only when the editor
@@ -579,7 +580,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // Pass selection highlight color so selected objects get a mesh wireframe outline
                         Vector3? wireCol = bridge is { SelectedEditorObjects.Count: > 0 }
                             ? bridge.SelectionHighlights.EditorObject : null;
-                        editorObjMgr.Draw(_editorCamera, _editorLights, _editorCsm, wireCol, bridge.SelectedEditorObjects);
+                        bool showGizmos = !(bridge?.IsPreviewMode ?? false);
+                        editorObjMgr.Draw(_editorCamera, _editorLights, _editorCsm, wireCol, bridge.SelectedEditorObjects, showEditorGizmos: showGizmos);
                     }
 
                     // ── Render ONE gizmo at the selection center (group average for

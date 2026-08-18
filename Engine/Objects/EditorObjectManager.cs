@@ -144,10 +144,41 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             };
         }
 
+        /// <summary>Scan existing objects and advance counters past any loaded names
+        /// so the next GetNextName() never produces a duplicate.</summary>
+        public void SyncCounters()
+        {
+            foreach (var obj in _objects)
+            {
+                if (obj == null) continue;
+                if (int.TryParse(ExtractNumberSuffix(obj.Name), out int num))
+                {
+                    switch (obj.PrimitiveType)
+                    {
+                        case EditorPrimitiveType.Box:       if (num >= _boxCounter) _boxCounter = num + 1; break;
+                        case EditorPrimitiveType.Sphere:    if (num >= _sphereCounter) _sphereCounter = num + 1; break;
+                        case EditorPrimitiveType.Plane:     if (num >= _planeCounter) _planeCounter = num + 1; break;
+                        case EditorPrimitiveType.GlbReference: if (num >= _glbCounter) _glbCounter = num + 1; break;
+                        case EditorPrimitiveType.Camera:    if (num >= _cameraCounter) _cameraCounter = num + 1; break;
+                        case EditorPrimitiveType.Light:     if (num >= _lightCounter) _lightCounter = num + 1; break;
+                        case EditorPrimitiveType.Sky:       if (num >= _skyCounter) _skyCounter = num + 1; break;
+                    }
+                }
+            }
+        }
+
+        private static string ExtractNumberSuffix(string name)
+        {
+            // "box3" → "3", "box" → ""
+            int i = name.Length - 1;
+            while (i >= 0 && char.IsDigit(name[i])) i--;
+            return name.Substring(i + 1);
+        }
+
         /// <summary>Create and add a primitive editor object at the given position.</summary>
         public EditorObject AddPrimitive(EditorPrimitiveType type, Vector3 position)
         {
-            var obj = new EditorObject(type)
+            var obj = new EditorObject(type, GetNextName(type))
             {
                 Position = position,
                 Scale = type == EditorPrimitiveType.Sphere ? new Vector3(1f, 1f, 1f)

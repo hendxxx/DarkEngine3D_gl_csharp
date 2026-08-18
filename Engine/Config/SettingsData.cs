@@ -17,7 +17,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public int OcclusionMode { get; set; } = 1;    // 0=Software, 1=HiZ, 2=OFF
         public int Fov { get; set; } = 70;
         public int MouseSensitivity { get; set; } = 4;  // 0=0.25×, 1=0.50×, 2=0.75×, 3=1.0×, 4=1.5×, 5=2.0×, 6=3.0×
-        public bool InGameActive { get; set; } = true;   // F9 toggle — persists IDE input lock state
+        public bool InGameActive { get; set; } = false;   // F9 toggle — persists IDE input lock state
 
         // ── Viewport editor prefs (persisted so they survive restarts) ──
         /// <summary>Editor debug grid on/off (viewport toolbar "Grid").</summary>

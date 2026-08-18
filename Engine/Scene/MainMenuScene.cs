@@ -1085,7 +1085,8 @@ public unsafe class MainMenuScene : IScene
 
         // ── Render editor grid (ground plane + axis helpers) when IDE active ──
         // Enable depth test so lines sit properly in 3D space.
-        if (_sceneManager.IsIdeActive)
+        // Hidden in preview mode.
+        if (_sceneManager.IsIdeActive && !(_sceneManager.Bridge?.IsPreviewMode ?? false))
         {
             GL.Enable(Const.GL_DEPTH_TEST);
             RenderEditorGrid();

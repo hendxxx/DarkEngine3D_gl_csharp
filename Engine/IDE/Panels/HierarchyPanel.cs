@@ -1626,9 +1626,7 @@ public class HierarchyPanel
 
         Vector3 spawnPos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, primType);
 
-        string objName = editorMgr.GetNextName(primType);
         var obj = editorMgr.AddPrimitive(primType, spawnPos);
-        obj.Name = objName;
 
         // Sky automatically drives a DIRECT light — reuse or create one (bug #7).
         if (primType == EditorPrimitiveType.Sky)
@@ -1639,7 +1637,7 @@ public class HierarchyPanel
         _bridge.SelectedUIElements.Clear();
         _bridge.SelectedObject = null;
         _bridge.SelectedAgent = null;
-        Console.WriteLine($"[SceneDetail] Quick-added 3D {primType}: '{objName}' at {spawnPos}");
+        Console.WriteLine($"[SceneDetail] Quick-added 3D {primType}: '{obj.Name}' at {spawnPos}");
     }
 
     // ──────────────────────────────────────────────
@@ -1699,6 +1697,53 @@ public class HierarchyPanel
     //  Add New Element
     // ──────────────────────────────────────────────
 
+    /// <summary>Get a unique name by appending an incrementing number suffix if needed.</summary>
+    private string GetUniqueName(string baseName)
+    {
+        // Check 3D objects
+        var mgr = _bridge.EditorObjectManager;
+        if (mgr != null)
+        {
+            foreach (var obj in mgr.Objects)
+            {
+                if (obj != null && obj.Name == baseName)
+                {
+                    // Found duplicate — try baseName1, baseName2, etc.
+                    for (int i = 1; ; i++)
+                    {
+                        string candidate = baseName + i;
+                        bool exists = false;
+                        foreach (var o2 in mgr.Objects)
+                        {
+                            if (o2 != null && o2.Name == candidate) { exists = true; break; }
+                        }
+                        if (!exists) return candidate;
+                    }
+                }
+            }
+        }
+        // Check UI elements (recursive)
+        if (_bridge.SceneRoot != null && HasNameConflict(_bridge.SceneRoot, baseName))
+        {
+            for (int i = 1; ; i++)
+            {
+                string candidate = baseName + i;
+                if (!HasNameConflict(_bridge.SceneRoot, candidate)) return candidate;
+            }
+        }
+        return baseName;
+    }
+
+    private static bool HasNameConflict(UIElement root, string name)
+    {
+        foreach (var child in root.Children)
+        {
+            if (child.Name == name) return true;
+            if (child.Children.Count > 0 && HasNameConflict(child, name)) return true;
+        }
+        return false;
+    }
+
     /// <summary>Add a new element or 3D object. UI elements are added to the hierarchy;
     /// 3D objects (Plane, Box, Sphere) are created via EditorObjectManager.</summary>
     private void AddNewElement(string name, int typeIdx)
@@ -1728,7 +1773,7 @@ public class HierarchyPanel
             Vector3 spawnPos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, primType);
 
             var obj = editorMgr.AddPrimitive(primType, spawnPos);
-            obj.Name = name;
+            obj.Name = GetUniqueName(name);
             _bridge.SelectEditorObject(obj);
             _bridge.SelectedUIElement = null;
             _bridge.SelectedUIElements.Clear();

@@ -995,8 +995,18 @@ public unsafe class ViewportPanel
         {
             Console.WriteLine("[Viewport] exit → exiting preview mode, resetting overlays");
             _previewMode = false;
-            _bridge.InGameActive = false; // Back to edit mode: disable game input for WASD fly
+            _bridge.IsPreviewMode = false; // Back to edit mode: show editor gizmos/helpers
             ResetSceneOverlays();
+            // Reset all edit-mode actions to default/off
+            _bridge.TerrainBrushActive = false;
+            _bridge.TerrainBrushMode = 0;
+            _bridge.GizmoMode = 0; // Translate (default)
+            if (_bridge.EditorGizmo != null)
+            {
+                _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
+                _bridge.EditorGizmo.EndDrag();
+            }
+            ClearBrushIndicator();
         }
         // ── In-game input mode (F9 active): back to editor ──
         else if (_bridge.InGameActive && _bridge.SceneManager != null)
@@ -1269,10 +1279,30 @@ public unsafe class ViewportPanel
         set
         {
             if (value && !_previewMode)
+            {
+                // ── Entering Preview mode ──
                 ResetSceneOverlays();
+                ClearBrushIndicator();
+                _bridge.TerrainBrushActive = false;
+                _bridge.TerrainBrushMode = 0;
+            }
+            else if (!value && _previewMode)
+            {
+                // ── Exiting Preview mode (back to Edit) ──
+                // Reset all edit-mode actions to default/off
+                _bridge.TerrainBrushActive = false;
+                _bridge.TerrainBrushMode = 0;
+                _bridge.GizmoMode = 0; // Translate (default)
+                if (_bridge.EditorGizmo != null)
+                {
+                    _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
+                    _bridge.EditorGizmo.EndDrag();
+                }
+                ClearBrushIndicator();
+            }
             _previewMode = value;
-            // Sync InGameActive with preview mode so scenes know whether to process game input
-            _bridge.InGameActive = value;
+            // Set preview mode flag — hides editor gizmos/helpers without changing camera behavior.
+            _bridge.IsPreviewMode = value;
         }
     }
     /// <summary>Whether snap-to-grid is enabled.</summary>
@@ -1451,14 +1481,10 @@ public unsafe class ViewportPanel
 
     public void Render()
     {
-        // ── Initial sync: ensure InGameActive matches _previewMode on first frame ──
-        // This is needed because Program.cs may have set InGameActive = settings.InGameActive
-        // (which could be true) AFTER the ViewportPanel constructor ran.
-        // Without this sync, the user would see the "◼ Edit" button (preview=false)
-        // but InGameActive=true, causing freefly + gizmo to not work until a second click.
+        // ── Initial sync: ensure IsPreviewMode matches _previewMode on first frame ──
         if (!_initialSyncDone)
         {
-            _bridge.InGameActive = _previewMode;
+            _bridge.IsPreviewMode = _previewMode;
             _initialSyncDone = true;
         }
 
@@ -1511,16 +1537,32 @@ public unsafe class ViewportPanel
                 {
                     if (!previewNow)
                     {
+                        // ── Entering Preview mode ──
                         ResetSceneOverlays();
-                        // Entering preview: hide the brush ring so it can't leak into the
-                        // game view (the brush block only runs in edit mode).
+                        // Hide brush ring so it can't leak into game view
+                        ClearBrushIndicator();
+                        // Turn off terrain brush in preview
+                        _bridge.TerrainBrushActive = false;
+                        _bridge.TerrainBrushMode = 0;
+                    }
+                    else
+                    {
+                        // ── Exiting Preview mode (back to Edit) ──
+                        // Reset all edit-mode actions to default/off
+                        _bridge.TerrainBrushActive = false;
+                        _bridge.TerrainBrushMode = 0;
+                        _bridge.GizmoMode = 0; // Translate (default)
+                        if (_bridge.EditorGizmo != null)
+                        {
+                            _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
+                            _bridge.EditorGizmo.EndDrag();
+                        }
                         ClearBrushIndicator();
                     }
                     _previewMode = !_previewMode;
-                    // Sync InGameActive with preview mode:
-                    // Edit mode (preview=false): InGameActive=false → WASD fly mode + gizmo
-                    // Preview mode (preview=true): InGameActive=true → game input works
-                    _bridge.InGameActive = _previewMode;
+                    // Set preview mode flag — hides editor gizmos/helpers without
+                    // changing camera behavior (WASD fly still works).
+                    _bridge.IsPreviewMode = _previewMode;
                 }
                 ImGui.PopStyleColor(1);
                 if (ImGui.IsItemHovered())
@@ -1800,7 +1842,18 @@ ImGui.SameLine();
                 if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
                 {
                     _previewMode = false;
+                    _bridge.IsPreviewMode = false;
                     ResetSceneOverlays();
+                    // Reset all edit-mode actions to default/off
+                    _bridge.TerrainBrushActive = false;
+                    _bridge.TerrainBrushMode = 0;
+                    _bridge.GizmoMode = 0; // Translate (default)
+                    if (_bridge.EditorGizmo != null)
+                    {
+                        _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
+                        _bridge.EditorGizmo.EndDrag();
+                    }
+                    ClearBrushIndicator();
                     Console.WriteLine("[Viewport] Exited preview mode via badge click");
                 }
             } // end if (_previewMode) badge block

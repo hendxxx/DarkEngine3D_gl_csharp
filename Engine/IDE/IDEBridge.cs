@@ -93,6 +93,8 @@ public class IDEBridge
 
     // ── F9 toggle — when false, game input is blocked ──
     public bool InGameActive { get; set; }
+    // ── Preview mode (F5) — hides editor gizmos/helpers without changing camera behavior ──
+    public bool IsPreviewMode { get; set; }
 
     // ── Editor debug grid toggle (shown in the viewport while editing) ──
     public bool ShowDebugGrid { get; set; } = true;
