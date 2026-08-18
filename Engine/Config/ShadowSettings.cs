@@ -146,11 +146,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             CascadeLayer = [50f, 150f, 350f];
             Keyboard.SetShadowFilterMode(1);   // Hard — crisp, unfiltered shadow edges
             ConstantBias = 0.00005f;
-            SlopeBias = 0.0005f;
-            MinBias = 0.0002f;
+            SlopeBias = 0.00005f;
+            MinBias = 0.00001f;
             GltfConstantBias = 0.00005f;
-            GltfSlopeBias = 0.0005f;
-            GltfMinBias = 0.0002f;
+            GltfSlopeBias = 0.00005f;
+            GltfMinBias = 0.00001f;
             BlendRange = 1.0f;
             NormalBias = 0.0f;
             MaxWorldBias = [50.5f, 150.5f, 350.5f];

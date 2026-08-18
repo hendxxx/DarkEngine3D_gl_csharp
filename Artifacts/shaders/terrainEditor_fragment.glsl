@@ -56,8 +56,8 @@ uniform vec3 shadowDir;
 // ── LIVE SHADOW TUNING (uploaded from the IDE Shadow Settings panel; the defaults
 // match the values that were previously hardcoded here) ──
 uniform float u_ConstantBias = 0.00005;   // always-added bias (all surfaces)
-uniform float u_SlopeBias = 0.0005;  // slope-scaled bias coefficient (Tutorial 16: bias ∝ tan(acos(N·L)))
-uniform float u_MinBias = 0.0002;    // minimum bias (~2.5 texels flat, light-facing surfaces)
+uniform float u_SlopeBias = 0.00005;  // slope-scaled bias coefficient (Tutorial 16: bias ∝ tan(acos(N·L)))
+uniform float u_MinBias = 0.00001;    // minimum bias (~2.5 texels flat, light-facing surfaces)
 uniform float u_BlendRange = 1.0;   // cascade blend width, fraction of the split distance
 uniform vec3 u_DepthRange = vec3(1.0); // world ortho depth range per cascade (zFar - zNear)
 // World size of one shadow-map texel per cascade. CPU MUST upload these two uniforms

@@ -71,8 +71,8 @@ uniform vec3 shadowDir;
 // ── LIVE SHADOW TUNING (Shadow Settings panel — same uniform names as the terrain /
 //    main shaders so ShadowUniforms.UploadMain fills them; defaults are the fallback) ──
 uniform float u_ConstantBias = 0.00005;
-uniform float u_SlopeBias = 0.0005;
-uniform float u_MinBias = 0.0002;
+uniform float u_SlopeBias = 0.00005;
+uniform float u_MinBias = 0.00001;
 uniform float u_BlendRange = 1.0;
 uniform vec3 u_DepthRange = vec3(1.0);
 uniform vec3 u_TexelWorld = vec3(1.0);
