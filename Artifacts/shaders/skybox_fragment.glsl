@@ -17,13 +17,6 @@ uniform float hasFaceFront;
 uniform float hasFaceBack;
 uniform vec3 fallbackColor;
 
-// Clamp UV inward so we never sample the very edge texel
-// (prevents seams between adjacent cubemap faces)
-vec2 safeUV(vec2 uv) {
-    const float MARGIN = 0.001;
-    return clamp(uv, MARGIN, 1.0 - MARGIN);
-}
-
 vec3 sampleFace(vec3 dir)
 {
     vec3 absDir = abs(dir);
@@ -39,14 +32,12 @@ vec3 sampleFace(vec3 dir)
     {
         if (dir.x > 0.0 && hasFaceRight > 0.5)
         {
-            // +X Right
-            uv = safeUV(vec2(-absDirN.z, -absDirN.y) * 0.5 + 0.5);
+            uv = vec2(-absDirN.z, -absDirN.y) * 0.5 + 0.5;
             color = texture(skyboxRight, uv).rgb;
         }
         else if (dir.x < 0.0 && hasFaceLeft > 0.5)
         {
-            // -X Left
-            uv = safeUV(vec2(absDirN.z, -absDirN.y) * 0.5 + 0.5);
+            uv = vec2(absDirN.z, -absDirN.y) * 0.5 + 0.5;
             color = texture(skyboxLeft, uv).rgb;
         }
     }
@@ -54,14 +45,12 @@ vec3 sampleFace(vec3 dir)
     {
         if (dir.y > 0.0 && hasFaceTop > 0.5)
         {
-            // +Y Top
-            uv = safeUV(vec2(absDirN.x, absDirN.z) * 0.5 + 0.5);
+            uv = vec2(absDirN.x, absDirN.z) * 0.5 + 0.5; 
             color = texture(skyboxTop, uv).rgb;
         }
         else if (dir.y < 0.0 && hasFaceBottom > 0.5)
         {
-            // -Y Bottom
-            uv = safeUV(vec2(absDirN.x, -absDirN.z) * 0.5 + 0.5); 
+            uv = vec2(absDirN.x, -absDirN.z) * 0.5 + 0.5; 
             color = texture(skyboxBottom, uv).rgb;
         }
     }
@@ -69,14 +58,12 @@ vec3 sampleFace(vec3 dir)
     {
         if (dir.z > 0.0 && hasFaceFront > 0.5)
         {
-            // +Z Front
-            uv = safeUV(vec2(absDirN.x, -absDirN.y) * 0.5 + 0.5);
+            uv = vec2(absDirN.x, -absDirN.y) * 0.5 + 0.5;
             color = texture(skyboxFront, uv).rgb;
         }
         else if (dir.z < 0.0 && hasFaceBack > 0.5)
         {
-            // -Z Back
-            uv = safeUV(vec2(-absDirN.x, -absDirN.y) * 0.5 + 0.5);
+            uv = vec2(-absDirN.x, -absDirN.y) * 0.5 + 0.5;
             color = texture(skyboxBack, uv).rgb;
         }
     }

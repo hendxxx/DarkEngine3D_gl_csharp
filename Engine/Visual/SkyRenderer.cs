@@ -1,8 +1,11 @@
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
+using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using StbImageSharp;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
@@ -208,6 +211,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             try
             {
                 var tex = new Texture(path);
+                // Override wrap mode to CLAMP_TO_EDGE (Texture class defaults to REPEAT)
+                // and use LINEAR filtering — critical for seamless cubemap faces
+                GL.BindTexture(Const.GL_TEXTURE_2D, tex.ID);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+                GL.GenerateMipmap(Const.GL_TEXTURE_2D);
                 _textureCache[path] = tex.ID;
                 return tex.ID;
             }
@@ -219,11 +230,99 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         /// <summary>
+        /// Load a cubemap face image and paint its 1-pixel border with the color
+        /// of the adjacent interior pixel. This eliminates seam lines when the GPU
+        /// clamps to the edge texel (CLAMP_TO_EDGE), because the border now matches
+        /// the face interior.
+        /// </summary>
+        private unsafe uint LoadSkyboxFace(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return 0;
+            if (_textureCache.TryGetValue(path, out uint cached) && cached != 0)
+                return cached;
+
+            try
+            {
+                path = PathHelpers.Resolve(path);
+                using var stream = File.OpenRead(path);
+                var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+
+                int w = image.Width;
+                int h = image.Height;
+                byte[] data = image.Data;
+
+                // Paint 1-pixel border with the nearest interior pixel color
+                // This ensures CLAMP_TO_EDGE picks up a color matching the face interior
+                for (int x = 0; x < w; x++)
+                {
+                    // Top row (y=0) ← copy from y=1
+                    int topIdx = (0 * w + x) * 4;
+                    int srcIdx = (1 * w + x) * 4;
+                    data[topIdx + 0] = data[srcIdx + 0];
+                    data[topIdx + 1] = data[srcIdx + 1];
+                    data[topIdx + 2] = data[srcIdx + 2];
+                    data[topIdx + 3] = data[srcIdx + 3];
+
+                    // Bottom row (y=h-1) ← copy from y=h-2
+                    int botIdx = ((h - 1) * w + x) * 4;
+                    int srcBotIdx = ((h - 2) * w + x) * 4;
+                    data[botIdx + 0] = data[srcBotIdx + 0];
+                    data[botIdx + 1] = data[srcBotIdx + 1];
+                    data[botIdx + 2] = data[srcBotIdx + 2];
+                    data[botIdx + 3] = data[srcBotIdx + 3];
+                }
+                for (int y = 0; y < h; y++)
+                {
+                    // Left column (x=0) ← copy from x=1
+                    int leftIdx = (y * w + 0) * 4;
+                    int srcLeftIdx = (y * w + 1) * 4;
+                    data[leftIdx + 0] = data[srcLeftIdx + 0];
+                    data[leftIdx + 1] = data[srcLeftIdx + 1];
+                    data[leftIdx + 2] = data[srcLeftIdx + 2];
+                    data[leftIdx + 3] = data[srcLeftIdx + 3];
+
+                    // Right column (x=w-1) ← copy from x=w-2
+                    int rightIdx = (y * w + (w - 1)) * 4;
+                    int srcRightIdx = (y * w + (w - 2)) * 4;
+                    data[rightIdx + 0] = data[srcRightIdx + 0];
+                    data[rightIdx + 1] = data[srcRightIdx + 1];
+                    data[rightIdx + 2] = data[srcRightIdx + 2];
+                    data[rightIdx + 3] = data[srcRightIdx + 3];
+                }
+
+                // Upload to GL
+                uint textureID;
+                GL.GenTextures(1, &textureID);
+                GL.BindTexture(Const.GL_TEXTURE_2D, textureID);
+
+                fixed (byte* ptr = data)
+                {
+                    GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
+                                  w, h, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, ptr);
+                }
+
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+                GL.GenerateMipmap(Const.GL_TEXTURE_2D);
+
+                _textureCache[path] = textureID;
+                return textureID;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SkyRenderer] Failed to load skybox face '{path}': {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
         /// Bind a face texture to a texture unit, or unbind if path is empty.
         /// </summary>
         private void BindFaceTexture(string path, int unit, int texLoc, int hasLoc, uint shader)
         {
-            uint texID = LoadTextureCached(path);
+            uint texID = LoadSkyboxFace(path);
             GL.ActiveTexture(Const.GL_TEXTURE0 + (uint)unit);
             if (texID != 0)
             {
