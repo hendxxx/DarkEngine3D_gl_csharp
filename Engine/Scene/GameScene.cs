@@ -1019,6 +1019,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             //  Timing: terrain render start
             _renderTimer.Restart();
             _renderedTris = 0;
+            //  Determine preview/in-game mode early so debug visualizations can be hidden
+            bool isPreviewOrInGame = _sceneManager.Bridge?.InGameActive ?? false;
             if (_gameTerrainChunk != null)
             {
                 Plane[]? cullFreezePlanes = null;
@@ -1028,7 +1030,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     cullFreezePlanes = TerrainChunk.ExtractFrustumPlanes(freezeVP);
                 }
 
-                _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes);
+                _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes, skipDebug: isPreviewOrInGame);
                  
             }
 
@@ -1078,9 +1080,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (editorMgr != null)
             {
                 // Pass selection highlight color so selected objects get a mesh wireframe outline
-                Vector3? wireCol = editorMgrBridge is { SelectedEditorObjects.Count: > 0 }
+                // Hidden in preview/in-game mode for a clean view
+                Vector3? wireCol = (!isPreviewOrInGame && editorMgrBridge is { SelectedEditorObjects.Count: > 0 })
                     ? editorMgrBridge.SelectionHighlights.EditorObject : null;
-                editorMgr.Draw(_camera, _light, _csm, wireCol, editorMgrBridge?.SelectedEditorObjects);
+                // Hide sky gizmo in preview/in-game mode — only show in edit mode
+                bool showSky = !isPreviewOrInGame;
+                // Hide all editor gizmos (2D markers, frustum, light gizmo, sky gizmo) in preview/in-game mode
+                editorMgr.Draw(_camera, _light, _csm, wireCol, editorMgrBridge?.SelectedEditorObjects, showSkyGizmo: showSky, showEditorGizmos: !isPreviewOrInGame);
             }
 
             // ── Editor debug grid (edit mode only, toggled from the viewport toolbar) ──
@@ -1131,8 +1137,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _ppStack.RenderBlurred(Glfw.WindowWidth, Glfw.WindowHeight, 5f, 1.0f);
             }
 
-            //  Debug BBox Wireframe + LOD Labels (toggled with P key) 
-            if (Keyboard.GetShowBBox() && _objectManager != null)
+            //  Debug BBox Wireframe + LOD Labels (toggled with P key)
+            //  Hidden in preview/in-game mode for a clean view.
+            if (Keyboard.GetShowBBox() && _objectManager != null && !isPreviewOrInGame)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
 
@@ -1178,8 +1185,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
-            //  Billboad Atlas Debug Overlay (M key toggle — independent from AABB debug)
-            if (Keyboard.GetShowBillboardAtlas() && _objectManager != null)
+            //  Billboard Atlas Debug Overlay (M key toggle — independent from AABB debug)
+            //  Hidden in preview/in-game mode for a clean view.
+            if (Keyboard.GetShowBillboardAtlas() && _objectManager != null && !isPreviewOrInGame)
             {
                 GL.Disable(Const.GL_DEPTH_TEST);
                 GL.DepthMask(false);
@@ -1323,14 +1331,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float notifX = Glfw.WindowWidth * 0.5f - notifExt.Width * 0.5f;
                 float notifY = Glfw.WindowHeight * 0.15f;
                 _hud.DrawText(_saveNotification, notifX, notifY, new Vector3(0.3f, 0.9f, 0.4f) * fade);
-            }            //  HUD debug overlay — always visible
-            _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
-            float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
-            _hud.DrawText(title2, 10, 60 + debugLineH, new Vector3(1, 0, 0));
-            _hud.DrawText(title3, 10, 60 + debugLineH * 2, new Vector3(1, 1, 0));
-            _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
-            _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
-            _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
+            }
+            //  HUD debug overlay — hidden in preview/in-game mode for a clean view
+            if (!isPreviewOrInGame)
+            {
+                _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
+                float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
+                _hud.DrawText(title2, 10, 60 + debugLineH, new Vector3(1, 0, 0));
+                _hud.DrawText(title3, 10, 60 + debugLineH * 2, new Vector3(1, 1, 0));
+                _hud.DrawText(title4, 10, 60 + debugLineH * 3, new Vector3(1, 0, 0));
+                _hud.DrawText(title5, 10, 60 + debugLineH * 4, new Vector3(1, 0, 0));
+                _hud.DrawText(title6, 10, 60 + debugLineH * 5, new Vector3(1, 0, 0));
+            }
 
             // ── Flush all queued HUD commands ──
             _hud.Flush();

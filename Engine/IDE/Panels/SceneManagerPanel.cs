@@ -87,6 +87,23 @@ public class SceneManagerPanel
     /// <summary>Save all editor scenes to game.ing (File > Save).</summary>
     public void SaveAllScenes() => SaveAllEditorScenes();
 
+    /// <summary>Force-save all editor scenes to game.ing (the in-game entry point).
+    /// Temporarily overrides _currentSaveFile so the existing SaveAllEditorScenes
+    /// writes to game.ing, then restores it.</summary>
+    public void SaveToGameIng()
+    {
+        if (_bridge.EditorScenes.Count == 0)
+        {
+            Console.WriteLine("[SceneManagerPanel] No editor scenes to save to game.ing.");
+            return;
+        }
+        // Temporarily force save target to game.ing
+        string previous = _currentSaveFile;
+        _currentSaveFile = null;
+        try { SaveAllEditorScenes(); }
+        finally { _currentSaveFile = previous; }
+    }
+
     /// <summary>Load scenes from a .ing file (called by main menu Recent Files).
     /// Also adds the file path to the Recent Files list.</summary>
     public void LoadFromFilePath(string path)

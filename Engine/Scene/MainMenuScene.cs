@@ -1140,10 +1140,10 @@ public unsafe class MainMenuScene : IScene
                 // Pass selection highlight color so selected objects get a mesh wireframe outline
                 Vector3? wireCol = editorBridge is { SelectedEditorObjects.Count: > 0 }
                     ? editorBridge.SelectionHighlights.EditorObject : null;
-                // Game-mode render: hide the sky gizmo (editor tool) — it only shows in
-                // the edit-mode viewport (SceneManager's bare-editor Draw call keeps the default).
+                // Game-mode render: hide ALL editor gizmos (2D markers, frustum, light gizmo,
+                // sky gizmo) — they only show in the edit-mode viewport.
                 editorBridge.EditorObjectManager.Draw(_camera, _light, _csm, wireCol,
-                    editorBridge.SelectedEditorObjects, showSkyGizmo: false);
+                    editorBridge.SelectedEditorObjects, showSkyGizmo: false, showEditorGizmos: false);
             }
         }            // ── Update bridge with scene data (always, so IDE panels have current state) ──
             var bridge = _sceneManager.Bridge;

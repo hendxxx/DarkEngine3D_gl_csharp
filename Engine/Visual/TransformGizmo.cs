@@ -58,14 +58,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float SnapValue { get; set; } = 1f;
 
         // ── Gizmo dimensions (in viewport pixels) ──
-        private const float GizmoRadius = 75f;
+        private const float GizmoRadius = 95f;
         private const float AxisLength = 58f;
         private const float ShaftWidth = 6f;      // Thicker shafts so the axis reads clearly
         private const float HeadRadius = 10f;
         private const float HeadLength = 16f;
         private const float HandleRadius = 6f;
-        private const float RingThickness = 7f;   // Thicker rings (Unreal-style) — the axis to rotate is obvious
-        private const float RingRadius = 52f;
+        private const float RingThickness = 10f;  // Thicker rings for better visibility
+        private const float RingRadius = 70f;
         private const float CubeHalfSize = 5f;
 
         // ── Colors ──
@@ -815,29 +815,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             {
                 if (EffectiveMode == GizmoMode.Rotate)
                 {
-                    // Rotate: convert pixels along the ring's screen tangent into degrees.
+                    // Rotate: angle-based rotation from the gizmo center.
+                    // Much more intuitive than tangent-based — the rotation follows the
+                    // angular movement around the gizmo center, similar to Blender/Unity.
                     float ringPx = RingRadius * Size;
-                    float worldR = PixelRadiusToWorld(camera, _dragObjPos, ringPx, viewportHeight);
-                    const int segs = 48;
-                    var pts = SampleWorldRing(camera, _dragObjPos, axisVec, worldR, segs,
-                                              viewportWidth, viewportHeight);
-                    // Nearest ring sample to the CURRENT mouse → ring tangent direction.
-                    int best = 0;
-                    float bestD = float.MaxValue;
-                    for (int i = 0; i < segs; i++)
-                    {
-                        float d = Vector2.DistanceSquared(mouseScreen, pts[i]);
-                        if (d < bestD) { bestD = d; best = i; }
-                    }
-                    Vector2 prev = pts[(best - 1 + segs) % segs];
-                    Vector2 next = pts[(best + 1) % segs];
-                    Vector2 tangent = next - prev;
-                    if (tangent.LengthSquared() < 1e-6f) tangent = new Vector2(1f, 0f);
-                    tangent = Vector2.Normalize(tangent);
+                    Vector2 gizmoCenter = ProjectToScreen(camera, _dragObjPos, viewportWidth, viewportHeight);
 
-                    float pxAlongRing = Vector2.Dot(deltaScreen, tangent);
-                    // One full lap around the ring = 360°.
-                    proj = pxAlongRing * (180f / (MathF.PI * MathF.Max(8f, ringPx)));
+                    // Angle from gizmo center to the drag-start mouse position
+                    Vector2 startDelta = _dragStartMouse - gizmoCenter;
+                    float startAngle = MathF.Atan2(startDelta.Y, startDelta.X);
+
+                    // Angle from gizmo center to the current mouse position
+                    Vector2 currentDelta = mouseScreen - gizmoCenter;
+                    float currentAngle = MathF.Atan2(currentDelta.Y, currentDelta.X);
+
+                    // Delta angle in degrees — direct angular displacement.
+                    // 1:1 mapping so a 90° mouse arc around the gizmo = 90° object rotation.
+                    float deltaAngle = (currentAngle - startAngle) * (180f / MathF.PI);
+                    proj = deltaAngle;
                 }
                 else
                 {

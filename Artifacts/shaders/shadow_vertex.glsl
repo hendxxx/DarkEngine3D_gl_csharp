@@ -6,7 +6,7 @@ uniform mat4 model;
 uniform mat4 lightSpaceMatrix;
 
 // Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
-uniform float u_NormalBias = 0.02;
+uniform float u_NormalBias = 0.0;
 
 // Inverse-transpose of the model matrix — transforms the model-space normal into the
 // same space as aPos BEFORE the model matrix is applied. Without this, extruding along

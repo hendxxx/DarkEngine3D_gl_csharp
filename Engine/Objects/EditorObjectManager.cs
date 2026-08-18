@@ -362,7 +362,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// (multi-select supported via <paramref name="selectedObjects"/>).
         /// </summary>
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
-            IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true)
+            IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true)
         {
             if (_objects.Count == 0) return;
 
@@ -442,19 +442,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (obj == null) continue;
 
                 // Camera/Light/Sky markers are 2D billboard icons (always face the camera)
-                if (obj.PrimitiveType == EditorPrimitiveType.Camera ||
+                // Hidden in preview/in-game mode via showEditorGizmos flag.
+                if (showEditorGizmos && (obj.PrimitiveType == EditorPrimitiveType.Camera ||
                     obj.PrimitiveType == EditorPrimitiveType.Light ||
-                    obj.PrimitiveType == EditorPrimitiveType.Sky)
+                    obj.PrimitiveType == EditorPrimitiveType.Sky))
                 {
                     obj.Draw2DMarker(camera);
                 }
 
-                if (obj.PrimitiveType == EditorPrimitiveType.Camera)
+                if (showEditorGizmos && obj.PrimitiveType == EditorPrimitiveType.Camera)
                 {
                     if (obj.ShowFrustum)
                         obj.DrawCameraFrustum(camera);
                 }
-                else if (obj.PrimitiveType == EditorPrimitiveType.Light)
+                else if (showEditorGizmos && obj.PrimitiveType == EditorPrimitiveType.Light)
                 {
                     if (obj.ShowLightGizmo)
                         obj.DrawLightGizmo(camera);
@@ -463,7 +464,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 {
                     // Sky gizmo is an editor tool — hidden when the scene renders in game
                     // mode (MainMenuScene passes showSkyGizmo: false).
-                    if (showSkyGizmo && obj.ShowSkyGizmo)
+                    if (showEditorGizmos && showSkyGizmo && obj.ShowSkyGizmo)
                         obj.DrawSkyGizmo(camera);
                 }
             }

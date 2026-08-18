@@ -40,21 +40,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float ShadowConstantBias { get; set; } = 0.00005f;
         /// <summary>Slope-scaled fragment bias (main + terrain shaders) — Tutorial 16 slope
         /// formula: bias ∝ tan(acos(N·L)), so this coefficient ×~20 at grazing angles.</summary>
-        public float ShadowSlopeBias { get; set; } = 0.0005f;
+        public float ShadowSlopeBias { get; set; } = 0.00005f;
         /// <summary>Minimum fragment bias (flat, light-facing surfaces). ~2.5 texels.</summary>
-        public float ShadowMinBias { get; set; } = 0.0002f;
+        public float ShadowMinBias { get; set; } = 0.00001f;
         /// <summary>Always-added fragment bias (gltf / GLB shader).</summary>
-        public float ShadowGltfConstantBias { get; set; } = 0.00005f;
+        public float ShadowGltfConstantBias { get; set; } = 0.0005f;
         /// <summary>Slope-scaled fragment bias (gltf / GLB shader). ~5 texels on steep faces.</summary>
-        public float ShadowGltfSlopeBias { get; set; } = 0.0005f;
+        public float ShadowGltfSlopeBias { get; set; } = 0.00005f;
         /// <summary>Minimum fragment bias (gltf / GLB shader). ~2.5 texels.</summary>
-        public float ShadowGltfMinBias { get; set; } = 0.0002f;
+        public float ShadowGltfMinBias { get; set; } = 0.00001f;
         /// <summary>Cascade blend width, as a fraction of the split distance.</summary>
-        public float ShadowBlendRange { get; set; } = 1.0f;
+        public float ShadowBlendRange { get; set; } = 0.5f;
         /// <summary>Normal bias — vertex extrusion when casting shadows (world units).
         /// Primary anti-acne for self-shadowing (Tutorial 16's back-face culling can't be
         /// used — the shadow pass renders both faces for single-sided casters).</summary>
-        public float ShadowNormalBias { get; set; } = 0.02f;
+        public float ShadowNormalBias { get; set; } = 0.0f;
         /// <summary>Hard cap on the fragment bias' WORLD offset, per cascade (m) — kills
         /// peter-panning outline; roughly the cascade split distance, so the cap never
         /// binds before the cascade's own split in typical scenes.</summary>

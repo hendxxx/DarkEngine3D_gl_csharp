@@ -12,7 +12,7 @@ const int MAX_JOINTS = 128;
 uniform mat4 u_Joints[MAX_JOINTS];
 
 // Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
-uniform float u_NormalBias = 0.02;
+uniform float u_NormalBias = 0.0;
 
 // Inverse-transpose of the model matrix. The skinned normal is in MODEL space after
 // skinning, so it must be rotated by this before extrusion to stay correct under

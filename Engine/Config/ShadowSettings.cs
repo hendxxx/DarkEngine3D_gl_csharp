@@ -38,13 +38,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // The texel-proportional per-cascade scaling keeps this texel count at every
         // distance, so these defaults stay the ideal anti-acne/peter-panning balance.
         public static float ConstantBias = 0.00005f;   // always-added term (uniform across all surfaces)
-        public static float SlopeBias = 0.0005f;   // slope-scaled bias coefficient (Tutorial 16: bias ∝ tan(acos(N·L)); ×~20 slope factor at grazing angles → ~0.01 NDC, the tutorial's clamp)
-        public static float MinBias = 0.0002f;     // safety floor for flat, light-facing surfaces (~2.5 texels)
+        public static float SlopeBias = 0.00005f;   // slope-scaled bias coefficient (Tutorial 16: bias ∝ tan(acos(N·L)); ×~20 slope factor at grazing angles → ~0.01 NDC, the tutorial's clamp)
+        public static float MinBias = 0.00001f;     // safety floor for flat, light-facing surfaces (~2.5 texels)
 
         // ── Fragment bias — gltf (PBR) shader (separate tuning values) ──
         public static float GltfConstantBias = 0.00005f;
-        public static float GltfSlopeBias = 0.0005f;   // ~5 texels on steep faces
-        public static float GltfMinBias = 0.0002f;     // ~2.5 texels flat
+        public static float GltfSlopeBias = 0.00005f;   // ~5 texels on steep faces
+        public static float GltfMinBias = 0.00001f;     // ~2.5 texels flat
 
         /// <summary>Cascade blend width, as a fraction of the split distance (1.0 = full blend).</summary>
         public static float BlendRange = 1.0f;
@@ -67,7 +67,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// culling in the depth pass, can't be used here: this engine's shadow pass
         /// intentionally renders both faces to support single-sided casters like the
         /// editor plane / game terrain).</summary>
-        public static float NormalBias = 0.02f;
+        public static float NormalBias = 0.0f;
 
 
         /// <summary>Hard cap on the fragment bias' WORLD offset (bias_ndc × depthRange),
@@ -152,7 +152,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             GltfSlopeBias = 0.0005f;
             GltfMinBias = 0.0002f;
             BlendRange = 1.0f;
-            NormalBias = 0.02f;
+            NormalBias = 0.0f;
             MaxWorldBias = [50.5f, 150.5f, 350.5f];
             CascadeOverlayAlpha = 0.5f;
             LinearShadowMap = true;

@@ -57,8 +57,8 @@ public class IDE : IDisposable
                 if (_inGameMode)
                 {
                     // Save all editor scenes to game.ing first, then reload for in-game mode
-                    Console.WriteLine("[IDE] Saving editor scenes before entering in-game mode...");
-                    Bridge.SaveAllScenes?.Invoke();
+                    Console.WriteLine("[IDE] Saving editor scenes to game.ing before entering in-game mode...");
+                    Bridge.SaveToGameIng?.Invoke();
                     LoadDefaultGameIng();
                     _viewport.SetFullscreen(true);
                     _focusedInGameElement = null;
@@ -146,6 +146,7 @@ public class IDE : IDisposable
 
             // Wire save integration: HierarchyPanel can trigger SceneManager's Save All / Save As
             Bridge.SaveAllScenes = () => _sceneManagerPanel.SaveAllEditorScenesPublic();
+            Bridge.SaveToGameIng = () => _sceneManagerPanel.SaveToGameIng();
             Bridge.RequestSaveAsDialog = () => _sceneManagerPanel.OpenSaveAsDialog();
 
             IsHealthy = true;

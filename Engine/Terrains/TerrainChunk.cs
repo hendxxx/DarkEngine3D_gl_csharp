@@ -301,7 +301,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         //private float exposureState = 1.0f;
-        public int Render(Camera camera, Plane[]? frozenPlanes, Plane[]? cullFreezePlanes = null)
+        public int Render(Camera camera, Plane[]? frozenPlanes, Plane[]? cullFreezePlanes = null, bool skipDebug = false)
         {
             int totalTriangles = 0;
 
@@ -366,7 +366,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                     }
 
                     // Draw bounding box only when debug BBox is enabled (P key toggle)
-                    if (Keyboard.GetShowBBox())
+                    // Hidden when skipDebug is true (preview/in-game mode)
+                    if (!skipDebug && Keyboard.GetShowBBox())
                     {
                         bool insideFrozen = false;
                         if (usingFrozen)
@@ -378,7 +379,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             }
 
             // If frozen frustum exists, draw the frozen frustum wireframe
-            if (frozenCorners != null)
+            // Hidden when skipDebug is true (preview/in-game mode)
+            if (!skipDebug && frozenCorners != null)
             {
                 GL.UseProgram(lineShaderProgram);
                 GL.Disable(Const.GL_DEPTH_TEST);

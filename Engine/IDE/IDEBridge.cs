@@ -115,6 +115,8 @@ public class IDEBridge
     // ── Save integration (HierarchyPanel → SceneManagerPanel) ──
     /// <summary>Called by HierarchyPanel to save ALL editor scenes (triggers SceneManager's Save All).</summary>
     public Action? SaveAllScenes { get; set; }
+    /// <summary>Force-save all editor scenes to game.ing specifically (for in-game mode entry).</summary>
+    public Action? SaveToGameIng { get; set; }
     /// <summary>Called by HierarchyPanel to open the Save As file dialog (first save or redirect).</summary>
     public Action? RequestSaveAsDialog { get; set; }
 
@@ -337,19 +339,9 @@ public class IDEBridge
     /// eye height, 3 for lights so they float above, 0 for sky markers).</summary>
     public static Vector3 GetGridSpawnPosition(Camera? cam, EditorPrimitiveType type)
     {
-        Vector3 spawn = cam != null ? cam.Position + cam.Front * 5f : new Vector3(0f, 1f, -5f);
-        spawn.X = MathF.Round(spawn.X);
-        spawn.Y = type switch
-        {
-            EditorPrimitiveType.Plane => 0f,
-            EditorPrimitiveType.Camera => 1.5f,
-            EditorPrimitiveType.Light => 3f,
-            // Sky floats up near the camera's height (a bit below the eye) so the 2D
-            // sky marker sits comfortably in view instead of being buried at ground level.
-            EditorPrimitiveType.Sky => cam != null ? MathF.Max(cam.Position.Y - 0.4f, 2f) : 2f,
-            _ => 0.5f,
-        };
-        spawn.Z = 0f;
+        // Spawn at the camera's freefly position so new objects appear exactly
+        // where the user is looking (except UI which has its own placement logic).
+        Vector3 spawn = cam != null ? cam.Position : new Vector3(0f, 1f, 0f);
         return spawn;
     }
 
