@@ -26,6 +26,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
              1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f
         ];
 
+        // ── New 3-type sky renderer ──
+        private SkyRenderer? _skyRenderer;
+
         public Skybox()
         {
             skyShader = Shader.GetSkyShaderProgram();
@@ -48,15 +51,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             sunDirLoc = GL.GetUniformLocation(skyShader, "sunDir");
             timeLoc = GL.GetUniformLocation(skyShader, "time");
 
-
+            // Initialize the new SkyRenderer lazily (on first use)
+            _skyRenderer = new SkyRenderer();
         }
 
-        //private float exposureState = 1.0f;
-        //private float targetExposure = 1.0f;
-        //private int locExposureState; 
-        //private int sunBlockedLoc; 
-        //private int outHaloRadiusLoc; 
-        
         private float totalTime = 0.0f;
         private float exposureState = 0.0f;
 
@@ -65,32 +63,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// Set by the editor from a placed Sky object's SkyCloudCoverage.</summary>
         public float? WeatherOverride = null;
 
+        /// <summary>Optional SkySettings from the editor Sky object. When set and non-null,
+        /// the SkyRenderer handles drawing based on the sky type (Procedural/Skybox/Dome).</summary>
+        public SkySettings? ActiveSkySettings { get; set; } = null;
 
+        /// <summary>Legacy Draw method (backward-compatible, uses the original procedural shader).</summary>
         public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk? terrain)
-        {    
+        {
+            // If we have new SkySettings, delegate to SkyRenderer
+            if (ActiveSkySettings != null && _skyRenderer != null)
+            {
+                _skyRenderer.WeatherOverride = WeatherOverride;
+                _skyRenderer.Draw(camera, lights, deltaTime, ActiveSkySettings, skyTextures, terrain);
+                return;
+            }
+
+            // Legacy path: original procedural sky shader
+            DrawLegacy(camera, lights, deltaTime, skyTextures, terrain);
+        }
+
+        /// <summary>Legacy procedural sky draw (original shader).</summary>
+        private void DrawLegacy(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk? terrain)
+        {
             // === PAKAI SHADER LANGIT ===
             GL.UseProgram(skyShader);
 
             int weatherModeLoc = GL.GetUniformLocation(skyShader, "weatherMode"); 
             int timeLoc = GL.GetUniformLocation(skyShader, "time");
 
-
             int aspectLoc = GL.GetUniformLocation(skyShader, "u_aspectRatio");
             float currentAspect = camera.GetAspect();
-
-            //// === AUTO EXPOSURE ===
-            //Vector3 viewDir = camera.Front;
-            //Vector3 sunDir = lights.SunDir;
-
-            //float sunY = sunDir.Y;
-            //float tMalam = 1.0f - Helpers.ShaderHelpers.SmoothStep(-0.3f, 0.1f, sunY);
-
-
-            //float targetExposure = Helpers.ShaderHelpers.ComputeTargetExposure(viewDir, sunDir, tMalam);
-
-            //float speed = 2.5f;
-            //exposureState = Helpers.ShaderHelpers.Lerp(exposureState, targetExposure, deltaTime * speed);
-            //exposureState = Math.Clamp(exposureState, 0.6f, 2.0f);
 
             // === WEATHER ===
             float currentWeatherVal = WeatherOverride ?? Keyboard.GetCurrentWeather();
@@ -99,17 +101,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // === TIME ===
             totalTime += deltaTime;
             GL.Uniform3f(timeLoc, totalTime, 0, 0);
-
-            //float sunY = lights.SunDir.Y;
-            //float tMalam = 1.0f - Helpers.ShaderHelpers.SmoothStep(-0.3f, 0.1f, sunY);
-
-            //float targetExposure = Helpers.ShaderHelpers.ComputeTargetExposure(camera.Front, lights.SunDir, tMalam);
-
-            //float speed = 2.5f;
-            //exposureState = Helpers.ShaderHelpers.Lerp(exposureState, targetExposure, deltaTime * speed);
-            //exposureState = Math.Clamp(exposureState, 0.6f, 2.0f);
-
-            //GL.Uniform1f(exposureLoc, exposureState);
 
             // === CAMERA ===
             Matrix4x4 view = camera.GetViewMatrix();
@@ -125,7 +116,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform3f(fogColorLoc, lights.FogColor.X, lights.FogColor.Y, lights.FogColor.Z);
             GL.Uniform3f(sunDirLoc, lights.RealSunDir.X, lights.RealSunDir.Y, lights.RealSunDir.Z);
 
-
             // === MOON TEXTURE ===
             GL.ActiveTexture(Const.GL_TEXTURE4);
             GL.BindTexture(Const.GL_TEXTURE_2D, skyTextures[0].ID);
@@ -136,19 +126,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // === ASPECT ===
             GL.Uniform1f(aspectLoc, currentAspect);
 
-            //Ever Exposure
-            //bool sunBlocked = Helpers.ShaderHelpers.RaycastSun(0.0948683298f, camera, lights, terrain); 
-            //GL.Uniform1f(sunBlockedLoc, sunBlocked ? 1.0f : 0.0f);
-
-            //// Kirim exposureState
-            //GL.Uniform1f(locExposureState, exposureState);
-
-
             // === DRAW SKY ===
-            // sebelum draw sky
-            GL.DepthMask(false);                    // jangan tulis depth
+            GL.DepthMask(false);
             GL.Enable(Const.GL_DEPTH_TEST);
-            GL.DepthFunc(Const.GL_LEQUAL);          // sky di belakang semua
+            GL.DepthFunc(Const.GL_LEQUAL);
 
             GL.BindVertexArray(vao);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, 36);
@@ -156,8 +137,5 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.DepthMask(true);
             GL.DepthFunc(Const.GL_LESS);
         }
-         
-
-
     }
 }

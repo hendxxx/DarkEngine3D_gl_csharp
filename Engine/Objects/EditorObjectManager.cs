@@ -320,6 +320,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 ShowFrustum = source.ShowFrustum,
                 ShowLightGizmo = source.ShowLightGizmo,
                 ShowSkyGizmo = source.ShowSkyGizmo,
+                SkySettings = source.SkySettings.Clone(),
                 GizmoPivotOverride = null,
                 // ── Terrain (Plane) ──
                 TerrainEnabled = source.TerrainEnabled,

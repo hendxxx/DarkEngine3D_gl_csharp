@@ -181,6 +181,8 @@ public class EditorObjectData
     public bool ShowLightGizmo { get; set; } = true;
     /// <summary>Whether the sky horizon/sun gizmo is shown (Sky).</summary>
     public bool ShowSkyGizmo { get; set; } = true;
+    /// <summary>Master sky settings (3 types: Procedural/Skybox/Dome). Serialized with the scene.</summary>
+    public SkySettings? SkySettings { get; set; }
 
     // ── Per-object gizmo pivot override (nullable — null means use object position) ──
     public float? PivotOverrideX { get; set; }

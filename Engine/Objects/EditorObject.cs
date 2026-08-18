@@ -430,6 +430,10 @@ public unsafe class EditorObject
     /// <summary>Whether the horizon-circle + sun-icon gizmo is drawn in the viewport.</summary>
     public bool ShowSkyGizmo { get; set; } = true;
 
+    // ── New Sky System (3 types: Procedural, Skybox, Dome) ──
+    /// <summary>Master sky settings container for the 3 sky types.</summary>
+    public SkySettings SkySettings { get; set; } = new();
+
     // ── Internal rendering resources (lazy-init) ──
     private Object3D? _object3D;
     private uint _textureID = 0;
@@ -632,6 +636,9 @@ public unsafe class EditorObject
             skybox.WeatherOverride = skyObj != null
                 ? Math.Clamp(skyObj.SkyCloudCoverage, 0f, 1f)
                 : null;
+
+            // ── New Sky System: pass SkySettings from the editor Sky object ──
+            skybox.ActiveSkySettings = skyObj?.SkySettings;
         }
     }
 

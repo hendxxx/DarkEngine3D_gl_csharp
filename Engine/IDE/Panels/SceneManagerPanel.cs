@@ -855,6 +855,7 @@ public class SceneManagerPanel
                         ShowFrustum = obj.ShowFrustum,
                         ShowLightGizmo = obj.ShowLightGizmo,
                         ShowSkyGizmo = obj.ShowSkyGizmo,
+                        SkySettings = obj.SkySettings,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z,
@@ -1179,6 +1180,8 @@ public class SceneManagerPanel
                         obj.ShowFrustum = objData.ShowFrustum;
                         obj.ShowLightGizmo = objData.ShowLightGizmo;
                         obj.ShowSkyGizmo = objData.ShowSkyGizmo;
+                        if (objData.SkySettings != null)
+                            obj.SkySettings = objData.SkySettings;
 
                         // Restore per-object gizmo pivot override (backward compatible — null if not present)
                         if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)

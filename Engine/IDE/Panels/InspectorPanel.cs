@@ -1609,13 +1609,14 @@ public class InspectorPanel
         if (editorObj.PrimitiveType == EditorPrimitiveType.Sky &&
             ImGui.CollapsingHeader("Sky Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
+            // ── Legacy Time of Day ──
             float tod = editorObj.SkyTimeOfDay;
             if (ImGui.SliderFloat("Time of Day", ref tod, 0f, 24f, "%.1f h"))
                 editorObj.SkyTimeOfDay = tod;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Hours since midnight (12 = midday, 18 = sunset, 6 = sunrise)");
 
-            // ── Time-of-day animation: play/pause + speed (hours per second) ──
+            // ── Time-of-day animation: play/pause + speed ──
             bool animating = editorObj.SkyTimeAnimSpeed > 0f && !editorObj.SkyTimeAnimPaused;
             if (ImGui.Button(animating ? "⏸ Pause Day/Night" : "▶ Play Day/Night", new Vector2(-1, 26)))
             {
@@ -1625,9 +1626,7 @@ public class InspectorPanel
                 {
                     editorObj.SkyTimeAnimPaused = false;
                     if (editorObj.SkyTimeAnimSpeed <= 0f)
-                        editorObj.SkyTimeAnimSpeed = 1f; // sensible default when first enabled
-                    // Playing the cycle means the sun ORBITS — clear any manual
-                    // pitch/yaw sun override so it isn't pinned in place.
+                        editorObj.SkyTimeAnimSpeed = 1f;
                     editorObj.SkySunPitch = null;
                     editorObj.SkySunYaw = null;
                 }
@@ -1644,7 +1643,7 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Sun position override (pitch/yaw) — null = follow time of day ──
+            // ── Sun position override ──
             bool hasSunOverride = editorObj.SkySunPitch.HasValue && editorObj.SkySunYaw.HasValue;
             ImGui.TextDisabled("Sun Position");
             float pitch = editorObj.SkySunPitch ?? 30f;
@@ -1666,15 +1665,10 @@ public class InspectorPanel
                 }
                 else
                 {
-                    // Seed the override from the current time-of-day sun position so the user
-                    // keeps the sun where it already is, then fine-tunes pitch/yaw. Mirrors the
-                    // SceneManager WorldTime→sunAngle math (sunAngle = hours/24*2π - π/2).
                     float hours = Math.Clamp(editorObj.SkyTimeOfDay, 0f, 24f);
                     float sunAngle = (hours / 24f) * (MathF.PI * 2f) - (MathF.PI * 0.5f);
                     var sun = new Vector3(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f);
                     sun = Vector3.Normalize(sun);
-                    // Convert to pitch/yaw using the same convention as the sky override:
-                    // sun = (sin yaw cos pitch, sin pitch, cos yaw cos pitch)
                     float seedPitch = MathF.Asin(Math.Clamp(sun.Y, -1f, 1f)) * 180f / MathF.PI;
                     float seedYaw = MathF.Atan2(sun.X, sun.Z) * 180f / MathF.PI;
                     editorObj.SkySunPitch = seedPitch;
@@ -1689,25 +1683,329 @@ public class InspectorPanel
             float clouds = editorObj.SkyCloudCoverage;
             if (ImGui.SliderFloat("Cloud Coverage", ref clouds, 0f, 1f, "%.2f"))
                 editorObj.SkyCloudCoverage = clouds;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Cloud amount/intensity in the sky (0 = clear, 1 = heavy overcast)");
 
             // ── Sun brightness ──
             float sunI = editorObj.SkySunIntensity;
             if (ImGui.SliderFloat("Sun Intensity", ref sunI, 0.1f, 3f, "%.2f×"))
                 editorObj.SkySunIntensity = sunI;
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Sun brightness multiplier applied to the scene light color");
 
             bool showSkyGizmo = editorObj.ShowSkyGizmo;
             if (ImGui.Checkbox("Show Sky Gizmo", ref showSkyGizmo))
                 editorObj.ShowSkyGizmo = showSkyGizmo;
+
+            ImGui.Spacing();
+            ImGui.Separator();
+
+            // ═══════════════════════════════════════════════════════
+            // NEW 3-TYPE SKY SYSTEM
+            // ═══════════════════════════════════════════════════════
+            var skySettings = editorObj.SkySettings;
+
+            // ── Sky Type Selector ──
+            int skyTypeIdx = (int)skySettings.Type;
+            if (ImGui.Combo("Sky Type", ref skyTypeIdx, "Procedural\0Skybox\0Dome\0"))
+                skySettings.Type = (SkyType)skyTypeIdx;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Show/hide the horizon circle + sun icon gizmo in the viewport");
+                ImGui.SetTooltip("Choose sky rendering mode: Procedural (realtime), Skybox (6 textures), Dome (panoramic)");
+
+            ImGui.Spacing();
+
+            // ── Randomize Button ──
+            if (skySettings.Type == SkyType.Procedural)
+            {
+                if (ImGui.Button("🎲 Randomize All Values", new Vector2(-1, 30)))
+                    skySettings.Randomize();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Randomize all procedural sky parameters for creative exploration");
+                ImGui.Spacing();
+            }
+
+            // ═══ SKYBOX SETTINGS ═══
+            if (skySettings.Type == SkyType.Skybox &&
+                ImGui.CollapsingHeader("Skybox Textures", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.TextDisabled("6 cubemap face textures (.png, .jpg)");
+                ImGui.TextDisabled("Drag and drop from Asset Browser ➜");
+                ImGui.Spacing();
+
+                // Helper: InputText + DragDrop + Clear for each face
+                string _sbR = skySettings.SkyboxFaces.Right;
+                ImGui.Text("Right (+X):");
+                ImGui.SetNextItemWidth(-30);
+                if (ImGui.InputText("##sb_right", ref _sbR, 512)) skySettings.SkyboxFaces.Right = _sbR;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    { skySettings.SkyboxFaces.Right = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##r", new Vector2(22, 0))) skySettings.SkyboxFaces.Right = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear");
+
+                string _sbL = skySettings.SkyboxFaces.Left;
+                ImGui.Text("Left (-X):");
+                ImGui.SetNextItemWidth(-30);
+                if (ImGui.InputText("##sb_left", ref _sbL, 512)) skySettings.SkyboxFaces.Left = _sbL;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    { skySettings.SkyboxFaces.Left = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##l", new Vector2(22, 0))) skySettings.SkyboxFaces.Left = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear");
+
+                string _sbT = skySettings.SkyboxFaces.Top;
+                ImGui.Text("Top (+Y):");
+                ImGui.SetNextItemWidth(-30);
+                if (ImGui.InputText("##sb_top", ref _sbT, 512)) skySettings.SkyboxFaces.Top = _sbT;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    { skySettings.SkyboxFaces.Top = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##t", new Vector2(22, 0))) skySettings.SkyboxFaces.Top = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear");
+
+                string _sbB = skySettings.SkyboxFaces.Bottom;
+                ImGui.Text("Bottom (-Y):");
+                ImGui.SetNextItemWidth(-30);
+                if (ImGui.InputText("##sb_bot", ref _sbB, 512)) skySettings.SkyboxFaces.Bottom = _sbB;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    { skySettings.SkyboxFaces.Bottom = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##b", new Vector2(22, 0))) skySettings.SkyboxFaces.Bottom = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear");
+
+                string _sbF = skySettings.SkyboxFaces.Front;
+                ImGui.Text("Front (+Z):");
+                ImGui.SetNextItemWidth(-30);
+                if (ImGui.InputText("##sb_front", ref _sbF, 512)) skySettings.SkyboxFaces.Front = _sbF;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    { skySettings.SkyboxFaces.Front = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##f", new Vector2(22, 0))) skySettings.SkyboxFaces.Front = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear");
+
+                string _sbK = skySettings.SkyboxFaces.Back;
+                ImGui.Text("Back (-Z):");
+                ImGui.SetNextItemWidth(-30);
+                if (ImGui.InputText("##sb_back", ref _sbK, 512)) skySettings.SkyboxFaces.Back = _sbK;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    { skySettings.SkyboxFaces.Back = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##k", new Vector2(22, 0))) skySettings.SkyboxFaces.Back = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear");
+                ImGui.Separator();
+            }
+
+            // ═══ DOME SETTINGS ═══
+            if (skySettings.Type == SkyType.Dome &&
+                ImGui.CollapsingHeader("Dome Settings", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.TextDisabled("Dome sphere with panoramic/equirectangular texture");
+                ImGui.TextDisabled("Drag and drop from Asset Browser ➜");
+                string domeTex = skySettings.Dome.TexturePath;
+                ImGui.Text("Texture:");
+                ImGui.SetNextItemWidth(-30);
+                if (ImGui.InputText("##dome_tex", ref domeTex, 512)) skySettings.Dome.TexturePath = domeTex;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    { skySettings.Dome.TexturePath = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##dt", new Vector2(22, 0))) skySettings.Dome.TexturePath = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear dome texture");
+                float domeRad = skySettings.Dome.Radius;
+                if (ImGui.SliderFloat("Radius", ref domeRad, 100f, 2000f, "%.0f")) skySettings.Dome.Radius = domeRad;
+                var domeTint = skySettings.Dome.TintColor;
+                if (ImGui.ColorEdit3("Tint Color", ref domeTint)) skySettings.Dome.TintColor = domeTint;
+                float domeRot = skySettings.Dome.RotationY * (180f / MathF.PI);
+                if (ImGui.SliderFloat("Rotation Y", ref domeRot, 0f, 360f, "%.1f°"))
+                    skySettings.Dome.RotationY = domeRot * (MathF.PI / 180f);
+                ImGui.Separator();
+            }
+
+            // ═══ PROCEDURAL REALTIME SETTINGS ═══
+            if (skySettings.Type == SkyType.Procedural)
+            {
+                // ── Sun ──
+                if (ImGui.CollapsingHeader("☀ Sun", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    var sun = skySettings.Sun;
+                    float sunSize = sun.Size;
+                    if (ImGui.SliderFloat("Size", ref sunSize, 0.1f, 3.0f, "%.2f")) sun.Size = sunSize;
+                    float sunSoft = sun.Softness;
+                    if (ImGui.SliderFloat("Softness", ref sunSoft, 0.0f, 1.0f, "%.2f")) sun.Softness = sunSoft;
+                    var sunCol = sun.Color;
+                    if (ImGui.ColorEdit3("Color", ref sunCol)) sun.Color = sunCol;
+                    float glowInt = sun.GlowIntensity;
+                    if (ImGui.SliderFloat("Glow Intensity", ref glowInt, 0f, 3.0f, "%.2f")) sun.GlowIntensity = glowInt;
+                    ImGui.Separator();
+                }
+
+                // ── Atmospheric Scattering ──
+                if (ImGui.CollapsingHeader("🌤 Atmospheric Scattering"))
+                {
+                    var atmo = skySettings.Scattering;
+                    float atmoInt = atmo.Intensity;
+                    if (ImGui.SliderFloat("Intensity", ref atmoInt, 0f, 3.0f, "%.2f")) atmo.Intensity = atmoInt;
+                    float rayleigh = atmo.Rayleigh;
+                    if (ImGui.SliderFloat("Rayleigh", ref rayleigh, 0f, 3.0f, "%.2f")) atmo.Rayleigh = rayleigh;
+                    var rayCol = atmo.RayColor;
+                    if (ImGui.ColorEdit3("Ray Color", ref rayCol)) atmo.RayColor = rayCol;
+                    float rayH = atmo.RayHeight;
+                    if (ImGui.SliderFloat("Ray Height", ref rayH, 1f, 20f, "%.1f")) atmo.RayHeight = rayH;
+                    float mie = atmo.Mie;
+                    if (ImGui.SliderFloat("Mie", ref mie, 0f, 3.0f, "%.2f")) atmo.Mie = mie;
+                    var mieCol = atmo.MieColor;
+                    if (ImGui.ColorEdit3("Mie Color", ref mieCol)) atmo.MieColor = mieCol;
+                    float mieFoc = atmo.MieFocus;
+                    if (ImGui.SliderFloat("Mie Focus", ref mieFoc, 0f, 0.99f, "%.3f")) atmo.MieFocus = mieFoc;
+                    float mieH = atmo.MieHeight;
+                    if (ImGui.SliderFloat("Mie Height", ref mieH, 0.1f, 5f, "%.2f")) atmo.MieHeight = mieH;
+                    ImGui.Separator();
+                }
+
+                // ── Volumetric Clouds ──
+                if (ImGui.CollapsingHeader("☁ Volumetric Clouds"))
+                {
+                    var vClouds = skySettings.Clouds;
+                    bool vCloudsEn = vClouds.Enabled;
+                    if (ImGui.Checkbox("Enabled", ref vCloudsEn)) vClouds.Enabled = vCloudsEn;
+                    float vCDens = vClouds.Density;
+                    if (ImGui.SliderFloat("Density", ref vCDens, 0f, 1f, "%.2f")) vClouds.Density = vCDens;
+                    float vCAlt = vClouds.Altitude;
+                    if (ImGui.SliderFloat("Altitude", ref vCAlt, 0.5f, 10f, "%.1f")) vClouds.Altitude = vCAlt;
+                    float vCSpd = vClouds.Speed;
+                    if (ImGui.SliderFloat("Speed", ref vCSpd, 0f, 0.2f, "%.3f")) vClouds.Speed = vCSpd;
+                    float vCDet = vClouds.Detail;
+                    if (ImGui.SliderFloat("Detail", ref vCDet, 0f, 1f, "%.2f")) vClouds.Detail = vCDet;
+                    float vCEro = vClouds.Erosion;
+                    if (ImGui.SliderFloat("Erosion", ref vCEro, 0f, 1f, "%.2f")) vClouds.Erosion = vCEro;
+                    float vCShd = vClouds.ShadowStrength;
+                    if (ImGui.SliderFloat("Shadow Strength", ref vCShd, 0f, 1f, "%.2f")) vClouds.ShadowStrength = vCShd;
+                    float vCSca = vClouds.Scatter;
+                    if (ImGui.SliderFloat("Scatter", ref vCSca, 0f, 1f, "%.2f")) vClouds.Scatter = vCSca;
+                    var vCTint = vClouds.TintColor;
+                    if (ImGui.ColorEdit3("Tint Color", ref vCTint)) vClouds.TintColor = vCTint;
+                    float vCCir = vClouds.CirrusStrength;
+                    if (ImGui.SliderFloat("Cirrus Strength", ref vCCir, 0f, 1f, "%.2f")) vClouds.CirrusStrength = vCCir;
+                    ImGui.Separator();
+                }
+
+                // ── Moon ──
+                if (ImGui.CollapsingHeader("🌙 Moon"))
+                {
+                    var moon = skySettings.Moon;
+                    float mBright = moon.Brightness;
+                    if (ImGui.SliderFloat("Brightness", ref mBright, 0f, 3f, "%.2f")) moon.Brightness = mBright;
+                    float mSize = moon.Size;
+                    if (ImGui.SliderFloat("Size", ref mSize, 0.1f, 3f, "%.2f")) moon.Size = mSize;
+                    float mGlow = moon.GlowRadius;
+                    if (ImGui.SliderFloat("Glow Radius", ref mGlow, 0f, 3f, "%.2f")) moon.GlowRadius = mGlow;
+                    var mTint = moon.TintColor;
+                    if (ImGui.ColorEdit3("Tint Color", ref mTint)) moon.TintColor = mTint;
+                    float mPhase = moon.PhaseOffset;
+                    if (ImGui.SliderFloat("Phase Offset", ref mPhase, 0f, 1f, "%.2f")) moon.PhaseOffset = mPhase;
+                    string mTexPath = moon.TexturePath;
+                    ImGui.Text("Texture:");
+                    ImGui.TextDisabled("Drag & drop from Asset Browser ➜");
+                    ImGui.SetNextItemWidth(-30);
+                    if (ImGui.InputText("##moon_tex", ref mTexPath, 512)) moon.TexturePath = mTexPath;
+                    if (ImGui.BeginDragDropTarget())
+                    {
+                        var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                        if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                        { moon.TexturePath = AssetBrowserPanel._dragImagePath; AssetBrowserPanel._dragImagePath = null; }
+                        ImGui.EndDragDropTarget();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("X##mt", new Vector2(22, 0))) moon.TexturePath = "";
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear moon texture");
+                    ImGui.Separator();
+                }
+
+                // ── Stars ──
+                if (ImGui.CollapsingHeader("✨ Stars"))
+                {
+                    var stars = skySettings.Stars;
+                    bool starsEn = stars.Enabled;
+                    if (ImGui.Checkbox("Enabled", ref starsEn)) stars.Enabled = starsEn;
+                    float sBright = stars.Brightness;
+                    if (ImGui.SliderFloat("Brightness", ref sBright, 0f, 3f, "%.2f")) stars.Brightness = sBright;
+                    float sDens = stars.Density;
+                    if (ImGui.SliderFloat("Density", ref sDens, 0f, 3f, "%.2f")) stars.Density = sDens;
+                    float sTw = stars.TwinkleSpeed;
+                    if (ImGui.SliderFloat("Twinkle Speed", ref sTw, 0f, 5f, "%.2f")) stars.TwinkleSpeed = sTw;
+                    var sCol = stars.Color;
+                    if (ImGui.ColorEdit3("Color", ref sCol)) stars.Color = sCol;
+                    ImGui.Separator();
+                }
+
+                // ── Eclipses ──
+                if (ImGui.CollapsingHeader("🌑 Eclipses"))
+                {
+                    var ecl = skySettings.Eclipses;
+                    float solEcl = ecl.SolarEclipse;
+                    if (ImGui.SliderFloat("Solar Eclipse", ref solEcl, 0f, 1f, "%.2f")) ecl.SolarEclipse = solEcl;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("0 = no eclipse, 1 = total solar eclipse");
+                    float lunEcl = ecl.LunarEclipse;
+                    if (ImGui.SliderFloat("Lunar Eclipse", ref lunEcl, 0f, 1f, "%.2f")) ecl.LunarEclipse = lunEcl;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("0 = no eclipse, 1 = total lunar eclipse (blood moon)");
+                    var eclGlow = ecl.GlowColor;
+                    if (ImGui.ColorEdit3("Glow Color", ref eclGlow)) ecl.GlowColor = eclGlow;
+                    ImGui.Separator();
+                }
+
+                // ── Sun Rays ──
+                if (ImGui.CollapsingHeader("☀ Sun Rays"))
+                {
+                    var sr = skySettings.SunRays;
+                    bool srEn = sr.Enabled;
+                    if (ImGui.Checkbox("Enabled", ref srEn)) sr.Enabled = srEn;
+                    float srInt = sr.Intensity;
+                    if (ImGui.SliderFloat("Intensity", ref srInt, 0f, 1f, "%.2f")) sr.Intensity = srInt;
+                    int srCount = sr.RayCount;
+                    if (ImGui.SliderInt("Ray Count", ref srCount, 3, 32)) sr.RayCount = srCount;
+                    float srLen = sr.Length;
+                    if (ImGui.SliderFloat("Length", ref srLen, 0f, 3f, "%.2f")) sr.Length = srLen;
+                    var srCol = sr.Color;
+                    if (ImGui.ColorEdit3("Color", ref srCol)) sr.Color = srCol;
+                    ImGui.Separator();
+                }
+            }
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),
-                "Skybox renders in the viewport while this object exists in the scene.");
+                "Sky renders in the viewport while this object exists in the scene.");
             ImGui.Separator();
         }
 
