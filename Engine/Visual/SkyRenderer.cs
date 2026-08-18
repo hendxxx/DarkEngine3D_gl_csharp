@@ -230,6 +230,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.BindTexture(Const.GL_TEXTURE_2D, texID);
                 GL.TexParameterf(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, Const.GL_CLAMP_TO_EDGE);
                 GL.TexParameterf(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
                 GL.Uniform1i(texLoc, unit);
                 GL.Uniform1f(hasLoc, 1.0f);
             }
@@ -282,12 +284,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform3f(_sbFallbackColorLoc, lights.FogColor.X, lights.FogColor.Y, lights.FogColor.Z);
 
             var faces = settings.SkyboxFaces;
-            BindFaceTexture(faces.Right, 0, _sbRightLoc, _sbHasRightLoc, _skyboxShader);
-            BindFaceTexture(faces.Left, 1, _sbLeftLoc, _sbHasLeftLoc, _skyboxShader);
+            // Remap face textures to match the expected orientation:
+            // Right(+X)←Front, Left(-X)←Back, Front(+Z)←Right, Back(-Z)←Left
+            BindFaceTexture(faces.Front, 0, _sbRightLoc, _sbHasRightLoc, _skyboxShader);
+            BindFaceTexture(faces.Back, 1, _sbLeftLoc, _sbHasLeftLoc, _skyboxShader);
             BindFaceTexture(faces.Top, 2, _sbTopLoc, _sbHasTopLoc, _skyboxShader);
             BindFaceTexture(faces.Bottom, 3, _sbBotLoc, _sbHasBotLoc, _skyboxShader);
-            BindFaceTexture(faces.Front, 4, _sbFrontLoc, _sbHasFrontLoc, _skyboxShader);
-            BindFaceTexture(faces.Back, 5, _sbBackLoc, _sbHasBackLoc, _skyboxShader);
+            BindFaceTexture(faces.Right, 4, _sbFrontLoc, _sbHasFrontLoc, _skyboxShader);
+            BindFaceTexture(faces.Left, 5, _sbBackLoc, _sbHasBackLoc, _skyboxShader);
 
             GL.DepthMask(false);
             GL.Enable(Const.GL_DEPTH_TEST);
