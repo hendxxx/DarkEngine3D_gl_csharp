@@ -62,6 +62,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // ── Time accumulator ──
         private float _totalTime = 0f;
 
+        // ── Diagnostic flags ──
+        private bool _domeShaderLogged = false;
+
         // ── Weather override (from editor sky object) ──
         public float? WeatherOverride = null;
 
@@ -484,6 +487,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             BindFaceTexture(faces.Right, 4, _sbFrontLoc, _sbHasFrontLoc, _skyboxShader);
             BindFaceTexture(faces.Left, 5, _sbBackLoc, _sbHasBackLoc, _skyboxShader);
 
+            GL.Disable(Const.GL_CULL_FACE);
             GL.DepthMask(false);
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.DepthFunc(Const.GL_LEQUAL);
@@ -493,6 +497,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.DepthMask(true);
             GL.DepthFunc(Const.GL_LESS);
+            GL.Enable(Const.GL_CULL_FACE);
         }
 
         /// <summary>
@@ -500,6 +505,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// </summary>
         private void DrawDome(Camera camera, Lights lights, SkySettings settings)
         {
+            if (_domeShader == 0)
+            {
+                if (!_domeShaderLogged)
+                {
+                    Console.WriteLine("[SkyRenderer] DrawDome skipped: dome shader is invalid (compilation/link failed). Check console for [SHADER COMPILE ERROR] or [PROGRAM LINK ERROR].");
+                    _domeShaderLogged = true;
+                }
+                return;
+            }
+
             GL.UseProgram(_domeShader);
 
             Matrix4x4 view = camera.GetViewMatrix();
@@ -555,6 +570,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 GL.Uniform1f(_domeHasTexLoc, 0.0f);
             }
 
+            // Disable face culling — dome is a cube viewed from inside, all faces
+            // are visible. Letting GL_BACK culling on would hide faces in solid mode.
+            GL.Disable(Const.GL_CULL_FACE);
+
             GL.DepthMask(false);
             GL.Enable(Const.GL_DEPTH_TEST);
             GL.DepthFunc(Const.GL_LEQUAL);
@@ -564,6 +583,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.DepthMask(true);
             GL.DepthFunc(Const.GL_LESS);
+            GL.Enable(Const.GL_CULL_FACE);
         }
 
         /// <summary>

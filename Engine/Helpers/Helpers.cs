@@ -251,6 +251,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             {
                 string log = GL.GetShaderInfoLog(shader);
                 Console.WriteLine($"[SHADER COMPILE ERROR] {name}\n{log}");
+                throw new Exception($"Shader compilation failed: {name}\n{log}");
             }
         }
 
@@ -267,6 +268,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             {
                 string log = GL.GetProgramInfoLog(program);
                 Console.WriteLine($"[PROGRAM LINK ERROR] {name}\n{log}");
+                throw new Exception($"Program link failed: {name}\n{log}");
             }
         }
 
