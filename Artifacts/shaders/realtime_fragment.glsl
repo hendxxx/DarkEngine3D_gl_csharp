@@ -45,6 +45,7 @@ uniform float moonSize;
 uniform float moonGlowRadius;
 uniform vec3  moonTintColor;
 uniform float moonPhaseOffset;
+uniform float moonRotationSpeed;
 
 // ── Stars ──
 uniform float starBrightness;
@@ -562,6 +563,16 @@ void main()
         if (localR <= 1.02)
         {
             vec2 finalMoonUV = (moonUV / moonAngularRadius) * 0.5 + vec2(0.5);
+            // Apply moon rotation (rotate UV around center)
+            if (abs(moonRotationSpeed) > 0.001) {
+                float rotAngle = time.x * moonRotationSpeed;
+                vec2 rotCenter = vec2(0.5, 0.5);
+                vec2 rotUV = finalMoonUV - rotCenter;
+                float cosR = cos(rotAngle);
+                float sinR = sin(rotAngle);
+                rotUV = vec2(rotUV.x * cosR - rotUV.y * sinR, rotUV.x * sinR + rotUV.y * cosR);
+                finalMoonUV = rotUV + rotCenter;
+            }
             vec3 textureMoonColor = texture(moonTex, finalMoonUV).rgb;
 
             float brightness = dot(textureMoonColor, vec3(0.2126, 0.7152, 0.0722));

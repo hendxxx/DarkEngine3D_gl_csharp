@@ -1967,6 +1967,9 @@ public class InspectorPanel
                     if (ImGui.ColorEdit3("Tint Color##moon", ref mTint)) moon.TintColor = mTint;
                     float mPhase = moon.PhaseOffset;
                     if (ImGui.SliderFloat("Phase Offset##moon", ref mPhase, 0f, 1f, "%.2f")) moon.PhaseOffset = mPhase;
+                    float mRotSpd = moon.RotationSpeed;
+                    if (ImGui.SliderFloat("Rotation Speed##moon", ref mRotSpd, -5f, 5f, "%.2f rad/s")) moon.RotationSpeed = mRotSpd;
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Moon texture rotation speed in radians/sec (0 = no rotation)");
                     string mTexPath = moon.TexturePath;
                     ImGui.Text("Texture:");
                     ImGui.TextDisabled("Drag & drop from Asset Browser ➜");

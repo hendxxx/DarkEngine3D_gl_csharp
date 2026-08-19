@@ -47,7 +47,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private int _rtCirrusLoc, _rtCloudsEnabledLoc;
         // Moon
         private int _rtMoonTexLoc, _rtMoonBrightLoc, _rtMoonSizeLoc, _rtMoonGlowLoc;
-        private int _rtMoonTintLoc, _rtMoonPhaseLoc;
+        private int _rtMoonTintLoc, _rtMoonPhaseLoc, _rtMoonRotSpeedLoc;
         // Stars
         private int _rtStarBrightLoc, _rtStarDensLoc, _rtStarTwinkleLoc, _rtStarColorLoc, _rtStarsEnabledLoc;
         // Eclipses
@@ -180,6 +180,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _rtMoonGlowLoc = GL.GetUniformLocation(_realtimeShader, "moonGlowRadius");
             _rtMoonTintLoc = GL.GetUniformLocation(_realtimeShader, "moonTintColor");
             _rtMoonPhaseLoc = GL.GetUniformLocation(_realtimeShader, "moonPhaseOffset");
+            _rtMoonRotSpeedLoc = GL.GetUniformLocation(_realtimeShader, "moonRotationSpeed");
 
             // Stars
             _rtStarBrightLoc = GL.GetUniformLocation(_realtimeShader, "starBrightness");
@@ -518,10 +519,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (settings.Dome.AutoRotate)
             {
                 float speed = settings.Dome.RotateSpeed;
+                // Apply speed variation: blend between constant speed and a sinusoidal
+                // oscillation around the base speed, creating a natural breathing effect.
+                float variation = Math.Clamp(settings.Dome.RotateVariation, 0f, 1f);
+                float effectiveSpeed = speed * (1f + MathF.Sin(_totalTime * 0.37f) * variation * 0.5f
+                                               + MathF.Sin(_totalTime * 0.73f) * variation * 0.3f);
+
                 if (settings.Dome.PingPong)
                 {
                     float amp = settings.Dome.PingPongAmplitude * (MathF.PI / 180f);
-                    float pingPong = MathF.Sin(_totalTime * speed * 0.02f) * amp;
+                    float pingPong = MathF.Sin(_totalTime * effectiveSpeed * 0.02f) * amp;
                     if (settings.Dome.RotateAxis == 0 || settings.Dome.RotateAxis == 2)
                         rotY += pingPong;
                     if (settings.Dome.RotateAxis == 1 || settings.Dome.RotateAxis == 2)
@@ -529,7 +536,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
                 else
                 {
-                    float angle = _totalTime * speed * (MathF.PI / 180f);
+                    float angle = _totalTime * effectiveSpeed * (MathF.PI / 180f);
                     if (settings.Dome.RotateAxis == 0 || settings.Dome.RotateAxis == 2)
                         rotY += angle;
                     if (settings.Dome.RotateAxis == 1 || settings.Dome.RotateAxis == 2)
@@ -652,6 +659,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform1f(_rtMoonGlowLoc, moon.GlowRadius);
             GL.Uniform3f(_rtMoonTintLoc, moon.TintColor.X, moon.TintColor.Y, moon.TintColor.Z);
             GL.Uniform1f(_rtMoonPhaseLoc, moon.PhaseOffset);
+            GL.Uniform1f(_rtMoonRotSpeedLoc, moon.RotationSpeed);
 
             // Stars
             var stars = settings.Stars;
