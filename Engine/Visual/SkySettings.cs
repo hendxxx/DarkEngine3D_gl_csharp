@@ -98,6 +98,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float CirrusStrength { get; set; } = 0.1f;
         /// <summary>Enable/disable procedural volumetric clouds. Default true.</summary>
         public bool Enabled { get; set; } = true;
+        /// <summary>Bottom of cloud slab (world Y). Default 40.</summary>
+        public float CloudBaseY { get; set; } = 40f;
+        /// <summary>Top of cloud slab (world Y). Default 80.</summary>
+        public float CloudTopY { get; set; } = 80f;
+        /// <summary>Ray march steps through cloud slab. Default 24.</summary>
+        public int MarchSteps { get; set; } = 24;
+        /// <summary>Light march steps for cloud shadows. Default 3.</summary>
+        public int LightSteps { get; set; } = 3;
 
         public VolumetricCloudSettings Clone() => new()
         {
@@ -110,7 +118,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Scatter = Scatter,
             TintColor = TintColor,
             CirrusStrength = CirrusStrength,
-            Enabled = Enabled
+            Enabled = Enabled,
+            CloudBaseY = CloudBaseY,
+            CloudTopY = CloudTopY,
+            MarchSteps = MarchSteps,
+            LightSteps = LightSteps
         };
     }
 

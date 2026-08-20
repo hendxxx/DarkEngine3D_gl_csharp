@@ -230,10 +230,13 @@ public unsafe class AssetBrowserPanel
             isSelected ? ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.6f, 1f, 1f))
                        : ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.2f, 0.3f, 0.5f)));
 
-        // ── Label below thumbnail ──
+        // ── Label below thumbnail (truncate to fit thumbnail width) ──
         ImGui.SetCursorScreenPos(new Vector2(cursor.X, cursor.Y + _thumbnailSize.Y + 4));
-        var label = name.Length > 16 ? name[..13] + "..." : name;
+        // Estimate max chars that fit: ~7px per char at default font, clamp to thumbnail width
+        int maxChars = Math.Max(4, (int)(_thumbnailSize.X / 7f));
+        var label = name.Length > maxChars ? name[..Math.Min(maxChars - 3, name.Length)] + "..." : name;
         ImGui.TextUnformatted(label);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(name);
 
         // ── Invisible button for click detection ──
         ImGui.SetCursorScreenPos(cursor);

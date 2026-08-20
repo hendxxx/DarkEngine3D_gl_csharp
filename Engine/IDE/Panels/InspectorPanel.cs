@@ -1951,6 +1951,15 @@ public class InspectorPanel
                     float vCCir = vClouds.CirrusStrength;
                     if (ImGui.SliderFloat("Cirrus Strength##clouds", ref vCCir, 0f, 1f, "%.2f")) vClouds.CirrusStrength = vCCir;
                     ImGui.Separator();
+                    // Cloud slab (volumetric ray march)
+                    float vBaseY = vClouds.CloudBaseY;
+                    if (ImGui.SliderFloat("Cloud Base Y##clouds", ref vBaseY, 10f, 150f, "%.1f")) vClouds.CloudBaseY = vBaseY;
+                    float vTopY = vClouds.CloudTopY;
+                    if (ImGui.SliderFloat("Cloud Top Y##clouds", ref vTopY, 20f, 300f, "%.1f")) vClouds.CloudTopY = vTopY;
+                    int vSteps = vClouds.MarchSteps;
+                    if (ImGui.SliderInt("March Steps##clouds", ref vSteps, 4, 64)) vClouds.MarchSteps = vSteps;
+                    int vLSteps = vClouds.LightSteps;
+                    if (ImGui.SliderInt("Light Steps##clouds", ref vLSteps, 1, 8)) vClouds.LightSteps = vLSteps;
                 }
 
                 // ── Moon ──
