@@ -18,6 +18,7 @@ public static class SceneAssetSerializer
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new Helpers.Vector3JsonConverter() },
     };
 
     /// <summary>Expose JsonOptions for use by other components (e.g., SceneManagerPanel Save).</summary>

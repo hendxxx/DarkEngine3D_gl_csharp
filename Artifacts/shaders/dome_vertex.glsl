@@ -14,28 +14,35 @@ uniform float time;
 
 void main()
 {
+    // Mesh stays static — only texture coordinates rotate.
+    // This makes the texture visibly pan across the dome surface.
+    vec3 meshPos = aPos;
+    WorldPos = meshPos * domeRadius;
+
+    // Rotate texture coordinates (UV panning)
+    vec3 texDir = meshPos;
+
     // Apply Y rotation (horizontal pan)
     float cosR = cos(domeRotationY);
     float sinR = sin(domeRotationY);
-    vec3 rotated = vec3(
-        aPos.x * cosR + aPos.z * sinR,
-        aPos.y,
-        -aPos.x * sinR + aPos.z * cosR
+    texDir = vec3(
+        texDir.x * cosR + texDir.z * sinR,
+        texDir.y,
+        -texDir.x * sinR + texDir.z * cosR
     );
 
     // Apply X rotation (vertical tilt) if non-zero
     if (abs(domeRotationX) > 0.0001) {
         float cosX = cos(domeRotationX);
         float sinX = sin(domeRotationX);
-        rotated = vec3(
-            rotated.x,
-            rotated.y * cosX - rotated.z * sinX,
-            rotated.y * sinX + rotated.z * cosX
+        texDir = vec3(
+            texDir.x,
+            texDir.y * cosX - texDir.z * sinX,
+            texDir.y * sinX + texDir.z * cosX
         );
     }
 
-    TexCoords = normalize(rotated);
-    WorldPos = rotated * domeRadius;
+    TexCoords = normalize(texDir);
 
     vec4 pos = projection * view * vec4(WorldPos, 1.0);
     gl_Position = pos.xyww;
