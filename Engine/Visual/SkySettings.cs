@@ -47,14 +47,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>Rayleigh scattering strength. Default 1.0.</summary>
         public float Rayleigh { get; set; } = 1.0f;
         /// <summary>Rayleigh color tint. Default white.</summary>
-        public Vector3 RayColor { get; set; } = new(1.0f, 1.0f, 1.0f);
+        public Vector3 RayColor { get; set; } = new(0.3f, 0.5f, 1.0f);
         /// <summary>Rayleigh height scale. Default 8.0.</summary>
         public float RayHeight { get; set; } = 8.0f;
 
         /// <summary>Mie scattering strength. Default 1.0.</summary>
         public float Mie { get; set; } = 1.0f;
         /// <summary>Mie color tint. Default white.</summary>
-        public Vector3 MieColor { get; set; } = new(1.0f, 1.0f, 1.0f);
+        public Vector3 MieColor { get; set; } = new(1.0f, 0.7f, 0.5f);
         /// <summary>Mie directionality (asymmetry factor g). Default 0.76.</summary>
         public float MieFocus { get; set; } = 0.76f;
         /// <summary>Mie height scale. Default 1.2.</summary>
@@ -346,7 +346,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Sun.GlowIntensity = 0.5f + rng.NextSingle() * 1.5f;
 
             // Scattering
-            Scattering.Intensity = 0.5f + rng.NextSingle() * 1.5f;
+            Scattering.Intensity = 2f + rng.NextSingle() * 18f;
             Scattering.Rayleigh = 0.3f + rng.NextSingle() * 1.7f;
             Scattering.RayColor = new Vector3(
                 rng.NextSingle() * 0.4f,

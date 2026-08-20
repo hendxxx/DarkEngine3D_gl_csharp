@@ -122,10 +122,11 @@ vec3 atmosphericScattering(vec3 viewDir, vec3 sDir, float sunInt)
     vec3 trans = exp(-tau);
 
     vec3 Lr = betaR * phaseR * sunInt * trans;
-    vec3 Lm = vec3(betaM) * phaseM * sunInt * trans;
+    vec3 Lm = mieColor * betaM * phaseM * sunInt * trans;
 
     vec3 sky = Lr + Lm;
-    sky *= scatteringIntensity;
+    // Scale from physical radiance (~1e-5) to visible range before Reinhard
+    sky *= scatteringIntensity * 40000.0;
     sky = sky / (sky + vec3(1.0));
     return pow(sky, vec3(1.0 / 1.1));
 }
@@ -274,7 +275,7 @@ vec3 GetSkyColorAtDirection(vec3 dir)
     vec3 sunsetBlend = mix(sunsetColor * 0.6, noonSky, tSunset);
     vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
     float up = max(dir.y, 0.0);
-    return mix(fogColor, mix(atmosphereSky, horizonTint, 0.35), up);
+    return mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.12), up * 0.85 + 0.15);
 }
 
 // ═══════════════════════════════════════════════
@@ -386,7 +387,8 @@ void main()
     float bolt = boltShape * lightning;
     float boltFlash = bolt * 1.0;
 
-    vec3 skyBase = mix(fogColor, mix(atmosphereSky, horizonTint, 0.35), up);
+    // Atmosphere dominates the sky like the reference — reduced fog/horizon tint dilution
+    vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.12), up * 0.85 + 0.15);
     skyBase += vec3(1.0, 1.0, 1.2) * lightning * 3.0;
 
     // Weather
@@ -504,12 +506,15 @@ void main()
 
         float sunVisibility = 1.0 - smoothstep(0.45, 0.75, weatherMode);
 
-        // Sun disc with softness control
-        sunDiscMask = smoothstep(sunAngularRadius * sunSoftness, sunAngularRadius * 0.75, d);
-        sunDiscMask = 1.0 - sunDiscMask;
+        // Sun disc with softness control (0=soft, 1=hard edge)
+        float innerEdge = sunAngularRadius * max(1.0 - sunSoftness, 0.0);
+        sunDiscMask = 1.0 - smoothstep(innerEdge, sunAngularRadius, d);
 
-        sunGlowMask  = exp(-d * d * 250.0);
-        sunBloomMask = exp(-d * d * 500.0);
+        // Sun glow/bloom scale with sunSize so size changes are visually apparent
+        float sunGlowFalloff = 250.0 / max(sunSize * sunSize, 0.01);
+        float sunBloomFalloff = 500.0 / max(sunSize * sunSize, 0.01);
+        sunGlowMask  = exp(-d * d * sunGlowFalloff);
+        sunBloomMask = exp(-d * d * sunBloomFalloff);
 
         sunDiscMask *= sunVisibility;
         sunGlowMask *= sunVisibility;
@@ -579,8 +584,14 @@ void main()
             float customAlpha = smoothstep(0.02, 0.1, brightness);
             float softEdgeMask = smoothstep(1.0, 0.92, localR);
 
-            vec3 litMoonColor = textureMoonColor * moonTintColor * moonBrightness * tMalam;
-            litMoonColor += moonGlow * 0.25;
+            // Moon phase: darken portion of moon based on sun-moon angle + phase offset
+            float phaseAngle = dot(normalize(lightDir), normalize(moonDir));
+            float phase = phaseAngle * 0.5 + 0.5 + moonPhaseOffset - 0.5;
+            phase = clamp(phase, 0.0, 1.0);
+            float phaseMask = smoothstep(0.0, 0.35, phase);
+
+            vec3 litMoonColor = textureMoonColor * moonTintColor * moonBrightness * tMalam * phaseMask;
+            litMoonColor += moonGlow * 0.25 * phaseMask;
 
             // Apply lunar eclipse
             litMoonColor = applyLunarEclipse(litMoonColor, md, moonAngularRadius);

@@ -1908,13 +1908,13 @@ public class InspectorPanel
                 {
                     var atmo = skySettings.Scattering;
                     float atmoInt = atmo.Intensity;
-                    if (ImGui.SliderFloat("Intensity##atmo", ref atmoInt, 0f, 3.0f, "%.2f")) atmo.Intensity = atmoInt;
+                    if (ImGui.SliderFloat("Intensity##atmo", ref atmoInt, 0f, 30f, "%.2f")) atmo.Intensity = atmoInt;
                     float rayleigh = atmo.Rayleigh;
-                    if (ImGui.SliderFloat("Rayleigh##atmo", ref rayleigh, 0f, 3.0f, "%.2f")) atmo.Rayleigh = rayleigh;
+                    if (ImGui.SliderFloat("Rayleigh##atmo", ref rayleigh, 0f, 5f, "%.3f")) atmo.Rayleigh = rayleigh;
                     var rayCol = atmo.RayColor;
                     if (ImGui.ColorEdit3("Ray Color##atmo", ref rayCol)) atmo.RayColor = rayCol;
                     float rayH = atmo.RayHeight;
-                    if (ImGui.SliderFloat("Ray Height##atmo", ref rayH, 1f, 20f, "%.1f")) atmo.RayHeight = rayH;
+                    if (ImGui.SliderFloat("Ray Height##atmo", ref rayH, 0.1f, 20f, "%.3f")) atmo.RayHeight = rayH;
                     float mie = atmo.Mie;
                     if (ImGui.SliderFloat("Mie##atmo", ref mie, 0f, 3.0f, "%.2f")) atmo.Mie = mie;
                     var mieCol = atmo.MieColor;
