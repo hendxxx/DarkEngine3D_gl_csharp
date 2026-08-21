@@ -1944,6 +1944,8 @@ public class InspectorPanel
                     if (ImGui.SliderFloat("Erosion##clouds", ref vCEro, 0f, 1f, "%.2f")) vClouds.Erosion = vCEro;
                     float vCShd = vClouds.ShadowStrength;
                     if (ImGui.SliderFloat("Shadow Strength##clouds", ref vCShd, 0f, 1f, "%.2f")) vClouds.ShadowStrength = vCShd;
+                    float vCScale = vClouds.CloudScale;
+                    if (ImGui.SliderFloat("Cloud Scale##clouds", ref vCScale, 0.05f, 1.0f, "%.3f")) vClouds.CloudScale = vCScale;
                     float vCSca = vClouds.Scatter;
                     if (ImGui.SliderFloat("Scatter##clouds", ref vCSca, 0f, 1f, "%.2f")) vClouds.Scatter = vCSca;
                     var vCTint = vClouds.TintColor;

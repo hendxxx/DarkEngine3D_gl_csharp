@@ -434,6 +434,10 @@ public unsafe class EditorObject
     /// <summary>Master sky settings container for the 3 sky types.</summary>
     public SkySettings SkySettings { get; set; } = new();
 
+    /// <summary>Static reference to the active sky settings (set by the Skybox when drawing).
+    /// Used by terrain shaders to sample cloud shadows.</summary>
+    public static SkySettings? ActiveSkySettings { get; set; }
+
     // ── Internal rendering resources (lazy-init) ──
     private Object3D? _object3D;
     private uint _textureID = 0;
@@ -639,6 +643,7 @@ public unsafe class EditorObject
 
             // ── New Sky System: pass SkySettings from the editor Sky object ──
             skybox.ActiveSkySettings = skyObj?.SkySettings;
+            ActiveSkySettings = skyObj?.SkySettings; // static ref for terrain cloud shadows
         }
     }
 

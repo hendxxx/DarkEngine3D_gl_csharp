@@ -88,8 +88,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float Detail { get; set; } = 0.35f;
         /// <summary>Cloud erosion amount. Default 0.25.</summary>
         public float Erosion { get; set; } = 0.25f;
-        /// <summary>Cloud shadow strength. Default 0.65.</summary>
-        public float ShadowStrength { get; set; } = 0.65f;
+        /// <summary>Cloud shadow strength. Default 0.55.</summary>
+        public float ShadowStrength { get; set; } = 0.55f;
+        /// <summary>Cloud scale (lower = larger clouds). Default 0.25.</summary>
+        public float CloudScale { get; set; } = 0.25f;
         /// <summary>Cloud scatter (sun light through clouds). Default 0.25.</summary>
         public float Scatter { get; set; } = 0.25f;
         /// <summary>Cloud tint color. Default white.</summary>
@@ -107,6 +109,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Detail = Detail,
             Erosion = Erosion,
             ShadowStrength = ShadowStrength,
+            CloudScale = CloudScale,
             Scatter = Scatter,
             TintColor = TintColor,
             CirrusStrength = CirrusStrength,

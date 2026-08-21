@@ -66,6 +66,70 @@ float calcFogFactor(float dist, vec3 worldPos) {
 uniform vec3 realSunDir;   // arah matahari asli dari CPU
 uniform vec3 shadowDir;    // arah shadow (sun/moon blend)
 
+// ── CLOUD SHADOW (project FragPos up to cloud layer, sample density) ──
+uniform float cloudAltitude;
+uniform float cloudSpeed;
+uniform float cloudDetail;
+uniform float cloudErosion;
+uniform float cloudShadowStrength;
+uniform float cloudsEnabled;
+uniform float cloudScale;
+uniform float weatherMode;
+uniform float timeCloud;
+
+float cHash(float n) { return fract(sin(n) * 43758.5453123); }
+
+float cNoise(vec3 x) {
+    vec3 p = floor(x);
+    vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    float n = p.x + p.y * 57.0 + 113.0 * p.z;
+    return mix(
+        mix(mix(cHash(n + 0.0), cHash(n + 1.0), f.x),
+            mix(cHash(n + 57.0), cHash(n + 58.0), f.x), f.y),
+        mix(mix(cHash(n + 113.0), cHash(n + 114.0), f.x),
+            mix(cHash(n + 170.0), cHash(n + 171.0), f.x), f.y), f.z
+    );
+}
+
+float cFbm(vec3 p) {
+    float f = 0.0;
+    float w = 0.5;
+    for (int i = 0; i < 5; i++) {
+        f += w * cNoise(p);
+        p *= 2.0;
+        w *= 0.5;
+    }
+    return f;
+}
+
+// Returns 0..1 shadow factor from clouds (0 = fully shadowed, 1 = fully lit)
+// Must match the sky shader's cloud noise sampling EXACTLY.
+float cloudShadow(vec3 worldPos) {
+    if (cloudsEnabled < 0.5) return 1.0;
+    // Camera-relative position (sky shader uses viewDir*distToPlane from camera)
+    vec3 cp = worldPos - viewPos;
+    cp.y = cloudAltitude;
+    cp.xz *= cloudScale;
+    cp.x += timeCloud * cloudSpeed;
+    cp.z += timeCloud * cloudSpeed * 0.34;
+    // Warp (must match sky shader exactly)
+    vec3 warp = vec3(cFbm(cp * 0.9), cFbm(cp * 1.3), cFbm(cp * 0.7));
+    cp += warp * 0.35;
+    // Weather-dependent thresholds (must match sky shader)
+    float densityBoost = mix(0.55, 1.65, weatherMode);
+    float cutMin = mix(0.18, 0.05, weatherMode);
+    float cutMax = mix(0.32, 0.20, weatherMode);
+    float base = cFbm(cp * 1.25);
+    float detailN = cFbm(cp * 3.5);
+    float density = mix(base, detailN, cloudDetail) * densityBoost;
+    float erosion = cFbm(cp * 2.0) * cloudErosion;
+    density = smoothstep(cutMin * 0.55, cutMax * 1.45, density - erosion * 0.25);
+    // Beer-Lambert shadow from cloud density
+    float shadow = exp(-density * cloudShadowStrength * 5.0);
+    return max(shadow, 0.05);
+}
+
 // ── LOCAL LIGHTS (Point / Spot from editor Light markers) ──
 // The sun (Direct) stays the global directional light; every Point/Spot marker
 // adds its own colored light with distance falloff + spot cone.
@@ -531,6 +595,10 @@ void main() {
         shadow = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
         cascadeIndex = 2;
     }
+
+    // ── Cloud shadow (project up to cloud layer, sample density) ──
+    float cShadow = cloudShadow(FragPos);
+    shadow *= cShadow;
 
     // FIX: shadowMask harus pakai shadowLightDir
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, shadowLightDir));

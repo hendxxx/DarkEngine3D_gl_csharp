@@ -34,6 +34,7 @@ uniform float cloudSpeed;
 uniform float cloudDetail;
 uniform float cloudErosion;
 uniform float cloudShadowStrength;
+uniform float cloudScale;
 uniform float cloudScatter;
 uniform vec3  cloudTintColor;
 uniform float cirrusStrength;
@@ -511,7 +512,7 @@ void main()
         vec3 cloudPos = viewDir * distToPlane;
 
         vec3 p = cloudPos;
-        p.xz *= 0.42;
+        p.xz *= cloudScale;
         p.x += time.x * cloudSpeed;
         p.z += time.x * cloudSpeed * 0.34;
 
@@ -531,11 +532,47 @@ void main()
 
         float horizonFade = smoothstep(0.0, 0.22, viewDir.y);
 
-        float shadow = fbm(p * 0.55);
-        shadow = smoothstep(0.25, 0.85, shadow);
-        shadow = mix(1.0, shadow, cloudShadowStrength);
-        shadow = max(shadow, 0.35);
-
+        // ── Volumetric self-shadowing (light march toward sun) ──
+        // March from cloud point toward sun on the cloud plane, accumulate density
+        float shadowAccum = 0.0;
+        float shadowStepLen = 0.35; // step size in cloud-space (p.xz already scaled by 0.42)
+        vec3 lightMarchPos = p;
+        // Project sun direction onto the cloud plane (flat layer at y=cloudAltitude)
+        // In cloud UV space, we only care about xz movement
+        float sunHorizLen = length(vec2(lightDir.x, lightDir.z));
+        vec3 lightDirCloud;
+        if (sunHorizLen > 0.01)
+        {
+            // Move along sun's horizontal projection, scaled to match the cloud coordinate space
+            lightDirCloud = vec3(lightDir.x, 0.0, lightDir.z) / sunHorizLen;
+        }
+        else
+        {
+            lightDirCloud = vec3(0.0, 0.0, 1.0); // sun directly above: no horizontal march
+        }
+        
+        for (int si = 0; si < 6; si++)
+        {
+            lightMarchPos += lightDirCloud * shadowStepLen;
+            float sDensity = fbm(lightMarchPos * 1.25);
+            float sErosion = fbm(lightMarchPos * 2.0) * cloudErosion;
+            sDensity = smoothstep(cutMin * 0.55, cutMax * 1.45, sDensity - sErosion * 0.25);
+            shadowAccum += sDensity;
+        }
+        // Beer-Lambert: light attenuates exponentially through accumulated density
+        // shadowAccum is sum of 6 density samples (0-6 range), normalize by step count
+        float normShadow = shadowAccum / 6.0; // 0..1 normalized density along light path
+        float shadow = exp(-normShadow * cloudShadowStrength * 4.0);
+        shadow = max(shadow, 0.15); // ambient minimum (prevents pitch-black undersides)
+        
+        // ── Powder effect (darkening at thick cloud regions) ──
+        float powder = 1.0 - exp(-normShadow * 3.0);
+        powder = mix(1.0, powder * 0.5 + 0.5, sunFactor); // only during day
+        
+        // ── Silver lining (bright edge when sun is behind cloud) ──
+        float edgeLight = 1.0 - density; // thinner at edges
+        float silverLining = pow(max(dot(lightDir, viewDir), 0.0), 3.0) * edgeLight * 0.3;
+        
         float scatter = max(dot(lightDir, viewDir), 0.0);
         scatter = pow(scatter, 6.0) * cloudScatter * sunFactor;
 
@@ -543,8 +580,9 @@ void main()
         lightTint = mix(lightTint, vec3(0.6, 0.7, 1.0), nightOverride);
 
         vec3 cloudLit = cloudTint;
-        cloudLit *= shadow;
+        cloudLit *= shadow * powder;
         cloudLit += lightTint * scatter * mix(0.25, 0.05, weather);
+        cloudLit += lightTint * silverLining * sunFactor; // bright silver lining
 
         // Cirrus
         vec3 pCirrus = cloudPos * 0.22;

@@ -88,6 +88,11 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _shadowMap0Loc = -1, _shadowMap1Loc = -1, _shadowMap2Loc = -1;
     private static int _lightSpace0Loc = -1, _lightSpace1Loc = -1, _lightSpace2Loc = -1;
     private static int _cascadeEnds0Loc = -1, _cascadeEnds1Loc = -1, _cascadeEnds2Loc = -1;
+    // Cloud shadow uniforms
+    private static int _cloudAltLoc = -1, _cloudSpeedLoc = -1, _cloudDetailLoc = -1;
+    private static int _cloudErosionLoc = -1, _cloudShadowStrLoc = -1, _cloudsEnabledLoc = -1;
+    private static int _cloudScaleLoc = -1, _cloudWeatherLoc = -1, _timeCloudLoc = -1;
+    private static float _cloudTimeAccum = 0f;
 
     /// <summary>True once a valid heightmap + mesh have been generated.</summary>
     public bool IsReady => _gpuReady;
@@ -728,6 +733,16 @@ public unsafe class EditorTerrainMesh : IDisposable
         _cascadeEnds0Loc = GL.GetUniformLocation(_program, "cascadeEnds[0]");
         _cascadeEnds1Loc = GL.GetUniformLocation(_program, "cascadeEnds[1]");
         _cascadeEnds2Loc = GL.GetUniformLocation(_program, "cascadeEnds[2]");
+        // Cloud shadow uniform locations
+        _cloudAltLoc = GL.GetUniformLocation(_program, "cloudAltitude");
+        _cloudSpeedLoc = GL.GetUniformLocation(_program, "cloudSpeed");
+        _cloudDetailLoc = GL.GetUniformLocation(_program, "cloudDetail");
+        _cloudErosionLoc = GL.GetUniformLocation(_program, "cloudErosion");
+        _cloudShadowStrLoc = GL.GetUniformLocation(_program, "cloudShadowStrength");
+        _cloudsEnabledLoc = GL.GetUniformLocation(_program, "cloudsEnabled");
+        _cloudScaleLoc = GL.GetUniformLocation(_program, "cloudScale");
+        _cloudWeatherLoc = GL.GetUniformLocation(_program, "weatherMode");
+        _timeCloudLoc = GL.GetUniformLocation(_program, "timeCloud");
     }
 
     /// <summary>Render the terrain mesh with the editor terrain shader. When
@@ -792,6 +807,27 @@ public unsafe class EditorTerrainMesh : IDisposable
             GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
             GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
             GL.ActiveTexture(Const.GL_TEXTURE0);
+        }
+
+        // ── Upload cloud shadow uniforms ──
+        var skyClouds = EditorObject.ActiveSkySettings?.Clouds;
+        if (skyClouds != null)
+        {
+            GL.Uniform1f(_cloudAltLoc, skyClouds.Altitude);
+            GL.Uniform1f(_cloudSpeedLoc, skyClouds.Speed);
+            GL.Uniform1f(_cloudDetailLoc, skyClouds.Detail);
+            GL.Uniform1f(_cloudErosionLoc, skyClouds.Erosion);
+            GL.Uniform1f(_cloudShadowStrLoc, skyClouds.ShadowStrength);
+            GL.Uniform1f(_cloudScaleLoc, skyClouds.CloudScale);
+            GL.Uniform1f(_cloudsEnabledLoc, skyClouds.Enabled ? 1f : 0f);
+            float weatherVal = Inputs.Keyboard.GetCurrentWeather();
+            GL.Uniform1f(_cloudWeatherLoc, weatherVal);
+            _cloudTimeAccum += 0.016f; // approximate 60fps increment
+            GL.Uniform1f(_timeCloudLoc, _cloudTimeAccum);
+        }
+        else
+        {
+            GL.Uniform1f(_cloudsEnabledLoc, 0f);
         }
 
         float heightScale = Math.Max(1f, owner.TerrainHeightScale);
