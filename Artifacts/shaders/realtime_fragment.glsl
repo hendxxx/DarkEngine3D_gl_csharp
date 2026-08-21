@@ -1,4 +1,5 @@
 #version 400 core
+#define PI 3.14159265
 out vec4 FragColor;
 
 in vec3 TexCoords;
@@ -98,128 +99,139 @@ float fbm(vec3 p)
 }
 
 // ═══════════════════════════════════════════════
-// ATMOSPHERIC SCATTERING
-// Based on Kyle Kern / scratchapixel.com / glsl-atmosphere
-// Real-scale planet with ray-sphere intersection + dual ray march
+// ═══════════════════════════════════════════════
+// ATMOSPHERIC SCATTERING — AAA Quality
+// Based on rhept.org analytical formula
+// Normalized coefficients, no ray march needed
 // ═══════════════════════════════════════════════
 
-// Ray-sphere intersection
-vec2 rsi(vec3 r0, vec3 rd, float sr)
-{
-    float a = dot(rd, rd);
-    float b = 2.0 * dot(rd, r0);
-    float c = dot(r0, r0) - (sr * sr);
-    float d = (b * b) - 4.0 * a * c;
-    if (d < 0.0) return vec2(1e5, -1e5);
-    return vec2(-b - sqrt(d), -b + sqrt(d)) / (2.0 * a);
+
+// Rayleigh phase function
+float rayleighPhase(float cosTheta) {
+    return 0.06 * (1.0 + cosTheta * cosTheta);
+}
+
+// Mie phase function (Henyey-Greenstein)
+float miePhase(float cosTheta, float g) {
+    float g2 = g * g;
+    float denom = 1.0 + g2 - 2.0 * g * cosTheta;
+    denom = max(denom, 0.0001);
+    return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
+}
+
+// Sun disc glow
+float sunDisc(float cosTheta) {
+    float sun_w = 0.0002;
+    float phase = sun_w / (1.0 + sun_w - cosTheta);
+    return 4.0 * phase * phase;
 }
 
 vec3 atmosphericScattering(vec3 viewDir, vec3 sDir, float sunInt)
 {
-    const float PI = 3.14159265;
-    const int iSteps = 16;
-    const int jSteps = 16;
-
-    // ── Planet geometry ──
-    float rPlanet = 6372.0;
-    float rAtmo   = 6472.0;
-
-    // Scale heights
-    float iRayleighHeight = max(rayleighHeight, 0.1);
-    float iMieHeight      = max(mieHeight, 0.01);
-
-    // Scattering coefficients
-    vec3 rayleighSCoeff = rayleighColor * rayleighStrength * vec3(5.5e-3, 13.0e-3, 22.4e-3);
-    float mieSCoeff = mieStrength * 21e-3;
-    float g = clamp(mieFocus, -0.999, 0.999);
-
-    // Camera on planet surface
-    vec3 r0 = vec3(0.0, rPlanet, 0.0);
-    vec3 r = normalize(viewDir);
-    vec3 pSun = normalize(sDir);
-
-    // Sun height for day/night check (use actual sun direction, not sunInt)
-    float sunY = pSun.y;
-
-    // Below horizon at night → return black (use sunY, not sunInt)
-    if (viewDir.y < 0.0 && sunY < 0.0)
-        return vec3(0.0);
-
-    // Ray-atmosphere intersection
-    vec2 ab = rsi(r0, r, rAtmo);
-    if (ab.x > ab.y) return vec3(0.0);
-
-    float iDist = max(ab.x, 0.0);
-    float fDist = ab.y;
-
-    // Clip at planet surface
-    vec2 pRes = rsi(r0, r, rPlanet);
-    if (0.0 < pRes.x && pRes.x < fDist)
-        fDist = max(pRes.x, iDist);
-
-    // Guard against zero-length ray
-    if (fDist - iDist < 0.001) return vec3(0.0);
-
-    // ── Primary ray march ──
-    float iStepSize = (fDist - iDist) / float(iSteps);
-    vec3 totalRlh = vec3(0.0);
-    vec3 totalMie = vec3(0.0);
-    float iOdRlh = 0.0;
-    float iOdMie = 0.0;
-
-    for (int i = 0; i < iSteps; i++)
-    {
-        float t = (float(i) + 0.5) * iStepSize;
-        vec3 iPos = r0 + r * (iDist + t);
-        float iHeight = max(length(iPos) - rPlanet, 0.0);
-
-        float iOdRlhStep = exp(-iHeight / iRayleighHeight) * iStepSize;
-        float iOdMieStep = exp(-iHeight / iMieHeight) * iStepSize;
-        iOdRlh += iOdRlhStep;
-        iOdMie += iOdMieStep;
-
-        // Light ray march (sample → sun)
-        vec2 jAtm = rsi(iPos, pSun, rAtmo);
-        float jLen = max(jAtm.y, 0.0);
-        float jStepSize = jLen / float(jSteps);
-        float jOdRlh = 0.0;
-        float jOdMie = 0.0;
-
-        for (int j = 0; j < jSteps; j++)
-        {
-            float jt = (float(j) + 0.5) * jStepSize;
-            vec3 jPos = iPos + pSun * jt;
-            float jHeight = max(length(jPos) - rPlanet, 0.0);
-            jOdRlh += exp(-jHeight / iRayleighHeight) * jStepSize;
-            jOdMie += exp(-jHeight / iMieHeight) * jStepSize;
-        }
-
-        vec3 attn = exp(-(jOdRlh * rayleighSCoeff + jOdMie * mieSCoeff));
-        totalRlh += iOdRlhStep * attn;
-        totalMie += iOdMieStep * attn;
-    }
-
+    vec3 vd = normalize(viewDir);
+    vec3 sd = normalize(sDir);
+    
+    float sy = sd.y; // sun height (-1 to 1)
+    float vy = vd.y; // view height (-1 to 1)
+    
+    // ── Sun elevation factors ──
+    // tDay: 1 when sun high, 0 when sun below -0.2
+    float tDay = smoothstep(-0.2, 0.15, sy);
+    // tTwilight: 1 when sun near horizon, fades both ways
+    float tTwilight = smoothstep(-0.2, 0.0, sy) * (1.0 - smoothstep(0.0, 0.3, sy));
+    // tNight: 1 when sun well below horizon
+    float tNight = 1.0 - smoothstep(-0.4, -0.05, sy);
+    
+    // ── Scattering coefficients (rhept.org) ──
+    // Rayleigh: wavelength-dependent base (1/λ⁴), tinted by user color
+    vec3 sigmaR = vec3(0.33, 0.78, 1.89) * rayleighColor;
+    float Sr = rayleighStrength;
+    // Mie: wavelength-independent base, tinted by user color
+    float sigmaM = 1.0;
+    float Sm = mieStrength;
+    
+    // Height falloff: higher values → thinner atmosphere → less scattering
+    // Use exponential density falloff based on height scales
+    float heightFactorR = exp(-rayleighHeight * 0.5); // Rayleigh density modifier
+    float heightFactorM = exp(-mieHeight * 0.3);       // Mie density modifier
+    
+    // Prevent division by zero at horizon
+    float safeSy = max(abs(sy), 0.005);
+    float safeVy = max(abs(vy), 0.005);
+    
+    // Cosine of angle between sun and view
+    float cosTheta = dot(vd, sd);
+    
     // Phase functions
-    float mu = clamp(dot(r, pSun), -1.0, 1.0);
-    float mumu = mu * mu;
-    float gg = g * g;
-    float pRlh = 3.0 / (16.0 * PI) * (1.0 + mumu);
-    float pMieDenom = max(1.0 + gg - 2.0 * mu * g, 0.0001);
-    float pMie = 3.0 / (8.0 * PI) * ((1.0 - gg) * (mumu + 1.0)) /
-                 (pow(pMieDenom, 1.5) * (2.0 + gg));
-
-    // Combine
-    vec3 color = totalRlh * rayleighSCoeff * pRlh +
-                 totalMie * mieSCoeff * pMie * mieColor;
-
-    color *= sunInt * scatteringIntensity;
-
-    // HDR tone mapping
-    color = vec3(1.0) - exp(-1.5 * color);
-
-    return clamp(color, 0.0, 1.0);
+    float phaseR = rayleighPhase(cosTheta);
+    float phaseM = miePhase(cosTheta, mieFocus);
+    float phaseS = sunDisc(cosTheta);
+    
+    // Combined scattering terms (with height-modulated density)
+    vec3 sigmaSum = Sr * sigmaR * heightFactorR + vec3(Sm * sigmaM * heightFactorM);
+    vec3 phaseSum = Sr * sigmaR * heightFactorR * phaseR
+                  + vec3(Sm * sigmaM * heightFactorM) * mieColor * phaseM;
+    phaseSum += vec3(Sm * phaseS * 2.0);
+    
+    // ── Analytical scattering (rhept.org eq.10) ──
+    vec3 result = vec3(0.0);
+    
+    // Only compute main scattering when sun is above -0.2 (not deep night)
+    if (sy > -0.2)
+    {
+        result = max(sunInt, 0.01) * scatteringIntensity *
+                  (safeSy / (safeSy + safeVy)) *
+                  (phaseSum / max(sigmaSum, vec3(1e-10))) *
+                  (exp(sigmaSum / safeSy * 0.17) - exp(-sigmaSum / safeVy * 0.17));
+    }
+    
+    // ── Ozone absorption layer (Chappuis band) ──
+    // Ozone absorbs yellow-orange (500-700nm), making sky bluer overhead
+    // and adding purple/deep blue at twilight when sun path is long
+    // Absorption spectrum: absorbs red strongly, moderate green, little blue
+    vec3 ozoneAbsorb = vec3(0.55, 0.38, 0.08); // Chappuis absorption weights
+    float ozoneStrength = 1.2; // overall ozone intensity
+    
+    // Ozone path length: longer at grazing angles (sunset/sunrise)
+    // Approximate optical depth through ozone layer (~25 km altitude)
+    float viewAngle = acos(clamp(vy, -0.999, 0.999)); // angle from zenith
+    float sunAngle = acos(clamp(sy, -0.999, 0.999));
+    float ozonePath = 1.0 / (cos(viewAngle) + 0.15 * cos(sunAngle) + 0.3);
+    ozonePath = clamp(ozonePath, 0.0, 8.0);
+    
+    // Apply ozone absorption: attenuate scattered light
+    // More absorption when path is long (sunset) → removes yellow → deeper blue/purple
+    vec3 ozoneAtten = exp(-ozoneAbsorb * ozoneStrength * ozonePath * 0.15);
+    result *= ozoneAtten;
+    
+    // Ozone also scatters some light (adds purple tint at twilight)
+    float ozoneScatter = smoothstep(0.1, -0.15, sy) * (1.0 - tNight); // peaks at sunset
+    vec3 ozoneScatterColor = vec3(0.35, 0.25, 0.55); // purple-blue
+    result += ozoneScatterColor * ozoneScatter * ozonePath * 0.08 * scatteringIntensity;
+    
+    // ── Twilight glow (warm horizon when sun is low) ──
+    float horizonBand = exp(-pow(vy * 3.0, 2.0)); // bright band near horizon
+    vec3 twilightColor = vec3(1.0, 0.45, 0.15); // warm orange
+    vec3 twilight = twilightColor * horizonBand * tTwilight * scatteringIntensity * 0.35;
+    
+    // Stronger sunset glow when sun is just below horizon
+    float sunsetBoost = exp(-abs(sy) * 8.0); // peaks at sy=0, fades fast
+    twilight += vec3(1.2, 0.5, 0.1) * horizonBand * sunsetBoost * scatteringIntensity * 0.5;
+    
+    result += twilight;
+    
+    // ── Night sky ambient (deep blue) ──
+    float zenithFade = max(vy, 0.0); // brighter at zenith at night
+    vec3 nightSkyColor = vec3(0.02, 0.03, 0.08); // deep dark blue
+    vec3 nightAmbient = nightSkyColor * tNight * (0.3 + zenithFade * 0.7);
+    result += nightAmbient;
+    
+    // Clamp and Reinhard tone map
+    result = clamp(result, vec3(0.0), vec3(10.0));
+    result = result / (result + vec3(1.0));
+    
+    return clamp(result, 0.0, 1.0);
 }
-
 // ═══════════════════════════════════════════════
 // STAR FIELD
 // ═══════════════════════════════════════════════
@@ -443,7 +455,8 @@ void main()
 
     vec3 sunsetColor  = vec3(1.0, 0.48, 0.25);
 
-    float sunIntensity = clamp(sunY * 1.5 + 0.5, 0.0, 2.0);
+    // Smooth sun intensity for scattering input — no harsh clamps
+    float sunIntensity = smoothstep(-0.3, 0.4, sunY) * 2.0;
     vec3 atmosphereSky = atmosphericScattering(viewDir, lightDir, sunIntensity);
 
     float up = max(viewDir.y, 0.0);
@@ -462,10 +475,9 @@ void main()
     float bolt = boltShape * lightning;
     float boltFlash = bolt * 1.0;
 
-    // Sky = atmospheric scattering gradient
-    // Day: full scattering color everywhere (including horizon)
-    // Night: gentle fade below horizon to black
-    float belowHorizonFade = smoothstep(-0.5, 0.05, viewDir.y);
+    // Sky = atmospheric scattering with smooth day-night blending
+    // Day: full scattering; Night: gentle fade below horizon
+    float belowHorizonFade = smoothstep(-0.6, 0.1, viewDir.y);
     float horizonMask = mix(belowHorizonFade, 1.0, sunFactor);
     vec3 skyBase = atmosphereSky * horizonMask;
     skyBase += vec3(1.0, 1.0, 1.2) * lightning * 3.0;

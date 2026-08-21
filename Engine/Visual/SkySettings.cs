@@ -41,24 +41,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// </summary>
     public class AtmosphericScatteringSettings
     {
-        /// <summary>Overall scattering intensity. Default 20.0.</summary>
-        public float Intensity { get; set; } = 20.0f;
+        /// <summary>Overall scattering intensity. Default 18.0.</summary>
+        public float Intensity { get; set; } = 18.0f;
 
-        /// <summary>Rayleigh scattering strength. Default 0.3.</summary>
-        public float Rayleigh { get; set; } = 0.3f;
-        /// <summary>Rayleigh color tint. Default light blue.</summary>
-        public Vector3 RayColor { get; set; } = new(0.2f, 0.4f, 0.9f);
-        /// <summary>Rayleigh height scale. Default 1.0.</summary>
-        public float RayHeight { get; set; } = 1.0f;
+        /// <summary>Rayleigh scattering strength. Default 0.5.</summary>
+        public float Rayleigh { get; set; } = 0.5f;
+        /// <summary>Rayleigh color tint. Default soft blue-white for realistic sky.</summary>
+        public Vector3 RayColor { get; set; } = new(0.6f, 0.8f, 1.0f);
+        /// <summary>Rayleigh height scale (lower = denser near surface). Default 0.8.</summary>
+        public float RayHeight { get; set; } = 0.8f;
 
-        /// <summary>Mie scattering strength. Default 0.5.</summary>
-        public float Mie { get; set; } = 0.5f;
-        /// <summary>Mie color tint. Default warm/salmon for horizon haze.</summary>
-        public Vector3 MieColor { get; set; } = new(1.0f, 0.6f, 0.4f);
-        /// <summary>Mie directionality (asymmetry factor g). Default 0.76.</summary>
-        public float MieFocus { get; set; } = 0.76f;
-        /// <summary>Mie height scale. Default 1.0.</summary>
-        public float MieHeight { get; set; } = 1.0f;
+        /// <summary>Mie scattering strength. Default 0.35.</summary>
+        public float Mie { get; set; } = 0.35f;
+        /// <summary>Mie color tint. Default warm orange for horizon haze.</summary>
+        public Vector3 MieColor { get; set; } = new(1.0f, 0.6f, 0.35f);
+        /// <summary>Mie directionality (asymmetry factor g). Default 0.8.</summary>
+        public float MieFocus { get; set; } = 0.8f;
+        /// <summary>Mie height scale (lower = denser near surface). Default 0.6.</summary>
+        public float MieHeight { get; set; } = 0.6f;
 
         public AtmosphericScatteringSettings Clone() => new()
         {
