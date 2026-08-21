@@ -1908,21 +1908,21 @@ public class InspectorPanel
                 {
                     var atmo = skySettings.Scattering;
                     float atmoInt = atmo.Intensity;
-                    if (ImGui.SliderFloat("Intensity##atmo", ref atmoInt, 0f, 30f, "%.2f")) atmo.Intensity = atmoInt;
+                    if (ImGui.SliderFloat("Intensity##atmo", ref atmoInt, 0f, 50f, "%.2f")) atmo.Intensity = atmoInt;
                     float rayleigh = atmo.Rayleigh;
                     if (ImGui.SliderFloat("Rayleigh##atmo", ref rayleigh, 0f, 5f, "%.3f")) atmo.Rayleigh = rayleigh;
                     var rayCol = atmo.RayColor;
                     if (ImGui.ColorEdit3("Ray Color##atmo", ref rayCol)) atmo.RayColor = rayCol;
                     float rayH = atmo.RayHeight;
-                    if (ImGui.SliderFloat("Ray Height##atmo", ref rayH, 0.1f, 20f, "%.3f")) atmo.RayHeight = rayH;
+                    if (ImGui.SliderFloat("Ray Height##atmo", ref rayH, 0.1f, 5f, "%.3f")) atmo.RayHeight = rayH;
                     float mie = atmo.Mie;
-                    if (ImGui.SliderFloat("Mie##atmo", ref mie, 0f, 3.0f, "%.2f")) atmo.Mie = mie;
+                    if (ImGui.SliderFloat("Mie##atmo", ref mie, 0f, 2.0f, "%.3f")) atmo.Mie = mie;
                     var mieCol = atmo.MieColor;
                     if (ImGui.ColorEdit3("Mie Color##atmo", ref mieCol)) atmo.MieColor = mieCol;
                     float mieFoc = atmo.MieFocus;
-                    if (ImGui.SliderFloat("Mie Focus##atmo", ref mieFoc, 0f, 0.99f, "%.3f")) atmo.MieFocus = mieFoc;
+                    if (ImGui.SliderFloat("Mie Focus##atmo", ref mieFoc, 0f, 1.0f, "%.3f")) atmo.MieFocus = mieFoc;
                     float mieH = atmo.MieHeight;
-                    if (ImGui.SliderFloat("Mie Height##atmo", ref mieH, 0.1f, 5f, "%.2f")) atmo.MieHeight = mieH;
+                    if (ImGui.SliderFloat("Mie Height##atmo", ref mieH, 0.1f, 2.0f, "%.3f")) atmo.MieHeight = mieH;
                     ImGui.Separator();
                 }
 
@@ -1951,15 +1951,6 @@ public class InspectorPanel
                     float vCCir = vClouds.CirrusStrength;
                     if (ImGui.SliderFloat("Cirrus Strength##clouds", ref vCCir, 0f, 1f, "%.2f")) vClouds.CirrusStrength = vCCir;
                     ImGui.Separator();
-                    // Cloud slab (volumetric ray march)
-                    float vBaseY = vClouds.CloudBaseY;
-                    if (ImGui.SliderFloat("Cloud Base Y##clouds", ref vBaseY, 10f, 150f, "%.1f")) vClouds.CloudBaseY = vBaseY;
-                    float vTopY = vClouds.CloudTopY;
-                    if (ImGui.SliderFloat("Cloud Top Y##clouds", ref vTopY, 20f, 300f, "%.1f")) vClouds.CloudTopY = vTopY;
-                    int vSteps = vClouds.MarchSteps;
-                    if (ImGui.SliderInt("March Steps##clouds", ref vSteps, 4, 64)) vClouds.MarchSteps = vSteps;
-                    int vLSteps = vClouds.LightSteps;
-                    if (ImGui.SliderInt("Light Steps##clouds", ref vLSteps, 1, 8)) vClouds.LightSteps = vLSteps;
                 }
 
                 // ── Moon ──

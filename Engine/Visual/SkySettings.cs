@@ -41,24 +41,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// </summary>
     public class AtmosphericScatteringSettings
     {
-        /// <summary>Overall scattering intensity. Default 1.0.</summary>
-        public float Intensity { get; set; } = 1.0f;
+        /// <summary>Overall scattering intensity. Default 20.0.</summary>
+        public float Intensity { get; set; } = 20.0f;
 
-        /// <summary>Rayleigh scattering strength. Default 1.0.</summary>
-        public float Rayleigh { get; set; } = 1.0f;
-        /// <summary>Rayleigh color tint. Default white.</summary>
-        public Vector3 RayColor { get; set; } = new(0.3f, 0.5f, 1.0f);
-        /// <summary>Rayleigh height scale. Default 8.0.</summary>
-        public float RayHeight { get; set; } = 8.0f;
+        /// <summary>Rayleigh scattering strength. Default 0.3.</summary>
+        public float Rayleigh { get; set; } = 0.3f;
+        /// <summary>Rayleigh color tint. Default light blue.</summary>
+        public Vector3 RayColor { get; set; } = new(0.2f, 0.4f, 0.9f);
+        /// <summary>Rayleigh height scale. Default 1.0.</summary>
+        public float RayHeight { get; set; } = 1.0f;
 
-        /// <summary>Mie scattering strength. Default 1.0.</summary>
-        public float Mie { get; set; } = 1.0f;
-        /// <summary>Mie color tint. Default white.</summary>
-        public Vector3 MieColor { get; set; } = new(1.0f, 0.7f, 0.5f);
+        /// <summary>Mie scattering strength. Default 0.5.</summary>
+        public float Mie { get; set; } = 0.5f;
+        /// <summary>Mie color tint. Default warm/salmon for horizon haze.</summary>
+        public Vector3 MieColor { get; set; } = new(1.0f, 0.6f, 0.4f);
         /// <summary>Mie directionality (asymmetry factor g). Default 0.76.</summary>
         public float MieFocus { get; set; } = 0.76f;
-        /// <summary>Mie height scale. Default 1.2.</summary>
-        public float MieHeight { get; set; } = 1.2f;
+        /// <summary>Mie height scale. Default 1.0.</summary>
+        public float MieHeight { get; set; } = 1.0f;
 
         public AtmosphericScatteringSettings Clone() => new()
         {
@@ -98,14 +98,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public float CirrusStrength { get; set; } = 0.1f;
         /// <summary>Enable/disable procedural volumetric clouds. Default true.</summary>
         public bool Enabled { get; set; } = true;
-        /// <summary>Bottom of cloud slab (world Y). Default 40.</summary>
-        public float CloudBaseY { get; set; } = 40f;
-        /// <summary>Top of cloud slab (world Y). Default 80.</summary>
-        public float CloudTopY { get; set; } = 80f;
-        /// <summary>Ray march steps through cloud slab. Default 24.</summary>
-        public int MarchSteps { get; set; } = 24;
-        /// <summary>Light march steps for cloud shadows. Default 3.</summary>
-        public int LightSteps { get; set; } = 3;
 
         public VolumetricCloudSettings Clone() => new()
         {
@@ -118,11 +110,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Scatter = Scatter,
             TintColor = TintColor,
             CirrusStrength = CirrusStrength,
-            Enabled = Enabled,
-            CloudBaseY = CloudBaseY,
-            CloudTopY = CloudTopY,
-            MarchSteps = MarchSteps,
-            LightSteps = LightSteps
+            Enabled = Enabled
         };
     }
 
@@ -358,20 +346,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Sun.GlowIntensity = 0.5f + rng.NextSingle() * 1.5f;
 
             // Scattering
-            Scattering.Intensity = 2f + rng.NextSingle() * 18f;
-            Scattering.Rayleigh = 0.3f + rng.NextSingle() * 1.7f;
+            Scattering.Intensity = 1f + rng.NextSingle() * 49f;           // 1-50: match slider range
+            Scattering.Rayleigh = 0.05f + rng.NextSingle() * 4.95f;       // 0.05-5: match slider
             Scattering.RayColor = new Vector3(
-                rng.NextSingle() * 0.4f,
-                0.1f + rng.NextSingle() * 0.5f,
-                0.4f + rng.NextSingle() * 0.6f);
-            Scattering.RayHeight = 4f + rng.NextSingle() * 12f;
-            Scattering.Mie = 0.3f + rng.NextSingle() * 1.7f;
+                rng.NextSingle() * 0.6f,                                    // R: 0-0.6 (bluer skies)
+                0.1f + rng.NextSingle() * 0.7f,                            // G: 0.1-0.8
+                0.4f + rng.NextSingle() * 0.6f);                           // B: 0.4-1.0 (always some blue)
+            Scattering.RayHeight = 0.1f + rng.NextSingle() * 4.9f;        // 0.1-5: match slider
+            Scattering.Mie = 0.05f + rng.NextSingle() * 1.95f;            // 0.05-2: match slider
             Scattering.MieColor = new Vector3(
-                0.5f + rng.NextSingle() * 0.5f,
-                0.5f + rng.NextSingle() * 0.5f,
-                0.5f + rng.NextSingle() * 0.5f);
-            Scattering.MieFocus = 0.3f + rng.NextSingle() * 0.6f;
-            Scattering.MieHeight = 0.5f + rng.NextSingle() * 2f;
+                0.4f + rng.NextSingle() * 0.6f,                            // R: 0.4-1.0 (warm horizon)
+                0.3f + rng.NextSingle() * 0.5f,                            // G: 0.3-0.8
+                0.3f + rng.NextSingle() * 0.4f);                           // B: 0.3-0.7 (warm bias)
+            Scattering.MieFocus = 0.05f + rng.NextSingle() * 0.9f;        // 0.05-0.95: match slider
+            Scattering.MieHeight = 0.1f + rng.NextSingle() * 1.9f;        // 0.1-2: match slider
 
             // Clouds
             Clouds.Density = rng.NextSingle();
