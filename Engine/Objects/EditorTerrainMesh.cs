@@ -89,8 +89,8 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _lightSpace0Loc = -1, _lightSpace1Loc = -1, _lightSpace2Loc = -1;
     private static int _cascadeEnds0Loc = -1, _cascadeEnds1Loc = -1, _cascadeEnds2Loc = -1;
     // Cloud shadow uniforms
-    private static int _cloudAltLoc = -1, _cloudSpeedLoc = -1, _cloudDetailLoc = -1;
-    private static int _cloudErosionLoc = -1, _cloudShadowStrLoc = -1, _cloudsEnabledLoc = -1;
+    private static int _cloudAltLoc = -1, _cloudSpeedLoc = -1, _cloudDetailLoc = -1, _cloudsEnabledLoc = -1;
+    private static int _cloudErosionLoc = -1, _cloudShadowStrLoc = -1;
     private static int _cloudScaleLoc = -1, _cloudWeatherLoc = -1, _timeCloudLoc = -1;
     private static float _cloudTimeAccum = 0f;
 
@@ -815,9 +815,9 @@ public unsafe class EditorTerrainMesh : IDisposable
         {
             GL.Uniform1f(_cloudAltLoc, skyClouds.Altitude);
             GL.Uniform1f(_cloudSpeedLoc, skyClouds.Speed);
-            GL.Uniform1f(_cloudDetailLoc, skyClouds.Detail);
+            GL.Uniform1f(_cloudDetailLoc, skyClouds.Curl);
             GL.Uniform1f(_cloudErosionLoc, skyClouds.Erosion);
-            GL.Uniform1f(_cloudShadowStrLoc, skyClouds.ShadowStrength);
+            GL.Uniform1f(_cloudShadowStrLoc, skyClouds.Absorption);
             GL.Uniform1f(_cloudScaleLoc, skyClouds.CloudScale);
             GL.Uniform1f(_cloudsEnabledLoc, skyClouds.Enabled ? 1f : 0f);
             float weatherVal = Inputs.Keyboard.GetCurrentWeather();

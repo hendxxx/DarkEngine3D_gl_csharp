@@ -110,16 +110,14 @@ float cloudShadow(vec3 worldPos) {
     if (cloudsEnabled < 0.5) return 1.0;
     vec3 cp = worldPos - viewPos; cp.y = cloudAltitude;
     cp.xz *= cloudScale; cp.x += timeCloud * cloudSpeed; cp.z += timeCloud * cloudSpeed * 0.34;
-    vec3 warp = vec3(cFbm(cp*0.9), cFbm(cp*1.3), cFbm(cp*0.7)); cp += warp * 0.35;
-    float densityBoost = mix(0.55, 1.65, weatherMode);
-    float cutMin = mix(0.18, 0.05, weatherMode);
-    float cutMax = mix(0.32, 0.20, weatherMode);
+    vec3 curl = vec3(cFbm(cp*cloudDetail), cFbm(cp*cloudDetail+vec3(5.2,1.3,2.8)), cFbm(cp*cloudDetail+vec3(9.1,4.7,7.4)));
+    cp += (curl - 0.5) * 0.8;
     float base = cFbm(cp * 1.25);
-    float detailN = cFbm(cp * 3.5);
-    float density = mix(base, detailN, cloudDetail) * densityBoost;
-    float erosion = cFbm(cp * 2.0) * cloudErosion;
-    density = smoothstep(cutMin * 0.55, cutMax * 1.45, density - erosion * 0.25);
-    return max(exp(-density * cloudShadowStrength * 5.0), 0.05);
+    float density = smoothstep(1.0 - cloudShadowStrength, 1.0, base);
+    density = max(density, 0.0);
+    density *= smoothstep(0.0, 0.15, clamp((cp.y-cloudAltitude)/max(cloudDetail,0.1),0.0,1.0)) * (1.0-smoothstep(0.6,1.0,clamp((cp.y-cloudAltitude)/max(cloudDetail,0.1),0.0,1.0)));
+    density = smoothstep(0.0, 0.1, density);
+    return max(exp(-density * cloudErosion * 5.0), 0.05);
 }
 
 // ── LOCAL LIGHTS (Point / Spot from editor Light markers) ──

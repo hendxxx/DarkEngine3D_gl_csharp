@@ -104,29 +104,31 @@ float cFbm(vec3 p) {
 }
 
 // Returns 0..1 shadow factor from clouds (0 = fully shadowed, 1 = fully lit)
-// Must match the sky shader's cloud noise sampling EXACTLY.
+// Must match the sky shader's volumetric cloud noise EXACTLY.
 float cloudShadow(vec3 worldPos) {
     if (cloudsEnabled < 0.5) return 1.0;
-    // Camera-relative position (sky shader uses viewDir*distToPlane from camera)
     vec3 cp = worldPos - viewPos;
     cp.y = cloudAltitude;
     cp.xz *= cloudScale;
     cp.x += timeCloud * cloudSpeed;
     cp.z += timeCloud * cloudSpeed * 0.34;
-    // Warp (must match sky shader exactly)
-    vec3 warp = vec3(cFbm(cp * 0.9), cFbm(cp * 1.3), cFbm(cp * 0.7));
-    cp += warp * 0.35;
-    // Weather-dependent thresholds (must match sky shader)
-    float densityBoost = mix(0.55, 1.65, weatherMode);
-    float cutMin = mix(0.18, 0.05, weatherMode);
-    float cutMax = mix(0.32, 0.20, weatherMode);
+    // Curl turbulence (must match sky shader)
+    vec3 curl = vec3(
+        cFbm(cp * cloudDetail),
+        cFbm(cp * cloudDetail + vec3(5.2, 1.3, 2.8)),
+        cFbm(cp * cloudDetail + vec3(9.1, 4.7, 7.4))
+    );
+    cp += (curl - 0.5) * 0.8;
+    // Base density (must match sky shader)
     float base = cFbm(cp * 1.25);
-    float detailN = cFbm(cp * 3.5);
-    float density = mix(base, detailN, cloudDetail) * densityBoost;
-    float erosion = cFbm(cp * 2.0) * cloudErosion;
-    density = smoothstep(cutMin * 0.55, cutMax * 1.45, density - erosion * 0.25);
-    // Beer-Lambert shadow from cloud density
-    float shadow = exp(-density * cloudShadowStrength * 5.0);
+    float density = smoothstep(1.0 - cloudShadowStrength, 1.0, base);
+    density = max(density, 0.0);
+    // Vertical profile fade
+    float heightPct = clamp((cp.y - cloudAltitude) / max(cloudDetail, 0.1), 0.0, 1.0);
+    density *= smoothstep(0.0, 0.15, heightPct) * (1.0 - smoothstep(0.6, 1.0, heightPct));
+    density = smoothstep(0.0, 0.1, density);
+    // Beer-Lambert shadow
+    float shadow = exp(-density * cloudErosion * 5.0);
     return max(shadow, 0.05);
 }
 

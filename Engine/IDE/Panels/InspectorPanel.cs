@@ -1932,26 +1932,41 @@ public class InspectorPanel
                     var vClouds = skySettings.Clouds;
                     bool vCloudsEn = vClouds.Enabled;
                     if (ImGui.Checkbox("Enabled##clouds", ref vCloudsEn)) vClouds.Enabled = vCloudsEn;
-                    float vCDens = vClouds.Density;
-                    if (ImGui.SliderFloat("Density##clouds", ref vCDens, 0f, 1f, "%.2f")) vClouds.Density = vCDens;
+                    // Quality
+                    string[] qualityNames = { "Low", "Medium", "High", "Ultra" };
+                    int qIdx = (int)vClouds.Quality;
+                    if (ImGui.Combo("Quality##clouds", ref qIdx, qualityNames, 4)) vClouds.Quality = qIdx;
+                    ImGui.TextDisabled("Low=16/2  Med=32/4  High=64/8  Ultra=128/16");
+                    // Shape
                     float vCAlt = vClouds.Altitude;
                     if (ImGui.SliderFloat("Altitude##clouds", ref vCAlt, 0.5f, 10f, "%.1f")) vClouds.Altitude = vCAlt;
-                    float vCSpd = vClouds.Speed;
-                    if (ImGui.SliderFloat("Speed##clouds", ref vCSpd, 0f, 0.2f, "%.3f")) vClouds.Speed = vCSpd;
-                    float vCDet = vClouds.Detail;
-                    if (ImGui.SliderFloat("Detail##clouds", ref vCDet, 0f, 1f, "%.2f")) vClouds.Detail = vCDet;
+                    float vCH = vClouds.CloudHeight;
+                    if (ImGui.SliderFloat("Cloud Height##clouds", ref vCH, 0.2f, 5.0f, "%.2f")) vClouds.CloudHeight = vCH;
+                    float vCScale = vClouds.CloudScale;
+                    if (ImGui.SliderFloat("Cloud Scale##clouds", ref vCScale, 0.05f, 2.0f, "%.3f")) vClouds.CloudScale = vCScale;
+                    float vCCov = vClouds.Coverage;
+                    if (ImGui.SliderFloat("Coverage##clouds", ref vCCov, 0.0f, 1.0f, "%.2f")) vClouds.Coverage = vCCov;
+                    float vCCurl = vClouds.Curl;
+                    if (ImGui.SliderFloat("Curl##clouds", ref vCCurl, 0.0f, 3.0f, "%.2f")) vClouds.Curl = vCCurl;
                     float vCEro = vClouds.Erosion;
                     if (ImGui.SliderFloat("Erosion##clouds", ref vCEro, 0f, 1f, "%.2f")) vClouds.Erosion = vCEro;
-                    float vCShd = vClouds.ShadowStrength;
-                    if (ImGui.SliderFloat("Shadow Strength##clouds", ref vCShd, 0f, 1f, "%.2f")) vClouds.ShadowStrength = vCShd;
-                    float vCScale = vClouds.CloudScale;
-                    if (ImGui.SliderFloat("Cloud Scale##clouds", ref vCScale, 0.05f, 1.0f, "%.3f")) vClouds.CloudScale = vCScale;
+                    // Lighting
+                    float vCAbs = vClouds.Absorption;
+                    if (ImGui.SliderFloat("Absorption##clouds", ref vCAbs, 1.0f, 30.0f, "%.1f")) vClouds.Absorption = vCAbs;
+                    float vCPG = vClouds.PhaseG;
+                    if (ImGui.SliderFloat("Phase G##clouds", ref vCPG, 0.0f, 0.95f, "%.2f")) vClouds.PhaseG = vCPG;
                     float vCSca = vClouds.Scatter;
                     if (ImGui.SliderFloat("Scatter##clouds", ref vCSca, 0f, 1f, "%.2f")) vClouds.Scatter = vCSca;
                     var vCTint = vClouds.TintColor;
                     if (ImGui.ColorEdit3("Tint Color##clouds", ref vCTint)) vClouds.TintColor = vCTint;
-                    float vCCir = vClouds.CirrusStrength;
-                    if (ImGui.SliderFloat("Cirrus Strength##clouds", ref vCCir, 0f, 1f, "%.2f")) vClouds.CirrusStrength = vCCir;
+                    // Animation
+                    float vCSpd = vClouds.Speed;
+                    if (ImGui.SliderFloat("Speed##clouds", ref vCSpd, 0f, 0.2f, "%.3f")) vClouds.Speed = vCSpd;
+                    // Manual override (0 = use Quality preset)
+                    float vCMS = vClouds.MarchSteps;
+                    if (ImGui.SliderFloat("March Steps##clouds", ref vCMS, 0f, 128f, "%.0f")) vClouds.MarchSteps = vCMS;
+                    float vCLS = vClouds.LightMarchSteps;
+                    if (ImGui.SliderFloat("Light Steps##clouds", ref vCLS, 0f, 32f, "%.0f")) vClouds.LightMarchSteps = vCLS;
                     ImGui.Separator();
                 }
 

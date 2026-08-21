@@ -54,9 +54,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private int _terrainLightSpaceLoc0, _terrainLightSpaceLoc1, _terrainLightSpaceLoc2;
         private int _terrainCascadeEndsLoc0, _terrainCascadeEndsLoc1, _terrainCascadeEndsLoc2;
         // Cloud shadow uniforms (terrain shader)
-        private int _terrainCloudAltLoc, _terrainCloudSpeedLoc, _terrainCloudDetailLoc;
-        private int _terrainCloudErosionLoc, _terrainCloudShadowStrLoc, _terrainCloudsEnabledLoc;
-        private int _terrainCloudScaleLoc, _terrainWeatherLoc, _terrainTimeCloudLoc;
+        private int _terrainCloudAltLoc, _terrainCloudSpeedLoc, _terrainCloudDetailLoc, _terrainCloudErosionLoc, _terrainCloudsEnabledLoc;
+        private int _terrainCloudShadowStrLoc, _terrainCloudScaleLoc, _terrainWeatherLoc, _terrainTimeCloudLoc;
 
         // Shader uniform locations (gltf)
         private uint _gltfShader;
@@ -64,8 +63,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private int _gltfLightSpaceLoc0, _gltfLightSpaceLoc1, _gltfLightSpaceLoc2;
         private int _gltfCascadeEndsLoc0, _gltfCascadeEndsLoc1, _gltfCascadeEndsLoc2;
         // Cloud shadow uniforms (glTF shader)
-        private int _gltfCloudAltLoc, _gltfCloudSpeedLoc, _gltfCloudDetailLoc;
-        private int _gltfCloudErosionLoc, _gltfCloudShadowStrLoc, _gltfCloudsEnabledLoc;
+        private int _gltfCloudAltLoc, _gltfCloudSpeedLoc, _gltfCloudDetailLoc, _gltfCloudErosionLoc, _gltfCloudsEnabledLoc;
+        private int _gltfCloudShadowStrLoc;
         private int _gltfCloudScaleLoc, _gltfWeatherLoc, _gltfTimeCloudLoc;
 
         // Shadow shader uniform locations
@@ -1028,9 +1027,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 GL.Uniform1f(_terrainCloudAltLoc, skyClouds.Altitude);
                 GL.Uniform1f(_terrainCloudSpeedLoc, skyClouds.Speed);
-                GL.Uniform1f(_terrainCloudDetailLoc, skyClouds.Detail);
+                GL.Uniform1f(_terrainCloudDetailLoc, skyClouds.Curl);
                 GL.Uniform1f(_terrainCloudErosionLoc, skyClouds.Erosion);
-                GL.Uniform1f(_terrainCloudShadowStrLoc, skyClouds.ShadowStrength);
+                GL.Uniform1f(_terrainCloudShadowStrLoc, skyClouds.Absorption);
                 GL.Uniform1f(_terrainCloudsEnabledLoc, skyClouds.Enabled ? 1f : 0f);
                 GL.Uniform1f(_terrainCloudScaleLoc, skyClouds.CloudScale);
                 float weatherVal = _skybox?.WeatherOverride ?? Inputs.Keyboard.GetCurrentWeather();
@@ -1067,9 +1066,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 GL.Uniform1f(_gltfCloudAltLoc, gltfClouds.Altitude);
                 GL.Uniform1f(_gltfCloudSpeedLoc, gltfClouds.Speed);
-                GL.Uniform1f(_gltfCloudDetailLoc, gltfClouds.Detail);
+                GL.Uniform1f(_gltfCloudDetailLoc, gltfClouds.Curl);
                 GL.Uniform1f(_gltfCloudErosionLoc, gltfClouds.Erosion);
-                GL.Uniform1f(_gltfCloudShadowStrLoc, gltfClouds.ShadowStrength);
+                GL.Uniform1f(_gltfCloudShadowStrLoc, gltfClouds.Absorption);
                 GL.Uniform1f(_gltfCloudsEnabledLoc, gltfClouds.Enabled ? 1f : 0f);
                 GL.Uniform1f(_gltfCloudScaleLoc, gltfClouds.CloudScale);
                 float weatherVal2 = _skybox?.WeatherOverride ?? Inputs.Keyboard.GetCurrentWeather();

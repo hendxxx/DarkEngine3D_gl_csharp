@@ -28,17 +28,21 @@ uniform float mieFocus;
 uniform float mieHeight;
 
 // ── Volumetric Clouds ──
-uniform float cloudDensity;
 uniform float cloudAltitude;
 uniform float cloudSpeed;
-uniform float cloudDetail;
 uniform float cloudErosion;
-uniform float cloudShadowStrength;
 uniform float cloudScale;
 uniform float cloudScatter;
 uniform vec3  cloudTintColor;
-uniform float cirrusStrength;
 uniform float cloudsEnabled;
+uniform float cloudHeight;
+uniform float cloudAbsorption;
+uniform float cloudPhaseG;
+uniform float cloudSteps;
+uniform float cloudLightSteps;
+uniform float cloudCoverage;
+uniform float cloudCurl;
+uniform float cloudQuality;
 
 // ── Moon ──
 uniform sampler2D moonTex;
@@ -97,6 +101,56 @@ float fbm(vec3 p)
         w *= 0.5;
     }
     return f;
+}
+
+// ── Worley Noise (cellular) for popcorn detail ──
+vec3 hash33(vec3 p) {
+    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+             dot(p, vec3(269.5, 183.3, 246.1)),
+             dot(p, vec3(113.5, 271.9, 124.6)));
+    return fract(sin(p) * 43758.5453123);
+}
+
+float worley(vec3 p) {
+    vec3 id = floor(p);
+    vec3 f = fract(p);
+    float minDist = 1.0;
+    for (int x = -1; x <= 1; x++)
+    for (int y = -1; y <= 1; y++)
+    for (int z = -1; z <= 1; z++) {
+        vec3 neighbor = vec3(float(x), float(y), float(z));
+        vec3 point = hash33(id + neighbor);
+        vec3 diff = neighbor + point - f;
+        minDist = min(minDist, length(diff));
+    }
+    return 1.0 - minDist; // invert: white at cell center
+}
+
+float worleyFBM(vec3 p) {
+    float f = 0.0;
+    float w = 0.5;
+    for (int i = 0; i < 3; i++) {
+        f += w * worley(p);
+        p *= 2.0;
+        w *= 0.5;
+    }
+    return f;
+}
+
+// ── Remap ──
+float remap(float v, float minOld, float maxOld, float minNew, float maxNew) {
+    return minNew + (v - minOld) * (maxNew - minNew) / (maxOld - minOld);
+}
+
+// ── Henyey-Greenstein Phase Function ──
+float hgPhase(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+}
+
+// ── Dual-lobe phase (forward + backward scatter) ──
+float dualPhase(float cosTheta) {
+    return mix(hgPhase(cosTheta, cloudPhaseG), hgPhase(cosTheta, -0.2), 0.5);
 }
 
 // ═══════════════════════════════════════════════
@@ -502,106 +556,189 @@ void main()
     cloudTint = mix(cloudTint, cloudTint * 0.1, tMalam * weather);
     skyBase = mix(skyBase, skyBase * 0.45, tMalam * weather);
 
-    // ──── CLOUDS ────
+    // ──── CLOUDS (Volumetric Ray March) ────
     float cloudAlpha = 0.0;
     vec3 finalCloudColor = vec3(0.0);
 
-    if (cloudsEnabled > 0.5 && viewDir.y > 0.0)
+    if (cloudsEnabled > 0.5)
     {
-        float distToPlane = cloudAltitude / max(viewDir.y, 0.25);
-        vec3 cloudPos = viewDir * distToPlane;
+        // ── Cloud slab: flat plane at cloudAltitude with cloudHeight thickness ──
+        float slabBottom = cloudAltitude;
+        float slabTop = cloudAltitude + cloudHeight;
 
-        vec3 p = cloudPos;
-        p.xz *= cloudScale;
-        p.x += time.x * cloudSpeed;
-        p.z += time.x * cloudSpeed * 0.34;
-
-        vec3 warp = vec3(
-            fbm(p * 0.9),
-            fbm(p * 1.3),
-            fbm(p * 0.7)
-        );
-        p += warp * 0.35;
-
-        float base = fbm(p * 1.25);
-        float detailN = fbm(p * 3.5);
-        float density = mix(base, detailN, cloudDetail) * densityBoost;
-
-        float erosion = fbm(p * 2.0) * cloudErosion;
-        density = smoothstep(cutMin * 0.55, cutMax * 1.45, density - erosion * 0.25);
-
-        float horizonFade = smoothstep(0.0, 0.22, viewDir.y);
-
-        // ── Volumetric self-shadowing (light march toward sun) ──
-        // March from cloud point toward sun on the cloud plane, accumulate density
-        float shadowAccum = 0.0;
-        float shadowStepLen = 0.35; // step size in cloud-space (p.xz already scaled by 0.42)
-        vec3 lightMarchPos = p;
-        // Project sun direction onto the cloud plane (flat layer at y=cloudAltitude)
-        // In cloud UV space, we only care about xz movement
-        float sunHorizLen = length(vec2(lightDir.x, lightDir.z));
-        vec3 lightDirCloud;
-        if (sunHorizLen > 0.01)
+        // Ray-slab intersection (flat horizontal slab)
+        float tEnter = -1e10;
+        float tExit = 1e10;
+        if (abs(viewDir.y) > 0.0001)
         {
-            // Move along sun's horizontal projection, scaled to match the cloud coordinate space
-            lightDirCloud = vec3(lightDir.x, 0.0, lightDir.z) / sunHorizLen;
+            float tB = (slabBottom - 0.0) / viewDir.y; // camera at y=0
+            float tT = (slabTop - 0.0) / viewDir.y;
+            tEnter = min(tB, tT);
+            tExit = max(tB, tT);
         }
-        else
+        // Only march if ray enters the slab and goes upward
+        if (tExit > 0.0 && tEnter < tExit && viewDir.y > 0.0)
         {
-            lightDirCloud = vec3(0.0, 0.0, 1.0); // sun directly above: no horizontal march
+            tEnter = max(tEnter, 0.0);
+            float marchLen = tExit - tEnter;
+            // Quality: 0=Low(128), 1=Medium(256), 2=High(512), 3=Ultra(1024)
+            int q = int(cloudQuality);
+            int Steps = q == 0 ? 16 : q == 1 ? 32 : q == 2 ? 64 : 128;
+            int LSteps = q == 0 ? 2 : q == 1 ? 4 : q == 2 ? 8 : 16;
+            // Allow manual override if cloudSteps is set
+            if (cloudSteps > 1.0) Steps = int(cloudSteps);
+            if (cloudLightSteps > 1.0) LSteps = int(cloudLightSteps);
+            float stepSize = marchLen / float(Steps);
+
+            vec3 sunDir = normalize(lightDir);
+            float sunDot = dot(viewDir, sunDir);
+            float phaseVal = dualPhase(sunDot);
+
+            // Ambient sky color (approximation)
+            vec3 ambientColor = mix(
+                vec3(0.4, 0.5, 0.7),  // day: blue
+                vec3(0.02, 0.02, 0.05), // night: dark
+                tMalam
+            );
+            vec3 sunColor = mix(
+                vec3(1.0, 0.95, 0.8), // day: warm white
+                vec3(0.0),              // night: none
+                tMalam
+            );
+
+            float transmittance = 1.0;
+            vec3 cloudAccum = vec3(0.0);
+
+            for (int i = 0; i < 128; i++)
+            {
+                if (i >= Steps) break;
+                if (transmittance < 0.01) break;
+
+                float t = tEnter + (float(i) + 0.5) * stepSize;
+                vec3 samplePos = viewDir * t;
+                float heightPct = (samplePos.y - slabBottom) / cloudHeight;
+
+                // ── Sample cloud density ──
+                vec3 noiseCoord = samplePos * cloudScale;
+                noiseCoord.xz += time.x * cloudSpeed * vec2(1.0, 0.34);
+
+                // Curl turbulence for organic shapes
+                vec3 curl = vec3(
+                    fbm(noiseCoord * cloudCurl + vec3(0.0, 0.0, 0.0)),
+                    fbm(noiseCoord * cloudCurl + vec3(5.2, 1.3, 2.8)),
+                    fbm(noiseCoord * cloudCurl + vec3(9.1, 4.7, 7.4))
+                );
+                noiseCoord += (curl - 0.5) * 0.8;
+
+                // Base shape: fbm
+                float baseShape = fbm(noiseCoord * 1.25);
+                // Detail: worley erosion for popcorn look
+                float worleyDetail = worleyFBM(noiseCoord * 3.5 + vec3(time.x * 0.05));
+
+                float density = baseShape;
+                // Apply coverage: lower coverage = less cloud, higher = more cloud
+                // fbm returns ~0.5 avg, so we remap around that center
+                float cov = cloudCoverage;
+                density = smoothstep(1.0 - cov, 1.0, density);
+                density = max(density, 0.0);
+
+                // Erosion from worley detail
+                if (density > 0.0)
+                {
+                    float erosionAmount = cloudErosion * 1.5;
+                    density = remap(density, worleyDetail * erosionAmount, 1.0, 0.0, 1.0);
+                    density = max(density, 0.0);
+                }
+
+                // Vertical profile: soft top and bottom
+                float bottomFade = smoothstep(0.0, 0.15, heightPct);
+                float topFade = 1.0 - smoothstep(0.6, 1.0, heightPct);
+                // Hourglass shape: thinner at edges
+                float shapeFade = bottomFade * topFade;
+                density *= shapeFade;
+
+                // Edge softness
+                density = smoothstep(0.0, 0.1, density);
+
+                if (density > 0.001)
+                {
+                    // ── Light march (shadow toward sun) ──
+                    float lightOpticalDepth = 0.0;
+                    float lightStepSize = cloudHeight * 0.4 / float(LSteps);
+                    for (int j = 0; j < 16; j++)
+                    {
+                        if (j >= LSteps) break;
+                        vec3 lightSamplePos = samplePos + sunDir * lightStepSize * (float(j) + 0.5);
+                        float lHeightPct = (lightSamplePos.y - slabBottom) / cloudHeight;
+                        if (lHeightPct < 0.0 || lHeightPct > 1.0) continue;
+
+                        vec3 lNoise = lightSamplePos * cloudScale;
+                        lNoise.xz += time.x * cloudSpeed * vec2(1.0, 0.34);
+                        vec3 lCurl = vec3(
+                            fbm(lNoise * cloudCurl),
+                            fbm(lNoise * cloudCurl + vec3(5.2, 1.3, 2.8)),
+                            fbm(lNoise * cloudCurl + vec3(9.1, 4.7, 7.4))
+                        );
+                        lNoise += (lCurl - 0.5) * 0.8;
+
+                        float lBase = fbm(lNoise * 1.25);
+                        float lWorley = worleyFBM(lNoise * 3.5 + vec3(time.x * 0.05));
+                        float lDensity = lBase;
+                        lDensity = smoothstep(1.0 - cloudCoverage, 1.0, lDensity);
+                        lDensity = max(lDensity, 0.0);
+                        if (lDensity > 0.0)
+                        {
+                            float lErosion = cloudErosion * 1.5;
+                            lDensity = remap(lDensity, lWorley * lErosion, 1.0, 0.0, 1.0);
+                            lDensity = max(lDensity, 0.0);
+                        }
+                        float lBottomFade = smoothstep(0.0, 0.15, lHeightPct);
+                        float lTopFade = 1.0 - smoothstep(0.6, 1.0, lHeightPct);
+                        lDensity *= lBottomFade * lTopFade;
+                        lDensity = smoothstep(0.0, 0.1, lDensity);
+                        lightOpticalDepth += lDensity * lightStepSize;
+                    }
+
+                    // Beer-Lambert: light attenuation through cloud
+                    float beer = exp(-lightOpticalDepth * cloudAbsorption);
+                    // Powder: darkening at grazing angles / thick regions
+                    float powder = 1.0 - exp(-lightOpticalDepth * 2.0);
+                    powder = mix(powder, powder * 0.5 + 0.5, 0.5);
+
+                    // Combined direct light
+                    vec3 directLight = sunColor * beer * (phaseVal + powder * 0.3) * cloudScatter;
+
+                    // Ambient (bottom-lit sky)
+                    vec3 ambient = ambientColor * (0.5 + 0.5 * heightPct);
+
+                    vec3 sampleColor = (directLight + ambient) * cloudTintColor;
+
+                    // Beer-Lambert integration
+                    float stepDensity = density * stepSize * cloudAbsorption;
+                    float stepTransmittance = exp(-stepDensity);
+                    // In-scattering: energy lost from transmittance goes into color
+                    float stepAlpha = transmittance * (1.0 - stepTransmittance);
+                    cloudAccum += sampleColor * stepAlpha;
+                    transmittance *= stepTransmittance;
+                    transmittance = max(transmittance, 0.0);
+                }
+
+                tEnter += stepSize;
+            }
+
+            cloudAlpha = 1.0 - transmittance;
+            finalCloudColor = cloudAccum / max(cloudAlpha, 0.001);
+
+            // Horizon fade
+            float horizonFade = smoothstep(0.0, 0.15, viewDir.y);
+            cloudAlpha *= horizonFade;
+
+            // Lightning
+            finalCloudColor += vec3(0.85, 0.92, 1.25) * lightning * 1.8;
         }
-        
-        for (int si = 0; si < 6; si++)
-        {
-            lightMarchPos += lightDirCloud * shadowStepLen;
-            float sDensity = fbm(lightMarchPos * 1.25);
-            float sErosion = fbm(lightMarchPos * 2.0) * cloudErosion;
-            sDensity = smoothstep(cutMin * 0.55, cutMax * 1.45, sDensity - sErosion * 0.25);
-            shadowAccum += sDensity;
-        }
-        // Beer-Lambert: light attenuates exponentially through accumulated density
-        // shadowAccum is sum of 6 density samples (0-6 range), normalize by step count
-        float normShadow = shadowAccum / 6.0; // 0..1 normalized density along light path
-        float shadow = exp(-normShadow * cloudShadowStrength * 4.0);
-        shadow = max(shadow, 0.15); // ambient minimum (prevents pitch-black undersides)
-        
-        // ── Powder effect (darkening at thick cloud regions) ──
-        float powder = 1.0 - exp(-normShadow * 3.0);
-        powder = mix(1.0, powder * 0.5 + 0.5, sunFactor); // only during day
-        
-        // ── Silver lining (bright edge when sun is behind cloud) ──
-        float edgeLight = 1.0 - density; // thinner at edges
-        float silverLining = pow(max(dot(lightDir, viewDir), 0.0), 3.0) * edgeLight * 0.3;
-        
-        float scatter = max(dot(lightDir, viewDir), 0.0);
-        scatter = pow(scatter, 6.0) * cloudScatter * sunFactor;
-
-        vec3 lightTint = mix(sunsetColor, vec3(1.0), tSunset);
-        lightTint = mix(lightTint, vec3(0.6, 0.7, 1.0), nightOverride);
-
-        vec3 cloudLit = cloudTint;
-        cloudLit *= shadow * powder;
-        cloudLit += lightTint * scatter * mix(0.25, 0.05, weather);
-        cloudLit += lightTint * silverLining * sunFactor; // bright silver lining
-
-        // Cirrus
-        vec3 pCirrus = cloudPos * 0.22;
-        pCirrus.x += time.x * 0.018;
-        pCirrus.z += time.x * 0.014;
-        float cir = fbm(pCirrus * 2.2);
-        float cirAlpha = smoothstep(0.62, 0.82, cir) * cirrusStrength;
-        vec3 cirColor = vec3(0.75, 0.80, 1.0) * tMalam;
-
-        finalCloudColor = mix(cloudLit, cirColor, cirAlpha * 0.22 * sunFactor);
-        float depth = fbm(p * 0.8);
-        finalCloudColor *= 0.82 + depth * 0.18;
-        finalCloudColor += vec3(0.85, 0.92, 1.25) * lightning * 1.8;
-
-        cloudAlpha = density * horizonFade;
-        cloudAlpha = max(cloudAlpha, 0.0001);
     }
 
-    cloudAlpha *= mix(0.22, 1.75, weatherMode);
+    cloudAlpha *= mix(0.3, 1.75, weatherMode);
 
     // ──── SUN + MOON + STARS ────
     vec3 skyWithCelestial = skyBase;

@@ -1001,6 +1001,8 @@ public unsafe class EditorObject
         public static int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
         public static int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
         public static int ShowCSMCascadeColor;
+        // Cloud shadow uniforms
+        public static int CloudAltitude, CloudSpeed, CloudDetail, CloudErosion, CloudShadowStr, CloudScale, CloudsEnabled, CloudWeather, CloudTime;
 
         public static void Ensure()
         {
@@ -1045,6 +1047,16 @@ public unsafe class EditorObject
             CascadeEnds1 = GL.GetUniformLocation(Program, "cascadeEnds[1]");
             CascadeEnds2 = GL.GetUniformLocation(Program, "cascadeEnds[2]");
             ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
+            // Cloud shadow uniforms
+            CloudAltitude = GL.GetUniformLocation(Program, "cloudAltitude");
+            CloudSpeed = GL.GetUniformLocation(Program, "cloudSpeed");
+            CloudDetail = GL.GetUniformLocation(Program, "cloudDetail");
+            CloudErosion = GL.GetUniformLocation(Program, "cloudErosion");
+            CloudShadowStr = GL.GetUniformLocation(Program, "cloudShadowStrength");
+            CloudScale = GL.GetUniformLocation(Program, "cloudScale");
+            CloudsEnabled = GL.GetUniformLocation(Program, "cloudsEnabled");
+            CloudWeather = GL.GetUniformLocation(Program, "weatherMode");
+            CloudTime = GL.GetUniformLocation(Program, "timeCloud");
             Ready = true;
         }
     }
@@ -1073,6 +1085,26 @@ public unsafe class EditorObject
 
         // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
         Visual.FogUniforms.UploadMain(PbrUniforms.Program, light);
+
+        // ── Cloud shadow uniforms ──
+        var clouds = ActiveSkySettings?.Clouds;
+        if (clouds != null)
+        {
+            GL.Uniform1f(PbrUniforms.CloudAltitude, clouds.Altitude);
+            GL.Uniform1f(PbrUniforms.CloudSpeed, clouds.Speed);
+            GL.Uniform1f(PbrUniforms.CloudDetail, clouds.Curl);
+            GL.Uniform1f(PbrUniforms.CloudErosion, clouds.Erosion);
+            GL.Uniform1f(PbrUniforms.CloudShadowStr, clouds.Absorption);
+            GL.Uniform1f(PbrUniforms.CloudScale, clouds.CloudScale);
+            GL.Uniform1f(PbrUniforms.CloudsEnabled, clouds.Enabled ? 1f : 0f);
+            float w = Inputs.Keyboard.GetCurrentWeather();
+            GL.Uniform1f(PbrUniforms.CloudWeather, w);
+            GL.Uniform1f(PbrUniforms.CloudTime, (float)System.Environment.TickCount * 0.001f);
+        }
+        else
+        {
+            GL.Uniform1f(PbrUniforms.CloudsEnabled, 0f);
+        }
 
         if (PbrUniforms.ShowCSMCascadeColor >= 0)
             GL.Uniform1i(PbrUniforms.ShowCSMCascadeColor, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);

@@ -24,6 +24,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
         private readonly int _useFogLoc, _fogColorLoc;
+        private readonly int _cloudAltLoc, _cloudSpeedLoc, _cloudDetailLoc, _cloudErosionLoc;
+        private readonly int _cloudShadowStrLoc, _cloudScaleLoc, _cloudsEnabledLoc;
+        private readonly int _cloudWeatherLoc, _cloudTimeLoc;
 
         // Shadow uniforms for primitive shadow rendering
         private readonly uint _shadowShader;
@@ -57,6 +60,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _viewPosLoc = GL.GetUniformLocation(_shaderProgram, "viewPos");
             _useFogLoc = GL.GetUniformLocation(_shaderProgram, "useFog");
             _fogColorLoc = GL.GetUniformLocation(_shaderProgram, "fogColor");
+            // Cloud shadow uniforms
+            _cloudAltLoc = GL.GetUniformLocation(_shaderProgram, "cloudAltitude");
+            _cloudSpeedLoc = GL.GetUniformLocation(_shaderProgram, "cloudSpeed");
+            _cloudDetailLoc = GL.GetUniformLocation(_shaderProgram, "cloudDetail");
+            _cloudErosionLoc = GL.GetUniformLocation(_shaderProgram, "cloudErosion");
+            _cloudShadowStrLoc = GL.GetUniformLocation(_shaderProgram, "cloudShadowStrength");
+            _cloudScaleLoc = GL.GetUniformLocation(_shaderProgram, "cloudScale");
+            _cloudsEnabledLoc = GL.GetUniformLocation(_shaderProgram, "cloudsEnabled");
+            _cloudWeatherLoc = GL.GetUniformLocation(_shaderProgram, "weatherMode");
+            _cloudTimeLoc = GL.GetUniformLocation(_shaderProgram, "timeCloud");
 
             // Shadow shader (static)
             _shadowShader = Shader.GetShadowShaderProgram();
@@ -412,6 +425,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
             Visual.FogUniforms.UploadMain(_shaderProgram, light);
+
+            // ── Cloud shadow uniforms ──
+            var clouds = EditorObject.ActiveSkySettings?.Clouds;
+            if (clouds != null)
+            {
+                GL.Uniform1f(_cloudAltLoc, clouds.Altitude);
+                GL.Uniform1f(_cloudSpeedLoc, clouds.Speed);
+                GL.Uniform1f(_cloudDetailLoc, clouds.Curl);
+                GL.Uniform1f(_cloudErosionLoc, clouds.Erosion);
+                GL.Uniform1f(_cloudShadowStrLoc, clouds.Absorption);
+                GL.Uniform1f(_cloudScaleLoc, clouds.CloudScale);
+                GL.Uniform1f(_cloudsEnabledLoc, clouds.Enabled ? 1f : 0f);
+                float w = Inputs.Keyboard.GetCurrentWeather();
+                GL.Uniform1f(_cloudWeatherLoc, w);
+                GL.Uniform1f(_cloudTimeLoc, (float)System.Environment.TickCount * 0.001f);
+            }
+            else
+            {
+                GL.Uniform1f(_cloudsEnabledLoc, 0f);
+            }
 
             // ── Local point/spot lights (from editor Light markers) ──
             light.UploadLocalLights(_shaderProgram);
