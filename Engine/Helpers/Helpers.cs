@@ -238,6 +238,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             return program;
         }
 
+        /// <summary>LoadShader that never throws — returns 0 on failure and logs the error.</summary>
+        public static uint SafeLoad(string vertexPath, string fragmentPath)
+        {
+            try { return LoadShader(vertexPath, fragmentPath); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Shader] SafeLoad FAILED for {vertexPath} + {fragmentPath}: {ex.Message}");
+                return 0;
+            }
+        }
+
         public static void CheckShader(uint shader, string name)
         {
             int status = 0;

@@ -395,5 +395,107 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 0.6f + rng.NextSingle() * 0.4f,
                 0.4f + rng.NextSingle() * 0.4f);
         }
+
+        /// <summary>Reset to bright blue sky defaults (clouds off, sunrays off).</summary>
+        public void ResetDefaults()
+        {
+            Type = SkyType.Procedural;
+            Sun = new SunSettings();
+            Scattering = new AtmosphericScatteringSettings();
+            Clouds = new VolumetricCloudSettings() { Enabled = false };
+            Moon = new MoonSettings();
+            Stars = new StarSettings();
+            Eclipses = new EclipseSettings();
+            SunRays = new SunRaySettings() { Intensity = 0f };
+        }
+
+        /// <summary>Clear sky preset: bright blue, no clouds, minimal haze.</summary>
+        public void ApplyClearSky()
+        {
+            Type = SkyType.Procedural;
+            Sun.Size = 1.0f;
+            Sun.Softness = 0.8f;
+            Sun.Color = new Vector3(1f, 1f, 1f);
+            Sun.GlowIntensity = 1.0f;
+            Scattering.Intensity = 22f;
+            Scattering.Rayleigh = 0.5f;
+            Scattering.RayColor = new Vector3(0.5f, 0.7f, 1.0f);
+            Scattering.RayHeight = 1.0f;
+            Scattering.Mie = 0.2f;
+            Scattering.MieColor = new Vector3(0.8f, 0.7f, 0.6f);
+            Scattering.MieFocus = 0.75f;
+            Scattering.MieHeight = 0.8f;
+            Clouds.Enabled = false;
+            Moon.Brightness = 0f;
+            Stars.Brightness = 0f;
+            Eclipses.SolarEclipse = 0f;
+            Eclipses.LunarEclipse = 0f;
+            SunRays.Intensity = 0f;
+        }
+
+        /// <summary>Sunset preset: warm golden hour.</summary>
+        public void ApplySunset()
+        {
+            Type = SkyType.Procedural;
+            Sun.Size = 1.4f;
+            Sun.Softness = 0.9f;
+            Sun.Color = new Vector3(1.0f, 0.65f, 0.3f);
+            Sun.GlowIntensity = 1.8f;
+            Scattering.Intensity = 30f;
+            Scattering.Rayleigh = 1.2f;
+            Scattering.RayColor = new Vector3(0.9f, 0.4f, 0.15f);
+            Scattering.RayHeight = 0.6f;
+            Scattering.Mie = 0.8f;
+            Scattering.MieColor = new Vector3(1.0f, 0.5f, 0.2f);
+            Scattering.MieFocus = 0.9f;
+            Scattering.MieHeight = 0.4f;
+            Clouds.Enabled = true;
+            Clouds.Density = 0.35f;
+            Clouds.Altitude = 2.0f;
+            Clouds.Speed = 0.02f;
+            Clouds.Detail = 0.3f;
+            Clouds.Erosion = 0.2f;
+            Clouds.Scatter = 0.4f;
+            Clouds.CirrusStrength = 0.15f;
+            Moon.Brightness = 0f;
+            Stars.Brightness = 0.2f;
+            SunRays.Intensity = 0.4f;
+            SunRays.RayCount = 12;
+            SunRays.Length = 0.8f;
+            SunRays.Color = new Vector3(1.0f, 0.7f, 0.3f);
+        }
+
+        /// <summary>Night preset: dark sky with moon and stars.</summary>
+        public void ApplyNight()
+        {
+            Type = SkyType.Procedural;
+            Sun.Size = 0.8f;
+            Sun.Softness = 0.5f;
+            Sun.Color = new Vector3(0.6f, 0.65f, 0.8f);
+            Sun.GlowIntensity = 0.3f;
+            Scattering.Intensity = 8f;
+            Scattering.Rayleigh = 0.15f;
+            Scattering.RayColor = new Vector3(0.1f, 0.15f, 0.3f);
+            Scattering.RayHeight = 0.5f;
+            Scattering.Mie = 0.1f;
+            Scattering.MieColor = new Vector3(0.15f, 0.12f, 0.2f);
+            Scattering.MieFocus = 0.5f;
+            Scattering.MieHeight = 0.3f;
+            Clouds.Enabled = true;
+            Clouds.Density = 0.15f;
+            Clouds.Altitude = 3.0f;
+            Clouds.Speed = 0.01f;
+            Clouds.Detail = 0.2f;
+            Clouds.Erosion = 0.15f;
+            Clouds.Scatter = 0.05f;
+            Clouds.CirrusStrength = 0.05f;
+            Moon.Brightness = 1.2f;
+            Moon.Size = 1.0f;
+            Moon.GlowRadius = 1.2f;
+            Stars.Brightness = 1.5f;
+            Stars.Density = 1.5f;
+            Stars.TwinkleSpeed = 1.0f;
+            SunRays.Intensity = 0f;
+        }
     }
 }

@@ -11,7 +11,9 @@ in float viewDepth;
 uniform vec3 heightScale;      // .x = world height range used to normalize FragPos.y
 uniform vec4 layerLevels;      // .x=air top, .y=dirt top, .z=grass top, .w=snow top (normalized heights)
 uniform float slopeThreshold;  // steepness (1 - n.y) above which dirt/rock takes over
-uniform float texTiling;       // world-space texture tiling
+uniform float texTiling;       // world-space texture tiling (legacy)
+uniform vec4 texTilings;       // per-layer tiling: x=air, y=dirt, z=grass, w=snow
+uniform float slopeTiling;     // tiling for the slope/cliff texture (uses dirt texture)
 uniform vec3 sunDir, lightColor, viewPos, fogColor;
 uniform int useFog;
 
@@ -295,10 +297,10 @@ void main() {
     float noise = smoothNoise(FragPos.xz * 0.2) * 0.08;
     float hn = clamp(h + noise, 0.0, 1.0);
 
-    vec3 t0 = triplanarLayer(tex0, FragPos, norm, texTiling); // air
-    vec3 t1 = triplanarLayer(tex1, FragPos, norm, texTiling); // tanah
-    vec3 t2 = triplanarLayer(tex2, FragPos, norm, texTiling); // rumput
-    vec3 t3 = triplanarLayer(tex3, FragPos, norm, texTiling); // salju
+    vec3 t0 = triplanarLayer(tex0, FragPos, norm, texTilings.x); // air
+    vec3 t1 = triplanarLayer(tex1, FragPos, norm, texTilings.y); // tanah
+    vec3 t2 = triplanarLayer(tex2, FragPos, norm, texTilings.z); // rumput
+    vec3 t3 = triplanarLayer(tex3, FragPos, norm, texTilings.w); // salju
 
     vec3 base;
     if (hn < layerLevels.x) base = t0;
@@ -306,10 +308,11 @@ void main() {
     else if (hn < layerLevels.z) base = mix(t1, t2, smoothstep(layerLevels.y, layerLevels.z, hn));
     else base = mix(t2, t3, smoothstep(layerLevels.z, layerLevels.w, hn));
 
-    // ── SLOPE → tanah/batu (cliff) ──
+    // ── SLOPE → tanah/batu (cliff) with its own tiling ──
     float sn = slope + noise * 0.1;
     float cliffMask = smoothstep(slopeThreshold, slopeThreshold + 0.12, sn);
-    vec3 texColor = mix(base, t1, cliffMask * 0.85);
+    vec3 tSlope = triplanarLayer(tex1, FragPos, norm, slopeTiling); // slope uses dirt texture at its own tiling
+    vec3 texColor = mix(base, tSlope, cliffMask * 0.85);
 
     // ── MANUAL LAYER PAINT (splat override, painted with the 🎨 brush) ──
     // The splat map holds per-layer weights in [0,1]. Where the total painted weight

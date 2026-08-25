@@ -48,6 +48,7 @@ uniform int useAlbedo, useNormal, useMetallic, useRoughness, useAo, useHeight, u
 
 uniform vec2 u_uvScale[7];   // per-map UV tiling multiplier (x = U, y = V) — albedo..emission
 uniform vec2 u_uvOffset[7];  // per-map UV offset (x = U, y = V)
+uniform float u_pbrGlobalTiling; // global tiling multiplier applied to all maps
 uniform float parallaxScale = 0.02;   // base height-map displacement strength (0 = off)
 
 // ── PBR MAP TUNING (uploaded from the PBR panel; applies to the selected object) ──
@@ -335,13 +336,14 @@ void main() {
     mat3 TBN = mat3(T, B, norm);
 
     // ── PER-MAP UVs (each texture slot has its own tiling/offset) ──
-    vec2 uvAlbedo   = TexCoord * u_uvScale[0] + u_uvOffset[0];
-    vec2 uvNormal   = TexCoord * u_uvScale[1] + u_uvOffset[1];
-    vec2 uvMetallic = TexCoord * u_uvScale[2] + u_uvOffset[2];
-    vec2 uvRough    = TexCoord * u_uvScale[3] + u_uvOffset[3];
-    vec2 uvAo       = TexCoord * u_uvScale[4] + u_uvOffset[4];
-    vec2 uvHeight   = TexCoord * u_uvScale[5] + u_uvOffset[5];
-    vec2 uvEmission = TexCoord * u_uvScale[6] + u_uvOffset[6];
+    vec2 baseUV = TexCoord * u_pbrGlobalTiling;
+    vec2 uvAlbedo   = baseUV * u_uvScale[0] + u_uvOffset[0];
+    vec2 uvNormal   = baseUV * u_uvScale[1] + u_uvOffset[1];
+    vec2 uvMetallic = baseUV * u_uvScale[2] + u_uvOffset[2];
+    vec2 uvRough    = baseUV * u_uvScale[3] + u_uvOffset[3];
+    vec2 uvAo       = baseUV * u_uvScale[4] + u_uvOffset[4];
+    vec2 uvHeight   = baseUV * u_uvScale[5] + u_uvOffset[5];
+    vec2 uvEmission = baseUV * u_uvScale[6] + u_uvOffset[6];
 
     // ── PARALLAX (height map displaces the sample UV along the tangent-space view
     //    ray). Clamped so grazing angles can't swim the texture by many tiles. The

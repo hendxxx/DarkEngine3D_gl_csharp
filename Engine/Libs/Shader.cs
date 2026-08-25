@@ -53,67 +53,65 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             if (_initialized) return;
             _initialized = true;
 
-            shaderProgram = Helpers.ShaderHelpers.LoadShader(
+            // Core shaders — use SafeLoad so one failure doesn't crash the editor.
+            shaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/vertex_shader.glsl",
                 "Artifacts/shaders/fragment_shader.glsl");
 
-            lineShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            lineShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/lineVertex_shader.glsl",
                 "Artifacts/shaders/lineFragment_shader.glsl");
 
-            hudShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            hudShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/hudVertex_shader.glsl",
                 "Artifacts/shaders/hudFragment_shader.glsl");
 
-            skyShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            skyShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/sky_vertex.glsl",
                 "Artifacts/shaders/sky_fragment.glsl");
 
-            invertPassShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            invertPassShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/invertPass_vertex.glsl",
                 "Artifacts/shaders/invertPass_fragment.glsl");
-             
-            blurPassShaderProgram = Helpers.ShaderHelpers.LoadShader(
+
+            blurPassShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/blur_vertex.glsl",
                 "Artifacts/shaders/blur_fragment.glsl");
-             
-            outlineShaderProgram = Helpers.ShaderHelpers.LoadShader(
+
+            outlineShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/outline_vertex.glsl",
                 "Artifacts/shaders/outline_fragment.glsl");
 
             // AAA post-processing chain (shared fullscreen-quad vertex shader).
-            postFxBrightShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            postFxBrightShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/post_vertex.glsl",
                 "Artifacts/shaders/postFxBright_fragment.glsl");
-            postFxBlurShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            postFxBlurShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/post_vertex.glsl",
                 "Artifacts/shaders/postFxBlur_fragment.glsl");
-            postFxCompositeShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            postFxCompositeShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/post_vertex.glsl",
                 "Artifacts/shaders/postFxComposite_fragment.glsl");
-             
-            shadowShaderProgram = Helpers.ShaderHelpers.LoadShader(
+
+            shadowShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/shadow_vertex.glsl",
                 "Artifacts/shaders/shadow_fragment.glsl");
 
-            shadowSkinnedShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            shadowSkinnedShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/shadow_skinned_vertex.glsl",
                 "Artifacts/shaders/shadow_fragment.glsl");
 
-            shadowStaticAlphaShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            shadowStaticAlphaShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/shadow_static_vertex.glsl",
                 "Artifacts/shaders/shadow_static_alpha_fragment.glsl");
 
-            // Reuse the standard vertex shader (same layout: pos/normal/color/uv) with a
-            // custom fragment shader that blends 4 custom terrain layers by height + slope.
-            editorTerrainShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            // Terrain editor shader
+            editorTerrainShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/vertex_shader.glsl",
                 "Artifacts/shaders/terrainEditor_fragment.glsl");
 
-            // Editor primitives with PBR material — same vertex layout, UV-based PBR
-            // fragment shader with optional albedo/normal/metallic/roughness/AO/height/
-            // emission maps and per-map-type tuning.
-            objectPbrShaderProgram = Helpers.ShaderHelpers.LoadShader(
+            // PBR object shader
+            objectPbrShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/vertex_shader.glsl",
                 "Artifacts/shaders/objectPbr_fragment.glsl");
         }

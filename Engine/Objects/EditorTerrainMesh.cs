@@ -77,7 +77,7 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _sunDirLoc = -1, _lightColorLoc = -1, _viewPosLoc = -1;
     private static int _useFogLoc = -1, _fogColorLoc = -1;
     private static int _heightScaleLoc = -1, _layerLevelsLoc = -1;
-    private static int _slopeThresholdLoc = -1, _texTilingLoc = -1, _useStochasticSamplingLoc = -1;
+    private static int _slopeThresholdLoc = -1, _slopeTilingLoc = -1, _texTilingLoc = -1, _texTilingsLoc = -1, _useStochasticSamplingLoc = -1;
     private static int _usePaintMaskLoc = -1, _tex4Loc = -1;
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
@@ -706,7 +706,9 @@ public unsafe class EditorTerrainMesh : IDisposable
         _heightScaleLoc = GL.GetUniformLocation(_program, "heightScale");
         _layerLevelsLoc = GL.GetUniformLocation(_program, "layerLevels");
         _slopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
+        _slopeTilingLoc = GL.GetUniformLocation(_program, "slopeTiling");
         _texTilingLoc = GL.GetUniformLocation(_program, "texTiling");
+        _texTilingsLoc = GL.GetUniformLocation(_program, "texTilings");
         _useStochasticSamplingLoc = GL.GetUniformLocation(_program, "useStochasticSampling");
         _usePaintMaskLoc = GL.GetUniformLocation(_program, "usePaintMask");
         _showHeatmapLoc = GL.GetUniformLocation(_program, "showHeatmap");
@@ -803,6 +805,13 @@ public unsafe class EditorTerrainMesh : IDisposable
             owner.TerrainLayerSnowTop);
         GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
         GL.Uniform1f(_texTilingLoc, Math.Max(0.01f, owner.TerrainTexTiling));
+        // Per-layer tiling: use TerrainLayerTilings if set, else fall back to TerrainTexTiling for all.
+        float[] layerTilings = owner.TerrainLayerTilings ?? [owner.TerrainTexTiling, owner.TerrainTexTiling, owner.TerrainTexTiling, owner.TerrainTexTiling];
+        if (_texTilingsLoc >= 0)
+            GL.Uniform4f(_texTilingsLoc,
+                Math.Max(0.01f, layerTilings[0]), Math.Max(0.01f, layerTilings[1]),
+                Math.Max(0.01f, layerTilings[2]), Math.Max(0.01f, layerTilings[3]));
+        if (_slopeTilingLoc >= 0) GL.Uniform1f(_slopeTilingLoc, Math.Max(0.01f, owner.TerrainSlopeTiling));
         GL.Uniform1i(_useStochasticSamplingLoc, owner.TerrainUseStochasticSampling ? 1 : 0);
 
         uint[] units = [Const.GL_TEXTURE0, Const.GL_TEXTURE1, Const.GL_TEXTURE2, Const.GL_TEXTURE3];

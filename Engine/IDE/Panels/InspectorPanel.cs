@@ -1710,15 +1710,48 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // ── Randomize Button ──
+            // ── Preset Buttons ──
+            if (ImGui.Button("🔄 Reset to Default", new Vector2(-1, 24)))
+                skySettings.ResetDefaults();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Reset all sky settings to bright blue sky defaults (clouds off, sunrays off)");
+            if (ImGui.Button("☀ Clear Sky", new Vector2(-1, 24)))
+                skySettings.ApplyClearSky();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Bright clear blue sky, no clouds, minimal haze");
+            if (ImGui.Button("🌅 Sunset", new Vector2(-1, 24)))
+                skySettings.ApplySunset();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Warm golden hour with sun rays");
+            if (ImGui.Button("🌙 Night", new Vector2(-1, 24)))
+                skySettings.ApplyNight();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Dark sky with moon and stars");
+            ImGui.Spacing();
+
+            // ── Randomize / Load from Settings ──
             if (skySettings.Type == SkyType.Procedural)
             {
-                if (ImGui.Button("🎲 Randomize All Values", new Vector2(-1, 30)))
+                if (ImGui.Button("🎲 Randomize All Values", new Vector2(-1, 24)))
                     skySettings.Randomize();
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Randomize all procedural sky parameters for creative exploration");
-                ImGui.Spacing();
             }
+            if (editorObj.SavedSkySettings != null)
+            {
+                if (ImGui.Button("📂 Load from Settings", new Vector2(-1, 24)))
+                {
+                    var saved = editorObj.SavedSkySettings;
+                    skySettings.Type = saved.Type;
+                    skySettings.Sun = saved.Sun.Clone();
+                    skySettings.Scattering = saved.Scattering.Clone();
+                    skySettings.Clouds = saved.Clouds.Clone();
+                    skySettings.Moon = saved.Moon.Clone();
+                    skySettings.Stars = saved.Stars.Clone();
+                    skySettings.Eclipses = saved.Eclipses.Clone();
+                    skySettings.SunRays = saved.SunRays.Clone();
+                    skySettings.SkyboxFaces = saved.SkyboxFaces.Clone();
+                    skySettings.Dome = saved.Dome.Clone();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restore sky from last saved snapshot");
+            }
+            ImGui.Spacing();
 
             // ═══ SKYBOX SETTINGS ═══
             if (skySettings.Type == SkyType.Skybox &&
@@ -1926,8 +1959,8 @@ public class InspectorPanel
                     ImGui.Separator();
                 }
 
-                // ── Volumetric Clouds ──
-                if (ImGui.CollapsingHeader("☁ Volumetric Clouds"))
+                // ── Clouds ──
+                if (ImGui.CollapsingHeader("☁ Clouds"))
                 {
                     var vClouds = skySettings.Clouds;
                     bool vCloudsEn = vClouds.Enabled;
@@ -2398,6 +2431,27 @@ public class InspectorPanel
                 editorObj.ApplyTextureSettings();
                 Console.WriteLine($"[Inspector] Updated {layerNames[Math.Clamp(_terrainLayerIdx, 0, 3)]} layer sampling on '{editorObj.Name}'");
             }
+
+            // ── Per-layer texture tiling ──
+            float[] layerTilings = editorObj.TerrainLayerTilings ?? [editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling];
+            float lt = layerTilings[Math.Clamp(_terrainLayerIdx, 0, 3)];
+            if (ImGui.SliderFloat($"Tiling##tiling_{layerNames[_terrainLayerIdx]}", ref lt, 0.05f, 2.0f, "%.2f"))
+            {
+                if (editorObj.TerrainLayerTilings == null)
+                    editorObj.TerrainLayerTilings = [editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling];
+                editorObj.TerrainLayerTilings[Math.Clamp(_terrainLayerIdx, 0, 3)] = lt;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Tiling frequency for the {layerNames[_terrainLayerIdx]} layer");
+
+            // ── Slope/Cliff tiling (uses dirt texture at its own scale) ──
+            float st = editorObj.TerrainSlopeTiling;
+            if (ImGui.SliderFloat("Slope Tiling##slope_tiling", ref st, 0.05f, 2.0f, "%.2f"))
+            {
+                editorObj.TerrainSlopeTiling = st;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Tiling frequency for the slope/cliff texture (uses dirt texture at a different scale)");
     }
 
     /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>

@@ -150,9 +150,21 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 ImGui.SameLine();
 
                 string tmp = path ?? "";
+                ImGui.SetNextItemWidth(-70);
                 if (ImGui.InputText($"##{id}_path", ref tmp, 512))
                 {
                     SetMap(obj, i, tmp.Trim());
+                }
+                // ── Drag-drop: full-width target on the InputText ──
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    {
+                        SetMap(obj, i, AssetBrowserPanel._dragImagePath);
+                        AssetBrowserPanel._dragImagePath = null;
+                    }
+                    ImGui.EndDragDropTarget();
                 }
 
                 ImGui.SameLine();
@@ -169,18 +181,6 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     SetMap(obj, i, "");
                 }
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear map");
-
-                // ── Drag-drop from the Asset Browser ──
-                if (ImGui.BeginDragDropTarget())
-                {
-                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
-                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
-                    {
-                        SetMap(obj, i, AssetBrowserPanel._dragImagePath);
-                        AssetBrowserPanel._dragImagePath = null;
-                    }
-                    ImGui.EndDragDropTarget();
-                }
 
                 if (has)
                     ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $"✓ {Path.GetFileName(PathHelpers.Resolve(path))}");

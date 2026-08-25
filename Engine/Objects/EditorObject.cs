@@ -1,5 +1,6 @@
 using System.IO;
 using System.Numerics;
+using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
@@ -316,8 +317,12 @@ public unsafe class EditorObject
     public float TerrainHeightScale { get; set; } = 30f;
     /// <summary>Slope steepness (1 - normal.y) above which the dirt/rock layer takes over.</summary>
     public float TerrainSlopeThreshold { get; set; } = 0.35f;
+    /// <summary>Tiling frequency for the slope/cliff texture (uses dirt texture at a different scale).</summary>
+    public float TerrainSlopeTiling { get; set; } = 0.5f;
     /// <summary>World-space tiling frequency of the layer textures.</summary>
     public float TerrainTexTiling { get; set; } = 0.5f;
+    /// <summary>Per-layer tiling: [0]=air, [1]=dirt, [2]=grass, [3]=snow. Falls back to TerrainTexTiling if null.</summary>
+    public float[]? TerrainLayerTilings { get; set; }
     /// <summary>Stochastic (random per-tile) sampling — OFF by default so the default plane
     /// tiles deterministically. ON breaks up the repeating pattern.</summary>
     public bool TerrainUseStochasticSampling { get; set; } = false;
@@ -433,6 +438,8 @@ public unsafe class EditorObject
     // ── New Sky System (3 types: Procedural, Skybox, Dome) ──
     /// <summary>Master sky settings container for the 3 sky types.</summary>
     public SkySettings SkySettings { get; set; } = new();
+    /// <summary>Saved snapshot for Load from Settings button.</summary>
+    [JsonIgnore] public SkySettings? SavedSkySettings { get; set; }
 
     // ── Internal rendering resources (lazy-init) ──
     private Object3D? _object3D;
@@ -992,6 +999,7 @@ public unsafe class EditorObject
         public static readonly int[] UvOffset = new int[7];  // per-map u_uvOffset[i]
         public static readonly int[] Maps = new int[7];     // albedo..emission (units 0-6)
         public static readonly int[] UseMaps = new int[7];  // useAlbedo..useEmission
+        public static int GlobalTiling;
         public static int AlbedoTune, NormalTune, MetallicTune, RoughnessTune, AoTune, HeightTune, EmissionIntensity;
         public static int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
         public static int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
@@ -1027,6 +1035,7 @@ public unsafe class EditorObject
             RoughnessTune = GL.GetUniformLocation(Program, "u_roughnessTuning");
             AoTune = GL.GetUniformLocation(Program, "u_aoTuning");
             HeightTune = GL.GetUniformLocation(Program, "u_heightTuning");
+            GlobalTiling = GL.GetUniformLocation(Program, "u_pbrGlobalTiling");
             EmissionIntensity = GL.GetUniformLocation(Program, "u_emissionIntensity");
             ShadowFilter = GL.GetUniformLocation(Program, "shadowFilterMode");
             ShadowDir = GL.GetUniformLocation(Program, "shadowDir");
@@ -1131,6 +1140,7 @@ public unsafe class EditorObject
         GL.Uniform2f(PbrUniforms.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
         GL.Uniform3f(PbrUniforms.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
         GL.Uniform1f(PbrUniforms.EmissionIntensity, TerrainPbrEmissionIntensity);
+        if (PbrUniforms.GlobalTiling >= 0) GL.Uniform1f(PbrUniforms.GlobalTiling, Math.Max(0.01f, PbrTexTiling));
 
         GL.BindVertexArray(_object3D!.VAO);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
