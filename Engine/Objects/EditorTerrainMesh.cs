@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using StbImageSharp;
@@ -82,6 +83,19 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
     private static readonly int[] _texLocs = new int[4];
+
+    // ── NEW: Dynamic layer uniform locations ──
+    private static int _dynLayerCountLoc = -1;
+    private static readonly int[] _dynLayerTexLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _dynLayerTilingLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _dynLayerHeightLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _dynLayerBlendLocs = new int[EditorObject.MaxTerrainLayers];
+    private static int _dynSlopeEnabledLoc = -1, _dynSlopeThresholdLoc = -1, _dynSlopeTilingLoc = -1, _dynSlopeTexLoc = -1;
+    private readonly uint[] _dynLayerTextures = new uint[EditorObject.MaxTerrainLayers];
+    private readonly string?[] _dynLayerPaths = new string?[EditorObject.MaxTerrainLayers];
+    private uint _dynSlopeTexture = 0;
+    private string? _dynSlopePath = null;
+
     // ── CSM shadow uniforms (editor viewport) ──
     private static int _shadowFilterLoc = -1, _shadowDirLoc = -1;
     private static int _showCSMCascadeColorLoc = -1;
@@ -601,8 +615,7 @@ public unsafe class EditorTerrainMesh : IDisposable
         }
     }
 
-    /// <summary>Set the 4 layer texture paths (air, dirt, grass, snow). Missing/empty paths
-    /// fall back to a solid color texture so the layer still renders distinctly.</summary>
+    /// <summary>Set the 4 legacy layer texture paths (air, dirt, grass, snow).</summary>
     public void SetLayerTextures(string air, string dirt, string grass, string snow)
     {
         // Resolve relative texture paths against the exe folder.
@@ -635,6 +648,40 @@ public unsafe class EditorTerrainMesh : IDisposable
             catch { /* fall through to solid */ }
         }
         return CreateSolidTexture(fallback);
+    }
+
+    /// <summary>Load textures for the dynamic layer system. Call this whenever layers change.</summary>
+    public void SetDynLayerTextures(IList<TerrainLayer> layers, TerrainLayer? slopeLayer)
+    {
+        var pbrFallbackColors = new Vector3[]
+        {
+            new(0.5f, 0.5f, 1.0f), // normal
+            new(0f, 0f, 0f),        // metallic
+            new(0.5f, 0.5f, 0.5f),  // roughness
+            new(1f, 1f, 1f),        // ao
+            new(0.5f, 0.5f, 0.5f),  // height
+            new(0f, 0f, 0f),        // emission
+        };
+
+        for (int i = 0; i < EditorObject.MaxTerrainLayers; i++)
+        {
+            string? path = i < layers.Count ? layers[i].AlbedoPath : null;
+            path = string.IsNullOrEmpty(path) ? null : PathHelpers.Resolve(path);
+            if (_dynLayerPaths[i] == path) continue;
+            _dynLayerPaths[i] = path;
+            if (_dynLayerTextures[i] != 0) { uint t = _dynLayerTextures[i]; GL.DeleteTextures(1, &t); _dynLayerTextures[i] = 0; }
+            _dynLayerTextures[i] = LoadLayerTexture(path ?? "", i < FallbackColors.Length ? FallbackColors[i] : new Vector3(0.5f));
+        }
+
+        // Slope texture
+        string? slopePath = slopeLayer != null ? slopeLayer.AlbedoPath : null;
+        slopePath = string.IsNullOrEmpty(slopePath) ? null : PathHelpers.Resolve(slopePath);
+        if (_dynSlopePath != slopePath)
+        {
+            _dynSlopePath = slopePath;
+            if (_dynSlopeTexture != 0) { uint t = _dynSlopeTexture; GL.DeleteTextures(1, &t); _dynSlopeTexture = 0; }
+            _dynSlopeTexture = LoadLayerTexture(slopePath ?? "", new Vector3(0.45f, 0.35f, 0.25f));
+        }
     }
 
     /// <summary>Re-apply the owner's per-layer <see cref="TextureSettings"/> (min/mag
@@ -715,6 +762,20 @@ public unsafe class EditorTerrainMesh : IDisposable
         _tex4Loc = GL.GetUniformLocation(_program, "tex4");
         for (int i = 0; i < 4; i++)
             _texLocs[i] = GL.GetUniformLocation(_program, $"tex{i}");
+
+        // ── NEW: Dynamic layer uniform locations ──
+        _dynLayerCountLoc = GL.GetUniformLocation(_program, "layerCount");
+        for (int i = 0; i < EditorObject.MaxTerrainLayers; i++)
+        {
+            _dynLayerTexLocs[i] = GL.GetUniformLocation(_program, $"dynLayer{i}");
+            _dynLayerTilingLocs[i] = GL.GetUniformLocation(_program, $"layerTiling[{i}]");
+            _dynLayerHeightLocs[i] = GL.GetUniformLocation(_program, $"layerHeightRange[{i}]");
+            _dynLayerBlendLocs[i] = GL.GetUniformLocation(_program, $"layerBlendSharpness[{i}]");
+        }
+        _dynSlopeEnabledLoc = GL.GetUniformLocation(_program, "slopeEnabled");
+        _dynSlopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
+        _dynSlopeTilingLoc = GL.GetUniformLocation(_program, "slopeTilingVal");
+        _dynSlopeTexLoc = GL.GetUniformLocation(_program, "dynSlopeTex");
 
         // CSM shadow uniforms
         _shadowFilterLoc = GL.GetUniformLocation(_program, "shadowFilterMode");
@@ -797,22 +858,63 @@ public unsafe class EditorTerrainMesh : IDisposable
 
         float heightScale = Math.Max(1f, owner.TerrainHeightScale);
         GL.Uniform3f(_heightScaleLoc, heightScale, 0f, 0f);
-        GL.Uniform4f(_layerLevelsLoc,
-            owner.TerrainLayerAirTop,
-            owner.TerrainLayerDirtTop,
-            owner.TerrainLayerGrassTop,
-            owner.TerrainLayerSnowTop);
-        GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
-        GL.Uniform1f(_texTilingLoc, Math.Max(0.01f, owner.TerrainTexTiling));
-        GL.Uniform1f(_slopeTexTilingLoc, Math.Max(0.01f, owner.TerrainSlopeTexTiling));
-        GL.Uniform1i(_useStochasticSamplingLoc, owner.TerrainUseStochasticSampling ? 1 : 0);
 
+        // ── Legacy compat: upload old layerLevels for backward compat scenes ──
+        if (_layerLevelsLoc >= 0) GL.Uniform4f(_layerLevelsLoc,
+            owner.TerrainLayerAirTop, owner.TerrainLayerDirtTop,
+            owner.TerrainLayerGrassTop, owner.TerrainLayerSnowTop);
+        if (_slopeThresholdLoc >= 0) GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
+        if (_texTilingLoc >= 0) GL.Uniform1f(_texTilingLoc, Math.Max(0.01f, owner.TerrainTexTiling));
+        if (_slopeTexTilingLoc >= 0) GL.Uniform1f(_slopeTexTilingLoc, Math.Max(0.01f, owner.TerrainSlopeTexTiling));
+        if (_useStochasticSamplingLoc >= 0) GL.Uniform1i(_useStochasticSamplingLoc, owner.TerrainUseStochasticSampling ? 1 : 0);
+
+        // ── NEW: Dynamic layer system ──
+        var layers = owner.TerrainLayerList;
+        int count = Math.Min(layers.Count, EditorObject.MaxTerrainLayers);
+        GL.Uniform1i(_dynLayerCountLoc, count);
+
+        for (int i = 0; i < count; i++)
+        {
+            var layer = layers[i];
+            // Bind albedo texture
+            uint texUnit = (uint)(Const.GL_TEXTURE0 + i);
+            GL.ActiveTexture(texUnit);
+            GL.BindTexture(Const.GL_TEXTURE_2D, _dynLayerTextures[i]);
+            GL.Uniform1i(_dynLayerTexLocs[i], i);
+
+            // Upload per-layer tiling
+            float tx = Math.Max(0.01f, layer.TilingX);
+            float ty = Math.Max(0.01f, layer.TilingY);
+            GL.Uniform2f(_dynLayerTilingLocs[i], tx, ty);
+
+            // Upload per-layer height range
+            GL.Uniform2f(_dynLayerHeightLocs[i], layer.HeightMin, layer.HeightMax);
+
+            // Upload per-layer blend sharpness
+            GL.Uniform1f(_dynLayerBlendLocs[i], layer.BlendSharpness);
+        }
+
+        // ── Slope layer ──
+        bool slopeOn = owner.TerrainSlopeEnabled && owner.TerrainSlopeLayer != null;
+        GL.Uniform1i(_dynSlopeEnabledLoc, slopeOn ? 1 : 0);
+        if (slopeOn)
+        {
+            var slope = owner.TerrainSlopeLayer!;
+            GL.Uniform1f(_dynSlopeThresholdLoc, Math.Clamp(slope.SlopeThreshold, 0.02f, 0.98f));
+            GL.Uniform1f(_dynSlopeTilingLoc, Math.Max(0.01f, (slope.TilingX + slope.TilingY) * 0.5f));
+            uint slopeUnit = (uint)(Const.GL_TEXTURE0 + EditorObject.MaxTerrainLayers);
+            GL.ActiveTexture(slopeUnit);
+            GL.BindTexture(Const.GL_TEXTURE_2D, _dynSlopeTexture);
+            GL.Uniform1i(_dynSlopeTexLoc, EditorObject.MaxTerrainLayers);
+        }
+
+        // Legacy layer textures (for old scenes)
         uint[] units = [Const.GL_TEXTURE0, Const.GL_TEXTURE1, Const.GL_TEXTURE2, Const.GL_TEXTURE3];
         for (int i = 0; i < 4; i++)
         {
             GL.ActiveTexture(units[i]);
             GL.BindTexture(Const.GL_TEXTURE_2D, _layerTextures[i]);
-            GL.Uniform1i(_texLocs[i], i);
+            if (_texLocs[i] >= 0) GL.Uniform1i(_texLocs[i], i);
         }
 
         // ── Manual layer-paint splat map (unit 4) ──

@@ -39,6 +39,88 @@ public enum LightType
 /// Contains all properties needed for rendering, shadow casting, and gizmo interaction.
 /// </summary>
 /// <summary>
+/// A single dynamic terrain layer. Contains albedo texture, PBR maps, tiling,
+/// height blending range, and texture sampling settings.
+/// Layers stack from bottom (index 0) to top. HeightMin/HeightMax define where
+/// this layer blends in (smooth transition at edges).
+/// </summary>
+public class TerrainLayer
+{
+    public const int MaxPbrMaps = 6; // normal, metallic, roughness, ao, height, emission
+
+    // ── Identity ──
+    public string Name { get; set; } = "Base";
+    public bool Visible { get; set; } = true;
+
+    // ── Albedo ──
+    public string AlbedoPath { get; set; } = "Artifacts/Textures/default.jpg";
+
+    // ── PBR maps (index 0=normal, 1=metallic, 2=roughness, 3=ao, 4=height, 5=emission) ──
+    public string?[] PbrPaths { get; set; } = new string?[MaxPbrMaps];
+
+    // ── Tiling ──
+    public float TilingX { get; set; } = 0.5f;
+    public float TilingY { get; set; } = 0.5f;
+
+    // ── Height blending (normalized 0..1) ──
+    public float HeightMin { get; set; } = 0.0f;
+    public float HeightMax { get; set; } = 1.0f;
+    public float BlendSharpness { get; set; } = 2.0f; // 1=smooth, higher=sharper
+
+    // ── Texture sampling ──
+    public Libs.TextureSettings? TextureSettings { get; set; } = null;
+
+    // ── PBR tuning (per layer) ──
+    public float NormalStrength { get; set; } = 1.0f;
+    public float MetallicStrength { get; set; } = 1.0f;
+    public float RoughnessStrength { get; set; } = 1.0f;
+    public bool RoughnessInvert { get; set; } = false;
+    public float AoStrength { get; set; } = 1.0f;
+    public float HeightStrength { get; set; } = 1.0f;
+    public bool HeightInvert { get; set; } = false;
+    public float EmissionIntensity { get; set; } = 0.0f;
+    public float AlbedoBrightness { get; set; } = 1.0f;
+    public float AlbedoSaturation { get; set; } = 1.0f;
+    public float AlbedoContrast { get; set; } = 1.0f;
+
+    // ── Slope-specific ──
+    public float SlopeThreshold { get; set; } = 0.35f; // only used for slope layer
+
+    // ── Factory ──
+    public static TerrainLayer CreateDefault() => new() { Name = "Base", HeightMin = 0f, HeightMax = 1f };
+    public static TerrainLayer CreateSlope() => new() { Name = "Slope", HeightMin = 0f, HeightMax = 1f, SlopeThreshold = 0.35f };
+
+    public TerrainLayer Clone()
+    {
+        var c = (TerrainLayer)MemberwiseClone();
+        c.PbrPaths = (string?[])PbrPaths.Clone();
+        c.TextureSettings = TextureSettings?.Clone();
+        return c;
+    }
+
+    public string? GetPbrPath(int mapType) => mapType >= 0 && mapType < MaxPbrMaps ? PbrPaths[mapType] : null;
+    public void SetPbrPath(int mapType, string? path) { if (mapType >= 0 && mapType < MaxPbrMaps) PbrPaths[mapType] = path; }
+
+    public TerrainLayer WithRelativePaths()
+    {
+        var c = Clone();
+        c.AlbedoPath = PathHelpers.MakeRelative(c.AlbedoPath);
+        for (int i = 0; i < MaxPbrMaps; i++)
+            if (c.PbrPaths[i] != null) c.PbrPaths[i] = PathHelpers.MakeRelative(c.PbrPaths[i]!);
+        return c;
+    }
+
+    public TerrainLayer WithResolvedPaths()
+    {
+        var c = Clone();
+        c.AlbedoPath = PathHelpers.Resolve(c.AlbedoPath);
+        for (int i = 0; i < MaxPbrMaps; i++)
+            if (c.PbrPaths[i] != null) c.PbrPaths[i] = PathHelpers.Resolve(c.PbrPaths[i]!);
+        return c;
+    }
+}
+
+/// <summary>
 /// Per-layer PBR configuration for advanced terrain. PBR is per texture: each of the
 /// 5 layers (air, dirt, grass, snow, slope) owns its own 6 companion maps (normal /
 /// metallic / roughness / AO / height / emission) and its own unique tuning values —
@@ -378,9 +460,23 @@ public unsafe class EditorObject
     public float TerrainPbrHeightBlur { get; set; } = 0f;
     /// <summary>Emission intensity multiplier (0 = off, 1 = as mapped).</summary>
     public float TerrainPbrEmissionIntensity { get; set; } = 1f;
-    /// <summary>Per-layer PBR data for the 5 terrain layers — 6 companion maps + unique
-    /// tuning per texture. The layer albedos live in the TerrainTexture*Path properties.</summary>
+    /// <summary>Per-layer PBR data for the legacy 5 terrain layers (kept for backward compat).
+    /// New code should use <see cref="TerrainLayerList"/> instead.</summary>
     public TerrainPbrLayerData[] TerrainLayers { get; set; } = [new(), new(), new(), new(), new()];
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  NEW DYNAMIC TERRAIN LAYER SYSTEM
+    // ══════════════════════════════════════════════════════════════════════
+    /// <summary>Dynamic terrain layers. Default: 1 layer (Base). User can add more.</summary>
+    [JsonIgnore]
+    public List<TerrainLayer> TerrainLayerList { get; set; } = [TerrainLayer.CreateDefault()];
+    /// <summary>Slope layer: applies on steep faces. Toggle on/off.</summary>
+    [JsonIgnore]
+    public TerrainLayer? TerrainSlopeLayer { get; set; } = null;
+    /// <summary>Slope layer data serialized separately (so slope can be null = disabled).</summary>
+    public bool TerrainSlopeEnabled { get; set; } = false;
+    /// <summary>Max layers supported (GPU texture unit limit).</summary>
+    public const int MaxTerrainLayers = 8;
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
     public float TerrainBrushSize { get; set; } = 10f; 
     /// <summary>Height delta per painted frame, in world units (viewport paint tool).</summary>

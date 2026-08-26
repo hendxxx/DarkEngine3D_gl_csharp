@@ -9,12 +9,28 @@ in float viewDepth;
 
 // ── CONFIG (set per terrain plane) ──
 uniform vec3 heightScale;      // .x = world height range used to normalize FragPos.y
-uniform vec4 layerLevels;      // .x=air top, .y=dirt top, .z=grass top, .w=snow top (normalized heights)
-uniform float slopeThreshold;  // steepness (1 - n.y) above which dirt/rock takes over
-uniform float texTiling;       // world-space texture tiling
-uniform float slopeTexTiling;  // tiling for steep cliff surfaces
 uniform vec3 sunDir, lightColor, viewPos, fogColor;
 uniform int useFog;
+
+// ── DYNAMIC LAYER SYSTEM ──
+#define MAX_LAYERS 8
+uniform int layerCount;        // actual number of active layers (1..8)
+uniform vec2 layerTiling[MAX_LAYERS];    // per-layer (tilingX, tilingY)
+uniform vec2 layerHeightRange[MAX_LAYERS]; // per-layer (heightMin, heightMax)
+uniform float layerBlendSharpness[MAX_LAYERS]; // per-layer blend sharpness
+
+// ── LAYER ALBEDO SAMPLERS ──
+uniform sampler2D dynLayer0, dynLayer1, dynLayer2, dynLayer3;
+uniform sampler2D dynLayer4, dynLayer5, dynLayer6, dynLayer7;
+
+// ── SLOPE LAYER (optional) ──
+uniform int slopeEnabled;      // 0 = no slope, 1 = slope layer active
+uniform float slopeThreshold;  // steepness (1 - n.y) above which slope layer takes over
+uniform float slopeTilingVal;  // slope layer tiling
+uniform sampler2D dynSlopeTex;
+
+// Legacy compat — map old uniforms
+uniform vec4 layerLevels;      // kept for old scenes, new system uses layerHeightRange
 
 // ── FOG SETTINGS (Config.FogSettings — uploaded from the Inspector "Fog" section) ──
 uniform int u_fogMode = 3;            // 1 = Linear, 2 = Exponential, 3 = Exp2 + height blend
@@ -39,8 +55,7 @@ float calcFogFactor(float dist, vec3 worldPos) {
     return clamp(mix(1.0, d, heightWeight), 0.0, 1.0);
 }
 
-uniform sampler2D tex0, tex1, tex2, tex3; // air, dirt, grass, snow
-uniform sampler2D tex4;      // splat/control map: RGBA weights for air/dirt/grass/snow (manual paint)
+uniform sampler2D tex4;      // splat/control map: RGBA weights for up to 4 layers (manual paint)
 uniform int usePaintMask;    // 1 = the terrain has manual layer paint to apply
 uniform int showHeatmap;     // 1 = height heatmap + contour overlay (editor clarity)
 uniform int showContours;    // 1 = dark height contour lines only (no heatmap colors)
@@ -284,46 +299,133 @@ float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, f
 // ======================================================
 // MAIN
 // ======================================================
+vec3 sampleDynLayer(int idx, vec2 worldXZ, vec3 norm, vec2 tiling) {
+    // Triplanar sample for a dynamic layer index
+    vec3 blending = abs(normalize(norm));
+    blending = pow(blending, vec3(10.0));
+    blending /= (blending.x + blending.y + blending.z);
+
+    vec2 uvXY = worldXZ * tiling;
+    vec2 uvXZ = worldXZ * tiling;
+    vec2 uvYZ = worldXZ * tiling;
+
+    vec3 col = vec3(0.0);
+    if (idx == 0) {
+        col = sampleLayer(dynLayer0, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer0, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer0, FragPos.xy * tiling) * blending.z;
+    } else if (idx == 1) {
+        col = sampleLayer(dynLayer1, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer1, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer1, FragPos.xy * tiling) * blending.z;
+    } else if (idx == 2) {
+        col = sampleLayer(dynLayer2, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer2, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer2, FragPos.xy * tiling) * blending.z;
+    } else if (idx == 3) {
+        col = sampleLayer(dynLayer3, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer3, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer3, FragPos.xy * tiling) * blending.z;
+    } else if (idx == 4) {
+        col = sampleLayer(dynLayer4, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer4, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer4, FragPos.xy * tiling) * blending.z;
+    } else if (idx == 5) {
+        col = sampleLayer(dynLayer5, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer5, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer5, FragPos.xy * tiling) * blending.z;
+    } else if (idx == 6) {
+        col = sampleLayer(dynLayer6, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer6, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer6, FragPos.xy * tiling) * blending.z;
+    } else {
+        col = sampleLayer(dynLayer7, FragPos.zy * tiling) * blending.x
+            + sampleLayer(dynLayer7, FragPos.xz * tiling) * blending.y
+            + sampleLayer(dynLayer7, FragPos.xy * tiling) * blending.z;
+    }
+    return col;
+}
+
 void main() {
     vec3 norm = normalize(Normal);
     float slope = 1.0 - norm.y;
 
-    // ── 4-LAYER HEIGHT TEXTURING ──
     float h = FragPos.y / max(heightScale.x, 1.0);
     float noise = smoothNoise(FragPos.xz * 0.2) * 0.08;
     float hn = clamp(h + noise, 0.0, 1.0);
 
-    // Blend tiling: flat surfaces use texTiling, steep cliffs use slopeTexTiling
-    float slopeBlend = smoothstep(slopeThreshold - 0.1, slopeThreshold + 0.1, slope);
-    float perPixelTiling = mix(texTiling, slopeTexTiling, slopeBlend);
+    // ── DYNAMIC LAYER HEIGHT BLENDING ──
+    // Build layer weights: each layer contributes where hn is within its [HeightMin, HeightMax].
+    float weights[MAX_LAYERS];
+    vec3 layerColors[MAX_LAYERS];
+    float totalWeight = 0.0;
 
-    vec3 t0 = triplanarLayer(tex0, FragPos, norm, perPixelTiling); // air
-    vec3 t1 = triplanarLayer(tex1, FragPos, norm, perPixelTiling); // tanah
-    vec3 t2 = triplanarLayer(tex2, FragPos, norm, perPixelTiling); // rumput
-    vec3 t3 = triplanarLayer(tex3, FragPos, norm, perPixelTiling); // salju
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        weights[i] = 0.0;
+        layerColors[i] = vec3(0.0);
+    }
 
-    vec3 base;
-    if (hn < layerLevels.x) base = t0;
-    else if (hn < layerLevels.y) base = mix(t0, t1, smoothstep(layerLevels.x, layerLevels.y, hn));
-    else if (hn < layerLevels.z) base = mix(t1, t2, smoothstep(layerLevels.y, layerLevels.z, hn));
-    else base = mix(t2, t3, smoothstep(layerLevels.z, layerLevels.w, hn));
+    for (int i = 0; i < layerCount; i++) {
+        vec2 hr = layerHeightRange[i];
+        float sharp = max(layerBlendSharpness[i], 0.5);
+        float w = 0.0;
+        // Smooth blend: full weight in center, falloff at edges
+        if (hn >= hr.x && hn <= hr.y) {
+            // Inner region: full weight
+            float edgeDist = min(hn - hr.x, hr.y - hn);
+            float edgeBlend = hr.x < hr.y ? (hr.y - hr.x) * 0.5 : 0.1;
+            w = smoothstep(0.0, max(edgeBlend * sharp, 0.01), edgeDist);
+        } else if (hn < hr.x) {
+            // Below range: blend from this layer down
+            w = 1.0 - smoothstep(0.0, max((hr.x - hn) * sharp, 0.01), hr.x - hn);
+        } else {
+            // Above range: fade out
+            w = 1.0 - smoothstep(0.0, max((hn - hr.y) * sharp, 0.01), hn - hr.y);
+        }
+        weights[i] = max(w, 0.0);
+        totalWeight += weights[i];
+    }
 
-    // ── SLOPE → tanah/batu (cliff) ──
-    float sn = slope + noise * 0.1;
-    float cliffMask = smoothstep(slopeThreshold, slopeThreshold + 0.12, sn);
-    vec3 texColor = mix(base, t1, cliffMask * 0.85);
+    // Normalize weights
+    if (totalWeight > 0.001) {
+        for (int i = 0; i < layerCount; i++) {
+            weights[i] /= totalWeight;
+        }
+    }
 
-    // ── MANUAL LAYER PAINT (splat override, painted with the 🎨 brush) ──
-    // The splat map holds per-layer weights in [0,1]. Where the total painted weight
-    // is significant, the painted layer takes over the auto height/slope choice.
-    if (usePaintMask == 1) {
+    // Sample all layers and blend
+    vec3 texColor = vec3(0.0);
+    for (int i = 0; i < layerCount; i++) {
+        if (weights[i] < 0.001) continue;
+        vec2 tiling = layerTiling[i];
+        vec3 lc = sampleDynLayer(i, FragPos.xz, norm, tiling);
+        texColor += lc * weights[i];
+    }
+    // Fallback: if no layers rendered, use a default gray
+    if (layerCount == 0) texColor = vec3(0.5);
+
+    // ── SLOPE OVERRIDE ──
+    if (slopeEnabled == 1) {
+        float cliffMask = smoothstep(slopeThreshold - 0.1, slopeThreshold + 0.12, slope + noise * 0.1);
+        vec3 slopeColor = triplanarLayer(dynSlopeTex, FragPos, norm, slopeTilingVal);
+        texColor = mix(texColor, slopeColor, cliffMask * 0.85);
+    }
+
+    // ── MANUAL LAYER PAINT (splat override, painted with the brush) ──
+    if (usePaintMask == 1 && layerCount <= 4) {
         vec4 w = texture(tex4, TexCoord + 0.5).rgba;
         float wsum = w.x + w.y + w.z + w.w;
         if (wsum > 0.02) {
-            vec4 w2 = w * w;              // sharpen the dominant channel
+            vec4 w2 = w * w;
             float t = w2.x + w2.y + w2.z + w2.w;
             if (t > 0.001) {
-                vec3 painted = (t0 * w2.x + t1 * w2.y + t2 * w2.z + t3 * w2.w) / t;
+                // Sample the first 4 layers for splat paint
+                vec3 painted = vec3(0.0);
+                if (layerCount > 0) painted += sampleDynLayer(0, FragPos.xz, norm, layerTiling[0]) * w2.x;
+                if (layerCount > 1) painted += sampleDynLayer(1, FragPos.xz, norm, layerTiling[1]) * w2.y;
+                if (layerCount > 2) painted += sampleDynLayer(2, FragPos.xz, norm, layerTiling[2]) * w2.z;
+                if (layerCount > 3) painted += sampleDynLayer(3, FragPos.xz, norm, layerTiling[3]) * w2.w;
+                painted /= t;
                 texColor = mix(texColor, painted, clamp(wsum * 1.5, 0.0, 1.0));
             }
         }
