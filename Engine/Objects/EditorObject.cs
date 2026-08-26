@@ -468,15 +468,77 @@ public unsafe class EditorObject
     //  NEW DYNAMIC TERRAIN LAYER SYSTEM
     // ══════════════════════════════════════════════════════════════════════
     /// <summary>Dynamic terrain layers. Default: 1 layer (Base). User can add more.</summary>
-    [JsonIgnore]
     public List<TerrainLayer> TerrainLayerList { get; set; } = [TerrainLayer.CreateDefault()];
     /// <summary>Slope layer: applies on steep faces. Toggle on/off.</summary>
-    [JsonIgnore]
     public TerrainLayer? TerrainSlopeLayer { get; set; } = null;
     /// <summary>Slope layer data serialized separately (so slope can be null = disabled).</summary>
     public bool TerrainSlopeEnabled { get; set; } = false;
     /// <summary>Max layers supported (GPU texture unit limit).</summary>
     public const int MaxTerrainLayers = 8;
+    /// <summary>Migrate old fixed-layer properties to the new TerrainLayerList.
+    /// Called after deserialization for scenes saved with the old format.
+    /// If TerrainLayerList already has real layers (count > 1 or non-default), skip.</summary>
+    public void MigrateTerrainLayers()
+    {
+        if (TerrainLayerList.Count > 1) return; // already migrated or user added layers
+        var only = TerrainLayerList[0];
+        bool isDefault = only.AlbedoPath == "Artifacts/Textures/default.jpg"
+            && only.HeightMin == 0f && only.HeightMax == 1f && only.TilingX == 0.5f;
+        if (!isDefault) return; // user customized the single layer
+
+        // Check if old properties have meaningful data
+        bool hasOldData = !string.IsNullOrEmpty(TerrainTextureDirtPath)
+            || !string.IsNullOrEmpty(TerrainTextureGrassPath)
+            || !string.IsNullOrEmpty(TerrainTextureSnowPath)
+            || TerrainLayerAirTop != 0.18f || TerrainLayerDirtTop != 0.45f;
+        if (!hasOldData) return;
+
+        // Migrate old 4 layers → new dynamic layers
+        TerrainLayerList.Clear();
+        var air = TerrainLayer.CreateDefault();
+        air.Name = "Air"; air.AlbedoPath = TerrainTextureAirPath;
+        air.HeightMin = 0f; air.HeightMax = TerrainLayerAirTop;
+        air.TilingX = TerrainTexTiling; air.TilingY = TerrainTexTiling;
+        TerrainLayerList.Add(air);
+
+        if (!string.IsNullOrEmpty(TerrainTextureDirtPath))
+        {
+            var dirt = TerrainLayer.CreateDefault();
+            dirt.Name = "Dirt"; dirt.AlbedoPath = TerrainTextureDirtPath;
+            dirt.HeightMin = TerrainLayerAirTop; dirt.HeightMax = TerrainLayerDirtTop;
+            dirt.TilingX = TerrainTexTiling; dirt.TilingY = TerrainTexTiling;
+            TerrainLayerList.Add(dirt);
+        }
+        if (!string.IsNullOrEmpty(TerrainTextureGrassPath))
+        {
+            var grass = TerrainLayer.CreateDefault();
+            grass.Name = "Grass"; grass.AlbedoPath = TerrainTextureGrassPath;
+            grass.HeightMin = TerrainLayerDirtTop; grass.HeightMax = TerrainLayerGrassTop;
+            grass.TilingX = TerrainTexTiling; grass.TilingY = TerrainTexTiling;
+            TerrainLayerList.Add(grass);
+        }
+        if (!string.IsNullOrEmpty(TerrainTextureSnowPath))
+        {
+            var snow = TerrainLayer.CreateDefault();
+            snow.Name = "Snow"; snow.AlbedoPath = TerrainTextureSnowPath;
+            snow.HeightMin = TerrainLayerGrassTop; snow.HeightMax = TerrainLayerSnowTop;
+            snow.TilingX = TerrainTexTiling; snow.TilingY = TerrainTexTiling;
+            TerrainLayerList.Add(snow);
+        }
+
+        // Migrate slope
+        if (TerrainSlopeEnabled && !string.IsNullOrEmpty(TerrainTextureSlopePath))
+        {
+            TerrainSlopeLayer = TerrainLayer.CreateSlope();
+            TerrainSlopeLayer.AlbedoPath = TerrainTextureSlopePath;
+            TerrainSlopeLayer.TilingX = TerrainSlopeTexTiling;
+            TerrainSlopeLayer.TilingY = TerrainSlopeTexTiling;
+            TerrainSlopeLayer.SlopeThreshold = TerrainSlopeThreshold;
+        }
+
+        Console.WriteLine($"[EditorObject] Migrated {TerrainLayerList.Count} terrain layers from legacy format");
+    }
+
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
     public float TerrainBrushSize { get; set; } = 10f; 
     /// <summary>Height delta per painted frame, in world units (viewport paint tool).</summary>
@@ -866,6 +928,7 @@ public unsafe class EditorObject
             mesh.RestoreModifiedSplatRaw(_terrainSplatCache);
         _terrainLoadedPath = TerrainHeightmapPath;
         mesh.SetLayerTextures(TerrainTextureAirPath, TerrainTextureDirtPath, TerrainTextureGrassPath, TerrainTextureSnowPath);
+        mesh.SetDynLayerTextures(TerrainLayerList, TerrainSlopeEnabled ? TerrainSlopeLayer : null);
         mesh.Generate(TerrainChunkSize, TerrainChunksPerSide, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
         mesh.ApplyTextureSettings(TerrainLayerSettings);
         _terrainMesh = mesh;

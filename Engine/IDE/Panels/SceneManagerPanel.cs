@@ -1312,6 +1312,9 @@ public class SceneManagerPanel
                         if (!string.IsNullOrEmpty(objData.TerrainSplatData))
                             obj.TerrainSplatData = objData.TerrainSplatData;
                         obj.MarkDirty();
+                        // Migrate old fixed-layer format to new dynamic layers
+                        if (primType == EditorPrimitiveType.Plane)
+                            obj.MigrateTerrainLayers();
 
                         Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
                     }

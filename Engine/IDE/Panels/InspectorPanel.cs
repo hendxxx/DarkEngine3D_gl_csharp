@@ -24,6 +24,7 @@ public class InspectorPanel
     private EditorObject? _texSettingsObj;
     private int _texSlotIdx;
     private int _terrainLayerIdx;
+    private int _dynActiveLayerIdx = 0; // active layer in dynamic system
 
     // ── Cached font list (scanned once) ──
     private string[]? _availableFonts;
@@ -2399,92 +2400,284 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Height bands (normalized 0..1) ──
-            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Height Bands (0..1)");
-            float airTop = editorObj.TerrainLayerAirTop;
-            if (ImGui.DragFloat("Air Top", ref airTop, 0.005f, 0f, 1f, "%.3f"))
+            // ═══════════════════════════════════════════════
+            //  DYNAMIC TERRAIN LAYERS
+            // ═══════════════════════════════════════════════
+            var dynLayers = editorObj.TerrainLayerList;
+
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layers");
+            ImGui.TextDisabled($"{dynLayers.Count} / {EditorObject.MaxTerrainLayers} layers");
+
+            // ── Add / Remove buttons ──
+            bool canAdd = dynLayers.Count < EditorObject.MaxTerrainLayers;
+            bool canRemove = dynLayers.Count > 1;
+            ImGui.BeginDisabled(!canAdd);
+            if (ImGui.Button($"+ Add Layer", new Vector2(ImGui.GetContentRegionAvail().X * 0.5f, 24)))
             {
-                editorObj.TerrainLayerAirTop = Math.Clamp(airTop, 0f, 1f);
+                var newLayer = TerrainLayer.CreateDefault();
+                newLayer.Name = $"Layer {dynLayers.Count + 1}";
+                newLayer.HeightMin = dynLayers.Count > 0 ? dynLayers[^1].HeightMax : 0f;
+                newLayer.HeightMax = Math.Clamp(newLayer.HeightMin + 0.25f, 0f, 1f);
+                dynLayers.Add(newLayer);
                 editorObj.MarkDirty();
             }
-            float dirtTop = editorObj.TerrainLayerDirtTop;
-            if (ImGui.DragFloat("Dirt Top", ref dirtTop, 0.005f, 0f, 1f, "%.3f"))
+            ImGui.EndDisabled();
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!canRemove);
+            if (ImGui.Button($"- Remove Last", new Vector2(-1, 24)) && canRemove)
             {
-                editorObj.TerrainLayerDirtTop = Math.Clamp(dirtTop, 0f, 1f);
+                dynLayers.RemoveAt(dynLayers.Count - 1);
+                if (_dynActiveLayerIdx >= dynLayers.Count) _dynActiveLayerIdx = dynLayers.Count - 1;
                 editorObj.MarkDirty();
             }
-            float grassTop = editorObj.TerrainLayerGrassTop;
-            if (ImGui.DragFloat("Grass Top", ref grassTop, 0.005f, 0f, 1f, "%.3f"))
+            ImGui.EndDisabled();
+
+            ImGui.Spacing();
+
+            // ── Layer list ──
+            Vector4[] layerColors = [
+                new(0.25f, 0.55f, 0.9f, 1f),  // blue
+                new(0.65f, 0.5f, 0.3f, 1f),   // brown
+                new(0.3f, 0.7f, 0.35f, 1f),   // green
+                new(0.9f, 0.92f, 0.98f, 1f),  // white
+                new(0.55f, 0.45f, 0.38f, 1f), // rock
+                new(0.8f, 0.4f, 0.8f, 1f),    // purple
+                new(0.4f, 0.8f, 0.8f, 1f),    // cyan
+                new(0.9f, 0.6f, 0.2f, 1f),    // orange
+            ];
+
+            for (int li = 0; li < dynLayers.Count; li++)
             {
-                editorObj.TerrainLayerGrassTop = Math.Clamp(grassTop, 0f, 1f);
-                editorObj.MarkDirty();
-            }
-            float snowTop = editorObj.TerrainLayerSnowTop;
-            if (ImGui.DragFloat("Snow Top", ref snowTop, 0.005f, 0f, 1f, "%.3f"))
-            {
-                editorObj.TerrainLayerSnowTop = Math.Clamp(snowTop, 0f, 1f);
-                editorObj.MarkDirty();
+                var layer = dynLayers[li];
+                Vector4 col = layerColors[li % layerColors.Length];
+                bool isActive = (li == _dynActiveLayerIdx);
+
+                ImGui.PushID($"dyn_layer_{li}");
+
+                // Selectable row
+                if (ImGui.Selectable($"##sel_{li}", isActive, ImGuiSelectableFlags.SpanAllColumns, new Vector2(0, 28)))
+                {
+                    _dynActiveLayerIdx = li;
+                }
+                ImGui.SameLine();
+                ImGui.TextColored(col, $"{li + 1}. {layer.Name}");
+                ImGui.SameLine();
+                ImGui.TextDisabled($"H:{layer.HeightMin:F2}-{layer.HeightMax:F2}  T:{layer.TilingX:F2}");
+
+                ImGui.PopID();
             }
 
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── 5 layer textures (air, tanah, rumput, salju, slope) ──
-            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layer Textures (1–5)");
-            ImGui.TextDisabled("Empty = solid color fallback. 5 · Slope = steep cliffs.");
+            // ── Active layer editing ──
+            if (_dynActiveLayerIdx >= 0 && _dynActiveLayerIdx < dynLayers.Count)
+            {
+                var activeLayer = dynLayers[_dynActiveLayerIdx];
+                ImGui.TextColored(layerColors[_dynActiveLayerIdx % layerColors.Length],
+                    $"Editing Layer {_dynActiveLayerIdx + 1}: {activeLayer.Name}");
 
-            DrawTerrainLayerField(editorObj, "1 · Air",
-                () => editorObj.TerrainTextureAirPath,
-                v => editorObj.TerrainTextureAirPath = v,
-                new Vector4(0.25f, 0.55f, 0.9f, 1f));
-            DrawTerrainLayerField(editorObj, "2 · Tanah",
-                () => editorObj.TerrainTextureDirtPath,
-                v => editorObj.TerrainTextureDirtPath = v,
-                new Vector4(0.65f, 0.5f, 0.3f, 1f));
-            DrawTerrainLayerField(editorObj, "3 · Rumput",
-                () => editorObj.TerrainTextureGrassPath,
-                v => editorObj.TerrainTextureGrassPath = v,
-                new Vector4(0.3f, 0.7f, 0.35f, 1f));
-            DrawTerrainLayerField(editorObj, "4 · Salju",
-                () => editorObj.TerrainTextureSnowPath,
-                v => editorObj.TerrainTextureSnowPath = v,
-                new Vector4(0.9f, 0.92f, 0.98f, 1f));
-            DrawTerrainLayerField(editorObj, "5 · Slope (Lereng)",
-                () => editorObj.TerrainTextureSlopePath,
-                v => editorObj.TerrainTextureSlopePath = v,
-                new Vector4(0.55f, 0.45f, 0.38f, 1f));
+                // Name
+                string name = activeLayer.Name;
+                if (ImGui.InputText("Name", ref name, 64))
+                {
+                    activeLayer.Name = name;
+                    editorObj.MarkDirty();
+                }
+
+                // Albedo texture
+                string albedo = activeLayer.AlbedoPath ?? "";
+                ImGui.Text("Albedo:");
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.InputText("##albedo", ref albedo, 512))
+                {
+                    activeLayer.AlbedoPath = albedo;
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    {
+                        activeLayer.AlbedoPath = AssetBrowserPanel._dragImagePath;
+                        editorObj.MarkDirty();
+                        AssetBrowserPanel._dragImagePath = null;
+                    }
+                    ImGui.EndDragDropTarget();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Albedo texture (drag-drop from Asset Browser)");
+
+                // Height range
+                ImGui.Separator();
+                ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Height Range");
+                float hMin = activeLayer.HeightMin;
+                float hMax = activeLayer.HeightMax;
+                float sharp = activeLayer.BlendSharpness;
+                if (ImGui.DragFloat("Min", ref hMin, 0.005f, 0f, 1f, "%.3f"))
+                {
+                    activeLayer.HeightMin = Math.Clamp(hMin, 0f, 1f);
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.DragFloat("Max", ref hMax, 0.005f, 0f, 1f, "%.3f"))
+                {
+                    activeLayer.HeightMax = Math.Clamp(hMax, 0f, 1f);
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.SliderFloat("Blend Sharpness", ref sharp, 0.5f, 10f, "%.1f"))
+                {
+                    activeLayer.BlendSharpness = Math.Clamp(sharp, 0.5f, 10f);
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Higher = sharper transitions between layers");
+
+                // Tiling
+                ImGui.Separator();
+                ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Tiling");
+                float tx = activeLayer.TilingX;
+                float ty = activeLayer.TilingY;
+                if (ImGui.DragFloat("Tiling X", ref tx, 0.01f, 0.01f, 5f, "%.2f"))
+                {
+                    activeLayer.TilingX = Math.Max(0.01f, tx);
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.DragFloat("Tiling Y", ref ty, 0.01f, 0.01f, 5f, "%.2f"))
+                {
+                    activeLayer.TilingY = Math.Max(0.01f, ty);
+                    editorObj.MarkDirty();
+                }
+                bool linked = Math.Abs(activeLayer.TilingX - activeLayer.TilingY) < 0.001f;
+                if (ImGui.Checkbox("Link X/Y", ref linked))
+                {
+                    if (linked) activeLayer.TilingY = activeLayer.TilingX;
+                    editorObj.MarkDirty();
+                }
+                if (linked && Math.Abs(activeLayer.TilingX - activeLayer.TilingY) > 0.001f)
+                {
+                    activeLayer.TilingY = activeLayer.TilingX;
+                    editorObj.MarkDirty();
+                }
+
+                // PBR maps (collapsible)
+                if (ImGui.CollapsingHeader("PBR Maps"))
+                {
+                    string[] pbrNames = ["Normal", "Metallic", "Roughness", "AO", "Height", "Emission"];
+                    for (int p = 0; p < TerrainLayer.MaxPbrMaps; p++)
+                    {
+                        string pbrPath = activeLayer.GetPbrPath(p) ?? "";
+                        ImGui.Text($"{pbrNames[p]}:");
+                        ImGui.SameLine();
+                        ImGui.SetNextItemWidth(-30);
+                        ImGui.PushID($"pbr_{_dynActiveLayerIdx}_{p}");
+                        if (ImGui.InputText($"##pbr", ref pbrPath, 512))
+                        {
+                            activeLayer.SetPbrPath(p, string.IsNullOrEmpty(pbrPath) ? null : pbrPath);
+                            editorObj.MarkDirty();
+                        }
+                        if (ImGui.BeginDragDropTarget())
+                        {
+                            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                            {
+                                activeLayer.SetPbrPath(p, AssetBrowserPanel._dragImagePath);
+                                editorObj.MarkDirty();
+                                AssetBrowserPanel._dragImagePath = null;
+                            }
+                            ImGui.EndDragDropTarget();
+                        }
+                        ImGui.SameLine();
+                        if (ImGui.Button($"X##pbr", new Vector2(24, 0)))
+                        {
+                            activeLayer.SetPbrPath(p, null);
+                            editorObj.MarkDirty();
+                        }
+                        ImGui.PopID();
+                    }
+                }
+
+                // PBR tuning (collapsible)
+                if (ImGui.CollapsingHeader("PBR Tuning"))
+                {
+                    float ns = activeLayer.NormalStrength;
+                    if (ImGui.SliderFloat("Normal Strength", ref ns, 0f, 2f, "%.2f")) { activeLayer.NormalStrength = ns; editorObj.MarkDirty(); }
+                    float ms = activeLayer.MetallicStrength;
+                    if (ImGui.SliderFloat("Metallic Strength", ref ms, 0f, 2f, "%.2f")) { activeLayer.MetallicStrength = ms; editorObj.MarkDirty(); }
+                    float rs = activeLayer.RoughnessStrength;
+                    if (ImGui.SliderFloat("Roughness Strength", ref rs, 0f, 2f, "%.2f")) { activeLayer.RoughnessStrength = rs; editorObj.MarkDirty(); }
+                    bool ri = activeLayer.RoughnessInvert;
+                    if (ImGui.Checkbox("Roughness Invert", ref ri)) { activeLayer.RoughnessInvert = ri; editorObj.MarkDirty(); }
+                    float aos = activeLayer.AoStrength;
+                    if (ImGui.SliderFloat("AO Strength", ref aos, 0f, 2f, "%.2f")) { activeLayer.AoStrength = aos; editorObj.MarkDirty(); }
+                    float hs = activeLayer.HeightStrength;
+                    if (ImGui.SliderFloat("Height Strength", ref hs, 0f, 2f, "%.2f")) { activeLayer.HeightStrength = hs; editorObj.MarkDirty(); }
+                    bool hi = activeLayer.HeightInvert;
+                    if (ImGui.Checkbox("Height Invert", ref hi)) { activeLayer.HeightInvert = hi; editorObj.MarkDirty(); }
+                    float ei = activeLayer.EmissionIntensity;
+                    if (ImGui.SliderFloat("Emission Intensity", ref ei, 0f, 5f, "%.2f")) { activeLayer.EmissionIntensity = ei; editorObj.MarkDirty(); }
+                    float ab = activeLayer.AlbedoBrightness;
+                    if (ImGui.SliderFloat("Albedo Brightness", ref ab, 0f, 2f, "%.2f")) { activeLayer.AlbedoBrightness = ab; editorObj.MarkDirty(); }
+                    float asat = activeLayer.AlbedoSaturation;
+                    if (ImGui.SliderFloat("Albedo Saturation", ref asat, 0f, 3f, "%.2f")) { activeLayer.AlbedoSaturation = asat; editorObj.MarkDirty(); }
+                    float ac = activeLayer.AlbedoContrast;
+                    if (ImGui.SliderFloat("Albedo Contrast", ref ac, 0f, 3f, "%.2f")) { activeLayer.AlbedoContrast = ac; editorObj.MarkDirty(); }
+                }
+            }
 
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Texture sampling (min/mag filter, mipmapping, wrapping) — PER LAYER.
-            // Tiling for the terrain is world-space (triplanar, TerrainTexTiling above)
-            // so UV tiling/offset is hidden here. ──
-            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Texture Sampling");
-            if (!ReferenceEquals(_texSettingsObj, editorObj))
+            // ── Slope toggle ──
+            ImGui.TextColored(new Vector4(0.8f, 0.6f, 0.3f, 1f), "Slope Layer");
+            bool slopeOn = editorObj.TerrainSlopeEnabled;
+            if (ImGui.Checkbox("Enable Slope Layer", ref slopeOn))
             {
-                _texSettingsObj = editorObj;
-                _terrainLayerIdx = 0;
+                editorObj.TerrainSlopeEnabled = slopeOn;
+                if (slopeOn && editorObj.TerrainSlopeLayer == null)
+                    editorObj.TerrainSlopeLayer = TerrainLayer.CreateSlope();
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Adds a rock/cliff texture on steep slopes");
+
+            if (editorObj.TerrainSlopeEnabled && editorObj.TerrainSlopeLayer != null)
+            {
+                var slopeLayer = editorObj.TerrainSlopeLayer;
+                string slopeAlbedo = slopeLayer.AlbedoPath ?? "";
+                ImGui.Text("Slope Texture:");
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.InputText("##slope_albedo", ref slopeAlbedo, 512))
+                {
+                    slopeLayer.AlbedoPath = slopeAlbedo;
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    {
+                        slopeLayer.AlbedoPath = AssetBrowserPanel._dragImagePath;
+                        editorObj.MarkDirty();
+                        AssetBrowserPanel._dragImagePath = null;
+                    }
+                    ImGui.EndDragDropTarget();
+                }
+                float st = slopeLayer.SlopeThreshold;
+                if (ImGui.SliderFloat("Slope Threshold", ref st, 0.02f, 0.98f, "%.2f"))
+                {
+                    slopeLayer.SlopeThreshold = Math.Clamp(st, 0.02f, 0.98f);
+                    editorObj.MarkDirty();
+                }
+                float stx = slopeLayer.TilingX;
+                if (ImGui.DragFloat("Slope Tiling", ref stx, 0.01f, 0.01f, 5f, "%.2f"))
+                {
+                    slopeLayer.TilingX = Math.Max(0.01f, stx);
+                    slopeLayer.TilingY = stx;
+                    editorObj.MarkDirty();
+                }
             }
 
-            string[] layerNames = ["Air", "Dirt", "Grass", "Snow"];
-            ImGui.SetNextItemWidth(-1);
-            ImGui.Combo("Layer##texlayer", ref _terrainLayerIdx, layerNames, layerNames.Length);
-
-            var layerSettings = editorObj.TerrainLayerSettings[Math.Clamp(_terrainLayerIdx, 0, 3)];
-            string layerPath = _terrainLayerIdx switch
-            {
-                0 => editorObj.TerrainTextureAirPath,
-                1 => editorObj.TerrainTextureDirtPath,
-                2 => editorObj.TerrainTextureGrassPath,
-                3 => editorObj.TerrainTextureSnowPath,
-                _ => "",
-            };
-            if (DrawTextureSettings(layerSettings, showTiling: false, layerPath))
-            {
-                editorObj.ApplyTextureSettings();
-                Console.WriteLine($"[Inspector] Updated {layerNames[Math.Clamp(_terrainLayerIdx, 0, 3)]} layer sampling on '{editorObj.Name}'");
-            }
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.TextColored(new Vector4(0.6f, 0.8f, 0.7f, 1f),
+                "Brush settings → Terrain Brush panel.");
     }
 
     /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>
