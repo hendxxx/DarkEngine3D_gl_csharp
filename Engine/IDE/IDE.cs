@@ -60,6 +60,13 @@ public class IDE : IDisposable
                 _inGameMode = value;
                 if (_inGameMode)
                 {
+                    // Need at least one scene to enter in-game mode
+                    if (Bridge.EditorScenes.Count == 0)
+                    {
+                        Console.WriteLine("[IDE] Cannot enter In-Game Mode: no scenes loaded.");
+                        _inGameMode = false;
+                        return;
+                    }
                     // Save all editor scenes to game.ing first, then reload for in-game mode
                     Console.WriteLine("[IDE] Saving editor scenes to game.ing before entering in-game mode...");
                     string previousScene = Bridge.SelectedEditorScene ?? "";
