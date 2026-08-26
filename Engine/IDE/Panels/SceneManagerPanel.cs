@@ -949,6 +949,9 @@ public class SceneManagerPanel
         // Cache auto-invalidates on next read by file timestamp change.
     }
 
+    /// <summary>Public wrapper so IDE can restore scene selection after in-game reload.</summary>
+    public void SelectEditorScenePublic(string sceneName) => SelectEditorScene(sceneName);
+
     /// <summary>Select an editor scene to display in SceneDetail. Does NOT switch game scene.</summary>
     private void SelectEditorScene(string sceneName)
     {

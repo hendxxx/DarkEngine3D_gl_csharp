@@ -62,8 +62,15 @@ public class IDE : IDisposable
                 {
                     // Save all editor scenes to game.ing first, then reload for in-game mode
                     Console.WriteLine("[IDE] Saving editor scenes to game.ing before entering in-game mode...");
+                    string previousScene = Bridge.SelectedEditorScene ?? "";
                     Bridge.SaveToGameIng?.Invoke();
                     LoadDefaultGameIng();
+                    // Restore the scene the user had selected (LoadFromIngFile picks first by default)
+                    if (!string.IsNullOrEmpty(previousScene) &&
+                        Bridge.EditorScenes.ContainsKey(previousScene))
+                    {
+                        _sceneManagerPanel.SelectEditorScenePublic(previousScene);
+                    }
                     Bridge.InGameActive = true;
                     _viewport.SetFullscreen(true);
                     _focusedInGameElement = null;
