@@ -32,6 +32,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         private readonly System.Diagnostics.Stopwatch _aeClock = new();
         private double _lastAeTime = 0;
 
+        private int _debugFrame = 0;
+
         public PostFxProcessor(int width, int height)
         {
             Resize(width, height);
@@ -68,7 +70,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         public void Run(uint inputTexture, uint outputFBO, int width, int height)
         {
             Resize(width, height);
-            if (_compositeFBO == 0) return;
+            if (_compositeFBO == 0) { if (_debugFrame++ < 3) Console.WriteLine($"[PostFx] SKIP: FBO=0"); return; }
+            if (_debugFrame++ < 3) Console.WriteLine($"[PostFx] Run: in={inputTexture} out={outputFBO} bloom={PostFxSettings.BloomIntensity:F2} thr={PostFxSettings.BloomThreshold:F2} exp={PostFxSettings.Exposure:F2} AE={PostFxSettings.AutoExposure}");
             if (_vao == 0) CreateQuad();
 
             uint brightS = Shader.GetPostFxBrightShaderProgram();
