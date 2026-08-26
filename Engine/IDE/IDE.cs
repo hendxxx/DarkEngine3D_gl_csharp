@@ -42,6 +42,10 @@ public class IDE : IDisposable
 
     // ── Mode toggles ──
     private bool _inGameMode = false;
+    // ── IDE font scan cache ──
+    private string[]? _ideFontNames;
+    private string[]? _ideFontPaths;
+    private float _savedIDEFontSize = 14f;
     // ── Keyboard navigation in in-game mode ──
     private UIElement? _focusedInGameElement = null;
     private int _focusedInGameIndex = -1;
@@ -127,6 +131,7 @@ public class IDE : IDisposable
         {
             Console.WriteLine("[IDE] Creating ImGuiController...");
             _imgui = new ImGuiController(window);
+            Bridge.ImGuiCtrl = _imgui;
             Console.WriteLine("[IDE] ImGuiController OK");
 
             _viewport = new ViewportPanel(Bridge);
@@ -464,6 +469,28 @@ public class IDE : IDisposable
                 _terrainBrush.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
+
+                // ── IDE Font selector ──
+                ImGui.Separator();
+                if (ImGui.BeginMenu("IDE Font"))
+                {
+                    ScanIDEFontsMenu();
+                    ImGui.Separator();
+                    float fontSize = _savedIDEFontSize;
+                    if (ImGui.DragFloat("Font Size", ref fontSize, 0.5f, 8f, 28f, "%.0f"))
+                    {
+                        _savedIDEFontSize = Math.Clamp(fontSize, 8f, 28f);
+                    }
+                    // Apply font change only when mouse released (no flicker)
+                    if (ImGui.IsItemDeactivatedAfterEdit())
+                    {
+                        var saved = Config.SettingsSave.Load();
+                        saved.IDEFontSize = _savedIDEFontSize;
+                        Config.SettingsSave.Save(saved);
+                        _imgui.ChangeIDEFont(saved.IDEFontPath, _savedIDEFontSize);
+                    }
+                    ImGui.EndMenu();
+                }
                 ImGui.EndMenu();
             }
 
@@ -518,6 +545,85 @@ public class IDE : IDisposable
     /// <summary>In-Game Mode: NO ImGui windows at all.
     /// Renders scene texture + UI elements directly to foreground draw list,
     /// then calls _imgui.Render() to flush. Exit via F8 only.</summary>
+    /// <summary>Scan for IDE fonts (project + common Windows fonts) and render as menu items.</summary>
+    private void ScanIDEFontsMenu()
+    {
+        if (_ideFontNames == null)
+        {
+            var paths = new List<string>();
+            var names = new List<string>();
+
+            // Project fonts
+            try
+            {
+                string fontsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
+                if (Directory.Exists(fontsDir))
+                {
+                    foreach (var f in Directory.GetFiles(fontsDir, "*.ttf"))
+                    {
+                        paths.Add(f);
+                        names.Add($"[Project] {Path.GetFileNameWithoutExtension(f)}");
+                    }
+                }
+            }
+            catch { }
+
+            // Common Windows fonts
+            try
+            {
+                string winFonts = @"C:\Windows\Fonts";
+                string[] commonFonts = [
+                    "arial.ttf", "arialbd.ttf", "times.ttf", "timesbd.ttf",
+                    "cour.ttf", "courbd.ttf", "verdana.ttf", "verdanab.ttf",
+                    "tahoma.ttf", "tahomabd.ttf", "calibri.ttf", "calibrib.ttf",
+                    "segoeui.ttf", "segoeuib.ttf", "segoeuil.ttf",
+                    "CascadiaCode.ttf", "CascadiaMono.ttf",
+                    "Consola.ttf", "consolab.ttf",
+                ];
+                foreach (var fn in commonFonts)
+                {
+                    string fullPath = Path.Combine(winFonts, fn);
+                    if (File.Exists(fullPath))
+                    {
+                        paths.Add(fullPath);
+                        names.Add(Path.GetFileNameWithoutExtension(fn));
+                    }
+                }
+            }
+            catch { }
+
+            _ideFontNames = names.ToArray();
+            _ideFontPaths = paths.ToArray();
+
+            // Load saved font size
+            var saved = Config.SettingsSave.Load();
+            _savedIDEFontSize = saved.IDEFontSize;
+        }
+
+        var currentSaved = Config.SettingsSave.Load();
+        string currentPath = currentSaved.IDEFontPath;
+
+        // Default option
+        bool isDefault = string.IsNullOrEmpty(currentPath);
+        if (ImGui.MenuItem("Default", null, isDefault))
+        {
+            currentSaved.IDEFontPath = "";
+            Config.SettingsSave.Save(currentSaved);
+            _imgui.ChangeIDEFont("", _savedIDEFontSize);
+        }
+
+        for (int i = 0; i < _ideFontPaths.Length; i++)
+        {
+            bool isActive = string.Equals(_ideFontPaths[i], currentPath, StringComparison.OrdinalIgnoreCase);
+            if (ImGui.MenuItem(_ideFontNames[i], null, isActive))
+            {
+                currentSaved.IDEFontPath = _ideFontPaths[i];
+                Config.SettingsSave.Save(currentSaved);
+                _imgui.ChangeIDEFont(_ideFontPaths[i], _savedIDEFontSize);
+            }
+        }
+    }
+
     private void RenderInGameMode()
     {
         var io = ImGui.GetIO();

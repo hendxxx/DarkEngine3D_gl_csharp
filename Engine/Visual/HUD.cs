@@ -77,7 +77,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>O(1) lookup: (fontPath, fontSize) → slot index. Updated when slots are created or cleared.</summary>
         private readonly Dictionary<(string path, float size), int> _fontSlotLookup = [];
 
-        private const int AtlasSize = 1024;
+        private const int AtlasSize = 2048;
 
         // ════════════════════════════════════════════
         //  BATCH RENDER QUEUES

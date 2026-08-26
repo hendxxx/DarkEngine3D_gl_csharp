@@ -5,30 +5,27 @@ using System;
 namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 {
     /// <summary>
-    /// Self-contained AAA post-FX chain (bloom + ACES tonemapping + gamma correction)
-    /// that can be run on ANY full-res texture — GameScene's PostProcessStack and the
-    /// editor's shared viewport FBO both use it, so the IDE "Post FX" panel sliders are
-    /// live in the editor viewport too.
-    ///
-    /// <c>Run(inputTexture, outputFBO, w, h)</c> extracts a half-res bright-pass, blurs it
-    /// (2× separable Gaussian ping-pong), composites scene + bloom with ACES tonemap and
-    /// gamma, then writes the graded result into <c>outputFBO</c>. All values come live
-    /// from <see cref="PostFxSettings"/> (no rebuild needed to retune).
+    /// AAA post-FX chain: bloom + ACES tonemapping + gamma correction.
+    /// Uses a dedicated luminance texture for auto-exposure so the viewport
+    /// texture never needs mipmap-compatible filters.
     /// </summary>
     public unsafe class PostFxProcessor
     {
+        // ── Bloom ping-pong FBOs (half res) ──
         private uint _bloomFBO_A = 0, _bloomTex_A = 0;
         private uint _bloomFBO_B = 0, _bloomTex_B = 0;
+        // ── Composite FBO (full res) ──
         private uint _compositeFBO = 0, _compositeTex = 0;
+        // ── Dedicated luminance texture for auto-exposure ──
+        private uint _lumaFBO = 0, _lumaTex = 0;
+        private int _lumaW = 0, _lumaH = 0;
+
         private int _w = 0, _h = 0;
         private int _bloomW = 0, _bloomH = 0;
 
         private uint _vao = 0, _vbo = 0;
 
-        // ── Auto-exposure: reads the 1×1 mip of the input (box-filtered average)
-        // luminance, adapts the exposure over time so the frame is never blown out
-        // nor pitch black. ──
-        private uint _lumaFBO = 0;
+        // ── Auto-exposure state ──
         private float _smoothedExposure = 1f;
         private readonly System.Diagnostics.Stopwatch _aeClock = new();
         private double _lastAeTime = 0;
@@ -38,8 +35,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             Resize(width, height);
         }
 
-        /// <summary>(Re)create the bloom + composite targets for the given size.
-        /// No-op when the size is unchanged, so calling it every frame is cheap.</summary>
         public void Resize(int width, int height)
         {
             if (width == _w && height == _h) return;
@@ -50,22 +45,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             _bloomW = Math.Max(1, width / 2);
             _bloomH = Math.Max(1, height / 2);
 
-            (_bloomFBO_A, _bloomTex_A) = CreateColorTarget(_bloomW, _bloomH);
-            (_bloomFBO_B, _bloomTex_B) = CreateColorTarget(_bloomW, _bloomH);
-            (_compositeFBO, _compositeTex) = CreateColorTarget(width, height);
+            (_bloomFBO_A, _bloomTex_A) = CreateColorTarget(_bloomW, _bloomH, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE);
+            (_bloomFBO_B, _bloomTex_B) = CreateColorTarget(_bloomW, _bloomH, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE);
+            (_compositeFBO, _compositeTex) = CreateColorTarget(width, height, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE);
+
+            // Luminance texture: small, RGBA8, mipmapped for average luminance
+            _lumaW = Math.Max(1, width / 16);
+            _lumaH = Math.Max(1, height / 16);
+            (_lumaFBO, _lumaTex) = CreateColorTarget(_lumaW, _lumaH, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE);
+            // Enable mipmaps on the luminance texture for auto-exposure
+            GL.BindTexture(Const.GL_TEXTURE_2D, _lumaTex);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+            GL.GenerateMipmap(Const.GL_TEXTURE_2D);
         }
 
-        /// <summary>Run the full chain: inputTexture → bright-pass → blur → composite
-        /// (scene + bloom, ACES tonemap, gamma) → outputFBO.</summary>
         public void Run(uint inputTexture, uint outputFBO, int width, int height)
         {
             Resize(width, height);
             if (_compositeFBO == 0) return;
-
             if (_vao == 0) CreateQuad();
 
-            // ── Auto-exposure: measure the scene luminance BEFORE any grading and pick
-            // the exposure used by the composite pass below. ──
+            // ── Auto-exposure ──
             float effectiveExposure = PostFxSettings.Exposure;
             if (PostFxSettings.AutoExposure)
             {
@@ -109,7 +110,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
                 DrawQuad();
             }
 
-            // ── 3. Composite + tonemap + gamma → full-res composite FBO ──
+            // ── 3. Composite + tonemap + gamma → composite FBO ──
             BindTarget(_compositeFBO, _w, _h);
             uint compositeShader = Shader.GetPostFxCompositeShaderProgram();
             GL.UseProgram(compositeShader);
@@ -139,47 +140,55 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.Viewport(0, 0, _w, _h);
         }
 
-        /// <summary>Measure the input's average luminance (via its 1×1 mip level — each
-        /// mip is a box-filtered average of the level below, so the last mip is the
-        /// scene average) and return the adaptively smoothed exposure.</summary>
+        /// <summary>
+        /// Compute auto-exposure using a dedicated luminance texture.
+        /// The scene is downscaled to a small texture, mipmaps generate the
+        /// average, then we read back the luminance.
+        /// </summary>
         private float ComputeAutoExposure(uint inputTexture, int width, int height)
         {
-            // 1. Generate the mip chain (full-res box-filtered averages down to 1×1).
-            GL.BindTexture(Const.GL_TEXTURE_2D, inputTexture);
+            // 1. Downscale scene into the dedicated luminance texture
+            BindTarget(_lumaFBO, _lumaW, _lumaH);
+            uint brightShader = Shader.GetPostFxBrightShaderProgram();
+            GL.UseProgram(brightShader);
+            BindTexUnit0(inputTexture);
+            GL.Uniform1i(GL.GetUniformLocation(brightShader, "sceneTex"), 0);
+            GL.Uniform1f(GL.GetUniformLocation(brightShader, "u_Threshold"), 0f);
+            GL.Uniform1f(GL.GetUniformLocation(brightShader, "u_SoftKnee"), 0f);
+            DrawQuad();
+
+            // 2. Generate mipmaps on the luminance texture (has mipmap filter)
+            GL.BindTexture(Const.GL_TEXTURE_2D, _lumaTex);
             GL.GenerateMipmap(Const.GL_TEXTURE_2D);
 
-            int maxDim = Math.Max(width, height);
+            // 3. Find the smallest mip level
+            int maxDim = Math.Max(_lumaW, _lumaH);
             int maxLevel = 0;
             while ((maxDim >> maxLevel) > 1) maxLevel++;
 
-            // 2. Attach the 1×1 mip to a tiny FBO and read back the average color.
-            if (_lumaFBO == 0)
-            {
-                uint fbo = 0;
-                GL.GenFramebuffers(1, &fbo);
-                _lumaFBO = fbo;
-            }
+            // 4. Attach the smallest mip to our FBO and read back
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _lumaFBO);
             GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
-                                    Const.GL_TEXTURE_2D, inputTexture, maxLevel);
+                                    Const.GL_TEXTURE_2D, _lumaTex, maxLevel);
 
             float[] px = new float[4];
             fixed (float* p = px)
                 GL.ReadPixels(0, 0, 1, 1, Const.GL_RGBA, Const.GL_FLOAT, p);
+
+            // Restore full-res attachment
+            GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
+                                    Const.GL_TEXTURE_2D, _lumaTex, 0);
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
 
-            // 3. Target exposure from the average luminance (Rec. 709 luma).
+            // 5. Compute exposure from average luminance
             float luma = 0.2126f * px[0] + 0.7152f * px[1] + 0.0722f * px[2];
             float target = PostFxSettings.AutoExposureTargetLuminance / Math.Max(luma, 1e-4f);
-            // Clamp with normalized bounds — Math.Clamp throws if min > max, which the
-            // panel sliders can produce when the user drags Min above Max.
             float lo = Math.Min(PostFxSettings.AutoExposureMinExposure, PostFxSettings.AutoExposureMaxExposure);
             float hi = Math.Max(PostFxSettings.AutoExposureMinExposure, PostFxSettings.AutoExposureMaxExposure);
             target = Math.Clamp(target, lo, hi);
 
-            // 4. Exponential smoothing over time — exposure adapts smoothly instead of
-            // jumping when the camera pans between bright and dark areas.
+            // 6. Exponential smoothing
             if (!_aeClock.IsRunning) _aeClock.Start();
             double now = _aeClock.Elapsed.TotalSeconds;
             float dt = (float)Math.Min(now - _lastAeTime, 0.1);
@@ -190,13 +199,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             return _smoothedExposure;
         }
 
-        /// <summary>Delete all GL resources (also called on resize before recreating).</summary>
         public void Destroy()
         {
             DestroyTargets();
             if (_vao != 0) { fixed (uint* p = &_vao) GL.DeleteVertexArrays(1, p); _vao = 0; }
             if (_vbo != 0) { fixed (uint* p = &_vbo) GL.DeleteBuffers(1, p); _vbo = 0; }
-            if (_lumaFBO != 0) { fixed (uint* p = &_lumaFBO) GL.DeleteFramebuffers(1, p); _lumaFBO = 0; }
             _w = 0;
             _h = 0;
         }
@@ -209,9 +216,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             if (_bloomTex_B != 0) { fixed (uint* p = &_bloomTex_B) GL.DeleteTextures(1, p); _bloomTex_B = 0; }
             if (_compositeFBO != 0) { fixed (uint* p = &_compositeFBO) GL.DeleteFramebuffers(1, p); _compositeFBO = 0; }
             if (_compositeTex != 0) { fixed (uint* p = &_compositeTex) GL.DeleteTextures(1, p); _compositeTex = 0; }
+            if (_lumaFBO != 0) { fixed (uint* p = &_lumaFBO) GL.DeleteFramebuffers(1, p); _lumaFBO = 0; }
+            if (_lumaTex != 0) { fixed (uint* p = &_lumaTex) GL.DeleteTextures(1, p); _lumaTex = 0; }
         }
 
-        private static (uint fbo, uint tex) CreateColorTarget(int w, int h)
+        private static (uint fbo, uint tex) CreateColorTarget(int w, int h, uint internalFormat, uint pixelType)
         {
             uint fbo = 0, tex = 0;
 
@@ -220,8 +229,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
             GL.GenTextures(1, &tex);
             GL.BindTexture(Const.GL_TEXTURE_2D, tex);
-            GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA8, w, h, 0,
-                          Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (void*)0);
+            GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)internalFormat, w, h, 0,
+                          Const.GL_RGBA, pixelType, (void*)0);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
             GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
@@ -254,7 +263,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
         private void CreateQuad()
         {
-            // Full-screen quad, CCW, FBO convention: bottom-left = uv(0,0).
             float[] quad =
             [
                 -1f, -1f,  0f, 0f,

@@ -1,5 +1,4 @@
 #version 400 core
-#define PI 3.14159265
 out vec4 FragColor;
 
 in vec3 TexCoords;
@@ -28,21 +27,16 @@ uniform float mieFocus;
 uniform float mieHeight;
 
 // ── Volumetric Clouds ──
+uniform float cloudDensity;
 uniform float cloudAltitude;
 uniform float cloudSpeed;
+uniform float cloudDetail;
 uniform float cloudErosion;
-uniform float cloudScale;
+uniform float cloudShadowStrength;
 uniform float cloudScatter;
 uniform vec3  cloudTintColor;
+uniform float cirrusStrength;
 uniform float cloudsEnabled;
-uniform float cloudHeight;
-uniform float cloudAbsorption;
-uniform float cloudPhaseG;
-uniform float cloudSteps;
-uniform float cloudLightSteps;
-uniform float cloudCoverage;
-uniform float cloudCurl;
-uniform float cloudQuality;
 
 // ── Moon ──
 uniform sampler2D moonTex;
@@ -103,190 +97,40 @@ float fbm(vec3 p)
     return f;
 }
 
-// ── Worley Noise (cellular) for popcorn detail ──
-vec3 hash33(vec3 p) {
-    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
-             dot(p, vec3(269.5, 183.3, 246.1)),
-             dot(p, vec3(113.5, 271.9, 124.6)));
-    return fract(sin(p) * 43758.5453123);
-}
-
-float worley(vec3 p) {
-    vec3 id = floor(p);
-    vec3 f = fract(p);
-    float minDist = 1.0;
-    for (int x = -1; x <= 1; x++)
-    for (int y = -1; y <= 1; y++)
-    for (int z = -1; z <= 1; z++) {
-        vec3 neighbor = vec3(float(x), float(y), float(z));
-        vec3 point = hash33(id + neighbor);
-        vec3 diff = neighbor + point - f;
-        minDist = min(minDist, length(diff));
-    }
-    return 1.0 - minDist; // invert: white at cell center
-}
-
-float worleyFBM(vec3 p) {
-    float f = 0.0;
-    float w = 0.5;
-    for (int i = 0; i < 3; i++) {
-        f += w * worley(p);
-        p *= 2.0;
-        w *= 0.5;
-    }
-    return f;
-}
-
-// ── Remap ──
-float remap(float v, float minOld, float maxOld, float minNew, float maxNew) {
-    return minNew + (v - minOld) * (maxNew - minNew) / (maxOld - minOld);
-}
-
-// ── Henyey-Greenstein Phase Function ──
-float hgPhase(float cosTheta, float g) {
-    float g2 = g * g;
-    return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
-}
-
-// ── Dual-lobe phase (forward + backward scatter) ──
-float dualPhase(float cosTheta) {
-    return mix(hgPhase(cosTheta, cloudPhaseG), hgPhase(cosTheta, -0.2), 0.5);
-}
-
 // ═══════════════════════════════════════════════
+// ATMOSPHERIC SCATTERING (parameterized)
 // ═══════════════════════════════════════════════
-// ATMOSPHERIC SCATTERING — AAA Quality
-// Based on rhept.org analytical formula
-// Normalized coefficients, no ray march needed
-// ═══════════════════════════════════════════════
-
-
-// Rayleigh phase function
-float rayleighPhase(float cosTheta) {
-    return 0.06 * (1.0 + cosTheta * cosTheta);
-}
-
-// Mie phase function (Henyey-Greenstein)
-float miePhase(float cosTheta, float g) {
-    float g2 = g * g;
-    float denom = 1.0 + g2 - 2.0 * g * cosTheta;
-    denom = max(denom, 0.0001);
-    return (1.0 - g2) / (4.0 * PI * pow(denom, 1.5));
-}
-
-// Sun disc glow
-float sunDisc(float cosTheta) {
-    float sun_w = 0.0002;
-    float phase = sun_w / (1.0 + sun_w - cosTheta);
-    return 4.0 * phase * phase;
-}
-
 vec3 atmosphericScattering(vec3 viewDir, vec3 sDir, float sunInt)
 {
-    vec3 vd = normalize(viewDir);
-    vec3 sd = normalize(sDir);
-    
-    float sy = sd.y; // sun height (-1 to 1)
-    float vy = vd.y; // view height (-1 to 1)
-    
-    // ── Sun elevation factors ──
-    // tDay: 1 when sun high, 0 when sun below -0.2
-    float tDay = smoothstep(-0.2, 0.15, sy);
-    // tTwilight: 1 when sun near horizon, fades both ways
-    float tTwilight = smoothstep(-0.2, 0.0, sy) * (1.0 - smoothstep(0.0, 0.3, sy));
-    // tNight: 1 when sun well below horizon
-    float tNight = 1.0 - smoothstep(-0.4, -0.05, sy);
-    
-    // ── Scattering coefficients (rhept.org) ──
-    // Rayleigh: wavelength-dependent base (1/λ⁴), tinted by user color
-    vec3 sigmaR = vec3(0.33, 0.78, 1.89) * rayleighColor;
-    float Sr = rayleighStrength;
-    // Mie: wavelength-independent base, tinted by user color
-    float sigmaM = 1.0;
-    float Sm = mieStrength;
-    
-    // Height falloff: higher values → thinner atmosphere → less scattering
-    // Use exponential density falloff based on height scales
-    float heightFactorR = exp(-rayleighHeight * 0.5); // Rayleigh density modifier
-    float heightFactorM = exp(-mieHeight * 0.3);       // Mie density modifier
-    
-    // Prevent division by zero at horizon
-    float safeSy = max(abs(sy), 0.005);
-    float safeVy = max(abs(vy), 0.005);
-    
-    // Cosine of angle between sun and view
-    float cosTheta = dot(vd, sd);
-    
-    // Phase functions
-    float phaseR = rayleighPhase(cosTheta);
-    float phaseM = miePhase(cosTheta, mieFocus);
-    float phaseS = sunDisc(cosTheta);
-    
-    // Combined scattering terms (with height-modulated density)
-    vec3 sigmaSum = Sr * sigmaR * heightFactorR + vec3(Sm * sigmaM * heightFactorM);
-    vec3 phaseSum = Sr * sigmaR * heightFactorR * phaseR
-                  + vec3(Sm * sigmaM * heightFactorM) * mieColor * phaseM;
-    phaseSum += vec3(Sm * phaseS * 2.0);
-    
-    // ── Analytical scattering (rhept.org eq.10) ──
-    vec3 result = vec3(0.0);
-    
-    // Only compute main scattering when sun is above -0.2 (not deep night)
-    if (sy > -0.2)
-    {
-        result = max(sunInt, 0.01) * scatteringIntensity *
-                  (safeSy / (safeSy + safeVy)) *
-                  (phaseSum / max(sigmaSum, vec3(1e-10))) *
-                  (exp(sigmaSum / safeSy * 0.17) - exp(-sigmaSum / safeVy * 0.17));
-    }
-    
-    // ── Ozone absorption layer (Chappuis band) ──
-    // Ozone absorbs yellow-orange (500-700nm), making sky bluer overhead
-    // and adding purple/deep blue at twilight when sun path is long
-    // Absorption spectrum: absorbs red strongly, moderate green, little blue
-    vec3 ozoneAbsorb = vec3(0.55, 0.38, 0.08); // Chappuis absorption weights
-    float ozoneStrength = 1.2; // overall ozone intensity
-    
-    // Ozone path length: longer at grazing angles (sunset/sunrise)
-    // Approximate optical depth through ozone layer (~25 km altitude)
-    float viewAngle = acos(clamp(vy, -0.999, 0.999)); // angle from zenith
-    float sunAngle = acos(clamp(sy, -0.999, 0.999));
-    float ozonePath = 1.0 / (cos(viewAngle) + 0.15 * cos(sunAngle) + 0.3);
-    ozonePath = clamp(ozonePath, 0.0, 8.0);
-    
-    // Apply ozone absorption: attenuate scattered light
-    // More absorption when path is long (sunset) → removes yellow → deeper blue/purple
-    vec3 ozoneAtten = exp(-ozoneAbsorb * ozoneStrength * ozonePath * 0.15);
-    result *= ozoneAtten;
-    
-    // Ozone also scatters some light (adds purple tint at twilight)
-    float ozoneScatter = smoothstep(0.1, -0.15, sy) * (1.0 - tNight); // peaks at sunset
-    vec3 ozoneScatterColor = vec3(0.35, 0.25, 0.55); // purple-blue
-    result += ozoneScatterColor * ozoneScatter * ozonePath * 0.08 * scatteringIntensity;
-    
-    // ── Twilight glow (warm horizon when sun is low) ──
-    float horizonBand = exp(-pow(vy * 3.0, 2.0)); // bright band near horizon
-    vec3 twilightColor = vec3(1.0, 0.45, 0.15); // warm orange
-    vec3 twilight = twilightColor * horizonBand * tTwilight * scatteringIntensity * 0.35;
-    
-    // Stronger sunset glow when sun is just below horizon
-    float sunsetBoost = exp(-abs(sy) * 8.0); // peaks at sy=0, fades fast
-    twilight += vec3(1.2, 0.5, 0.1) * horizonBand * sunsetBoost * scatteringIntensity * 0.5;
-    
-    result += twilight;
-    
-    // ── Night sky ambient (deep blue) ──
-    float zenithFade = max(vy, 0.0); // brighter at zenith at night
-    vec3 nightSkyColor = vec3(0.02, 0.03, 0.08); // deep dark blue
-    vec3 nightAmbient = nightSkyColor * tNight * (0.3 + zenithFade * 0.7);
-    result += nightAmbient;
-    
-    // Clamp and Reinhard tone map
-    result = clamp(result, vec3(0.0), vec3(10.0));
-    result = result / (result + vec3(1.0));
-    
-    return clamp(result, 0.0, 1.0);
+    const float PI = 3.14159265;
+
+    float HR = rayleighHeight;
+    float HM = mieHeight;
+    vec3 betaR = rayleighColor * 33.1e-6 * rayleighStrength;
+    float betaM = 21e-6 * mieStrength;
+    float g = mieFocus;
+
+    float cosViewUp = max(dot(normalize(viewDir), vec3(0.0, 1.0, 0.0)), 0.001);
+    float rayleighLength = exp(-1.0 / HR) / cosViewUp;
+    float mieLength = exp(-1.0 / HM) / cosViewUp;
+
+    float mu = clamp(dot(normalize(viewDir), normalize(sDir)), -1.0, 1.0);
+    float phaseR = (3.0 / (16.0 * PI)) * (1.0 + mu * mu);
+    float phaseM = (3.0 / (8.0 * PI)) * ((1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5));
+
+    vec3 tau = betaR * rayleighLength + vec3(betaM * mieLength);
+    vec3 trans = exp(-tau);
+
+    vec3 Lr = betaR * phaseR * sunInt * trans;
+    vec3 Lm = mieColor * betaM * phaseM * sunInt * trans;
+
+    vec3 sky = Lr + Lm;
+    // Scale from physical radiance (~1e-5) to visible range before Reinhard
+    sky *= scatteringIntensity * 40000.0;
+    sky = sky / (sky + vec3(1.0));
+    return pow(sky, vec3(1.0 / 1.1));
 }
+
 // ═══════════════════════════════════════════════
 // STAR FIELD
 // ═══════════════════════════════════════════════
@@ -419,10 +263,19 @@ float lightningFlash(float t, float weather)
 vec3 GetSkyColorAtDirection(vec3 dir)
 {
     float sunY = dir.y;
+    float tSunset = clamp((sunY - 0.0) / (0.65 - 0.0), 0.0, 1.0);
+    float tNight  = smoothstep(-0.25, 0.05, sunY);
+
+    vec3 noonSky      = vec3(0.4, 0.6, 0.85);
+    vec3 sunsetColor  = vec3(1.0, 0.48, 0.25);
+    vec3 nightColor   = vec3(0.06, 0.06, 0.10);
+
     float sunIntensity = clamp(sunY * 1.5 + 0.5, 0.0, 2.0);
     vec3 atmosphereSky = atmosphericScattering(dir, sunDir, sunIntensity);
-    float horizonFade = smoothstep(-0.2, 0.1, dir.y);
-    return atmosphereSky * horizonFade;
+    vec3 sunsetBlend = mix(sunsetColor * 0.6, noonSky, tSunset);
+    vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
+    float up = max(dir.y, 0.0);
+    return mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.12), up * 0.85 + 0.15);
 }
 
 // ═══════════════════════════════════════════════
@@ -504,15 +357,19 @@ void main()
     float lightning = lightningFlash(time.x, weatherMode);
 
     float tSunset = clamp((sunY - 0.0) / (0.65 - 0.0), 0.0, 1.0);
+    float tNight  = smoothstep(-0.25, 0.05, sunY);
     float tMalam  = 1.0 - smoothstep(-0.3, 0.1, sunY);
     float nightOverride = smoothstep(0.1, 0.3, tMalam);
     float sunFactor = 1.0 - tMalam;
 
+    vec3 noonSky      = vec3(0.4, 0.6, 0.85);
     vec3 sunsetColor  = vec3(1.0, 0.48, 0.25);
+    vec3 nightColor   = vec3(0.06, 0.06, 0.10);
 
-    // Smooth sun intensity for scattering input — no harsh clamps
-    float sunIntensity = smoothstep(-0.3, 0.4, sunY) * 2.0;
+    float sunIntensity = clamp(sunY * 1.5 + 0.5, 0.0, 2.0);
     vec3 atmosphereSky = atmosphericScattering(viewDir, lightDir, sunIntensity);
+    vec3 sunsetBlend = mix(sunsetColor * 0.6, noonSky, tSunset);
+    vec3 horizonTint = mix(nightColor * 0.4, sunsetBlend, tNight);
 
     float up = max(viewDir.y, 0.0);
 
@@ -530,11 +387,8 @@ void main()
     float bolt = boltShape * lightning;
     float boltFlash = bolt * 1.0;
 
-    // Sky = atmospheric scattering with smooth day-night blending
-    // Day: full scattering; Night: gentle fade below horizon
-    float belowHorizonFade = smoothstep(-0.6, 0.1, viewDir.y);
-    float horizonMask = mix(belowHorizonFade, 1.0, sunFactor);
-    vec3 skyBase = atmosphereSky * horizonMask;
+    // Atmosphere dominates the sky like the reference — reduced fog/horizon tint dilution
+    vec3 skyBase = mix(fogColor * 0.5, mix(atmosphereSky, horizonTint, 0.12), up * 0.85 + 0.15);
     skyBase += vec3(1.0, 1.0, 1.2) * lightning * 3.0;
 
     // Weather
@@ -556,189 +410,69 @@ void main()
     cloudTint = mix(cloudTint, cloudTint * 0.1, tMalam * weather);
     skyBase = mix(skyBase, skyBase * 0.45, tMalam * weather);
 
-    // ──── CLOUDS (Volumetric Ray March) ────
+    // ──── CLOUDS ────
     float cloudAlpha = 0.0;
     vec3 finalCloudColor = vec3(0.0);
 
-    if (cloudsEnabled > 0.5)
+    if (cloudsEnabled > 0.5 && viewDir.y > 0.0)
     {
-        // ── Cloud slab: flat plane at cloudAltitude with cloudHeight thickness ──
-        float slabBottom = cloudAltitude;
-        float slabTop = cloudAltitude + cloudHeight;
+        float distToPlane = cloudAltitude / max(viewDir.y, 0.25);
+        vec3 cloudPos = viewDir * distToPlane;
 
-        // Ray-slab intersection (flat horizontal slab)
-        float tEnter = -1e10;
-        float tExit = 1e10;
-        if (abs(viewDir.y) > 0.0001)
-        {
-            float tB = (slabBottom - 0.0) / viewDir.y; // camera at y=0
-            float tT = (slabTop - 0.0) / viewDir.y;
-            tEnter = min(tB, tT);
-            tExit = max(tB, tT);
-        }
-        // Only march if ray enters the slab and goes upward
-        if (tExit > 0.0 && tEnter < tExit && viewDir.y > 0.0)
-        {
-            tEnter = max(tEnter, 0.0);
-            float marchLen = tExit - tEnter;
-            // Quality: 0=Low(128), 1=Medium(256), 2=High(512), 3=Ultra(1024)
-            int q = int(cloudQuality);
-            int Steps = q == 0 ? 16 : q == 1 ? 32 : q == 2 ? 64 : 128;
-            int LSteps = q == 0 ? 2 : q == 1 ? 4 : q == 2 ? 8 : 16;
-            // Allow manual override if cloudSteps is set
-            if (cloudSteps > 1.0) Steps = int(cloudSteps);
-            if (cloudLightSteps > 1.0) LSteps = int(cloudLightSteps);
-            float stepSize = marchLen / float(Steps);
+        vec3 p = cloudPos;
+        p.xz *= 0.42;
+        p.x += time.x * cloudSpeed;
+        p.z += time.x * cloudSpeed * 0.34;
 
-            vec3 sunDir = normalize(lightDir);
-            float sunDot = dot(viewDir, sunDir);
-            float phaseVal = dualPhase(sunDot);
+        vec3 warp = vec3(
+            fbm(p * 0.9),
+            fbm(p * 1.3),
+            fbm(p * 0.7)
+        );
+        p += warp * 0.35;
 
-            // Ambient sky color (approximation)
-            vec3 ambientColor = mix(
-                vec3(0.4, 0.5, 0.7),  // day: blue
-                vec3(0.02, 0.02, 0.05), // night: dark
-                tMalam
-            );
-            vec3 sunColor = mix(
-                vec3(1.0, 0.95, 0.8), // day: warm white
-                vec3(0.0),              // night: none
-                tMalam
-            );
+        float base = fbm(p * 1.25);
+        float detailN = fbm(p * 3.5);
+        float density = mix(base, detailN, cloudDetail) * densityBoost;
 
-            float transmittance = 1.0;
-            vec3 cloudAccum = vec3(0.0);
+        float erosion = fbm(p * 2.0) * cloudErosion;
+        density = smoothstep(cutMin * 0.55, cutMax * 1.45, density - erosion * 0.25);
 
-            for (int i = 0; i < 128; i++)
-            {
-                if (i >= Steps) break;
-                if (transmittance < 0.01) break;
+        float horizonFade = smoothstep(0.0, 0.22, viewDir.y);
 
-                float t = tEnter + (float(i) + 0.5) * stepSize;
-                vec3 samplePos = viewDir * t;
-                float heightPct = (samplePos.y - slabBottom) / cloudHeight;
+        float shadow = fbm(p * 0.55);
+        shadow = smoothstep(0.25, 0.85, shadow);
+        shadow = mix(1.0, shadow, cloudShadowStrength);
+        shadow = max(shadow, 0.35);
 
-                // ── Sample cloud density ──
-                vec3 noiseCoord = samplePos * cloudScale;
-                noiseCoord.xz += time.x * cloudSpeed * vec2(1.0, 0.34);
+        float scatter = max(dot(lightDir, viewDir), 0.0);
+        scatter = pow(scatter, 6.0) * cloudScatter * sunFactor;
 
-                // Curl turbulence for organic shapes
-                vec3 curl = vec3(
-                    fbm(noiseCoord * cloudCurl + vec3(0.0, 0.0, 0.0)),
-                    fbm(noiseCoord * cloudCurl + vec3(5.2, 1.3, 2.8)),
-                    fbm(noiseCoord * cloudCurl + vec3(9.1, 4.7, 7.4))
-                );
-                noiseCoord += (curl - 0.5) * 0.8;
+        vec3 lightTint = mix(sunsetColor, vec3(1.0), tSunset);
+        lightTint = mix(lightTint, vec3(0.6, 0.7, 1.0), nightOverride);
 
-                // Base shape: fbm
-                float baseShape = fbm(noiseCoord * 1.25);
-                // Detail: worley erosion for popcorn look
-                float worleyDetail = worleyFBM(noiseCoord * 3.5 + vec3(time.x * 0.05));
+        vec3 cloudLit = cloudTint;
+        cloudLit *= shadow;
+        cloudLit += lightTint * scatter * mix(0.25, 0.05, weather);
 
-                float density = baseShape;
-                // Apply coverage: lower coverage = less cloud, higher = more cloud
-                // fbm returns ~0.5 avg, so we remap around that center
-                float cov = cloudCoverage;
-                density = smoothstep(1.0 - cov, 1.0, density);
-                density = max(density, 0.0);
+        // Cirrus
+        vec3 pCirrus = cloudPos * 0.22;
+        pCirrus.x += time.x * 0.018;
+        pCirrus.z += time.x * 0.014;
+        float cir = fbm(pCirrus * 2.2);
+        float cirAlpha = smoothstep(0.62, 0.82, cir) * cirrusStrength;
+        vec3 cirColor = vec3(0.75, 0.80, 1.0) * tMalam;
 
-                // Erosion from worley detail
-                if (density > 0.0)
-                {
-                    float erosionAmount = cloudErosion * 1.5;
-                    density = remap(density, worleyDetail * erosionAmount, 1.0, 0.0, 1.0);
-                    density = max(density, 0.0);
-                }
+        finalCloudColor = mix(cloudLit, cirColor, cirAlpha * 0.22 * sunFactor);
+        float depth = fbm(p * 0.8);
+        finalCloudColor *= 0.82 + depth * 0.18;
+        finalCloudColor += vec3(0.85, 0.92, 1.25) * lightning * 1.8;
 
-                // Vertical profile: soft top and bottom
-                float bottomFade = smoothstep(0.0, 0.15, heightPct);
-                float topFade = 1.0 - smoothstep(0.6, 1.0, heightPct);
-                // Hourglass shape: thinner at edges
-                float shapeFade = bottomFade * topFade;
-                density *= shapeFade;
-
-                // Edge softness
-                density = smoothstep(0.0, 0.1, density);
-
-                if (density > 0.001)
-                {
-                    // ── Light march (shadow toward sun) ──
-                    float lightOpticalDepth = 0.0;
-                    float lightStepSize = cloudHeight * 0.4 / float(LSteps);
-                    for (int j = 0; j < 16; j++)
-                    {
-                        if (j >= LSteps) break;
-                        vec3 lightSamplePos = samplePos + sunDir * lightStepSize * (float(j) + 0.5);
-                        float lHeightPct = (lightSamplePos.y - slabBottom) / cloudHeight;
-                        if (lHeightPct < 0.0 || lHeightPct > 1.0) continue;
-
-                        vec3 lNoise = lightSamplePos * cloudScale;
-                        lNoise.xz += time.x * cloudSpeed * vec2(1.0, 0.34);
-                        vec3 lCurl = vec3(
-                            fbm(lNoise * cloudCurl),
-                            fbm(lNoise * cloudCurl + vec3(5.2, 1.3, 2.8)),
-                            fbm(lNoise * cloudCurl + vec3(9.1, 4.7, 7.4))
-                        );
-                        lNoise += (lCurl - 0.5) * 0.8;
-
-                        float lBase = fbm(lNoise * 1.25);
-                        float lWorley = worleyFBM(lNoise * 3.5 + vec3(time.x * 0.05));
-                        float lDensity = lBase;
-                        lDensity = smoothstep(1.0 - cloudCoverage, 1.0, lDensity);
-                        lDensity = max(lDensity, 0.0);
-                        if (lDensity > 0.0)
-                        {
-                            float lErosion = cloudErosion * 1.5;
-                            lDensity = remap(lDensity, lWorley * lErosion, 1.0, 0.0, 1.0);
-                            lDensity = max(lDensity, 0.0);
-                        }
-                        float lBottomFade = smoothstep(0.0, 0.15, lHeightPct);
-                        float lTopFade = 1.0 - smoothstep(0.6, 1.0, lHeightPct);
-                        lDensity *= lBottomFade * lTopFade;
-                        lDensity = smoothstep(0.0, 0.1, lDensity);
-                        lightOpticalDepth += lDensity * lightStepSize;
-                    }
-
-                    // Beer-Lambert: light attenuation through cloud
-                    float beer = exp(-lightOpticalDepth * cloudAbsorption);
-                    // Powder: darkening at grazing angles / thick regions
-                    float powder = 1.0 - exp(-lightOpticalDepth * 2.0);
-                    powder = mix(powder, powder * 0.5 + 0.5, 0.5);
-
-                    // Combined direct light
-                    vec3 directLight = sunColor * beer * (phaseVal + powder * 0.3) * cloudScatter;
-
-                    // Ambient (bottom-lit sky)
-                    vec3 ambient = ambientColor * (0.5 + 0.5 * heightPct);
-
-                    vec3 sampleColor = (directLight + ambient) * cloudTintColor;
-
-                    // Beer-Lambert integration
-                    float stepDensity = density * stepSize * cloudAbsorption;
-                    float stepTransmittance = exp(-stepDensity);
-                    // In-scattering: energy lost from transmittance goes into color
-                    float stepAlpha = transmittance * (1.0 - stepTransmittance);
-                    cloudAccum += sampleColor * stepAlpha;
-                    transmittance *= stepTransmittance;
-                    transmittance = max(transmittance, 0.0);
-                }
-
-                tEnter += stepSize;
-            }
-
-            cloudAlpha = 1.0 - transmittance;
-            finalCloudColor = cloudAccum / max(cloudAlpha, 0.001);
-
-            // Horizon fade
-            float horizonFade = smoothstep(0.0, 0.15, viewDir.y);
-            cloudAlpha *= horizonFade;
-
-            // Lightning
-            finalCloudColor += vec3(0.85, 0.92, 1.25) * lightning * 1.8;
-        }
+        cloudAlpha = density * horizonFade;
+        cloudAlpha = max(cloudAlpha, 0.0001);
     }
 
-    cloudAlpha *= mix(0.3, 1.75, weatherMode);
+    cloudAlpha *= mix(0.22, 1.75, weatherMode);
 
     // ──── SUN + MOON + STARS ────
     vec3 skyWithCelestial = skyBase;
@@ -850,21 +584,11 @@ void main()
             float customAlpha = smoothstep(0.02, 0.1, brightness);
             float softEdgeMask = smoothstep(1.0, 0.92, localR);
 
-            // Moon phase: project sun direction onto moon local plane for terminator
-            // moonDir is opposite to sunDir, so sun hits the moon from the front
-            vec3 sunLocal = lightDir - moonDir * dot(lightDir, moonDir); // project onto moon plane
-            float sunLocalLen = length(sunLocal);
-            float phaseMask = 1.0; // default: fully lit
-            if (sunLocalLen > 0.001) {
-                sunLocal /= sunLocalLen;
-                // moonUV is in moon local space, project sun onto same plane
-                float sunMoonU = dot(sunLocal, moonRight);
-                // Terminator: moon fragment is lit if on the sun side of the moon
-                // moonUV.x goes from -1 (left) to +1 (right)
-                // sunMoonU tells which side of moon the sun illuminates
-                float terminator = moonUV.x * sunMoonU + moonPhaseOffset - 0.5;
-                phaseMask = smoothstep(-0.15, 0.15, terminator);
-            }
+            // Moon phase: darken portion of moon based on sun-moon angle + phase offset
+            float phaseAngle = dot(normalize(lightDir), normalize(moonDir));
+            float phase = phaseAngle * 0.5 + 0.5 + moonPhaseOffset - 0.5;
+            phase = clamp(phase, 0.0, 1.0);
+            float phaseMask = smoothstep(0.0, 0.35, phase);
 
             vec3 litMoonColor = textureMoonColor * moonTintColor * moonBrightness * tMalam * phaseMask;
             litMoonColor += moonGlow * 0.25 * phaseMask;

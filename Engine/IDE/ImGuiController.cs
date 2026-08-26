@@ -25,6 +25,21 @@ public unsafe class ImGuiController : IDisposable
 
     private bool _hasVtxOffset = false;
 
+    // ── Dynamic font cache ──
+    private readonly Dictionary<(string path, float size), nint> _customFontCache = new();
+    private bool _fontAtlasDirty = false;
+    // ── Fonts queued during frame that need atlas rebuild before next NewFrame ──
+    private readonly List<(string path, float size)> _pendingFontLoads = new();
+    // ── IDE font change: queued path+size, processed before next NewFrame ──
+    private string? _pendingIDEFontPath;
+    private float _pendingIDEFontSize;
+    // ── Currently active IDE font info (for querying) ──
+    public string ActiveIDEFontPath { get; private set; } = "";
+    public float ActiveIDEFontSize { get; private set; } = 14f;
+    // ── Debounce: only rebuild when font actually changes ──
+    private string? _lastBuiltFontPath;
+    private float _lastBuiltFontSize;
+
     /// <summary>imgui.ini path pinned for ImGui's whole lifetime. Set to the exe folder
     /// (bin) instead of ImGui's CWD-relative default "imgui.ini" so the IDE layout is
     /// loaded/saved next to the executable and never pollutes the project folder.</summary>
@@ -71,62 +86,16 @@ public unsafe class ImGuiController : IDisposable
 
         io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-        // ── Load Unicode symbol font (Windows Segoe UI Symbol) for emoji/symbol support ──
+        // ── Load IDE font from saved settings, with symbol merge ──
         try
         {
-            string[] symbolFontPaths = [
-                @"C:\Windows\Fonts\seguisym.ttf",
-                @"C:\Windows\Fonts\segoeui.ttf",
-            ];
-
-            string? symFontPath = null;
-            foreach (var fp in symbolFontPaths)
-            {
-                if (File.Exists(fp))
-                {
-                    symFontPath = fp;
-                    break;
-                }
-            }
-
-            if (symFontPath != null)
-            {
-                Console.WriteLine($"[ImGui] Loading symbol font: {symFontPath}");
-
-                // Add default font first
-                io.Fonts.AddFontDefault();
-
-                // Configure merge mode for the symbol font
-                var config = new ImFontConfigPtr(ImGuiNative.ImFontConfig_ImFontConfig());
-                config.MergeMode = true;
-
-                // Glyph ranges: arrows, dingbats, misc symbols, punctuation
-                ushort[] ranges = [
-                    0x2000, 0x206F,   // General Punctuation (em dash, etc.)
-                    0x2100, 0x214F,   // Letterlike Symbols
-                    0x2190, 0x21FF,   // Arrows (↩ ↪ ↻)
-                    0x2600, 0x26FF,   // Misc Symbols (⚠ ⚡)
-                    0x2700, 0x27BF,   // Dingbats (✓ ❓ ✥)
-                    0x2B00, 0x2BFF,   // Misc Symbols and Arrows (⬆)
-                    0
-                ];
-
-                fixed (ushort* pRanges = ranges)
-                {
-                    io.Fonts.AddFontFromFileTTF(symFontPath, 16f, config, (nint)pRanges);
-                }
-
-                config.Destroy();
-                Console.WriteLine("[ImGui] Symbol font loaded successfully.");
-            }
-            else
-            {
-                Console.WriteLine("[ImGui] No symbol font found, using default.");
-            }
+            var saved = Config.SettingsSave.Load();
+            RebuildIDEFontAtlas(saved.IDEFontPath, saved.IDEFontSize);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ImGui] Failed to load symbol font: {ex.Message}");
+            Console.WriteLine($"[ImGui] Failed to load IDE font: {ex.Message}");
+            io.Fonts.AddFontDefault();
         }
 
         Console.WriteLine("[ImGui] Step 2: BuildKeyMap...");
@@ -137,8 +106,8 @@ public unsafe class ImGuiController : IDisposable
         CreateDeviceResources();
         Console.WriteLine("[ImGui] Step 3 OK");
 
-        Console.WriteLine("[ImGui] Step 4: UpdateFontTexture...");
-        UpdateFontTexture();
+        Console.WriteLine("[ImGui] Step 4: UpdateFontTexture (if not already built)...");
+        if (_fontTexture == 0) UpdateFontTexture();
         Console.WriteLine("[ImGui] Step 4 OK");
 
         // ── Step 5: Set up GLFW character callback for ImGui text input ──
@@ -167,6 +136,8 @@ public unsafe class ImGuiController : IDisposable
 
     public void NewFrame(float deltaTime)
     {
+        // Load any fonts queued during previous frame (atlas must be unlocked)
+        ProcessPendingFonts();
         var io = ImGui.GetIO();
         io.DisplaySize = new Vector2(Glfw.WindowWidth, Glfw.WindowHeight);
         io.DisplayFramebufferScale = new Vector2(1f, 1f);
@@ -180,6 +151,169 @@ public unsafe class ImGuiController : IDisposable
     {
         ImGui.Render();
         RenderDrawData(ImGui.GetDrawData());
+    }
+
+    /// <summary>Get an ImGui font. If not yet loaded, queues it for loading before the next frame.
+    /// Returns the cached font pointer, or null if the font hasn't been loaded yet.</summary>
+    public ImFont* GetFont(string fontPath, float fontSize)
+    {
+        if (string.IsNullOrEmpty(fontPath) || !File.Exists(fontPath))
+            return null;
+
+        var key = (Path.GetFullPath(fontPath), fontSize);
+        if (_customFontCache.TryGetValue(key, out var cached))
+            return (ImFont*)cached;
+
+        // Queue for loading before next frame (can't modify atlas during frame)
+        bool alreadyQueued = false;
+        foreach (var pending in _pendingFontLoads)
+        {
+            if (pending.Item1 == key.Item1 && pending.Item2 == fontSize)
+            { alreadyQueued = true; break; }
+        }
+        if (!alreadyQueued)
+            _pendingFontLoads.Add((key.Item1, fontSize));
+        return null; // Not loaded yet — will be available next frame
+    }
+
+    /// <summary>Process any fonts queued during the frame. Must be called BEFORE ImGui.NewFrame().</summary>
+    public void ProcessPendingFonts()
+    {
+        // ── IDE font change takes priority (full atlas rebuild) ──
+        if (_pendingIDEFontPath != null || _fontAtlasDirty)
+        {
+            RebuildIDEFontAtlas(_pendingIDEFontPath, _pendingIDEFontSize);
+            _pendingIDEFontPath = null;
+            _fontAtlasDirty = false;
+            _pendingFontLoads.Clear();
+            return;
+        }
+        if (_pendingFontLoads.Count == 0) return;
+
+        var io = ImGui.GetIO();
+        foreach (var (path, size) in _pendingFontLoads)
+        {
+            var key = (Path.GetFullPath(path), size);
+            if (_customFontCache.ContainsKey(key)) continue;
+            try
+            {
+                var font = io.Fonts.AddFontFromFileTTF(path, size);
+                _customFontCache[key] = (nint)font.NativePtr;
+                Console.WriteLine($"[ImGui] Loaded font: {Path.GetFileName(path)} @ {size}px");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ImGui] Failed to load font '{path}': {ex.Message}");
+            }
+        }
+        _pendingFontLoads.Clear();
+        if (_fontAtlasDirty || _customFontCache.Count > 0)
+        {
+            io.Fonts.Build();
+            UpdateFontTexture();
+            _fontAtlasDirty = false;
+        }
+    }
+
+    /// <summary>Queue a change of the IDE panel font. Applied before the next NewFrame().
+    /// Pass null/empty for default ImGui font.</summary>
+    public void ChangeIDEFont(string fontPath, float fontSize)
+    {
+        string resolved = string.IsNullOrEmpty(fontPath) ? null : fontPath;
+        float resolvedSize = fontSize > 0f ? fontSize : 14f;
+        // Debounce: skip if same font+size already built
+        if (resolved == _lastBuiltFontPath && Math.Abs(resolvedSize - _lastBuiltFontSize) < 0.1f)
+            return;
+        _pendingIDEFontPath = resolved;
+        _pendingIDEFontSize = resolvedSize;
+        _fontAtlasDirty = true;
+        Console.WriteLine($"[ImGui] IDE font change queued: {fontPath ?? "default"} @ {resolvedSize}px");
+    }
+
+    /// <summary>Rebuild the entire font atlas with a new IDE font + symbol merge.</summary>
+    private void RebuildIDEFontAtlas(string? fontPath, float fontSize)
+    {
+        var io = ImGui.GetIO();
+        io.Fonts.Clear();
+        _customFontCache.Clear();
+
+        // 1. Load IDE font as default, or use a system font with proper size
+        if (fontPath != null && File.Exists(fontPath))
+        {
+            try
+            {
+                io.Fonts.AddFontFromFileTTF(fontPath, fontSize);
+                ActiveIDEFontPath = fontPath;
+                ActiveIDEFontSize = fontSize;
+                Console.WriteLine($"[ImGui] IDE font: {Path.GetFileName(fontPath)} @ {fontSize}px");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ImGui] Failed to load IDE font '{fontPath}': {ex.Message}, using Segoe UI");
+                LoadSystemFont(io, fontSize);
+                ActiveIDEFontPath = "";
+                ActiveIDEFontSize = fontSize;
+            }
+        }
+        else
+        {
+            // Default: use Segoe UI with requested size (AddFontDefault ignores size)
+            LoadSystemFont(io, fontSize);
+            ActiveIDEFontPath = "";
+            ActiveIDEFontSize = fontSize;
+        }
+
+        // 2. Merge symbol font (Segoe UI Symbol / Segoe UI)
+        try
+        {
+            string[] symbolFontPaths = [
+                @"C:\Windows\Fonts\seguisym.ttf",
+                @"C:\Windows\Fonts\segoeui.ttf",
+            ];
+            foreach (var fp in symbolFontPaths)
+            {
+                if (File.Exists(fp))
+                {
+                    var config = new ImFontConfigPtr(ImGuiNative.ImFontConfig_ImFontConfig());
+                    config.MergeMode = true;
+                    io.Fonts.AddFontFromFileTTF(fp, Math.Max(fontSize, 16f), config, io.Fonts.GetGlyphRangesDefault());
+                    config.Destroy();
+                    Console.WriteLine($"[ImGui] Merged symbol font: {Path.GetFileName(fp)}");
+                    break;
+                }
+            }
+        }
+        catch { }
+
+        // 3. Build + upload
+        io.Fonts.Build();
+        UpdateFontTexture();
+
+        // Track what was built to avoid redundant rebuilds
+        _lastBuiltFontPath = fontPath;
+        _lastBuiltFontSize = fontSize;
+    }
+
+    /// <summary>Load Segoe UI (or fallback) as the IDE font with the given size.</summary>
+    private void LoadSystemFont(ImGuiIOPtr io, float fontSize)
+    {
+        string[] fallbackFonts = [
+            @"C:\Windows\Fonts\segoeui.ttf",
+            @"C:\Windows\Fonts\arial.ttf",
+            @"C:\Windows\Fonts\tahoma.ttf",
+        ];
+        foreach (var fp in fallbackFonts)
+        {
+            if (File.Exists(fp))
+            {
+                io.Fonts.AddFontFromFileTTF(fp, fontSize);
+                Console.WriteLine($"[ImGui] Default font: {Path.GetFileName(fp)} @ {fontSize}px");
+                return;
+            }
+        }
+        // Ultimate fallback
+        io.Fonts.AddFontDefault();
+        Console.WriteLine($"[ImGui] Default font: ImGui built-in @ {fontSize}px (size ignored)");
     }
 
     public void Dispose()
@@ -356,6 +490,14 @@ public unsafe class ImGuiController : IDisposable
     {
         var io = ImGui.GetIO();
         io.Fonts.GetTexDataAsRGBA32(out IntPtr pixels, out int width, out int height, out int bpp);
+
+        // Delete previous font texture if it exists to avoid GPU memory leak
+        if (_fontTexture != 0)
+        {
+            fixed (uint* pTex = &_fontTexture)
+                GL.DeleteTextures(1, pTex);
+            _fontTexture = 0;
+        }
 
         fixed (uint* pTex = &_fontTexture)
             GL.GenTextures(1, pTex);

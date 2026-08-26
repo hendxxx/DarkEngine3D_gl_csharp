@@ -158,6 +158,136 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             }
         }
 
+        /// <summary>Recommend optimal texture settings based on the image file.
+        /// Analyzes resolution, detects normal maps, and picks appropriate
+        /// filtering + wrapping for the texture type.</summary>
+        public void RecommendForTexture(string texturePath)
+        {
+            if (string.IsNullOrEmpty(texturePath) || !System.IO.File.Exists(texturePath))
+                return;
+
+            try
+            {
+                using var stream = System.IO.File.OpenRead(texturePath);
+                var image = StbImageSharp.ImageResult.FromStream(stream, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+                int w = image.Width;
+                int h = image.Height;
+                string nameLower = System.IO.Path.GetFileNameWithoutExtension(texturePath).ToLowerInvariant();
+
+                // ── Detect texture type by filename hints ──
+                bool isNormal = nameLower.Contains("normal") || nameLower.Contains("nrm") || nameLower.Contains("_n.");
+                bool isHeight = nameLower.Contains("height") || nameLower.Contains("disp") || nameLower.Contains("_h.") || nameLower.Contains("_dis.");
+                bool isRoughness = nameLower.Contains("roughness") || nameLower.Contains("rough") || nameLower.Contains("_r.");
+                bool isMetallic = nameLower.Contains("metallic") || nameLower.Contains("metal") || nameLower.Contains("_m.");
+                bool isAO = nameLower.Contains("ao") || nameLower.Contains("ambient") || nameLower.Contains("_ao.");
+                bool isEmission = nameLower.Contains("emission") || nameLower.Contains("emit") || nameLower.Contains("_e.");
+                bool isUI = nameLower.Contains("icon") || nameLower.Contains("ui") || nameLower.Contains("button") || nameLower.Contains("hud");
+                bool isAlbedo = nameLower.Contains("albedo") || nameLower.Contains("diffuse") || nameLower.Contains("basecolor") || nameLower.Contains("_d.");
+
+                int maxDim = Math.Max(w, h);
+
+                // ── Rule 1: Normal maps — Linear, no mipmaps, ClampToEdge ──
+                if (isNormal)
+                {
+                    MinFilter = TexMinFilter.Linear;
+                    MagFilter = TexMagFilter.Linear;
+                    GenerateMipmaps = false;
+                    Anisotropy = 1f;
+                    FilterPreset = TexFilterPreset.Bilinear;
+                    WrapS = TexWrap.ClampToEdge;
+                    WrapT = TexWrap.ClampToEdge;
+                    return;
+                }
+
+                // ── Rule 2: Height/displacement/AO/metallic/roughness maps ──
+                if (isHeight || isAO || isMetallic || isRoughness || isEmission)
+                {
+                    MinFilter = TexMinFilter.LinearMipmapLinear;
+                    MagFilter = TexMagFilter.Linear;
+                    GenerateMipmaps = true;
+                    Anisotropy = 4f;
+                    FilterPreset = TexFilterPreset.Trilinear;
+                    WrapS = TexWrap.Repeat;
+                    WrapT = TexWrap.Repeat;
+                    return;
+                }
+
+                // ── Rule 3: UI / icon textures — crisp pixels, no mipmaps ──
+                if (isUI || maxDim <= 128)
+                {
+                    MinFilter = TexMinFilter.Linear;
+                    MagFilter = TexMagFilter.Linear;
+                    GenerateMipmaps = false;
+                    Anisotropy = 1f;
+                    FilterPreset = TexFilterPreset.Bilinear;
+                    WrapS = TexWrap.ClampToEdge;
+                    WrapT = TexWrap.ClampToEdge;
+                    return;
+                }
+
+                // ── Rule 4: Pixel art / very small textures — Nearest ──
+                if (maxDim <= 64)
+                {
+                    MinFilter = TexMinFilter.NearestMipmapNearest;
+                    MagFilter = TexMagFilter.Nearest;
+                    GenerateMipmaps = true;
+                    Anisotropy = 1f;
+                    FilterPreset = TexFilterPreset.Nearest;
+                    WrapS = TexWrap.Repeat;
+                    WrapT = TexWrap.Repeat;
+                    return;
+                }
+
+                // ── Rule 5: Albedo/diffuse — high quality anisotropic ──
+                if (isAlbedo)
+                {
+                    MinFilter = TexMinFilter.LinearMipmapLinear;
+                    MagFilter = TexMagFilter.Linear;
+                    GenerateMipmaps = true;
+                    Anisotropy = maxDim >= 1024 ? 16f : 8f;
+                    FilterPreset = maxDim >= 1024 ? TexFilterPreset.Anisotropic16x : TexFilterPreset.Anisotropic8x;
+                    WrapS = TexWrap.Repeat;
+                    WrapT = TexWrap.Repeat;
+                    return;
+                }
+
+                // ── Rule 6: Default — resolution-based quality ──
+                if (maxDim >= 2048)
+                {
+                    // Large texture → full AAA quality
+                    MinFilter = TexMinFilter.LinearMipmapLinear;
+                    MagFilter = TexMagFilter.Linear;
+                    GenerateMipmaps = true;
+                    Anisotropy = 16f;
+                    FilterPreset = TexFilterPreset.Anisotropic16x;
+                }
+                else if (maxDim >= 512)
+                {
+                    // Medium texture → trilinear + moderate aniso
+                    MinFilter = TexMinFilter.LinearMipmapLinear;
+                    MagFilter = TexMagFilter.Linear;
+                    GenerateMipmaps = true;
+                    Anisotropy = 8f;
+                    FilterPreset = TexFilterPreset.Anisotropic8x;
+                }
+                else
+                {
+                    // Small texture → trilinear, no aniso
+                    MinFilter = TexMinFilter.LinearMipmapLinear;
+                    MagFilter = TexMagFilter.Linear;
+                    GenerateMipmaps = true;
+                    Anisotropy = 1f;
+                    FilterPreset = TexFilterPreset.Trilinear;
+                }
+                WrapS = TexWrap.Repeat;
+                WrapT = TexWrap.Repeat;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TextureSettings] Recommend failed for '{texturePath}': {ex.Message}");
+            }
+        }
+
         /// <summary>Push every sampling parameter onto the given 2D texture (GL state is
         /// left with the texture bound — caller decides whether to unbind).</summary>
         public unsafe void Apply(uint texId)

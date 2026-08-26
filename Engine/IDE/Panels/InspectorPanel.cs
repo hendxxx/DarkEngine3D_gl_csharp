@@ -1710,48 +1710,15 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // ── Preset Buttons ──
-            if (ImGui.Button("🔄 Reset to Default", new Vector2(-1, 24)))
-                skySettings.ResetDefaults();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Reset all sky settings to bright blue sky defaults (clouds off, sunrays off)");
-            if (ImGui.Button("☀ Clear Sky", new Vector2(-1, 24)))
-                skySettings.ApplyClearSky();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Bright clear blue sky, no clouds, minimal haze");
-            if (ImGui.Button("🌅 Sunset", new Vector2(-1, 24)))
-                skySettings.ApplySunset();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Warm golden hour with sun rays");
-            if (ImGui.Button("🌙 Night", new Vector2(-1, 24)))
-                skySettings.ApplyNight();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Dark sky with moon and stars");
-            ImGui.Spacing();
-
-            // ── Randomize / Load from Settings ──
+            // ── Randomize Button ──
             if (skySettings.Type == SkyType.Procedural)
             {
-                if (ImGui.Button("🎲 Randomize All Values", new Vector2(-1, 24)))
+                if (ImGui.Button("🎲 Randomize All Values", new Vector2(-1, 30)))
                     skySettings.Randomize();
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Randomize all procedural sky parameters for creative exploration");
+                ImGui.Spacing();
             }
-            if (editorObj.SavedSkySettings != null)
-            {
-                if (ImGui.Button("📂 Load from Settings", new Vector2(-1, 24)))
-                {
-                    var saved = editorObj.SavedSkySettings;
-                    skySettings.Type = saved.Type;
-                    skySettings.Sun = saved.Sun.Clone();
-                    skySettings.Scattering = saved.Scattering.Clone();
-                    skySettings.Clouds = saved.Clouds.Clone();
-                    skySettings.Moon = saved.Moon.Clone();
-                    skySettings.Stars = saved.Stars.Clone();
-                    skySettings.Eclipses = saved.Eclipses.Clone();
-                    skySettings.SunRays = saved.SunRays.Clone();
-                    skySettings.SkyboxFaces = saved.SkyboxFaces.Clone();
-                    skySettings.Dome = saved.Dome.Clone();
-                }
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restore sky from last saved snapshot");
-            }
-            ImGui.Spacing();
 
             // ═══ SKYBOX SETTINGS ═══
             if (skySettings.Type == SkyType.Skybox &&
@@ -1941,65 +1908,48 @@ public class InspectorPanel
                 {
                     var atmo = skySettings.Scattering;
                     float atmoInt = atmo.Intensity;
-                    if (ImGui.SliderFloat("Intensity##atmo", ref atmoInt, 0f, 50f, "%.2f")) atmo.Intensity = atmoInt;
+                    if (ImGui.SliderFloat("Intensity##atmo", ref atmoInt, 0f, 30f, "%.2f")) atmo.Intensity = atmoInt;
                     float rayleigh = atmo.Rayleigh;
                     if (ImGui.SliderFloat("Rayleigh##atmo", ref rayleigh, 0f, 5f, "%.3f")) atmo.Rayleigh = rayleigh;
                     var rayCol = atmo.RayColor;
                     if (ImGui.ColorEdit3("Ray Color##atmo", ref rayCol)) atmo.RayColor = rayCol;
                     float rayH = atmo.RayHeight;
-                    if (ImGui.SliderFloat("Ray Height##atmo", ref rayH, 0.1f, 5f, "%.3f")) atmo.RayHeight = rayH;
+                    if (ImGui.SliderFloat("Ray Height##atmo", ref rayH, 0.1f, 20f, "%.3f")) atmo.RayHeight = rayH;
                     float mie = atmo.Mie;
-                    if (ImGui.SliderFloat("Mie##atmo", ref mie, 0f, 2.0f, "%.3f")) atmo.Mie = mie;
+                    if (ImGui.SliderFloat("Mie##atmo", ref mie, 0f, 3.0f, "%.2f")) atmo.Mie = mie;
                     var mieCol = atmo.MieColor;
                     if (ImGui.ColorEdit3("Mie Color##atmo", ref mieCol)) atmo.MieColor = mieCol;
                     float mieFoc = atmo.MieFocus;
-                    if (ImGui.SliderFloat("Mie Focus##atmo", ref mieFoc, 0f, 1.0f, "%.3f")) atmo.MieFocus = mieFoc;
+                    if (ImGui.SliderFloat("Mie Focus##atmo", ref mieFoc, 0f, 0.99f, "%.3f")) atmo.MieFocus = mieFoc;
                     float mieH = atmo.MieHeight;
-                    if (ImGui.SliderFloat("Mie Height##atmo", ref mieH, 0.1f, 2.0f, "%.3f")) atmo.MieHeight = mieH;
+                    if (ImGui.SliderFloat("Mie Height##atmo", ref mieH, 0.1f, 5f, "%.2f")) atmo.MieHeight = mieH;
                     ImGui.Separator();
                 }
 
                 // ── Clouds ──
-                if (ImGui.CollapsingHeader("☁ Clouds"))
+                if (ImGui.CollapsingHeader("☁ Cloud"))
                 {
                     var vClouds = skySettings.Clouds;
                     bool vCloudsEn = vClouds.Enabled;
                     if (ImGui.Checkbox("Enabled##clouds", ref vCloudsEn)) vClouds.Enabled = vCloudsEn;
-                    // Quality
-                    string[] qualityNames = { "Low", "Medium", "High", "Ultra" };
-                    int qIdx = (int)vClouds.Quality;
-                    if (ImGui.Combo("Quality##clouds", ref qIdx, qualityNames, 4)) vClouds.Quality = qIdx;
-                    ImGui.TextDisabled("Low=16/2  Med=32/4  High=64/8  Ultra=128/16");
-                    // Shape
+                    float vCDens = vClouds.Density;
+                    if (ImGui.SliderFloat("Density##clouds", ref vCDens, 0f, 1f, "%.2f")) vClouds.Density = vCDens;
                     float vCAlt = vClouds.Altitude;
                     if (ImGui.SliderFloat("Altitude##clouds", ref vCAlt, 0.5f, 10f, "%.1f")) vClouds.Altitude = vCAlt;
-                    float vCH = vClouds.CloudHeight;
-                    if (ImGui.SliderFloat("Cloud Height##clouds", ref vCH, 0.2f, 5.0f, "%.2f")) vClouds.CloudHeight = vCH;
-                    float vCScale = vClouds.CloudScale;
-                    if (ImGui.SliderFloat("Cloud Scale##clouds", ref vCScale, 0.05f, 2.0f, "%.3f")) vClouds.CloudScale = vCScale;
-                    float vCCov = vClouds.Coverage;
-                    if (ImGui.SliderFloat("Coverage##clouds", ref vCCov, 0.0f, 1.0f, "%.2f")) vClouds.Coverage = vCCov;
-                    float vCCurl = vClouds.Curl;
-                    if (ImGui.SliderFloat("Curl##clouds", ref vCCurl, 0.0f, 3.0f, "%.2f")) vClouds.Curl = vCCurl;
+                    float vCSpd = vClouds.Speed;
+                    if (ImGui.SliderFloat("Speed##clouds", ref vCSpd, 0f, 0.2f, "%.3f")) vClouds.Speed = vCSpd;
+                    float vCDet = vClouds.Detail;
+                    if (ImGui.SliderFloat("Detail##clouds", ref vCDet, 0f, 1f, "%.2f")) vClouds.Detail = vCDet;
                     float vCEro = vClouds.Erosion;
                     if (ImGui.SliderFloat("Erosion##clouds", ref vCEro, 0f, 1f, "%.2f")) vClouds.Erosion = vCEro;
-                    // Lighting
-                    float vCAbs = vClouds.Absorption;
-                    if (ImGui.SliderFloat("Absorption##clouds", ref vCAbs, 1.0f, 30.0f, "%.1f")) vClouds.Absorption = vCAbs;
-                    float vCPG = vClouds.PhaseG;
-                    if (ImGui.SliderFloat("Phase G##clouds", ref vCPG, 0.0f, 0.95f, "%.2f")) vClouds.PhaseG = vCPG;
+                    float vCShd = vClouds.ShadowStrength;
+                    if (ImGui.SliderFloat("Shadow Strength##clouds", ref vCShd, 0f, 1f, "%.2f")) vClouds.ShadowStrength = vCShd;
                     float vCSca = vClouds.Scatter;
                     if (ImGui.SliderFloat("Scatter##clouds", ref vCSca, 0f, 1f, "%.2f")) vClouds.Scatter = vCSca;
                     var vCTint = vClouds.TintColor;
                     if (ImGui.ColorEdit3("Tint Color##clouds", ref vCTint)) vClouds.TintColor = vCTint;
-                    // Animation
-                    float vCSpd = vClouds.Speed;
-                    if (ImGui.SliderFloat("Speed##clouds", ref vCSpd, 0f, 0.2f, "%.3f")) vClouds.Speed = vCSpd;
-                    // Manual override (0 = use Quality preset)
-                    float vCMS = vClouds.MarchSteps;
-                    if (ImGui.SliderFloat("March Steps##clouds", ref vCMS, 0f, 128f, "%.0f")) vClouds.MarchSteps = vCMS;
-                    float vCLS = vClouds.LightMarchSteps;
-                    if (ImGui.SliderFloat("Light Steps##clouds", ref vCLS, 0f, 32f, "%.0f")) vClouds.LightMarchSteps = vCLS;
+                    float vCCir = vClouds.CirrusStrength;
+                    if (ImGui.SliderFloat("Cirrus Strength##clouds", ref vCCir, 0f, 1f, "%.2f")) vClouds.CirrusStrength = vCCir;
                     ImGui.Separator();
                 }
 
@@ -2157,7 +2107,19 @@ public class InspectorPanel
             var slotSettings = _texSlotIdx == 0
                 ? editorObj.TexSettings
                 : editorObj.PbrTexSettings[_texSlotIdx - 1];
-            if (DrawTextureSettings(slotSettings, showTiling: true))
+            string slotPath = _texSlotIdx switch
+            {
+                0 => editorObj.TexturePath ?? "",
+                1 => editorObj.PbrAlbedoPath,
+                2 => editorObj.PbrNormalPath,
+                3 => editorObj.PbrMetallicPath,
+                4 => editorObj.PbrRoughnessPath,
+                5 => editorObj.PbrAoPath,
+                6 => editorObj.PbrHeightPath,
+                7 => editorObj.PbrEmissionPath,
+                _ => "",
+            };
+            if (DrawTextureSettings(slotSettings, showTiling: true, slotPath))
             {
                 editorObj.ApplyTextureSettings();
                 Console.WriteLine($"[Inspector] Updated {slots[_texSlotIdx]} texture settings on '{editorObj.Name}'");
@@ -2314,6 +2276,15 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("World-space texture repetition frequency.");
 
+            float slopeTiling = editorObj.TerrainSlopeTexTiling;
+            if (ImGui.SliderFloat("Slope Tiling", ref slopeTiling, 0.05f, 2.0f, "%.2f"))
+            {
+                editorObj.TerrainSlopeTexTiling = slopeTiling;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Texture tiling on steep cliff/slope surfaces.");
+
             bool stochastic = editorObj.TerrainUseStochasticSampling;
             if (ImGui.Checkbox("Random Tile Tiling", ref stochastic))
             {
@@ -2443,32 +2414,19 @@ public class InspectorPanel
             ImGui.Combo("Layer##texlayer", ref _terrainLayerIdx, layerNames, layerNames.Length);
 
             var layerSettings = editorObj.TerrainLayerSettings[Math.Clamp(_terrainLayerIdx, 0, 3)];
-            if (DrawTextureSettings(layerSettings, showTiling: false))
+            string layerPath = _terrainLayerIdx switch
+            {
+                0 => editorObj.TerrainTextureAirPath,
+                1 => editorObj.TerrainTextureDirtPath,
+                2 => editorObj.TerrainTextureGrassPath,
+                3 => editorObj.TerrainTextureSnowPath,
+                _ => "",
+            };
+            if (DrawTextureSettings(layerSettings, showTiling: false, layerPath))
             {
                 editorObj.ApplyTextureSettings();
                 Console.WriteLine($"[Inspector] Updated {layerNames[Math.Clamp(_terrainLayerIdx, 0, 3)]} layer sampling on '{editorObj.Name}'");
             }
-
-            // ── Per-layer texture tiling ──
-            float[] layerTilings = editorObj.TerrainLayerTilings ?? [editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling];
-            float lt = layerTilings[Math.Clamp(_terrainLayerIdx, 0, 3)];
-            if (ImGui.SliderFloat($"Tiling##tiling_{layerNames[_terrainLayerIdx]}", ref lt, 0.05f, 2.0f, "%.2f"))
-            {
-                if (editorObj.TerrainLayerTilings == null)
-                    editorObj.TerrainLayerTilings = [editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling, editorObj.TerrainTexTiling];
-                editorObj.TerrainLayerTilings[Math.Clamp(_terrainLayerIdx, 0, 3)] = lt;
-                editorObj.MarkDirty();
-            }
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Tiling frequency for the {layerNames[_terrainLayerIdx]} layer");
-
-            // ── Slope/Cliff tiling (uses dirt texture at its own scale) ──
-            float st = editorObj.TerrainSlopeTiling;
-            if (ImGui.SliderFloat("Slope Tiling##slope_tiling", ref st, 0.05f, 2.0f, "%.2f"))
-            {
-                editorObj.TerrainSlopeTiling = st;
-                editorObj.MarkDirty();
-            }
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Tiling frequency for the slope/cliff texture (uses dirt texture at a different scale)");
     }
 
     /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>
@@ -2612,9 +2570,26 @@ public class InspectorPanel
     /// 1) common filtering presets, 2) minification, 3) magnification, 4) mipmapping &
     /// advanced filters (anisotropy, LOD bias), 5) wrapping, 6) tiling & offset.
     /// Returns true when any value changed (caller re-applies the GL state).</summary>
-    private static bool DrawTextureSettings(TextureSettings s, bool showTiling)
+    private static bool DrawTextureSettings(TextureSettings s, bool showTiling, string? texturePath = null)
     {
         bool changed = false;
+
+        // ── Auto Recommend button ──
+        if (!string.IsNullOrEmpty(texturePath) && System.IO.File.Exists(texturePath))
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.6f, 0.9f, 1f));
+            if (ImGui.Button("🤖 Auto Recommend Settings", new Vector2(-1, 26)))
+            {
+                s.RecommendForTexture(texturePath);
+                changed = true;
+            }
+            ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Analyze this texture and auto-set optimal filtering, mipmaps, anisotropy and wrapping.");
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+        }
 
         // ── Common Filtering Methods (preset drives min/mag/mipmap/aniso together) ──
         int preset = (int)s.FilterPreset;

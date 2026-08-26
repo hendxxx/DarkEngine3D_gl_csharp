@@ -351,16 +351,21 @@ public unsafe class ViewportPanel
                 float previewFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
                 var textColor = useHover ? elem.HoverTextColor : elem.TextColor;
 
-                float baseFontSize = 13f;
-                float fontSizeScale = previewFontSize / baseFontSize;
-                var baseSize = ImGui.CalcTextSize(label);
-                float scaledW = baseSize.X * fontSizeScale;
-                float scaledH = baseSize.Y * fontSizeScale;
+                // Use element's custom font if available, fallback to ImGui default
+                var rawFont = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, previewFontSize);
+                bool hasCustomFont = rawFont != null && (nint)rawFont != IntPtr.Zero;
+                var fontToUse = hasCustomFont ? new ImFontPtr(rawFont!) : ImGui.GetFont();
+
+                // Calculate text size using the ACTUAL font for correct alignment
+                var textSize = hasCustomFont
+                    ? fontToUse.CalcTextSizeA(previewFontSize, float.MaxValue, 0f, label)
+                    : ImGui.CalcTextSize(label);
 
                 float textX, textY;
                 float textPad = 8f;
                 float availW = (csx1 - csx0) - textPad * 2f;
-                float textW = Math.Min(scaledW, availW);
+                float textW = Math.Min(textSize.X, availW);
+                float textH = textSize.Y;
 
                 switch (elem.Alignment)
                 {
@@ -374,10 +379,11 @@ public unsafe class ViewportPanel
                         textX = csx0 + (csx1 - csx0) * 0.5f - textW * 0.5f;
                         break;
                 }
-                textY = csy0 + (csy1 - csy0) * 0.5f - scaledH * 0.5f;
+                textY = csy0 + (csy1 - csy0) * 0.5f - textH * 0.5f;
                 textX = Math.Max(csx0 + 2f, Math.Min(textX, csx1 - textW - 2f));
+                textY = Math.Max(csy0 + 2f, Math.Min(textY, csy1 - textH - 2f));
 
-                drawList.AddText(ImGui.GetFont(), previewFontSize, new Vector2(textX, textY),
+                drawList.AddText(fontToUse, previewFontSize, new Vector2(textX, textY),
                     ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f * elemOpacity)),
                     label);
             }
@@ -615,9 +621,16 @@ public unsafe class ViewportPanel
                 // Label text
                 string chkLabel = !string.IsNullOrEmpty(elem.Text) ? elem.Text : elem.Name;
                 float lblX = boxX + boxSize + innerPad;
-                float lblY = csy0 + (elemScreenH - ImGui.CalcTextSize(chkLabel).Y) * 0.5f;
+                var chkFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, 13f);
+                bool hasChkFont = chkFontRaw != null && (nint)chkFontRaw != IntPtr.Zero;
+                var chkFont = hasChkFont ? new ImFontPtr(chkFontRaw!) : ImGui.GetFont();
+                float chkFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var chkTextSize = hasChkFont
+                    ? chkFont.CalcTextSizeA(chkFontSize, float.MaxValue, 0f, chkLabel)
+                    : ImGui.CalcTextSize(chkLabel);
+                float lblY = csy0 + (elemScreenH - chkTextSize.Y) * 0.5f;
                 uint lblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
-                drawList.AddText(ImGui.GetFont(), 13f, new Vector2(lblX, lblY), lblCol, chkLabel);
+                drawList.AddText(chkFont, chkFontSize, new Vector2(lblX, lblY), lblCol, chkLabel);
             }
             else if (elem.Type == UIElementType.Dropdown)
             {
@@ -632,19 +645,32 @@ public unsafe class ViewportPanel
                     : "(select)";
                 uint ddTextCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
 
+                float ddFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var ddFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, ddFontSize);
+                bool hasDdFont = ddFontRaw != null && (nint)ddFontRaw != IntPtr.Zero;
+                var ddFont = hasDdFont ? new ImFontPtr(ddFontRaw!) : ImGui.GetFont();
+
                 // Truncate if too wide
                 float maxTextW = (csx1 - csx0) - innerPad * 3f - arrowSize;
-                var ddTextSize = ImGui.CalcTextSize(selText);
+                var ddTextSize = hasDdFont
+                    ? ddFont.CalcTextSizeA(ddFontSize, float.MaxValue, 0f, selText)
+                    : ImGui.CalcTextSize(selText);
                 if (ddTextSize.X > maxTextW)
                 {
-                    while (selText.Length > 1 && ImGui.CalcTextSize(selText + "...").X > maxTextW)
+                    while (selText.Length > 1)
+                    {
+                        var testSize = hasDdFont
+                            ? ddFont.CalcTextSizeA(ddFontSize, float.MaxValue, 0f, selText + "...")
+                            : ImGui.CalcTextSize(selText + "...");
+                        if (testSize.X <= maxTextW) break;
                         selText = selText[..^1];
+                    }
                     selText += "...";
                 }
 
                 float ddTextX = csx0 + innerPad;
                 float ddTextY = csy0 + (elemScreenH - ddTextSize.Y) * 0.5f;
-                drawList.AddText(new Vector2(ddTextX, ddTextY), ddTextCol, selText);
+                drawList.AddText(ddFont, ddFontSize, new Vector2(ddTextX, ddTextY), ddTextCol, selText);
 
                 // Dropdown arrow icon
                 var arrCol = elem.ArrowColor;
@@ -681,13 +707,26 @@ public unsafe class ViewportPanel
                 string displayText = !string.IsNullOrEmpty(elem.InputText) ? elem.InputText : elem.Placeholder;
                 bool isPlaceholder = string.IsNullOrEmpty(elem.InputText);
 
+                float tbFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var tbFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, tbFontSize);
+                bool hasTbFont = tbFontRaw != null && (nint)tbFontRaw != IntPtr.Zero;
+                var tbFont = hasTbFont ? new ImFontPtr(tbFontRaw!) : ImGui.GetFont();
+
                 // Truncate to fit
-                var tbTextSize = ImGui.CalcTextSize(displayText);
+                var tbTextSize = hasTbFont
+                    ? tbFont.CalcTextSizeA(tbFontSize, float.MaxValue, 0f, displayText)
+                    : ImGui.CalcTextSize(displayText);
                 float maxTextW = inputW - 8f;
                 if (tbTextSize.X > maxTextW)
                 {
-                    while (displayText.Length > 1 && ImGui.CalcTextSize(displayText + "...").X > maxTextW)
+                    while (displayText.Length > 1)
+                    {
+                        var testSize = hasTbFont
+                            ? tbFont.CalcTextSizeA(tbFontSize, float.MaxValue, 0f, displayText + "...")
+                            : ImGui.CalcTextSize(displayText + "...");
+                        if (testSize.X <= maxTextW) break;
                         displayText = displayText[..^1];
+                    }
                     displayText += "...";
                 }
 
@@ -696,7 +735,7 @@ public unsafe class ViewportPanel
                     : new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
                 float tbTextX = inputX + 6f;
                 float tbTextY = inputY + (inputH - tbTextSize.Y) * 0.5f;
-                drawList.AddText(new Vector2(tbTextX, tbTextY), tbTextCol, displayText);
+                drawList.AddText(tbFont, tbFontSize, new Vector2(tbTextX, tbTextY), tbTextCol, displayText);
 
                 // Blinking cursor indicator (when text is entered and element is hovered)
                 if (!string.IsNullOrEmpty(elem.InputText) && isHovered)

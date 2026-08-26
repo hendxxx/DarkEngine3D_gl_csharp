@@ -204,6 +204,8 @@ public class EditorObjectData
     public float TerrainSlopeThreshold { get; set; } = 0.35f;
     /// <summary>World-space texture tiling.</summary>
     public float TerrainTexTiling { get; set; } = 0.5f;
+    /// <summary>Texture tiling for steep slope/cliff surfaces.</summary>
+    public float TerrainSlopeTexTiling { get; set; } = 0.3f;
     /// <summary>Stochastic (random per-tile) sampling toggle — OFF by default.</summary>
     public bool TerrainUseStochasticSampling { get; set; } = false;
     /// <summary>Normalized height bands for the 4 layers.</summary>

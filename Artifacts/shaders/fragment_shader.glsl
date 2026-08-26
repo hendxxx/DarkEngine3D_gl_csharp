@@ -66,72 +66,6 @@ float calcFogFactor(float dist, vec3 worldPos) {
 uniform vec3 realSunDir;   // arah matahari asli dari CPU
 uniform vec3 shadowDir;    // arah shadow (sun/moon blend)
 
-// ── CLOUD SHADOW (project FragPos up to cloud layer, sample density) ──
-uniform float cloudAltitude;
-uniform float cloudSpeed;
-uniform float cloudDetail;
-uniform float cloudErosion;
-uniform float cloudShadowStrength;
-uniform float cloudsEnabled;
-uniform float cloudScale;
-uniform float weatherMode;
-uniform float timeCloud;
-
-float cHash(float n) { return fract(sin(n) * 43758.5453123); }
-
-float cNoise(vec3 x) {
-    vec3 p = floor(x);
-    vec3 f = fract(x);
-    f = f * f * (3.0 - 2.0 * f);
-    float n = p.x + p.y * 57.0 + 113.0 * p.z;
-    return mix(
-        mix(mix(cHash(n + 0.0), cHash(n + 1.0), f.x),
-            mix(cHash(n + 57.0), cHash(n + 58.0), f.x), f.y),
-        mix(mix(cHash(n + 113.0), cHash(n + 114.0), f.x),
-            mix(cHash(n + 170.0), cHash(n + 171.0), f.x), f.y), f.z
-    );
-}
-
-float cFbm(vec3 p) {
-    float f = 0.0;
-    float w = 0.5;
-    for (int i = 0; i < 5; i++) {
-        f += w * cNoise(p);
-        p *= 2.0;
-        w *= 0.5;
-    }
-    return f;
-}
-
-// Returns 0..1 shadow factor from clouds (0 = fully shadowed, 1 = fully lit)
-// Must match the sky shader's volumetric cloud noise EXACTLY.
-float cloudShadow(vec3 worldPos) {
-    if (cloudsEnabled < 0.5) return 1.0;
-    vec3 cp = worldPos - viewPos;
-    cp.y = cloudAltitude;
-    cp.xz *= cloudScale;
-    cp.x += timeCloud * cloudSpeed;
-    cp.z += timeCloud * cloudSpeed * 0.34;
-    // Curl turbulence (must match sky shader)
-    vec3 curl = vec3(
-        cFbm(cp * cloudDetail),
-        cFbm(cp * cloudDetail + vec3(5.2, 1.3, 2.8)),
-        cFbm(cp * cloudDetail + vec3(9.1, 4.7, 7.4))
-    );
-    cp += (curl - 0.5) * 0.8;
-    // Base density (must match sky shader)
-    float base = cFbm(cp * 1.25);
-    float density = smoothstep(1.0 - cloudShadowStrength, 1.0, base);
-    density = max(density, 0.0);
-    // Vertical profile fade
-    float heightPct = clamp((cp.y - cloudAltitude) / max(cloudDetail, 0.1), 0.0, 1.0);
-    density *= smoothstep(0.0, 0.15, heightPct) * (1.0 - smoothstep(0.6, 1.0, heightPct));
-    density = smoothstep(0.0, 0.1, density);
-    // Beer-Lambert shadow
-    float shadow = exp(-density * cloudErosion * 5.0);
-    return max(shadow, 0.05);
-}
-
 // ── LOCAL LIGHTS (Point / Spot from editor Light markers) ──
 // The sun (Direct) stays the global directional light; every Point/Spot marker
 // adds its own colored light with distance falloff + spot cone.
@@ -597,10 +531,6 @@ void main() {
         shadow = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
         cascadeIndex = 2;
     }
-
-    // ── Cloud shadow (project up to cloud layer, sample density) ──
-    float cShadow = cloudShadow(FragPos);
-    shadow *= cShadow;
 
     // FIX: shadowMask harus pakai shadowLightDir
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, shadowLightDir));

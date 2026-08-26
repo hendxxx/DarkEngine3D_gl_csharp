@@ -1,6 +1,5 @@
 using System.IO;
 using System.Numerics;
-using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
@@ -317,12 +316,10 @@ public unsafe class EditorObject
     public float TerrainHeightScale { get; set; } = 30f;
     /// <summary>Slope steepness (1 - normal.y) above which the dirt/rock layer takes over.</summary>
     public float TerrainSlopeThreshold { get; set; } = 0.35f;
-    /// <summary>Tiling frequency for the slope/cliff texture (uses dirt texture at a different scale).</summary>
-    public float TerrainSlopeTiling { get; set; } = 0.5f;
     /// <summary>World-space tiling frequency of the layer textures.</summary>
     public float TerrainTexTiling { get; set; } = 0.5f;
-    /// <summary>Per-layer tiling: [0]=air, [1]=dirt, [2]=grass, [3]=snow. Falls back to TerrainTexTiling if null.</summary>
-    public float[]? TerrainLayerTilings { get; set; }
+    /// <summary>Texture tiling for steep slope/cliff surfaces (triplanar).</summary>
+    public float TerrainSlopeTexTiling { get; set; } = 0.3f;
     /// <summary>Stochastic (random per-tile) sampling — OFF by default so the default plane
     /// tiles deterministically. ON breaks up the repeating pattern.</summary>
     public bool TerrainUseStochasticSampling { get; set; } = false;
@@ -438,12 +435,6 @@ public unsafe class EditorObject
     // ── New Sky System (3 types: Procedural, Skybox, Dome) ──
     /// <summary>Master sky settings container for the 3 sky types.</summary>
     public SkySettings SkySettings { get; set; } = new();
-    /// <summary>Saved snapshot for Load from Settings button.</summary>
-    [JsonIgnore] public SkySettings? SavedSkySettings { get; set; }
-
-    /// <summary>Static reference to the active sky settings (set by the Skybox when drawing).
-    /// Used by terrain shaders to sample cloud shadows.</summary>
-    public static SkySettings? ActiveSkySettings { get; set; }
 
     // ── Internal rendering resources (lazy-init) ──
     private Object3D? _object3D;
@@ -650,7 +641,6 @@ public unsafe class EditorObject
 
             // ── New Sky System: pass SkySettings from the editor Sky object ──
             skybox.ActiveSkySettings = skyObj?.SkySettings;
-            ActiveSkySettings = skyObj?.SkySettings; // static ref for terrain cloud shadows
         }
     }
 
@@ -1004,13 +994,10 @@ public unsafe class EditorObject
         public static readonly int[] UvOffset = new int[7];  // per-map u_uvOffset[i]
         public static readonly int[] Maps = new int[7];     // albedo..emission (units 0-6)
         public static readonly int[] UseMaps = new int[7];  // useAlbedo..useEmission
-        public static int GlobalTiling;
         public static int AlbedoTune, NormalTune, MetallicTune, RoughnessTune, AoTune, HeightTune, EmissionIntensity;
         public static int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
         public static int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
         public static int ShowCSMCascadeColor;
-        // Cloud shadow uniforms
-        public static int CloudAltitude, CloudSpeed, CloudDetail, CloudErosion, CloudShadowStr, CloudScale, CloudsEnabled, CloudWeather, CloudTime;
 
         public static void Ensure()
         {
@@ -1042,7 +1029,6 @@ public unsafe class EditorObject
             RoughnessTune = GL.GetUniformLocation(Program, "u_roughnessTuning");
             AoTune = GL.GetUniformLocation(Program, "u_aoTuning");
             HeightTune = GL.GetUniformLocation(Program, "u_heightTuning");
-            GlobalTiling = GL.GetUniformLocation(Program, "u_pbrGlobalTiling");
             EmissionIntensity = GL.GetUniformLocation(Program, "u_emissionIntensity");
             ShadowFilter = GL.GetUniformLocation(Program, "shadowFilterMode");
             ShadowDir = GL.GetUniformLocation(Program, "shadowDir");
@@ -1056,16 +1042,6 @@ public unsafe class EditorObject
             CascadeEnds1 = GL.GetUniformLocation(Program, "cascadeEnds[1]");
             CascadeEnds2 = GL.GetUniformLocation(Program, "cascadeEnds[2]");
             ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
-            // Cloud shadow uniforms
-            CloudAltitude = GL.GetUniformLocation(Program, "cloudAltitude");
-            CloudSpeed = GL.GetUniformLocation(Program, "cloudSpeed");
-            CloudDetail = GL.GetUniformLocation(Program, "cloudDetail");
-            CloudErosion = GL.GetUniformLocation(Program, "cloudErosion");
-            CloudShadowStr = GL.GetUniformLocation(Program, "cloudShadowStrength");
-            CloudScale = GL.GetUniformLocation(Program, "cloudScale");
-            CloudsEnabled = GL.GetUniformLocation(Program, "cloudsEnabled");
-            CloudWeather = GL.GetUniformLocation(Program, "weatherMode");
-            CloudTime = GL.GetUniformLocation(Program, "timeCloud");
             Ready = true;
         }
     }
@@ -1094,26 +1070,6 @@ public unsafe class EditorObject
 
         // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
         Visual.FogUniforms.UploadMain(PbrUniforms.Program, light);
-
-        // ── Cloud shadow uniforms ──
-        var clouds = ActiveSkySettings?.Clouds;
-        if (clouds != null)
-        {
-            GL.Uniform1f(PbrUniforms.CloudAltitude, clouds.Altitude);
-            GL.Uniform1f(PbrUniforms.CloudSpeed, clouds.Speed);
-            GL.Uniform1f(PbrUniforms.CloudDetail, clouds.Curl);
-            GL.Uniform1f(PbrUniforms.CloudErosion, clouds.Erosion);
-            GL.Uniform1f(PbrUniforms.CloudShadowStr, clouds.Absorption);
-            GL.Uniform1f(PbrUniforms.CloudScale, clouds.CloudScale);
-            GL.Uniform1f(PbrUniforms.CloudsEnabled, clouds.Enabled ? 1f : 0f);
-            float w = Inputs.Keyboard.GetCurrentWeather();
-            GL.Uniform1f(PbrUniforms.CloudWeather, w);
-            GL.Uniform1f(PbrUniforms.CloudTime, (float)System.Environment.TickCount * 0.001f);
-        }
-        else
-        {
-            GL.Uniform1f(PbrUniforms.CloudsEnabled, 0f);
-        }
 
         if (PbrUniforms.ShowCSMCascadeColor >= 0)
             GL.Uniform1i(PbrUniforms.ShowCSMCascadeColor, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
@@ -1177,7 +1133,6 @@ public unsafe class EditorObject
         GL.Uniform2f(PbrUniforms.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
         GL.Uniform3f(PbrUniforms.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
         GL.Uniform1f(PbrUniforms.EmissionIntensity, TerrainPbrEmissionIntensity);
-        if (PbrUniforms.GlobalTiling >= 0) GL.Uniform1f(PbrUniforms.GlobalTiling, Math.Max(0.01f, PbrTexTiling));
 
         GL.BindVertexArray(_object3D!.VAO);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);

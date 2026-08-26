@@ -866,6 +866,7 @@ public class SceneManagerPanel
                         TerrainHeightScale = obj.TerrainHeightScale,
                         TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
                         TerrainTexTiling = obj.TerrainTexTiling,
+                        TerrainSlopeTexTiling = obj.TerrainSlopeTexTiling,
                         TerrainUseStochasticSampling = obj.TerrainUseStochasticSampling,
                         TerrainLayerAirTop = obj.TerrainLayerAirTop,
                         TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
@@ -1196,6 +1197,7 @@ public class SceneManagerPanel
                         obj.TerrainHeightScale = objData.TerrainHeightScale;
                         obj.TerrainSlopeThreshold = objData.TerrainSlopeThreshold;
                         obj.TerrainTexTiling = objData.TerrainTexTiling;
+                        obj.TerrainSlopeTexTiling = objData.TerrainSlopeTexTiling;
                         obj.TerrainUseStochasticSampling = objData.TerrainUseStochasticSampling;
                         obj.TerrainLayerAirTop = objData.TerrainLayerAirTop;
                         obj.TerrainLayerDirtTop = objData.TerrainLayerDirtTop;
@@ -1476,6 +1478,7 @@ public class SceneManagerPanel
                             TerrainHeightScale = obj.TerrainHeightScale,
                             TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
                             TerrainTexTiling = obj.TerrainTexTiling,
+                            TerrainSlopeTexTiling = obj.TerrainSlopeTexTiling,
                             TerrainUseStochasticSampling = obj.TerrainUseStochasticSampling,
                             TerrainLayerAirTop = obj.TerrainLayerAirTop,
                             TerrainLayerDirtTop = obj.TerrainLayerDirtTop,

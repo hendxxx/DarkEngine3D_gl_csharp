@@ -11,6 +11,9 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE;
 /// </summary>
 public class IDEBridge
 {
+    // ── ImGui Controller (for dynamic font loading) ──
+    public ImGuiController? ImGuiCtrl { get; set; }
+
     // ── Scene info ──
     public string SceneName { get; set; } = "GameScene";
     public int TotalObjects { get; set; }

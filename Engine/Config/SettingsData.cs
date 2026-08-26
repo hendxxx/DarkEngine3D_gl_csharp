@@ -19,6 +19,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public int MouseSensitivity { get; set; } = 4;  // 0=0.25×, 1=0.50×, 2=0.75×, 3=1.0×, 4=1.5×, 5=2.0×, 6=3.0×
         public bool InGameActive { get; set; } = false;   // F9 toggle — persists IDE input lock state
 
+        // ── IDE Font (editor panels font) ──
+        public string IDEFontPath { get; set; } = "";   // empty = default font
+        public float IDEFontSize { get; set; } = 14f;
+
         // ── Viewport editor prefs (persisted so they survive restarts) ──
         /// <summary>Editor debug grid on/off (viewport toolbar "Grid").</summary>
         public bool ShowDebugGrid { get; set; } = false;
