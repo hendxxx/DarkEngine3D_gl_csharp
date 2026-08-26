@@ -42,9 +42,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private int _rtScatteringIntLoc, _rtRayleighLoc, _rtRayColorLoc, _rtRayHeightLoc;
         private int _rtMieLoc, _rtMieColorLoc, _rtMieFocusLoc, _rtMieHeightLoc;
         // Clouds
-        private int _rtCloudDensityLoc, _rtCloudAltLoc, _rtCloudSpeedLoc, _rtCloudDetailLoc;
-        private int _rtCloudErosionLoc, _rtCloudShadowLoc, _rtCloudScatterLoc, _rtCloudTintLoc;
-        private int _rtCirrusLoc, _rtCloudsEnabledLoc;
+        private int _rtCloudAltLoc, _rtCloudSpeedLoc, _rtCloudErosionLoc, _rtCloudScatterLoc;
+        private int _rtCloudScaleLoc, _rtCloudTintLoc, _rtCloudsEnabledLoc;
+        private int _rtCloudHeightLoc, _rtCloudAbsorpLoc, _rtCloudPhaseGLoc;
+        private int _rtCloudStepsLoc, _rtCloudLStepsLoc, _rtCloudCovLoc, _rtCloudCurlLoc;
+        private int _rtCloudQualityLoc;
         // Moon
         private int _rtMoonTexLoc, _rtMoonBrightLoc, _rtMoonSizeLoc, _rtMoonGlowLoc;
         private int _rtMoonTintLoc, _rtMoonPhaseLoc, _rtMoonRotSpeedLoc;
@@ -165,16 +167,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _rtMieHeightLoc = GL.GetUniformLocation(_realtimeShader, "mieHeight");
 
             // Clouds
-            _rtCloudDensityLoc = GL.GetUniformLocation(_realtimeShader, "cloudDensity");
             _rtCloudAltLoc = GL.GetUniformLocation(_realtimeShader, "cloudAltitude");
             _rtCloudSpeedLoc = GL.GetUniformLocation(_realtimeShader, "cloudSpeed");
-            _rtCloudDetailLoc = GL.GetUniformLocation(_realtimeShader, "cloudDetail");
             _rtCloudErosionLoc = GL.GetUniformLocation(_realtimeShader, "cloudErosion");
-            _rtCloudShadowLoc = GL.GetUniformLocation(_realtimeShader, "cloudShadowStrength");
+            _rtCloudScaleLoc = GL.GetUniformLocation(_realtimeShader, "cloudScale");
+            _rtCloudHeightLoc = GL.GetUniformLocation(_realtimeShader, "cloudHeight");
+            _rtCloudAbsorpLoc = GL.GetUniformLocation(_realtimeShader, "cloudAbsorption");
+            _rtCloudPhaseGLoc = GL.GetUniformLocation(_realtimeShader, "cloudPhaseG");
+            _rtCloudStepsLoc = GL.GetUniformLocation(_realtimeShader, "cloudSteps");
+            _rtCloudLStepsLoc = GL.GetUniformLocation(_realtimeShader, "cloudLightSteps");
+            _rtCloudCovLoc = GL.GetUniformLocation(_realtimeShader, "cloudCoverage");
+            _rtCloudCurlLoc = GL.GetUniformLocation(_realtimeShader, "cloudCurl");
             _rtCloudScatterLoc = GL.GetUniformLocation(_realtimeShader, "cloudScatter");
             _rtCloudTintLoc = GL.GetUniformLocation(_realtimeShader, "cloudTintColor");
-            _rtCirrusLoc = GL.GetUniformLocation(_realtimeShader, "cirrusStrength");
             _rtCloudsEnabledLoc = GL.GetUniformLocation(_realtimeShader, "cloudsEnabled");
+            _rtCloudQualityLoc = GL.GetUniformLocation(_realtimeShader, "cloudQuality");
 
             // Moon
             _rtMoonTexLoc = GL.GetUniformLocation(_realtimeShader, "moonTex");
@@ -637,16 +644,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // Clouds
             var clouds = settings.Clouds;
-            GL.Uniform1f(_rtCloudDensityLoc, clouds.Density);
             GL.Uniform1f(_rtCloudAltLoc, clouds.Altitude);
             GL.Uniform1f(_rtCloudSpeedLoc, clouds.Speed);
-            GL.Uniform1f(_rtCloudDetailLoc, clouds.Detail);
             GL.Uniform1f(_rtCloudErosionLoc, clouds.Erosion);
-            GL.Uniform1f(_rtCloudShadowLoc, clouds.ShadowStrength);
+            GL.Uniform1f(_rtCloudScaleLoc, clouds.CloudScale);
+            GL.Uniform1f(_rtCloudHeightLoc, clouds.CloudHeight);
+            GL.Uniform1f(_rtCloudAbsorpLoc, clouds.Absorption);
+            GL.Uniform1f(_rtCloudPhaseGLoc, clouds.PhaseG);
+            GL.Uniform1f(_rtCloudStepsLoc, clouds.MarchSteps);
+            GL.Uniform1f(_rtCloudLStepsLoc, clouds.LightMarchSteps);
+            GL.Uniform1f(_rtCloudCovLoc, clouds.Coverage);
+            GL.Uniform1f(_rtCloudCurlLoc, clouds.Curl);
             GL.Uniform1f(_rtCloudScatterLoc, clouds.Scatter);
             GL.Uniform3f(_rtCloudTintLoc, clouds.TintColor.X, clouds.TintColor.Y, clouds.TintColor.Z);
-            GL.Uniform1f(_rtCirrusLoc, clouds.CirrusStrength);
             GL.Uniform1f(_rtCloudsEnabledLoc, clouds.Enabled ? 1.0f : 0.0f);
+            GL.Uniform1f(_rtCloudQualityLoc, clouds.Quality);
 
             // Moon texture
             var moon = settings.Moon;

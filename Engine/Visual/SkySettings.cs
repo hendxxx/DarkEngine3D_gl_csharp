@@ -78,39 +78,58 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// </summary>
     public class VolumetricCloudSettings
     {
-        /// <summary>Cloud density/coverage 0..1. Default 0.3.</summary>
-        public float Density { get; set; } = 0.3f;
+        /// <summary>Enable/disable volumetric clouds. Default true.</summary>
+        public bool Enabled { get; set; } = true;
+        /// <summary>Quality: 0=Low, 1=Medium, 2=High, 3=Ultra. Default 2.</summary>
+        public float Quality { get; set; } = 2f;
+        // Shape
         /// <summary>Cloud altitude (world units). Default 2.5.</summary>
         public float Altitude { get; set; } = 2.5f;
-        /// <summary>Cloud speed (world units/sec). Default 0.035.</summary>
-        public float Speed { get; set; } = 0.035f;
-        /// <summary>Cloud detail (FBM detail amount). Default 0.35.</summary>
-        public float Detail { get; set; } = 0.35f;
-        /// <summary>Cloud erosion amount. Default 0.25.</summary>
+        /// <summary>Cloud slab thickness. Default 1.5.</summary>
+        public float CloudHeight { get; set; } = 1.5f;
+        /// <summary>Cloud scale (lower = larger). Default 0.25.</summary>
+        public float CloudScale { get; set; } = 0.25f;
+        /// <summary>Coverage 0..1. Default 0.75.</summary>
+        public float Coverage { get; set; } = 0.75f;
+        /// <summary>Curl turbulence. Default 1.0.</summary>
+        public float Curl { get; set; } = 1.0f;
+        /// <summary>Edge erosion. Default 0.25.</summary>
         public float Erosion { get; set; } = 0.25f;
-        /// <summary>Cloud shadow strength. Default 0.65.</summary>
-        public float ShadowStrength { get; set; } = 0.65f;
-        /// <summary>Cloud scatter (sun light through clouds). Default 0.25.</summary>
+        // Lighting
+        /// <summary>Beer-Lambert absorption. Default 12.0.</summary>
+        public float Absorption { get; set; } = 12.0f;
+        /// <summary>Phase G (forward scatter). Default 0.6.</summary>
+        public float PhaseG { get; set; } = 0.6f;
+        /// <summary>Sun scatter intensity. Default 0.25.</summary>
         public float Scatter { get; set; } = 0.25f;
         /// <summary>Cloud tint color. Default white.</summary>
         public Vector3 TintColor { get; set; } = new(1.0f, 1.0f, 1.0f);
-        /// <summary>Cirrus cloud strength. Default 0.1.</summary>
-        public float CirrusStrength { get; set; } = 0.1f;
-        /// <summary>Enable/disable procedural volumetric clouds. Default true.</summary>
-        public bool Enabled { get; set; } = true;
+        // Animation
+        /// <summary>Wind speed. Default 0.035.</summary>
+        public float Speed { get; set; } = 0.035f;
+        // Quality override (0 = use Quality preset)
+        /// <summary>Manual march steps override (0 = use Quality preset).</summary>
+        public float MarchSteps { get; set; } = 0f;
+        /// <summary>Manual light steps override (0 = use Quality preset).</summary>
+        public float LightMarchSteps { get; set; } = 0f;
 
         public VolumetricCloudSettings Clone() => new()
         {
-            Density = Density,
+            Enabled = Enabled,
+            Quality = Quality,
             Altitude = Altitude,
-            Speed = Speed,
-            Detail = Detail,
+            CloudHeight = CloudHeight,
+            CloudScale = CloudScale,
+            Coverage = Coverage,
+            Curl = Curl,
             Erosion = Erosion,
-            ShadowStrength = ShadowStrength,
+            Absorption = Absorption,
+            PhaseG = PhaseG,
             Scatter = Scatter,
             TintColor = TintColor,
-            CirrusStrength = CirrusStrength,
-            Enabled = Enabled
+            Speed = Speed,
+            MarchSteps = MarchSteps,
+            LightMarchSteps = LightMarchSteps
         };
     }
 
@@ -362,14 +381,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Scattering.MieHeight = 0.1f + rng.NextSingle() * 1.9f;        // 0.1-2: match slider
 
             // Clouds
-            Clouds.Density = rng.NextSingle();
             Clouds.Altitude = 1.5f + rng.NextSingle() * 4f;
+            Clouds.CloudHeight = 0.5f + rng.NextSingle() * 3f;
+            Clouds.CloudScale = 0.1f + rng.NextSingle() * 0.5f;
+            Clouds.Coverage = 0.3f + rng.NextSingle() * 0.6f;
+            Clouds.Curl = rng.NextSingle() * 2f;
+            Clouds.Erosion = rng.NextSingle() * 0.5f;
+            Clouds.Absorption = 5f + rng.NextSingle() * 20f;
+            Clouds.PhaseG = 0.3f + rng.NextSingle() * 0.6f;
+            Clouds.Scatter = 0.1f + rng.NextSingle() * 0.5f;
             Clouds.Speed = rng.NextSingle() * 0.1f;
-            Clouds.Detail = 0.1f + rng.NextSingle() * 0.5f;
-            Clouds.Erosion = 0.05f + rng.NextSingle() * 0.4f;
-            Clouds.ShadowStrength = 0.2f + rng.NextSingle() * 0.8f;
-            Clouds.Scatter = 0.05f + rng.NextSingle() * 0.45f;
-            Clouds.CirrusStrength = rng.NextSingle() * 0.3f;
 
             // Moon
             Moon.Brightness = 0.5f + rng.NextSingle() * 1.5f;

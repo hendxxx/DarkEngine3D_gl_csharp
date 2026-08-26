@@ -17,6 +17,44 @@ uniform float slopeTiling;     // tiling for the slope/cliff texture (uses dirt 
 uniform vec3 sunDir, lightColor, viewPos, fogColor;
 uniform int useFog;
 
+// ── CLOUD SHADOW ──
+uniform float cloudAltitude;
+uniform float cloudSpeed;
+uniform float cloudDetail;
+uniform float cloudErosion;
+uniform float cloudShadowStrength;
+uniform float cloudsEnabled;
+uniform float cloudScale;
+uniform float weatherMode;
+uniform float timeCloud;
+
+float cHash(float n) { return fract(sin(n) * 43758.5453123); }
+float cNoise(vec3 x) {
+    vec3 p = floor(x); vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    float n = p.x + p.y * 57.0 + 113.0 * p.z;
+    return mix(mix(mix(cHash(n), cHash(n+1.0), f.x), mix(cHash(n+57.0), cHash(n+58.0), f.x), f.y),
+               mix(mix(cHash(n+113.0), cHash(n+114.0), f.x), mix(cHash(n+170.0), cHash(n+171.0), f.x), f.y), f.z);
+}
+float cFbm(vec3 p) {
+    float f = 0.0, w = 0.5;
+    for (int i = 0; i < 5; i++) { f += w * cNoise(p); p *= 2.0; w *= 0.5; }
+    return f;
+}
+float cloudShadow(vec3 worldPos) {
+    if (cloudsEnabled < 0.5) return 1.0;
+    vec3 cp = worldPos - viewPos; cp.y = cloudAltitude;
+    cp.xz *= cloudScale; cp.x += timeCloud * cloudSpeed; cp.z += timeCloud * cloudSpeed * 0.34;
+    vec3 curl = vec3(cFbm(cp*cloudDetail), cFbm(cp*cloudDetail+vec3(5.2,1.3,2.8)), cFbm(cp*cloudDetail+vec3(9.1,4.7,7.4)));
+    cp += (curl - 0.5) * 0.8;
+    float base = cFbm(cp * 1.25);
+    float density = smoothstep(1.0 - cloudShadowStrength, 1.0, base);
+    density = max(density, 0.0);
+    density *= smoothstep(0.0, 0.15, clamp((cp.y-cloudAltitude)/max(cloudDetail,0.1),0.0,1.0)) * (1.0-smoothstep(0.6,1.0,clamp((cp.y-cloudAltitude)/max(cloudDetail,0.1),0.0,1.0)));
+    density = smoothstep(0.0, 0.1, density);
+    return max(exp(-density * cloudErosion * 5.0), 0.05);
+}
+
 // ── FOG SETTINGS (Config.FogSettings — uploaded from the Inspector "Fog" section) ──
 uniform int u_fogMode = 3;            // 1 = Linear, 2 = Exponential, 3 = Exp2 + height blend
 uniform float u_fogDensity = 0.0035;
@@ -454,6 +492,9 @@ void main() {
     // Terrain only receives shadows when the sun side faces up (no shadow on slopes
     // pointing away from the light) — same smoothstep mask as the main shader.
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, shadowLightDir));
+    // ── Cloud shadow (project FragPos up to cloud layer) ──
+    float cShadow = cloudShadow(FragPos);
+    shadow *= cShadow;
     vec3 result = (ambient + diffuse * shadowMask * shadow) * texColor;
 
     // ── LOCAL LIGHTS (Point / Spot) — added on top of the sun lighting ──
