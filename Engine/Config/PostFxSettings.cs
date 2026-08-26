@@ -11,7 +11,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     public static class PostFxSettings
     {
         /// <summary>Master switch for the whole post-FX chain (bloom/tonemap/gamma).</summary>
-        public static bool Enabled = true;
+        private static bool _enabled = true;
+        public static bool Enabled
+        {
+            get => _enabled;
+            set
+            {
+                if (_enabled != value)
+                    Console.WriteLine($"[PostFxSettings] Enabled: {_enabled} → {value}");
+                _enabled = value;
+            }
+        }
 
         /// <summary>Bloom add-back strength (0 = off).</summary>
         public static float BloomIntensity = 1.0f;

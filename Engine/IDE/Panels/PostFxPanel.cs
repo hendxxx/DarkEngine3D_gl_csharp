@@ -45,6 +45,19 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         {
             if (!_visible) return;
 
+            // Re-sync mirrors from PostFxSettings so sliders always reflect current values.
+            _enabled = PostFxSettings.Enabled;
+            _bloomIntensity = PostFxSettings.BloomIntensity;
+            _bloomThreshold = PostFxSettings.BloomThreshold;
+            _bloomSoftKnee = PostFxSettings.BloomSoftKnee;
+            _exposure = PostFxSettings.Exposure;
+            _gamma = PostFxSettings.Gamma;
+            _autoExposure = PostFxSettings.AutoExposure;
+            _aeMin = PostFxSettings.AutoExposureMinExposure;
+            _aeMax = PostFxSettings.AutoExposureMaxExposure;
+            _aeTarget = PostFxSettings.AutoExposureTargetLuminance;
+            _aeSpeed = PostFxSettings.AutoExposureSpeed;
+
             ImGui.Begin("Post FX", ref _visible);
 
             // ── Save-feedback notification ──
