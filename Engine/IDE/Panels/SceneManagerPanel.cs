@@ -97,8 +97,7 @@ public class SceneManagerPanel
         {
             Console.WriteLine("[SceneManagerPanel] No editor scenes to save to game.ing.");
             return;
-        }
-        // Temporarily force save target to game.ing
+        }            // Temporarily force save target to game.ing (in-game entry point)
         string previous = _currentSaveFile;
         _currentSaveFile = null;
         try { SaveAllEditorScenes(); }
@@ -1559,8 +1558,17 @@ public class SceneManagerPanel
             Console.WriteLine($"[SceneManagerPanel] ✅ Saved {_bridge.EditorScenes.Count} scene(s) (+ 3D objects) to {filePath}");
             Console.WriteLine($"[SceneManagerPanel] File size: {fileSize} bytes");
 
-            // Save As becomes the active save target for subsequent Save All operations.
-            _currentSaveFile = Path.GetFullPath(filePath);
+            // IMPORTANT: Do NOT change _currentSaveFile here. Save As creates a copy;
+            // the original file remains the primary Save All target so it stays in sync.
+            if (string.Equals(Path.GetFullPath(filePath), _currentSaveFile, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"[SceneManagerPanel] Saved to active file.");
+            }
+            else
+            {
+                Console.WriteLine($"[SceneManagerPanel] Saved copy to: {Path.GetFileName(filePath)}");
+                Console.WriteLine($"[SceneManagerPanel] Save All still targets: {Path.GetFileName(_currentSaveFile ?? SceneAssetSerializer.GameIngPath)}");
+            }
         }
         catch (UnauthorizedAccessException ex)
         {
