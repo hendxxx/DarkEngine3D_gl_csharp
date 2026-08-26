@@ -52,11 +52,7 @@ public unsafe class Program
 
         // Restore the post-processing settings (bloom / tonemapping / gamma) and
         // write them through so settings.json always carries the full field set.
-        Console.WriteLine($"[Program] PostFx pre-apply: settings.PostFxEnabled={settings.PostFxEnabled}, PostFxSettings.Enabled={PostFxSettings.Enabled}");
-        PostFxSettings.Apply(settings);
-        Console.WriteLine($"[Program] PostFx loaded: Enabled={PostFxSettings.Enabled} Bloom={PostFxSettings.BloomIntensity} Thr={PostFxSettings.BloomThreshold} Exposure={PostFxSettings.Exposure} Gamma={PostFxSettings.Gamma} AutoExp={PostFxSettings.AutoExposure}");
-        PostFxSettings.Persist();
-        Console.WriteLine($"[Program] PostFx after persist: Enabled={PostFxSettings.Enabled}");
+        // PostFX removed.
 
         // Restore the unified quality preset (MSAA + shadow quality + shadow filter).
         // Runs after ShadowSettings so the preset's shadow level wins, and writes

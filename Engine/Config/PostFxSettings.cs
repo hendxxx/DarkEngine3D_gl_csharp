@@ -18,7 +18,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             set
             {
                 if (_enabled != value)
-                    Console.WriteLine($"[PostFxSettings] Enabled: {_enabled} → {value}");
+                {
+                    var st = new System.Diagnostics.StackTrace(1, true);
+                    Console.WriteLine($"[PostFxSettings] Enabled: {_enabled} → {value} at {st.GetFrame(0)?.GetMethod()?.DeclaringType?.Name}.{st.GetFrame(0)?.GetMethod()?.Name}:{st.GetFrame(0)?.GetFileLineNumber()}");
+                }
                 _enabled = value;
             }
         }

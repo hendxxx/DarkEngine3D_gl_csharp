@@ -18,9 +18,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         private uint _resolveFBO = 0;
         private int _samples;
 
-        // ── AAA post-FX chain (bloom + ACES tonemap + gamma), shared with the editor
-        // viewport so the IDE Post FX panel is live everywhere ──
-        private PostFxProcessor? _postFx;
+        // PostFX removed.
 
         private int _width, _height;
         private uint _simpleVAO, _simpleVBO;
@@ -37,7 +35,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             UpdateSamples();
 
             CreateSceneFBO();
-            _postFx = new PostFxProcessor(_width, _height);
         }
 
         /// <summary>Pull the requested MSAA sample count from <see cref="Config.QualitySettings"/>
@@ -128,7 +125,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             _height = height;
             UpdateSamples();
             DestroySceneFBO();
-            _postFx?.Resize(_width, _height);
             CreateSceneFBO();
         }
 
@@ -191,12 +187,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.Disable(Const.GL_DEPTH_TEST);
 
             // AAA post-FX chain (bloom → ACES tonemap → gamma). When enabled it replaces
-            // the contents of SceneColorTex with the final graded frame, so everything
-            // downstream (screen, Viewport panel, screenshots, pause blur) sees the same look.
-            if (Config.PostFxSettings.Enabled)
-            {
-                RunPostFx(windowWidth, windowHeight);
-            }
+            // PostFX removed.
 
             // If no passes, just render the scene texture as-is
             if (_passes.Count == 0)
@@ -218,20 +209,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             }
 
             GL.Enable(Const.GL_DEPTH_TEST); 
-        }
-
-        /// <summary>Run the AAA post-FX chain (bloom + ACES tonemap + gamma) on the resolved
-        /// SceneColorTex and write the graded result back into it (via the resolve FBO), so
-        /// the screen, Viewport panel, screenshots and pause blur all see the same look.
-        /// Values come live from <see cref="Config.PostFxSettings"/>.</summary>
-        private void RunPostFx(int windowWidth, int windowHeight)
-        {
-            _postFx ??= new PostFxProcessor(_width, _height);
-            _postFx.Run(SceneColorTex, _resolveFBO, windowWidth, windowHeight);
-
-            // Restore default framebuffer for the caller.
-            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
-            GL.Viewport(0, 0, windowWidth, windowHeight);
         }
 
         /// <summary>Render the scene color texture to the screen using the blur shader.

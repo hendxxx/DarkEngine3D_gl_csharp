@@ -117,7 +117,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                     var data = JsonSerializer.Deserialize<SettingsData>(json);
                     if (data != null)
                     {
-                        Console.WriteLine($"[SettingsSave] Loaded from {FilePath} PostFxEnabled={data.PostFxEnabled}");
                         return data;
                     }
                     Console.WriteLine($"[SettingsSave] Deserialize returned null!");
@@ -139,7 +138,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                     WriteIndented = true
                 });
                 System.IO.File.WriteAllText(FilePath, json);
-                Console.WriteLine($"[SettingsSave] Saved to {FilePath}");
             }
             catch (Exception ex)
             {

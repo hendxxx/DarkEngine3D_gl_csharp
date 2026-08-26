@@ -53,14 +53,12 @@ public class RenderTimePanel
         {
             float terrain = _bridge.RenderTerrainMs;
             float objects = _bridge.RenderObjectsMs;
-            float postfx = _bridge.RenderPostFxMs;
             float total = _bridge.RenderTotalMs;
-            if (total < 0.0001f) total = terrain + objects + postfx;
+            if (total < 0.0001f) total = terrain + objects;
 
             DrawStageRow("Terrain", terrain, total);
             DrawTerrainStatsDetail();
             DrawStageRow("Objects", objects, total);
-            DrawStageRow("PostFX", postfx, total);
             ImGui.Separator();
             DrawStageRow("Total", total, total, bold: true);
 

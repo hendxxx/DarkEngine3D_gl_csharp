@@ -36,8 +36,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         // ── AAA post-FX chain applied to the shared viewport texture (same chain as
         // GameScene) so the IDE Post FX panel sliders are live in the editor viewport ──
-        private PostFxProcessor? _postFx;
-        private int _postFxDebugCount = 0;
 
         // ── Default camera + lights for rendering editor objects when no scene is active  ──
         private Camera? _editorCamera;
@@ -175,19 +173,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
             }
 
-            // Grade the viewport texture with the AAA post-FX chain (bloom + tonemap + gamma).
-            // PostFxProcessor has its own output texture to avoid feedback loops.
-            if (Config.PostFxSettings.Enabled)
-            {
-                if (_postFx == null) Console.WriteLine($"[SceneManager] PostFx creating... sharedTex={_sharedColorTex} resolveFBO={_sharedResolveFBO}");
-                _postFx ??= new PostFxProcessor(Glfw.WindowWidth, Glfw.WindowHeight);
-                _postFx.Run(_sharedColorTex, _sharedResolveFBO, Glfw.WindowWidth, Glfw.WindowHeight);
-                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
-            }
-            else if (_postFxDebugCount++ < 5)
-            {
-                Console.WriteLine($"[SceneManager] PostFx DISABLED, postFxEnabled={Config.PostFxSettings.Enabled}, sharedTex={_sharedColorTex}");
-            }
+            // PostFX removed.
         }
 
         /// <summary>Attach the IDE to this scene manager. Must be called before Run().</summary>

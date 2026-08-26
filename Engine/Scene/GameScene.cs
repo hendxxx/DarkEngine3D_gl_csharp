@@ -203,7 +203,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Render-time breakdown (ms) for the in-game overlay debug panel
             bridge.RenderTerrainMs = (float)_terrainTimeMs;
             bridge.RenderObjectsMs = (float)_objectsTimeMs;
-            bridge.RenderPostFxMs = (float)_postProcessTimeMs;
+            // PostFX removed
             bridge.RenderTotalMs = (float)_totalRenderTimeMs;
 
             // Per-object render timings for the Render Time panel

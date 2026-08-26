@@ -29,7 +29,7 @@ public class IDE : IDisposable
     private readonly HierarchyPanel _hierarchy;
     private readonly RenderTimePanel _renderTime;
     private readonly ShadowPanel _shadowPanel;
-    private readonly PostFxPanel _postFxPanel;
+    // PostFX removed
     private readonly PbrPanel _pbrPanel;
     private readonly TerrainBrushPanel _terrainBrush;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
@@ -144,7 +144,6 @@ public class IDE : IDisposable
             _hierarchy = new HierarchyPanel(Bridge);
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
-            _postFxPanel = new PostFxPanel(Bridge);
             _pbrPanel = new PbrPanel(Bridge);
             _terrainBrush = new TerrainBrushPanel(Bridge);
 
@@ -464,7 +463,6 @@ public class IDE : IDisposable
                 _hierarchy.ShowInMenu();
                 _renderTime.ShowInMenu();
                 _shadowPanel.ShowInMenu();
-                _postFxPanel.ShowInMenu();
                 _pbrPanel.ShowInMenu();
                 _terrainBrush.ShowInMenu();
                 ImGui.Separator();
@@ -484,10 +482,8 @@ public class IDE : IDisposable
                     // Apply font change only when mouse released (no flicker)
                     if (ImGui.IsItemDeactivatedAfterEdit())
                     {
-                        var saved = Config.SettingsSave.Load();
-                        saved.IDEFontSize = _savedIDEFontSize;
-                        Config.SettingsSave.Save(saved);
-                        _imgui.ChangeIDEFont(saved.IDEFontPath, _savedIDEFontSize);
+                        _imgui.ChangeIDEFont(_cachedIDEFontPath, _savedIDEFontSize);
+                        var s = Config.SettingsSave.Load(); s.IDEFontSize = _savedIDEFontSize; s.IDEFontPath = _cachedIDEFontPath; Config.SettingsSave.Save(s);
                     }
                     ImGui.EndMenu();
                 }
@@ -527,7 +523,6 @@ public class IDE : IDisposable
         _inspector.Render();
         _renderTime.Render();
         _shadowPanel.Render();
-        _postFxPanel.Render();
         _pbrPanel.Render();
         _terrainBrush.Render();
         _assetBrowser.Render();
@@ -546,6 +541,9 @@ public class IDE : IDisposable
     /// Renders scene texture + UI elements directly to foreground draw list,
     /// then calls _imgui.Render() to flush. Exit via F8 only.</summary>
     /// <summary>Scan for IDE fonts (project + common Windows fonts) and render as menu items.</summary>
+    private string _cachedIDEFontPath = "";
+    private bool _fontCacheLoaded = false;
+
     private void ScanIDEFontsMenu()
     {
         if (_ideFontNames == null)
@@ -595,21 +593,23 @@ public class IDE : IDisposable
             _ideFontNames = names.ToArray();
             _ideFontPaths = paths.ToArray();
 
-            // Load saved font size
+            // Load saved font settings ONCE
             var saved = Config.SettingsSave.Load();
             _savedIDEFontSize = saved.IDEFontSize;
+            _cachedIDEFontPath = saved.IDEFontPath ?? "";
+            _fontCacheLoaded = true;
         }
 
-        var currentSaved = Config.SettingsSave.Load();
-        string currentPath = currentSaved.IDEFontPath;
+        // Use cached font path — no file I/O per frame!
+        string currentPath = _cachedIDEFontPath;
 
         // Default option
         bool isDefault = string.IsNullOrEmpty(currentPath);
         if (ImGui.MenuItem("Default", null, isDefault))
         {
-            currentSaved.IDEFontPath = "";
-            Config.SettingsSave.Save(currentSaved);
+            _cachedIDEFontPath = "";
             _imgui.ChangeIDEFont("", _savedIDEFontSize);
+            var s = Config.SettingsSave.Load(); s.IDEFontPath = ""; Config.SettingsSave.Save(s);
         }
 
         for (int i = 0; i < _ideFontPaths.Length; i++)
@@ -617,9 +617,9 @@ public class IDE : IDisposable
             bool isActive = string.Equals(_ideFontPaths[i], currentPath, StringComparison.OrdinalIgnoreCase);
             if (ImGui.MenuItem(_ideFontNames[i], null, isActive))
             {
-                currentSaved.IDEFontPath = _ideFontPaths[i];
-                Config.SettingsSave.Save(currentSaved);
+                _cachedIDEFontPath = _ideFontPaths[i];
                 _imgui.ChangeIDEFont(_ideFontPaths[i], _savedIDEFontSize);
+                var s = Config.SettingsSave.Load(); s.IDEFontPath = _ideFontPaths[i]; Config.SettingsSave.Save(s);
             }
         }
     }
@@ -878,7 +878,7 @@ public class IDE : IDisposable
                 $"FPS: {fps:F0}  ({frameMs:F1} ms)",
                 $"TRIS: {Bridge.RenderedTriangles:N0} / {Bridge.TotalTriangles:N0}",
                 $"Objects: {Bridge.DrawnObjects:N0} / {Bridge.TotalObjects:N0}  (anim {Bridge.AnimatedObjectCount:N0} | static {Bridge.StaticObjectCount:N0})",
-                $"Render: t={Bridge.RenderTerrainMs:N1}ms  o={Bridge.RenderObjectsMs:N1}ms  fx={Bridge.RenderPostFxMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
+                $"Render: t={Bridge.RenderTerrainMs:N1}ms  o={Bridge.RenderObjectsMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
                 $"POS: X={camPos.X:N2}  Y={camPos.Y:N2}  Z={camPos.Z:N2}",
                 $"Yaw: {Bridge.CameraYaw:F1}°  Pitch: {Bridge.CameraPitch:F1}°",
             ];
