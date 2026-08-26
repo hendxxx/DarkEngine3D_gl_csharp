@@ -14,10 +14,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static bool Enabled = true;
 
         /// <summary>Bloom add-back strength (0 = off).</summary>
-        public static float BloomIntensity = 0.05f;
+        public static float BloomIntensity = 1.0f;
 
         /// <summary>Luminance above which pixels start to bloom.</summary>
-        public static float BloomThreshold = 0.8f;
+        public static float BloomThreshold = 0.5f;
 
         /// <summary>Soft transition width below the threshold (avoids hard bloom edges).</summary>
         public static float BloomSoftKnee = 0.15f;
@@ -53,8 +53,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static void ResetToDefaults()
         {
             Enabled = true;
-            BloomIntensity = 0.05f;
-            BloomThreshold = 0.8f;
+            BloomIntensity = 1.0f;
+            BloomThreshold = 0.5f;
             BloomSoftKnee = 0.15f;
             Exposure = 1.0f;
             Gamma = 2.2f;

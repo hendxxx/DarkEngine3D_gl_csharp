@@ -28,5 +28,5 @@ void main()
     color = acesTonemap(color);
     color = pow(color, vec3(1.0 / u_Gamma));
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color * vec3(1.0, 0.85, 0.85), 1.0); // TEMP RED TINT to verify pipeline
 }

@@ -15,7 +15,11 @@ void main()
 
     // Soft knee: pixels below threshold get nothing, above threshold + knee are full,
     // in between ramp smoothly — avoids a hard cutoff edge around bright objects.
-    float contribution = smoothstep(u_Threshold, u_Threshold + u_SoftKnee, luma);
+    // When both threshold and knee are 0 (used by auto-exposure downscale), bypass
+    // smoothstep to avoid undefined behavior (smoothstep(a,a,x) is undefined in GLSL).
+    float contribution = 1.0;
+    if (u_Threshold > 0.0 || u_SoftKnee > 0.0)
+        contribution = smoothstep(u_Threshold, u_Threshold + max(u_SoftKnee, 0.001), luma);
 
     FragColor = vec4(color * contribution, 1.0);
 }

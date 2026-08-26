@@ -142,6 +142,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
 
+            // When MSAA is off, render directly to the resolve FBO (scene writes to the texture)
+            // so there's no unnecessary blit. When MSAA is on, scene renders to the MSAA FBO
+            // and blits to the resolve FBO. In both cases _sharedResolveFBO always has _sharedColorTex.
             _sharedFBO = msaaUsable ? fbo : resolveFbo;
             _sharedColorTex = color;
             _sharedDepthRBO = rbo;
@@ -158,16 +161,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// all scene rendering for the frame.</summary>
         private void ResolveSharedFBO()
         {
-            if (!_sharedFBOCreated || _sharedResolveFBO == 0 || _sharedFBO == _sharedResolveFBO) return;
+            if (!_sharedFBOCreated || _sharedResolveFBO == 0) return;
 
-            GL.BindFramebuffer(Const.GL_READ_FRAMEBUFFER, _sharedFBO);
-            GL.BindFramebuffer(Const.GL_DRAW_FRAMEBUFFER, _sharedResolveFBO);
-            GL.BlitFramebuffer(0, 0, Glfw.WindowWidth, Glfw.WindowHeight,
-                               0, 0, Glfw.WindowWidth, Glfw.WindowHeight,
-                               Const.GL_COLOR_BUFFER_BIT, Const.GL_NEAREST);
-            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            // When MSAA is active, resolve the multisampled FBO into the texture.
+            if (_sharedFBO != _sharedResolveFBO)
+            {
+                GL.BindFramebuffer(Const.GL_READ_FRAMEBUFFER, _sharedFBO);
+                GL.BindFramebuffer(Const.GL_DRAW_FRAMEBUFFER, _sharedResolveFBO);
+                GL.BlitFramebuffer(0, 0, Glfw.WindowWidth, Glfw.WindowHeight,
+                                   0, 0, Glfw.WindowWidth, Glfw.WindowHeight,
+                                   Const.GL_COLOR_BUFFER_BIT, Const.GL_NEAREST);
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            }
 
-            // Grade the viewport texture with the same post-FX chain the game uses.
+            // Grade the viewport texture with the AAA post-FX chain (bloom + tonemap + gamma).
+            // PostFxProcessor has its own output texture to avoid feedback loops.
+            Console.WriteLine($"[SceneManager] ResolveSharedFBO: FBO={_sharedFBO} resolve={_sharedResolveFBO} tex={_sharedColorTex} postFx={Config.PostFxSettings.Enabled}");
             if (Config.PostFxSettings.Enabled)
             {
                 _postFx ??= new PostFxProcessor(Glfw.WindowWidth, Glfw.WindowHeight);

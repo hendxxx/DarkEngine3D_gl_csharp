@@ -26,6 +26,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         private uint _simpleVAO, _simpleVBO;
 
         private readonly List<IPostProcessPass> _passes = new();
+        private int _ppDebugCount = 0;
 
         public PostProcessStack(int width, int height)
         {
@@ -193,7 +194,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             // the contents of SceneColorTex with the final graded frame, so everything
             // downstream (screen, Viewport panel, screenshots, pause blur) sees the same look.
             if (Config.PostFxSettings.Enabled)
+            {
+                if (_ppDebugCount++ < 30) Console.WriteLine($"[PostProcessStack] RunPostFx called, SceneFBO={SceneFBO} resolveFBO={_resolveFBO} SceneColorTex={SceneColorTex}");
                 RunPostFx(windowWidth, windowHeight);
+            }
+            else if (_ppDebugCount++ < 30)
+            {
+                Console.WriteLine($"[PostProcessStack] PostFx DISABLED, SceneFBO={SceneFBO} resolveFBO={_resolveFBO}");
+            }
 
             // If no passes, just render the scene texture as-is
             if (_passes.Count == 0)
