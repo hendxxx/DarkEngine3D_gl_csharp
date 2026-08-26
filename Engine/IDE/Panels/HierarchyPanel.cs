@@ -2758,8 +2758,8 @@ public class HierarchyPanel
             string filePath = SceneAssetSerializer.GetScenePath(sceneName);
             SceneAsset? asset = SceneAssetSerializer.LoadScene(filePath);
 
-            // 2. Fallback: search in game.ing manifest
-            asset ??= SceneAssetSerializer.FindScene(sceneName);
+            // 2. Fallback: search in the active save file manifest
+            asset ??= SceneAssetSerializer.FindScene(sceneName, _bridge.ActiveSaveFile);
 
             if (asset == null || asset.Elements.Count == 0)
             {

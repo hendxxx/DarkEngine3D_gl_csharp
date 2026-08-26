@@ -68,10 +68,10 @@ public class IDE : IDisposable
                         return;
                     }
                     // Save all editor scenes to game.ing first, then reload for in-game mode
-                    Console.WriteLine("[IDE] Saving editor scenes to game.ing before entering in-game mode...");
+                    Console.WriteLine($"[IDE] Saving editor scenes to {(Bridge.ActiveSaveFile ?? "game.ing")} before entering in-game mode...");
                     string previousScene = Bridge.SelectedEditorScene ?? "";
                     Bridge.SaveToGameIng?.Invoke();
-                    LoadDefaultGameIng();
+                    LoadCurrentSaveFile();
                     // Restore the scene the user had selected (LoadFromIngFile picks first by default)
                     if (!string.IsNullOrEmpty(previousScene) &&
                         Bridge.EditorScenes.ContainsKey(previousScene))
@@ -123,20 +123,13 @@ public class IDE : IDisposable
         Console.WriteLine($"[IDE] Startup in-game mode active ({Bridge.EditorScenes.Count} scene(s) from '{loadPath}')");
     }
 
-    /// <summary>Load game.ing from disk every time in-game mode is entered.
-    /// Replaces any existing editor scenes with the freshly loaded data.</summary>
-    private void LoadDefaultGameIng()
+    /// <summary>Reload scenes from the current save file for in-game mode.
+    /// Uses _currentSaveFile via LoadGameIngScenes() — never touches game.ing directly.</summary>
+    private void LoadCurrentSaveFile()
     {
-        string gameIngPath = SceneAssetSerializer.GameIngPath;
-        if (!File.Exists(gameIngPath))
-        {
-            Console.WriteLine($"[IDE] game.ing not found at: {gameIngPath}");
-            return;
-        }
-
-        Console.WriteLine($"[IDE] Loading game.ing for in-game mode...");
+        Console.WriteLine($"[IDE] Reloading current save file for in-game mode...");
         _sceneManagerPanel.LoadGameIngScenes();
-        Console.WriteLine($"[IDE] Loaded game.ing ({Bridge.EditorScenes.Count} scenes)");
+        Console.WriteLine($"[IDE] Reloaded ({Bridge.EditorScenes.Count} scenes)");
     }
 
     public IDE(nint window)

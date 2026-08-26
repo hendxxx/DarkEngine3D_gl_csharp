@@ -192,12 +192,12 @@ public static class SceneAssetSerializer
     }
 
     /// <summary>
-    /// Find a scene by name in the game.ing manifest.
-    /// 🛠️ FIX #8: Now routes through LoadManifestFromPath to use the cache.
+    /// Find a scene by name in a manifest file.
+    /// If filePath is null, searches game.ing (legacy fallback).
     /// </summary>
-    public static SceneAsset? FindScene(string sceneName)
+    public static SceneAsset? FindScene(string sceneName, string? filePath = null)
     {
-        var manifest = LoadManifestFromPath(GameIngPath);
+        var manifest = LoadManifestFromPath(filePath ?? GameIngPath);
         return manifest?.Scenes.Find(s =>
             s.SceneName.Equals(sceneName, StringComparison.OrdinalIgnoreCase));
     }

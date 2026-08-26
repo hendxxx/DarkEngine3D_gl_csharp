@@ -124,6 +124,8 @@ public class IDEBridge
     public Action? SaveToGameIng { get; set; }
     /// <summary>Called by HierarchyPanel to open the Save As file dialog (first save or redirect).</summary>
     public Action? RequestSaveAsDialog { get; set; }
+    /// <summary>The currently active .ing file path. Set by SceneManagerPanel, read by all panels.</summary>
+    public string? ActiveSaveFile { get; set; }
 
     // ── Scene Manager (for SceneManagerPanel to switch scenes) ──
     public SceneManager? SceneManager { get; set; }

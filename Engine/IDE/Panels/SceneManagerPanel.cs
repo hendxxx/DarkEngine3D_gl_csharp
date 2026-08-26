@@ -33,6 +33,12 @@ public class SceneManagerPanel
     //    loaded (Load File) or saved via Save As. Save All + auto-save write here instead
     //    of always overwriting game.ing. Falls back to game.ing when nothing was loaded. ──
     private string? _currentSaveFile;
+    public string? CurrentSaveFile => _currentSaveFile;
+    private void SetCurrentSaveFile(string? path)
+    {
+        _currentSaveFile = path;
+        _bridge.ActiveSaveFile = path;
+    }
 
     // ── Popup state ──
     private bool _showAddPopup = false;
@@ -679,7 +685,7 @@ public class SceneManagerPanel
                 // If there was no active file (Save All triggered dialog), make the chosen file the new active target.
                 if (wasNull)
                 {
-                    _currentSaveFile = Path.GetFullPath(path);
+                    SetCurrentSaveFile(Path.GetFullPath(path));
                     Console.WriteLine($"[SceneManagerPanel] Save All now targets: {Path.GetFileName(_currentSaveFile)}");
                 }
             }
@@ -717,7 +723,7 @@ public class SceneManagerPanel
         _bridge.SelectedUIElements?.Clear();
         _selectedIdx = -1;
         // Reset save target — New clears everything, so next Save must ask for a new name.
-        _currentSaveFile = null;
+        SetCurrentSaveFile(null);
 
         // ── Reset preview / in-game mode ──
         _bridge.IsPreviewMode = false;
@@ -1085,7 +1091,7 @@ public class SceneManagerPanel
             }
 
             // This file is now the active save target — Save All / auto-save go here.
-            _currentSaveFile = Path.GetFullPath(filePath);
+            SetCurrentSaveFile(Path.GetFullPath(filePath));
 
             // ── Restore global IDE selection highlight colors ──
             if (manifest.SelectionHighlightColor?.Length == 3)
