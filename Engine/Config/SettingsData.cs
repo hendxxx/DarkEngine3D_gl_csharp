@@ -75,8 +75,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // ── Post-Processing (AAA: bloom + ACES tonemapping + gamma; tuned live via
         // PostFxSettings, persisted here so the look survives restarts) ──
         public bool PostFxEnabled { get; set; } = true;
-        public float PostFxBloomIntensity { get; set; } = 0.05f;
-        public float PostFxBloomThreshold { get; set; } = 0.8f;
+        public float PostFxBloomIntensity { get; set; } = 0.8f;
+        public float PostFxBloomThreshold { get; set; } = 0.45f;
         public float PostFxBloomSoftKnee { get; set; } = 0.15f;
         public float PostFxExposure { get; set; } = 1.0f;
         public float PostFxGamma { get; set; } = 2.2f;

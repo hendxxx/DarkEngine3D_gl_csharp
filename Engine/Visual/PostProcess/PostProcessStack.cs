@@ -195,12 +195,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             // downstream (screen, Viewport panel, screenshots, pause blur) sees the same look.
             if (Config.PostFxSettings.Enabled)
             {
-                if (_ppDebugCount++ < 30) Console.WriteLine($"[PostProcessStack] RunPostFx called, SceneFBO={SceneFBO} resolveFBO={_resolveFBO} SceneColorTex={SceneColorTex}");
                 RunPostFx(windowWidth, windowHeight);
-            }
-            else if (_ppDebugCount++ < 30)
-            {
-                Console.WriteLine($"[PostProcessStack] PostFx DISABLED, SceneFBO={SceneFBO} resolveFBO={_resolveFBO}");
             }
 
             // If no passes, just render the scene texture as-is

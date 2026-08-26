@@ -32,9 +32,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         private readonly System.Diagnostics.Stopwatch _aeClock = new();
         private double _lastAeTime = 0;
 
-        // ── Debug ──
-        private int _debugFrame = 0;
-
         public PostFxProcessor(int width, int height)
         {
             Resize(width, height);
@@ -65,18 +62,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
             GL.GenerateMipmap(Const.GL_TEXTURE_2D);
 
-            Console.WriteLine($"[PostFx] Resized: {width}x{height}, bloom={_bloomW}x{_bloomH}, luma={_lumaW}x{_lumaH}");
+
         }
 
         public void Run(uint inputTexture, uint outputFBO, int width, int height)
         {
             Resize(width, height);
-            _debugFrame++;
-            if (_compositeFBO == 0)
-            {
-                if (_debugFrame <= 3) Console.WriteLine($"[PostFx] EARLY RETURN: compositeFBO=0 w={_w} h={_h} input={inputTexture} outFBO={outputFBO}");
-                return;
-            }
+            if (_compositeFBO == 0) return;
             if (_vao == 0) CreateQuad();
 
             uint brightS = Shader.GetPostFxBrightShaderProgram();
@@ -84,19 +76,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             uint compS = Shader.GetPostFxCompositeShaderProgram();
             uint passS = Shader.GetBlurPassShaderProgram();
 
-            // Validate shader programs (log once on failure)
-            if (brightS == 0 || blurS == 0 || compS == 0 || passS == 0)
-            {
-                if (_debugFrame <= 3) Console.WriteLine($"[PostFx] ERROR: Shader failed to compile! bright={brightS} blur={blurS} comp={compS} pass={passS}");
-                return;
-            }
-
-            // Validate FBOs (log once on failure)
-            if (_bloomFBO_A == 0 || _compositeFBO == 0 || _outputFBO == 0)
-            {
-                if (_debugFrame <= 3) Console.WriteLine($"[PostFx] ERROR: FBOs not created! bloomA={_bloomFBO_A} comp={_compositeFBO} out={_outputFBO}");
-                return;
-            }
+            if (brightS == 0 || blurS == 0 || compS == 0 || passS == 0) return;
+            if (_bloomFBO_A == 0 || _compositeFBO == 0 || _outputFBO == 0) return;
 
             // ── Auto-exposure ──
             float effectiveExposure = PostFxSettings.Exposure;
@@ -170,17 +151,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.BlitFramebuffer(0, 0, _w, _h, 0, 0, _w, _h, Const.GL_COLOR_BUFFER_BIT, Const.GL_NEAREST);
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
             GL.Viewport(0, 0, _w, _h);
-
-            // Debug: read a pixel from the output to verify it's not black
-            if (_debugFrame <= 2)
-            {
-                GL.BindFramebuffer(Const.GL_READ_FRAMEBUFFER, outputFBO);
-                float[] pxD = new float[4];
-                fixed (float* p = pxD)
-                    GL.ReadPixels(_w / 2, _h / 2, 1, 1, Const.GL_RGBA, Const.GL_FLOAT, p);
-                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
-                Console.WriteLine($"[PostFx] #{_debugFrame} center: R={pxD[0]:F3} G={pxD[1]:F3} B={pxD[2]:F3} A={pxD[3]:F3}");
-            }
         }
 
         /// <summary>
@@ -238,10 +208,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
             float t = 1f - MathF.Exp(-PostFxSettings.AutoExposureSpeed * Math.Max(dt, 0f));
             _smoothedExposure += (target - _smoothedExposure) * t;
-
-            if (_debugFrame <= 2)
-                Console.WriteLine($"[PostFx] AE: luma={luma:F4} target={target:F3} smoothed={_smoothedExposure:F3}");
-
             return _smoothedExposure;
         }
 
