@@ -315,12 +315,23 @@ public class SceneManagerPanel
             ImGui.BeginDisabled(!canSave);
             if (ImGui.Button("Save All", new Vector2(btnW, 28)))
             {
-                SaveAllEditorScenes();
+                if (_currentSaveFile == null)
+                {
+                    // No file loaded yet — ask user where to save
+                    _fileDialog.OpenForSave("game.ing");
+                }
+                else
+                {
+                    SaveAllEditorScenes();
+                }
             }
             ImGui.EndDisabled();
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered() && canSave)
-                ImGui.SetTooltip($"Save {_bridge.EditorScenes.Count} scene(s) to {(_currentSaveFile ?? SceneAssetSerializer.GameIngPath)}");
+            {
+                string target = _currentSaveFile ?? "(no file — will ask for name)";
+                ImGui.SetTooltip($"Save {_bridge.EditorScenes.Count} scene(s) to {Path.GetFileName(target)}");
+            }
 
             ImGui.SameLine();
 
@@ -662,7 +673,14 @@ public class SceneManagerPanel
             if (_fileDialog.IsSaveMode)
             {
                 // Save As: write editor scenes to chosen path
+                bool wasNull = _currentSaveFile == null;
                 SaveToIngFile(path);
+                // If there was no active file (Save All triggered dialog), make the chosen file the new active target.
+                if (wasNull)
+                {
+                    _currentSaveFile = Path.GetFullPath(path);
+                    Console.WriteLine($"[SceneManagerPanel] Save All now targets: {Path.GetFileName(_currentSaveFile)}");
+                }
             }
             else
             {
@@ -697,8 +715,8 @@ public class SceneManagerPanel
         _bridge.SelectedUIElement = null;
         _bridge.SelectedUIElements?.Clear();
         _selectedIdx = -1;
-        // NOTE: Do NOT reset _currentSaveFile here — keep the original save target
-        // so Save All continues to write to the correct file even after New/Reload.
+        // Reset save target — New clears everything, so next Save must ask for a new name.
+        _currentSaveFile = null;
 
         // ── Reset preview / in-game mode ──
         _bridge.IsPreviewMode = false;
@@ -745,24 +763,9 @@ public class SceneManagerPanel
         // ── Select the fresh scene ──
         SelectEditorScene(sceneName);
 
-        // ── Write empty manifest to current save file ──
-        // This preserves the user's file — only the default game.ing is cleared on New.
-        try
-        {
-            string emptyTarget = _currentSaveFile ?? SceneAssetSerializer.GameIngPath;
-            var emptyManifest = new SceneManifest();
-            string json = System.Text.Json.JsonSerializer.Serialize(
-                emptyManifest, SceneAssetSerializer.GetJsonOptions());
-            Directory.CreateDirectory(Path.GetDirectoryName(emptyTarget)!);
-            File.WriteAllText(emptyTarget, json);
-            Console.WriteLine($"[SceneManagerPanel] Wrote empty manifest to {emptyTarget}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[SceneManagerPanel] Failed to clear game.ing: {ex.Message}");
-        }
-
-        Console.WriteLine("[SceneManagerPanel] Everything cleared — fresh start");
+        // Do NOT write to disk — New is a clean slate.
+        // User must Save As with a new name, or Load an existing file.
+        Console.WriteLine("[SceneManagerPanel] Everything cleared — fresh start (no file saved)");
     }
 
     /// <summary>Save ALL editor scenes to game.ing file, including 3D editor objects.</summary>
