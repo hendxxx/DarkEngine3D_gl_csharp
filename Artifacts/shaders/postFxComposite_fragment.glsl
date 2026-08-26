@@ -8,25 +8,42 @@ uniform float u_BloomIntensity;
 uniform float u_Exposure;
 uniform float u_Gamma;
 
-// ACES filmic tonemap (Narkowicz approximation) — the classic AAA "filmic" curve:
-// lifts midtones slightly, rolls off highlights smoothly, keeps shadows deep.
-vec3 acesTonemap(vec3 x)
-{
-    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+// ACES Filmic Tonemapping (Stephen Hill fit)
+vec3 ACESFilm(vec3 x) {
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
+
+// Vignette
+vec3 applyVignette(vec3 color, vec2 uv, float radius, float softness) {
+    float d = distance(uv, vec2(0.5));
+    float vig = smoothstep(radius, radius - softness, d);
+    return color * vig;
 }
 
 void main()
 {
     vec3 color = texture(sceneTex, TexCoord).rgb;
 
-    // Bloom additive composite (before tonemapping, so bloom also gets the filmic rolloff).
+    // Additive bloom (before tonemapping so bloom also gets filmic rolloff)
     vec3 bloom = texture(bloomTex, TexCoord).rgb;
     color += bloom * u_BloomIntensity;
 
-    // Exposure → tonemap → gamma correction.
+    // Exposure
     color *= u_Exposure;
-    color = acesTonemap(color);
+
+    // ACES filmic tonemap
+    color = ACESFilm(color);
+
+    // Gamma correction
     color = pow(color, vec3(1.0 / u_Gamma));
 
-    FragColor = vec4(color * vec3(1.0, 0.85, 0.85), 1.0); // TEMP RED TINT to verify pipeline
+    // Vignette: darkens edges for cinematic feel
+    color = applyVignette(color, TexCoord, 0.85, 0.45);
+
+    FragColor = vec4(color, 1.0);
 }

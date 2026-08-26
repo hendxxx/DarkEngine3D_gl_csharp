@@ -810,11 +810,20 @@ public class SceneManagerPanel
                 asset.EditorCameraPitch = editorScene.CameraPitch;
             }
 
-            // ── Save 3D editor objects ──
-            var objMgr = editorScene.ObjectManager;
-            if (objMgr != null)
+            // ── Snapshot sky settings for 'Load from Settings' ──
+            if (editorScene.ObjectManager != null)
             {
-                foreach (var obj in objMgr.Objects)
+                foreach (var obj in editorScene.ObjectManager.Objects)
+                {
+                    if (obj.PrimitiveType == EditorPrimitiveType.Sky)
+                        obj.SavedSkySettings = obj.SkySettings.Clone();
+                }
+            }
+
+            // ── Save 3D editor objects ──
+            if (editorScene.ObjectManager != null)
+            {
+                foreach (var obj in editorScene.ObjectManager.Objects)
                 {
                     asset.EditorObjects.Add(new EditorObjectData
                     {

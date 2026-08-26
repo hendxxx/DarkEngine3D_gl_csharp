@@ -35,7 +35,7 @@ public unsafe class ImGuiController : IDisposable
     private float _pendingIDEFontSize;
     // ── Currently active IDE font info (for querying) ──
     public string ActiveIDEFontPath { get; private set; } = "";
-    public float ActiveIDEFontSize { get; private set; } = 14f;
+    public float ActiveIDEFontSize { get; private set; } = 20f;
     // ── Debounce: only rebuild when font actually changes ──
     private string? _lastBuiltFontPath;
     private float _lastBuiltFontSize;

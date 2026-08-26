@@ -1888,6 +1888,64 @@ public class InspectorPanel
             // ═══ PROCEDURAL REALTIME SETTINGS ═══
             if (skySettings.Type == SkyType.Procedural)
             {
+                // ── Sky Presets ──
+                ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Sky Presets");
+                float btnW = (ImGui.GetContentRegionAvail().X - 4 * ImGui.GetStyle().ItemSpacing.X) / 4f;
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.15f, 0.55f, 0.35f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.2f, 0.7f, 0.45f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.1f, 0.45f, 0.3f, 1f));
+                if (ImGui.Button("Reset", new Vector2(btnW, 0))) skySettings.ResetDefaults();
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Bright blue sky, clouds OFF, sunrays OFF");
+                ImGui.SameLine();
+                ImGui.PopStyleColor(3);
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.4f, 0.75f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.3f, 0.55f, 0.85f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.15f, 0.35f, 0.65f, 1f));
+                if (ImGui.Button("Clear Sky", new Vector2(btnW, 0))) skySettings.ApplyClearSky();
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear blue sky, no clouds, minimal haze");
+                ImGui.SameLine();
+                ImGui.PopStyleColor(3);
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.75f, 0.45f, 0.15f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.85f, 0.55f, 0.25f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.65f, 0.35f, 0.10f, 1f));
+                if (ImGui.Button("Sunset", new Vector2(btnW, 0))) skySettings.ApplySunset();
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Warm golden hour with sun rays");
+                ImGui.SameLine();
+                ImGui.PopStyleColor(3);
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.25f, 0.25f, 0.45f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.35f, 0.35f, 0.55f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.20f, 0.20f, 0.35f, 1f));
+                if (ImGui.Button("Night", new Vector2(btnW, 0))) skySettings.ApplyNight();
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Dark sky with moon and stars");
+                ImGui.PopStyleColor(3);
+                ImGui.Spacing();
+
+                // Randomize + Load from Settings on same row
+                float halfW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.3f, 0.6f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.65f, 0.4f, 0.75f, 1f));
+                if (ImGui.Button("🎲 Randomize", new Vector2(halfW, 0))) skySettings.Randomize();
+                ImGui.PopStyleColor(2);
+                ImGui.SameLine();
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.4f, 0.55f, 0.2f, 1f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.5f, 0.65f, 0.3f, 1f));
+                bool hasSnapshot = editorObj.SavedSkySettings != null;
+                ImGui.BeginDisabled(!hasSnapshot);
+                if (ImGui.Button("📂 Load from Settings", new Vector2(halfW, 0)))
+                {
+                    if (editorObj.SavedSkySettings != null)
+                    {
+                        editorObj.SkySettings = editorObj.SavedSkySettings.Clone();
+                        Console.WriteLine("[Inspector] Sky settings restored from last save");
+                    }
+                }
+                ImGui.EndDisabled();
+                ImGui.PopStyleColor(2);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(hasSnapshot ? "Restore sky settings from last saved snapshot" : "No snapshot available — save the scene first");
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+
                 // ── Sun ──
                 if (ImGui.CollapsingHeader("☀ Sun", ImGuiTreeNodeFlags.DefaultOpen))
                 {

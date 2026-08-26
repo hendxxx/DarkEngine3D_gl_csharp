@@ -45,7 +45,7 @@ public class IDE : IDisposable
     // ── IDE font scan cache ──
     private string[]? _ideFontNames;
     private string[]? _ideFontPaths;
-    private float _savedIDEFontSize = 14f;
+    private float _savedIDEFontSize = 20f;
     // ── Keyboard navigation in in-game mode ──
     private UIElement? _focusedInGameElement = null;
     private int _focusedInGameIndex = -1;

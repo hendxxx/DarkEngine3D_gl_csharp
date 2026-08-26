@@ -1,5 +1,6 @@
 using System.IO;
 using System.Numerics;
+using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
@@ -435,6 +436,10 @@ public unsafe class EditorObject
     // ── New Sky System (3 types: Procedural, Skybox, Dome) ──
     /// <summary>Master sky settings container for the 3 sky types.</summary>
     public SkySettings SkySettings { get; set; } = new();
+
+    /// <summary>Snapshot of sky settings taken at save/load time, for 'Load from Settings' restore.</summary>
+    [JsonIgnore]
+    public SkySettings? SavedSkySettings { get; set; }
 
     // ── Internal rendering resources (lazy-init) ──
     private Object3D? _object3D;

@@ -21,7 +21,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
 
         // ── IDE Font (editor panels font) ──
         public string IDEFontPath { get; set; } = "";   // empty = default font
-        public float IDEFontSize { get; set; } = 14f;
+        public float IDEFontSize { get; set; } = 20f;
 
         // ── Viewport editor prefs (persisted so they survive restarts) ──
         /// <summary>Editor debug grid on/off (viewport toolbar "Grid").</summary>
