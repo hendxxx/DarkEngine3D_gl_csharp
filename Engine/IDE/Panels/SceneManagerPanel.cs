@@ -117,10 +117,11 @@ public class SceneManagerPanel
     /// Called by IDE when entering In-Game Mode (F8) to avoid spamming Recent Files.</summary>
     public void LoadGameIngScenes()
     {
-        string path = SceneAssetSerializer.GameIngPath;
+        // Load from the CURRENT save file (not hardcoded game.ing)
+        string path = _currentSaveFile ?? SceneAssetSerializer.GameIngPath;
         if (!File.Exists(path))
         {
-            Console.WriteLine($"[SceneManagerPanel] game.ing not found at: {path}");
+            Console.WriteLine($"[SceneManagerPanel] Save file not found at: {path}");
             return;
         }
         LoadFromIngFile(path);
