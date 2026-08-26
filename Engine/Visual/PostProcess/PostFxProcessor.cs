@@ -71,9 +71,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         public void Run(uint inputTexture, uint outputFBO, int width, int height)
         {
             Resize(width, height);
+            _debugFrame++;
             if (_compositeFBO == 0)
             {
-                if (_debugFrame++ < 10) Console.WriteLine($"[PostFx] EARLY RETURN: compositeFBO=0 w={_w} h={_h} input={inputTexture} outFBO={outputFBO}");
+                if (_debugFrame <= 3) Console.WriteLine($"[PostFx] EARLY RETURN: compositeFBO=0 w={_w} h={_h} input={inputTexture} outFBO={outputFBO}");
                 return;
             }
             if (_vao == 0) CreateQuad();
@@ -83,20 +84,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             uint compS = Shader.GetPostFxCompositeShaderProgram();
             uint passS = Shader.GetBlurPassShaderProgram();
 
-            if (_debugFrame++ < 30)
-                Console.WriteLine($"[PostFx] #{_debugFrame}: in={inputTexture} out={outputFBO} bright={brightS} blur={blurS} comp={compS} pass={passS}");
-
-            // Validate shader programs
+            // Validate shader programs (log once on failure)
             if (brightS == 0 || blurS == 0 || compS == 0 || passS == 0)
             {
-                Console.WriteLine($"[PostFx] ERROR: One or more shaders failed to compile! bright={brightS} blur={blurS} comp={compS} pass={passS}");
+                if (_debugFrame <= 3) Console.WriteLine($"[PostFx] ERROR: Shader failed to compile! bright={brightS} blur={blurS} comp={compS} pass={passS}");
                 return;
             }
 
-            // Validate FBOs
+            // Validate FBOs (log once on failure)
             if (_bloomFBO_A == 0 || _compositeFBO == 0 || _outputFBO == 0)
             {
-                Console.WriteLine($"[PostFx] ERROR: FBOs not created! bloomA={_bloomFBO_A} comp={_compositeFBO} out={_outputFBO}");
+                if (_debugFrame <= 3) Console.WriteLine($"[PostFx] ERROR: FBOs not created! bloomA={_bloomFBO_A} comp={_compositeFBO} out={_outputFBO}");
                 return;
             }
 
@@ -107,9 +105,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
                 effectiveExposure = ComputeAutoExposure(inputTexture, width, height);
                 PostFxSettings.CurrentAutoExposure = effectiveExposure;
             }
-
-            if (_debugFrame <= 30)
-                Console.WriteLine($"[PostFx] exposure={effectiveExposure:F3} autoExp={PostFxSettings.AutoExposure} bloom={PostFxSettings.BloomIntensity:F3} thr={PostFxSettings.BloomThreshold:F3} gamma={PostFxSettings.Gamma:F2}");
 
             float bInvW = 1f / _bloomW;
             float bInvH = 1f / _bloomH;
@@ -177,20 +172,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.Viewport(0, 0, _w, _h);
 
             // Debug: read a pixel from the output to verify it's not black
-            if (_debugFrame <= 30)
+            if (_debugFrame <= 2)
             {
                 GL.BindFramebuffer(Const.GL_READ_FRAMEBUFFER, outputFBO);
                 float[] pxD = new float[4];
                 fixed (float* p = pxD)
                     GL.ReadPixels(_w / 2, _h / 2, 1, 1, Const.GL_RGBA, Const.GL_FLOAT, p);
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
-                Console.WriteLine($"[PostFx] Center pixel after PostFx: R={pxD[0]:F3} G={pxD[1]:F3} B={pxD[2]:F3} A={pxD[3]:F3}");
-
-                // Also check the input texture
-                GL.BindFramebuffer(Const.GL_READ_FRAMEBUFFER, 0);
-                GL.ActiveTexture(Const.GL_TEXTURE0);
-                GL.BindTexture(Const.GL_TEXTURE_2D, inputTexture);
-                // Can't easily read a non-FBO texture, but check the input at composite step
+                Console.WriteLine($"[PostFx] #{_debugFrame} center: R={pxD[0]:F3} G={pxD[1]:F3} B={pxD[2]:F3} A={pxD[3]:F3}");
             }
         }
 
@@ -250,8 +239,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             float t = 1f - MathF.Exp(-PostFxSettings.AutoExposureSpeed * Math.Max(dt, 0f));
             _smoothedExposure += (target - _smoothedExposure) * t;
 
-            if (_debugFrame <= 30)
-                Console.WriteLine($"[PostFx] AE: luma={luma:F4} target={target:F3} smoothed={_smoothedExposure:F3} px=[{pxF[0]:F3},{pxF[1]:F3},{pxF[2]:F3},{pxF[3]:F3}]");
+            if (_debugFrame <= 2)
+                Console.WriteLine($"[PostFx] AE: luma={luma:F4} target={target:F3} smoothed={_smoothedExposure:F3}");
 
             return _smoothedExposure;
         }

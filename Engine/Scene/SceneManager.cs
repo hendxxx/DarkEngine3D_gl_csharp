@@ -176,7 +176,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Grade the viewport texture with the AAA post-FX chain (bloom + tonemap + gamma).
             // PostFxProcessor has its own output texture to avoid feedback loops.
-            Console.WriteLine($"[SceneManager] ResolveSharedFBO: FBO={_sharedFBO} resolve={_sharedResolveFBO} tex={_sharedColorTex} postFx={Config.PostFxSettings.Enabled}");
             if (Config.PostFxSettings.Enabled)
             {
                 _postFx ??= new PostFxProcessor(Glfw.WindowWidth, Glfw.WindowHeight);
