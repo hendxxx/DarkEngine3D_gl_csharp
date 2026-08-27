@@ -2474,12 +2474,16 @@ public class InspectorPanel
             if (_dynActiveLayerIdx >= 0 && _dynActiveLayerIdx < dynLayers.Count)
             {
                 var activeLayer = dynLayers[_dynActiveLayerIdx];
+                ImGui.PushID($"edit_layer_{_dynActiveLayerIdx}");
                 ImGui.TextColored(layerColors[_dynActiveLayerIdx % layerColors.Length],
                     $"Editing Layer {_dynActiveLayerIdx + 1}: {activeLayer.Name}");
 
-                // Name
+                // Name — PushID already provides unique ID context
                 string name = activeLayer.Name;
-                if (ImGui.InputText("Name", ref name, 64))
+                ImGui.Text("Name:");
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(-1);
+                if (ImGui.InputText("##layer_name_" + _dynActiveLayerIdx, ref name, 64))
                 {
                     activeLayer.Name = name;
                     editorObj.MarkDirty();
@@ -2620,6 +2624,7 @@ public class InspectorPanel
                     float ac = activeLayer.AlbedoContrast;
                     if (ImGui.SliderFloat("Albedo Contrast", ref ac, 0f, 3f, "%.2f")) { activeLayer.AlbedoContrast = ac; editorObj.MarkDirty(); }
                 }
+                ImGui.PopID(); // edit_layer_
             }
 
             ImGui.Spacing();

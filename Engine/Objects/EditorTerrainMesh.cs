@@ -908,13 +908,13 @@ public unsafe class EditorTerrainMesh : IDisposable
             GL.Uniform1i(_dynSlopeTexLoc, EditorObject.MaxTerrainLayers);
         }
 
-        // Legacy layer textures (for old scenes)
-        uint[] units = [Const.GL_TEXTURE0, Const.GL_TEXTURE1, Const.GL_TEXTURE2, Const.GL_TEXTURE3];
+        // Legacy layer textures (for old scenes) — bind to units 25-28 so they don't conflict with dynamic layers (0-7)
+        uint[] legacyUnits = [Const.GL_TEXTURE0 + 25, Const.GL_TEXTURE0 + 26, Const.GL_TEXTURE0 + 27, Const.GL_TEXTURE0 + 28];
         for (int i = 0; i < 4; i++)
         {
-            GL.ActiveTexture(units[i]);
+            GL.ActiveTexture(legacyUnits[i]);
             GL.BindTexture(Const.GL_TEXTURE_2D, _layerTextures[i]);
-            if (_texLocs[i] >= 0) GL.Uniform1i(_texLocs[i], i);
+            if (_texLocs[i] >= 0) GL.Uniform1i(_texLocs[i], 25 + i);
         }
 
         // ── Manual layer-paint splat map (unit 4) ──

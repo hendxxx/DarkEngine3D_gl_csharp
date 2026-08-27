@@ -880,9 +880,10 @@ public unsafe class EditorObject
     {
         get
         {
+            string dynLayerKey = string.Join("|", TerrainLayerList.Select(l => l.AlbedoPath ?? ""));
+            string slopeKey = TerrainSlopeEnabled && TerrainSlopeLayer != null ? TerrainSlopeLayer.AlbedoPath ?? "" : "";
             return $"{TerrainEnabled}|{TerrainHeightmapPath}|{TerrainChunkSize}|{TerrainChunksPerSide}|{TerrainHeightScale:F2}|"
-                 + $"{Scale.X:F2}|{Scale.Z:F2}|"
-                 + $"{TerrainTextureAirPath}|{TerrainTextureDirtPath}|{TerrainTextureGrassPath}|{TerrainTextureSnowPath}|{TerrainTextureSlopePath}";
+                 + $"{Scale.X:F2}|{Scale.Z:F2}|{dynLayerKey}|{slopeKey}";
         }
     }
 

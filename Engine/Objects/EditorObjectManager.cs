@@ -182,7 +182,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 Position = position,
                 Scale = type == EditorPrimitiveType.Sphere ? new Vector3(1f, 1f, 1f)
-                       : type == EditorPrimitiveType.Plane ? new Vector3(500f, 0.05f, 500f)
+                       : type == EditorPrimitiveType.Plane ? new Vector3(100f, 0.05f, 100f)
                        : type == EditorPrimitiveType.Camera ? new Vector3(0.5f, 0.4f, 0.6f)
                        : Vector3.One, // Box / Light / Sky
                 Color = type switch
@@ -201,8 +201,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (type == EditorPrimitiveType.Plane)
             {
                 obj.TerrainEnabled = true;
-                // Default plane: 500×500 with test.png heightmap. Layer textures are empty
-                // (render as solid colors) except Air which uses default.jpg.
+                // Default plane: 100×100 with test.png heightmap. Layer textures are empty
+                // (render as solid colors) except first layer which uses default.jpg.
                 obj.TerrainHeightmapPath = "Artifacts/Maps/test.png";
                 obj.TerrainTextureAirPath = "Artifacts/Textures/default.jpg";
                 obj.TerrainTextureDirtPath = "";

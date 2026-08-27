@@ -368,20 +368,14 @@ void main() {
     for (int i = 0; i < layerCount; i++) {
         vec2 hr = layerHeightRange[i];
         float sharp = max(layerBlendSharpness[i], 0.5);
-        float w = 0.0;
-        // Smooth blend: full weight in center, falloff at edges
-        if (hn >= hr.x && hn <= hr.y) {
-            // Inner region: full weight
-            float edgeDist = min(hn - hr.x, hr.y - hn);
-            float edgeBlend = hr.x < hr.y ? (hr.y - hr.x) * 0.5 : 0.1;
-            w = smoothstep(0.0, max(edgeBlend * sharp, 0.01), edgeDist);
-        } else if (hn < hr.x) {
-            // Below range: blend from this layer down
-            w = 1.0 - smoothstep(0.0, max((hr.x - hn) * sharp, 0.01), hr.x - hn);
-        } else {
-            // Above range: fade out
-            w = 1.0 - smoothstep(0.0, max((hn - hr.y) * sharp, 0.01), hn - hr.y);
-        }
+        float rangeWidth = max(hr.y - hr.x, 0.001);
+        float blendWidth = rangeWidth * 0.5 / sharp;
+
+        // Smooth bell-curve weight: ramp up at HeightMin, full in center, ramp down at HeightMax
+        float rampUp = smoothstep(hr.x - blendWidth, hr.x + blendWidth, hn);
+        float rampDn = smoothstep(hr.y + blendWidth, hr.y - blendWidth, hn);
+        float w = rampUp * rampDn;
+
         weights[i] = max(w, 0.0);
         totalWeight += weights[i];
     }
