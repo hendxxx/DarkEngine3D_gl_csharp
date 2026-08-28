@@ -80,6 +80,7 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _heightScaleLoc = -1, _layerLevelsLoc = -1;
     private static int _slopeThresholdLoc = -1;
     private static int _usePaintMaskLoc = -1, _tex4Loc = -1;
+    private static int _parallaxScaleLoc = -1, _viewDirWSLoc = -1;
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
     private static readonly int[] _texLocs = new int[4];
@@ -758,6 +759,8 @@ public unsafe class EditorTerrainMesh : IDisposable
         _showHeatmapLoc = GL.GetUniformLocation(_program, "showHeatmap");
         _showContoursLoc = GL.GetUniformLocation(_program, "showContours");
         _tex4Loc = GL.GetUniformLocation(_program, "tex4");
+        _parallaxScaleLoc = GL.GetUniformLocation(_program, "parallaxScale");
+        _viewDirWSLoc = GL.GetUniformLocation(_program, "viewDirWS");
         for (int i = 0; i < 4; i++)
             _texLocs[i] = GL.GetUniformLocation(_program, $"tex{i}");
 
@@ -864,6 +867,13 @@ public unsafe class EditorTerrainMesh : IDisposable
             owner.TerrainLayerAirTop, owner.TerrainLayerDirtTop,
             owner.TerrainLayerGrassTop, owner.TerrainLayerSnowTop);
         if (_slopeThresholdLoc >= 0) GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
+
+        // ── POM: Parallax Occlusion Mapping ──
+        if (_parallaxScaleLoc >= 0) GL.Uniform1f(_parallaxScaleLoc, Math.Clamp(owner.TerrainParallaxScale, 0f, 0.15f));
+        if (_viewDirWSLoc >= 0)
+        {
+            GL.Uniform3f(_viewDirWSLoc, camera.Front.X, camera.Front.Y, camera.Front.Z);
+        }
 
         // ── NEW: Dynamic layer system ──
         var layers = owner.TerrainLayerList;

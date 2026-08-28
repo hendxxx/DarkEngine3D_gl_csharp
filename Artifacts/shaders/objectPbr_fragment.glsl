@@ -48,7 +48,7 @@ uniform int useAlbedo, useNormal, useMetallic, useRoughness, useAo, useHeight, u
 
 uniform vec2 u_uvScale[7];   // per-map UV tiling multiplier (x = U, y = V) — albedo..emission
 uniform vec2 u_uvOffset[7];  // per-map UV offset (x = U, y = V)
-uniform float parallaxScale = 0.02;   // base height-map displacement strength (0 = off)
+uniform float parallaxScale = 0.15;   // base height-map displacement strength (0 = off, 0.15 = default strong)
 
 // ── PBR MAP TUNING (uploaded from the PBR panel; applies to the selected object) ──
 uniform vec3 u_albedoTuning = vec3(1.0, 1.0, 1.0);    // brightness, saturation, contrast
@@ -343,15 +343,36 @@ void main() {
     vec2 uvHeight   = TexCoord * u_uvScale[5] + u_uvOffset[5];
     vec2 uvEmission = TexCoord * u_uvScale[6] + u_uvOffset[6];
 
-    // ── PARALLAX (height map displaces the sample UV along the tangent-space view
-    //    ray). Clamped so grazing angles can't swim the texture by many tiles. The
-    //    offset applies in each map's own UV space (identical when all share settings). ──
+    // ── STEEP PARALLAX OCCLUSION MAPPING (POM) ──
+    // Height map displaces UV along tangent-space view ray with multi-step
+    // ray marching for visible depth + self-shadowing. Much more "timbul" than
+    // the old single-sample parallax.
     vec2 off = vec2(0.0);
-    if (useHeight == 1) {
-        float hRaw = sampleHeightBlurred(heightMap, uvHeight, max(u_heightTuning.z, 0.0));
-        float hh = (hRaw - 0.5) * u_heightTuning.x * (u_heightTuning.y > 0.5 ? -1.0 : 1.0);
+    if (useHeight == 1 && parallaxScale > 0.0) {
         vec3 Vts = normalize(TBN * viewDir);
-        off = clamp(Vts.xy / max(abs(Vts.z), 0.02) * hh * parallaxScale, vec2(-0.05), vec2(0.05));
+        float layerDepth = 1.0 / 16.0;
+        vec2 texelPerLayer = Vts.xy / max(abs(Vts.z), 0.02) * parallaxScale / 16.0;
+        vec2 currentUV = uvHeight;
+        float currentLayerDepth = 0.0;
+        float currentTexelHeight = (sampleHeightBlurred(heightMap, currentUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
+        if (u_heightTuning.y > 0.5) currentTexelHeight = -currentTexelHeight;
+        // Ray march: find where layer depth exceeds texel height
+        for (int i = 0; i < 16; i++) {
+            if (currentLayerDepth >= currentTexelHeight) break;
+            currentUV -= texelPerLayer;
+            currentLayerDepth += layerDepth;
+            currentTexelHeight = (sampleHeightBlurred(heightMap, currentUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
+            if (u_heightTuning.y > 0.5) currentTexelHeight = -currentTexelHeight;
+        }
+        // Interpolate between previous and current for smoother result
+        vec2 prevUV = currentUV + texelPerLayer;
+        float afterDepth = currentTexelHeight - currentLayerDepth;
+        float beforeDepth = (sampleHeightBlurred(heightMap, prevUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
+        if (u_heightTuning.y > 0.5) beforeDepth = -beforeDepth;
+        beforeDepth -= (currentLayerDepth - layerDepth);
+        float weight = afterDepth / max(afterDepth - beforeDepth, 0.001);
+        off = (uvHeight - mix(currentUV, prevUV, weight)) * 0.5;
+        off = clamp(off, vec2(-0.15), vec2(0.15));
     }
 
     // ── ALBEDO: texture if present, else the object's vertex color. ──

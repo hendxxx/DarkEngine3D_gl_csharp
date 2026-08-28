@@ -30,6 +30,9 @@ uniform float slopeTilingVal;  // slope layer tiling
 uniform int slopeStochastic;    // slope layer random tile
 uniform sampler2D dynSlopeTex;
 
+// ── Height detail strength (0 = off, 0.5 = subtle, 1.0 = strong) ──
+uniform float parallaxScale = 0.0;
+
 // Legacy compat — map old uniforms
 uniform vec4 layerLevels;      // kept for old scenes, new system uses layerHeightRange
 
@@ -224,6 +227,20 @@ vec3 sampleLayer(sampler2D tex, vec2 uv, int stochastic) {
     res += texture(tex, uv + hash2(p + vec2(0, 1)) - 0.5).rgb * w01;
     res += texture(tex, uv + hash2(p + vec2(1, 1)) - 0.5).rgb * w11;
     return res;
+}
+
+// ── Height-based normal detail (from albedo luminance proxy) ──
+// Adds fine surface relief without extra textures. strength = 0..1.
+vec3 heightNormalDetail(sampler2D tex, vec2 uv, float tiling, vec3 geoNormal, float strength) {
+    if (strength <= 0.0) return geoNormal;
+    float texelSize = 1.0 / (textureSize(tex, 0).x * tiling);
+    float s = texelSize * 2.0;
+    vec3 c = texture(tex, uv).rgb;
+    float h  = dot(c, vec3(0.299, 0.587, 0.114));
+    float hx = dot(texture(tex, uv + vec2(s, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
+    float hz = dot(texture(tex, uv + vec2(0.0, s)).rgb, vec3(0.299, 0.587, 0.114));
+    vec3 tangentDetail = vec3((hx - h) * strength * 4.0, 0.0, (hz - h) * strength * 4.0);
+    return normalize(geoNormal + tangentDetail);
 }
 
 // Dark contour-line factor at normalized height t: 1 = exactly on a line (every 10%
@@ -455,6 +472,14 @@ void main() {
     // A crisp terminator + slope darkening makes the terrain relief read instantly:
     // faces toward the sun are bright, faces away fall into shade, and steep cliffs
     // darken further — so the high/low structure is visible from any camera angle.
+    // ── HEIGHT NORMAL DETAIL ──
+    // Perturb the geometry normal using the primary layer's albedo luminance
+    // gradients — creates fine surface relief without extra textures.
+    if (parallaxScale > 0.0 && layerCount > 0) {
+        vec2 primaryTiling = layerTiling[0];
+        norm = heightNormalDetail(dynLayer0, FragPos.xz * primaryTiling.x, 1.0, norm, parallaxScale);
+    }
+
     vec3 lightDir = normalize(sunDir);
     float ndl = dot(norm, lightDir);
     float sunShade = smoothstep(-0.18, 0.55, ndl);            // hard terminator = strong relief

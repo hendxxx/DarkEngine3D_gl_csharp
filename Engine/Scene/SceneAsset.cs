@@ -206,6 +206,10 @@ public class EditorObjectData
     public float TerrainTexTiling { get; set; } = 0.5f;
     /// <summary>Texture tiling for steep slope/cliff surfaces.</summary>
     public float TerrainSlopeTexTiling { get; set; } = 0.3f;
+    /// <summary>Parallax occlusion mapping strength (0 = off).</summary>
+    public float TerrainParallaxScale { get; set; } = 0.0f;
+    /// <summary>POM ray-march steps (8-32).</summary>
+    public int TerrainPomSteps { get; set; } = 16;
     /// <summary>Stochastic (random per-tile) sampling toggle — OFF by default.</summary>
     public bool TerrainUseStochasticSampling { get; set; } = false;
     /// <summary>Normalized height bands for the 4 layers.</summary>

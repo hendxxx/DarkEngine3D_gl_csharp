@@ -2323,6 +2323,16 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Vertical exaggeration — full-white heightmap pixels reach this height.");
 
+            // ── POM: Parallax Occlusion Mapping ──
+            float parallaxScale = editorObj.TerrainParallaxScale;
+            if (ImGui.DragFloat("Parallax Depth", ref parallaxScale, 0.002f, 0f, 0.15f, "%.3f"))
+            {
+                editorObj.TerrainParallaxScale = Math.Clamp(parallaxScale, 0f, 0.15f);
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Height-map displacement strength (POM). 0 = off, 0.02 = subtle, 0.06 = strong.");
+
             // ── Auto recommendation buttons ──
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Quick Presets");

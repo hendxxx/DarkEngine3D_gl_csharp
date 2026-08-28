@@ -247,6 +247,8 @@ public unsafe class EditorObject
     /// <summary>UV tiling multiplier for all PBR maps on this object (legacy — new scenes
     /// store per-map tiling in <see cref="PbrTexSettings"/>; kept for old files).</summary>
     public float PbrTexTiling { get; set; } = 1f;
+    /// <summary>PBR parallax depth (0 = off, 0.15 = default strong). Steep POM height-map displacement.</summary>
+    public float PbrParallaxScale { get; set; } = 0.15f;
     /// <summary>Sampling settings for the SIMPLE texture (<see cref="TexturePath"/>):
     /// min/mag filter, mipmapping & anisotropy, wrapping, UV tiling/offset.</summary>
     public Libs.TextureSettings TexSettings { get; set; } = new();
@@ -404,6 +406,10 @@ public unsafe class EditorObject
     public float TerrainTexTiling { get; set; } = 0.5f;
     /// <summary>Texture tiling for steep slope/cliff surfaces (triplanar).</summary>
     public float TerrainSlopeTexTiling { get; set; } = 0.3f;
+    /// <summary>Parallax occlusion mapping strength (0 = off, 0.02 = subtle, 0.06 = strong).</summary>
+    public float TerrainParallaxScale { get; set; } = 0.0f;
+    /// <summary>Number of POM ray-march steps (8-32, higher = more accurate but slower).</summary>
+    public int TerrainPomSteps { get; set; } = 16;
     /// <summary>Stochastic (random per-tile) sampling — OFF by default so the default plane
     /// tiles deterministically. ON breaks up the repeating pattern.</summary>
     public bool TerrainUseStochasticSampling { get; set; } = false;
@@ -1164,6 +1170,7 @@ public unsafe class EditorObject
         public static int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
         public static int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
         public static int ShowCSMCascadeColor;
+        public static int ParallaxScale;
 
         public static void Ensure()
         {
@@ -1208,6 +1215,7 @@ public unsafe class EditorObject
             CascadeEnds1 = GL.GetUniformLocation(Program, "cascadeEnds[1]");
             CascadeEnds2 = GL.GetUniformLocation(Program, "cascadeEnds[2]");
             ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
+            ParallaxScale = GL.GetUniformLocation(Program, "parallaxScale");
             Ready = true;
         }
     }
@@ -1285,10 +1293,13 @@ public unsafe class EditorObject
         }
 
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
+        // Global PbrTexTiling multiplies into each per-map tiling so the slider
+        // scales all maps uniformly in real-time.
+        float globalTiling = PbrTexTiling;
         for (int i = 0; i < 7; i++)
         {
             if (PbrUniforms.UvScale[i] >= 0)
-                GL.Uniform2f(PbrUniforms.UvScale[i], PbrTexSettings[i].TilingX, PbrTexSettings[i].TilingY);
+                GL.Uniform2f(PbrUniforms.UvScale[i], PbrTexSettings[i].TilingX * globalTiling, PbrTexSettings[i].TilingY * globalTiling);
             if (PbrUniforms.UvOffset[i] >= 0)
                 GL.Uniform2f(PbrUniforms.UvOffset[i], PbrTexSettings[i].OffsetX, PbrTexSettings[i].OffsetY);
         }
@@ -1299,6 +1310,7 @@ public unsafe class EditorObject
         GL.Uniform2f(PbrUniforms.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
         GL.Uniform3f(PbrUniforms.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
         GL.Uniform1f(PbrUniforms.EmissionIntensity, TerrainPbrEmissionIntensity);
+        if (PbrUniforms.ParallaxScale >= 0) GL.Uniform1f(PbrUniforms.ParallaxScale, PbrParallaxScale);
 
         GL.BindVertexArray(_object3D!.VAO);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
