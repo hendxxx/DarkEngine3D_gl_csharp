@@ -752,10 +752,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
         SkipInput:
-            // ── Editor fly mode: when InGameActive=false and viewport is focused,
-            // use WASD + mouse look (fly mode) for camera navigation instead of game camera modes.
-            bool editorFlyMode = !(_sceneManager.Bridge?.InGameActive ?? false) &&
-                                  (_sceneManager.Bridge?.IsViewportFocused ?? false);
+            // ── Editor fly mode: when viewport is focused, use WASD + mouse look
+            // (fly mode) for camera navigation — works in both editor and in-game mode.
+            bool editorFlyMode = _sceneManager.Bridge?.IsViewportFocused ?? false;
 
             // ── Gizmo size shortcuts: = to increase, - to decrease ──
             // Only active when viewport is focused (not during gameplay or when typing in other panels).

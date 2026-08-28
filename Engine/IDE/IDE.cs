@@ -83,6 +83,11 @@ public class IDE : IDisposable
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
 
+                    // ── Enable freefly + preview mode for in-game navigation ──
+                    _viewport.PreviewMode = true;
+                    if (Bridge.Camera != null)
+                        Bridge.Camera.FlyMouseLook = true;
+
                     // ── Switch editor camera to the first Camera object in the scene ──
                     _lastInGameSceneName = Bridge.SelectedEditorScene;
                     SwitchToGameCamera();
@@ -92,6 +97,9 @@ public class IDE : IDisposable
                     // Reset fullscreen mode when exiting in-game mode
                     Bridge.InGameActive = false;
                     _viewport.SetFullscreen(false);
+                    _viewport.PreviewMode = false;
+                    if (Bridge.Camera != null)
+                        Bridge.Camera.FlyMouseLook = false;
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
                     _lastInGameSceneName = null;
@@ -124,6 +132,11 @@ public class IDE : IDisposable
         _viewport.SetFullscreen(true);
         _focusedInGameElement = null;
         _focusedInGameIndex = -1;
+
+        // ── Enable freefly + preview mode for in-game navigation ──
+        _viewport.PreviewMode = true;
+        if (Bridge.Camera != null)
+            Bridge.Camera.FlyMouseLook = true;
 
         // ── Switch editor camera to the first Camera object in the scene ──
         _lastInGameSceneName = Bridge.SelectedEditorScene;
@@ -745,6 +758,10 @@ public class IDE : IDisposable
 
     private void RenderInGameMode()
     {
+        // In fullscreen mode the viewport IS the entire screen — always report focused
+        // so the free-fly camera (WASD + mouse look) processes keyboard/mouse input.
+        Bridge.IsViewportFocused = true;
+
         var io = ImGui.GetIO();
         float screenW = io.DisplaySize.X;
         float screenH = io.DisplaySize.Y;

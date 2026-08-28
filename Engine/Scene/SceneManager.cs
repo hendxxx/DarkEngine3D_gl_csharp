@@ -250,7 +250,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_currentScene == null && _ide != null && _ide.IsActive)
                 {
                     var bridge = _ide.Bridge;
-                    if (bridge != null && !bridge.InGameActive && bridge.IsViewportFocused)
+                    if (bridge != null && bridge.IsViewportFocused)
                     {
                         // Ensure editor camera exists
                         if (_editorCamera == null)
