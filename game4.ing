@@ -2,11 +2,11 @@
   "version": "1.0",
   "scenes": [
     {
-      "sceneName": "mn",
+      "sceneName": "Scene",
       "description": "",
       "elements": [
         {
-          "name": "mn",
+          "name": "Scene",
           "type": "Scene",
           "text": "Element",
           "x": 0,
@@ -48,1153 +48,7 @@
             1
           ],
           "alignment": "Center",
-          "isVisible": false,
-          "opacity": 1,
-          "autoFillWindow": false,
-          "autoCenter": false,
-          "useHover": true,
-          "clickBehavior": "None",
-          "hoverEnterBehavior": "None",
-          "hoverExitBehavior": "None",
-          "minValue": 0,
-          "maxValue": 100,
-          "step": 1,
-          "currentValue": 50,
-          "textOptions": [
-            "Option A",
-            "Option B",
-            "Option C"
-          ],
-          "selectedTextIndex": 0,
-          "isChecked": false,
-          "options": [
-            "Option 1",
-            "Option 2",
-            "Option 3"
-          ],
-          "selectedIndex": 0,
-          "fallbackText": "",
-          "placeholder": "Enter text...",
-          "maxLength": 0,
-          "inputText": "",
-          "sliderTrackColor": [
-            0.3,
-            0.3,
-            0.35
-          ],
-          "sliderFillColor": [
-            0.3,
-            0.6,
-            1
-          ],
-          "sliderThumbColor": [
-            0.9,
-            0.9,
-            1
-          ],
-          "sliderThumbBorderColor": [
-            0.3,
-            0.6,
-            1
-          ],
-          "sliderThumbSize": 14,
-          "sliderTrackHeight": 6,
-          "sliderLabelPosition": 2,
-          "checkmarkColor": [
-            0.9,
-            0.9,
-            1
-          ],
-          "checkedBgColor": [
-            0.25,
-            0.55,
-            1
-          ],
-          "uncheckedBgColor": [
-            0.15,
-            0.15,
-            0.22
-          ],
-          "arrowColor": [
-            0.5,
-            0.5,
-            0.7
-          ],
-          "cursorColor": [
-            0.5,
-            0.8,
-            1
-          ],
-          "children": [
-            {
-              "name": "",
-              "type": "Container",
-              "text": "",
-              "x": 0,
-              "y": 0,
-              "width": 2560,
-              "height": 1351,
-              "imagePath": "",
-              "imageMode": "Stretch",
-              "fontSize": 13,
-              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-              "textColor": [
-                0.95,
-                0.95,
-                1
-              ],
-              "bgColor": [
-                0.1,
-                0.12,
-                0.18
-              ],
-              "borderColor": [
-                0.1,
-                0.12,
-                0.18
-              ],
-              "hoverTextColor": [
-                0.95,
-                0.95,
-                1
-              ],
-              "hoverBgColor": [
-                0.22,
-                0.28,
-                0.45
-              ],
-              "hoverBorderColor": [
-                0.5,
-                0.6,
-                1
-              ],
-              "alignment": "Center",
-              "isVisible": true,
-              "opacity": 0.25,
-              "autoFillWindow": true,
-              "autoCenter": false,
-              "useHover": false,
-              "clickBehavior": "None",
-              "hoverEnterBehavior": "None",
-              "hoverExitBehavior": "None",
-              "minValue": 0,
-              "maxValue": 100,
-              "step": 1,
-              "currentValue": 50,
-              "textOptions": [
-                "Option A",
-                "Option B",
-                "Option C"
-              ],
-              "selectedTextIndex": 0,
-              "isChecked": false,
-              "options": [
-                "Option 1",
-                "Option 2",
-                "Option 3"
-              ],
-              "selectedIndex": 0,
-              "fallbackText": "",
-              "placeholder": "Enter text...",
-              "maxLength": 0,
-              "inputText": "",
-              "sliderTrackColor": [
-                0.3,
-                0.3,
-                0.35
-              ],
-              "sliderFillColor": [
-                0.3,
-                0.6,
-                1
-              ],
-              "sliderThumbColor": [
-                0.9,
-                0.9,
-                1
-              ],
-              "sliderThumbBorderColor": [
-                0.3,
-                0.6,
-                1
-              ],
-              "sliderThumbSize": 14,
-              "sliderTrackHeight": 6,
-              "sliderLabelPosition": 2,
-              "checkmarkColor": [
-                0.9,
-                0.9,
-                1
-              ],
-              "checkedBgColor": [
-                0.25,
-                0.55,
-                1
-              ],
-              "uncheckedBgColor": [
-                0.15,
-                0.15,
-                0.22
-              ],
-              "arrowColor": [
-                0.5,
-                0.5,
-                0.7
-              ],
-              "cursorColor": [
-                0.5,
-                0.8,
-                1
-              ],
-              "children": [
-                {
-                  "name": "btnExit",
-                  "type": "Button",
-                  "text": "Exit",
-                  "x": 860,
-                  "y": 640,
-                  "width": 200,
-                  "height": 50,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 13,
-                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "bgColor": [
-                    0.1,
-                    0.12,
-                    0.18
-                  ],
-                  "borderColor": [
-                    0.15,
-                    0.18,
-                    0.25
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0.22,
-                    0.28,
-                    0.45
-                  ],
-                  "hoverBorderColor": [
-                    0.5,
-                    0.6,
-                    1
-                  ],
-                  "alignment": "Center",
-                  "isVisible": true,
-                  "opacity": 1,
-                  "autoFillWindow": false,
-                  "autoCenter": false,
-                  "useHover": true,
-                  "clickBehavior": "exit",
-                  "hoverEnterBehavior": "None",
-                  "hoverExitBehavior": "None",
-                  "minValue": 0,
-                  "maxValue": 100,
-                  "step": 1,
-                  "currentValue": 50,
-                  "textOptions": [
-                    "Option A",
-                    "Option B",
-                    "Option C"
-                  ],
-                  "selectedTextIndex": 0,
-                  "isChecked": false,
-                  "options": [
-                    "Option 1",
-                    "Option 2",
-                    "Option 3"
-                  ],
-                  "selectedIndex": 0,
-                  "fallbackText": "",
-                  "placeholder": "Enter text...",
-                  "maxLength": 0,
-                  "inputText": "",
-                  "sliderTrackColor": [
-                    0.3,
-                    0.3,
-                    0.35
-                  ],
-                  "sliderFillColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "sliderThumbBorderColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbSize": 14,
-                  "sliderTrackHeight": 6,
-                  "sliderLabelPosition": 2,
-                  "checkmarkColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "checkedBgColor": [
-                    0.25,
-                    0.55,
-                    1
-                  ],
-                  "uncheckedBgColor": [
-                    0.15,
-                    0.15,
-                    0.22
-                  ],
-                  "arrowColor": [
-                    0.5,
-                    0.5,
-                    0.7
-                  ],
-                  "cursorColor": [
-                    0.5,
-                    0.8,
-                    1
-                  ],
-                  "children": []
-                },
-                {
-                  "name": "lbTitle",
-                  "type": "Label",
-                  "text": "Demo Game",
-                  "x": 660,
-                  "y": 140,
-                  "width": 640,
-                  "height": 120,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 72,
-                  "fontPath": "Artifacts\\fonts\\Blackbold.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "bgColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "borderColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "hoverBorderColor": [
-                    0,
-                    0,
-                    0
-                  ],
-                  "alignment": "Center",
-                  "isVisible": true,
-                  "opacity": 1,
-                  "autoFillWindow": false,
-                  "autoCenter": false,
-                  "useHover": false,
-                  "clickBehavior": "None",
-                  "hoverEnterBehavior": "None",
-                  "hoverExitBehavior": "None",
-                  "minValue": 0,
-                  "maxValue": 100,
-                  "step": 1,
-                  "currentValue": 50,
-                  "textOptions": [
-                    "Option A",
-                    "Option B",
-                    "Option C"
-                  ],
-                  "selectedTextIndex": 0,
-                  "isChecked": false,
-                  "options": [
-                    "Option 1",
-                    "Option 2",
-                    "Option 3"
-                  ],
-                  "selectedIndex": 0,
-                  "fallbackText": "",
-                  "placeholder": "Enter text...",
-                  "maxLength": 0,
-                  "inputText": "",
-                  "sliderTrackColor": [
-                    0.3,
-                    0.3,
-                    0.35
-                  ],
-                  "sliderFillColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "sliderThumbBorderColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbSize": 14,
-                  "sliderTrackHeight": 6,
-                  "sliderLabelPosition": 2,
-                  "checkmarkColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "checkedBgColor": [
-                    0.25,
-                    0.55,
-                    1
-                  ],
-                  "uncheckedBgColor": [
-                    0.15,
-                    0.15,
-                    0.22
-                  ],
-                  "arrowColor": [
-                    0.5,
-                    0.5,
-                    0.7
-                  ],
-                  "cursorColor": [
-                    0.5,
-                    0.8,
-                    1
-                  ],
-                  "children": []
-                },
-                {
-                  "name": "lb",
-                  "type": "Button",
-                  "text": "New Game",
-                  "x": 860,
-                  "y": 460,
-                  "width": 200,
-                  "height": 50,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 13,
-                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "bgColor": [
-                    0.1,
-                    0.12,
-                    0.18
-                  ],
-                  "borderColor": [
-                    0.15,
-                    0.18,
-                    0.25
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0.22,
-                    0.28,
-                    0.45
-                  ],
-                  "hoverBorderColor": [
-                    0.5,
-                    0.6,
-                    1
-                  ],
-                  "alignment": "Center",
-                  "isVisible": true,
-                  "opacity": 1,
-                  "autoFillWindow": false,
-                  "autoCenter": false,
-                  "useHover": true,
-                  "clickBehavior": "scene:scn1",
-                  "hoverEnterBehavior": "None",
-                  "hoverExitBehavior": "None",
-                  "minValue": 0,
-                  "maxValue": 100,
-                  "step": 1,
-                  "currentValue": 50,
-                  "textOptions": [
-                    "Option A",
-                    "Option B",
-                    "Option C"
-                  ],
-                  "selectedTextIndex": 0,
-                  "isChecked": false,
-                  "options": [
-                    "Option 1",
-                    "Option 2",
-                    "Option 3"
-                  ],
-                  "selectedIndex": 0,
-                  "fallbackText": "",
-                  "placeholder": "Enter text...",
-                  "maxLength": 0,
-                  "inputText": "",
-                  "sliderTrackColor": [
-                    0.3,
-                    0.3,
-                    0.35
-                  ],
-                  "sliderFillColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "sliderThumbBorderColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbSize": 14,
-                  "sliderTrackHeight": 6,
-                  "sliderLabelPosition": 2,
-                  "checkmarkColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "checkedBgColor": [
-                    0.25,
-                    0.55,
-                    1
-                  ],
-                  "uncheckedBgColor": [
-                    0.15,
-                    0.15,
-                    0.22
-                  ],
-                  "arrowColor": [
-                    0.5,
-                    0.5,
-                    0.7
-                  ],
-                  "cursorColor": [
-                    0.5,
-                    0.8,
-                    1
-                  ],
-                  "children": []
-                }
-              ]
-            }
-          ]
-        }
-      ],
-      "backgroundObjects": [],
-      "editorObjects": [
-        {
-          "name": "box1",
-          "primitiveType": "Box",
-          "glbFilePath": "",
-          "posX": 0,
-          "posY": 0,
-          "posZ": 0,
-          "rotX": 0,
-          "rotY": 0,
-          "rotZ": 0,
-          "scaleX": 5,
-          "scaleY": 5,
-          "scaleZ": 5,
-          "colorR": 0.7,
-          "colorG": 0.3,
-          "colorB": 0.3,
-          "castShadow": true,
           "isVisible": true,
-          "cameraFov": 60,
-          "cameraNear": 0.1,
-          "cameraFar": 500,
-          "lightDirX": -0.5,
-          "lightDirY": 0.8,
-          "lightDirZ": -0.3,
-          "lightIntensity": 1,
-          "lightType": 0,
-          "lightConeAngle": 30,
-          "lightPointRadius": 50,
-          "skyTimeOfDay": 12,
-          "skyCloudCoverage": 0.3,
-          "skySunIntensity": 1,
-          "skyTimeAnimSpeed": 0,
-          "skyTimeAnimPaused": false,
-          "showFrustum": true,
-          "showLightGizmo": true,
-          "showSkyGizmo": true,
-          "skySettings": {
-            "type": 0,
-            "skyboxFaces": {
-              "right": "",
-              "left": "",
-              "top": "",
-              "bottom": "",
-              "front": "",
-              "back": ""
-            },
-            "dome": {
-              "texturePath": "",
-              "radius": 500,
-              "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "rotationY": 0,
-              "autoRotate": false,
-              "rotateSpeed": 10,
-              "rotateAxis": 0,
-              "rotateVariation": 0,
-              "pingPong": false,
-              "pingPongAmplitude": 30
-            },
-            "sun": {
-              "size": 1,
-              "softness": 0.8,
-              "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "glowIntensity": 1
-            },
-            "scattering": {
-              "intensity": 1,
-              "rayleigh": 1,
-              "rayColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "rayHeight": 8,
-              "mie": 1,
-              "mieColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "mieFocus": 0.76,
-              "mieHeight": 1.2
-            },
-            "clouds": {
-              "density": 0.3,
-              "altitude": 2.5,
-              "speed": 0.035,
-              "detail": 0.35,
-              "erosion": 0.25,
-              "shadowStrength": 0.65,
-              "scatter": 0.25,
-              "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "cirrusStrength": 0.1,
-              "enabled": true
-            },
-            "moon": {
-              "brightness": 1.25,
-              "size": 1,
-              "glowRadius": 1,
-              "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "texturePath": "Artifacts/Textures/moon.png",
-              "rotationSpeed": 0,
-              "phaseOffset": 0.5
-            },
-            "stars": {
-              "brightness": 1,
-              "density": 1,
-              "twinkleSpeed": 1,
-              "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "enabled": true
-            },
-            "eclipses": {
-              "solarEclipse": 0,
-              "lunarEclipse": 0,
-              "glowColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              }
-            },
-            "sunRays": {
-              "intensity": 0.3,
-              "rayCount": 12,
-              "length": 1,
-              "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
-              },
-              "enabled": true
-            }
-          },
-          "terrainEnabled": false,
-          "terrainHeightmapPath": "Artifacts\\Maps\\photoreal_v1.raw",
-          "terrainChunkSize": 32,
-          "terrainChunksPerSide": 1,
-          "terrainHeightScale": 30,
-          "terrainSlopeThreshold": 0.35,
-          "terrainTexTiling": 0.5,
-          "terrainSlopeTexTiling": 0.3,
-          "terrainUseStochasticSampling": false,
-          "terrainLayerAirTop": 0.18,
-          "terrainLayerDirtTop": 0.45,
-          "terrainLayerGrassTop": 0.75,
-          "terrainLayerSnowTop": 1,
-          "terrainTextureAirPath": "",
-          "terrainTextureDirtPath": "",
-          "terrainTextureGrassPath": "",
-          "terrainTextureSnowPath": "",
-          "terrainTextureSlopePath": "",
-          "terrainPbrAlbedoBrightness": 1,
-          "terrainPbrAlbedoSaturation": 1,
-          "terrainPbrAlbedoContrast": 1,
-          "terrainPbrNormalStrength": 1,
-          "terrainPbrNormalBlur": 0,
-          "terrainPbrMetallicThreshold": 0.5,
-          "terrainPbrMetallicSoftness": 0.1,
-          "terrainPbrMetallicStrength": 1,
-          "terrainPbrRoughnessStrength": 1,
-          "terrainPbrRoughnessInvert": false,
-          "terrainPbrAoStrength": 1,
-          "terrainPbrAoBrightness": 0,
-          "terrainPbrHeightStrength": 1,
-          "terrainPbrHeightInvert": false,
-          "terrainPbrHeightBlur": 0,
-          "terrainPbrEmissionIntensity": 1,
-          "terrainLayers": [
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            }
-          ],
-          "pbrAlbedoPath": "",
-          "pbrNormalPath": "",
-          "pbrMetallicPath": "",
-          "pbrRoughnessPath": "",
-          "pbrAoPath": "",
-          "pbrHeightPath": "",
-          "pbrEmissionPath": "",
-          "pbrTexTiling": 1,
-          "texSettings": {
-            "filterPreset": 2,
-            "minFilter": 5,
-            "magFilter": 1,
-            "generateMipmaps": true,
-            "mipmapBias": 0,
-            "anisotropy": 16,
-            "wrapS": 0,
-            "wrapT": 0,
-            "tilingX": 1,
-            "tilingY": 1,
-            "offsetX": 0,
-            "offsetY": 0,
-            "randomTiling": false
-          },
-          "pbrTexSettings": [
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            }
-          ],
-          "terrainLayerSettings": [
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            }
-          ],
-          "terrainBrushSize": 10,
-          "terrainBrushStrength": 1,
-          "terrainBrushSoftness": 1,
-          "terrainBrushFalloff": 1,
-          "terrainPaintedData": "",
-          "terrainPaintLayerIndex": 2,
-          "terrainPaintStrength": 0.45,
-          "terrainSplatData": "",
-          "terrainBrushColor": [
-            0.3,
-            0.9,
-            0.5
-          ],
-          "terrainBrushAlpha": 0.35,
-          "terrainLayerList": [
-            {
-              "name": "Base",
-              "visible": true,
-              "albedoPath": "Artifacts\\Textures\\default.jpg",
-              "pbrPaths": [
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-              ],
-              "tilingX": 0.5,
-              "tilingY": 0.5,
-              "heightMin": 0,
-              "heightMax": 1,
-              "blendSharpness": 2,
-              "stochasticSampling": false,
-              "normalStrength": 1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "emissionIntensity": 0,
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "slopeThreshold": 0.35
-            }
-          ],
-          "terrainSlopeEnabled": false
-        }
-      ],
-      "editorCameraPosition": [
-        -8.5474205,
-        4.794107,
-        -11.241179
-      ],
-      "editorCameraYaw": 13,
-      "editorCameraPitch": -18.2
-    },
-    {
-      "sceneName": "scn1",
-      "description": "",
-      "elements": [
-        {
-          "name": "scn1",
-          "type": "Scene",
-          "text": "Element",
-          "x": 0,
-          "y": 0,
-          "width": 200,
-          "height": 50,
-          "imagePath": "",
-          "imageMode": "Stretch",
-          "fontSize": 13,
-          "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-          "textColor": [
-            0.95,
-            0.95,
-            1
-          ],
-          "bgColor": [
-            0.1,
-            0.12,
-            0.18
-          ],
-          "borderColor": [
-            0.15,
-            0.18,
-            0.25
-          ],
-          "hoverTextColor": [
-            0.95,
-            0.95,
-            1
-          ],
-          "hoverBgColor": [
-            0.22,
-            0.28,
-            0.45
-          ],
-          "hoverBorderColor": [
-            0.5,
-            0.6,
-            1
-          ],
-          "alignment": "Center",
-          "isVisible": false,
           "opacity": 1,
           "autoFillWindow": false,
           "autoCenter": false,
@@ -1326,9 +180,9 @@
               "texturePath": "",
               "radius": 500,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "rotationY": 0,
               "autoRotate": false,
@@ -1342,29 +196,29 @@
               "size": 1,
               "softness": 0.8,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "glowIntensity": 1
             },
             "scattering": {
-              "intensity": 1,
-              "rayleigh": 1,
+              "intensity": 18,
+              "rayleigh": 0.5,
               "rayColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 0.6,
+                "Y": 0.8,
+                "Z": 1
               },
-              "rayHeight": 8,
-              "mie": 1,
+              "rayHeight": 0.8,
+              "mie": 0.35,
               "mieColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 0.6,
+                "Z": 0.35
               },
-              "mieFocus": 0.76,
-              "mieHeight": 1.2
+              "mieFocus": 0.8,
+              "mieHeight": 0.6
             },
             "clouds": {
               "density": 0.3,
@@ -1375,9 +229,9 @@
               "shadowStrength": 0.65,
               "scatter": 0.25,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "cirrusStrength": 0.1,
               "enabled": true
@@ -1387,9 +241,9 @@
               "size": 1,
               "glowRadius": 1,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "texturePath": "Artifacts/Textures/moon.png",
               "rotationSpeed": 0,
@@ -1400,9 +254,9 @@
               "density": 1,
               "twinkleSpeed": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             },
@@ -1410,9 +264,9 @@
               "solarEclipse": 0,
               "lunarEclipse": 0,
               "glowColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               }
             },
             "sunRays": {
@@ -1420,628 +274,15 @@
               "rayCount": 12,
               "length": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             }
           },
           "terrainEnabled": true,
-          "terrainHeightmapPath": "Artifacts\\Maps\\photoreal_v0.raw",
-          "terrainChunkSize": 128,
-          "terrainChunksPerSide": 8,
-          "terrainHeightScale": 13.5,
-          "terrainSlopeThreshold": 0.35,
-          "terrainTexTiling": 0.05,
-          "terrainSlopeTexTiling": 0.3,
-          "terrainUseStochasticSampling": false,
-          "terrainLayerAirTop": 0,
-          "terrainLayerDirtTop": 0.25,
-          "terrainLayerGrassTop": 0.3,
-          "terrainLayerSnowTop": 1,
-          "terrainTextureAirPath": "",
-          "terrainTextureDirtPath": "Artifacts\\Textures\\aerial rock\\aerial_rocks_04_diff_4k.jpg",
-          "terrainTextureGrassPath": "Artifacts\\Textures\\stylized-grass1-unity\\stylized-grass1_albedo.png",
-          "terrainTextureSnowPath": "Artifacts\\Textures\\snow\\snow_01_diff_4k.jpg",
-          "terrainTextureSlopePath": "Artifacts\\Textures\\cliff side\\cliff_side_diff_4k.jpg",
-          "terrainPbrAlbedoBrightness": 1,
-          "terrainPbrAlbedoSaturation": 1,
-          "terrainPbrAlbedoContrast": 1,
-          "terrainPbrNormalStrength": 1,
-          "terrainPbrNormalBlur": 0,
-          "terrainPbrMetallicThreshold": 0.5,
-          "terrainPbrMetallicSoftness": 0.1,
-          "terrainPbrMetallicStrength": 1,
-          "terrainPbrRoughnessStrength": 1,
-          "terrainPbrRoughnessInvert": false,
-          "terrainPbrAoStrength": 1,
-          "terrainPbrAoBrightness": 0,
-          "terrainPbrHeightStrength": 1,
-          "terrainPbrHeightInvert": false,
-          "terrainPbrHeightBlur": 0,
-          "terrainPbrEmissionIntensity": 1,
-          "terrainLayers": [
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            },
-            {
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "normalStrength": 1,
-              "normalBlur": 0,
-              "metallicThreshold": 0.5,
-              "metallicSoftness": 0.1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "aoBrightness": 0,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "heightBlur": 0,
-              "emissionIntensity": 1
-            }
-          ],
-          "pbrAlbedoPath": "",
-          "pbrNormalPath": "",
-          "pbrMetallicPath": "",
-          "pbrRoughnessPath": "",
-          "pbrAoPath": "",
-          "pbrHeightPath": "",
-          "pbrEmissionPath": "",
-          "pbrTexTiling": 1,
-          "texSettings": {
-            "filterPreset": 2,
-            "minFilter": 5,
-            "magFilter": 1,
-            "generateMipmaps": true,
-            "mipmapBias": 0,
-            "anisotropy": 16,
-            "wrapS": 0,
-            "wrapT": 0,
-            "tilingX": 1,
-            "tilingY": 1,
-            "offsetX": 0,
-            "offsetY": 0,
-            "randomTiling": false
-          },
-          "pbrTexSettings": [
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            }
-          ],
-          "terrainLayerSettings": [
-            {
-              "filterPreset": 1,
-              "minFilter": 1,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 1,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            },
-            {
-              "filterPreset": 2,
-              "minFilter": 5,
-              "magFilter": 1,
-              "generateMipmaps": true,
-              "mipmapBias": 0,
-              "anisotropy": 16,
-              "wrapS": 0,
-              "wrapT": 0,
-              "tilingX": 1,
-              "tilingY": 1,
-              "offsetX": 0,
-              "offsetY": 0,
-              "randomTiling": false
-            }
-          ],
-          "terrainBrushSize": 10,
-          "terrainBrushStrength": 1,
-          "terrainBrushSoftness": 1,
-          "terrainBrushFalloff": 1,
-          "terrainPaintedData": "",
-          "terrainPaintLayerIndex": 2,
-          "terrainPaintStrength": 0.45,
-          "terrainSplatData": "",
-          "terrainBrushColor": [
-            0.3,
-            0.9,
-            0.5
-          ],
-          "terrainBrushAlpha": 0.35,
-          "terrainLayerList": [
-            {
-              "name": "Air",
-              "visible": true,
-              "albedoPath": "",
-              "pbrPaths": [
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-              ],
-              "tilingX": 0.05,
-              "tilingY": 0.05,
-              "heightMin": 0,
-              "heightMax": 0,
-              "blendSharpness": 2,
-              "stochasticSampling": false,
-              "normalStrength": 1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "emissionIntensity": 0,
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "slopeThreshold": 0.35
-            },
-            {
-              "name": "Dirt",
-              "visible": true,
-              "albedoPath": "Artifacts\\Textures\\aerial rock\\aerial_rocks_04_diff_4k.jpg",
-              "pbrPaths": [
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-              ],
-              "tilingX": 0.05,
-              "tilingY": 0.05,
-              "heightMin": 0,
-              "heightMax": 0.25,
-              "blendSharpness": 2,
-              "stochasticSampling": false,
-              "normalStrength": 1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "emissionIntensity": 0,
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "slopeThreshold": 0.35
-            },
-            {
-              "name": "Grass",
-              "visible": true,
-              "albedoPath": "Artifacts\\Textures\\stylized-grass1-unity\\stylized-grass1_albedo.png",
-              "pbrPaths": [
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-              ],
-              "tilingX": 0.05,
-              "tilingY": 0.05,
-              "heightMin": 0.25,
-              "heightMax": 0.3,
-              "blendSharpness": 2,
-              "stochasticSampling": false,
-              "normalStrength": 1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "emissionIntensity": 0,
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "slopeThreshold": 0.35
-            },
-            {
-              "name": "Snow",
-              "visible": true,
-              "albedoPath": "Artifacts\\Textures\\snow\\snow_01_diff_4k.jpg",
-              "pbrPaths": [
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-              ],
-              "tilingX": 0.05,
-              "tilingY": 0.05,
-              "heightMin": 0.3,
-              "heightMax": 1,
-              "blendSharpness": 2,
-              "stochasticSampling": false,
-              "normalStrength": 1,
-              "metallicStrength": 1,
-              "roughnessStrength": 1,
-              "roughnessInvert": false,
-              "aoStrength": 1,
-              "heightStrength": 1,
-              "heightInvert": false,
-              "emissionIntensity": 0,
-              "albedoBrightness": 1,
-              "albedoSaturation": 1,
-              "albedoContrast": 1,
-              "slopeThreshold": 0.35
-            }
-          ],
-          "terrainSlopeEnabled": false
-        },
-        {
-          "name": "sky1",
-          "primitiveType": "Sky",
-          "glbFilePath": "",
-          "posX": 14,
-          "posY": -2.5,
-          "posZ": -2,
-          "rotX": 0,
-          "rotY": 0,
-          "rotZ": 0,
-          "scaleX": 1,
-          "scaleY": 1,
-          "scaleZ": 1,
-          "colorR": 0.5,
-          "colorG": 0.7,
-          "colorB": 1,
-          "castShadow": true,
-          "isVisible": true,
-          "cameraFov": 60,
-          "cameraNear": 0.1,
-          "cameraFar": 500,
-          "lightDirX": -0.5,
-          "lightDirY": 0.8,
-          "lightDirZ": -0.3,
-          "lightIntensity": 1,
-          "lightType": 0,
-          "lightConeAngle": 30,
-          "lightPointRadius": 50,
-          "skyTimeOfDay": 15.4,
-          "skySunPitch": 14.07075,
-          "skySunYaw": 341.24768,
-          "skyCloudCoverage": 0,
-          "skySunIntensity": 1,
-          "skyTimeAnimSpeed": 1,
-          "skyTimeAnimPaused": true,
-          "showFrustum": true,
-          "showLightGizmo": true,
-          "showSkyGizmo": true,
-          "skySettings": {
-            "type": 0,
-            "skyboxFaces": {
-              "right": "",
-              "left": "",
-              "top": "",
-              "bottom": "",
-              "front": "",
-              "back": ""
-            },
-            "dome": {
-              "texturePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\Textures\\SphereMaps\\20250502_170140_0048.png",
-              "radius": 500,
-              "tintColor": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
-              },
-              "rotationY": 0,
-              "autoRotate": true,
-              "rotateSpeed": 10,
-              "rotateAxis": 0,
-              "rotateVariation": 0,
-              "pingPong": true,
-              "pingPongAmplitude": 30
-            },
-            "sun": {
-              "size": 1,
-              "softness": 0.8,
-              "color": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
-              },
-              "glowIntensity": 1
-            },
-            "scattering": {
-              "intensity": 22,
-              "rayleigh": 0.5,
-              "rayColor": {
-                "X": 0.5,
-                "Y": 0.7,
-                "Z": 1
-              },
-              "rayHeight": 1,
-              "mie": 0.2,
-              "mieColor": {
-                "X": 0.8,
-                "Y": 0.7,
-                "Z": 0.6
-              },
-              "mieFocus": 0.75,
-              "mieHeight": 0.8
-            },
-            "clouds": {
-              "density": 0.3,
-              "altitude": 3,
-              "speed": 0.01,
-              "detail": 0.35,
-              "erosion": 0.15,
-              "shadowStrength": 0.65,
-              "scatter": 0.05,
-              "tintColor": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
-              },
-              "cirrusStrength": 0.1,
-              "enabled": true
-            },
-            "moon": {
-              "brightness": 0,
-              "size": 1,
-              "glowRadius": 1.2,
-              "tintColor": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
-              },
-              "texturePath": "Artifacts/Textures/moon.png",
-              "rotationSpeed": 0,
-              "phaseOffset": 0.5
-            },
-            "stars": {
-              "brightness": 0,
-              "density": 1.5,
-              "twinkleSpeed": 1,
-              "color": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
-              },
-              "enabled": true
-            },
-            "eclipses": {
-              "solarEclipse": 0,
-              "lunarEclipse": 0,
-              "glowColor": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
-              }
-            },
-            "sunRays": {
-              "intensity": 0,
-              "rayCount": 12,
-              "length": 0.8,
-              "color": {
-                "X": 1,
-                "Y": 0.7,
-                "Z": 0.3
-              },
-              "enabled": true
-            }
-          },
-          "terrainEnabled": false,
-          "terrainHeightmapPath": "Artifacts\\Maps\\photoreal_v1.raw",
+          "terrainHeightmapPath": "Artifacts\\Maps\\test.png",
           "terrainChunkSize": 32,
           "terrainChunksPerSide": 1,
           "terrainHeightScale": 30,
@@ -2053,7 +294,7 @@
           "terrainLayerDirtTop": 0.45,
           "terrainLayerGrassTop": 0.75,
           "terrainLayerSnowTop": 1,
-          "terrainTextureAirPath": "",
+          "terrainTextureAirPath": "Artifacts\\Textures\\default.jpg",
           "terrainTextureDirtPath": "",
           "terrainTextureGrassPath": "",
           "terrainTextureSnowPath": "",
@@ -2358,11 +599,11 @@
               "randomTiling": false
             }
           ],
-          "terrainBrushSize": 10,
-          "terrainBrushStrength": 1,
+          "terrainBrushSize": 5,
+          "terrainBrushStrength": 0.26,
           "terrainBrushSoftness": 1,
           "terrainBrushFalloff": 1,
-          "terrainPaintedData": "",
+          "terrainPaintedData": "gAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAgICAgEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAgMEBAUEAwIBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQIEBQYHBwcGBAIBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwUGCAkJCQgGBAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAgMFBggKCwwMCwkGAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEDBAYICgsNDg4NCwgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAgQGCAoLDQ4PEA8NCQUBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQIDBQcJCw0PEBEREQ8LBQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAwUHCQsNDxAREhISDwsFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQMFBwkLDQ8QERISEhEOCgUBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEDBQcKDA4QERITExMSEAwIBAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAwUHCg0PERMUFBQUExEOCgYDAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQMEBwsOERMVFhcXFhUTEAwIBAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECBAcLDxIVGBkaGhoYFhMPCgYDAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA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DRQaHyIkIyEdGBIMBgMBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgYMEhgdISMjIR4YEw0HAwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBQsRFxwgIiMhHhkUDgkEAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEECQ8VGx8iIiEfGxUQCgUCAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMIDhQZHiEiIh8cFxEMBwMBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgYMEhgdICIiIB0YEw4IBQIBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBQoQFhsfIiIhHhoVEAoGAwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADCA4V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Ix8ZFA8KBgQCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBQkPFhwiJiYkHxoUDwsHBAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEDBwwSGR4iJCMfGhQPCwcEAgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQIFCQ8VGh4hIB0YEw8LBwQCAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQMGCxAVGhwbGRYSDQoGBAIBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgQHDBAUFxYVEg8MCAYDAgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAgQHCw4RERAODAkHBQMBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQMGCQsMDAoJBwUEAgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQIEBgcHBwYFBAIBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQEBAMCAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAgICAQEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           "terrainPaintLayerIndex": 2,
           "terrainPaintStrength": 0.45,
           "terrainSplatData": "",
@@ -2376,7 +617,7 @@
             {
               "name": "Base",
               "visible": true,
-              "albedoPath": "Artifacts\\Textures\\default.jpg",
+              "albedoPath": "Artifacts\\Textures\\aerial rock\\aerial_rocks_04_diff_4k.jpg",
               "pbrPaths": [
                 null,
                 null,
@@ -2390,7 +631,7 @@
               "heightMin": 0,
               "heightMax": 1,
               "blendSharpness": 2,
-              "stochasticSampling": false,
+              "stochasticSampling": true,
               "normalStrength": 1,
               "metallicStrength": 1,
               "roughnessStrength": 1,
@@ -2405,14 +646,45 @@
               "slopeThreshold": 0.35
             }
           ],
-          "terrainSlopeEnabled": false
+          "terrainSlopeLayer": {
+            "name": "Slope",
+            "visible": true,
+            "albedoPath": "Artifacts\\Textures\\cliff side\\cliff_side_diff_4k.jpg",
+            "pbrPaths": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "tilingX": 0.5,
+            "tilingY": 0.5,
+            "heightMin": 0,
+            "heightMax": 1,
+            "blendSharpness": 2,
+            "stochasticSampling": true,
+            "normalStrength": 1,
+            "metallicStrength": 1,
+            "roughnessStrength": 1,
+            "roughnessInvert": false,
+            "aoStrength": 1,
+            "heightStrength": 1,
+            "heightInvert": false,
+            "emissionIntensity": 0,
+            "albedoBrightness": 1,
+            "albedoSaturation": 1,
+            "albedoContrast": 1,
+            "slopeThreshold": 0.05
+          },
+          "terrainSlopeEnabled": true
         },
         {
-          "name": "box1",
-          "primitiveType": "Box",
+          "name": "sky1",
+          "primitiveType": "Sky",
           "glbFilePath": "",
-          "posX": 10,
-          "posY": 1.5,
+          "posX": 0,
+          "posY": 3.5,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -2420,9 +692,9 @@
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1,
-          "colorR": 0.7,
-          "colorG": 0.3,
-          "colorB": 0.3,
+          "colorR": 0.5,
+          "colorG": 0.7,
+          "colorB": 1,
           "castShadow": true,
           "isVisible": true,
           "cameraFov": 60,
@@ -2436,6 +708,8 @@
           "lightConeAngle": 30,
           "lightPointRadius": 50,
           "skyTimeOfDay": 12,
+          "skySunPitch": 25.007858,
+          "skySunYaw": 290.13043,
           "skyCloudCoverage": 0.3,
           "skySunIntensity": 1,
           "skyTimeAnimSpeed": 0,
@@ -2457,9 +731,9 @@
               "texturePath": "",
               "radius": 500,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "rotationY": 0,
               "autoRotate": false,
@@ -2473,29 +747,29 @@
               "size": 1,
               "softness": 0.8,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "glowIntensity": 1
             },
             "scattering": {
-              "intensity": 1,
-              "rayleigh": 1,
+              "intensity": 18,
+              "rayleigh": 0.5,
               "rayColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 0.6,
+                "Y": 0.8,
+                "Z": 1
               },
-              "rayHeight": 8,
-              "mie": 1,
+              "rayHeight": 0.8,
+              "mie": 0.35,
               "mieColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 0.6,
+                "Z": 0.35
               },
-              "mieFocus": 0.76,
-              "mieHeight": 1.2
+              "mieFocus": 0.8,
+              "mieHeight": 0.6
             },
             "clouds": {
               "density": 0.3,
@@ -2506,9 +780,9 @@
               "shadowStrength": 0.65,
               "scatter": 0.25,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "cirrusStrength": 0.1,
               "enabled": true
@@ -2518,9 +792,9 @@
               "size": 1,
               "glowRadius": 1,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "texturePath": "Artifacts/Textures/moon.png",
               "rotationSpeed": 0,
@@ -2531,9 +805,9 @@
               "density": 1,
               "twinkleSpeed": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             },
@@ -2541,9 +815,9 @@
               "solarEclipse": 0,
               "lunarEclipse": 0,
               "glowColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               }
             },
             "sunRays": {
@@ -2551,15 +825,15 @@
               "rayCount": 12,
               "length": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             }
           },
           "terrainEnabled": false,
-          "terrainHeightmapPath": "Artifacts\\Maps\\photoreal_v1.raw",
+          "terrainHeightmapPath": "",
           "terrainChunkSize": 32,
           "terrainChunksPerSide": 1,
           "terrainHeightScale": 30,
@@ -2571,7 +845,7 @@
           "terrainLayerDirtTop": 0.45,
           "terrainLayerGrassTop": 0.75,
           "terrainLayerSnowTop": 1,
-          "terrainTextureAirPath": "",
+          "terrainTextureAirPath": "Artifacts\\Textures\\default.jpg",
           "terrainTextureDirtPath": "",
           "terrainTextureGrassPath": "",
           "terrainTextureSnowPath": "",
@@ -2929,9 +1203,9 @@
           "name": "light1",
           "primitiveType": "Light",
           "glbFilePath": "",
-          "posX": 12.461491,
-          "posY": 3.6629071,
-          "posZ": -2.1006093,
+          "posX": 0,
+          "posY": 6,
+          "posZ": 0,
           "rotX": 0,
           "rotY": 0,
           "rotZ": 0,
@@ -2939,16 +1213,16 @@
           "scaleY": 1,
           "scaleZ": 1,
           "colorR": 1,
-          "colorG": 0.85,
-          "colorB": 0.3,
+          "colorG": 0.95,
+          "colorB": 0.85,
           "castShadow": true,
           "isVisible": true,
           "cameraFov": 60,
           "cameraNear": 0.1,
           "cameraFar": 500,
-          "lightDirX": -0.31183198,
-          "lightDirY": 0.24311987,
-          "lightDirZ": 0.9185062,
+          "lightDirX": -0.8508883,
+          "lightDirY": 0.42274258,
+          "lightDirZ": 0.31189385,
           "lightIntensity": 1,
           "lightType": 0,
           "lightConeAngle": 30,
@@ -2975,9 +1249,9 @@
               "texturePath": "",
               "radius": 500,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "rotationY": 0,
               "autoRotate": false,
@@ -2991,29 +1265,29 @@
               "size": 1,
               "softness": 0.8,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "glowIntensity": 1
             },
             "scattering": {
-              "intensity": 1,
-              "rayleigh": 1,
+              "intensity": 18,
+              "rayleigh": 0.5,
               "rayColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 0.6,
+                "Y": 0.8,
+                "Z": 1
               },
-              "rayHeight": 8,
-              "mie": 1,
+              "rayHeight": 0.8,
+              "mie": 0.35,
               "mieColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 0.6,
+                "Z": 0.35
               },
-              "mieFocus": 0.76,
-              "mieHeight": 1.2
+              "mieFocus": 0.8,
+              "mieHeight": 0.6
             },
             "clouds": {
               "density": 0.3,
@@ -3024,9 +1298,9 @@
               "shadowStrength": 0.65,
               "scatter": 0.25,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "cirrusStrength": 0.1,
               "enabled": true
@@ -3036,9 +1310,9 @@
               "size": 1,
               "glowRadius": 1,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "texturePath": "Artifacts/Textures/moon.png",
               "rotationSpeed": 0,
@@ -3049,9 +1323,9 @@
               "density": 1,
               "twinkleSpeed": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             },
@@ -3059,9 +1333,9 @@
               "solarEclipse": 0,
               "lunarEclipse": 0,
               "glowColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               }
             },
             "sunRays": {
@@ -3069,15 +1343,15 @@
               "rayCount": 12,
               "length": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             }
           },
           "terrainEnabled": false,
-          "terrainHeightmapPath": "Artifacts\\Maps\\photoreal_v1.raw",
+          "terrainHeightmapPath": "",
           "terrainChunkSize": 32,
           "terrainChunksPerSide": 1,
           "terrainHeightScale": 30,
@@ -3089,7 +1363,7 @@
           "terrainLayerDirtTop": 0.45,
           "terrainLayerGrassTop": 0.75,
           "terrainLayerSnowTop": 1,
-          "terrainTextureAirPath": "",
+          "terrainTextureAirPath": "Artifacts\\Textures\\default.jpg",
           "terrainTextureDirtPath": "",
           "terrainTextureGrassPath": "",
           "terrainTextureSnowPath": "",
@@ -3447,12 +1721,12 @@
           "name": "light2",
           "primitiveType": "Light",
           "glbFilePath": "",
-          "posX": 8.312198,
-          "posY": 4.640471,
-          "posZ": 1.056769,
-          "rotX": 17.886963,
-          "rotY": -54.30829,
-          "rotZ": 153.568,
+          "posX": 7,
+          "posY": 3.802923,
+          "posZ": 0,
+          "rotX": 1.0583944,
+          "rotY": 21.145462,
+          "rotZ": 87.01523,
           "scaleX": 1,
           "scaleY": 1,
           "scaleZ": 1,
@@ -3467,10 +1741,10 @@
           "lightDirX": -0.5,
           "lightDirY": 0.8,
           "lightDirZ": -0.3,
-          "lightIntensity": 2.2,
+          "lightIntensity": 1.85,
           "lightType": 2,
-          "lightConeAngle": 34,
-          "lightPointRadius": 142,
+          "lightConeAngle": 27,
+          "lightPointRadius": 56.5,
           "skyTimeOfDay": 12,
           "skyCloudCoverage": 0.3,
           "skySunIntensity": 1,
@@ -3493,9 +1767,9 @@
               "texturePath": "",
               "radius": 500,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "rotationY": 0,
               "autoRotate": false,
@@ -3509,29 +1783,29 @@
               "size": 1,
               "softness": 0.8,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "glowIntensity": 1
             },
             "scattering": {
-              "intensity": 1,
-              "rayleigh": 1,
+              "intensity": 18,
+              "rayleigh": 0.5,
               "rayColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 0.6,
+                "Y": 0.8,
+                "Z": 1
               },
-              "rayHeight": 8,
-              "mie": 1,
+              "rayHeight": 0.8,
+              "mie": 0.35,
               "mieColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 0.6,
+                "Z": 0.35
               },
-              "mieFocus": 0.76,
-              "mieHeight": 1.2
+              "mieFocus": 0.8,
+              "mieHeight": 0.6
             },
             "clouds": {
               "density": 0.3,
@@ -3542,9 +1816,9 @@
               "shadowStrength": 0.65,
               "scatter": 0.25,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "cirrusStrength": 0.1,
               "enabled": true
@@ -3554,9 +1828,9 @@
               "size": 1,
               "glowRadius": 1,
               "tintColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "texturePath": "Artifacts/Textures/moon.png",
               "rotationSpeed": 0,
@@ -3567,9 +1841,9 @@
               "density": 1,
               "twinkleSpeed": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             },
@@ -3577,9 +1851,9 @@
               "solarEclipse": 0,
               "lunarEclipse": 0,
               "glowColor": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               }
             },
             "sunRays": {
@@ -3587,9 +1861,9 @@
               "rayCount": 12,
               "length": 1,
               "color": {
-                "X": 0,
-                "Y": 0,
-                "Z": 0
+                "X": 1,
+                "Y": 1,
+                "Z": 1
               },
               "enabled": true
             }
@@ -3965,11 +2239,11 @@
           "name": "camera1",
           "primitiveType": "Camera",
           "glbFilePath": "",
-          "posX": 11.2487545,
-          "posY": 14.182472,
-          "posZ": 9.654463,
+          "posX": 4,
+          "posY": 0,
+          "posZ": -1,
           "rotX": 0,
-          "rotY": 0,
+          "rotY": 90,
           "rotZ": 0,
           "scaleX": 0.5,
           "scaleY": 0.4,
@@ -4478,15 +2752,1051 @@
             }
           ],
           "terrainSlopeEnabled": false
+        },
+        {
+          "name": "box1",
+          "primitiveType": "Box",
+          "glbFilePath": "",
+          "posX": 0,
+          "posY": 0.5,
+          "posZ": 0,
+          "rotX": 0,
+          "rotY": 0,
+          "rotZ": 0,
+          "scaleX": 1,
+          "scaleY": 1,
+          "scaleZ": 1,
+          "colorR": 0.7,
+          "colorG": 0.3,
+          "colorB": 0.3,
+          "castShadow": true,
+          "isVisible": true,
+          "cameraFov": 60,
+          "cameraNear": 0.1,
+          "cameraFar": 500,
+          "lightDirX": -0.5,
+          "lightDirY": 0.8,
+          "lightDirZ": -0.3,
+          "lightIntensity": 1,
+          "lightType": 0,
+          "lightConeAngle": 30,
+          "lightPointRadius": 50,
+          "skyTimeOfDay": 12,
+          "skyCloudCoverage": 0.3,
+          "skySunIntensity": 1,
+          "skyTimeAnimSpeed": 0,
+          "skyTimeAnimPaused": false,
+          "showFrustum": true,
+          "showLightGizmo": true,
+          "showSkyGizmo": true,
+          "skySettings": {
+            "type": 0,
+            "skyboxFaces": {
+              "right": "",
+              "left": "",
+              "top": "",
+              "bottom": "",
+              "front": "",
+              "back": ""
+            },
+            "dome": {
+              "texturePath": "",
+              "radius": 500,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "rotationY": 0,
+              "autoRotate": false,
+              "rotateSpeed": 10,
+              "rotateAxis": 0,
+              "rotateVariation": 0,
+              "pingPong": false,
+              "pingPongAmplitude": 30
+            },
+            "sun": {
+              "size": 1,
+              "softness": 0.8,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "glowIntensity": 1
+            },
+            "scattering": {
+              "intensity": 18,
+              "rayleigh": 0.5,
+              "rayColor": {
+                "X": 0.6,
+                "Y": 0.8,
+                "Z": 1
+              },
+              "rayHeight": 0.8,
+              "mie": 0.35,
+              "mieColor": {
+                "X": 1,
+                "Y": 0.6,
+                "Z": 0.35
+              },
+              "mieFocus": 0.8,
+              "mieHeight": 0.6
+            },
+            "clouds": {
+              "density": 0.3,
+              "altitude": 2.5,
+              "speed": 0.035,
+              "detail": 0.35,
+              "erosion": 0.25,
+              "shadowStrength": 0.65,
+              "scatter": 0.25,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "cirrusStrength": 0.1,
+              "enabled": true
+            },
+            "moon": {
+              "brightness": 1.25,
+              "size": 1,
+              "glowRadius": 1,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "texturePath": "Artifacts/Textures/moon.png",
+              "rotationSpeed": 0,
+              "phaseOffset": 0.5
+            },
+            "stars": {
+              "brightness": 1,
+              "density": 1,
+              "twinkleSpeed": 1,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "enabled": true
+            },
+            "eclipses": {
+              "solarEclipse": 0,
+              "lunarEclipse": 0,
+              "glowColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              }
+            },
+            "sunRays": {
+              "intensity": 0.3,
+              "rayCount": 12,
+              "length": 1,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "enabled": true
+            }
+          },
+          "terrainEnabled": false,
+          "terrainHeightmapPath": "",
+          "terrainChunkSize": 32,
+          "terrainChunksPerSide": 1,
+          "terrainHeightScale": 30,
+          "terrainSlopeThreshold": 0.35,
+          "terrainTexTiling": 0.5,
+          "terrainSlopeTexTiling": 0.3,
+          "terrainUseStochasticSampling": false,
+          "terrainLayerAirTop": 0.18,
+          "terrainLayerDirtTop": 0.45,
+          "terrainLayerGrassTop": 0.75,
+          "terrainLayerSnowTop": 1,
+          "terrainTextureAirPath": "Artifacts\\Textures\\default.jpg",
+          "terrainTextureDirtPath": "",
+          "terrainTextureGrassPath": "",
+          "terrainTextureSnowPath": "",
+          "terrainTextureSlopePath": "",
+          "terrainPbrAlbedoBrightness": 1,
+          "terrainPbrAlbedoSaturation": 1,
+          "terrainPbrAlbedoContrast": 1,
+          "terrainPbrNormalStrength": 1,
+          "terrainPbrNormalBlur": 0,
+          "terrainPbrMetallicThreshold": 0.5,
+          "terrainPbrMetallicSoftness": 0.1,
+          "terrainPbrMetallicStrength": 1,
+          "terrainPbrRoughnessStrength": 1,
+          "terrainPbrRoughnessInvert": false,
+          "terrainPbrAoStrength": 1,
+          "terrainPbrAoBrightness": 0,
+          "terrainPbrHeightStrength": 1,
+          "terrainPbrHeightInvert": false,
+          "terrainPbrHeightBlur": 0,
+          "terrainPbrEmissionIntensity": 1,
+          "terrainLayers": [
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            }
+          ],
+          "pbrAlbedoPath": "",
+          "pbrNormalPath": "",
+          "pbrMetallicPath": "",
+          "pbrRoughnessPath": "",
+          "pbrAoPath": "",
+          "pbrHeightPath": "",
+          "pbrEmissionPath": "",
+          "pbrTexTiling": 1,
+          "texSettings": {
+            "filterPreset": 2,
+            "minFilter": 5,
+            "magFilter": 1,
+            "generateMipmaps": true,
+            "mipmapBias": 0,
+            "anisotropy": 16,
+            "wrapS": 0,
+            "wrapT": 0,
+            "tilingX": 1,
+            "tilingY": 1,
+            "offsetX": 0,
+            "offsetY": 0,
+            "randomTiling": false
+          },
+          "pbrTexSettings": [
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            }
+          ],
+          "terrainLayerSettings": [
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            }
+          ],
+          "terrainBrushSize": 10,
+          "terrainBrushStrength": 1,
+          "terrainBrushSoftness": 1,
+          "terrainBrushFalloff": 1,
+          "terrainPaintedData": "",
+          "terrainPaintLayerIndex": 2,
+          "terrainPaintStrength": 0.45,
+          "terrainSplatData": "",
+          "terrainBrushColor": [
+            0.3,
+            0.9,
+            0.5
+          ],
+          "terrainBrushAlpha": 0.35,
+          "terrainLayerList": [
+            {
+              "name": "Base",
+              "visible": true,
+              "albedoPath": "Artifacts\\Textures\\default.jpg",
+              "pbrPaths": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "tilingX": 0.5,
+              "tilingY": 0.5,
+              "heightMin": 0,
+              "heightMax": 1,
+              "blendSharpness": 2,
+              "stochasticSampling": false,
+              "normalStrength": 1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "emissionIntensity": 0,
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "slopeThreshold": 0.35
+            }
+          ],
+          "terrainSlopeEnabled": false
+        },
+        {
+          "name": "sphere1",
+          "primitiveType": "Sphere",
+          "glbFilePath": "",
+          "posX": 0,
+          "posY": 0.5,
+          "posZ": -2,
+          "rotX": 0,
+          "rotY": 0,
+          "rotZ": 0,
+          "scaleX": 1,
+          "scaleY": 1,
+          "scaleZ": 1,
+          "colorR": 0.3,
+          "colorG": 0.3,
+          "colorB": 0.7,
+          "castShadow": true,
+          "isVisible": true,
+          "cameraFov": 60,
+          "cameraNear": 0.1,
+          "cameraFar": 500,
+          "lightDirX": -0.5,
+          "lightDirY": 0.8,
+          "lightDirZ": -0.3,
+          "lightIntensity": 1,
+          "lightType": 0,
+          "lightConeAngle": 30,
+          "lightPointRadius": 50,
+          "skyTimeOfDay": 12,
+          "skyCloudCoverage": 0.3,
+          "skySunIntensity": 1,
+          "skyTimeAnimSpeed": 0,
+          "skyTimeAnimPaused": false,
+          "showFrustum": true,
+          "showLightGizmo": true,
+          "showSkyGizmo": true,
+          "skySettings": {
+            "type": 0,
+            "skyboxFaces": {
+              "right": "",
+              "left": "",
+              "top": "",
+              "bottom": "",
+              "front": "",
+              "back": ""
+            },
+            "dome": {
+              "texturePath": "",
+              "radius": 500,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "rotationY": 0,
+              "autoRotate": false,
+              "rotateSpeed": 10,
+              "rotateAxis": 0,
+              "rotateVariation": 0,
+              "pingPong": false,
+              "pingPongAmplitude": 30
+            },
+            "sun": {
+              "size": 1,
+              "softness": 0.8,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "glowIntensity": 1
+            },
+            "scattering": {
+              "intensity": 18,
+              "rayleigh": 0.5,
+              "rayColor": {
+                "X": 0.6,
+                "Y": 0.8,
+                "Z": 1
+              },
+              "rayHeight": 0.8,
+              "mie": 0.35,
+              "mieColor": {
+                "X": 1,
+                "Y": 0.6,
+                "Z": 0.35
+              },
+              "mieFocus": 0.8,
+              "mieHeight": 0.6
+            },
+            "clouds": {
+              "density": 0.3,
+              "altitude": 2.5,
+              "speed": 0.035,
+              "detail": 0.35,
+              "erosion": 0.25,
+              "shadowStrength": 0.65,
+              "scatter": 0.25,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "cirrusStrength": 0.1,
+              "enabled": true
+            },
+            "moon": {
+              "brightness": 1.25,
+              "size": 1,
+              "glowRadius": 1,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "texturePath": "Artifacts/Textures/moon.png",
+              "rotationSpeed": 0,
+              "phaseOffset": 0.5
+            },
+            "stars": {
+              "brightness": 1,
+              "density": 1,
+              "twinkleSpeed": 1,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "enabled": true
+            },
+            "eclipses": {
+              "solarEclipse": 0,
+              "lunarEclipse": 0,
+              "glowColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              }
+            },
+            "sunRays": {
+              "intensity": 0.3,
+              "rayCount": 12,
+              "length": 1,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "enabled": true
+            }
+          },
+          "terrainEnabled": false,
+          "terrainHeightmapPath": "",
+          "terrainChunkSize": 32,
+          "terrainChunksPerSide": 1,
+          "terrainHeightScale": 30,
+          "terrainSlopeThreshold": 0.35,
+          "terrainTexTiling": 0.5,
+          "terrainSlopeTexTiling": 0.3,
+          "terrainUseStochasticSampling": false,
+          "terrainLayerAirTop": 0.18,
+          "terrainLayerDirtTop": 0.45,
+          "terrainLayerGrassTop": 0.75,
+          "terrainLayerSnowTop": 1,
+          "terrainTextureAirPath": "Artifacts\\Textures\\default.jpg",
+          "terrainTextureDirtPath": "",
+          "terrainTextureGrassPath": "",
+          "terrainTextureSnowPath": "",
+          "terrainTextureSlopePath": "",
+          "terrainPbrAlbedoBrightness": 1,
+          "terrainPbrAlbedoSaturation": 1,
+          "terrainPbrAlbedoContrast": 1,
+          "terrainPbrNormalStrength": 1,
+          "terrainPbrNormalBlur": 0,
+          "terrainPbrMetallicThreshold": 0.5,
+          "terrainPbrMetallicSoftness": 0.1,
+          "terrainPbrMetallicStrength": 1,
+          "terrainPbrRoughnessStrength": 1,
+          "terrainPbrRoughnessInvert": false,
+          "terrainPbrAoStrength": 1,
+          "terrainPbrAoBrightness": 0,
+          "terrainPbrHeightStrength": 1,
+          "terrainPbrHeightInvert": false,
+          "terrainPbrHeightBlur": 0,
+          "terrainPbrEmissionIntensity": 1,
+          "terrainLayers": [
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            },
+            {
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "normalStrength": 1,
+              "normalBlur": 0,
+              "metallicThreshold": 0.5,
+              "metallicSoftness": 0.1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "aoBrightness": 0,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "heightBlur": 0,
+              "emissionIntensity": 1
+            }
+          ],
+          "pbrAlbedoPath": "",
+          "pbrNormalPath": "",
+          "pbrMetallicPath": "",
+          "pbrRoughnessPath": "",
+          "pbrAoPath": "",
+          "pbrHeightPath": "",
+          "pbrEmissionPath": "",
+          "pbrTexTiling": 1,
+          "texSettings": {
+            "filterPreset": 2,
+            "minFilter": 5,
+            "magFilter": 1,
+            "generateMipmaps": true,
+            "mipmapBias": 0,
+            "anisotropy": 16,
+            "wrapS": 0,
+            "wrapT": 0,
+            "tilingX": 1,
+            "tilingY": 1,
+            "offsetX": 0,
+            "offsetY": 0,
+            "randomTiling": false
+          },
+          "pbrTexSettings": [
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            }
+          ],
+          "terrainLayerSettings": [
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            }
+          ],
+          "terrainBrushSize": 10,
+          "terrainBrushStrength": 1,
+          "terrainBrushSoftness": 1,
+          "terrainBrushFalloff": 1,
+          "terrainPaintedData": "",
+          "terrainPaintLayerIndex": 2,
+          "terrainPaintStrength": 0.45,
+          "terrainSplatData": "",
+          "terrainBrushColor": [
+            0.3,
+            0.9,
+            0.5
+          ],
+          "terrainBrushAlpha": 0.35,
+          "terrainLayerList": [
+            {
+              "name": "Base",
+              "visible": true,
+              "albedoPath": "Artifacts\\Textures\\default.jpg",
+              "pbrPaths": [
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              "tilingX": 0.5,
+              "tilingY": 0.5,
+              "heightMin": 0,
+              "heightMax": 1,
+              "blendSharpness": 2,
+              "stochasticSampling": false,
+              "normalStrength": 1,
+              "metallicStrength": 1,
+              "roughnessStrength": 1,
+              "roughnessInvert": false,
+              "aoStrength": 1,
+              "heightStrength": 1,
+              "heightInvert": false,
+              "emissionIntensity": 0,
+              "albedoBrightness": 1,
+              "albedoSaturation": 1,
+              "albedoContrast": 1,
+              "slopeThreshold": 0.35
+            }
+          ],
+          "terrainSlopeEnabled": false
         }
       ],
       "editorCameraPosition": [
-        9.7053585,
-        8.860154,
-        7.401324
+        -5.1999083,
+        10.498156,
+        -6.7633915
       ],
-      "editorCameraYaw": -179.5,
-      "editorCameraPitch": -36
+      "editorCameraYaw": 349,
+      "editorCameraPitch": -37.7
     }
   ],
   "selectionHighlightColor": [
