@@ -207,10 +207,10 @@ public class IDE : IDisposable
 
         cam.Position = gameCamera.Position;
 
-        // Convert the Camera object's Euler rotation (Y = yaw, X = pitch in degrees)
-        // to the editor fly-camera's Yaw/Pitch.
+        // Convert the Camera object's Euler rotation to editor fly-camera Yaw/Pitch.
+        // Both use CreateFromYawPitchRoll convention: Y = yaw, X = pitch (positive = look up).
         cam.Yaw = gameCamera.RotationEuler.Y;
-        cam.Pitch = -gameCamera.RotationEuler.X; // Invert: positive X rotation = look down = negative pitch
+        cam.Pitch = gameCamera.RotationEuler.X;
         cam.UpdateVectors();
         cam.SyncSmoothVectors();
 
