@@ -457,7 +457,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             else if (_curClip < 0 && _clips.Count > 0) PlayIndex(0, 0f);
 
             string clipDbgName = clipNameOverride ?? "(internal)";
-            //Console.WriteLine($"[DEBUG] Anim '{clipDbgName}': {totalMatched} bones matched, {_clips.Count} total clips, dest skeleton {dstNodes.Length} nodes");
             if (totalMatched == 0 && clipNameOverride != null && clipNameOverride != "base")
             {
                 //Console.WriteLine($"[WARN] Anim '{clipDbgName}' matched ZERO bones — see debug_bones.txt for names");

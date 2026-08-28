@@ -78,7 +78,7 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _sunDirLoc = -1, _lightColorLoc = -1, _viewPosLoc = -1;
     private static int _useFogLoc = -1, _fogColorLoc = -1;
     private static int _heightScaleLoc = -1, _layerLevelsLoc = -1;
-    private static int _slopeThresholdLoc = -1, _texTilingLoc = -1, _slopeTexTilingLoc = -1;
+    private static int _slopeThresholdLoc = -1;
     private static int _usePaintMaskLoc = -1, _tex4Loc = -1;
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
@@ -754,8 +754,6 @@ public unsafe class EditorTerrainMesh : IDisposable
         _heightScaleLoc = GL.GetUniformLocation(_program, "heightScale");
         _layerLevelsLoc = GL.GetUniformLocation(_program, "layerLevels");
         _slopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
-        _texTilingLoc = GL.GetUniformLocation(_program, "texTiling");
-        _slopeTexTilingLoc = GL.GetUniformLocation(_program, "slopeTexTiling");
         _usePaintMaskLoc = GL.GetUniformLocation(_program, "usePaintMask");
         _showHeatmapLoc = GL.GetUniformLocation(_program, "showHeatmap");
         _showContoursLoc = GL.GetUniformLocation(_program, "showContours");
@@ -866,8 +864,6 @@ public unsafe class EditorTerrainMesh : IDisposable
             owner.TerrainLayerAirTop, owner.TerrainLayerDirtTop,
             owner.TerrainLayerGrassTop, owner.TerrainLayerSnowTop);
         if (_slopeThresholdLoc >= 0) GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
-        if (_texTilingLoc >= 0) GL.Uniform1f(_texTilingLoc, Math.Max(0.01f, owner.TerrainTexTiling));
-        if (_slopeTexTilingLoc >= 0) GL.Uniform1f(_slopeTexTilingLoc, Math.Max(0.01f, owner.TerrainSlopeTexTiling));
 
         // ── NEW: Dynamic layer system ──
         var layers = owner.TerrainLayerList;

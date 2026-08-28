@@ -1112,10 +1112,8 @@ public class IDE : IDisposable
         _viewport.SnapGridSize = gridSize;
     }
 
-    /// <summary>Whether the IDE overlay is currently active. Always true since F2 toggle is disabled.</summary>
+    /// <summary>Whether the IDE overlay is currently active.</summary>
     public bool IsActive { get; set; } = true;
-    /// <summary>Set by Program.cs when F2 is pressed (kept for backward compat, currently unused).</summary>
-    public bool ToggleRequested { get; set; } = true;
 
     public void Dispose()
     {

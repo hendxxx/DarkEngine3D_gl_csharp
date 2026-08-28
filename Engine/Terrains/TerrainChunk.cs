@@ -300,7 +300,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             return frozenPlanes;
         }
 
-        //private float exposureState = 1.0f;
         public int Render(Camera camera, Plane[]? frozenPlanes, Plane[]? cullFreezePlanes = null, bool skipDebug = false)
         {
             int totalTriangles = 0;

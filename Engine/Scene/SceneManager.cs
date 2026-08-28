@@ -290,33 +290,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                 }
 
-                // ── IDE: F2 toggle ── [DISABLED — replaced by Viewport preview mode]
-                // if (_ide != null)
-                // {
-                //     bool f2Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F2);
-                //     if (f2Down && !_f2WasDown)
-                //     {
-                //         _ide.IsActive = !_ide.IsActive;
-                //         Console.WriteLine($"[SceneManager] Toggle IDE: IsActive={_ide.IsActive}, IsHealthy={_ide.IsHealthy}");
-                //         if (_ide.IsActive)
-                //         {
-                //             Mouse.ShowMouse(true);
-                //             Mouse.ResetState();
-                //         }
-                //         else
-                //         {
-                //             _ide.Bridge.InGameActive = true;
-                //             UpdateInGameCursor();
-                //         }
-                //     }
-                //     _f2WasDown = f2Down;
-
-                //     if (_ide.IsActive)
-                //     {
-                //         _ide.Update(dt);
-                //     }
-                // }
-
                 // IDE always active — keep update running
                 if (_ide != null)
                     _ide.Update(dt);
@@ -332,18 +305,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         bridgeStats.FrameMs = dt * 1000f;
                     }
                 }
-
-                // ── F9: toggle manual input lock [DISABLED]
-                    // bool f9Down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_F9);
-                    // if (f9Down && !_f9WasDown && _ide.IsActive)
-                    // {
-                    //     _ide.Bridge.InGameActive = !_ide.Bridge.InGameActive;
-                    //     Console.WriteLine($"[SceneManager] Toggle InGameActive: {_ide.Bridge.InGameActive}");
-                    //     var settings = Config.SettingsSave.Load();
-                    //     settings.InGameActive = _ide.Bridge.InGameActive;
-                    //     Config.SettingsSave.Save(settings);
-                    // }
-                    // _f9WasDown = f9Down;
 
                 // ── Alt+Enter: toggle fullscreen globally ──
                 bool altHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
