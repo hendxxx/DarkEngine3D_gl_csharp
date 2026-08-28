@@ -82,6 +82,10 @@ public class IDE : IDisposable
                     _viewport.SetFullscreen(true);
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
+
+                    // ── Switch editor camera to the first Camera object in the scene ──
+                    _lastInGameSceneName = Bridge.SelectedEditorScene;
+                    SwitchToGameCamera();
                 }
                 else
                 {
@@ -90,6 +94,7 @@ public class IDE : IDisposable
                     _viewport.SetFullscreen(false);
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
+                    _lastInGameSceneName = null;
                 }
                 Console.WriteLine($"[IDE] In-Game Mode: {_inGameMode}");
             }
@@ -120,6 +125,10 @@ public class IDE : IDisposable
         _focusedInGameElement = null;
         _focusedInGameIndex = -1;
 
+        // ── Switch editor camera to the first Camera object in the scene ──
+        _lastInGameSceneName = Bridge.SelectedEditorScene;
+        SwitchToGameCamera();
+
         Console.WriteLine($"[IDE] Startup in-game mode active ({Bridge.EditorScenes.Count} scene(s) from '{loadPath}')");
     }
 
@@ -130,6 +139,93 @@ public class IDE : IDisposable
         Console.WriteLine($"[IDE] Reloading current save file for in-game mode...");
         _sceneManagerPanel.LoadGameIngScenes();
         Console.WriteLine($"[IDE] Reloaded ({Bridge.EditorScenes.Count} scenes)");
+    }
+
+    /// <summary>Warning text shown when no Camera object is found in the scene during in-game mode.</summary>
+    private string? _inGameCameraWarning = null;
+    private float _inGameCameraWarningTimer = 0f;
+
+    /// <summary>Tracks the last in-game scene so we can switch camera when the user
+    /// navigates to a different scene via in-game UI buttons.</summary>
+    private string? _lastInGameSceneName = null;
+
+    /// <summary>Switch the editor freefly camera to the first placed Camera object in the current scene.
+    /// If no Camera object exists, shows a warning overlay for 5 seconds.
+    /// Called when entering in-game mode (F8 or startup).</summary>
+    private void SwitchToGameCamera()
+    {
+        _inGameCameraWarning = null;
+        _inGameCameraWarningTimer = 0f;
+
+        if (Bridge.EditorObjectManager == null)
+        {
+            _inGameCameraWarning = "No Camera found in scene — add a Camera object (Model → Camera) for in-game view.";
+            _inGameCameraWarningTimer = 5f;
+            Console.WriteLine("[IDE] In-Game Mode: no EditorObjectManager, cannot find Camera");
+            return;
+        }
+
+        // Find the first visible Camera object in the current scene
+        EditorObject? gameCamera = null;
+        foreach (var obj in Bridge.EditorObjectManager.Objects)
+        {
+            if (obj.PrimitiveType == EditorPrimitiveType.Camera && obj.IsVisible)
+            {
+                gameCamera = obj;
+                break;
+            }
+        }
+
+        if (gameCamera == null)
+        {
+            _inGameCameraWarning = "No Camera found in scene — add a Camera object (Model → Camera) for in-game view.";
+            _inGameCameraWarningTimer = 5f;
+            Console.WriteLine("[IDE] In-Game Mode: no Camera object found in scene");
+            return;
+        }
+
+        // Position the editor camera at the placed Camera's position and look direction
+        var cam = Bridge.Camera;
+        if (cam == null)
+        {
+            Console.WriteLine("[IDE] In-Game Mode: editor camera not available");
+            return;
+        }
+
+        cam.Position = gameCamera.Position;
+
+        // Convert the Camera object's Euler rotation (Y = yaw, X = pitch in degrees)
+        // to the editor fly-camera's Yaw/Pitch.
+        cam.Yaw = gameCamera.RotationEuler.Y;
+        cam.Pitch = -gameCamera.RotationEuler.X; // Invert: positive X rotation = look down = negative pitch
+        cam.UpdateVectors();
+        cam.SyncSmoothVectors();
+
+        Console.WriteLine($"[IDE] In-Game Mode: switched to Camera '{gameCamera.Name}' at {gameCamera.Position}"
+            + $" (yaw={cam.Yaw:F1}°, pitch={cam.Pitch:F1}°)");
+    }
+
+    /// <summary>Render a warning overlay in the center of the screen (used when no game camera found).</summary>
+    private void RenderInGameWarning(float dt)
+    {
+        if (string.IsNullOrEmpty(_inGameCameraWarning) || _inGameCameraWarningTimer <= 0f) return;
+        _inGameCameraWarningTimer -= dt;
+        if (_inGameCameraWarningTimer <= 0f) { _inGameCameraWarning = null; return; }
+
+        var drawList = ImGui.GetForegroundDrawList();
+        var io = ImGui.GetIO();
+        float alpha = Math.Clamp(_inGameCameraWarningTimer, 0f, 1f);
+        var font = ImGui.GetFont();
+        float fontSize = Bridge.ViewportFontSize > 0f ? Bridge.ViewportFontSize : 18f;
+        var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, _inGameCameraWarning);
+        float cx = io.DisplaySize.X * 0.5f;
+        float cy = io.DisplaySize.Y * 0.15f;
+        var bgMin = new Vector2(cx - textSize.X * 0.5f - 12f, cy - textSize.Y * 0.5f - 6f);
+        var bgMax = new Vector2(cx + textSize.X * 0.5f + 12f, cy + textSize.Y * 0.5f + 6f);
+        drawList.AddRectFilled(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0.6f, 0.2f, 0.1f, 0.85f * alpha)), 6f);
+        drawList.AddRect(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.4f, 0.3f, alpha)), 6f, ImDrawFlags.None, 1.5f);
+        drawList.AddText(font, fontSize, new Vector2(cx - textSize.X * 0.5f, cy - textSize.Y * 0.5f),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.9f, 0.8f, alpha)), _inGameCameraWarning);
     }
 
     public IDE(nint window)
@@ -874,6 +970,14 @@ public class IDE : IDisposable
             }
         }
 
+        // ── Detect scene change and switch camera to new scene's Camera object ──
+        string? currentScene = Bridge.SelectedEditorScene;
+        if (!string.IsNullOrEmpty(currentScene) && currentScene != _lastInGameSceneName)
+        {
+            _lastInGameSceneName = currentScene;
+            SwitchToGameCamera();
+        }
+
         // ── Stats overlay (in-game mode) — always visible, drawn last so it sits on top ──
         // Mirrors the GameScene debug HUD: FPS/frame-time, triangles, object counts,
         // and camera position. Reads the bridge values SceneManager refreshes every frame.
@@ -945,6 +1049,10 @@ public class IDE : IDisposable
                 ty += lineHeight;
             }
         }
+
+        // ── Camera warning overlay (shown when no Camera object found) ──
+        float dt = io.DeltaTime;
+        RenderInGameWarning(dt);
 
         // No ImGui windows at all — just flush the draw list
         _imgui.Render();

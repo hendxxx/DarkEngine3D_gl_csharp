@@ -212,8 +212,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Camera
             bridge.Camera = _camera;
             bridge.CameraPosition = _camera.Position;
-            bridge.CameraYaw = _camera.Yaw * 180f / MathF.PI;
-            bridge.CameraPitch = _camera.Pitch * 180f / MathF.PI;
+            bridge.CameraYaw = _camera.Yaw;
+            bridge.CameraPitch = _camera.Pitch;
 
             // Scene name
             bridge.SceneName = "GameScene";
