@@ -197,7 +197,7 @@ public class EditorObjectData
     /// <summary>Grid resolution per side.</summary>
     public int TerrainChunkSize { get; set; } = 32;
     /// <summary>Chunk sub-meshes per side (1..8).</summary>
-    public int TerrainChunksPerSide { get; set; } = 1;
+    public int TerrainChunksPerSide { get; set; } = 8;
     /// <summary>Vertical height scale (world units).</summary>
     public float TerrainHeightScale { get; set; } = 30f;
     /// <summary>Slope threshold for the dirt/cliff layer.</summary>
@@ -262,9 +262,9 @@ public class EditorObjectData
     /// Null/absent = legacy scene → each layer falls back to <see cref="TexSettings"/>.</summary>
     public TextureSettingsData[]? TerrainLayerSettings { get; set; }
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
-    public float TerrainBrushSize { get; set; } = 10f;
+    public float TerrainBrushSize { get; set; } = 5f;
     /// <summary>Height delta per painted frame (world units).</summary>
-    public float TerrainBrushStrength { get; set; } = 1f;
+    public float TerrainBrushStrength { get; set; } = 0.125f;
     /// <summary>Brush edge falloff 0..1.</summary>
     public float TerrainBrushSoftness { get; set; } = 1f;
     /// <summary>Brush falloff curve: 0=Linear, 1=Smooth, 2=Sharp, 3=Spherical, 4=Soft.</summary>
@@ -283,6 +283,14 @@ public class EditorObjectData
     public float[]? TerrainBrushColor { get; set; }
     /// <summary>Brush ring highlight transparency 0..1 — user-editable, saved with the scene.</summary>
     public float TerrainBrushAlpha { get; set; } = 0.35f;
+    /// <summary>Brush mask shape: 0=Circle..7=Diamond. Persisted so brush config survives save/load.</summary>
+    public int TerrainBrushMask { get; set; } = 0;
+    /// <summary>Dynamic terrain layers (new system). Serialized so user-added layers survive save/load.</summary>
+    public List<TerrainLayer>? DynamicTerrainLayers { get; set; }
+    /// <summary>Slope layer data (null = disabled). Serialized so slope texture survives save/load.</summary>
+    public TerrainLayer? TerrainSlopeLayerData { get; set; }
+    /// <summary>Whether the slope layer is enabled.</summary>
+    public bool TerrainSlopeEnabled { get; set; } = false;
 }
 
 /// <summary>

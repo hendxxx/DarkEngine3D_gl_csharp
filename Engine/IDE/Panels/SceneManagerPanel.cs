@@ -936,7 +936,13 @@ public class SceneManagerPanel
                         TerrainPaintedData = obj.TerrainPaintedData,
                         TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                         TerrainPaintStrength = obj.TerrainPaintStrength,
-                        TerrainSplatData = obj.TerrainSplatData
+                        TerrainSplatData = obj.TerrainSplatData,
+                        TerrainBrushMask = obj.TerrainBrushMask,
+                        DynamicTerrainLayers = obj.TerrainLayerList.Count > 0
+                            ? obj.TerrainLayerList.Select(l => l.Clone()).ToList()
+                            : null,
+                        TerrainSlopeEnabled = obj.TerrainSlopeEnabled,
+                        TerrainSlopeLayerData = obj.TerrainSlopeLayer?.Clone()
                     });
                 }
             }
@@ -1311,9 +1317,17 @@ public class SceneManagerPanel
                         obj.TerrainPaintStrength = objData.TerrainPaintStrength;
                         if (!string.IsNullOrEmpty(objData.TerrainSplatData))
                             obj.TerrainSplatData = objData.TerrainSplatData;
+                        obj.TerrainBrushMask = objData.TerrainBrushMask;
+                        // Dynamic terrain layers
+                        if (objData.DynamicTerrainLayers is { Count: > 0 } dynLayers)
+                            obj.TerrainLayerList = dynLayers.Select(l => l.Clone()).ToList();
+                        // Slope layer
+                        obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
+                        if (objData.TerrainSlopeLayerData != null)
+                            obj.TerrainSlopeLayer = objData.TerrainSlopeLayerData.Clone();
                         obj.MarkDirty();
                         // Migrate old fixed-layer format to new dynamic layers
-                        if (primType == EditorPrimitiveType.Plane)
+                        if (primType == EditorPrimitiveType.Plane && objData.DynamicTerrainLayers == null)
                             obj.MigrateTerrainLayers();
 
                         Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
@@ -1553,7 +1567,13 @@ public class SceneManagerPanel
                             TerrainPaintedData = obj.TerrainPaintedData,
                             TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                             TerrainPaintStrength = obj.TerrainPaintStrength,
-                            TerrainSplatData = obj.TerrainSplatData
+                            TerrainSplatData = obj.TerrainSplatData,
+                            TerrainBrushMask = obj.TerrainBrushMask,
+                            DynamicTerrainLayers = obj.TerrainLayerList.Count > 0
+                                ? obj.TerrainLayerList.Select(l => l.Clone()).ToList()
+                                : null,
+                            TerrainSlopeEnabled = obj.TerrainSlopeEnabled,
+                            TerrainSlopeLayerData = obj.TerrainSlopeLayer?.Clone()
                         });
                     }
                 }
