@@ -69,6 +69,7 @@ public class TerrainLayer
 
     // ── Texture sampling ──
     public Libs.TextureSettings? TextureSettings { get; set; } = null;
+    public bool StochasticSampling { get; set; } = false;
 
     // ── PBR tuning (per layer) ──
     public float NormalStrength { get; set; } = 1.0f;

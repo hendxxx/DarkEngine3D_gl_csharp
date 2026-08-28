@@ -59,6 +59,10 @@ public unsafe class ViewportPanel
     private Vector2? _marqueeStart = null;
     private Vector2 _marqueeCurrent;
     private bool _marqueeActive = false;
+    // Post-popup suppress: after any popup/menu closes, suppress scene interactions
+    // for a few frames so the click that closed the menu doesn't leak into the scene.
+    private int _postPopupFrames = 0;
+    private bool _wasPopupOpen = false;
 
     // ── Terrain brush paint state ──
     /// <summary>Object being painted in the current brush stroke (null = no stroke).</summary>
@@ -2267,6 +2271,20 @@ ImGui.SameLine();
                 ImGui.EndDragDropTarget();
             }
 
+            // ── Popup suppress: block all scene interactions when a popup/menu
+            // is open, AND for 2 frames after it closes (prevents the click that
+            // closed the menu from leaking into the terrain brush, gizmo, etc.) ──
+            bool anyPopupOpen = ImGui.IsPopupOpen(null, ImGuiPopupFlags.AnyPopupId);
+            if (anyPopupOpen) _wasPopupOpen = true;
+            if (_wasPopupOpen && !anyPopupOpen && _postPopupFrames <= 0)
+            {
+                _postPopupFrames = 2;
+                _wasPopupOpen = false;
+            }
+            if (_postPopupFrames > 0) _postPopupFrames--;
+            bool suppressInput = anyPopupOpen || _postPopupFrames > 0;
+            _bridge.SuppressViewportInput = suppressInput;
+
             // ── Viewport click/hover detection ──
             bool mouseOverImage = viewportMouseScreen.X >= _imageMin.X && viewportMouseScreen.X <= _imageMax.X &&
                                   viewportMouseScreen.Y >= _imageMin.Y && viewportMouseScreen.Y <= _imageMax.Y;
@@ -2290,9 +2308,14 @@ ImGui.SameLine();
 
                 // Clicks on the floating "◉ Views" overlay button must NOT count as
                 // viewport clicks (no raycast select / deselect on empty space).
+                // Also block when ImGui wants mouse capture (menus, popups, drag-drop targets).
+                // Block viewport clicks when any ImGui popup/menu is open (View menu,
+                // Save As dialog, context menus, etc.) — so clicks on menus never
+                // accidentally modify the scene or trigger raycast selection.
+                // suppressInput is computed above (before mouseOverImage block).
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
                     && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar()
-                    && SkySunHandleAtMouse() == null)
+                    && SkySunHandleAtMouse() == null && !suppressInput)
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
@@ -2300,8 +2323,10 @@ ImGui.SameLine();
                 }
 
                 // ── Middle click: reposition gizmo pivot ──
+                // Skipped when any popup/menu is open or just closed (modal mode).
                 if (hasSceneTexture && ImGui.IsItemClicked(ImGuiMouseButton.Middle) && !_previewMode && _bridge.Camera != null
-                    && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+                    && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                    && !suppressInput)
                 {
                     // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
                     float midClickY = _bridge.SceneTextureHeight - sceneV * _bridge.SceneTextureHeight;
@@ -2354,9 +2379,12 @@ ImGui.SameLine();
 
             // ── Terrain brush: click-drag to raise/lower terrain height in real-time ──
             // Runs before marquee/select/gizmo so a paint stroke never changes the selection.
+            // Skipped when: popup/menu is open or just closed (modal mode),
+            // or mouse is over the left toolbar / Views button (toolbar clicks must not sculpt).
             if (!_previewMode && _bridge.TerrainBrushActive && hasSceneTexture
                 && _bridge.EditorObjectManager != null && _bridge.Camera != null
-                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                && !suppressInput && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
             {
                 var cam = _bridge.Camera;
                 var mgr = _bridge.EditorObjectManager;
@@ -2807,17 +2835,26 @@ ImGui.SameLine();
 
                 if (gizmo.IsDragging)
                 {
-                    // Update gizmo drag with screen-space mouse (moves ALL dragged objects together)
-                    gizmo.UpdateDrag(mouseScreen, cam, vpw, vph);
-                    if (leftReleased)
+                    // If a popup/menu opened mid-drag, cancel the drag immediately
+                    // so clicks inside the popup don't move scene objects.
+                    if (suppressInput)
                     {
-                        // Capture the full dragged set BEFORE EndDrag clears it, so undo can
-                        // restore every object that was moved (multi-select aware).
-                        var draggedSet = gizmo.DragTargets.ToArray();
                         gizmo.EndDrag();
-                        // Record undo for the gizmo transform change(s)
-                        _bridge.OnGizmoDragEnded?.Invoke(draggedSet);
-                        Console.WriteLine($"[Viewport] Gizmo drag ended on {draggedSet.Length} object(s)");
+                    }
+                    else
+                    {
+                        // Update gizmo drag with screen-space mouse (moves ALL dragged objects together)
+                        gizmo.UpdateDrag(mouseScreen, cam, vpw, vph);
+                        if (leftReleased)
+                        {
+                            // Capture the full dragged set BEFORE EndDrag clears it, so undo can
+                            // restore every object that was moved (multi-select aware).
+                            var draggedSet = gizmo.DragTargets.ToArray();
+                            gizmo.EndDrag();
+                            // Record undo for the gizmo transform change(s)
+                            _bridge.OnGizmoDragEnded?.Invoke(draggedSet);
+                            Console.WriteLine($"[Viewport] Gizmo drag ended on {draggedSet.Length} object(s)");
+                        }
                     }
                 }
                 else
@@ -2827,7 +2864,7 @@ ImGui.SameLine();
                     TransformGizmo.Axis hitAxis = TransformGizmo.Axis.None;
                     if (_bridge.GetEditorGizmoCenter() is Vector3 gizmoPos2)
                         hitAxis = gizmo.HitTest(mouseScreen, cam, gizmoPos2, vpw, vph);
-                    if (leftClicked && hitAxis != TransformGizmo.Axis.None && selected != null)
+                    if (leftClicked && hitAxis != TransformGizmo.Axis.None && selected != null && !suppressInput)
                     {
                         // Snapshot transform + pivot override BEFORE dragging for EVERY selected
                         // object so undo can restore the whole multi-select drag.
@@ -2888,7 +2925,7 @@ ImGui.SameLine();
         var cam = _bridge.Camera;
         var dl = ImGui.GetWindowDrawList();
         var font = ImGui.GetFont();
-        float fontSize = 13f;
+        float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize * 0.85f : 13f;
 
         foreach (var obj in mgr.Objects)
         {
@@ -2967,6 +3004,10 @@ ImGui.SameLine();
         if (ImGui.GetIO().WantTextInput) return;
         // Don't snap the camera while the user is mid-gizmo-drag
         if (_bridge.EditorGizmo?.IsDragging == true) return;
+        // Don't snap the camera while terrain brush tools are active
+        if (_bridge.TerrainBrushActive) return;
+        // Don't snap while any popup/menu is open or just closed
+        if (_bridge.SuppressViewportInput) return;
 
         // Terrain brush tools are toolbar-only (no keyboard shortcuts) — the previous
         // B/C/S/F toggles were removed because S collided with fly-camera movement and the
@@ -3041,7 +3082,7 @@ ImGui.SameLine();
         string text = isOrtho ? $"{label} · Ortho" : $"{label} · Persp";
 
         var font = ImGui.GetFont();
-        float fontSize = 16f;
+        float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 16f;
         var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, text);
 
         var dl = ImGui.GetWindowDrawList();
@@ -3082,8 +3123,8 @@ ImGui.SameLine();
         if (terrainCount == 0) return;
 
         var font = ImGui.GetFont();
-        float fontSize = 15f;
-        float lineHeight = 19f;
+        float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 15f;
+        float lineHeight = fontSize * 1.3f;
         float pad = 6f;
 
         string[] lines =
@@ -3134,7 +3175,8 @@ ImGui.SameLine();
     {
         float padX = 8f, padY = 6f;
         var font = ImGui.GetFont();
-        var textSize = font.CalcTextSizeA(15f, float.MaxValue, 0f, "◉ Views");
+        float vpFs = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 15f;
+        var textSize = font.CalcTextSizeA(vpFs, float.MaxValue, 0f, "◉ Views");
         var min = new Vector2(_imageMin.X + 8f, _imageMin.Y + 8f);
         var max = min + new Vector2(textSize.X + padX * 2f, textSize.Y + padY * 1.6f);
         return (min, max);
@@ -3171,7 +3213,7 @@ ImGui.SameLine();
         dl.AddRect(btnMin, btnMax, borderCol, 5f, ImDrawFlags.None, 1f);
 
         var font = ImGui.GetFont();
-        float fontSize = 15f;
+        float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 15f;
         var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, "◉ Views");
         dl.AddText(font, fontSize, btnMin + new Vector2(8f, (btnMax.Y - btnMin.Y - textSize.Y) * 0.5f),
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.9f, 0.9f, 1f, 1f)), "◉ Views");
@@ -3278,7 +3320,9 @@ ImGui.SameLine();
 
             bool hovered = mouse.X >= min.X && mouse.X <= max.X &&
                            mouse.Y >= min.Y && mouse.Y <= max.Y;
-            bool clicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+            // Block toolbar clicks when any popup/menu is open (modal mode).
+            bool anyPopup = ImGui.IsPopupOpen(null, ImGuiPopupFlags.AnyPopupId);
+            bool clicked = hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !anyPopup;
 
             uint bg = ImGui.ColorConvertFloat4ToU32(hovered
                 ? (active ? activeCol : new Vector4(0.34f, 0.38f, 0.55f, 0.95f))
@@ -3287,8 +3331,9 @@ ImGui.SameLine();
             dl.AddRectFilled(min, max, bg, 4f);
             dl.AddRect(min, max, border, 4f, ImDrawFlags.None, 1f);
 
-            var textSize = font.CalcTextSizeA(12.5f, float.MaxValue, 0f, label);
-            dl.AddText(font, 12.5f, min + new Vector2((btnW - textSize.X) * 0.5f, (btnH - textSize.Y) * 0.5f),
+            float toolFs = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize * 0.83f : 12.5f;
+            var textSize = font.CalcTextSizeA(toolFs, float.MaxValue, 0f, label);
+            dl.AddText(font, toolFs, min + new Vector2((btnW - textSize.X) * 0.5f, (btnH - textSize.Y) * 0.5f),
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.92f, 1f, 1f)), label);
 
             if (hovered)

@@ -267,12 +267,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                                 _editorCamera.Position);
                         }
 
-                        // Mouse.Update must be called to refresh delta values
-                        // before SetCameraFlyMode reads them. Without this, stale
-                        // Mouse.DeltaX/Y from window creation/ImGui would rotate
-                        // the camera away from its initial orientation each frame.
-                        Mouse.Update(window, _editorCamera);
-                        _editorCamera.SetCameraFlyMode(window, dt, true);
+                        bool imguiCapture = ImGuiNET.ImGui.GetIO().WantCaptureMouse;
+                        bool popupOpen = ImGuiNET.ImGui.IsPopupOpen(null, ImGuiNET.ImGuiPopupFlags.AnyPopupId);
+                        // Also check post-popup suppress: input is suppressed for a few
+                        // frames after a popup closes so the click that closed the menu
+                        // doesn't leak into the scene.
+                        bool suppressAll = bridge.SuppressViewportInput || (popupOpen && imguiCapture);
+
+                        if (suppressAll)
+                        {
+                            Mouse.ResetScroll();
+                            Mouse.Update(window, _editorCamera);
+                            _editorCamera.SetCameraFlyMode(window, dt, false); // false = skip input
+                        }
+                        else
+                        {
+                            if (imguiCapture)
+                                Mouse.ResetScroll();
+                            Mouse.Update(window, _editorCamera);
+                            _editorCamera.SetCameraFlyMode(window, dt, true);
+                        }
                     }
                 }
 
@@ -641,6 +655,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     bridge.Camera = _editorCamera;
                     ApplyPendingEditorCamera(_editorCamera, bridge); // restore saved freefly pos when available
                     bridge.CameraPosition = _editorCamera.Position;
+                    bridge.CameraYaw = _editorCamera.Yaw;
+                    bridge.CameraPitch = _editorCamera.Pitch;
 
                     // Mark texture as rendered so the fallback below doesn't override with a cleared FBO
                     bridge.SceneTextureID = _sharedColorTex;
@@ -821,6 +837,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             cam.Position = pos;
             cam.Yaw = bridge.PendingCameraYaw ?? cam.Yaw;
             cam.Pitch = bridge.PendingCameraPitch ?? cam.Pitch;
+            cam.UpdateVectors();
+            cam.SyncSmoothVectors();
             bridge.PendingCameraPos = null;
             bridge.PendingCameraYaw = null;
             bridge.PendingCameraPitch = null;

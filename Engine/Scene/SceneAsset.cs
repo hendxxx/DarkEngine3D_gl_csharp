@@ -283,7 +283,16 @@ public class EditorObjectData
     public float[]? TerrainBrushColor { get; set; }
     /// <summary>Brush ring highlight transparency 0..1 — user-editable, saved with the scene.</summary>
     public float TerrainBrushAlpha { get; set; } = 0.35f;
+
+    // ── Dynamic terrain layers (per-layer texture, tiling, height range, PBR, stochastic) ──
+    /// <summary>Saved dynamic terrain layers. Null/empty = migrate from legacy 4-layer on load.</summary>
+    public List<TerrainLayer>? TerrainLayerList { get; set; }
+    /// <summary>Slope/cliff layer settings (optional override). Null = no slope layer.</summary>
+    public TerrainLayer? TerrainSlopeLayer { get; set; }
+    /// <summary>Whether the slope layer is enabled.</summary>
+    public bool TerrainSlopeEnabled { get; set; } = false;
 }
+
 
 /// <summary>
 /// A complete scene definition stored in a .ing file.

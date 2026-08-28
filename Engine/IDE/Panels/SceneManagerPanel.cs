@@ -936,7 +936,11 @@ public class SceneManagerPanel
                         TerrainPaintedData = obj.TerrainPaintedData,
                         TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                         TerrainPaintStrength = obj.TerrainPaintStrength,
-                        TerrainSplatData = obj.TerrainSplatData
+                        TerrainSplatData = obj.TerrainSplatData,
+                        // Dynamic terrain layers + slope
+                        TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
+                        TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
+                        TerrainSlopeEnabled = obj.TerrainSlopeEnabled
                     });
                 }
             }
@@ -1311,6 +1315,16 @@ public class SceneManagerPanel
                         obj.TerrainPaintStrength = objData.TerrainPaintStrength;
                         if (!string.IsNullOrEmpty(objData.TerrainSplatData))
                             obj.TerrainSplatData = objData.TerrainSplatData;
+
+                        // Dynamic terrain layers + slope
+                        if (objData.TerrainLayerList is { Count: > 0 } savedLayers)
+                            obj.TerrainLayerList = savedLayers.Select(l => l.Clone().WithResolvedPaths()).ToList();
+                        if (objData.TerrainSlopeLayer != null)
+                        {
+                            obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();
+                            obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
+                        }
+
                         obj.MarkDirty();
                         // Migrate old fixed-layer format to new dynamic layers
                         if (primType == EditorPrimitiveType.Plane)
@@ -1553,7 +1567,10 @@ public class SceneManagerPanel
                             TerrainPaintedData = obj.TerrainPaintedData,
                             TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                             TerrainPaintStrength = obj.TerrainPaintStrength,
-                            TerrainSplatData = obj.TerrainSplatData
+                            TerrainSplatData = obj.TerrainSplatData,
+                            TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
+                            TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
+                            TerrainSlopeEnabled = obj.TerrainSlopeEnabled
                         });
                     }
                 }

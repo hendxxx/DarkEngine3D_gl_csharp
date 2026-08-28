@@ -27,6 +27,7 @@ uniform sampler2D dynLayer4, dynLayer5, dynLayer6, dynLayer7;
 uniform int slopeEnabled;      // 0 = no slope, 1 = slope layer active
 uniform float slopeThreshold;  // steepness (1 - n.y) above which slope layer takes over
 uniform float slopeTilingVal;  // slope layer tiling
+uniform int slopeStochastic;    // slope layer random tile
 uniform sampler2D dynSlopeTex;
 
 // Legacy compat — map old uniforms
@@ -203,12 +204,11 @@ float smoothNoise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-// 1 = stochastic (randomized per-tile) sampling — breaks up the repeating tile pattern.
-// 0 (default) = plain texture sampling (deterministic, no tile jitter).
-uniform int useStochasticSampling;
+// Per-layer stochastic sampling: 1 = randomized per-tile, 0 = plain sampling.
+uniform int layerStochastic[MAX_LAYERS];
 
-vec3 sampleLayer(sampler2D tex, vec2 uv) {
-    if (useStochasticSampling == 0) {
+vec3 sampleLayer(sampler2D tex, vec2 uv, int stochastic) {
+    if (stochastic == 0) {
         return texture(tex, uv).rgb;
     }
     // Fast 2x2 stochastic: 4 samples instead of 9 — 3× cheaper
@@ -234,14 +234,14 @@ float contourFactor(float t) {
     return 1.0 - smoothstep(0.0, 0.06, min(band, 1.0 - band));
 }
 
-vec3 triplanarLayer(sampler2D tex, vec3 worldPos, vec3 normal, float tiling) {
+vec3 triplanarLayer(sampler2D tex, vec3 worldPos, vec3 normal, float tiling, int stochastic) {
     vec3 blending = abs(normalize(normal));
     blending = pow(blending, vec3(10.0));
     blending /= (blending.x + blending.y + blending.z);
 
-    vec3 xTex = sampleLayer(tex, worldPos.zy * tiling);
-    vec3 yTex = sampleLayer(tex, worldPos.xz * tiling);
-    vec3 zTex = sampleLayer(tex, worldPos.xy * tiling);
+    vec3 xTex = sampleLayer(tex, worldPos.zy * tiling, stochastic);
+    vec3 yTex = sampleLayer(tex, worldPos.xz * tiling, stochastic);
+    vec3 zTex = sampleLayer(tex, worldPos.xy * tiling, stochastic);
 
     return xTex * blending.x + yTex * blending.y + zTex * blending.z;
 }
@@ -299,49 +299,44 @@ float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, f
 // ======================================================
 // MAIN
 // ======================================================
-vec3 sampleDynLayer(int idx, vec2 worldXZ, vec3 norm, vec2 tiling) {
-    // Triplanar sample for a dynamic layer index
+vec3 sampleDynLayer(int idx, vec2 worldXZ, vec3 norm, vec2 tiling, int stochastic) {
     vec3 blending = abs(normalize(norm));
     blending = pow(blending, vec3(10.0));
     blending /= (blending.x + blending.y + blending.z);
 
-    vec2 uvXY = worldXZ * tiling;
-    vec2 uvXZ = worldXZ * tiling;
-    vec2 uvYZ = worldXZ * tiling;
-
     vec3 col = vec3(0.0);
     if (idx == 0) {
-        col = sampleLayer(dynLayer0, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer0, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer0, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer0, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer0, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer0, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 1) {
-        col = sampleLayer(dynLayer1, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer1, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer1, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer1, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer1, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer1, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 2) {
-        col = sampleLayer(dynLayer2, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer2, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer2, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer2, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer2, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer2, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 3) {
-        col = sampleLayer(dynLayer3, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer3, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer3, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer3, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer3, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer3, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 4) {
-        col = sampleLayer(dynLayer4, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer4, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer4, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer4, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer4, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer4, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 5) {
-        col = sampleLayer(dynLayer5, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer5, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer5, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer5, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer5, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer5, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 6) {
-        col = sampleLayer(dynLayer6, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer6, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer6, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer6, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer6, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer6, FragPos.xy * tiling, stochastic) * blending.z;
     } else {
-        col = sampleLayer(dynLayer7, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer7, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer7, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer7, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer7, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer7, FragPos.xy * tiling, stochastic) * blending.z;
     }
     return col;
 }
@@ -392,7 +387,7 @@ void main() {
     for (int i = 0; i < layerCount; i++) {
         if (weights[i] < 0.001) continue;
         vec2 tiling = layerTiling[i];
-        vec3 lc = sampleDynLayer(i, FragPos.xz, norm, tiling);
+        vec3 lc = sampleDynLayer(i, FragPos.xz, norm, tiling, layerStochastic[i]);
         texColor += lc * weights[i];
     }
     // Fallback: if no layers rendered, use a default gray
@@ -401,7 +396,7 @@ void main() {
     // ── SLOPE OVERRIDE ──
     if (slopeEnabled == 1) {
         float cliffMask = smoothstep(slopeThreshold - 0.1, slopeThreshold + 0.12, slope + noise * 0.1);
-        vec3 slopeColor = triplanarLayer(dynSlopeTex, FragPos, norm, slopeTilingVal);
+        vec3 slopeColor = triplanarLayer(dynSlopeTex, FragPos, norm, slopeTilingVal, slopeStochastic);
         texColor = mix(texColor, slopeColor, cliffMask * 0.85);
     }
 
@@ -415,10 +410,10 @@ void main() {
             if (t > 0.001) {
                 // Sample the first 4 layers for splat paint
                 vec3 painted = vec3(0.0);
-                if (layerCount > 0) painted += sampleDynLayer(0, FragPos.xz, norm, layerTiling[0]) * w2.x;
-                if (layerCount > 1) painted += sampleDynLayer(1, FragPos.xz, norm, layerTiling[1]) * w2.y;
-                if (layerCount > 2) painted += sampleDynLayer(2, FragPos.xz, norm, layerTiling[2]) * w2.z;
-                if (layerCount > 3) painted += sampleDynLayer(3, FragPos.xz, norm, layerTiling[3]) * w2.w;
+                if (layerCount > 0) painted += sampleDynLayer(0, FragPos.xz, norm, layerTiling[0], layerStochastic[0]) * w2.x;
+                if (layerCount > 1) painted += sampleDynLayer(1, FragPos.xz, norm, layerTiling[1], layerStochastic[1]) * w2.y;
+                if (layerCount > 2) painted += sampleDynLayer(2, FragPos.xz, norm, layerTiling[2], layerStochastic[2]) * w2.z;
+                if (layerCount > 3) painted += sampleDynLayer(3, FragPos.xz, norm, layerTiling[3], layerStochastic[3]) * w2.w;
                 painted /= t;
                 texColor = mix(texColor, painted, clamp(wsum * 1.5, 0.0, 1.0));
             }

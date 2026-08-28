@@ -494,6 +494,21 @@ public class IDE : IDisposable
                     }
                     ImGui.EndMenu();
                 }
+
+                // ── Viewport Font Size ──
+                if (ImGui.BeginMenu("Viewport Font"))
+                {
+                    float vpFontSize = Bridge.ViewportFontSize;
+                    if (ImGui.DragFloat("Font Size", ref vpFontSize, 0.5f, 8f, 32f, "%.0f"))
+                    {
+                        Bridge.ViewportFontSize = Math.Clamp(vpFontSize, 8f, 32f);
+                    }
+                    if (ImGui.IsItemDeactivatedAfterEdit())
+                    {
+                        var s = Config.SettingsSave.Load(); s.ViewportFontSize = Bridge.ViewportFontSize; Config.SettingsSave.Save(s);
+                    }
+                    ImGui.EndMenu();
+                }
                 ImGui.EndMenu();
             }
 
@@ -604,6 +619,7 @@ public class IDE : IDisposable
             var saved = Config.SettingsSave.Load();
             _savedIDEFontSize = saved.IDEFontSize;
             _cachedIDEFontPath = saved.IDEFontPath ?? "";
+            Bridge.ViewportFontSize = saved.ViewportFontSize > 0f ? saved.ViewportFontSize : 16f;
             _fontCacheLoaded = true;
         }
 

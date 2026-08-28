@@ -71,6 +71,9 @@ public class IDEBridge
     public float? PendingCameraYaw { get; set; }
     public float? PendingCameraPitch { get; set; }
 
+    // ── Viewport HUD font size (view label, stats, etc.) ──
+    public float ViewportFontSize { get; set; } = 16f;
+
     // ── Object list (for hierarchy) ──
     public IReadOnlyList<GltfObject>? AllObjects { get; set; }
 
@@ -81,6 +84,9 @@ public class IDEBridge
 
     // ── Viewport focus state (set by ViewportPanel each frame) ──
     public bool IsViewportFocused { get; set; }
+    /// <summary>True when viewport input should be suppressed (popup/menu was just open).
+    /// Set by ViewportPanel after detecting a popup close, cleared after a few frames.</summary>
+    public bool SuppressViewportInput { get; set; }
 
     // ── Viewport mouse/click state for click-to-select in IDE mode ──
     /// <summary>Set by ViewportPanel when the scene image is clicked.</summary>
@@ -481,6 +487,8 @@ public class IDEBridge
                 Camera.Position = p;
                 Camera.Yaw = next.CameraYaw ?? Camera.Yaw;
                 Camera.Pitch = next.CameraPitch ?? Camera.Pitch;
+                Camera.UpdateVectors();
+                Camera.SyncSmoothVectors();
             }
         }
     }

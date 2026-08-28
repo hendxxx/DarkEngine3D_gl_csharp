@@ -78,7 +78,7 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _sunDirLoc = -1, _lightColorLoc = -1, _viewPosLoc = -1;
     private static int _useFogLoc = -1, _fogColorLoc = -1;
     private static int _heightScaleLoc = -1, _layerLevelsLoc = -1;
-    private static int _slopeThresholdLoc = -1, _texTilingLoc = -1, _slopeTexTilingLoc = -1, _useStochasticSamplingLoc = -1;
+    private static int _slopeThresholdLoc = -1, _texTilingLoc = -1, _slopeTexTilingLoc = -1;
     private static int _usePaintMaskLoc = -1, _tex4Loc = -1;
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
@@ -90,7 +90,8 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static readonly int[] _dynLayerTilingLocs = new int[EditorObject.MaxTerrainLayers];
     private static readonly int[] _dynLayerHeightLocs = new int[EditorObject.MaxTerrainLayers];
     private static readonly int[] _dynLayerBlendLocs = new int[EditorObject.MaxTerrainLayers];
-    private static int _dynSlopeEnabledLoc = -1, _dynSlopeThresholdLoc = -1, _dynSlopeTilingLoc = -1, _dynSlopeTexLoc = -1;
+    private static readonly int[] _dynLayerStochasticLocs = new int[EditorObject.MaxTerrainLayers];
+    private static int _dynSlopeEnabledLoc = -1, _dynSlopeThresholdLoc = -1, _dynSlopeTilingLoc = -1, _dynSlopeTexLoc = -1, _dynSlopeStochasticLoc = -1;
     private readonly uint[] _dynLayerTextures = new uint[EditorObject.MaxTerrainLayers];
     private readonly string?[] _dynLayerPaths = new string?[EditorObject.MaxTerrainLayers];
     private uint _dynSlopeTexture = 0;
@@ -755,7 +756,6 @@ public unsafe class EditorTerrainMesh : IDisposable
         _slopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
         _texTilingLoc = GL.GetUniformLocation(_program, "texTiling");
         _slopeTexTilingLoc = GL.GetUniformLocation(_program, "slopeTexTiling");
-        _useStochasticSamplingLoc = GL.GetUniformLocation(_program, "useStochasticSampling");
         _usePaintMaskLoc = GL.GetUniformLocation(_program, "usePaintMask");
         _showHeatmapLoc = GL.GetUniformLocation(_program, "showHeatmap");
         _showContoursLoc = GL.GetUniformLocation(_program, "showContours");
@@ -771,11 +771,13 @@ public unsafe class EditorTerrainMesh : IDisposable
             _dynLayerTilingLocs[i] = GL.GetUniformLocation(_program, $"layerTiling[{i}]");
             _dynLayerHeightLocs[i] = GL.GetUniformLocation(_program, $"layerHeightRange[{i}]");
             _dynLayerBlendLocs[i] = GL.GetUniformLocation(_program, $"layerBlendSharpness[{i}]");
+            _dynLayerStochasticLocs[i] = GL.GetUniformLocation(_program, $"layerStochastic[{i}]");
         }
         _dynSlopeEnabledLoc = GL.GetUniformLocation(_program, "slopeEnabled");
         _dynSlopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
         _dynSlopeTilingLoc = GL.GetUniformLocation(_program, "slopeTilingVal");
         _dynSlopeTexLoc = GL.GetUniformLocation(_program, "dynSlopeTex");
+        _dynSlopeStochasticLoc = GL.GetUniformLocation(_program, "slopeStochastic");
 
         // CSM shadow uniforms
         _shadowFilterLoc = GL.GetUniformLocation(_program, "shadowFilterMode");
@@ -866,7 +868,6 @@ public unsafe class EditorTerrainMesh : IDisposable
         if (_slopeThresholdLoc >= 0) GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
         if (_texTilingLoc >= 0) GL.Uniform1f(_texTilingLoc, Math.Max(0.01f, owner.TerrainTexTiling));
         if (_slopeTexTilingLoc >= 0) GL.Uniform1f(_slopeTexTilingLoc, Math.Max(0.01f, owner.TerrainSlopeTexTiling));
-        if (_useStochasticSamplingLoc >= 0) GL.Uniform1i(_useStochasticSamplingLoc, owner.TerrainUseStochasticSampling ? 1 : 0);
 
         // ── NEW: Dynamic layer system ──
         var layers = owner.TerrainLayerList;
@@ -892,6 +893,10 @@ public unsafe class EditorTerrainMesh : IDisposable
 
             // Upload per-layer blend sharpness
             GL.Uniform1f(_dynLayerBlendLocs[i], layer.BlendSharpness);
+
+            // Upload per-layer stochastic sampling
+            if (_dynLayerStochasticLocs[i] >= 0)
+                GL.Uniform1i(_dynLayerStochasticLocs[i], layer.StochasticSampling ? 1 : 0);
         }
 
         // ── Slope layer ──
@@ -902,6 +907,7 @@ public unsafe class EditorTerrainMesh : IDisposable
             var slope = owner.TerrainSlopeLayer!;
             GL.Uniform1f(_dynSlopeThresholdLoc, Math.Clamp(slope.SlopeThreshold, 0.02f, 0.98f));
             GL.Uniform1f(_dynSlopeTilingLoc, Math.Max(0.01f, (slope.TilingX + slope.TilingY) * 0.5f));
+            if (_dynSlopeStochasticLoc >= 0) GL.Uniform1i(_dynSlopeStochasticLoc, slope.StochasticSampling ? 1 : 0);
             uint slopeUnit = (uint)(Const.GL_TEXTURE0 + EditorObject.MaxTerrainLayers);
             GL.ActiveTexture(slopeUnit);
             GL.BindTexture(Const.GL_TEXTURE_2D, _dynSlopeTexture);

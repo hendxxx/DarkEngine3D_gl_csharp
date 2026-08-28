@@ -44,6 +44,11 @@ public class InspectorPanel
 
         ImGui.Begin("Inspector", ref _visible);
 
+        // Use a child region for scrollable content — ImGui handles scroll-on-hover
+        // automatically for child regions, so no click is needed.
+        var avail = ImGui.GetContentRegionAvail();
+        ImGui.BeginChild("InspectorScroll", avail, ImGuiChildFlags.None, ImGuiWindowFlags.NoBackground);
+
         var uiElem = _bridge.SelectedUIElement;
         var obj = _bridge.SelectedObject;
         var agent = _bridge.SelectedAgent;
@@ -98,7 +103,8 @@ public class InspectorPanel
             RenderScenePropertiesFromSelection();
         }
 
-        ImGui.End();
+        ImGui.EndChild(); // InspectorScroll
+        ImGui.End(); // Inspector
     }
 
     private unsafe void RenderUIElementInspector(UIElement elem)
@@ -2317,41 +2323,29 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Vertical exaggeration — full-white heightmap pixels reach this height.");
 
-            float slope = editorObj.TerrainSlopeThreshold;
-            if (ImGui.SliderFloat("Slope", ref slope, 0.02f, 0.98f, "%.2f"))
+            // ── Auto recommendation buttons ──
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Quick Presets");
+            float btnW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) * 0.5f;
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.55f, 0.3f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.25f, 0.65f, 0.4f, 1f));
+            if (ImGui.Button("★ Quality", new Vector2(btnW, 24)))
             {
-                editorObj.TerrainSlopeThreshold = slope;
+                editorObj.TerrainChunkSize = 32; // 32×32 = 2048 tri/chunk (high detail)
                 editorObj.MarkDirty();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Steepness threshold: steeper slopes show the dirt/rock layer (like cliffs).");
-
-            float tiling = editorObj.TerrainTexTiling;
-            if (ImGui.SliderFloat("Texture Tiling", ref tiling, 0.05f, 2.0f, "%.2f"))
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("High quality: 32 triangles per chunk side (2048 tri/chunk)");
+            ImGui.SameLine();
+            ImGui.PopStyleColor(2);
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.55f, 0.45f, 0.2f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.65f, 0.55f, 0.3f, 1f));
+            if (ImGui.Button("⚡ Performance", new Vector2(btnW, 24)))
             {
-                editorObj.TerrainTexTiling = tiling;
+                editorObj.TerrainChunkSize = 8; // 8×8 = 128 tri/chunk (fast)
                 editorObj.MarkDirty();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("World-space texture repetition frequency.");
-
-            float slopeTiling = editorObj.TerrainSlopeTexTiling;
-            if (ImGui.SliderFloat("Slope Tiling", ref slopeTiling, 0.05f, 2.0f, "%.2f"))
-            {
-                editorObj.TerrainSlopeTexTiling = slopeTiling;
-                editorObj.MarkDirty();
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Texture tiling on steep cliff/slope surfaces.");
-
-            bool stochastic = editorObj.TerrainUseStochasticSampling;
-            if (ImGui.Checkbox("Random Tile Tiling", ref stochastic))
-            {
-                editorObj.TerrainUseStochasticSampling = stochastic;
-                editorObj.MarkDirty();
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern (OFF by default).");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Performance: 8 triangles per chunk side (128 tri/chunk)");
+            ImGui.PopStyleColor(2);
 
             ImGui.Spacing();
             ImGui.Separator();
@@ -2560,6 +2554,13 @@ public class InspectorPanel
                     activeLayer.TilingY = activeLayer.TilingX;
                     editorObj.MarkDirty();
                 }
+                bool stochastic = activeLayer.StochasticSampling;
+                if (ImGui.Checkbox("Random Tile", ref stochastic))
+                {
+                    activeLayer.StochasticSampling = stochastic;
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern.");
 
                 // PBR maps (collapsible)
                 if (ImGui.CollapsingHeader("PBR Maps"))
@@ -2671,12 +2672,39 @@ public class InspectorPanel
                     editorObj.MarkDirty();
                 }
                 float stx = slopeLayer.TilingX;
-                if (ImGui.DragFloat("Slope Tiling", ref stx, 0.01f, 0.01f, 5f, "%.2f"))
+                if (ImGui.DragFloat("Slope Tiling X", ref stx, 0.01f, 0.01f, 5f, "%.2f"))
                 {
                     slopeLayer.TilingX = Math.Max(0.01f, stx);
-                    slopeLayer.TilingY = stx;
+                    if (Math.Abs(slopeLayer.TilingX - slopeLayer.TilingY) < 0.001f)
+                        slopeLayer.TilingY = stx;
                     editorObj.MarkDirty();
                 }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Texture tiling on steep cliff/slope surfaces (X axis)");
+                float sty = slopeLayer.TilingY;
+                if (ImGui.DragFloat("Slope Tiling Y", ref sty, 0.01f, 0.01f, 5f, "%.2f"))
+                {
+                    slopeLayer.TilingY = Math.Max(0.01f, sty);
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Texture tiling on steep cliff/slope surfaces (Y axis)");
+                bool slopeLinked = Math.Abs(slopeLayer.TilingX - slopeLayer.TilingY) < 0.001f;
+                if (ImGui.Checkbox("Link X/Y##slope", ref slopeLinked))
+                {
+                    if (slopeLinked) slopeLayer.TilingY = slopeLayer.TilingX;
+                    editorObj.MarkDirty();
+                }
+                if (slopeLinked && Math.Abs(slopeLayer.TilingX - slopeLayer.TilingY) > 0.001f)
+                {
+                    slopeLayer.TilingY = slopeLayer.TilingX;
+                    editorObj.MarkDirty();
+                }
+                bool slopeStoch = slopeLayer.StochasticSampling;
+                if (ImGui.Checkbox("Random Tile##slope", ref slopeStoch))
+                {
+                    slopeLayer.StochasticSampling = slopeStoch;
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern.");
             }
 
             ImGui.Spacing();
