@@ -33,6 +33,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public bool SnapEnabled { get; set; } = true;
         /// <summary>UI snap grid size in px (viewport toolbar grid combo).</summary>
         public float SnapGridSize { get; set; } = 20f;
+        /// <summary>Font size for the viewport toolbar buttons (px).</summary>
+        public float ToolbarFontSize { get; set; } = 14f;
 
         // ── Shadow Settings (tuned live in the IDE Shadow Settings panel; persisted so
         // they survive restarts — ShadowSettings.Persist()/Apply()) ──

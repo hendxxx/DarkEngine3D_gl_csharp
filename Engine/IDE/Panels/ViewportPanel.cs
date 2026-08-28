@@ -161,6 +161,11 @@ public unsafe class ViewportPanel
     // ── Left-edge floating toolbar bounds (edit mode, drawn over the image) ──
     private Vector2 _leftToolbarMin, _leftToolbarMax;
 
+    // ── Viewport toolbar font size (adjustable via Views popup, persisted to settings) ──
+    private float _toolbarFontSize = 13f;
+    private float _toolbarBtnW = 120f;
+    private float _toolbarBtnH = 26f;
+
 
     /// <summary>Convert ImGui screen coordinates to scene pixel coordinates.</summary>
     private Vector2 ScreenToScene(Vector2 screenPos)
@@ -319,7 +324,7 @@ public unsafe class ViewportPanel
                             drawW = elemW;
                             drawH = elemH;
                             break;
-}
+                    }
 
                     // Draw image
                     drawList.AddImage((nint)texId,
@@ -1140,7 +1145,10 @@ public unsafe class ViewportPanel
             Text = "",
             IsVisible = true,
             BgColor = new Vector3(0f, 0f, 0f) * 0.55f,
-            X = 0, Y = 0, Width = w, Height = h,
+            X = 0,
+            Y = 0,
+            Width = w,
+            Height = h,
         };
         exitDlg.AddChild(overlay);
 
@@ -1186,7 +1194,8 @@ public unsafe class ViewportPanel
             Name = "ExitDlgCancel",
             Type = UIElementType.Button,
             Text = "Cancel",
-            Width = 150f, Height = 44f,
+            Width = 150f,
+            Height = 44f,
             X = dlgX + dlgW * 0.5f - 150f - 10f,
             Y = dlgY + 115f,
             FontSize = 20f,
@@ -1208,7 +1217,8 @@ public unsafe class ViewportPanel
             Name = "ExitDlgConfirm",
             Type = UIElementType.Button,
             Text = "Yes, Exit",
-            Width = 150f, Height = 44f,
+            Width = 150f,
+            Height = 44f,
             X = dlgX + dlgW * 0.5f + 10f,
             Y = dlgY + 115f,
             FontSize = 20f,
@@ -1350,6 +1360,13 @@ public unsafe class ViewportPanel
     /// <summary>Current snap grid size (px).</summary>
     public float SnapGridSize { get => _snapGridSize; set => _snapGridSize = value; }
 
+    public void SetToolbarFontSize(float fontSize)
+    {
+        _toolbarFontSize = Math.Clamp(fontSize, 8f, 24f);
+        _toolbarBtnH = Math.Max(20f, _toolbarFontSize + 12f);
+        _toolbarBtnW = Math.Max(90f, _toolbarFontSize * 9f);
+    }
+
     /// <summary>Persist the viewport grid/snap prefs to settings.json so they survive restarts.
     /// The grid on/off and snap values previously reset to their defaults (on/20px) every launch.</summary>
     public void PersistViewportPrefs()
@@ -1361,6 +1378,7 @@ public unsafe class ViewportPanel
             settings.ShowShadows = _bridge.ShowShadows;
             settings.SnapEnabled = _snapEnabled;
             settings.SnapGridSize = _snapGridSize;
+            settings.ToolbarFontSize = _toolbarFontSize;
             SettingsSave.Save(settings);
         }
         catch (Exception ex)
@@ -1412,7 +1430,7 @@ public unsafe class ViewportPanel
         _texH = savedTexH;
     }
 
-    
+
 
     /// <summary>True when the mouse currently hovers the SINGLE selection gizmo
     /// (group-center gizmo for multi-select). Used to keep marquee selection from
@@ -1634,7 +1652,7 @@ public unsafe class ViewportPanel
                     ImGui.EndCombo();
                 }
 
-ImGui.SameLine();
+                ImGui.SameLine();
                 ImGui.TextDisabled("|  " + (_snapEnabled ? $"Grid {_snapGridSize:F0}px" : "Free"));
 
                 // Show element position readout when selected
@@ -1642,8 +1660,8 @@ ImGui.SameLine();
                 if (selReadout != null)
                 {
                     ImGui.SameLine();
-ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
-                        $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
+                    ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
+                                            $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
                 }
 
                 // ── Editor tool buttons (gizmo mode, fly, reset, snap, terrain brushes,
@@ -1656,20 +1674,20 @@ ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
                     ImGui.SameLine();
                     ImGui.TextDisabled("|");
                     ImGui.SameLine();
-if (ImGui.Button("+Box"))
+                    if (ImGui.Button("+Box"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Box);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Box, pos);
                         if (obj != null) _bridge.SelectEditorObject(obj);
                     }
                     ImGui.SameLine();
-if (ImGui.Button("+Sphere"))
+                    if (ImGui.Button("+Sphere"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Sphere);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sphere, pos);
                         if (obj != null) _bridge.SelectEditorObject(obj);
                     }
-ImGui.SameLine();
+                    ImGui.SameLine();
                     if (ImGui.Button("+Plane"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Plane);
@@ -1902,327 +1920,327 @@ ImGui.SameLine();
             // For Loading and GameScene editor types, skip helpers (only MainMenu needs UI layout editing)
             if (!_previewMode)
             {
-            bool showHelpers = IsEditorSceneType(IDEBridge.SceneType.MainMenu);
+                bool showHelpers = IsEditorSceneType(IDEBridge.SceneType.MainMenu);
 
-            if (showHelpers)
-            {
-            var selUiElem = _bridge.SelectedUIElement;
-            var allSelected = _bridge.SelectedUIElements;
-
-            if (selUiElem != null)
-            {
-                var drawList = ImGui.GetWindowDrawList();
-                float pulse = 0.6f + 0.4f * MathF.Sin((float)ImGui.GetTime() * 3f);
-
-                // ── Helper: draw a wireframe for a single element ──
-                void DrawElemWireframe(UIElement elem, bool isPrimary)
+                if (showHelpers)
                 {
-                    float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
-                    float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
-                    float sx1 = _imageMin.X + ((elem.X + elem.Width) / _texW) * _imageSize.X;
-                    float sy1 = _imageMin.Y + ((elem.Y + elem.Height) / _texH) * _imageSize.Y;
+                    var selUiElem = _bridge.SelectedUIElement;
+                    var allSelected = _bridge.SelectedUIElements;
 
-                    float csx0 = Math.Clamp(sx0, _imageMin.X, _imageMax.X);
-                    float csy0 = Math.Clamp(sy0, _imageMin.Y, _imageMax.Y);
-                    float csx1 = Math.Clamp(sx1, _imageMin.X, _imageMax.X);
-                    float csy1 = Math.Clamp(sy1, _imageMin.Y, _imageMax.Y);
-                    bool fullyVis = csx0 == sx0 && csy0 == sy0 && csx1 == sx1 && csy1 == sy1;
-                    bool isFitToWindow = isPrimary && elem.ClickBehaviorLabel == "fittowindow";
-
-                    uint wireColor, fillColor, handleColor, handleBorder, bracketColor;
-
-                    if (isPrimary)
+                    if (selUiElem != null)
                     {
-                        wireColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, pulse * 0.9f));
-                        fillColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 0.08f));
-                        handleColor = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.95f));
-                        handleBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 1f));
-                        bracketColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.9f, 1.0f, pulse * 1.0f));
-                    }
-                    else
-                    {
-                        wireColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.6f, 0.9f, pulse * 0.4f));
-                        fillColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.6f, 0.9f, 0.04f));
-                        handleColor = 0;
-                        handleBorder = 0;
-                        bracketColor = 0;
-                    }
+                        var drawList = ImGui.GetWindowDrawList();
+                        float pulse = 0.6f + 0.4f * MathF.Sin((float)ImGui.GetTime() * 3f);
 
-                    drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1), fillColor);
-                    drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1), wireColor, 0f, ImDrawFlags.None, isPrimary ? 3f : 1.5f);
-
-                    if (isPrimary)
-                    {
-                        float bracketLen = Math.Min(16f, (csx1 - csx0) * 0.25f);
-                        drawList.AddLine(new Vector2(csx0, csy0), new Vector2(csx0 + bracketLen, csy0), bracketColor, 2f);
-                        drawList.AddLine(new Vector2(csx0, csy0), new Vector2(csx0, csy0 + bracketLen), bracketColor, 2f);
-                        drawList.AddLine(new Vector2(csx1, csy0), new Vector2(csx1 - bracketLen, csy0), bracketColor, 2f);
-                        drawList.AddLine(new Vector2(csx1, csy0), new Vector2(csx1, csy0 + bracketLen), bracketColor, 2f);
-                        drawList.AddLine(new Vector2(csx0, csy1), new Vector2(csx0 + bracketLen, csy1), bracketColor, 2f);
-                        drawList.AddLine(new Vector2(csx0, csy1), new Vector2(csx0, csy1 - bracketLen), bracketColor, 2f);
-                        drawList.AddLine(new Vector2(csx1, csy1), new Vector2(csx1 - bracketLen, csy1), bracketColor, 2f);
-                        drawList.AddLine(new Vector2(csx1, csy1), new Vector2(csx1, csy1 - bracketLen), bracketColor, 2f);
-
-                        float handleSz = 12f, handleHalf = handleSz * 0.5f;
-                        if (!isFitToWindow && fullyVis)
+                        // ── Helper: draw a wireframe for a single element ──
+                        void DrawElemWireframe(UIElement elem, bool isPrimary)
                         {
-                            Vector2[] corners = [
-                                new(sx0, sy0), new(sx1, sy0),
+                            float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
+                            float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
+                            float sx1 = _imageMin.X + ((elem.X + elem.Width) / _texW) * _imageSize.X;
+                            float sy1 = _imageMin.Y + ((elem.Y + elem.Height) / _texH) * _imageSize.Y;
+
+                            float csx0 = Math.Clamp(sx0, _imageMin.X, _imageMax.X);
+                            float csy0 = Math.Clamp(sy0, _imageMin.Y, _imageMax.Y);
+                            float csx1 = Math.Clamp(sx1, _imageMin.X, _imageMax.X);
+                            float csy1 = Math.Clamp(sy1, _imageMin.Y, _imageMax.Y);
+                            bool fullyVis = csx0 == sx0 && csy0 == sy0 && csx1 == sx1 && csy1 == sy1;
+                            bool isFitToWindow = isPrimary && elem.ClickBehaviorLabel == "fittowindow";
+
+                            uint wireColor, fillColor, handleColor, handleBorder, bracketColor;
+
+                            if (isPrimary)
+                            {
+                                wireColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, pulse * 0.9f));
+                                fillColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 0.08f));
+                                handleColor = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.95f));
+                                handleBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 1f));
+                                bracketColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.9f, 1.0f, pulse * 1.0f));
+                            }
+                            else
+                            {
+                                wireColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.6f, 0.9f, pulse * 0.4f));
+                                fillColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.6f, 0.9f, 0.04f));
+                                handleColor = 0;
+                                handleBorder = 0;
+                                bracketColor = 0;
+                            }
+
+                            drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1), fillColor);
+                            drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1), wireColor, 0f, ImDrawFlags.None, isPrimary ? 3f : 1.5f);
+
+                            if (isPrimary)
+                            {
+                                float bracketLen = Math.Min(16f, (csx1 - csx0) * 0.25f);
+                                drawList.AddLine(new Vector2(csx0, csy0), new Vector2(csx0 + bracketLen, csy0), bracketColor, 2f);
+                                drawList.AddLine(new Vector2(csx0, csy0), new Vector2(csx0, csy0 + bracketLen), bracketColor, 2f);
+                                drawList.AddLine(new Vector2(csx1, csy0), new Vector2(csx1 - bracketLen, csy0), bracketColor, 2f);
+                                drawList.AddLine(new Vector2(csx1, csy0), new Vector2(csx1, csy0 + bracketLen), bracketColor, 2f);
+                                drawList.AddLine(new Vector2(csx0, csy1), new Vector2(csx0 + bracketLen, csy1), bracketColor, 2f);
+                                drawList.AddLine(new Vector2(csx0, csy1), new Vector2(csx0, csy1 - bracketLen), bracketColor, 2f);
+                                drawList.AddLine(new Vector2(csx1, csy1), new Vector2(csx1 - bracketLen, csy1), bracketColor, 2f);
+                                drawList.AddLine(new Vector2(csx1, csy1), new Vector2(csx1, csy1 - bracketLen), bracketColor, 2f);
+
+                                float handleSz = 12f, handleHalf = handleSz * 0.5f;
+                                if (!isFitToWindow && fullyVis)
+                                {
+                                    Vector2[] corners = [
+                                        new(sx0, sy0), new(sx1, sy0),
                                 new(sx0, sy1), new(sx1, sy1)];
 
-                            // Draw glow behind each handle
-                            uint glowColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, pulse * 0.25f));
-                            foreach (var c in corners)
-                            {
-                                drawList.AddCircleFilled(
-                                    new Vector2(c.X, c.Y),
-                                    handleSz * 0.7f, glowColor, 12);
-                            }
+                                    // Draw glow behind each handle
+                                    uint glowColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, pulse * 0.25f));
+                                    foreach (var c in corners)
+                                    {
+                                        drawList.AddCircleFilled(
+                                            new Vector2(c.X, c.Y),
+                                            handleSz * 0.7f, glowColor, 12);
+                                    }
 
-                            // Draw handle squares
-                            foreach (var c in corners)
-                            {
-                                drawList.AddRectFilled(
-                                    new Vector2(c.X - handleHalf, c.Y - handleHalf),
-                                    new Vector2(c.X + handleHalf, c.Y + handleHalf),
-                                    handleColor, 3f);
-                                drawList.AddRect(
-                                    new Vector2(c.X - handleHalf, c.Y - handleHalf),
-                                    new Vector2(c.X + handleHalf, c.Y + handleHalf),
-                                    handleBorder, 3f, ImDrawFlags.None, 2f);
-                            }
+                                    // Draw handle squares
+                                    foreach (var c in corners)
+                                    {
+                                        drawList.AddRectFilled(
+                                            new Vector2(c.X - handleHalf, c.Y - handleHalf),
+                                            new Vector2(c.X + handleHalf, c.Y + handleHalf),
+                                            handleColor, 3f);
+                                        drawList.AddRect(
+                                            new Vector2(c.X - handleHalf, c.Y - handleHalf),
+                                            new Vector2(c.X + handleHalf, c.Y + handleHalf),
+                                            handleBorder, 3f, ImDrawFlags.None, 2f);
+                                    }
 
-                            // Draw directional arrow inside each handle
-                            uint arrowColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.15f, 0.2f, 0.9f));
-                            float arrowInset = handleHalf * 0.3f;
-                            drawList.AddLine(
-                                new Vector2(sx0 + arrowInset, sy0 + arrowInset),
-                                new Vector2(sx0 + handleHalf - arrowInset, sy0 + handleHalf - arrowInset),
-                                arrowColor, 1.8f);
-                            drawList.AddLine(
-                                new Vector2(sx0 + handleHalf - arrowInset * 2f, sy0 + arrowInset),
-                                new Vector2(sx0 + handleHalf - arrowInset, sy0 + handleHalf - arrowInset),
-                                arrowColor, 1.8f);
-                            drawList.AddLine(
-                                new Vector2(sx1 - arrowInset, sy0 + arrowInset),
-                                new Vector2(sx1 - handleHalf + arrowInset, sy0 + handleHalf - arrowInset),
-                                arrowColor, 1.8f);
-                            drawList.AddLine(
-                                new Vector2(sx1 - handleHalf + arrowInset * 2f, sy0 + arrowInset),
-                                new Vector2(sx1 - handleHalf + arrowInset, sy0 + handleHalf - arrowInset),
-                                arrowColor, 1.8f);
-                        } // end if (!isFitToWindow && fullyVis)
-                    } // end if (isPrimary)
-                } // end DrawElemWireframe
+                                    // Draw directional arrow inside each handle
+                                    uint arrowColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.15f, 0.2f, 0.9f));
+                                    float arrowInset = handleHalf * 0.3f;
+                                    drawList.AddLine(
+                                        new Vector2(sx0 + arrowInset, sy0 + arrowInset),
+                                        new Vector2(sx0 + handleHalf - arrowInset, sy0 + handleHalf - arrowInset),
+                                        arrowColor, 1.8f);
+                                    drawList.AddLine(
+                                        new Vector2(sx0 + handleHalf - arrowInset * 2f, sy0 + arrowInset),
+                                        new Vector2(sx0 + handleHalf - arrowInset, sy0 + handleHalf - arrowInset),
+                                        arrowColor, 1.8f);
+                                    drawList.AddLine(
+                                        new Vector2(sx1 - arrowInset, sy0 + arrowInset),
+                                        new Vector2(sx1 - handleHalf + arrowInset, sy0 + handleHalf - arrowInset),
+                                        arrowColor, 1.8f);
+                                    drawList.AddLine(
+                                        new Vector2(sx1 - handleHalf + arrowInset * 2f, sy0 + arrowInset),
+                                        new Vector2(sx1 - handleHalf + arrowInset, sy0 + handleHalf - arrowInset),
+                                        arrowColor, 1.8f);
+                                } // end if (!isFitToWindow && fullyVis)
+                            } // end if (isPrimary)
+                        } // end DrawElemWireframe
 
-                // ── Scene-type elements: NO wireframe (just skip the wireframe draw) ──
-                bool isSceneElem = selUiElem.Type == UIElementType.Scene;
+                        // ── Scene-type elements: NO wireframe (just skip the wireframe draw) ──
+                        bool isSceneElem = selUiElem.Type == UIElementType.Scene;
 
-                if (!isSceneElem)
-                    DrawElemWireframe(selUiElem, true);
+                        if (!isSceneElem)
+                            DrawElemWireframe(selUiElem, true);
 
-                // ── Scene-type elements: NO resize/move handlers ──
-                bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
+                        // ── Scene-type elements: NO resize/move handlers ──
+                        bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
 
-                if (isFitToWindowElem)
-                {
-                    selUiElem.X = 0;
-                    selUiElem.Y = 0;
-                    selUiElem.Width = _texW;
-                    selUiElem.Height = _texH;
-                }
-
-                if (isSceneElem)
-                {
-                    // Ensure any lingering drag mode from a previously-selected element is cleared
-                    _dragMode = DragMode.None;
-                }
-                else
-                {
-                // ── Interactive drag handling ──
-                float psx0 = _imageMin.X + (selUiElem.X / _texW) * _imageSize.X;
-                float psy0 = _imageMin.Y + (selUiElem.Y / _texH) * _imageSize.Y;
-                float psx1 = _imageMin.X + ((selUiElem.X + selUiElem.Width) / _texW) * _imageSize.X;
-                float psy1 = _imageMin.Y + ((selUiElem.Y + selUiElem.Height) / _texH) * _imageSize.Y;
-                float pcsx0 = Math.Clamp(psx0, _imageMin.X, _imageMax.X);
-                float pcsy0 = Math.Clamp(psy0, _imageMin.Y, _imageMax.Y);
-                float pcsx1 = Math.Clamp(psx1, _imageMin.X, _imageMax.X);
-                float pcsy1 = Math.Clamp(psy1, _imageMin.Y, _imageMax.Y);
-                bool primaryFullyVisible = pcsx0 == psx0 && pcsy0 == psy0 && pcsx1 == psx1 && pcsy1 == psy1;
-
-                // ── Corner detection radius: proportional to element screen size ──
-                float elemScreenW = psx1 - psx0;
-                float elemScreenH = psy1 - psy0;
-                float cornerRadius = Math.Max(6f, Math.Min(10f, Math.Min(elemScreenW, elemScreenH) * 0.25f));
-
-                // Normal drag end
-                if (cachedLeftReleased && _dragMode != DragMode.None)
-                {
-                    if (selUiElem != null && _bridge.RecordTransformUndo != null)
-                    {
-                        _bridge.RecordTransformUndo(
-                            selUiElem,
-                            _dragStartX, _dragStartY, _dragStartW, _dragStartH,
-                            selUiElem.X, selUiElem.Y, selUiElem.Width, selUiElem.Height);
-                    }
-                    _dragMode = DragMode.None;
-                }
-
-                // ── Top-center move handle detection ──
-                float mhx = (psx0 + psx1) * 0.5f;
-                float mhy = psy0;
-                bool overMoveHandle = primaryFullyVisible &&
-                    Math.Abs(viewportMouseScreen.X - mhx) <= cornerRadius &&
-                    viewportMouseScreen.Y >= mhy - cornerRadius * 2f &&
-                    viewportMouseScreen.Y <= mhy + cornerRadius * 0.5f;
-
-                // Corner detection (only when fully visible)
-                bool overTL = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx0) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy0) <= cornerRadius;
-                bool overTR = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx1) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy0) <= cornerRadius;
-                bool overBL = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx0) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy1) <= cornerRadius;
-                bool overBR = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx1) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy1) <= cornerRadius;
-                // Body = anywhere inside the element that is NOT a corner/move-handle zone
-                bool overBody = viewportMouseScreen.X >= pcsx0 && viewportMouseScreen.X <= pcsx1 &&
-                                viewportMouseScreen.Y >= pcsy0 && viewportMouseScreen.Y <= pcsy1 &&
-                                !overTL && !overTR && !overBL && !overBR && !overMoveHandle;
-
-                if (!isFitToWindowElem)
-                {
-                    if (overMoveHandle && _dragMode == DragMode.None)
-                    {
-                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
-                        ImGui.BeginTooltip();
-                        ImGui.Text("Drag to move");
-                        ImGui.EndTooltip();
-                    }
-                    else if (overTL || overBR)
-                    {
-                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNWSE);
-                        if (_dragMode == DragMode.None)
+                        if (isFitToWindowElem)
                         {
-                            ImGui.BeginTooltip();
-                            ImGui.Text("Drag corner to resize");
-                            ImGui.EndTooltip();
+                            selUiElem.X = 0;
+                            selUiElem.Y = 0;
+                            selUiElem.Width = _texW;
+                            selUiElem.Height = _texH;
                         }
-                    }
-                    else if (overTR || overBL)
-                    {
-                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNESW);
-                        if (_dragMode == DragMode.None)
-                        {
-                            ImGui.BeginTooltip();
-                            ImGui.Text("Drag corner to resize");
-                            ImGui.EndTooltip();
-                        }
-                    }
-                    else if (overBody && _dragMode == DragMode.None)
-                    {
-                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
-                        ImGui.BeginTooltip();
-                        ImGui.Text("Drag body to move");
-                        ImGui.EndTooltip();
-                    }
 
-                    // Click handling: move handle > corner > body
-                    if (_dragMode == DragMode.None && cachedLeftClicked)
-                    {
-                        bool dragStarted = false;
-                        if (overMoveHandle)
+                        if (isSceneElem)
                         {
-                            _dragMode = DragMode.Move;
-                            dragStarted = true;
+                            // Ensure any lingering drag mode from a previously-selected element is cleared
+                            _dragMode = DragMode.None;
                         }
                         else
                         {
-                            bool anyCorner = primaryFullyVisible && (overTL || overTR || overBL || overBR);
-                            if (anyCorner)
+                            // ── Interactive drag handling ──
+                            float psx0 = _imageMin.X + (selUiElem.X / _texW) * _imageSize.X;
+                            float psy0 = _imageMin.Y + (selUiElem.Y / _texH) * _imageSize.Y;
+                            float psx1 = _imageMin.X + ((selUiElem.X + selUiElem.Width) / _texW) * _imageSize.X;
+                            float psy1 = _imageMin.Y + ((selUiElem.Y + selUiElem.Height) / _texH) * _imageSize.Y;
+                            float pcsx0 = Math.Clamp(psx0, _imageMin.X, _imageMax.X);
+                            float pcsy0 = Math.Clamp(psy0, _imageMin.Y, _imageMax.Y);
+                            float pcsx1 = Math.Clamp(psx1, _imageMin.X, _imageMax.X);
+                            float pcsy1 = Math.Clamp(psy1, _imageMin.Y, _imageMax.Y);
+                            bool primaryFullyVisible = pcsx0 == psx0 && pcsy0 == psy0 && pcsx1 == psx1 && pcsy1 == psy1;
+
+                            // ── Corner detection radius: proportional to element screen size ──
+                            float elemScreenW = psx1 - psx0;
+                            float elemScreenH = psy1 - psy0;
+                            float cornerRadius = Math.Max(6f, Math.Min(10f, Math.Min(elemScreenW, elemScreenH) * 0.25f));
+
+                            // Normal drag end
+                            if (cachedLeftReleased && _dragMode != DragMode.None)
                             {
-                                if (overTL) { _dragMode = DragMode.ResizeTL; dragStarted = true; }
-                                else if (overTR) { _dragMode = DragMode.ResizeTR; dragStarted = true; }
-                                else if (overBL) { _dragMode = DragMode.ResizeBL; dragStarted = true; }
-                                else { _dragMode = DragMode.ResizeBR; dragStarted = true; }
+                                if (selUiElem != null && _bridge.RecordTransformUndo != null)
+                                {
+                                    _bridge.RecordTransformUndo(
+                                        selUiElem,
+                                        _dragStartX, _dragStartY, _dragStartW, _dragStartH,
+                                        selUiElem.X, selUiElem.Y, selUiElem.Width, selUiElem.Height);
+                                }
+                                _dragMode = DragMode.None;
                             }
-                            else if (overBody)
+
+                            // ── Top-center move handle detection ──
+                            float mhx = (psx0 + psx1) * 0.5f;
+                            float mhy = psy0;
+                            bool overMoveHandle = primaryFullyVisible &&
+                                Math.Abs(viewportMouseScreen.X - mhx) <= cornerRadius &&
+                                viewportMouseScreen.Y >= mhy - cornerRadius * 2f &&
+                                viewportMouseScreen.Y <= mhy + cornerRadius * 0.5f;
+
+                            // Corner detection (only when fully visible)
+                            bool overTL = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx0) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy0) <= cornerRadius;
+                            bool overTR = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx1) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy0) <= cornerRadius;
+                            bool overBL = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx0) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy1) <= cornerRadius;
+                            bool overBR = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx1) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy1) <= cornerRadius;
+                            // Body = anywhere inside the element that is NOT a corner/move-handle zone
+                            bool overBody = viewportMouseScreen.X >= pcsx0 && viewportMouseScreen.X <= pcsx1 &&
+                                            viewportMouseScreen.Y >= pcsy0 && viewportMouseScreen.Y <= pcsy1 &&
+                                            !overTL && !overTR && !overBL && !overBR && !overMoveHandle;
+
+                            if (!isFitToWindowElem)
                             {
-                                _dragMode = DragMode.Move;
-                                dragStarted = true;
+                                if (overMoveHandle && _dragMode == DragMode.None)
+                                {
+                                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
+                                    ImGui.BeginTooltip();
+                                    ImGui.Text("Drag to move");
+                                    ImGui.EndTooltip();
+                                }
+                                else if (overTL || overBR)
+                                {
+                                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNWSE);
+                                    if (_dragMode == DragMode.None)
+                                    {
+                                        ImGui.BeginTooltip();
+                                        ImGui.Text("Drag corner to resize");
+                                        ImGui.EndTooltip();
+                                    }
+                                }
+                                else if (overTR || overBL)
+                                {
+                                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNESW);
+                                    if (_dragMode == DragMode.None)
+                                    {
+                                        ImGui.BeginTooltip();
+                                        ImGui.Text("Drag corner to resize");
+                                        ImGui.EndTooltip();
+                                    }
+                                }
+                                else if (overBody && _dragMode == DragMode.None)
+                                {
+                                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
+                                    ImGui.BeginTooltip();
+                                    ImGui.Text("Drag body to move");
+                                    ImGui.EndTooltip();
+                                }
+
+                                // Click handling: move handle > corner > body
+                                if (_dragMode == DragMode.None && cachedLeftClicked)
+                                {
+                                    bool dragStarted = false;
+                                    if (overMoveHandle)
+                                    {
+                                        _dragMode = DragMode.Move;
+                                        dragStarted = true;
+                                    }
+                                    else
+                                    {
+                                        bool anyCorner = primaryFullyVisible && (overTL || overTR || overBL || overBR);
+                                        if (anyCorner)
+                                        {
+                                            if (overTL) { _dragMode = DragMode.ResizeTL; dragStarted = true; }
+                                            else if (overTR) { _dragMode = DragMode.ResizeTR; dragStarted = true; }
+                                            else if (overBL) { _dragMode = DragMode.ResizeBL; dragStarted = true; }
+                                            else { _dragMode = DragMode.ResizeBR; dragStarted = true; }
+                                        }
+                                        else if (overBody)
+                                        {
+                                            _dragMode = DragMode.Move;
+                                            dragStarted = true;
+                                        }
+                                    }
+
+                                    if (dragStarted)
+                                    {
+                                        _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
+                                        _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
+                                        _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
+
+                                        // Auto-center owns the position — manually dragging the element
+                                        // turns auto-center OFF so the drag isn't fought every frame (bug #6).
+                                        if (selUiElem.AutoCenter)
+                                        {
+                                            selUiElem.AutoCenter = false;
+                                            Console.WriteLine($"[Viewport] Auto-center disabled on '{selUiElem.Name}' (manual drag)");
+                                        }
+                                    }
+                                }
                             }
-                        }
 
-                        if (dragStarted)
-                        {
-                            _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
-                            _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
-                            _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
-
-                            // Auto-center owns the position — manually dragging the element
-                            // turns auto-center OFF so the drag isn't fought every frame (bug #6).
-                            if (selUiElem.AutoCenter)
+                            // Apply drag movement/resize while mouse is held
+                            if (_dragMode != DragMode.None && !cachedLeftReleased)
                             {
-                                selUiElem.AutoCenter = false;
-                                Console.WriteLine($"[Viewport] Auto-center disabled on '{selUiElem.Name}' (manual drag)");
+                                var currentMouseScene = ScreenToScene(viewportMouseScreen);
+                                float dx = currentMouseScene.X - _dragStartMouseScene.X;
+                                float dy = currentMouseScene.Y - _dragStartMouseScene.Y;
+                                const float minSize = 10f;
+
+                                float newX = selUiElem.X, newY = selUiElem.Y;
+                                float newW = selUiElem.Width, newH = selUiElem.Height;
+
+                                switch (_dragMode)
+                                {
+                                    case DragMode.Move:
+                                        newX = _dragStartX + dx; newY = _dragStartY + dy;
+                                        newX = SnapToGrid(newX); newY = SnapToGrid(newY);
+                                        break;
+                                    case DragMode.ResizeTL:
+                                        newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + dx);
+                                        newW = Math.Max(minSize, _dragStartW - dx);
+                                        newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + dy);
+                                        newH = Math.Max(minSize, _dragStartH - dy);
+                                        newX = SnapToGrid(newX); newY = SnapToGrid(newY);
+                                        newW = SnapToGrid(newW); newH = SnapToGrid(newH);
+                                        break;
+                                    case DragMode.ResizeTR:
+                                        newW = Math.Max(minSize, _dragStartW + dx);
+                                        newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + dy);
+                                        newH = Math.Max(minSize, _dragStartH - dy);
+                                        newY = SnapToGrid(newY);
+                                        newW = SnapToGrid(newW); newH = SnapToGrid(newH);
+                                        break;
+                                    case DragMode.ResizeBL:
+                                        newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + dx);
+                                        newW = Math.Max(minSize, _dragStartW - dx);
+                                        newH = Math.Max(minSize, _dragStartH + dy);
+                                        newX = SnapToGrid(newX);
+                                        newW = SnapToGrid(newW); newH = SnapToGrid(newH);
+                                        break;
+                                    case DragMode.ResizeBR:
+                                        newW = Math.Max(minSize, _dragStartW + dx);
+                                        newH = Math.Max(minSize, _dragStartH + dy);
+                                        newW = SnapToGrid(newW); newH = SnapToGrid(newH);
+                                        break;
+                                }
+
+                                selUiElem.X = newX; selUiElem.Y = newY;
+                                selUiElem.Width = newW; selUiElem.Height = newH;
                             }
-                        }
-                    }
-                }
 
-                // Apply drag movement/resize while mouse is held
-                if (_dragMode != DragMode.None && !cachedLeftReleased)
-                {
-                    var currentMouseScene = ScreenToScene(viewportMouseScreen);
-                    float dx = currentMouseScene.X - _dragStartMouseScene.X;
-                    float dy = currentMouseScene.Y - _dragStartMouseScene.Y;
-                    const float minSize = 10f;
-
-                    float newX = selUiElem.X, newY = selUiElem.Y;
-                    float newW = selUiElem.Width, newH = selUiElem.Height;
-
-                    switch (_dragMode)
-                    {
-                        case DragMode.Move:
-                            newX = _dragStartX + dx; newY = _dragStartY + dy;
-                            newX = SnapToGrid(newX); newY = SnapToGrid(newY);
-                            break;
-                        case DragMode.ResizeTL:
-                            newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + dx);
-                            newW = Math.Max(minSize, _dragStartW - dx);
-                            newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + dy);
-                            newH = Math.Max(minSize, _dragStartH - dy);
-                            newX = SnapToGrid(newX); newY = SnapToGrid(newY);
-                            newW = SnapToGrid(newW); newH = SnapToGrid(newH);
-                            break;
-                        case DragMode.ResizeTR:
-                            newW = Math.Max(minSize, _dragStartW + dx);
-                            newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + dy);
-                            newH = Math.Max(minSize, _dragStartH - dy);
-                            newY = SnapToGrid(newY);
-                            newW = SnapToGrid(newW); newH = SnapToGrid(newH);
-                            break;
-                        case DragMode.ResizeBL:
-                            newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + dx);
-                            newW = Math.Max(minSize, _dragStartW - dx);
-                            newH = Math.Max(minSize, _dragStartH + dy);
-                            newX = SnapToGrid(newX);
-                            newW = SnapToGrid(newW); newH = SnapToGrid(newH);
-                            break;
-                        case DragMode.ResizeBR:
-                            newW = Math.Max(minSize, _dragStartW + dx);
-                            newH = Math.Max(minSize, _dragStartH + dy);
-                            newW = SnapToGrid(newW); newH = SnapToGrid(newH);
-                            break;
-                    }
-
-                    selUiElem.X = newX; selUiElem.Y = newY;
-                    selUiElem.Width = newW; selUiElem.Height = newH;
-                }
-
-                // ── Post-apply safety: reset if mouse is neither down nor being released ──
-                if (_dragMode != DragMode.None && !cachedLeftDown && !cachedLeftReleased)
-                {
-                    _dragMode = DragMode.None;
-                }
-                } // end if (!isSceneElem)
-                } // end if (selUiElem != null)
+                            // ── Post-apply safety: reset if mouse is neither down nor being released ──
+                            if (_dragMode != DragMode.None && !cachedLeftDown && !cachedLeftReleased)
+                            {
+                                _dragMode = DragMode.None;
+                            }
+                        } // end if (!isSceneElem)
+                    } // end if (selUiElem != null)
                 } // end if (showHelpers)
             } // end if (!_previewMode)
 
@@ -2288,11 +2306,12 @@ ImGui.SameLine();
                 _bridge.ViewportCtrlHeld = ImGui.GetIO().KeyCtrl;
                 _bridge.ViewportShiftHeld = ImGui.GetIO().KeyShift;
 
-                // Clicks on the floating "◉ Views" overlay button must NOT count as
+                // Clicks on the floating "◉ Views" overlay button or any popup must NOT count as
                 // viewport clicks (no raycast select / deselect on empty space).
+                bool anyPopupOpen2 = ImGui.IsPopupOpen("viewport_camera_views");
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
                     && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar()
-                    && SkySunHandleAtMouse() == null)
+                    && SkySunHandleAtMouse() == null && !anyPopupOpen2)
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
@@ -2354,9 +2373,12 @@ ImGui.SameLine();
 
             // ── Terrain brush: click-drag to raise/lower terrain height in real-time ──
             // Runs before marquee/select/gizmo so a paint stroke never changes the selection.
+            // Skip when the Views popup or any ImGui popup is open (prevent click-through).
+            bool anyPopupOpen = ImGui.IsPopupOpen("viewport_camera_views");
             if (!_previewMode && _bridge.TerrainBrushActive && hasSceneTexture
                 && _bridge.EditorObjectManager != null && _bridge.Camera != null
-                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                && !anyPopupOpen)
             {
                 var cam = _bridge.Camera;
                 var mgr = _bridge.EditorObjectManager;
@@ -2404,7 +2426,9 @@ ImGui.SameLine();
                 float brushSpeed = brushDt * 60f * fineMult;
 
                 // Begin a paint stroke on first press over a terrain.
-                if (leftDown && mouseInView && hoverPoint.HasValue && hoverTerrain != null)
+                // Skip if mouse is over the left toolbar (prevents click-through from toolbar buttons).
+                if (leftDown && mouseInView && hoverPoint.HasValue && hoverTerrain != null
+                    && !IsMouseOverLeftToolbar())
                 {
                     if (_brushObj == null)
                     {
@@ -2435,32 +2459,38 @@ ImGui.SameLine();
                         switch (brushMode)
                         {
                             case 1: // 🎨 layer paint — Ctrl erases (decays weights).
-                            {
-                                bool erase = ImGui.GetIO().KeyCtrl;
-                                hoverTerrain.TryPaintLayerSurface(rayOrigin, rayDir,
-                                    _bridge.TerrainPaintLayerIndex, hoverTerrain.TerrainPaintStrength, erase, out _);
-                                break;
-                            }
+                                {
+                                    bool erase = ImGui.GetIO().KeyCtrl;
+                                    hoverTerrain.TryPaintLayerSurface(rayOrigin, rayDir,
+                                        _bridge.TerrainPaintLayerIndex, hoverTerrain.TerrainPaintStrength, erase, out _);
+                                    break;
+                                }
                             case 2: // 🌀 smooth — blend heights toward their local average.
-                            {
-                                hoverTerrain.TrySmoothTerrainSurface(rayOrigin, rayDir,
-                                    hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
-                                break;
-                            }
-                            case 3: // ⏹ flatten — blend toward the stroke's target height.
-                            {
-                                if (_flattenTargetReady)
-                                    hoverTerrain.TryFlattenTerrainSurface(rayOrigin, rayDir, _flattenTargetNorm,
+                                {
+                                    hoverTerrain.TrySmoothTerrainSurface(rayOrigin, rayDir,
                                         hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
-                                break;
-                            }
+                                    break;
+                                }
+                            case 3: // ⏹ flatten — blend toward the stroke's target height.
+                                {
+                                    if (_flattenTargetReady)
+                                        hoverTerrain.TryFlattenTerrainSurface(rayOrigin, rayDir, _flattenTargetNorm,
+                                            hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
+                                    break;
+                                }
+                            case 4: // ▬ flat — instantly flatten to ground level (height 0).
+                                {
+                                    hoverTerrain.TryFlattenTerrainSurface(rayOrigin, rayDir, 0f,
+                                        hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
+                                    break;
+                                }
                             default: // ⛰ sculpt — Ctrl lowers, plain drag raises.
-                            {
-                                bool lowering = ImGui.GetIO().KeyCtrl;
-                                float delta = (lowering ? -1f : 1f) * hoverTerrain.TerrainBrushStrength * brushSpeed;
-                                hoverTerrain.TryPaintTerrainSurface(rayOrigin, rayDir, delta, out _);
-                                break;
-                            }
+                                {
+                                    bool lowering = ImGui.GetIO().KeyCtrl;
+                                    float delta = (lowering ? -1f : 1f) * hoverTerrain.TerrainBrushStrength * brushSpeed;
+                                    hoverTerrain.TryPaintTerrainSurface(rayOrigin, rayDir, delta, out _);
+                                    break;
+                                }
                         }
                     }
                 }
@@ -3191,8 +3221,8 @@ ImGui.SameLine();
         {
             string[] viewLabels =
             [
-                "◉ Perspective    \t7", "⬆ Top-Down       \t1", "⬇ Bottom-Up      \t6",
-                "➤ Front          \t2", "⬅ Back           \t5", "→ Left            \t3", "← Right           \t4",
+                "◉ Perspective    \t7", "▲ Top-Down       \t1", "▼ Bottom-Up      \t6",
+                "▶ Front          \t2", "◀ Back           \t5", "► Left            \t3", "◄ Right           \t4",
             ];
             Camera.EditorViewPreset[] viewPresets =
             [
@@ -3211,12 +3241,12 @@ ImGui.SameLine();
 
             // ── Projection: Perspective vs Orthographic ──
             bool isOrtho = _bridge.Camera?.IsOrthographic ?? false;
-            if (ImGui.MenuItem("⊞ Perspective", null, !isOrtho))
+            if (ImGui.MenuItem("◉ Perspective", null, !isOrtho))
             {
                 if (isOrtho) _bridge.Camera?.ToggleProjection();
                 Console.WriteLine("[Viewport] Projection: perspective");
             }
-            if (ImGui.MenuItem("▦ Orthographic", null, isOrtho))
+            if (ImGui.MenuItem("□ Orthographic", null, isOrtho))
             {
                 if (!isOrtho) _bridge.Camera?.ToggleProjection();
                 Console.WriteLine("[Viewport] Projection: orthographic");
@@ -3232,10 +3262,22 @@ ImGui.SameLine();
             }
             ImGui.Separator();
 
-            if (ImGui.MenuItem("⌂ Focus Selection", _bridge.SelectedEditorObjects.Count > 0))
+            if (ImGui.MenuItem("⊙ Focus Selection", _bridge.SelectedEditorObjects.Count > 0))
             {
                 _bridge.FocusCameraOnSelected?.Invoke();
             }
+
+            // ── Toolbar Font Size Settings ──
+            ImGui.Separator();
+            ImGui.Text("Toolbar Settings");
+            if (ImGui.SliderFloat("Font Size", ref _toolbarFontSize, 8f, 24f, "%.1f"))
+            {
+                _toolbarBtnH = Math.Max(20f, _toolbarFontSize + 12f);
+                _toolbarBtnW = Math.Max(90f, _toolbarFontSize * 9f);
+                PersistViewportPrefs();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Font size for the left toolbar buttons (8-24px)");
+
             ImGui.EndPopup();
         }
     }
@@ -3260,7 +3302,7 @@ ImGui.SameLine();
         // Clear bounds until drawn below (guards stay inert if we bail early)
         _leftToolbarMin = _leftToolbarMax = new Vector2(-1f, -1f);
 
-        const float btnW = 118f, btnH = 25f, gap = 5f, padX = 8f;
+        float btnW = _toolbarBtnW, btnH = _toolbarBtnH, gap = 4f, padX = 8f;
         float x = _imageMin.X + padX;
         // Start below the floating "◉ Views" button (top-left corner)
         float y = GetViewportViewsButtonRect().max.Y + 6f;
@@ -3268,6 +3310,7 @@ ImGui.SameLine();
         var dl = ImGui.GetWindowDrawList();
         var mouse = ImGui.GetMousePos();
         var font = ImGui.GetFont();
+        float fontSize = _toolbarFontSize;
 
         // Small helper: draws one button, returns true when clicked this frame.
         bool ToolButton(string label, bool active, Vector4 activeCol, string tooltip, out float nextY)
@@ -3287,8 +3330,8 @@ ImGui.SameLine();
             dl.AddRectFilled(min, max, bg, 4f);
             dl.AddRect(min, max, border, 4f, ImDrawFlags.None, 1f);
 
-            var textSize = font.CalcTextSizeA(12.5f, float.MaxValue, 0f, label);
-            dl.AddText(font, 12.5f, min + new Vector2((btnW - textSize.X) * 0.5f, (btnH - textSize.Y) * 0.5f),
+            var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, label);
+            dl.AddText(font, fontSize, min + new Vector2((btnW - textSize.X) * 0.5f, (btnH - textSize.Y) * 0.5f),
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.92f, 1f, 1f)), label);
 
             if (hovered)
@@ -3358,41 +3401,49 @@ ImGui.SameLine();
 
         // ── Terrain brush tools ──
         bool sculptTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 0;
-        if (ToolButton(sculptTool ? "⛰ Sculpt ON" : "⛰ Sculpt", sculptTool, new Vector4(0.80f, 0.55f, 0.15f, 0.95f),
+        if (ToolButton(sculptTool ? "▲ Sculpt ON" : "▲ Sculpt", sculptTool, new Vector4(0.80f, 0.55f, 0.15f, 0.95f),
             "Sculpt: left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control — Ctrl+scroll resizes the brush.", out y))
         {
             ToggleTerrainBrushMode(0);
-            Console.WriteLine($"[Viewport] ⛰ Sculpt brush → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport] Sculpt brush → {_bridge.TerrainBrushActive}");
         }
 
         bool paintTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 1;
-        if (ToolButton(paintTool ? "🎨 Paint ON" : "🎨 Paint", paintTool, new Vector4(0.85f, 0.35f, 0.45f, 0.95f),
+        if (ToolButton(paintTool ? "◆ Paint ON" : "◆ Paint", paintTool, new Vector4(0.85f, 0.35f, 0.45f, 0.95f),
             "Layer paint: paints the selected layer (air/tanah/rumput/salju).\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.", out y))
         {
             ToggleTerrainBrushMode(1);
-            Console.WriteLine($"[Viewport] 🎨 Layer paint → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport] Paint brush → {_bridge.TerrainBrushActive}");
         }
 
         bool smoothTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 2;
-        if (ToolButton(smoothTool ? "🌀 Smooth ON" : "🌀 Smooth", smoothTool, new Vector4(0.45f, 0.30f, 0.75f, 0.95f),
+        if (ToolButton(smoothTool ? "○ Smooth ON" : "○ Smooth", smoothTool, new Vector4(0.45f, 0.30f, 0.75f, 0.95f),
             "Smooth: averages the heights in the brush area — removes spikes and terraced steps.\nHold Shift for fine control.", out y))
         {
             ToggleTerrainBrushMode(2);
-            Console.WriteLine($"[Viewport] 🌀 Smooth brush → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport] Smooth brush → {_bridge.TerrainBrushActive}");
         }
 
         bool flattenTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 3;
-        if (ToolButton(flattenTool ? "⏹ Flatten ON" : "⏹ Flatten", flattenTool, new Vector4(0.75f, 0.60f, 0.15f, 0.95f),
+        if (ToolButton(flattenTool ? "▬ Flatten ON" : "▬ Flatten", flattenTool, new Vector4(0.75f, 0.60f, 0.15f, 0.95f),
             "Flatten: levels the terrain to the height of the FIRST click of the stroke,\nlike Unreal's flatten tool. Hold Shift for fine control.", out y))
         {
             ToggleTerrainBrushMode(3);
-            Console.WriteLine($"[Viewport] ⏹ Flatten brush → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport] Flatten brush → {_bridge.TerrainBrushActive}");
+        }
+
+        bool flatTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 4;
+        if (ToolButton(flatTool ? "■ Flat ON" : "■ Flat", flatTool, new Vector4(0.40f, 0.70f, 0.55f, 0.95f),
+            "Flat: instantly flattens the terrain to ground level (height 0) in the brush area.\nGreat for creating flat pads, roads, or foundations. Hold Shift for fine control.", out y))
+        {
+            ToggleTerrainBrushMode(4);
+            Console.WriteLine($"[Viewport] Flat brush → {_bridge.TerrainBrushActive}");
         }
 
         // ── Height shading + contours overlays ──
         var shadedSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } sObj ? sObj : null;
         bool shadeOn = shadedSel?.TerrainShowHeatmap ?? false;
-        if (ToolButton(shadeOn ? "🗺 Shade ON" : "🗺 Shade", shadeOn, new Vector4(0.75f, 0.55f, 0.15f, 0.95f),
+        if (ToolButton(shadeOn ? "☀ Shade ON" : "☀ Shade", shadeOn, new Vector4(0.75f, 0.55f, 0.15f, 0.95f),
             "Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun — makes high/low areas obvious while sculpting.\nAuto-selects the first terrain plane if none is selected (also in the Inspector).", out y))
         {
             var shadeTerrain = _bridge.ResolveTerrainForOverlay();
@@ -3454,7 +3505,7 @@ ImGui.SameLine();
         }
 
         bool shadowsOn = _bridge.ShowShadows;
-        if (ToolButton(shadowsOn ? "☀ Shadow: On" : "☀ Shadow: Off", shadowsOn, new Vector4(0.55f, 0.45f, 0.20f, 0.95f),
+        if (ToolButton(shadowsOn ? "★ Shadow: On" : "★ Shadow: Off", shadowsOn, new Vector4(0.55f, 0.45f, 0.20f, 0.95f),
             "Toggle CSM shadows in the viewport\nOff = skip the shadow pass (fully lit, faster)", out y))
         {
             _bridge.ShowShadows = !shadowsOn;
@@ -3475,15 +3526,15 @@ ImGui.SameLine();
         if (w <= 0 || h <= 0) return;
 
         float time = (float)ImGui.GetTime();
-        
+
         // Dark gradient colors
         var col1 = ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.08f, 0.12f, 1f));
         var col2 = ImGui.ColorConvertFloat4ToU32(new Vector4(0.12f, 0.10f, 0.16f, 1f));
         var col3 = ImGui.ColorConvertFloat4ToU32(new Vector4(0.06f, 0.06f, 0.10f, 1f));
-        
+
         // Top-to-bottom gradient
         drawList.AddRectFilledMultiColor(min, max, col1, col1, col2, col2);
-        
+
         // Subtle animated horizontal band
         float bandY = min.Y + h * (0.3f + 0.2f * MathF.Sin(time * 0.5f));
         float bandH = h * 0.15f;

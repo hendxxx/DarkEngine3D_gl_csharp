@@ -2308,6 +2308,24 @@ public class InspectorPanel
             int totalTri = editorObj.TerrainChunkSize * editorObj.TerrainChunkSize * 2 * editorObj.TerrainChunksPerSide * editorObj.TerrainChunksPerSide;
             ImGui.TextDisabled($"Total: {totalTri:N0} triangles ({editorObj.TerrainChunksPerSide}×{editorObj.TerrainChunksPerSide} chunks)");
 
+            // ── Auto-recommend mesh density based on terrain footprint ──
+            if (ImGui.Button("💡 Suggest Density", new Vector2(-1, 24)))
+            {
+                // Estimate terrain footprint from scale (Box = 1:1, Plane = Scale.X × Scale.Z)
+                float footprint = MathF.Max(editorObj.Scale.X, editorObj.Scale.Z);
+                int recChunks, recGrid;
+                if (footprint < 50f) { recChunks = 4; recGrid = 8; }       // Small: ~256 tri total
+                else if (footprint < 200f) { recChunks = 8; recGrid = 16; } // Medium: ~4k tri
+                else if (footprint < 500f) { recChunks = 16; recGrid = 16; } // Large: ~16k tri
+                else { recChunks = 16; recGrid = 32; }                       // Huge: ~65k tri
+                editorObj.TerrainChunksPerSide = recChunks;
+                editorObj.TerrainChunkSize = recGrid;
+                editorObj.MarkDirty();
+                Console.WriteLine($"[Terrain] Suggested density: {recChunks}×{recChunks} chunks, {recGrid}×{recGrid} grid ({recGrid*recGrid*2:N0} tri/chunk, footprint={footprint:F0})");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Automatically pick chunk count and grid resolution based on terrain footprint size.\nSmall terrains get fewer triangles; large ones get more detail.");
+
             float hScale = editorObj.TerrainHeightScale;
             if (ImGui.DragFloat("Height Scale", ref hScale, 0.5f, 1f, 500f, "%.1f"))
             {

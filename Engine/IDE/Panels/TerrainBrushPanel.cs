@@ -137,6 +137,18 @@ public class TerrainBrushPanel
                 : "No manual layer paint on this terrain yet.");
 
         ImGui.Spacing();
+        ImGui.Separator();
+
+        // ── Quick action buttons ──
+        ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Quick Actions");
+        if (ImGui.Button("🌀 Smooth All Terrain", new Vector2(-1, 28)))
+        {
+            editorObj.SmoothAllTerrain(2, 0.4f);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Smooth the ENTIRE terrain heightmap in one pass (2 passes, 40%% strength).\nGood for removing rough spots after sculpting.");
+
+        ImGui.Spacing();
         ImGui.TextDisabled($"Brush settings + ring color are saved with '{editorObj.Name}'.");
         ImGui.End();
     }

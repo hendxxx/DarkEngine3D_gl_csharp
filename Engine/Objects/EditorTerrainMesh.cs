@@ -508,6 +508,47 @@ public unsafe class EditorTerrainMesh : IDisposable
         Generate(_lastChunkSize, _lastChunksPerSide, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
     }
 
+    /// <summary>Smooth the ENTIRE heightmap with a single-pass box blur.
+    /// Passes=1 gives mild smoothing; passes=2..3 gives progressively stronger effect.
+    /// strength controls how much each pass blends toward the average (0=no change, 1=full).</summary>
+    public void SmoothAllHeights(int passes = 1, float strength = 0.5f)
+    {
+        if (_heights.Length == 0 || _hmWidth < 3 || _hmHeight < 3) return;
+        if (passes <= 0 || strength <= 0f) return;
+
+        int k = 2;
+        float st = Math.Clamp(strength, 0f, 1f);
+
+        for (int p = 0; p < passes; p++)
+        {
+            float[] src = (float[])_heights.Clone();
+            for (int y = 0; y < _hmHeight; y++)
+            {
+                for (int x = 0; x < _hmWidth; x++)
+                {
+                    float sum = 0f;
+                    int count = 0;
+                    for (int oy = -k; oy <= k; oy++)
+                    {
+                        int sy = Math.Clamp(y + oy, 0, _hmHeight - 1);
+                        for (int ox = -k; ox <= k; ox++)
+                        {
+                            int sx = Math.Clamp(x + ox, 0, _hmWidth - 1);
+                            sum += src[sy * _hmWidth + sx];
+                            count++;
+                        }
+                    }
+                    float avg = sum / count;
+                    int idx = y * _hmWidth + x;
+                    _heights[idx] = Math.Clamp(src[idx] + (avg - src[idx]) * st, 0f, 1f);
+                }
+            }
+        }
+
+        IsModified = true;
+        Generate(_lastChunkSize, _lastChunksPerSide, _lastHeightScale, _lastFootprintX, _lastFootprintZ);
+    }
+
     /// <summary>
     /// Flatten one brush stamp: each affected pixel is blended toward <paramref name="targetNorm"/>
     /// (a normalized 0..1 height captured from the first stamp of the stroke, like Unreal's

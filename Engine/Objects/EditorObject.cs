@@ -552,6 +552,9 @@ public unsafe class EditorObject
     /// <summary>Brush falloff curve used by every brush tool: 0=Linear, 1=Smooth,
     /// 2=Sharp, 3=Spherical, 4=Soft.</summary>
     public int TerrainBrushFalloff { get; set; } = 1;
+    /// <summary>Bitmask controlling which terrain layers the brush affects.
+    /// Bit 0 = layer 0, bit 1 = layer 1, etc. 0 = all layers.</summary>
+    public int TerrainBrushMask { get; set; } = 0;
     /// <summary>Editor-only overlay: colorize the terrain by height (low=blue → high=red)
     /// with contour lines so the relief reads clearly. Transient — not saved to the scene.</summary>
     public bool TerrainShowHeatmap { get; set; } = false;
@@ -1459,6 +1462,16 @@ public unsafe class EditorObject
         float h = m.SampleLocalHeight(local.X, local.Y);
         worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
         return true;
+    }
+
+    /// <summary>Smooth the ENTIRE terrain heightmap in one pass.
+    /// Used by the "Smooth All" suggestion button in the Terrain Brush panel.</summary>
+    public void SmoothAllTerrain(int passes = 2, float strength = 0.4f)
+    {
+        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
+            return;
+        m.SmoothAllHeights(passes, strength);
+        Console.WriteLine($"[TerrainBrush] Smoothed entire heightmap on '{Name}' ({passes} passes, strength={strength:F2})");
     }
 
     /// <summary>Normalized (0..1) terrain height under the ray — the flatten tool captures
