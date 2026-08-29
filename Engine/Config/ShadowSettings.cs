@@ -278,7 +278,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 GltfConstantBias = s.ShadowGltfConstantBias;
                 GltfSlopeBias = s.ShadowGltfSlopeBias;
                 GltfMinBias = s.ShadowGltfMinBias;
-                BlendRange = s.ShadowBlendRange;
+                BlendRange = Math.Max(s.ShadowBlendRange, 0.1f);
                 NormalBias = s.ShadowNormalBias;
                 MaxWorldBias = [s.ShadowMaxWorldBias0, s.ShadowMaxWorldBias1, s.ShadowMaxWorldBias2];
                 CascadeOverlayAlpha = s.ShadowCascadeOverlayAlpha;

@@ -234,8 +234,9 @@ void main()
     vec3 shadowPos = center + vec3(0.0, shadowOffsetY, 0.0);
     vec4 lightSpacePos = vec4(shadowPos, 1.0);
     float centerDepth = length(viewPos - center);
-    float blendRange0 = cascadeEnds[0] * 0.1;
-    float blendRange1 = cascadeEnds[1] * 0.1;
+    float blendW = cascadeEnds[0] * 0.5;
+    float blendRange0 = blendW;
+    float blendRange1 = blendW;
     float bias = 0.0005;
 
     bool insideFrustum = false;
@@ -256,19 +257,19 @@ void main()
         if (centerDepth < cascadeEnds[0] - blendRange0) {
             shadow = CalculateShadow(lightSpaceMatrices[0] * lightSpacePos, shadowMap0, bias);
         } else if (centerDepth < cascadeEnds[0]) {
-            float t = (centerDepth - (cascadeEnds[0] - blendRange0)) / blendRange0;
+            float t = smoothstep(cascadeEnds[0] - blendRange0, cascadeEnds[0], centerDepth);
             float s0 = CalculateShadow(lightSpaceMatrices[0] * lightSpacePos, shadowMap0, bias);
-            float s1 = CalculateShadow(lightSpaceMatrices[1] * lightSpacePos, shadowMap1, bias * 1.5);
+            float s1 = CalculateShadow(lightSpaceMatrices[1] * lightSpacePos, shadowMap1, bias);
             shadow = mix(s0, s1, t);
         } else if (centerDepth < cascadeEnds[1] - blendRange1) {
-            shadow = CalculateShadow(lightSpaceMatrices[1] * lightSpacePos, shadowMap1, bias * 1.5);
+            shadow = CalculateShadow(lightSpaceMatrices[1] * lightSpacePos, shadowMap1, bias);
         } else if (centerDepth < cascadeEnds[1]) {
-            float t = (centerDepth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-            float s1 = CalculateShadow(lightSpaceMatrices[1] * lightSpacePos, shadowMap1, bias * 1.5);
-            float s2 = CalculateShadow(lightSpaceMatrices[2] * lightSpacePos, shadowMap2, bias * 3.0);
+            float t = smoothstep(cascadeEnds[1] - blendRange1, cascadeEnds[1], centerDepth);
+            float s1 = CalculateShadow(lightSpaceMatrices[1] * lightSpacePos, shadowMap1, bias);
+            float s2 = CalculateShadow(lightSpaceMatrices[2] * lightSpacePos, shadowMap2, bias);
             shadow = mix(s1, s2, t);
         } else {
-            shadow = CalculateShadow(lightSpaceMatrices[2] * lightSpacePos, shadowMap2, bias * 3.0);
+            shadow = 1.0;
         }
     }
 
