@@ -12,7 +12,7 @@ using System.IO;
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
 /// <summary>
-/// Viewport panel — displays the game's rendered scene texture inside an ImGui panel.
+/// Viewport panel  displays the game's rendered scene texture inside an ImGui panel.
 /// Supports aspect-ratio-correct scaling and click-to-select.
 /// Includes interactive UI element editing: drag to move, resize from corners.
 /// </summary>
@@ -21,7 +21,7 @@ public unsafe class ViewportPanel
     private readonly IDEBridge _bridge;
     private bool _visible = true;
 
-    // ── Snap-to-grid state ──
+    //  Snap-to-grid state 
     private bool _snapEnabled = true;
     private float _snapGridSize = 20f;
     private static readonly float[] SnapOptions = [5f, 10f, 20f, 40f, 50f];
@@ -30,30 +30,30 @@ public unsafe class ViewportPanel
     private float SnapToGrid(float value) =>
         _snapEnabled ? MathF.Round(value / _snapGridSize) * _snapGridSize : value;
 
-    // ── Preview mode: hides all editor helpers, shows scene as-in-game ──
+    //  Preview mode: hides all editor helpers, shows scene as-in-game 
     private bool _previewMode = false;
-    // ── Fullscreen mode: used by In-Game Mode (F8), skips toolbar, fullscreen window ──
+    //  Fullscreen mode: used by In-Game Mode (F8), skips toolbar, fullscreen window 
     private bool _fullscreenMode = false;
 
-    // ── Initial sync guard: ensures InGameActive matches _previewMode on first frame ──
+    //  Initial sync guard: ensures InGameActive matches _previewMode on first frame 
     private bool _initialSyncDone = false;
 
-    // ── In-game mode: last element clicked by mouse (for syncing keyboard focus) ──
+    //  In-game mode: last element clicked by mouse (for syncing keyboard focus) 
     /// <summary>Set by DrawEditorUIPreview when a mouse click occurs in preview mode.
     /// Read and reset by IDE.RenderInGameMode() to sync keyboard focus to the clicked element.</summary>
     public UIElement? LastInGameClickedElement { get; set; }
 
-    // ── Drag state for UI element editing ──
+    //  Drag state for UI element editing 
     private enum DragMode { None, Move, ResizeTL, ResizeTR, ResizeBL, ResizeBR }
     private DragMode _dragMode = DragMode.None;
     // Starting state when drag began (scene coords)
     private float _dragStartX, _dragStartY, _dragStartW, _dragStartH;
     private Vector2 _dragStartMouseScene; // mouse position in scene coords when drag started
 
-    // ── Model Editor Gizmo ──
+    //  Model Editor Gizmo 
     private readonly TransformGizmo _gizmo = new();
 
-    // ── Marquee (rubber-band) multi-select state ──
+    //  Marquee (rubber-band) multi-select state 
     /// <summary>Scene-space (0..texW, 0..texH, Y-down) position where the left button
     /// was pressed to start a marquee selection. Null when no marquee is in progress.</summary>
     private Vector2? _marqueeStart = null;
@@ -64,19 +64,19 @@ public unsafe class ViewportPanel
     private int _postPopupFrames = 0;
     private bool _wasPopupOpen = false;
 
-    // ── Terrain brush paint state ──
+    //  Terrain brush paint state 
     /// <summary>Object being painted in the current brush stroke (null = no stroke).</summary>
     private EditorObject? _brushObj = null;
-    /// <summary>Height snapshot taken when the stroke began (for undo, ⛰/🌀/⏹ modes).</summary>
+    /// <summary>Height snapshot taken when the stroke began (for undo, // modes).</summary>
     private float[]? _brushBefore = null;
     /// <summary>Target (normalized 0..1) height captured from the first stamp of the current
-    /// ⏹ flatten stroke — the terrain is leveled toward it (Unreal-style flatten).</summary>
+    ///  flatten stroke  the terrain is leveled toward it (Unreal-style flatten).</summary>
     private float _flattenTargetNorm = 0f;
     /// <summary>True once <see cref="_flattenTargetNorm"/> was captured for the current stroke
     /// (guard: never flatten toward a stale/zero target if the capture ray missed).</summary>
     private bool _flattenTargetReady = false;
 
-    // ── Sky sun gizmo drag state ──
+    //  Sky sun gizmo drag state 
     /// <summary>Sky object whose sun handle is being dragged (null = not dragging).</summary>
     private EditorObject? _skySunDragObj = null;
     /// <summary>Pitch/yaw captured when the sun drag started (for undo; null = followed time of day).</summary>
@@ -84,17 +84,17 @@ public unsafe class ViewportPanel
     private float? _skySunDragOldYaw = null;
     /// <summary>First Light marker kept in sync with the sun drag (null = none). A placed
     /// Light marker overrides the sky sun for actual lighting, so its direction follows
-    /// the sun being dragged — lighting then matches the gizmo in real time.</summary>
+    /// the sun being dragged  lighting then matches the gizmo in real time.</summary>
     private EditorObject? _skySunDragLightObj = null;
     /// <summary>Light marker direction captured when the drag started (for undo).</summary>
     private Vector3? _skySunDragOldLightDir = null;
-    /// <summary>Splat snapshot taken when the stroke began (for undo, 🎨 mode).</summary>
+    /// <summary>Splat snapshot taken when the stroke began (for undo,  mode).</summary>
     private byte[]? _brushSplatBefore = null;
     /// <summary>Terrain currently showing the 3D brush ring (cleared when the hover moves
     /// or the brush tool is turned off, so no stale ring is left behind).</summary>
     private EditorObject? _brushIndicatorObj = null;
 
-    /// <summary>Colors of the 4 paintable layers — used for the
+    /// <summary>Colors of the 4 paintable layers  used for the
     /// toolbar chips and the brush cursor while painting.</summary>
     private static readonly Vector4[] TerrainLayerColors =
     [
@@ -114,8 +114,8 @@ public unsafe class ViewportPanel
         }
     }
 
-    /// <summary>Activate the terrain brush tool in the given mode (0=⛰ sculpt, 1=🎨 layer
-    /// paint, 2=🌀 smooth, 3=⏹ flatten), clearing any in-progress stroke and disabling fly
+    /// <summary>Activate the terrain brush tool in the given mode (0= sculpt, 1= layer
+    /// paint, 2= smooth, 3= flatten), clearing any in-progress stroke and disabling fly
     /// mouse-look (both use the mouse, so painting must never rotate the camera).</summary>
     private void EnableTerrainBrush(int mode)
     {
@@ -126,7 +126,7 @@ public unsafe class ViewportPanel
         _brushSplatBefore = null;
         _flattenTargetNorm = 0f;
         _flattenTargetReady = false;
-        // Abort any in-flight sky sun drag — the brush owns the mouse now.
+        // Abort any in-flight sky sun drag  the brush owns the mouse now.
         _skySunDragObj = null;
         _skySunDragOldPitch = null;
         _skySunDragOldYaw = null;
@@ -137,8 +137,8 @@ public unsafe class ViewportPanel
             _bridge.Camera.FlyMouseLook = false;
     }
 
-    /// <summary>Toggle a terrain brush tool on/off (mode: 0=⛰ sculpt, 1=🎨 paint,
-    /// 2=🌀 smooth, 3=⏹ flatten). Turning the active tool off clears the stroke state.</summary>
+    /// <summary>Toggle a terrain brush tool on/off (mode: 0= sculpt, 1= paint,
+    /// 2= smooth, 3= flatten). Turning the active tool off clears the stroke state.</summary>
     private void ToggleTerrainBrushMode(int mode)
     {
         if (_bridge.TerrainBrushActive && _bridge.TerrainBrushMode == mode)
@@ -158,11 +158,11 @@ public unsafe class ViewportPanel
     }
 
 
-    // ── Cached conversion data (set each frame in overlay) ──
+    //  Cached conversion data (set each frame in overlay) 
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
 
-    // ── Left-edge floating toolbar bounds (edit mode, drawn over the image) ──
+    //  Left-edge floating toolbar bounds (edit mode, drawn over the image) 
     private Vector2 _leftToolbarMin, _leftToolbarMax;
 
 
@@ -172,7 +172,7 @@ public unsafe class ViewportPanel
         float relX = screenPos.X - _imageMin.X;
         float relY = screenPos.Y - _imageMin.Y;
         float u = relX / _imageSize.X;
-        float v = relY / _imageSize.Y; // No Y-flip — scene Y=0 is top, same as ImGui
+        float v = relY / _imageSize.Y; // No Y-flip  scene Y=0 is top, same as ImGui
         return new Vector2(u * _texW, v * _texH);
     }
 
@@ -180,7 +180,7 @@ public unsafe class ViewportPanel
     private Vector2 SceneToScreen(float sceneX, float sceneY)
     {
         float u = sceneX / _texW;
-        float v = sceneY / _texH; // No Y-flip — scene Y=0 is top, same as ImGui
+        float v = sceneY / _texH; // No Y-flip  scene Y=0 is top, same as ImGui
         return new Vector2(_imageMin.X + u * _imageSize.X, _imageMin.Y + v * _imageSize.Y);
     }
 
@@ -215,7 +215,7 @@ public unsafe class ViewportPanel
                 elem.Y = Math.Max(0f, (_texH - elem.Height) * 0.5f);
             }
 
-            // Convert scene coords to screen coords (no Y-flip — scene Y=0 is top)
+            // Convert scene coords to screen coords (no Y-flip  scene Y=0 is top)
             float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
             float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
             float sx1 = _imageMin.X + ((elem.X + elem.Width) / _texW) * _imageSize.X;
@@ -245,13 +245,13 @@ public unsafe class ViewportPanel
             var bgColor = useHover ? elem.HoverBgColor : elem.BgColor;
             var borderColor = useHover ? elem.HoverBorderColor : elem.BorderColor;
 
-            // ── Label default: skip background if BgColor is still default (0,0,0) ──
+            //  Label default: skip background if BgColor is still default (0,0,0) 
             // This makes new Labels transparent by default, but still allows users to
             // customize BgColor/BorderColor for visible backgrounds.
             bool isLabel = elem.Type == UIElementType.Label;
             bool labelDefaultBg = isLabel && bgColor.X < 0.001f && bgColor.Y < 0.001f && bgColor.Z < 0.001f;
 
-            // ── Draw background (filled rect) — skip for Labels with default transparent colors ──
+            //  Draw background (filled rect)  skip for Labels with default transparent colors 
             // Uses elemOpacity directly as alpha so the element's Opacity property is the sole
             // control for transparency (no hardcoded multiplier).
             if (!labelDefaultBg)
@@ -261,7 +261,7 @@ public unsafe class ViewportPanel
                     4f);
             }
 
-            // ── Draw image element on top of background ──
+            //  Draw image element on top of background 
             bool hasImage = !string.IsNullOrEmpty(elem.ImagePath);
             if (hasImage)
             {
@@ -339,7 +339,7 @@ public unsafe class ViewportPanel
                 }
                 else if (!string.IsNullOrEmpty(elem.FallbackText))
                 {
-                    // Image not loaded — show fallback text (only if set)
+                    // Image not loaded  show fallback text (only if set)
                     drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
                         ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.2f, 0.2f, 0.6f * elemOpacity)));
                     drawList.AddText(new Vector2(csx0 + 4f, csy0 + 4f),
@@ -348,7 +348,7 @@ public unsafe class ViewportPanel
                 }
             }
 
-            // ── Draw text label with element's FontSize (skip for image elements & checkbox — checkbox has its own label rendering) ──
+            //  Draw text label with element's FontSize (skip for image elements & checkbox  checkbox has its own label rendering) 
             if (!hasImage && elem.Type != UIElementType.Checkbox && !string.IsNullOrEmpty(elem.Text))
             {
                 string label = elem.Text;
@@ -392,7 +392,7 @@ public unsafe class ViewportPanel
                     label);
             }
 
-            // ── Draw border — skip for Labels with default transparent border colors ──
+            //  Draw border  skip for Labels with default transparent border colors 
             bool labelDefaultBorder = isLabel && borderColor.X < 0.001f && borderColor.Y < 0.001f && borderColor.Z < 0.001f;
             if (!labelDefaultBorder)
             {
@@ -401,7 +401,7 @@ public unsafe class ViewportPanel
                     4f, ImDrawFlags.None, 1.5f);
             }
 
-            // ── Focus highlight (keyboard navigation) — glowing cyan border ──
+            //  Focus highlight (keyboard navigation)  glowing cyan border 
             if (focusedElement != null && elem == focusedElement && isPreview)
             {
                 float glowExtra = 3f;
@@ -415,16 +415,16 @@ public unsafe class ViewportPanel
                     focusCol, 4f, ImDrawFlags.None, 2f);
             }
 
-            // ════════════════════════════════════════════
+            // 
             //  Type-Specific Element Rendering
-            // ════════════════════════════════════════════
+            // 
             float elemScreenW = sx1 - sx0;
             float elemScreenH = sy1 - sy0;
             float innerPad = 6f;
 
             if (elem.Type == UIElementType.SliderNumber)
             {
-                // ── SliderNumber: track + filled portion + thumb + value label ──
+                //  SliderNumber: track + filled portion + thumb + value label 
                 float trackY = csy0 + elemScreenH * 0.5f - 3f;
                 float trackHStyle = Math.Max(2f, elem.SliderTrackHeight);
                 float trackX = csx0 + innerPad;
@@ -498,7 +498,7 @@ public unsafe class ViewportPanel
                     }
                 }
 
-                // ── Interactive slider drag (preview mode only) ──
+                //  Interactive slider drag (preview mode only) 
                 if (isPreview && isHovered && isMouseDown && !blockedByOverlay && trackW > 1f)
                 {
                     float mouseRelX = mouseScreen.X - trackX;
@@ -511,7 +511,7 @@ public unsafe class ViewportPanel
             }
             else if (elem.Type == UIElementType.SliderText)
             {
-                // ── SliderText: track + filled portion + thumb + text label ──
+                //  SliderText: track + filled portion + thumb + text label 
                 float trackY = csy0 + elemScreenH * 0.5f - 3f;
                 float trackHStyle = Math.Max(2f, elem.SliderTrackHeight);
                 float trackX = csx0 + innerPad;
@@ -583,7 +583,7 @@ public unsafe class ViewportPanel
                     }
                 }
 
-                // ── Interactive slider drag (preview mode only) ──
+                //  Interactive slider drag (preview mode only) 
                 if (isPreview && isHovered && isMouseDown && !blockedByOverlay && trackW > 1f && elem.TextOptions.Count > 0)
                 {
                     float mouseRelX = mouseScreen.X - trackX;
@@ -595,7 +595,7 @@ public unsafe class ViewportPanel
             }
             else if (elem.Type == UIElementType.Checkbox)
             {
-                // ── Checkbox: square + checkmark + label ──
+                //  Checkbox: square + checkmark + label 
                 float boxSize = Math.Min(24f, elemScreenH - innerPad * 2f);
                 float boxX = csx0 + innerPad;
                 float boxY = csy0 + (elemScreenH - boxSize) * 0.5f;
@@ -638,7 +638,7 @@ public unsafe class ViewportPanel
             }
             else if (elem.Type == UIElementType.Dropdown)
             {
-                // ── Dropdown: box + selected text + dropdown arrow ──
+                //  Dropdown: box + selected text + dropdown arrow 
                 float arrowSize = 10f;
                 float arrowX = csx1 - innerPad - arrowSize;
                 float arrowY = csy0 + (elemScreenH - arrowSize) * 0.5f;
@@ -696,7 +696,7 @@ public unsafe class ViewportPanel
             }
             else if (elem.Type == UIElementType.TextBox)
             {
-                // ── TextBox: input field with placeholder or current text ──
+                //  TextBox: input field with placeholder or current text 
                 float inputPadX = 10f;
                 float inputX = csx0 + inputPadX;
                 float inputY = csy0 + 4f;
@@ -768,9 +768,9 @@ public unsafe class ViewportPanel
                 }
             }
 
-            // ── Click handling ──
+            //  Click handling 
             // Preview mode: trigger behavior; Editor mode: select element
-            // blockedByOverlay already computed above — blocks clicks on elements behind an overlay
+            // blockedByOverlay already computed above  blocks clicks on elements behind an overlay
             // Use leftClicked directly AND also check IsMouseClicked for in-game mode (no ImGui windows)
             bool clickActive = leftClicked || ImGui.IsMouseClicked(ImGuiMouseButton.Left);
             // Drag guard: in editor mode, skip clicks while dragging; preview mode: always allow
@@ -786,7 +786,7 @@ public unsafe class ViewportPanel
 
                 if (isPreview)
                 {
-                    // ── Checkbox: ALWAYS toggle first (primary action), then run OnClick if present ──
+                    //  Checkbox: ALWAYS toggle first (primary action), then run OnClick if present 
                     if (elem.Type == UIElementType.Checkbox)
                     {
                         elem.IsChecked = !elem.IsChecked;
@@ -818,7 +818,7 @@ public unsafe class ViewportPanel
                             HandlePreviewBehavior(elem);
                         }
                     }
-                    // ── Default interactive element behaviors (fallback when no custom handler) ──
+                    //  Default interactive element behaviors (fallback when no custom handler) 
                     else if (elem.Type == UIElementType.Dropdown && elem.Options.Count > 0)
                     {
                         elem.SelectedIndex = (elem.SelectedIndex + 1) % elem.Options.Count;
@@ -836,13 +836,13 @@ public unsafe class ViewportPanel
             }
 
 
-            // ── Always recurse for children (so they render regardless of click state) ──
+            //  Always recurse for children (so they render regardless of click state) 
             if (elem.Children.Count > 0)
                 DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
         }
     }
 
-    // ── Preview texture cache for viewport editor ──
+    //  Preview texture cache for viewport editor 
     private readonly Dictionary<string, uint> _previewTextureCache = [];
     private readonly Dictionary<string, (int w, int h)> _previewTextureDims = [];
     // Tracks the last scene root to detect scene switches and clear the cache
@@ -1025,7 +1025,7 @@ public unsafe class ViewportPanel
     /// - Otherwise → close the app</summary>
     private void HandleExit()
     {
-        // ── In-game mode (F8 fullscreen): close the app entirely ──
+        //  In-game mode (F8 fullscreen): close the app entirely 
         if (_fullscreenMode)
         {
             Console.WriteLine("[Viewport] exit → closing app (in-game mode, via GLFW)");
@@ -1033,7 +1033,7 @@ public unsafe class ViewportPanel
             if (window != nint.Zero)
                 Glfw.SetWindowShouldClose(window, 1);
         }
-        // ── Viewport preview mode (F5): back to editor ──
+        //  Viewport preview mode (F5): back to editor 
         else if (_previewMode)
         {
             Console.WriteLine("[Viewport] exit → exiting preview mode, resetting overlays");
@@ -1051,7 +1051,7 @@ public unsafe class ViewportPanel
             }
             ClearBrushIndicator();
         }
-        // ── In-game input mode (F9 active): back to editor ──
+        //  In-game input mode (F9 active): back to editor 
         else if (_bridge.InGameActive && _bridge.SceneManager != null)
         {
             Console.WriteLine("[Viewport] exit → back to edit mode");
@@ -1062,7 +1062,7 @@ public unsafe class ViewportPanel
                     child.IsVisible = false;
             }
         }
-        // ── Otherwise: close the app ──
+        //  Otherwise: close the app 
         else
         {
             Console.WriteLine("[Viewport] exit → stopping app");
@@ -1136,7 +1136,7 @@ public unsafe class ViewportPanel
             BorderColor = new Vector3(0.5f, 0.3f, 0.3f),
         };
 
-        // Dark overlay behind the dialog — absolute position (full screen)
+        // Dark overlay behind the dialog  absolute position (full screen)
         var overlay = new UIElement
         {
             Name = "ExitDlgOverlay",
@@ -1148,7 +1148,7 @@ public unsafe class ViewportPanel
         };
         exitDlg.AddChild(overlay);
 
-        // Title label — use ABSOLUTE coordinates
+        // Title label  use ABSOLUTE coordinates
         var title = new UIElement
         {
             Name = "ExitDlgTitle",
@@ -1166,7 +1166,7 @@ public unsafe class ViewportPanel
         };
         exitDlg.AddChild(title);
 
-        // Message label — use ABSOLUTE coordinates
+        // Message label  use ABSOLUTE coordinates
         var message = new UIElement
         {
             Name = "ExitDlgMessage",
@@ -1184,7 +1184,7 @@ public unsafe class ViewportPanel
         };
         exitDlg.AddChild(message);
 
-        // Cancel button (left) — use ABSOLUTE coordinates
+        // Cancel button (left)  use ABSOLUTE coordinates
         var cancelBtn = new UIElement
         {
             Name = "ExitDlgCancel",
@@ -1206,7 +1206,7 @@ public unsafe class ViewportPanel
         };
         exitDlg.AddChild(cancelBtn);
 
-        // Yes, Exit button (right) — use ABSOLUTE coordinates
+        // Yes, Exit button (right)  use ABSOLUTE coordinates
         var exitBtn = new UIElement
         {
             Name = "ExitDlgConfirm",
@@ -1314,7 +1314,7 @@ public unsafe class ViewportPanel
 
     public void ShowInMenu() => ImGui.MenuItem("Viewport", null, ref _visible);
 
-    // ── Public API for main menu bar integration ──
+    //  Public API for main menu bar integration 
     /// <summary>Whether preview mode is active (hides editor helpers, shows scene as-in-game).</summary>
     public bool PreviewMode
     {
@@ -1323,7 +1323,7 @@ public unsafe class ViewportPanel
         {
             if (value && !_previewMode)
             {
-                // ── Entering Preview mode ──
+                //  Entering Preview mode 
                 ResetSceneOverlays();
                 ClearBrushIndicator();
                 _bridge.TerrainBrushActive = false;
@@ -1331,7 +1331,7 @@ public unsafe class ViewportPanel
             }
             else if (!value && _previewMode)
             {
-                // ── Exiting Preview mode (back to Edit) ──
+                //  Exiting Preview mode (back to Edit) 
                 // Reset all edit-mode actions to default/off
                 _bridge.TerrainBrushActive = false;
                 _bridge.TerrainBrushMode = 0;
@@ -1344,7 +1344,7 @@ public unsafe class ViewportPanel
                 ClearBrushIndicator();
             }
             _previewMode = value;
-            // Set preview mode flag — hides editor gizmos/helpers without changing camera behavior.
+            // Set preview mode flag  hides editor gizmos/helpers without changing camera behavior.
             _bridge.IsPreviewMode = value;
         }
     }
@@ -1439,7 +1439,7 @@ public unsafe class ViewportPanel
     }
 
     /// <summary>Return the Sky object whose sun handle (the gold sun disc on the sky gizmo)
-    /// is under the mouse — null when none. Checks EVERY placed Sky marker, so the sun can
+    /// is under the mouse  null when none. Checks EVERY placed Sky marker, so the sun can
     /// be grabbed even when the Sky object isn't currently selected (grabbing selects it).
     /// Keeps click-to-select / marquee / transform gizmo from stealing a sun grab.</summary>
     private EditorObject? SkySunHandleAtMouse()
@@ -1467,7 +1467,7 @@ public unsafe class ViewportPanel
             // Hit tolerance = the sun disc's PROJECTED radius (same size math as
             // DrawSkyGizmo's sun icon, shared via SkySunDiscRadius) plus a comfortable
             // margin. Previously a fixed 18px around the center point was used, so clicking
-            // the visible gold disc surface — but not its exact center — missed and the
+            // the visible gold disc surface  but not its exact center  missed and the
             // drag never started.
             float sunRadius = obj.SkySunDiscRadius;
             var sunDir = obj.GetSkySunDirection();
@@ -1499,7 +1499,7 @@ public unsafe class ViewportPanel
         float x1 = MathF.Min(texW, MathF.Max(startScene.X, endScene.X));
         float y0 = MathF.Max(0f, MathF.Min(startScene.Y, endScene.Y));
         float y1 = MathF.Min(texH, MathF.Max(startScene.Y, endScene.Y));
-        // Degenerate (zero-area) marquee — nothing to select
+        // Degenerate (zero-area) marquee  nothing to select
         if (x1 - x0 < 1f || y1 - y0 < 1f) return;
 
         bool additive = ImGui.GetIO().KeyCtrl || ImGui.GetIO().KeyShift;
@@ -1524,7 +1524,7 @@ public unsafe class ViewportPanel
 
     public void Render()
     {
-        // ── Initial sync: ensure IsPreviewMode matches _previewMode on first frame ──
+        //  Initial sync: ensure IsPreviewMode matches _previewMode on first frame 
         if (!_initialSyncDone)
         {
             _bridge.IsPreviewMode = _previewMode;
@@ -1539,7 +1539,7 @@ public unsafe class ViewportPanel
 
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(0, 0));
 
-        // ── Fullscreen mode: add NoTitleBar|NoResize flags ──
+        //  Fullscreen mode: add NoTitleBar|NoResize flags 
         var windowFlags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
         if (_fullscreenMode)
             windowFlags |= ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
@@ -1559,7 +1559,7 @@ public unsafe class ViewportPanel
         // Track whether the viewport is focused
         _bridge.IsViewportFocused = ImGui.IsWindowFocused();
 
-        // ── Camera view preset shortcuts (1–7 on the main row / numpad) ──
+        //  Camera view preset shortcuts (17 on the main row / numpad) 
         // Only active while the viewport window has focus and we're NOT in preview
         // mode, so number keys never hijack gameplay input.
         HandleCameraViewShortcuts();
@@ -1569,18 +1569,18 @@ public unsafe class ViewportPanel
             // Cache viewport window position for tooltip positioning (top-left)
             var viewportTopLeft = ImGui.GetWindowPos();
 
-            // ── Snap-to-grid toggle + grid size selector (skipped in fullscreen) ──
+            //  Snap-to-grid toggle + grid size selector (skipped in fullscreen) 
             {
-                // ── Preview mode toggle ──
+                //  Preview mode toggle 
                 bool previewNow = _previewMode;
                 ImGui.PushStyleColor(ImGuiCol.Button, previewNow
                     ? new Vector4(0.15f, 0.55f, 0.25f, 1f)    // green = preview ON
                     : new Vector4(0.35f, 0.35f, 0.35f, 1f)); // grey = editor
-                if (ImGui.Button(previewNow ? "▶ Preview" : "◼ Edit"))
+                if (ImGui.Button(previewNow ? " Preview" : "▲ Edit"))
                 {
                     if (!previewNow)
                     {
-                        // ── Entering Preview mode ──
+                        //  Entering Preview mode 
                         ResetSceneOverlays();
                         // Hide brush ring so it can't leak into game view
                         ClearBrushIndicator();
@@ -1590,7 +1590,7 @@ public unsafe class ViewportPanel
                     }
                     else
                     {
-                        // ── Exiting Preview mode (back to Edit) ──
+                        //  Exiting Preview mode (back to Edit) 
                         // Reset all edit-mode actions to default/off
                         _bridge.TerrainBrushActive = false;
                         _bridge.TerrainBrushMode = 0;
@@ -1603,14 +1603,14 @@ public unsafe class ViewportPanel
                         ClearBrushIndicator();
                     }
                     _previewMode = !_previewMode;
-                    // Set preview mode flag — hides editor gizmos/helpers without
+                    // Set preview mode flag  hides editor gizmos/helpers without
                     // changing camera behavior (WASD fly still works).
                     _bridge.IsPreviewMode = _previewMode;
                 }
                 ImGui.PopStyleColor(1);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(_previewMode
-                        ? "Preview mode: hides editor helpers — shows scene as in-game"
+                        ? "Preview mode: hides editor helpers  shows scene as in-game"
                         : "Edit mode: shows wireframes, handles, and info labels");
                 ImGui.SameLine();
                 ImGui.TextDisabled("|");
@@ -1621,7 +1621,7 @@ public unsafe class ViewportPanel
                 if (_snapEnabled != snapBefore) PersistViewportPrefs();
                 ImGui.SameLine();
 
-                string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "—";
+                string gridLabel = _snapEnabled ? $"{_snapGridSize:F0}px" : "";
                 ImGui.SetNextItemWidth(70f);
                 if (ImGui.BeginCombo("##grid_size", gridLabel))
                 {
@@ -1647,13 +1647,13 @@ ImGui.SameLine();
                 {
                     ImGui.SameLine();
 ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
-                        $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}×{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
+                        $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
                 }
 
-                // ── Editor tool buttons (gizmo mode, fly, reset, snap, terrain brushes,
-                // shade/contours, grid, shadow) moved to the floating LEFT toolbar —
+                //  Editor tool buttons (gizmo mode, fly, reset, snap, terrain brushes,
+                // shade/contours, grid, shadow) moved to the floating LEFT toolbar 
                 // see DrawViewportLeftToolbar(). Camera view presets also live there via
-                // the floating ◉ Views overlay. ──
+                // the floating  Views overlay. 
                 if (_bridge.EditorObjectManager != null)
                 {
                     // Primitive creation buttons
@@ -1681,7 +1681,7 @@ ImGui.SameLine();
                         if (obj != null) _bridge.SelectEditorObject(obj);
                     }
 
-                    // ── Camera / Light / Sky scene elements ──
+                    //  Camera / Light / Sky scene elements 
                     ImGui.SameLine();
                     if (ImGui.Button("+Cam"))
                     {
@@ -1707,7 +1707,7 @@ ImGui.SameLine();
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sky, pos);
                         if (obj != null)
                         {
-                            // Sky automatically drives a DIRECT light — reuse or create one.
+                            // Sky automatically drives a DIRECT light  reuse or create one.
                             _bridge.EditorObjectManager.EnsureDirectLightForSky(obj);
                             _bridge.SelectEditorObject(obj);
                         }
@@ -1715,10 +1715,10 @@ ImGui.SameLine();
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Add a Sky marker (renders the procedural skybox in the viewport, blue)");
 
-                    // ── Duplicate selected 3D object(s) — duplicates ALL selected ──
+                    //  Duplicate selected 3D object(s)  duplicates ALL selected 
                     ImGui.SameLine();
                     ImGui.BeginDisabled(_bridge.SelectedEditorObjects.Count == 0);
-                    if (ImGui.Button(_bridge.SelectedEditorObjects.Count > 1 ? $"⧉ Duplicate ({_bridge.SelectedEditorObjects.Count})" : "⧉ Duplicate"))
+                    if (ImGui.Button(_bridge.SelectedEditorObjects.Count > 1 ? $" Duplicate ({_bridge.SelectedEditorObjects.Count})" : "→ Duplicate"))
                     {
                         var mgr = _bridge.EditorObjectManager;
                         if (mgr != null)
@@ -1757,7 +1757,7 @@ ImGui.SameLine();
 
         if (hasSceneTexture || _bridge.SceneRoot != null)
         {
-            // ── Canvas area (fill available space) ──
+            //  Canvas area (fill available space) 
             float canvasW = avail.X;
             float canvasH = avail.Y;
 
@@ -1792,7 +1792,7 @@ ImGui.SameLine();
             }
             else
             {
-                // No game scene — draw dark animated canvas for UI editing
+                // No game scene  draw dark animated canvas for UI editing
                 ImGui.Dummy(new Vector2(canvasW, canvasH));
                 var drawList = ImGui.GetWindowDrawList();
                 var min = ImGui.GetItemRectMin();
@@ -1811,14 +1811,14 @@ ImGui.SameLine();
 
             var viewportMouseScreen = ImGui.GetMousePos();
 
-            // ── Cache mouse state ONCE before any click handling ──
+            //  Cache mouse state ONCE before any click handling 
             // (DrawEditorUIPreview calls IsMouseClicked for each element; caching
             //  here ensures the wireframe section gets the same reliable value)
             bool cachedLeftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
             bool cachedLeftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
             bool cachedLeftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
 
-            // ── Detect editor scene switch → clear preview texture cache ──
+            //  Detect editor scene switch → clear preview texture cache 
             if (!hasGameScene && _bridge.SceneRoot != null)
             {
                 if (_bridge.SceneRoot != _lastSceneRoot)
@@ -1827,7 +1827,7 @@ ImGui.SameLine();
                     {
                         int cleared = _previewTextureCache.Count;
                         ClearPreviewTextures();
-                        Console.WriteLine($"[Viewport] Scene root changed — cleared {cleared} preview textures");
+                        Console.WriteLine($"[Viewport] Scene root changed  cleared {cleared} preview textures");
                     }
                     _lastSceneRoot = _bridge.SceneRoot;
                 }
@@ -1840,10 +1840,10 @@ ImGui.SameLine();
                 _lastSceneRoot = null;
             }
 
-            // ── Live Editor Scene Preview (draws UI elements on top of the scene texture or dark canvas) ──
+            //  Live Editor Scene Preview (draws UI elements on top of the scene texture or dark canvas) 
             // Uses SceneRoot directly (not SelectedEditorScene) so the preview works even when
-            // no editor scene is explicitly selected — the active game scene's root is sufficient.
-            // ── Render UI elements in both editor and preview mode ──
+            // no editor scene is explicitly selected  the active game scene's root is sufficient.
+            //  Render UI elements in both editor and preview mode 
             // In editor mode: elements are rendered with click-to-select behavior.
             // In preview mode: elements are rendered with click-to-interact behavior (game-like).
             if (_bridge.SceneRoot != null && _bridge.SceneRoot.Children.Count > 0)
@@ -1852,7 +1852,7 @@ ImGui.SameLine();
                 DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked, isPreview: _previewMode, isMouseDown: cachedLeftDown);
             }
 
-            // ── Preview mode indicator badge (bottom-right corner) ──
+            //  Preview mode indicator badge (bottom-right corner) 
             if (_previewMode)
             {
                 var drawList = ImGui.GetWindowDrawList();
@@ -1872,7 +1872,7 @@ ImGui.SameLine();
                     badgeBorder, 5f, ImDrawFlags.None, 1.5f);
                 drawList.AddText(new Vector2(bx + badgePad, by + badgePad), badgeText, badge);
 
-                // ── Clickable invisible button over badge → exit preview mode ──
+                //  Clickable invisible button over badge → exit preview mode 
                 ImGui.SetCursorScreenPos(new Vector2(bx, by));
                 float badgeTotalW = badgeSize.X + badgePad * 2f;
                 float badgeTotalH = badgeSize.Y + badgePad * 2f;
@@ -1901,7 +1901,7 @@ ImGui.SameLine();
                 }
             } // end if (_previewMode) badge block
 
-            // ── UI Element Wireframe & Interactive Editing ──
+            //  UI Element Wireframe & Interactive Editing 
             // In Preview mode, skip ALL editor overlays (wireframe, handles, info labels, drag)
             // For Loading and GameScene editor types, skip helpers (only MainMenu needs UI layout editing)
             if (!_previewMode)
@@ -1918,7 +1918,7 @@ ImGui.SameLine();
                 var drawList = ImGui.GetWindowDrawList();
                 float pulse = 0.6f + 0.4f * MathF.Sin((float)ImGui.GetTime() * 3f);
 
-                // ── Helper: draw a wireframe for a single element ──
+                //  Helper: draw a wireframe for a single element 
                 void DrawElemWireframe(UIElement elem, bool isPrimary)
                 {
                     float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
@@ -2019,13 +2019,13 @@ ImGui.SameLine();
                     } // end if (isPrimary)
                 } // end DrawElemWireframe
 
-                // ── Scene-type elements: NO wireframe (just skip the wireframe draw) ──
+                //  Scene-type elements: NO wireframe (just skip the wireframe draw) 
                 bool isSceneElem = selUiElem.Type == UIElementType.Scene;
 
                 if (!isSceneElem)
                     DrawElemWireframe(selUiElem, true);
 
-                // ── Scene-type elements: NO resize/move handlers ──
+                //  Scene-type elements: NO resize/move handlers 
                 bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
 
                 if (isFitToWindowElem)
@@ -2043,7 +2043,7 @@ ImGui.SameLine();
                 }
                 else
                 {
-                // ── Interactive drag handling ──
+                //  Interactive drag handling 
                 float psx0 = _imageMin.X + (selUiElem.X / _texW) * _imageSize.X;
                 float psy0 = _imageMin.Y + (selUiElem.Y / _texH) * _imageSize.Y;
                 float psx1 = _imageMin.X + ((selUiElem.X + selUiElem.Width) / _texW) * _imageSize.X;
@@ -2054,7 +2054,7 @@ ImGui.SameLine();
                 float pcsy1 = Math.Clamp(psy1, _imageMin.Y, _imageMax.Y);
                 bool primaryFullyVisible = pcsx0 == psx0 && pcsy0 == psy0 && pcsx1 == psx1 && pcsy1 == psy1;
 
-                // ── Corner detection radius: proportional to element screen size ──
+                //  Corner detection radius: proportional to element screen size 
                 float elemScreenW = psx1 - psx0;
                 float elemScreenH = psy1 - psy0;
                 float cornerRadius = Math.Max(6f, Math.Min(10f, Math.Min(elemScreenW, elemScreenH) * 0.25f));
@@ -2072,7 +2072,7 @@ ImGui.SameLine();
                     _dragMode = DragMode.None;
                 }
 
-                // ── Top-center move handle detection ──
+                //  Top-center move handle detection 
                 float mhx = (psx0 + psx1) * 0.5f;
                 float mhy = psy0;
                 bool overMoveHandle = primaryFullyVisible &&
@@ -2159,7 +2159,7 @@ ImGui.SameLine();
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
                             _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
 
-                            // Auto-center owns the position — manually dragging the element
+                            // Auto-center owns the position  manually dragging the element
                             // turns auto-center OFF so the drag isn't fought every frame (bug #6).
                             if (selUiElem.AutoCenter)
                             {
@@ -2220,7 +2220,7 @@ ImGui.SameLine();
                     selUiElem.Width = newW; selUiElem.Height = newH;
                 }
 
-                // ── Post-apply safety: reset if mouse is neither down nor being released ──
+                //  Post-apply safety: reset if mouse is neither down nor being released 
                 if (_dragMode != DragMode.None && !cachedLeftDown && !cachedLeftReleased)
                 {
                     _dragMode = DragMode.None;
@@ -2230,7 +2230,7 @@ ImGui.SameLine();
                 } // end if (showHelpers)
             } // end if (!_previewMode)
 
-            // ── Safety reset: handle interrupted drag even when selUiElem became null ──
+            //  Safety reset: handle interrupted drag even when selUiElem became null 
             if (_dragMode != DragMode.None)
             {
                 bool mouseDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
@@ -2242,7 +2242,7 @@ ImGui.SameLine();
                 }
             }
 
-            // ── Gizmo safety reset: handle interrupted gizmo drag even when mouse leaves viewport ──
+            //  Gizmo safety reset: handle interrupted gizmo drag even when mouse leaves viewport 
             if (_bridge.EditorGizmo != null && _bridge.EditorGizmo.IsDragging)
             {
                 bool mouseDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
@@ -2257,7 +2257,7 @@ ImGui.SameLine();
                 }
             }
 
-            // ── Drag-drop target: Asset Browser image → selected element ──
+            //  Drag-drop target: Asset Browser image → selected element 
             if (_bridge.SelectedUIElement != null && ImGui.BeginDragDropTarget())
             {
                 var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
@@ -2271,9 +2271,9 @@ ImGui.SameLine();
                 ImGui.EndDragDropTarget();
             }
 
-            // ── Popup suppress: block all scene interactions when a popup/menu
+            //  Popup suppress: block all scene interactions when a popup/menu
             // is open, AND for 2 frames after it closes (prevents the click that
-            // closed the menu from leaking into the terrain brush, gizmo, etc.) ──
+            // closed the menu from leaking into the terrain brush, gizmo, etc.) 
             bool anyPopupOpen = ImGui.IsPopupOpen(null, ImGuiPopupFlags.AnyPopupId);
             if (anyPopupOpen) _wasPopupOpen = true;
             if (_wasPopupOpen && !anyPopupOpen && _postPopupFrames <= 0)
@@ -2285,7 +2285,7 @@ ImGui.SameLine();
             bool suppressInput = anyPopupOpen || _postPopupFrames > 0;
             _bridge.SuppressViewportInput = suppressInput;
 
-            // ── Viewport click/hover detection ──
+            //  Viewport click/hover detection 
             bool mouseOverImage = viewportMouseScreen.X >= _imageMin.X && viewportMouseScreen.X <= _imageMax.X &&
                                   viewportMouseScreen.Y >= _imageMin.Y && viewportMouseScreen.Y <= _imageMax.Y;
 
@@ -2299,18 +2299,18 @@ ImGui.SameLine();
                 _bridge.ViewportMouseX = sceneU * _texW;
                 _bridge.ViewportMouseY = sceneV * _texH;
 
-                // Reset click flag each frame — set to true below if left-click occurs
+                // Reset click flag each frame  set to true below if left-click occurs
                 _bridge.IsViewportClicked = false;
 
                 // Track Ctrl/Shift state each frame so click-to-select can do additive multi-select
                 _bridge.ViewportCtrlHeld = ImGui.GetIO().KeyCtrl;
                 _bridge.ViewportShiftHeld = ImGui.GetIO().KeyShift;
 
-                // Clicks on the floating "◉ Views" overlay button must NOT count as
+                // Clicks on the floating "▲ Views" overlay button must NOT count as
                 // viewport clicks (no raycast select / deselect on empty space).
                 // Also block when ImGui wants mouse capture (menus, popups, drag-drop targets).
                 // Block viewport clicks when any ImGui popup/menu is open (View menu,
-                // Save As dialog, context menus, etc.) — so clicks on menus never
+                // Save As dialog, context menus, etc.)  so clicks on menus never
                 // accidentally modify the scene or trigger raycast selection.
                 // suppressInput is computed above (before mouseOverImage block).
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
@@ -2322,7 +2322,7 @@ ImGui.SameLine();
                     _bridge.ViewportClickY = sceneV * _bridge.SceneTextureHeight;
                 }
 
-                // ── Middle click: reposition gizmo pivot ──
+                //  Middle click: reposition gizmo pivot 
                 // Skipped when any popup/menu is open or just closed (modal mode).
                 if (hasSceneTexture && ImGui.IsItemClicked(ImGuiMouseButton.Middle) && !_previewMode && _bridge.Camera != null
                     && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
@@ -2377,7 +2377,7 @@ ImGui.SameLine();
                 _bridge.IsViewportClicked = false;
             }
 
-            // ── Terrain brush: click-drag to raise/lower terrain height in real-time ──
+            //  Terrain brush: click-drag to raise/lower terrain height in real-time 
             // Runs before marquee/select/gizmo so a paint stroke never changes the selection.
             // Skipped when: popup/menu is open or just closed (modal mode),
             // or mouse is over the left toolbar / Views button (toolbar clicks must not sculpt).
@@ -2462,27 +2462,27 @@ ImGui.SameLine();
                     {
                         switch (brushMode)
                         {
-                            case 1: // 🎨 layer paint — Ctrl erases (decays weights).
+                            case 1: //  layer paint  Ctrl erases (decays weights).
                             {
                                 bool erase = ImGui.GetIO().KeyCtrl;
                                 hoverTerrain.TryPaintLayerSurface(rayOrigin, rayDir,
                                     _bridge.TerrainPaintLayerIndex, hoverTerrain.TerrainPaintStrength, erase, out _);
                                 break;
                             }
-                            case 2: // 🌀 smooth — blend heights toward their local average.
+                            case 2: //  smooth  blend heights toward their local average.
                             {
                                 hoverTerrain.TrySmoothTerrainSurface(rayOrigin, rayDir,
                                     hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
                                 break;
                             }
-                            case 3: // ⏹ flatten — blend toward the stroke's target height.
+                            case 3: //  flatten  blend toward the stroke's target height.
                             {
                                 if (_flattenTargetReady)
                                     hoverTerrain.TryFlattenTerrainSurface(rayOrigin, rayDir, _flattenTargetNorm,
                                         hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
                                 break;
                             }
-                            default: // ⛰ sculpt — Ctrl lowers, plain drag raises.
+                            default: //  sculpt  Ctrl lowers, plain drag raises.
                             {
                                 bool lowering = ImGui.GetIO().KeyCtrl;
                                 float delta = (lowering ? -1f : 1f) * hoverTerrain.TerrainBrushStrength * brushSpeed;
@@ -2513,10 +2513,10 @@ ImGui.SameLine();
                     _brushSplatBefore = null;
                 }
 
-                // ── 3D brush ring ON the terrain surface + Ctrl+scroll resize ──
+                //  3D brush ring ON the terrain surface + Ctrl+scroll resize 
                 {
                     // The ring color + transparency come from the terrain's own properties
-                    // (editable in the Terrain Brush panel and saved with the scene) — the
+                    // (editable in the Terrain Brush panel and saved with the scene)  the
                     // viewport no longer overrides them per tool.
                     if (hoverTerrain != null && hoverPoint.HasValue)
                     {
@@ -2548,7 +2548,7 @@ ImGui.SameLine();
                     }
                 }
 
-                // ── Brush cursor overlay: the ortho (screen-space) circle is GONE — only
+                //  Brush cursor overlay: the ortho (screen-space) circle is GONE  only
                 // the 3D translucent ring on the terrain surface (DrawTerrainBrushIndicator)
                 // shows the brush area, using the user-editable ring color. A tiny center
                 // dot + size readout remain so the exact hover point and radius are visible.
@@ -2564,7 +2564,7 @@ ImGui.SameLine();
                         dl.AddCircleFilled(center, 2.5f, col);
 
                         // Brush size readout under the cursor (resize with Ctrl+scroll).
-                        string sizeLabel = $"Brush {hoverTerrain.TerrainBrushSize:F1} · Ctrl+Scroll";
+                        string sizeLabel = $"Brush {hoverTerrain.TerrainBrushSize:F1}  Ctrl+Scroll";
                         var sizeSize = ImGui.CalcTextSize(sizeLabel);
                         dl.AddText(center + new Vector2(-sizeSize.X * 0.5f, 14f),
                             ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.95f)), sizeLabel);
@@ -2572,7 +2572,7 @@ ImGui.SameLine();
                 }
             }
 
-            // ── Marquee (rubber-band) multi-select for 3D editor objects ──
+            //  Marquee (rubber-band) multi-select for 3D editor objects 
             // Left-press on empty viewport space starts a drag rectangle; on release
             // every object whose projected screen position lands inside the rect is
             // selected (Shift/Ctrl held = added to the current selection).
@@ -2611,7 +2611,7 @@ ImGui.SameLine();
                         if (_marqueeActive)
                         {
                             ApplyMarqueeSelection(_marqueeStart.Value, _marqueeCurrent);
-                            // The marquee already handled selection — don't let the click
+                            // The marquee already handled selection  don't let the click
                             // raycast below also deselect on this empty-space release.
                             _bridge.IsViewportClicked = false;
                         }
@@ -2620,7 +2620,7 @@ ImGui.SameLine();
                     }
                 }
 
-                // ── Draw the marquee rectangle overlay (screen space) ──
+                //  Draw the marquee rectangle overlay (screen space) 
                 if (_marqueeActive && _marqueeStart != null)
                 {
                     var dl = ImGui.GetWindowDrawList();
@@ -2633,8 +2633,8 @@ ImGui.SameLine();
                 }
             }
 
-            // ── 3D Object click-to-select (raycast) ──
-            // Note: does NOT check SelectedUIElement==null — clicking the viewport should always
+            //  3D Object click-to-select (raycast) 
+            // Note: does NOT check SelectedUIElement==null  clicking the viewport should always
             // attempt to select a 3D/editor object, even when a UI element is selected in the Hierarchy.
             // If a 3D object is hit, SelectedUIElement is cleared below (line ~1895).
             // IMPORTANT: If the click hits the currently-selected object's gizmo, the gizmo WINS
@@ -2647,7 +2647,7 @@ ImGui.SameLine();
                 var cam = _bridge.Camera;
                 var mgr = _bridge.EditorObjectManager;
 
-                // ── Step 1: gizmo priority — if the click lands on the SINGLE gizmo
+                //  Step 1: gizmo priority  if the click lands on the SINGLE gizmo
                 // (one gizmo at the group center for multi-select), keep the current
                 // selection (gizmo wins over overlapping objects).
                 bool gizmoClaimedClick = false;
@@ -2676,7 +2676,7 @@ ImGui.SameLine();
 
                     if (mgr.Raycast(rayOrigin, rayDir, out float hitDist, out Vector3 hitPoint) is EditorObject hitObj)
                     {
-                        // Don't clear gizmo pivot — each object stores its own.
+                        // Don't clear gizmo pivot  each object stores its own.
                         // Ctrl/Shift+Click toggles the object in the multi-selection set;
                         // plain click replaces the selection with just this object.
                         bool ctrlHeld = _bridge.ViewportCtrlHeld;
@@ -2700,7 +2700,7 @@ ImGui.SameLine();
                 }
             }
 
-            // ── Sky sun gizmo: drag the gold sun handle to aim the sun ──
+            //  Sky sun gizmo: drag the gold sun handle to aim the sun 
             // Runs before the transform gizmo so grabbing the sun never moves the marker.
             // The drag continues even if the cursor leaves the image (release always ends it).
             if (!_previewMode && _bridge.Camera != null
@@ -2716,7 +2716,7 @@ ImGui.SameLine();
 
                 if (_skySunDragObj != null)
                 {
-                    // Continue dragging: aim the sun at the cursor ray (Shift = snap to 5°/15°).
+                    // Continue dragging: aim the sun at the cursor ray (Shift = snap to 5/15).
                     if (mouseOverImage)
                     {
                         float glMouseY = vph - _bridge.ViewportMouseY;
@@ -2738,7 +2738,7 @@ ImGui.SameLine();
                         _bridge.OnSkySunChanged?.Invoke(skyEnd, _skySunDragOldPitch, _skySunDragOldYaw,
                             skyEnd.SkySunPitch, skyEnd.SkySunYaw,
                             lightEnd, _skySunDragOldLightDir, lightEnd?.LightDirection);
-                        Console.WriteLine($"[Viewport] Sun aimed on '{skyEnd.Name}' → pitch={skyEnd.SkySunPitch:F1}°, yaw={skyEnd.SkySunYaw:F1}°");
+                        Console.WriteLine($"[Viewport] Sun aimed on '{skyEnd.Name}' → pitch={skyEnd.SkySunPitch:F1}, yaw={skyEnd.SkySunYaw:F1}");
                         _skySunDragObj = null;
                         _skySunDragOldPitch = null;
                         _skySunDragOldYaw = null;
@@ -2750,7 +2750,7 @@ ImGui.SameLine();
                 {
                     // Grabbing the sun handle also selects the Sky marker when it isn't
                     // already part of the selection, so the drag works even when the Sky
-                    // wasn't the active object — without clobbering an existing multi-select.
+                    // wasn't the active object  without clobbering an existing multi-select.
                     if (!_bridge.SelectedEditorObjects.Contains(skyDrag))
                         _bridge.SelectEditorObject(skyDrag);
                     _skySunDragObj = skyDrag;
@@ -2760,14 +2760,14 @@ ImGui.SameLine();
                     // position so the drag starts exactly where the sun is drawn.
                     if (!skyDrag.SkySunPitch.HasValue || !skyDrag.SkySunYaw.HasValue)
                         skyDrag.SetSkySunFromDirection(skyDrag.GetSkySunDirection());
-                    // A placed Light marker overrides the sky sun for the actual lighting —
+                    // A placed Light marker overrides the sky sun for the actual lighting 
                     // capture it so the drag keeps its direction in sync (lighting follows the
                     // gizmo) and undo can restore its pre-drag direction.
                     _skySunDragLightObj = null;
                     _skySunDragOldLightDir = null;
                     if (_bridge.EditorObjectManager != null)
                     {
-                        // The sky drives a DIRECT light — sync that one (matching
+                        // The sky drives a DIRECT light  sync that one (matching
                         // EditorObject.PickSunLight). No Direct light → nothing to sync.
                         var sunLight = EditorObject.PickSunLight(_bridge.EditorObjectManager.Objects);
                         if (sunLight != null)
@@ -2782,7 +2782,7 @@ ImGui.SameLine();
                             : ""));
                 }
 
-                // ── Sun handle hover highlight (also shown while dragging) ──
+                //  Sun handle hover highlight (also shown while dragging) 
                 var hoverSky = _skySunDragObj ?? SkySunHandleAtMouse();
                 if (mouseOverImage && hoverSky is { } skyHover
                     && skyHover.GetSkySunHandleCenter() is Vector3 sunHoverWorld)
@@ -2806,8 +2806,8 @@ ImGui.SameLine();
                 }
             }
 
-            // ── Gizmo mouse interaction (drag to transform selected editor object) ──
-            // Uses screen-space coordinates — gizmo renders at bottom-center of viewport
+            //  Gizmo mouse interaction (drag to transform selected editor object) 
+            // Uses screen-space coordinates  gizmo renders at bottom-center of viewport
             if (!_previewMode && _bridge.Camera != null && _bridge.EditorGizmo != null
                 && _bridge.SelectedEditorObject != null && mouseOverImage
                 && !_bridge.TerrainBrushActive && _brushObj == null
@@ -2823,7 +2823,7 @@ ImGui.SameLine();
 
                 // Sky markers have no meaningful rotation/scale (rotation is fixed and
                 // scale is ignored), so when a Sky object is in the selection the gizmo is
-                // locked to Translate — rotate/scale are neither drawn nor hit-tested.
+                // locked to Translate  rotate/scale are neither drawn nor hit-tested.
                 bool skySelected = _bridge.SelectionHasSky;
                 gizmo.AllowRotate = !skySelected;
                 gizmo.AllowScale = !skySelected;
@@ -2889,7 +2889,7 @@ ImGui.SameLine();
         }
         else
         {
-            // No texture and no editor scene — show placeholder
+            // No texture and no editor scene  show placeholder
             var center = ImGui.GetCursorScreenPos() + avail * 0.5f;
             var textSize = ImGui.CalcTextSize("No Scene");
             ImGui.GetWindowDrawList().AddText(
@@ -2898,19 +2898,19 @@ ImGui.SameLine();
                 "No Scene");
         }
 
-        // ── Camera view menu overlay (top-left corner of the viewport image) ──
+        //  Camera view menu overlay (top-left corner of the viewport image) 
         DrawViewportCameraOverlay(hasSceneTexture);
 
-        // ── Editor tool toolbar (left edge of the viewport image) ──
+        //  Editor tool toolbar (left edge of the viewport image) 
         DrawViewportLeftToolbar(hasSceneTexture);
 
-        // ── Active view label (Top / Front / Left / …) — top-right corner ──
+        //  Active view label (Top / Front / Left / )  top-right corner 
         DrawViewportViewLabel(hasSceneTexture);
 
-        // ── Terrain triangle-count HUD (bottom-left corner, edit mode only) ──
+        //  Terrain triangle-count HUD (bottom-left corner, edit mode only) 
         DrawViewportTerrainStats(hasSceneTexture);
 
-        // ── Type labels above placed Camera markers (edit mode only) ──
+        //  Type labels above placed Camera markers (edit mode only) 
         DrawEditorObjectTypeLabels(hasSceneTexture);
 
         ImGui.End();
@@ -3014,7 +3014,7 @@ ImGui.SameLine();
         // Don't snap while any popup/menu is open or just closed
         if (_bridge.SuppressViewportInput) return;
 
-        // Terrain brush tools are toolbar-only (no keyboard shortcuts) — the previous
+        // Terrain brush tools are toolbar-only (no keyboard shortcuts)  the previous
         // B/C/S/F toggles were removed because S collided with fly-camera movement and the
         // user wanted terrain-editor key assignments disabled entirely.
 
@@ -3076,7 +3076,7 @@ ImGui.SameLine();
 
     /// <summary>Draw the active view label (e.g. "Top", "Front", "Left") in the top-right
     /// corner of the viewport image, so the user always knows which orientation the camera
-    /// is in — even after free-flying around. Hidden in preview mode.</summary>
+    /// is in  even after free-flying around. Hidden in preview mode.</summary>
     private void DrawViewportViewLabel(bool hasSceneTexture)
     {
         if (_previewMode || !hasSceneTexture || _bridge.Camera == null) return;
@@ -3084,7 +3084,7 @@ ImGui.SameLine();
 
         string label = GetActiveViewLabel(out Vector4 col);
         bool isOrtho = _bridge.Camera?.IsOrthographic ?? false;
-        string text = isOrtho ? $"{label} · Ortho" : $"{label} · Persp";
+        string text = isOrtho ? $"{label}  Ortho" : $"{label}  Persp";
 
         var font = ImGui.GetFont();
         float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 16f;
@@ -3142,7 +3142,7 @@ ImGui.SameLine();
             lines = [
                 $"Terrain TRIS: {totalTri:N0}",
                 $"Planes: {terrainCount}",
-                $"Selected '{selected.Name}': {selected.TerrainTriangleCount:N0}  ({selected.TerrainChunksPerSide}×{selected.TerrainChunksPerSide} chunks)",
+                $"Selected '{selected.Name}': {selected.TerrainTriangleCount:N0}  ({selected.TerrainChunksPerSide}{selected.TerrainChunksPerSide} chunks)",
             ];
         }
 
@@ -3169,11 +3169,11 @@ ImGui.SameLine();
         }
     }
 
-    /// <summary>Render a compact "◉ Views" menu floating in the top-left corner of the
+    /// <summary>Render a compact "▲ Views" menu floating in the top-left corner of the
     /// viewport image (editor mode only). Lets the user snap the fly-camera to top-down,
     /// bottom-up, front/back, left/right or perspective views without leaving the viewport.
     /// Uses SetCursorScreenPos so it overlays the scene without disturbing the layout.</summary>
-    /// <summary>Screen-space rect of the floating "◉ Views" button (top-left of the image).
+    /// <summary>Screen-space rect of the floating "▲ Views" button (top-left of the image).
     /// Shared by the overlay renderer and the marquee/click guards so a click on the
     /// button never also starts a marquee or a viewport raycast.</summary>
     private (Vector2 min, Vector2 max) GetViewportViewsButtonRect()
@@ -3181,13 +3181,13 @@ ImGui.SameLine();
         float padX = 8f, padY = 6f;
         var font = ImGui.GetFont();
         float vpFs = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 15f;
-        var textSize = font.CalcTextSizeA(vpFs, float.MaxValue, 0f, "◉ Views");
+        var textSize = font.CalcTextSizeA(vpFs, float.MaxValue, 0f, "▲ Views");
         var min = new Vector2(_imageMin.X + 8f, _imageMin.Y + 8f);
         var max = min + new Vector2(textSize.X + padX * 2f, textSize.Y + padY * 1.6f);
         return (min, max);
     }
 
-    /// <summary>True when the mouse currently hovers the floating "◉ Views" button.
+    /// <summary>True when the mouse currently hovers the floating "▲ Views" button.
     /// Used to suppress marquee/raycast selection while interacting with the overlay.</summary>
     private bool IsMouseOverViewportViewsButton()
     {
@@ -3201,8 +3201,8 @@ ImGui.SameLine();
         if (_previewMode || !hasSceneTexture || _bridge.Camera == null) return;
         if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
 
-        // ── Draw the floating button with the draw list (NO SetCursorScreenPos — that
-        // triggers ImGui's "extend window boundaries" assertion). Hit-testing is manual. ──
+        //  Draw the floating button with the draw list (NO SetCursorScreenPos  that
+        // triggers ImGui's "extend window boundaries" assertion). Hit-testing is manual. 
         var (btnMin, btnMax) = GetViewportViewsButtonRect();
         var mouse = ImGui.GetMousePos();
         bool hovered = mouse.X >= btnMin.X && mouse.X <= btnMax.X &&
@@ -3219,9 +3219,9 @@ ImGui.SameLine();
 
         var font = ImGui.GetFont();
         float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 15f;
-        var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, "◉ Views");
+        var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, "▲ Views");
         dl.AddText(font, fontSize, btnMin + new Vector2(8f, (btnMax.Y - btnMin.Y - textSize.Y) * 0.5f),
-            ImGui.ColorConvertFloat4ToU32(new Vector4(0.9f, 0.9f, 1f, 1f)), "◉ Views");
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.9f, 0.9f, 1f, 1f)), "▲ Views");
 
         if (hovered)
         {
@@ -3238,8 +3238,8 @@ ImGui.SameLine();
         {
             string[] viewLabels =
             [
-                "◉ Perspective    \t7", "⬆ Top-Down       \t1", "⬇ Bottom-Up      \t6",
-                "➤ Front          \t2", "⬅ Back           \t5", "→ Left            \t3", "← Right           \t4",
+                " Perspective    \t7", " Top-Down       \t1", " Bottom-Up      \t6",
+                " Front          \t2", " Back           \t5", "→ Left            \t3", "← Right           \t4",
             ];
             Camera.EditorViewPreset[] viewPresets =
             [
@@ -3256,21 +3256,21 @@ ImGui.SameLine();
             }
             ImGui.Separator();
 
-            // ── Projection: Perspective vs Orthographic ──
+            //  Projection: Perspective vs Orthographic 
             bool isOrtho = _bridge.Camera?.IsOrthographic ?? false;
-            if (ImGui.MenuItem("⊞ Perspective", null, !isOrtho))
+            if (ImGui.MenuItem(" Perspective", null, !isOrtho))
             {
                 if (isOrtho) _bridge.Camera?.ToggleProjection();
                 Console.WriteLine("[Viewport] Projection: perspective");
             }
-            if (ImGui.MenuItem("▦ Orthographic", null, isOrtho))
+            if (ImGui.MenuItem(" Orthographic", null, isOrtho))
             {
                 if (!isOrtho) _bridge.Camera?.ToggleProjection();
                 Console.WriteLine("[Viewport] Projection: orthographic");
             }
             if (isOrtho)
             {
-                // Ortho zoom — adjusts the ortho view volume half-height
+                // Ortho zoom  adjusts the ortho view volume half-height
                 float orthoSize = _bridge.Camera?.OrthoSize ?? 20f;
                 if (ImGui.SliderFloat("Ortho Zoom", ref orthoSize, 2f, 100f, "%.0f"))
                 {
@@ -3279,7 +3279,7 @@ ImGui.SameLine();
             }
             ImGui.Separator();
 
-            if (ImGui.MenuItem("⌂ Focus Selection", _bridge.SelectedEditorObjects.Count > 0))
+            if (ImGui.MenuItem(" Focus Selection", _bridge.SelectedEditorObjects.Count > 0))
             {
                 _bridge.FocusCameraOnSelected?.Invoke();
             }
@@ -3298,7 +3298,7 @@ ImGui.SameLine();
 
     /// <summary>Draw the editor tool toolbar as a floating vertical strip on the LEFT edge
     /// of the viewport image (edit mode only). Uses the window draw list + manual
-    /// hit-testing — same pattern as the floating ◉ Views button.</summary>
+    /// hit-testing  same pattern as the floating  Views button.</summary>
     private void DrawViewportLeftToolbar(bool hasSceneTexture)
     {
         if (_previewMode || !hasSceneTexture || _bridge.EditorObjectManager == null) return;
@@ -3309,7 +3309,7 @@ ImGui.SameLine();
 
         const float btnW = 118f, btnH = 25f, gap = 5f, padX = 8f;
         float x = _imageMin.X + padX;
-        // Start below the floating "◉ Views" button (top-left corner)
+        // Start below the floating "▲ Views" button (top-left corner)
         float y = GetViewportViewsButtonRect().max.Y + 6f;
 
         var dl = ImGui.GetWindowDrawList();
@@ -3350,7 +3350,7 @@ ImGui.SameLine();
             return clicked;
         }
 
-        // ── Gizmo mode ──
+        //  Gizmo mode 
         int gizmoMode = _bridge.GizmoMode;
         bool gizmoLocked = _bridge.SelectionHasSky;
         string[] gizmoLabels = ["Move", "Rotate", "Scale"];
@@ -3375,20 +3375,20 @@ ImGui.SameLine();
             }
         }
 
-        // ── Freefly mouse-look toggle ──
+        //  Freefly mouse-look toggle 
         bool flyLook = _bridge.Camera?.FlyMouseLook ?? false;
         if (ToolButton(flyLook ? "✈ Fly ON" : "✈ Fly", flyLook, new Vector4(0.20f, 0.45f, 0.75f, 0.95f),
             flyLook
-                ? "Freefly mouse-look ON — click to turn off"
-                : "Freefly mouse-look OFF — click to turn on, or hold Right-Click in the viewport for a temporary look", out y))
+                ? "Freefly mouse-look ON  click to turn off"
+                : "Freefly mouse-look OFF  click to turn on, or hold Right-Click in the viewport for a temporary look", out y))
         {
             if (_bridge.Camera != null)
                 _bridge.Camera.FlyMouseLook = !_bridge.Camera.FlyMouseLook;
         }
 
-        // ── Camera reset to origin ──
-        if (ToolButton("⌂ Reset", false, new Vector4(0.35f, 0.35f, 0.50f, 0.95f),
-            "Reset camera to origin (0,0,0) with default orientation — works with all camera modes including freefly", out y))
+        //  Camera reset to origin 
+        if (ToolButton("▲ Reset", false, new Vector4(0.35f, 0.35f, 0.50f, 0.95f),
+            "Reset camera to origin (0,0,0) with default orientation  works with all camera modes including freefly", out y))
         {
             if (_bridge.Camera != null)
             {
@@ -3397,7 +3397,7 @@ ImGui.SameLine();
             }
         }
 
-        // ── Gizmo translate snap toggle ──
+        //  Gizmo translate snap toggle 
         bool gizmoSnap = _bridge.EditorGizmo?.SnapEnabled ?? false;
         if (ToolButton(gizmoSnap ? "Snap 1u" : "Snap off", gizmoSnap, new Vector4(0.15f, 0.55f, 0.30f, 0.95f),
             "Toggle gizmo movement snap (1 world unit grid)", out y))
@@ -3406,44 +3406,44 @@ ImGui.SameLine();
                 _bridge.EditorGizmo.SnapEnabled = !gizmoSnap;
         }
 
-        // ── Terrain brush tools ──
+        //  Terrain brush tools 
         bool sculptTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 0;
-        if (ToolButton(sculptTool ? "⛰ Sculpt ON" : "⛰ Sculpt", sculptTool, new Vector4(0.80f, 0.55f, 0.15f, 0.95f),
-            "Sculpt: left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control — Ctrl+scroll resizes the brush.", out y))
+        if (ToolButton(sculptTool ? "▲ Sculpt ON" : "▲ Sculpt", sculptTool, new Vector4(0.80f, 0.55f, 0.15f, 0.95f),
+            "Sculpt: left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control  Ctrl+scroll resizes the brush.", out y))
         {
             ToggleTerrainBrushMode(0);
-            Console.WriteLine($"[Viewport] ⛰ Sculpt brush → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport]  Sculpt brush → {_bridge.TerrainBrushActive}");
         }
 
         bool paintTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 1;
-        if (ToolButton(paintTool ? "🎨 Paint ON" : "🎨 Paint", paintTool, new Vector4(0.85f, 0.35f, 0.45f, 0.95f),
-            "Layer paint: paints the selected layer texture.\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.", out y))
+        if (ToolButton(paintTool ? "▲ Paint ON" : "▲ Paint", paintTool, new Vector4(0.85f, 0.35f, 0.45f, 0.95f),
+            "Layer paint: paints the selected layer texture.\nLeft-drag = paint, Ctrl+left-drag = erase  Ctrl+scroll resizes the brush.", out y))
         {
             ToggleTerrainBrushMode(1);
-            Console.WriteLine($"[Viewport] 🎨 Layer paint → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport]  Layer paint → {_bridge.TerrainBrushActive}");
         }
 
         bool smoothTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 2;
-        if (ToolButton(smoothTool ? "🌀 Smooth ON" : "🌀 Smooth", smoothTool, new Vector4(0.45f, 0.30f, 0.75f, 0.95f),
-            "Smooth: averages the heights in the brush area — removes spikes and terraced steps.\nHold Shift for fine control.", out y))
+        if (ToolButton(smoothTool ? "▲ Smooth ON" : "▲ Smooth", smoothTool, new Vector4(0.45f, 0.30f, 0.75f, 0.95f),
+            "Smooth: averages the heights in the brush area  removes spikes and terraced steps.\nHold Shift for fine control.", out y))
         {
             ToggleTerrainBrushMode(2);
-            Console.WriteLine($"[Viewport] 🌀 Smooth brush → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport]  Smooth brush → {_bridge.TerrainBrushActive}");
         }
 
         bool flattenTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 3;
-        if (ToolButton(flattenTool ? "⏹ Flatten ON" : "⏹ Flatten", flattenTool, new Vector4(0.75f, 0.60f, 0.15f, 0.95f),
+        if (ToolButton(flattenTool ? "▲ Flatten ON" : "▲ Flatten", flattenTool, new Vector4(0.75f, 0.60f, 0.15f, 0.95f),
             "Flatten: levels the terrain to the height of the FIRST click of the stroke,\nlike Unreal's flatten tool. Hold Shift for fine control.", out y))
         {
             ToggleTerrainBrushMode(3);
-            Console.WriteLine($"[Viewport] ⏹ Flatten brush → {_bridge.TerrainBrushActive}");
+            Console.WriteLine($"[Viewport]  Flatten brush → {_bridge.TerrainBrushActive}");
         }
 
-        // ── Height shading + contours overlays ──
+        //  Height shading + contours overlays 
         var shadedSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } sObj ? sObj : null;
         bool shadeOn = shadedSel?.TerrainShowHeatmap ?? false;
-        if (ToolButton(shadeOn ? "🗺 Shade ON" : "🗺 Shade", shadeOn, new Vector4(0.75f, 0.55f, 0.15f, 0.95f),
-            "Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun — makes high/low areas obvious while sculpting.\nAuto-selects the first terrain plane if none is selected (also in the Inspector).", out y))
+        if (ToolButton(shadeOn ? "☀ Shade ON" : "☀ Shade", shadeOn, new Vector4(0.75f, 0.55f, 0.15f, 0.95f),
+            "Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun  makes high/low areas obvious while sculpting.\nAuto-selects the first terrain plane if none is selected (also in the Inspector).", out y))
         {
             var shadeTerrain = _bridge.ResolveTerrainForOverlay();
             if (shadeTerrain != null)
@@ -3459,8 +3459,8 @@ ImGui.SameLine();
 
         var contourSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } cObj ? cObj : null;
         bool contourOn = contourSel?.TerrainShowContours ?? false;
-        if (ToolButton(contourOn ? "≡ Contours ON" : "≡ Contours", contourOn, new Vector4(0.45f, 0.55f, 0.30f, 0.95f),
-            "Draw dark topographic contour lines every 10% height on the selected terrain\n(no heatmap colors — the texture stays fully visible).\nGreat for sculpting precision — auto-selects the first terrain plane if none is selected.", out y))
+        if (ToolButton(contourOn ? "☁ Contours ON" : "☁ Contours", contourOn, new Vector4(0.45f, 0.55f, 0.30f, 0.95f),
+            "Draw dark topographic contour lines every 10% height on the selected terrain\n(no heatmap colors  the texture stays fully visible).\nGreat for sculpting precision  auto-selects the first terrain plane if none is selected.", out y))
         {
             var contourTerrain = _bridge.ResolveTerrainForOverlay();
             if (contourTerrain != null)
@@ -3474,14 +3474,14 @@ ImGui.SameLine();
             }
         }
 
-        // ── Paint tool hint (paint texture is set in Terrain Brush panel) ──
+        //  Paint tool hint (paint texture is set in Terrain Brush panel) 
         if (paintTool)
         {
             Vector4 chipCol = TerrainLayerColors[0];
             ToolButton("Paint", true, chipCol, "Paint texture assigned in Terrain Brush panel. Left-drag to paint.", out y);
         }
 
-        // ── Debug grid + shadow toggles ──
+        //  Debug grid + shadow toggles 
         bool debugGrid = _bridge.ShowDebugGrid;
         if (ToolButton(debugGrid ? "Grid: On" : "Grid: Off", debugGrid, new Vector4(0.25f, 0.45f, 0.30f, 0.95f),
             "Toggle the editor debug grid (XZ plane at Y=0, major lines every 5 units)", out y))

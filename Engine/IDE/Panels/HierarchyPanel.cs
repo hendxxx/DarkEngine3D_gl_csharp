@@ -7,7 +7,7 @@ using System.Numerics;
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
 /// <summary>
-/// SceneDetail panel — displays the current scene's UI element tree.
+/// SceneDetail panel  displays the current scene's UI element tree.
 /// Shows a tree structure like:
 ///   [Scene] MainMenu
 ///     [Btn] START GAME
@@ -27,7 +27,7 @@ public class HierarchyPanel
     private readonly IDEBridge _bridge;
     private bool _visible = true;
 
-    // ── Popup state ──
+    //  Popup state 
     private bool _showAddPopup = false;
     private bool _showRenamePopup = false;
     private bool _showReloadConfirm = false;
@@ -35,30 +35,30 @@ public class HierarchyPanel
     private int _addTypeIdx = 0; // 0=Button, 1=Label, 2=Container, 3=SliderNumber, 4=SliderText, 5=Checkbox, 6=Dropdown, 7=TextBox
     private string _renameBuffer = "";
     private string _renamePreviousName = ""; // captured before dialog opens, for undo
-    private const int InputBufSize = 256;        // ── Drag & drop state ──
+    private const int InputBufSize = 256;        //  Drag & drop state 
     private UIElement? _dragSourceElement = null;
     private bool _isDragging = false;
 
-    // ── 3D object drag & drop state ──
+    //  3D object drag & drop state 
     private int _dragSourceObjectIndex = -1;
     private bool _isDraggingObject = false;
 
-    // ── 3D object selection state ──
-    /// <summary>Index of the last PLAIN-clicked 3D object row — the anchor for
+    //  3D object selection state 
+    /// <summary>Index of the last PLAIN-clicked 3D object row  the anchor for
     /// Shift+Click range selection (selects everything between anchor and click).</summary>
     private int _last3DClickIndex = -1;
 
-    // ── Undo / Redo ──
+    //  Undo / Redo 
     private readonly List<UndoRedoAction> _undoStack = [];
     private readonly List<UndoRedoAction> _redoStack = [];
     private const int MaxUndoSteps = 50;
 
-    // ── Save notification state ──
+    //  Save notification state 
     private string _saveNotificationText = "";
     private float _saveNotificationTimer = 0f;
     private const float SaveNotifDuration = 2.5f;
 
-    // ── Colors ──
+    //  Colors 
     private static readonly Vector4 ColUndoBtn     = new(0.25f, 0.25f, 0.30f, 1f);
     private static readonly Vector4 ColUndoBtnHov  = new(0.35f, 0.35f, 0.45f, 1f);
     private static readonly Vector4 ColAddBtn      = new(0.15f, 0.50f, 0.25f, 1f);
@@ -77,7 +77,7 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "—— 3D ——", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
     private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
 
     /// <summary>Recorded action for undo/redo.</summary>
@@ -115,7 +115,7 @@ public class HierarchyPanel
         public Vector3? OldPivot, NewPivot;   // gizmo pivot override snapshots
 
         // For EditorTransformGroup (single undo covering a MULTI-select gizmo drag).
-        // Parallel arrays — one entry per object that was actually moved.
+        // Parallel arrays  one entry per object that was actually moved.
         public EditorObject[]? EditorObjs;
         public Vector3[]? OldPositions, OldRotations, OldScales;
         public Vector3[]? NewPositions, NewRotations, NewScales;
@@ -124,9 +124,9 @@ public class HierarchyPanel
         // For TerrainPaint (height brush stroke on an advanced terrain plane).
         public EditorObject? TerrainObj;
         public float[]? OldHeights, NewHeights; // height snapshots before / after the stroke
-        // For TerrainLayerPaint (🎨 layer brush stroke) — splat snapshots.
+        // For TerrainLayerPaint ( layer brush stroke)  splat snapshots.
         public byte[]? OldSplat, NewSplat;
-        // For SkySunChange (sun drag on the sky gizmo) — pitch/yaw before/after (null = time-of-day),
+        // For SkySunChange (sun drag on the sky gizmo)  pitch/yaw before/after (null = time-of-day),
         // plus the Light marker whose direction follows the sun drag (null = none).
         public float? OldPitch, NewPitch, OldYaw, NewYaw;
         public EditorObject? LightObj;
@@ -174,7 +174,7 @@ public class HierarchyPanel
 
             if (moved.Count == 1)
             {
-                // Single-object drag — keep the classic per-object action
+                // Single-object drag  keep the classic per-object action
                 var obj = moved[0];
                 PushUndo(new UndoRedoAction
                 {
@@ -193,7 +193,7 @@ public class HierarchyPanel
                 return;
             }
 
-            // Multi-select drag — ONE grouped undo action with parallel per-object
+            // Multi-select drag  ONE grouped undo action with parallel per-object
             // arrays, so a single Ctrl+Z restores the whole group in one step.
             PushUndo(new UndoRedoAction
             {
@@ -213,7 +213,7 @@ public class HierarchyPanel
 
         // Wire up the gizmo pivot-placement delegate so ViewportPanel middle-click pivot
         // placement records an undo/redo (consistent with gizmo transform drags).
-        // Params: (obj, oldPivotOverride, newPivotOverride) — either may be null.
+        // Params: (obj, oldPivotOverride, newPivotOverride)  either may be null.
         _bridge.OnGizmoPivotChanged = (obj, oldPivot, newPivot) =>
         {
             if (obj == null) return;
@@ -233,7 +233,7 @@ public class HierarchyPanel
 
         // Wire up the sky-sun drag delegate so ViewportPanel sun-handle drags on the sky
         // gizmo record an undo/redo (restores the pitch/yaw override, or back to time-of-day).
-        // When a Light marker overrides the sky sun, its direction follows the drag — the
+        // When a Light marker overrides the sky sun, its direction follows the drag  the
         // old/new light direction rides along so Ctrl+Z restores the lighting too.
         // Params: (skyObj, oldPitch, oldYaw, newPitch, newYaw, lightObj, oldLightDir, newLightDir).
         _bridge.OnSkySunChanged = (obj, oldPitch, oldYaw, newPitch, newYaw, lightObj, oldLightDir, newLightDir) =>
@@ -296,7 +296,7 @@ public class HierarchyPanel
             Console.WriteLine($"[SceneDetail] Recorded terrain paint undo for '{obj.Name}' ({before.Length} heights)");
         };
 
-        // Wire up the terrain LAYER paint delegate so 🎨 brush strokes record an undo/redo
+        // Wire up the terrain LAYER paint delegate so  brush strokes record an undo/redo
         // (restores the full splat snapshots taken before/after the stroke).
         _bridge.OnTerrainLayerPainted = (obj, before, after) =>
         {
@@ -324,7 +324,7 @@ public class HierarchyPanel
 
     public void ShowInMenu() => ImGui.MenuItem("SceneDetail", null, ref _visible);
 
-    // ── Public API for main menu bar integration ──
+    //  Public API for main menu bar integration 
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
     public bool HasSelection => _bridge.SelectedUIElement != null || _bridge.SelectedEditorObjects.Count > 0;
@@ -333,7 +333,7 @@ public class HierarchyPanel
     public void Duplicate() => DuplicateAllSelected();
     public void DeleteSelection() => DeleteSelectedElement();
 
-    // ── Clipboard for Copy/Paste ──
+    //  Clipboard for Copy/Paste 
     private UIElement? _clipboardElement = null;
 
     /// <summary>Copy the primary selected element (deep clone) into clipboard.</summary>
@@ -422,7 +422,7 @@ public class HierarchyPanel
     {
         if (!_visible) return;
 
-        // ── Drag state is NOT reset here intentionally ──
+        //  Drag state is NOT reset here intentionally 
         // ImGui's drag-drop spans multiple frames. On the frame where the mouse is
         // released (drop delivery), BeginDragDropSource returns false, but we still
         // need _dragSourceElement to be set from the previous frame.
@@ -431,13 +431,13 @@ public class HierarchyPanel
         // We only clear stale state if a drag was active but is no longer.
         if (_dragSourceElement != null && !ImGui.IsMouseDragging(ImGuiMouseButton.Left))
         {
-            // Mouse is not dragging and we have stale drag state — clear it
+            // Mouse is not dragging and we have stale drag state  clear it
             // But don't clear on the frame where AcceptDragDropPayload delivers the drop
             // because ImGui.IsMouseDragging returns false on the release frame too.
             // Instead, HandleDropTarget will clear after successful drop execution.
             if (!ImGui.IsMouseReleased(ImGuiMouseButton.Left))
             {
-                // Not a release frame either — drag was cancelled without delivery
+                // Not a release frame either  drag was cancelled without delivery
                 _dragSourceElement = null;
                 _isDragging = false;
                 _dragSourceObjectIndex = -1;
@@ -457,7 +457,7 @@ public class HierarchyPanel
         bool canUndo = _undoStack.Count > 0;
         bool canRedo = _redoStack.Count > 0;
 
-        // ── Toolbar Row 1: Undo / Redo / + Add / Edit / Del ──
+        //  Toolbar Row 1: Undo / Redo / + Add / Edit / Del 
         {
             float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 4f) / 5f;
 
@@ -465,7 +465,7 @@ public class HierarchyPanel
             ImGui.PushStyleColor(ImGuiCol.Button, ColUndoBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColUndoBtnHov);
             ImGui.BeginDisabled(!canUndo);
-            if (ImGui.Button("↩ Undo", new Vector2(btnWidth, 26)))
+            if (ImGui.Button("← Undo", new Vector2(btnWidth, 26)))
             {
                 ExecuteUndo();
             }
@@ -480,7 +480,7 @@ public class HierarchyPanel
             ImGui.PushStyleColor(ImGuiCol.Button, ColUndoBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColUndoBtnHov);
             ImGui.BeginDisabled(!canRedo);
-            if (ImGui.Button("↪ Redo", new Vector2(btnWidth, 26)))
+            if (ImGui.Button("→ Redo", new Vector2(btnWidth, 26)))
             {
                 ExecuteRedo();
             }
@@ -512,7 +512,7 @@ public class HierarchyPanel
 
             ImGui.SameLine();
 
-            // Rename button (blue) — disabled when multi-selected (use Inspector for single)
+            // Rename button (blue)  disabled when multi-selected (use Inspector for single)
             string renameLabel = multiCount > 0 ? $"Rename ({multiCount})" : "Rename";
             ImGui.PushStyleColor(ImGuiCol.Button, ColEditBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColEditBtnHov);
@@ -534,7 +534,7 @@ public class HierarchyPanel
 
             ImGui.SameLine();
 
-            // Delete button (red) — deletes ALL selected when multi
+            // Delete button (red)  deletes ALL selected when multi
             string delLabel = multiCount > 0 ? $"Del ({multiCount})"
                 : multi3DCount > 0 ? $"Del 3D ({multi3DCount})"
                 : (has3DSelection ? "Del 3D" : "Del");
@@ -553,7 +553,7 @@ public class HierarchyPanel
                     : (has3DSelection ? "Delete selected 3D object" : "Delete the selected element"));
         }
 
-        // ── Toolbar Row 2: Save / Reload from .ing ──
+        //  Toolbar Row 2: Save / Reload from .ing 
         {
             float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 1f) / 2f;
 
@@ -572,7 +572,7 @@ public class HierarchyPanel
 
             ImGui.SameLine();
 
-            // Reload button (purple) — always enabled so user can recover from empty state
+            // Reload button (purple)  always enabled so user can recover from empty state
             ImGui.PushStyleColor(ImGuiCol.Button, ColReloadBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColReloadBtnHov);
             if (ImGui.Button("↻ Reload", new Vector2(btnWidth, 26)))
@@ -587,7 +587,7 @@ public class HierarchyPanel
                 ImGui.SetTooltip("Reload hierarchy from .ing file (discard unsaved edits)");
         }
 
-        // ── Toolbar Row 3: Quick-add 3D primitives (Box, Sphere, Plane) ──
+        //  Toolbar Row 3: Quick-add 3D primitives (Box, Sphere, Plane) 
         if (_bridge.EditorObjectManager != null)
         {
             float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 2f) / 3f;
@@ -597,7 +597,7 @@ public class HierarchyPanel
             var colBoxHov = new Vector4(0.75f, 0.35f, 0.35f, 1f);
             ImGui.PushStyleColor(ImGuiCol.Button, colBox);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colBoxHov);
-            if (ImGui.Button("▣ Box", new Vector2(btnWidth, 24)))
+            if (ImGui.Button("■ Box", new Vector2(btnWidth, 24)))
             {
                 QuickAdd3D(EditorPrimitiveType.Box);
             }
@@ -611,7 +611,7 @@ public class HierarchyPanel
             var colSphereHov = new Vector4(0.35f, 0.45f, 0.85f, 1f);
             ImGui.PushStyleColor(ImGuiCol.Button, colSphere);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colSphereHov);
-            if (ImGui.Button("◉ Sphere", new Vector2(btnWidth, 24)))
+            if (ImGui.Button("○ Sphere", new Vector2(btnWidth, 24)))
             {
                 QuickAdd3D(EditorPrimitiveType.Sphere);
             }
@@ -625,7 +625,7 @@ public class HierarchyPanel
             var colPlaneHov = new Vector4(0.35f, 0.75f, 0.35f, 1f);
             ImGui.PushStyleColor(ImGuiCol.Button, colPlane);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colPlaneHov);
-            if (ImGui.Button("▭ Plane", new Vector2(btnWidth, 24)))
+            if (ImGui.Button("△ Plane", new Vector2(btnWidth, 24)))
             {
                 QuickAdd3D(EditorPrimitiveType.Plane);
             }
@@ -634,7 +634,7 @@ public class HierarchyPanel
 
             ImGui.Separator();
 
-            // ── Toolbar Row 4: Camera / Light / Sky scene elements ──
+            //  Toolbar Row 4: Camera / Light / Sky scene elements 
             {
                 float btnWidth2 = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 2f) / 3f;
 
@@ -643,7 +643,7 @@ public class HierarchyPanel
                 var colCamHov = new Vector4(0.30f, 0.70f, 0.75f, 1f);
                 ImGui.PushStyleColor(ImGuiCol.Button, colCam);
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colCamHov);
-                if (ImGui.Button("📷 Camera", new Vector2(btnWidth2, 24)))
+                if (ImGui.Button("☀ Camera", new Vector2(btnWidth2, 24)))
                 {
                     QuickAdd3D(EditorPrimitiveType.Camera);
                 }
@@ -682,13 +682,13 @@ public class HierarchyPanel
             }
         }
 
-        // ── Keyboard shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+D) ──
+        //  Keyboard shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+D) 
         // Uses IsKeyReleased to prevent repeated triggering when key is held down.
         // Must be checked outside any disabled block so they always work.
         {
             bool ctrlHeld = ImGui.GetIO().KeyCtrl;
 
-            // Ctrl+Z: Undo (on key release — prevents looping)
+            // Ctrl+Z: Undo (on key release  prevents looping)
             if (ctrlHeld && ImGui.IsKeyReleased(ImGuiKey.Z) && canUndo)
             {
                 ExecuteUndo();
@@ -700,7 +700,7 @@ public class HierarchyPanel
                 ExecuteRedo();
             }
 
-            // Ctrl+D: Duplicate selected element(s) — multi-select (on key release)
+            // Ctrl+D: Duplicate selected element(s)  multi-select (on key release)
             if (ctrlHeld && ImGui.IsKeyReleased(ImGuiKey.D) && hasSelection)
             {
                 DuplicateAllSelected();
@@ -709,25 +709,25 @@ public class HierarchyPanel
 
         ImGui.Separator();
 
-        // ── Save notification bar ──
+        //  Save notification bar 
         if (_saveNotificationTimer > 0f && !string.IsNullOrEmpty(_saveNotificationText))
         {
             float alpha = Math.Min(1f, _saveNotificationTimer);
             var notifCol = new Vector4(0.3f, 0.85f, 0.4f, alpha);
-            ImGui.TextColored(notifCol, $"✓ {_saveNotificationText}");
+            ImGui.TextColored(notifCol, $" {_saveNotificationText}");
         }
 
-        // ── Undo/Redo hint ──
+        //  Undo/Redo hint 
         if (canUndo || canRedo)
         {
             string hint = "";
             if (canUndo) hint += $"{_undoStack.Count} undo";
-            if (canUndo && canRedo) hint += " · ";
+            if (canUndo && canRedo) hint += "  ";
             if (canRedo) hint += $"{_redoStack.Count} redo";
             ImGui.TextColored(ColDim, hint);
         }
 
-        // ── Auto-select first editor scene if SceneRoot is null but scenes exist ──
+        //  Auto-select first editor scene if SceneRoot is null but scenes exist 
         if (_bridge.SceneRoot == null && _bridge.EditorScenes.Count > 0)
         {
             string firstScene = _bridge.EditorScenes.Keys.First();
@@ -750,7 +750,7 @@ public class HierarchyPanel
             Console.WriteLine($"[SceneDetail] Auto-selected editor scene: {firstScene}");
         }
 
-        // ── Scene selector combo (always shown) ──
+        //  Scene selector combo (always shown) 
         if (_bridge.EditorScenes.Count > 0)
         {
             // Build scene name list for combo
@@ -769,7 +769,7 @@ public class HierarchyPanel
                     bool isSel = si == currentIdx;
                     if (ImGui.Selectable(sceneNames[si], isSel) && si != currentIdx)
                     {
-                        // Switch to selected editor scene — select first child so handles appear
+                        // Switch to selected editor scene  select first child so handles appear
                         var es = _bridge.EditorScenes[sceneNames[si]];
                         _bridge.SelectedEditorScene = sceneNames[si];
                         _bridge.SceneRoot = es.Root;
@@ -794,7 +794,7 @@ public class HierarchyPanel
             ImGui.Separator();
         }
 
-        // ── Render hierarchy tree (Scene root node wraps both UI elements and 3D objects) ──
+        //  Render hierarchy tree (Scene root node wraps both UI elements and 3D objects) 
         var editorMgr = _bridge.EditorObjectManager;
         bool hasEditorObjects = editorMgr != null && editorMgr.Count > 0;
 
@@ -809,7 +809,7 @@ public class HierarchyPanel
         }
         else if (_bridge.SceneRoot != null)
         {
-            // ── Render the Scene node as a tree root ──
+            //  Render the Scene node as a tree root 
             string sceneName = _bridge.SceneRoot.Name;
             ImGuiTreeNodeFlags sceneFlags = ImGuiTreeNodeFlags.SpanFullWidth | ImGuiTreeNodeFlags.DefaultOpen;
             bool sceneNodeOpen = ImGui.TreeNodeEx(sceneName, sceneFlags);
@@ -825,7 +825,7 @@ public class HierarchyPanel
 
             if (sceneNodeOpen)
             {
-                // ── Render UI children (actual children of SceneRoot) ──
+                //  Render UI children (actual children of SceneRoot) 
                 if (_bridge.SceneRoot.Children.Count > 0)
                 {
                     foreach (var child in _bridge.SceneRoot.Children.ToArray())
@@ -834,7 +834,7 @@ public class HierarchyPanel
                     }
                 }
 
-                // ── Render 3D editor objects as children of Scene node ──
+                //  Render 3D editor objects as children of Scene node 
                 if (hasEditorObjects)
                 {
                     var objects = editorMgr!.Objects;
@@ -847,14 +847,14 @@ public class HierarchyPanel
 
                         string icon = obj.PrimitiveType switch
                         {
-                            EditorPrimitiveType.Plane => "▭",
-                            EditorPrimitiveType.Box => "▣",
-                            EditorPrimitiveType.Sphere => "◉",
-                            EditorPrimitiveType.GlbReference => "◈",
-                            EditorPrimitiveType.Camera => "📷",
+                            EditorPrimitiveType.Plane => "",
+                            EditorPrimitiveType.Box => "",
+                            EditorPrimitiveType.Sphere => "",
+                            EditorPrimitiveType.GlbReference => "",
+                            EditorPrimitiveType.Camera => "",
                             EditorPrimitiveType.Light => "☀",
                             EditorPrimitiveType.Sky => "☁",
-                            _ => "◇",
+                            _ => "",
                         };
 
                         string label = $"{icon} {obj.Name}";
@@ -865,7 +865,7 @@ public class HierarchyPanel
 
                         ImGui.TreeNodeEx(label, flags);
 
-                        // ── Multi-select highlight for non-primary members ──
+                        //  Multi-select highlight for non-primary members 
                         if (isSelected && !isPrimary)
                         {
                             var dl = ImGui.GetWindowDrawList();
@@ -879,7 +879,7 @@ public class HierarchyPanel
                             Handle3DObjectClick(i, obj);
                         }
 
-                        // ── Drag source for 3D object ──
+                        //  Drag source for 3D object 
                         if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.None))
                         {
                             _dragSourceObjectIndex = i;
@@ -917,7 +917,7 @@ public class HierarchyPanel
                             ImGui.EndPopup();
                         }
 
-                        // ── Drop target for 3D objects (reorder) ──
+                        //  Drop target for 3D objects (reorder) 
                         Handle3DDropTarget(i);
                     }
                 }
@@ -947,20 +947,20 @@ public class HierarchyPanel
                     bool isPrimary = _bridge.SelectedEditorObject == obj;
                     string icon = obj.PrimitiveType switch
                     {
-                        EditorPrimitiveType.Plane => "▭",
-                        EditorPrimitiveType.Box => "▣",
-                        EditorPrimitiveType.Sphere => "◉",
-                        EditorPrimitiveType.GlbReference => "◈",
-                        EditorPrimitiveType.Camera => "📷",
+                        EditorPrimitiveType.Plane => "",
+                        EditorPrimitiveType.Box => "",
+                        EditorPrimitiveType.Sphere => "",
+                        EditorPrimitiveType.GlbReference => "",
+                        EditorPrimitiveType.Camera => "",
                         EditorPrimitiveType.Light => "☀",
                         EditorPrimitiveType.Sky => "☁",
-                        _ => "◇",
+                        _ => "",
                     };
                     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth;
                     if (isSelected) flags |= ImGuiTreeNodeFlags.Selected;
                     ImGui.TreeNodeEx($"{icon} {obj.Name}", flags);
 
-                    // ── Multi-select highlight for non-primary members ──
+                    //  Multi-select highlight for non-primary members 
                     if (isSelected && !isPrimary)
                     {
                         var dl = ImGui.GetWindowDrawList();
@@ -1001,9 +1001,9 @@ public class HierarchyPanel
         if (_saveNotificationTimer > 0f)
             _saveNotificationTimer -= ImGui.GetIO().DeltaTime;
 
-        // ── Popups ──
+        //  Popups 
 
-        // ── Add Element popup ──
+        //  Add Element popup 
         if (_showAddPopup)
         {
             ImGui.OpenPopup("Add UI Element");
@@ -1028,7 +1028,7 @@ public class HierarchyPanel
                 for (int ti = 0; ti < ElementTypeLabels.Length; ti++)
                 {
                     string label = ElementTypeLabels[ti];
-                    bool isSeparator = label.StartsWith("—");
+                    bool isSeparator = label.StartsWith("");
                     
                     if (isSeparator)
                     {
@@ -1088,7 +1088,7 @@ public class HierarchyPanel
             ImGui.EndPopup();
         }
 
-        // ── Rename popup ──
+        //  Rename popup 
         if (_showRenamePopup)
         {
             ImGui.OpenPopup("Rename Element");
@@ -1139,7 +1139,7 @@ public class HierarchyPanel
             ImGui.EndPopup();
         }
 
-        // ── Reload Confirmation popup ──
+        //  Reload Confirmation popup 
         if (_showReloadConfirm)
         {
             ImGui.OpenPopup("Reload from .ing?");
@@ -1149,7 +1149,7 @@ public class HierarchyPanel
         bool reloadPopupOpen = true;
         if (ImGui.BeginPopupModal("Reload from .ing?", ref reloadPopupOpen, ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextColored(ColWarn, "⚠ All unsaved changes will be lost!");
+            ImGui.TextColored(ColWarn, " All unsaved changes will be lost!");
             ImGui.Separator();
             ImGui.Text("This will revert the hierarchy to the last");
             ImGui.Text("saved .ing file on disk.");
@@ -1182,7 +1182,7 @@ public class HierarchyPanel
         bool hasChildren = element.Children.Count > 0;
 
         // For hidden elements, dim the icon to indicate they won't render in viewport
-        string icon = element.IsVisible ? element.GetIcon() : "○";
+        string icon = element.IsVisible ? element.GetIcon() : "";
         string label = $"{icon} {element.Name}";
 
         bool isSelected = _bridge.SelectedUIElement == element;
@@ -1199,7 +1199,7 @@ public class HierarchyPanel
 
         bool nodeOpen = ImGui.TreeNodeEx(label, flags);
 
-        // ── Click detection: primary IsItemClicked + fallback for ActiveId edge cases ──
+        //  Click detection: primary IsItemClicked + fallback for ActiveId edge cases 
         // IsItemClicked() checks g.ActiveId which can be non-zero when another widget
         // (e.g. drag-drop source, popup) holds the active ID. The fallback path avoids
         // this check, ensuring selection always works regardless of global ImGui state.
@@ -1254,7 +1254,7 @@ public class HierarchyPanel
                 var multi = _bridge.SelectedUIElements!;
                 if (multi.Count > 0 && multi.Contains(element))
                 {
-                    // Already in multi-set — just set as primary
+                    // Already in multi-set  just set as primary
                     _bridge.SelectedUIElement = element;
                 }
                 else
@@ -1276,7 +1276,7 @@ public class HierarchyPanel
             }
         }
 
-        // ── Show visual indicator if this element is in the multi-set but not primary ──
+        //  Show visual indicator if this element is in the multi-set but not primary 
         if (isInMulti && !isSelected)
         {
             // Draw a subtle highlight behind the multi-selected items
@@ -1287,7 +1287,7 @@ public class HierarchyPanel
             drawList.AddRectFilled(min, max, multiColor);
         }
 
-        // ── Drag source ──
+        //  Drag source 
         if (ImGui.BeginDragDropSource(ImGuiDragDropFlags.None))
         {
             _dragSourceElement = element;
@@ -1316,8 +1316,8 @@ public class HierarchyPanel
 
             ImGui.Separator();
 
-            // ── Assign Behavior submenu ──
-            if (ImGui.BeginMenu("⚡ Assign Behavior"))
+            //  Assign Behavior submenu 
+            if (ImGui.BeginMenu(" Assign Behavior"))
             {
                 var behaviors = IDEBridge.AvailableBehaviors;
                 var (currentType, _) = IDEBridge.ParseBehavior(element.ClickBehaviorLabel);
@@ -1338,7 +1338,7 @@ public class HierarchyPanel
 
             ImGui.Separator();
 
-            // ── Duplicate Item ──
+            //  Duplicate Item 
             if (ImGui.MenuItem("Duplicate", "Ctrl+D"))
             {
                 DuplicateSelectedElement(element);
@@ -1346,7 +1346,7 @@ public class HierarchyPanel
 
             ImGui.Separator();
 
-            // ── Delete Item ──
+            //  Delete Item 
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.3f, 0.3f, 1f));
             bool deleted = ImGui.MenuItem("Delete Item", "Del");
             ImGui.PopStyleColor();
@@ -1361,12 +1361,12 @@ public class HierarchyPanel
             ImGui.EndPopup();
         }
 
-        // ── Drop target (reorder / reparent) ──
+        //  Drop target (reorder / reparent) 
         HandleDropTarget(element);
 
-        // Recursively render ALL children — including hidden ones (like ExitConfirm dialog buttons)
+        // Recursively render ALL children  including hidden ones (like ExitConfirm dialog buttons)
         // so they appear in the hierarchy tree for selection and editing.
-        // IMPORTANT: snapshot to array before iterating — drag-drop reorder (ExecuteMove)
+        // IMPORTANT: snapshot to array before iterating  drag-drop reorder (ExecuteMove)
         // can modify element.Children during recursive RenderTreeNode calls, which would
         // throw "Collection was modified; enumeration operation may not execute."
         if (hasChildren && nodeOpen)
@@ -1380,9 +1380,9 @@ public class HierarchyPanel
     /// <summary>Where to drop an element relative to the target.</summary>
     private enum DropPosition { Before, After, AsChild }
 
-    // ──────────────────────────────────────────────
-    //  Drag & Drop — Drop Target Handling
-    // ──────────────────────────────────────────────
+    // 
+    //  Drag & Drop  Drop Target Handling
+    // 
 
     /// <summary>Handle drop target for a tree node element.</summary>
     private unsafe void HandleDropTarget(UIElement targetElement)
@@ -1418,7 +1418,7 @@ public class HierarchyPanel
                     else
                         dropPos = DropPosition.AsChild;
 
-                    // ── Draw visual indicator ──
+                    //  Draw visual indicator 
                     var drawList = ImGui.GetWindowDrawList();
                     float lineX = ImGui.GetItemRectMin().X;
                     float lineW = ImGui.GetItemRectMax().X - lineX;
@@ -1453,7 +1453,7 @@ public class HierarchyPanel
                             lineColor, 3f, ImDrawFlags.None, 2.0f);
                     }
 
-                    // ── Execute drop on payload delivery ──
+                    //  Execute drop on payload delivery 
                     // AcceptDragDropPayload returns non-null only on the frame where
                     // the mouse is released over a valid drop target. At this point,
                     // _dragSourceElement is still valid (was set on previous frames).
@@ -1609,9 +1609,9 @@ public class HierarchyPanel
                 CollectVisibleRecursive(child, result);
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  Quick-Add 3D Primitive
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>Quick-add a 3D primitive with incremental naming, placed at camera position.</summary>
     private void QuickAdd3D(EditorPrimitiveType primType)
@@ -1628,7 +1628,7 @@ public class HierarchyPanel
 
         var obj = editorMgr.AddPrimitive(primType, spawnPos);
 
-        // Sky automatically drives a DIRECT light — reuse or create one (bug #7).
+        // Sky automatically drives a DIRECT light  reuse or create one (bug #7).
         if (primType == EditorPrimitiveType.Sky)
             editorMgr.EnsureDirectLightForSky(obj);
 
@@ -1640,9 +1640,9 @@ public class HierarchyPanel
         Console.WriteLine($"[SceneDetail] Quick-added 3D {primType}: '{obj.Name}' at {spawnPos}");
     }
 
-    // ──────────────────────────────────────────────
-    //  3D Object Drag & Drop — Drop Target Handling
-    // ──────────────────────────────────────────────
+    // 
+    //  3D Object Drag & Drop  Drop Target Handling
+    // 
 
     /// <summary>Handle drop target for reordering 3D objects in the tree.</summary>
     private unsafe void Handle3DDropTarget(int targetIndex)
@@ -1693,9 +1693,9 @@ public class HierarchyPanel
         }
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  Add New Element
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>Get a unique name by appending an incrementing number suffix if needed.</summary>
     private string GetUniqueName(string baseName)
@@ -1708,7 +1708,7 @@ public class HierarchyPanel
             {
                 if (obj != null && obj.Name == baseName)
                 {
-                    // Found duplicate — try baseName1, baseName2, etc.
+                    // Found duplicate  try baseName1, baseName2, etc.
                     for (int i = 1; ; i++)
                     {
                         string candidate = baseName + i;
@@ -1748,7 +1748,7 @@ public class HierarchyPanel
     /// 3D objects (Plane, Box, Sphere) are created via EditorObjectManager.</summary>
     private void AddNewElement(string name, int typeIdx)
     {
-        // ── Handle 3D object creation ──
+        //  Handle 3D object creation 
         if (typeIdx >= First3DTypeIdx)
         {
             var editorMgr = _bridge.EditorObjectManager;
@@ -1808,7 +1808,7 @@ public class HierarchyPanel
             IsVisible = true,
         };
 
-        // ── Defaults per type ──
+        //  Defaults per type 
         // Label: transparent background, no hover
         // Container: no hover
         // Button: default (hover on)
@@ -1918,9 +1918,9 @@ public class HierarchyPanel
             }
             else
             {
-                // No parent at all — scene hasn't set its root yet.
+                // No parent at all  scene hasn't set its root yet.
                 // Cannot add element without a valid parent. Log and skip.
-                Console.WriteLine($"[SceneDetail] No SceneRoot available — cannot add '{name}'");
+                Console.WriteLine($"[SceneDetail] No SceneRoot available  cannot add '{name}'");
                 ShowSaveNotification("No scene root available");
                 return;
             }
@@ -1939,9 +1939,9 @@ public class HierarchyPanel
         _bridge.SelectedUIElement = newElem;
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  3D Object Click Selection (plain / Ctrl / Shift)
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>Handle a click on a 3D object row in the hierarchy tree:
     /// - Plain click → select just this object (and set it as the Shift anchor).
@@ -1988,14 +1988,14 @@ public class HierarchyPanel
         _bridge.SelectedAgent = null;
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  Delete Element
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>Delete the currently selected element(s). Supports multi-delete (UI + 3D objects).</summary>
     private void DeleteSelectedElement()
     {
-        // ── Handle 3D object deletion first (deletes ALL selected) ──
+        //  Handle 3D object deletion first (deletes ALL selected) 
         var editorObjs = _bridge.SelectedEditorObjects;
         if (editorObjs != null && editorObjs.Count > 0)
         {
@@ -2061,9 +2061,9 @@ public class HierarchyPanel
         Console.WriteLine($"[SceneDetail] Could not find element '{element.Name}' in hierarchy");
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  Duplicate Element
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>Generate a unique duplicate name by appending "Copy N" suffix.
     /// Checks existing siblings to avoid duplicates like "Copy 1, Copy 2".</summary>
@@ -2141,7 +2141,7 @@ public class HierarchyPanel
     /// Processes elements from last to first to preserve insert indices. Selects all clones afterwards.</summary>
     private void DuplicateAllSelected()
     {
-        // ── 3D object duplication (Ctrl+D) — duplicates ALL selected ──
+        //  3D object duplication (Ctrl+D)  duplicates ALL selected 
         var editorObjs = _bridge.SelectedEditorObjects;
         if (editorObjs != null && editorObjs.Count > 0)
         {
@@ -2251,9 +2251,9 @@ public class HierarchyPanel
         return (null, -1);
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  Undo / Redo
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>Push an action onto the undo stack and clear the redo stack.</summary>
     private void PushUndo(UndoRedoAction action)
@@ -2291,10 +2291,10 @@ public class HierarchyPanel
                 }
                 else
                 {
-                    // 🛠️ FIX #11: Guard against null parent — this can happen if the
+                    //  FIX #11: Guard against null parent  this can happen if the
                     // element was pending re-parent (SceneRoot wasn't available when added).
                     // Just clear selection and skip removal.
-                    Console.WriteLine($"[SceneDetail] Undo Add: parent was null — element '{action.Element?.Name ?? "unknown"}' may have been pending");
+                    Console.WriteLine($"[SceneDetail] Undo Add: parent was null  element '{action.Element?.Name ?? "unknown"}' may have been pending");
                     _bridge.SelectedUIElement = null;
                 }
                 break;
@@ -2303,7 +2303,7 @@ public class HierarchyPanel
                 // Re-insert the deleted element at its original position
                 if (action.Parent != null && action.Element != null)
                 {
-                    // 🛠️ FIX #11: Guard against ChildIndex == -1 (invalid/unset index).
+                    //  FIX #11: Guard against ChildIndex == -1 (invalid/unset index).
                     // Use Math.Max to ensure we never attempt Insert(-1, elem).
                     int safeIdx = Math.Max(0, action.ChildIndex);
                     int insertIdx = Math.Min(safeIdx, action.Parent.Children.Count);
@@ -2316,9 +2316,9 @@ public class HierarchyPanel
                 }
                 else
                 {
-                    // 🛠️ FIX #11: Guard against null parent — this shouldn't happen for delete
+                    //  FIX #11: Guard against null parent  this shouldn't happen for delete
                     // since the element was definitely in the tree, but be defensive.
-                    Console.WriteLine($"[SceneDetail] Undo Delete: parent was null for '{action.Element?.Name ?? "unknown"}' — cannot restore");
+                    Console.WriteLine($"[SceneDetail] Undo Delete: parent was null for '{action.Element?.Name ?? "unknown"}'  cannot restore");
                 }
                 break;
 
@@ -2369,7 +2369,7 @@ public class HierarchyPanel
                     action.Element.Y = action.OldY;
                     action.Element.Width = action.OldW;
                     action.Element.Height = action.OldH;
-                    Console.WriteLine($"[SceneDetail] Undo Transform: '{action.Element.Name}' → ({action.OldX:F0},{action.OldY:F0}) [{action.OldW:F0}×{action.OldH:F0}]");
+                    Console.WriteLine($"[SceneDetail] Undo Transform: '{action.Element.Name}' → ({action.OldX:F0},{action.OldY:F0}) [{action.OldW:F0}{action.OldH:F0}]");
                     _bridge.SelectedUIElement = action.Element;
                 }
                 break;
@@ -2553,7 +2553,7 @@ public class HierarchyPanel
                     action.Element.Y = action.NewY;
                     action.Element.Width = action.NewW;
                     action.Element.Height = action.NewH;
-                    Console.WriteLine($"[SceneDetail] Redo Transform: '{action.Element.Name}' → ({action.NewX:F0},{action.NewY:F0}) [{action.NewW:F0}×{action.NewH:F0}]");
+                    Console.WriteLine($"[SceneDetail] Redo Transform: '{action.Element.Name}' → ({action.NewX:F0},{action.NewY:F0}) [{action.NewW:F0}{action.NewH:F0}]");
                     _bridge.SelectedUIElement = action.Element;
                 }
                 break;
@@ -2651,9 +2651,9 @@ public class HierarchyPanel
         _undoStack.Add(action);
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  Save to .ing
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>
     /// Save the current scene's UI hierarchy.
@@ -2730,9 +2730,9 @@ public class HierarchyPanel
         _saveNotificationTimer = SaveNotifDuration;
     }
 
-    // ──────────────────────────────────────────────
+    // 
     //  Reload from .ing
-    // ──────────────────────────────────────────────
+    // 
 
     /// <summary>
     /// Reload the UI hierarchy from the .ing file on disk, discarding any in-memory edits.
@@ -2776,7 +2776,7 @@ public class HierarchyPanel
 
             if (!reuseExisting)
             {
-                // No existing root — create a new one and load into it
+                // No existing root  create a new one and load into it
                 sceneRoot = new UIElement
                 {
                     Name = sceneName,
@@ -2818,7 +2818,7 @@ public class HierarchyPanel
             _redoStack.Clear();
 
             int loadedCount = sceneRoot.Children.Count;
-            Console.WriteLine($"[SceneDetail] Reloaded hierarchy for '{sceneName}' from .ing ({loadedCount} top-level elements) — reused existing root: {reuseExisting}");
+            Console.WriteLine($"[SceneDetail] Reloaded hierarchy for '{sceneName}' from .ing ({loadedCount} top-level elements)  reused existing root: {reuseExisting}");
             ShowSaveNotification($"Reloaded '{sceneName}' from .ing");
         }
         catch (Exception ex)

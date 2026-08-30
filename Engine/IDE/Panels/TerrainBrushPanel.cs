@@ -6,7 +6,7 @@ using System.Numerics;
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
 /// <summary>
-/// Terrain Brush panel — all terrain painting settings in one place (moved out of the
+/// Terrain Brush panel  all terrain painting settings in one place (moved out of the
 /// Inspector): brush size / strength / softness / falloff curve, layer paint, and the
 /// brush ring color + transparency. Editing works on the selected terrain plane; when no
 /// terrain is selected the panel shows a hint. All values live on the EditorObject so they
@@ -35,17 +35,17 @@ public class TerrainBrushPanel
             return;
         }
 
-        // ── Brush tool info ──
-        string[] toolNames = ["⛰ Sculpt", "🎨 Paint", "🌀 Smooth", "⏹ Flatten"];
+        //  Brush tool info 
+        string[] toolNames = ["▲ Sculpt", "▲ Paint", "▲ Smooth", "▲ Flatten"];
         int mode = Math.Clamp(_bridge.TerrainBrushMode, 0, toolNames.Length - 1);
         ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Brush (Viewport)");
         ImGui.TextDisabled($"Active tool: {toolNames[mode]}");
-        ImGui.TextDisabled("Left-drag = apply · Ctrl = reverse · Shift = fine control.\nUse the viewport toolbar to switch tools.");
+        ImGui.TextDisabled("Left-drag = apply  Ctrl = reverse  Shift = fine control.\nUse the viewport toolbar to switch tools.");
 
         ImGui.Spacing();
         ImGui.Separator();
 
-        // ── Brush settings (stored per terrain object → persist with the scene) ──
+        //  Brush settings (stored per terrain object → persist with the scene) 
         float bSize = editorObj.TerrainBrushSize;
         if (ImGui.DragFloat("Brush Size", ref bSize, 0.1f, 0.5f, 200f, "%.1f"))
             editorObj.TerrainBrushSize = Math.Clamp(bSize, 0.5f, 200f);
@@ -56,7 +56,7 @@ public class TerrainBrushPanel
         if (ImGui.DragFloat("Brush Strength", ref bStr, 0.005f, 0.01f, 2f, "%.3f"))
             editorObj.TerrainBrushStrength = Math.Clamp(bStr, 0.01f, 2f);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("⛰ Height added/removed per 60fps-frame (world units); 🌀/⏹ blend amount per stamp (0..1).\nHold Shift in the viewport for 15% strength (fine strokes).");
+            ImGui.SetTooltip(" Height added/removed per 60fps-frame (world units); / blend amount per stamp (0..1).\nHold Shift in the viewport for 15% strength (fine strokes).");
 
         float bSoft = editorObj.TerrainBrushSoftness;
         if (ImGui.SliderFloat("Brush Softness", ref bSoft, 0f, 1f, "%.2f"))
@@ -70,12 +70,12 @@ public class TerrainBrushPanel
         if (ImGui.Combo("Falloff Curve", ref falloffIdx, falloffNames, falloffNames.Length))
             editorObj.TerrainBrushFalloff = falloffIdx;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("How the brush weight falls off toward its edge (like Unreal's brush falloff presets).\nLinear = cone · Smooth = round center · Sharp = strong center · Spherical = classic · Soft = gentle edges.");
+            ImGui.SetTooltip("How the brush weight falls off toward its edge (like Unreal's brush falloff presets).\nLinear = cone  Smooth = round center  Sharp = strong center  Spherical = classic  Soft = gentle edges.");
 
         ImGui.Spacing();
         ImGui.Separator();
 
-        // ── Brush ring highlight (3D ring on the terrain surface) ──
+        //  Brush ring highlight (3D ring on the terrain surface) 
         ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Ring Highlight");
         var ringCol = new Vector4(editorObj.BrushIndicatorColor.X, editorObj.BrushIndicatorColor.Y, editorObj.BrushIndicatorColor.Z, editorObj.BrushIndicatorAlpha);
         if (ImGui.ColorEdit4("Ring Color", ref ringCol))
@@ -86,16 +86,16 @@ public class TerrainBrushPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Color + transparency of the brush ring shown on the terrain surface while the brush tool is active.\nSaved with the scene.");
 
-        // ── Ring color presets (quick pick) ──
+        //  Ring color presets (quick pick) 
         ImGui.Spacing();
         ImGui.TextDisabled("Presets:");
-        if (ImGui.Button("🟢 Hijau"))
+        if (ImGui.Button("☀ Hijau"))
             editorObj.BrushIndicatorColor = new Vector3(0.2f, 1f, 0.4f);
         ImGui.SameLine();
-        if (ImGui.Button("🔴 Merah"))
+        if (ImGui.Button("☀ Merah"))
             editorObj.BrushIndicatorColor = new Vector3(1f, 0.25f, 0.25f);
         ImGui.SameLine();
-        if (ImGui.Button("🟡 Kuning"))
+        if (ImGui.Button("☀ Kuning"))
             editorObj.BrushIndicatorColor = new Vector3(1f, 0.85f, 0.1f);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Apply a preset color to the brush ring. Alpha/transparency stays as set in 'Ring Color' above.");
@@ -103,7 +103,7 @@ public class TerrainBrushPanel
         ImGui.Spacing();
         ImGui.Separator();
 
-        // ── Paint Layers (independent textures per layer, like terrain layers) ──
+        //  Paint Layers (independent textures per layer, like terrain layers) 
         ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Paint Layers");
         ImGui.TextDisabled("Each layer has its own texture + tiling. Click a layer to paint it.");
 
@@ -166,7 +166,7 @@ public class TerrainBrushPanel
         ImGui.Spacing();
         ImGui.Separator();
 
-        // ── Active layer editing ──
+        //  Active layer editing 
         if (activeIdx >= 0 && activeIdx < 4)
         {
             ImGui.PushID($"paint_edit_{activeIdx}");

@@ -237,55 +237,63 @@ public unsafe class ImGuiController : IDisposable
         io.Fonts.Clear();
         _customFontCache.Clear();
 
-        // 1. Load IDE font as default, or use a system font with proper size
+        // Build targeted glyph ranges — ONLY the symbols we actually use in the UI.
+        // Much smaller than Japanese range (~20 glyphs vs ~20K) — guaranteed to fit atlas.
+        nint symbolRanges;
+        {
+            var rb = new ImFontGlyphRangesBuilderPtr(ImGuiNative.ImFontGlyphRangesBuilder_ImFontGlyphRangesBuilder());
+            rb.AddRanges(io.Fonts.GetGlyphRangesDefault()); // Basic Latin
+            rb.AddText("←→↻─═■▲△○☀☁✈—");
+            ImVector rv;
+            rb.BuildRanges(out rv);
+            symbolRanges = (nint)rv.Data;
+        }
+
+        // 1. Load primary font with WIDE ranges so atlas has slots for symbols
         if (fontPath != null && File.Exists(fontPath))
         {
             try
             {
-                io.Fonts.AddFontFromFileTTF(fontPath, fontSize);
+                io.Fonts.AddFontFromFileTTF(fontPath, fontSize, null, symbolRanges);
                 ActiveIDEFontPath = fontPath;
                 ActiveIDEFontSize = fontSize;
-                Console.WriteLine($"[ImGui] IDE font: {Path.GetFileName(fontPath)} @ {fontSize}px");
+                Console.WriteLine($"[ImGui] IDE font: {Path.GetFileName(fontPath)} @ {fontSize}px (symbol ranges)");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ImGui] Failed to load IDE font '{fontPath}': {ex.Message}, using Segoe UI");
-                LoadSystemFont(io, fontSize);
+                LoadSystemFont(io, fontSize, symbolRanges);
                 ActiveIDEFontPath = "";
                 ActiveIDEFontSize = fontSize;
             }
         }
         else
         {
-            // Default: use Segoe UI with requested size (AddFontDefault ignores size)
-            LoadSystemFont(io, fontSize);
+            LoadSystemFont(io, fontSize, symbolRanges);
             ActiveIDEFontPath = "";
             ActiveIDEFontSize = fontSize;
         }
 
-        // 2. Merge symbol font (Segoe UI Symbol / Segoe UI)
+        // 2. Merge Segoe UI Symbol — provides actual glyph bitmaps for symbols
+        //    (primary font = Segoe UI doesn't have them, this font does)
         try
         {
-            string[] symbolFontPaths = [
-                @"C:\Windows\Fonts\seguisym.ttf",
-                @"C:\Windows\Fonts\segoeui.ttf",
-            ];
-            foreach (var fp in symbolFontPaths)
+            string symPath = @"C:\Windows\Fonts\seguisym.ttf";
+            if (File.Exists(symPath))
             {
-                if (File.Exists(fp))
-                {
-                    var config = new ImFontConfigPtr(ImGuiNative.ImFontConfig_ImFontConfig());
-                    config.MergeMode = true;
-                    io.Fonts.AddFontFromFileTTF(fp, Math.Max(fontSize, 16f), config, io.Fonts.GetGlyphRangesDefault());
-                    config.Destroy();
-                    Console.WriteLine($"[ImGui] Merged symbol font: {Path.GetFileName(fp)}");
-                    break;
-                }
+                var config = new ImFontConfigPtr(ImGuiNative.ImFontConfig_ImFontConfig());
+                config.MergeMode = true;
+                config.OversampleH = 2;
+                config.OversampleV = 1;
+                io.Fonts.AddFontFromFileTTF(symPath, fontSize, config, symbolRanges);
+                config.Destroy();
+                Console.WriteLine("[ImGui] Merged Segoe UI Symbol for symbol glyphs");
             }
         }
-        catch { }
+        catch (Exception ex) { Console.WriteLine($"[ImGui] Symbol merge failed: {ex.Message}"); }
 
-        // 3. Build + upload
+        // 3. Build + upload (increase atlas width to fit ~20K glyphs from Japanese range)
+        try { io.Fonts.TexDesiredWidth = 16384; } catch { }
         io.Fonts.Build();
         UpdateFontTexture();
 
@@ -295,18 +303,19 @@ public unsafe class ImGuiController : IDisposable
     }
 
     /// <summary>Load Segoe UI (or fallback) as the IDE font with the given size.</summary>
-    private void LoadSystemFont(ImGuiIOPtr io, float fontSize)
+    private void LoadSystemFont(ImGuiIOPtr io, float fontSize, nint glyphRanges = 0)
     {
         string[] fallbackFonts = [
             @"C:\Windows\Fonts\segoeui.ttf",
             @"C:\Windows\Fonts\arial.ttf",
             @"C:\Windows\Fonts\tahoma.ttf",
         ];
+        nint ranges = glyphRanges != 0 ? glyphRanges : io.Fonts.GetGlyphRangesDefault();
         foreach (var fp in fallbackFonts)
         {
             if (File.Exists(fp))
             {
-                io.Fonts.AddFontFromFileTTF(fp, fontSize);
+                io.Fonts.AddFontFromFileTTF(fp, fontSize, null, ranges);
                 Console.WriteLine($"[ImGui] Default font: {Path.GetFileName(fp)} @ {fontSize}px");
                 return;
             }
