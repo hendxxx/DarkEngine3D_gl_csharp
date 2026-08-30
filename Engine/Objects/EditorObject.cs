@@ -88,7 +88,7 @@ public class TerrainLayer
     public float SlopeThreshold { get; set; } = 0.35f; // only used for slope layer
 
     // ── Factory ──
-    public static TerrainLayer CreateDefault() => new() { Name = "Base", HeightMin = 0f, HeightMax = 1f };
+    public static TerrainLayer CreateDefault() => new() { Name = "Layer 1", HeightMin = 0f, HeightMax = 1f };
     public static TerrainLayer CreateSlope() => new() { Name = "Slope", HeightMin = 0f, HeightMax = 1f, SlopeThreshold = 0.35f };
 
     public TerrainLayer Clone()
@@ -502,35 +502,35 @@ public unsafe class EditorObject
 
         // Migrate old 4 layers → new dynamic layers
         TerrainLayerList.Clear();
-        var air = TerrainLayer.CreateDefault();
-        air.Name = "Air"; air.AlbedoPath = TerrainTextureAirPath;
-        air.HeightMin = 0f; air.HeightMax = TerrainLayerAirTop;
-        air.TilingX = TerrainTexTiling; air.TilingY = TerrainTexTiling;
-        TerrainLayerList.Add(air);
+        var l1 = TerrainLayer.CreateDefault();
+        l1.Name = "Layer 1"; l1.AlbedoPath = TerrainTextureAirPath;
+        l1.HeightMin = 0f; l1.HeightMax = TerrainLayerAirTop;
+        l1.TilingX = TerrainTexTiling; l1.TilingY = TerrainTexTiling;
+        TerrainLayerList.Add(l1);
 
         if (!string.IsNullOrEmpty(TerrainTextureDirtPath))
         {
-            var dirt = TerrainLayer.CreateDefault();
-            dirt.Name = "Dirt"; dirt.AlbedoPath = TerrainTextureDirtPath;
-            dirt.HeightMin = TerrainLayerAirTop; dirt.HeightMax = TerrainLayerDirtTop;
-            dirt.TilingX = TerrainTexTiling; dirt.TilingY = TerrainTexTiling;
-            TerrainLayerList.Add(dirt);
+            var l2 = TerrainLayer.CreateDefault();
+            l2.Name = "Layer 2"; l2.AlbedoPath = TerrainTextureDirtPath;
+            l2.HeightMin = TerrainLayerAirTop; l2.HeightMax = TerrainLayerDirtTop;
+            l2.TilingX = TerrainTexTiling; l2.TilingY = TerrainTexTiling;
+            TerrainLayerList.Add(l2);
         }
         if (!string.IsNullOrEmpty(TerrainTextureGrassPath))
         {
-            var grass = TerrainLayer.CreateDefault();
-            grass.Name = "Grass"; grass.AlbedoPath = TerrainTextureGrassPath;
-            grass.HeightMin = TerrainLayerDirtTop; grass.HeightMax = TerrainLayerGrassTop;
-            grass.TilingX = TerrainTexTiling; grass.TilingY = TerrainTexTiling;
-            TerrainLayerList.Add(grass);
+            var l3 = TerrainLayer.CreateDefault();
+            l3.Name = "Layer 3"; l3.AlbedoPath = TerrainTextureGrassPath;
+            l3.HeightMin = TerrainLayerDirtTop; l3.HeightMax = TerrainLayerGrassTop;
+            l3.TilingX = TerrainTexTiling; l3.TilingY = TerrainTexTiling;
+            TerrainLayerList.Add(l3);
         }
         if (!string.IsNullOrEmpty(TerrainTextureSnowPath))
         {
-            var snow = TerrainLayer.CreateDefault();
-            snow.Name = "Snow"; snow.AlbedoPath = TerrainTextureSnowPath;
-            snow.HeightMin = TerrainLayerGrassTop; snow.HeightMax = TerrainLayerSnowTop;
-            snow.TilingX = TerrainTexTiling; snow.TilingY = TerrainTexTiling;
-            TerrainLayerList.Add(snow);
+            var l4 = TerrainLayer.CreateDefault();
+            l4.Name = "Layer 4"; l4.AlbedoPath = TerrainTextureSnowPath;
+            l4.HeightMin = TerrainLayerGrassTop; l4.HeightMax = TerrainLayerSnowTop;
+            l4.TilingX = TerrainTexTiling; l4.TilingY = TerrainTexTiling;
+            TerrainLayerList.Add(l4);
         }
 
         // Migrate slope
@@ -552,10 +552,33 @@ public unsafe class EditorObject
     public float TerrainBrushStrength { get; set; } = 1f;
     /// <summary>Brush edge falloff 0..1 (0 = hard edge, 1 = very soft).</summary>
     public float TerrainBrushSoftness { get; set; } = 1f;
-    /// <summary>Layer painted with the 🎨 texture brush: 0=air, 1=tanah, 2=rumput, 3=salju.</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 2;
-    /// <summary>Weight added to the painted layer per 🎨 brush stamp (0..1).</summary>
+    /// <summary>Layer painted with the texture brush: 0-3.</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 0;
+    /// <summary>Weight added to the painted layer per brush stamp (0..1).</summary>
     public float TerrainPaintStrength { get; set; } = 0.45f;
+
+    // ── Per-paint-layer textures (independent from terrain auto-layers) ──
+    public const int MaxPaintLayers = 4;
+    /// <summary>Texture path for paint layer 0.</summary>
+    public string PaintLayerTexture0 { get; set; } = "";
+    /// <summary>Texture path for paint layer 1.</summary>
+    public string PaintLayerTexture1 { get; set; } = "";
+    /// <summary>Texture path for paint layer 2.</summary>
+    public string PaintLayerTexture2 { get; set; } = "";
+    /// <summary>Texture path for paint layer 3.</summary>
+    public string PaintLayerTexture3 { get; set; } = "";
+    /// <summary>Per-paint-layer tiling (X, Y).</summary>
+    public Vector2[] PaintLayerTiling { get; set; } = [new(0.5f, 0.5f), new(0.5f, 0.5f), new(0.5f, 0.5f), new(0.5f, 0.5f)];
+    /// <summary>Per-paint-layer random tile (stochastic sampling) flag.</summary>
+    public bool[] PaintLayerStochastic { get; set; } = [false, false, false, false];
+    /// <summary>Number of active paint layers (1..4). Splat map RGBA limits us to 4.</summary>
+    public int PaintLayerCount { get; set; } = 1;
+    /// <summary>Helper: get/set paint layer texture by index.</summary>
+    public string GetPaintLayerTexture(int idx) => idx switch { 0 => PaintLayerTexture0, 1 => PaintLayerTexture1, 2 => PaintLayerTexture2, 3 => PaintLayerTexture3, _ => "" };
+    public void SetPaintLayerTexture(int idx, string path)
+    {
+        switch (idx) { case 0: PaintLayerTexture0 = path; break; case 1: PaintLayerTexture1 = path; break; case 2: PaintLayerTexture2 = path; break; case 3: PaintLayerTexture3 = path; break; }
+    }
     /// <summary>Brush falloff curve used by every brush tool: 0=Linear, 1=Smooth,
     /// 2=Sharp, 3=Spherical, 4=Soft.</summary>
     public int TerrainBrushFalloff { get; set; } = 1;

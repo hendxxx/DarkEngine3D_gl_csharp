@@ -383,10 +383,10 @@ public class IDEBridge
     /// (toolbar button only — keyboard shortcuts are disabled). Left-drag raises,
     /// Ctrl+left-drag lowers.</summary>
     public bool TerrainBrushActive { get; set; }
-    /// <summary>Active brush tool: 0 = ⛰ height (raise/lower), 1 = 🎨 layer paint (air/tanah/rumput/salju).</summary>
+    /// <summary>Active brush tool: 0 = sculpt (raise/lower), 1 = paint, 2 = smooth, 3 = flatten.</summary>
     public int TerrainBrushMode { get; set; } = 0;
-    /// <summary>Active layer for the 🎨 paint brush: 0=air, 1=tanah, 2=rumput, 3=salju.</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 2;
+    /// <summary>Active paint layer index (0-3).</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 0;
     /// <summary>Called by ViewportPanel when a terrain height-paint stroke ends (for undo support).
     /// Passes the painted object plus the height snapshots taken BEFORE and AFTER the stroke
     /// (a no-op stroke with identical arrays is filtered out by HierarchyPanel).</summary>

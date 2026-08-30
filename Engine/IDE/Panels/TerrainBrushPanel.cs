@@ -21,7 +21,7 @@ public class TerrainBrushPanel
 
     public void ShowInMenu() => ImGui.MenuItem("Terrain Brush", null, ref _visible);
 
-    public void Render()
+    public unsafe void Render()
     {
         if (!_visible) return;
 
@@ -103,37 +103,160 @@ public class TerrainBrushPanel
         ImGui.Spacing();
         ImGui.Separator();
 
-        // ── Layer paint (🎨 brush) ──
-        ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layer Paint (🎨 Brush)");
-        string[] layerNames = ["1 · Air", "2 · Tanah", "3 · Rumput", "4 · Salju"];
-        int layerIdx = Math.Clamp(editorObj.TerrainPaintLayerIndex, 0, 3);
-        if (ImGui.Combo("Paint Layer", ref layerIdx, layerNames, layerNames.Length))
-        {
-            editorObj.TerrainPaintLayerIndex = layerIdx;
-            _bridge.TerrainPaintLayerIndex = layerIdx; // sync the viewport tool
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Layer drawn by the 🎨 Paint brush. Pick the layer in the viewport toolbar too.");
+        // ── Paint Layers (independent textures per layer, like terrain layers) ──
+        ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Paint Layers");
+        ImGui.TextDisabled("Each layer has its own texture + tiling. Click a layer to paint it.");
 
+        int layerCount = Math.Clamp(editorObj.PaintLayerCount, 1, 4);
+        bool canAdd = layerCount < 4;
+        bool canRemove = layerCount > 1;
+        ImGui.BeginDisabled(!canAdd);
+        if (ImGui.Button("+ Add Layer", new Vector2(ImGui.GetContentRegionAvail().X * 0.5f, 22)))
+        {
+            editorObj.PaintLayerCount = Math.Min(layerCount + 1, 4);
+            editorObj.MarkDirty();
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!canRemove);
+        if (ImGui.Button("- Remove Last", new Vector2(-1, 22)) && canRemove)
+        {
+            int lastIdx = layerCount - 1;
+            editorObj.SetPaintLayerTexture(lastIdx, "");
+            editorObj.PaintLayerCount = layerCount - 1;
+            if (editorObj.TerrainPaintLayerIndex >= editorObj.PaintLayerCount)
+                editorObj.TerrainPaintLayerIndex = editorObj.PaintLayerCount - 1;
+            editorObj.MarkDirty();
+        }
+        ImGui.EndDisabled();
+
+        Vector4[] layerColors = [
+            new(0.20f, 0.50f, 0.85f, 1f), // blue
+            new(0.60f, 0.45f, 0.28f, 1f), // brown
+            new(0.30f, 0.65f, 0.30f, 1f), // green
+            new(0.90f, 0.93f, 0.98f, 1f), // white
+        ];
+        int activeIdx = Math.Clamp(editorObj.TerrainPaintLayerIndex, 0, layerCount - 1);
+
+        for (int i = 0; i < layerCount; i++)
+        {
+            ImGui.PushID($"paint_layer_{i}");
+            bool isActive = (i == activeIdx);
+
+            if (ImGui.Selectable($"##sel_{i}", isActive, ImGuiSelectableFlags.SpanAllColumns, new Vector2(0, 22)))
+            {
+                activeIdx = i;
+                editorObj.TerrainPaintLayerIndex = i;
+                _bridge.TerrainPaintLayerIndex = i;
+            }
+            ImGui.SameLine();
+            ImGui.TextColored(layerColors[i], $"> Layer {i + 1}");
+            ImGui.SameLine();
+            string tex = editorObj.GetPaintLayerTexture(i);
+            ImGui.TextDisabled(string.IsNullOrEmpty(tex) ? "(no texture)" : System.IO.Path.GetFileName(tex));
+            if (editorObj.PaintLayerStochastic[i])
+            {
+                ImGui.SameLine();
+                ImGui.TextDisabled("[R]");
+            }
+
+            ImGui.PopID();
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+
+        // ── Active layer editing ──
+        if (activeIdx >= 0 && activeIdx < 4)
+        {
+            ImGui.PushID($"paint_edit_{activeIdx}");
+            ImGui.TextColored(layerColors[activeIdx], $"Editing Layer {activeIdx + 1}");
+
+            // Texture path with drag-and-drop
+            string texPath = editorObj.GetPaintLayerTexture(activeIdx);
+            ImGui.Text("Texture:");
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputText("##paint_tex", ref texPath, 512))
+            {
+                editorObj.SetPaintLayerTexture(activeIdx, texPath);
+                editorObj.MarkDirty();
+            }
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                {
+                    editorObj.SetPaintLayerTexture(activeIdx, AssetBrowserPanel._dragImagePath);
+                    editorObj.MarkDirty();
+                    AssetBrowserPanel._dragImagePath = null;
+                }
+                ImGui.EndDragDropTarget();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Drag texture from Asset Browser to assign");
+
+            // Clear button for this texture
+            ImGui.SameLine();
+            if (ImGui.Button("X", new Vector2(24, 0)))
+            {
+                editorObj.SetPaintLayerTexture(activeIdx, "");
+                editorObj.MarkDirty();
+            }
+
+            // Tiling
+            ImGui.Separator();
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Tiling");
+            var tiling = editorObj.PaintLayerTiling[activeIdx];
+            float tx = tiling.X;
+            float ty = tiling.Y;
+            if (ImGui.DragFloat("Tiling X", ref tx, 0.01f, 0.01f, 10f, "%.2f"))
+            {
+                editorObj.PaintLayerTiling[activeIdx] = new System.Numerics.Vector2(Math.Max(0.01f, tx), editorObj.PaintLayerTiling[activeIdx].Y);
+                editorObj.MarkDirty();
+            }
+            if (ImGui.DragFloat("Tiling Y", ref ty, 0.01f, 0.01f, 10f, "%.2f"))
+            {
+                editorObj.PaintLayerTiling[activeIdx] = new System.Numerics.Vector2(editorObj.PaintLayerTiling[activeIdx].X, Math.Max(0.01f, ty));
+                editorObj.MarkDirty();
+            }
+            bool linked = Math.Abs(tx - ty) < 0.001f;
+            if (ImGui.Checkbox("Link X/Y", ref linked))
+            {
+                if (linked) editorObj.PaintLayerTiling[activeIdx] = new System.Numerics.Vector2(tx, tx);
+                editorObj.MarkDirty();
+            }
+            bool stochastic = editorObj.PaintLayerStochastic[activeIdx];
+            if (ImGui.Checkbox("Random Tile", ref stochastic))
+            {
+                editorObj.PaintLayerStochastic[activeIdx] = stochastic;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern.");
+
+            ImGui.PopID(); // paint_edit_
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+
+        // Paint strength
         float pStr = editorObj.TerrainPaintStrength;
         if (ImGui.SliderFloat("Paint Strength", ref pStr, 0.05f, 1f, "%.2f"))
             editorObj.TerrainPaintStrength = pStr;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Weight added to the layer per 🎨 brush stamp (0..1). More stamps = stronger paint.");
+            ImGui.SetTooltip("Weight added per brush stamp (0..1). More stamps = stronger paint.");
 
-        if (ImGui.Button("🧹 Clear Layer Paint", new Vector2(-1, 24)))
+        if (ImGui.Button("Clear Layer Paint", new Vector2(-1, 24)))
         {
-            // Record undo (before = painted splat, after = cleared) so Ctrl+Z restores.
             var beforeSplat = editorObj.CaptureTerrainSplat();
             editorObj.ClearTerrainLayerPaint();
             var afterSplat = editorObj.CaptureTerrainSplat();
             if (beforeSplat != null && afterSplat != null && beforeSplat.Length == afterSplat.Length)
                 _bridge.OnTerrainLayerPainted?.Invoke(editorObj, beforeSplat, afterSplat);
-            Console.WriteLine($"[TerrainBrush] Cleared layer paint on '{editorObj.Name}' (back to auto texturing)");
+            Console.WriteLine($"[TerrainBrush] Cleared layer paint on '{editorObj.Name}'");
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(editorObj.TerrainSplatIsModified
-                ? "Remove ALL manual layer paint — terrain returns to automatic height+slope texturing."
+                ? "Remove ALL manual layer paint - terrain returns to automatic texturing."
                 : "No manual layer paint on this terrain yet.");
 
         ImGui.Spacing();

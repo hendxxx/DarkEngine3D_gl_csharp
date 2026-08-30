@@ -939,6 +939,11 @@ public class SceneManagerPanel
                         TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                         TerrainPaintStrength = obj.TerrainPaintStrength,
                         TerrainSplatData = obj.TerrainSplatData,
+                        PaintLayerTextures = [PathHelpers.MakeRelative(obj.GetPaintLayerTexture(0)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(1)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(2)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(3))],
+                        PaintLayerTilingX = [obj.PaintLayerTiling[0].X, obj.PaintLayerTiling[1].X, obj.PaintLayerTiling[2].X, obj.PaintLayerTiling[3].X],
+                        PaintLayerTilingY = [obj.PaintLayerTiling[0].Y, obj.PaintLayerTiling[1].Y, obj.PaintLayerTiling[2].Y, obj.PaintLayerTiling[3].Y],
+                        PaintLayerStochastic = [obj.PaintLayerStochastic[0], obj.PaintLayerStochastic[1], obj.PaintLayerStochastic[2], obj.PaintLayerStochastic[3]],
+                        PaintLayerCount = obj.PaintLayerCount,
                         // Dynamic terrain layers + slope
                         TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
                         TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
@@ -1320,6 +1325,24 @@ public class SceneManagerPanel
                         if (!string.IsNullOrEmpty(objData.TerrainSplatData))
                             obj.TerrainSplatData = objData.TerrainSplatData;
 
+                        // Per-paint-layer textures + tiling
+                        if (objData.PaintLayerTextures is { Length: >= 4 })
+                        {
+                            for (int i = 0; i < 4; i++)
+                                obj.SetPaintLayerTexture(i, PathHelpers.Resolve(objData.PaintLayerTextures[i]));
+                        }
+                        if (objData.PaintLayerTilingX is { Length: >= 4 } && objData.PaintLayerTilingY is { Length: >= 4 })
+                        {
+                            for (int i = 0; i < 4; i++)
+                                obj.PaintLayerTiling[i] = new System.Numerics.Vector2(objData.PaintLayerTilingX[i], objData.PaintLayerTilingY[i]);
+                        }
+                        if (objData.PaintLayerStochastic is { Length: >= 4 })
+                        {
+                            for (int i = 0; i < 4; i++)
+                                obj.PaintLayerStochastic[i] = objData.PaintLayerStochastic[i];
+                        }
+                        obj.PaintLayerCount = Math.Clamp(objData.PaintLayerCount, 1, 4);
+
                         // Dynamic terrain layers + slope
                         if (objData.TerrainLayerList is { Count: > 0 } savedLayers)
                             obj.TerrainLayerList = savedLayers.Select(l => l.Clone().WithResolvedPaths()).ToList();
@@ -1572,6 +1595,11 @@ public class SceneManagerPanel
                             TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                             TerrainPaintStrength = obj.TerrainPaintStrength,
                             TerrainSplatData = obj.TerrainSplatData,
+                            PaintLayerTextures = [PathHelpers.MakeRelative(obj.GetPaintLayerTexture(0)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(1)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(2)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(3))],
+                            PaintLayerTilingX = [obj.PaintLayerTiling[0].X, obj.PaintLayerTiling[1].X, obj.PaintLayerTiling[2].X, obj.PaintLayerTiling[3].X],
+                            PaintLayerTilingY = [obj.PaintLayerTiling[0].Y, obj.PaintLayerTiling[1].Y, obj.PaintLayerTiling[2].Y, obj.PaintLayerTiling[3].Y],
+                            PaintLayerStochastic = [obj.PaintLayerStochastic[0], obj.PaintLayerStochastic[1], obj.PaintLayerStochastic[2], obj.PaintLayerStochastic[3]],
+                            PaintLayerCount = obj.PaintLayerCount,
                             TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
                             TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
                             TerrainSlopeEnabled = obj.TerrainSlopeEnabled

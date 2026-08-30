@@ -64,6 +64,13 @@ uniform int usePaintMask;    // 1 = the terrain has manual layer paint to apply
 uniform int showHeatmap;     // 1 = height heatmap + contour overlay (editor clarity)
 uniform int showContours;    // 1 = dark height contour lines only (no heatmap colors)
 
+// ── INDEPENDENT PAINT LAYER TEXTURES (separate from terrain auto-layers) ──
+uniform sampler2D paintTex0, paintTex1, paintTex2, paintTex3;
+uniform vec2 paintTiling[4];   // per-paint-layer tiling (X, Y)
+uniform int paintTexCount;     // how many paint layers have textures assigned (0..4)
+uniform int paintLayerCount;   // how many paint layers are active (1..4)
+uniform int paintStochastic[4]; // per-paint-layer random tile flag
+
 // ── CSM SHADOWS (editor viewport — same uniforms as fragment_shader.glsl) ──
 uniform int shadowFilterMode;
 uniform sampler2D shadowMap0;
@@ -360,6 +367,32 @@ vec3 sampleDynLayer(int idx, vec2 worldXZ, vec3 norm, vec2 tiling, int stochasti
     return col;
 }
 
+// Triplanar sample for independent paint textures (paintTex0..3)
+vec3 samplePaintLayer(int idx, vec3 worldPos, vec3 norm, vec2 tiling, int stochastic) {
+    vec3 blending = abs(normalize(norm));
+    blending = pow(blending, vec3(10.0));
+    blending /= (blending.x + blending.y + blending.z);
+    vec3 col = vec3(0.0);
+    if (idx == 0) {
+        col = sampleLayer(paintTex0, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex0, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex0, worldPos.xy * tiling, stochastic) * blending.z;
+    } else if (idx == 1) {
+        col = sampleLayer(paintTex1, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex1, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex1, worldPos.xy * tiling, stochastic) * blending.z;
+    } else if (idx == 2) {
+        col = sampleLayer(paintTex2, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex2, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex2, worldPos.xy * tiling, stochastic) * blending.z;
+    } else {
+        col = sampleLayer(paintTex3, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex3, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex3, worldPos.xy * tiling, stochastic) * blending.z;
+    }
+    return col;
+}
+
 void main() {
     vec3 norm = normalize(Normal);
     float slope = 1.0 - norm.y;
@@ -420,19 +453,21 @@ void main() {
     }
 
     // ── MANUAL LAYER PAINT (splat override, painted with the brush) ──
-    if (usePaintMask == 1 && layerCount <= 4) {
+    // Uses independent paint textures (paintTex0..3) — NOT the terrain auto-layers.
+    if (usePaintMask == 1) {
         vec4 w = texture(tex4, TexCoord + 0.5).rgba;
         float wsum = w.x + w.y + w.z + w.w;
         if (wsum > 0.02) {
             vec4 w2 = w * w;
             float t = w2.x + w2.y + w2.z + w2.w;
             if (t > 0.001) {
-                // Sample the first 4 layers for splat paint
+                // Sample independent paint textures with per-layer tiling + stochastic
                 vec3 painted = vec3(0.0);
-                if (layerCount > 0) painted += sampleDynLayer(0, FragPos.xz, norm, layerTiling[0], layerStochastic[0]) * w2.x;
-                if (layerCount > 1) painted += sampleDynLayer(1, FragPos.xz, norm, layerTiling[1], layerStochastic[1]) * w2.y;
-                if (layerCount > 2) painted += sampleDynLayer(2, FragPos.xz, norm, layerTiling[2], layerStochastic[2]) * w2.z;
-                if (layerCount > 3) painted += sampleDynLayer(3, FragPos.xz, norm, layerTiling[3], layerStochastic[3]) * w2.w;
+                int pCount = min(paintLayerCount, paintTexCount);
+                if (pCount > 0) painted += samplePaintLayer(0, FragPos, norm, paintTiling[0], paintStochastic[0]) * w2.x;
+                if (pCount > 1) painted += samplePaintLayer(1, FragPos, norm, paintTiling[1], paintStochastic[1]) * w2.y;
+                if (pCount > 2) painted += samplePaintLayer(2, FragPos, norm, paintTiling[2], paintStochastic[2]) * w2.z;
+                if (pCount > 3) painted += samplePaintLayer(3, FragPos, norm, paintTiling[3], paintStochastic[3]) * w2.w;
                 painted /= t;
                 texColor = mix(texColor, painted, clamp(wsum * 1.5, 0.0, 1.0));
             }

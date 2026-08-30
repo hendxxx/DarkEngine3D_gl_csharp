@@ -20,7 +20,7 @@ public class InspectorPanel
     private System.Numerics.Vector2 _editVec2 = new();
 
     // ── Per-texture settings: which slot/layer is being edited. Reset when the selected
-    //    object changes so a fresh selection always starts on the Simple / Air layer. ──
+    //    object changes so a fresh selection always starts on the first layer. ──
     private EditorObject? _texSettingsObj;
     private int _texSlotIdx;
     private int _terrainLayerIdx;

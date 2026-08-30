@@ -56,8 +56,8 @@ public unsafe class EditorTerrainMesh : IDisposable
     // ── Manual layer paint (splat/control map) ──
     /// <summary>Default splat resolution per side (independent of mesh chunk size).</summary>
     private const int DefaultSplatSize = 128;
-    /// <summary>RGBA8 splat weights (R=air, G=dirt, B=grass, A=snow). All-zero = use the
-    /// automatic height+slope texturing. Painted with the 🎨 brush tool.</summary>
+    /// <summary>RGBA8 splat weights (R=Layer1, G=Layer2, B=Layer3, A=Layer4). All-zero = use the
+    /// automatic height+slope texturing. Painted with the paint brush tool.</summary>
     private byte[] _splat = new byte[DefaultSplatSize * DefaultSplatSize * 4];
     /// <summary>Actual splat resolution of <see cref="_splat"/> (persisted with the blob).</summary>
     private int _splatDim = DefaultSplatSize;
@@ -66,10 +66,10 @@ public unsafe class EditorTerrainMesh : IDisposable
     public bool SplatModified { get; private set; } = false;
     private static readonly Vector3[] FallbackColors =
     [
-        new(0.15f, 0.45f, 0.75f), // air / water (blue)
-        new(0.50f, 0.38f, 0.25f), // dirt (brown)
-        new(0.30f, 0.60f, 0.25f), // grass (green)
-        new(0.92f, 0.94f, 0.98f), // snow (white)
+        new(0.15f, 0.45f, 0.75f), // Layer 1 (blue)
+        new(0.50f, 0.38f, 0.25f), // Layer 2 (brown)
+        new(0.30f, 0.60f, 0.25f), // Layer 3 (green)
+        new(0.92f, 0.94f, 0.98f), // Layer 4 (white)
     ];
 
     // ── Editor terrain shader (lazy init, shared) ──
@@ -97,6 +97,15 @@ public unsafe class EditorTerrainMesh : IDisposable
     private readonly string?[] _dynLayerPaths = new string?[EditorObject.MaxTerrainLayers];
     private uint _dynSlopeTexture = 0;
     private string? _dynSlopePath = null;
+
+    // ── Independent paint layer textures (paintTex0..3) ──
+    private readonly uint[] _paintLayerTextures = new uint[EditorObject.MaxPaintLayers];
+    private readonly string?[] _paintLayerPaths = new string?[EditorObject.MaxPaintLayers];
+    private static readonly int[] _paintLayerTexLocs = new int[EditorObject.MaxPaintLayers];
+    private static readonly int[] _paintLayerTilingLocs = new int[EditorObject.MaxPaintLayers];
+    private static readonly int[] _paintLayerStochasticLocs = new int[EditorObject.MaxPaintLayers];
+    private static int _paintTexCountLoc = -1;
+    private static int _paintLayerCountLoc = -1;
 
     // ── CSM shadow uniforms (editor viewport) ──
     private static int _shadowFilterLoc = -1, _shadowDirLoc = -1;
@@ -780,6 +789,17 @@ public unsafe class EditorTerrainMesh : IDisposable
         _dynSlopeTexLoc = GL.GetUniformLocation(_program, "dynSlopeTex");
         _dynSlopeStochasticLoc = GL.GetUniformLocation(_program, "slopeStochastic");
 
+        // Paint layer texture uniforms
+        for (int i = 0; i < EditorObject.MaxPaintLayers; i++)
+        {
+            _paintLayerTexLocs[i] = GL.GetUniformLocation(_program, $"paintTex{i}");
+            _paintLayerTilingLocs[i] = GL.GetUniformLocation(_program, $"paintTiling[{i}]");
+        }
+        _paintTexCountLoc = GL.GetUniformLocation(_program, "paintTexCount");
+        _paintLayerCountLoc = GL.GetUniformLocation(_program, "paintLayerCount");
+        for (int i = 0; i < EditorObject.MaxPaintLayers; i++)
+            _paintLayerStochasticLocs[i] = GL.GetUniformLocation(_program, $"paintStochastic[{i}]");
+
         // CSM shadow uniforms
         _shadowFilterLoc = GL.GetUniformLocation(_program, "shadowFilterMode");
         _shadowDirLoc = GL.GetUniformLocation(_program, "shadowDir");
@@ -940,6 +960,35 @@ public unsafe class EditorTerrainMesh : IDisposable
         GL.ActiveTexture(Const.GL_TEXTURE4);
         GL.BindTexture(Const.GL_TEXTURE_2D, _splatTex);
         GL.Uniform1i(_tex4Loc, 4);
+
+        // ── Independent paint layer textures (units 20-23) ──
+        {
+            int paintCount = 0;
+            for (int i = 0; i < EditorObject.MaxPaintLayers; i++)
+            {
+                string? path = owner.GetPaintLayerTexture(i);
+                path = string.IsNullOrEmpty(path) ? null : path;
+                if (_paintLayerPaths[i] != path)
+                {
+                    _paintLayerPaths[i] = path;
+                    if (_paintLayerTextures[i] != 0) { uint t = _paintLayerTextures[i]; GL.DeleteTextures(1, &t); _paintLayerTextures[i] = 0; }
+                    if (path != null) _paintLayerTextures[i] = LoadLayerTexture(path, new Vector3(0.5f));
+                }
+                if (_paintLayerTextures[i] != 0)
+                {
+                    uint unit = (uint)(Const.GL_TEXTURE0 + 20 + i);
+                    GL.ActiveTexture(unit);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, _paintLayerTextures[i]);
+                    GL.Uniform1i(_paintLayerTexLocs[i], 20 + i);
+                    GL.Uniform2f(_paintLayerTilingLocs[i], owner.PaintLayerTiling[i].X, owner.PaintLayerTiling[i].Y);
+                    if (_paintLayerStochasticLocs[i] >= 0)
+                        GL.Uniform1i(_paintLayerStochasticLocs[i], owner.PaintLayerStochastic[i] ? 1 : 0);
+                    paintCount = i + 1;
+                }
+            }
+            GL.Uniform1i(_paintTexCountLoc, paintCount);
+            GL.Uniform1i(_paintLayerCountLoc, owner.PaintLayerCount);
+        }
 
         // Draw every chunk as quads (2 triangles each, via the index buffer).
         foreach (var c in _chunks)

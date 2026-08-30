@@ -217,7 +217,7 @@ public class EditorObjectData
     public float TerrainLayerDirtTop { get; set; } = 0.45f;
     public float TerrainLayerGrassTop { get; set; } = 0.75f;
     public float TerrainLayerSnowTop { get; set; } = 1.0f;
-    /// <summary>Layer texture paths (1=air, 2=tanah, 3=rumput, 4=salju, 5=slope).</summary>
+    /// <summary>Legacy layer texture paths (Layer 1-4 + slope).</summary>
     public string TerrainTextureAirPath { get; set; } = "";
     public string TerrainTextureDirtPath { get; set; } = "";
     public string TerrainTextureGrassPath { get; set; } = "";
@@ -276,9 +276,9 @@ public class EditorObjectData
     /// <summary>Base64-encoded painted heightmap blob (only set after brush edits, so
     /// brush paint survives scene save/load without touching the source .raw file).</summary>
     public string TerrainPaintedData { get; set; } = "";
-    /// <summary>Layer drawn by the 🎨 paint brush (0=air, 1=tanah, 2=rumput, 3=salju).</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 2;
-    /// <summary>Weight added to the painted layer per 🎨 brush stamp (0..1).</summary>
+    /// <summary>Layer drawn by the paint brush (0-3).</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 0;
+    /// <summary>Weight added to the painted layer per brush stamp (0..1).</summary>
     public float TerrainPaintStrength { get; set; } = 0.45f;
     /// <summary>Base64-encoded manual layer-paint splat blob (empty = no manual paint).
     /// Persisted so layer paint survives scene save/load.</summary>
@@ -287,6 +287,13 @@ public class EditorObjectData
     public float[]? TerrainBrushColor { get; set; }
     /// <summary>Brush ring highlight transparency 0..1 — user-editable, saved with the scene.</summary>
     public float TerrainBrushAlpha { get; set; } = 0.35f;
+
+    // ── Per-paint-layer textures (independent from terrain auto-layers) ──
+    public string[] PaintLayerTextures { get; set; } = ["", "", "", ""];
+    public float[] PaintLayerTilingX { get; set; } = [0.5f, 0.5f, 0.5f, 0.5f];
+    public float[] PaintLayerTilingY { get; set; } = [0.5f, 0.5f, 0.5f, 0.5f];
+    public bool[] PaintLayerStochastic { get; set; } = [false, false, false, false];
+    public int PaintLayerCount { get; set; } = 1;
 
     // ── Dynamic terrain layers (per-layer texture, tiling, height range, PBR, stochastic) ──
     /// <summary>Saved dynamic terrain layers. Null/empty = migrate from legacy 4-layer on load.</summary>

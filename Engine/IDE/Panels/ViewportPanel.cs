@@ -94,14 +94,14 @@ public unsafe class ViewportPanel
     /// or the brush tool is turned off, so no stale ring is left behind).</summary>
     private EditorObject? _brushIndicatorObj = null;
 
-    /// <summary>Colors of the 4 paintable layers (air, tanah, rumput, salju) — used for the
+    /// <summary>Colors of the 4 paintable layers — used for the
     /// toolbar chips and the brush cursor while painting.</summary>
     private static readonly Vector4[] TerrainLayerColors =
     [
-        new(0.20f, 0.50f, 0.85f, 1f), // air
-        new(0.60f, 0.45f, 0.28f, 1f), // tanah
-        new(0.30f, 0.65f, 0.30f, 1f), // rumput
-        new(0.90f, 0.93f, 0.98f, 1f), // salju
+        new(0.20f, 0.50f, 0.85f, 1f), // Layer 1
+        new(0.60f, 0.45f, 0.28f, 1f), // Layer 2
+        new(0.30f, 0.65f, 0.30f, 1f), // Layer 3
+        new(0.90f, 0.93f, 0.98f, 1f), // Layer 4
     ];
 
     /// <summary>Hide the 3D brush ring on whichever terrain is currently showing it.</summary>
@@ -3417,7 +3417,7 @@ ImGui.SameLine();
 
         bool paintTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 1;
         if (ToolButton(paintTool ? "🎨 Paint ON" : "🎨 Paint", paintTool, new Vector4(0.85f, 0.35f, 0.45f, 0.95f),
-            "Layer paint: paints the selected layer (air/tanah/rumput/salju).\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.", out y))
+            "Layer paint: paints the selected layer texture.\nLeft-drag = paint, Ctrl+left-drag = erase — Ctrl+scroll resizes the brush.", out y))
         {
             ToggleTerrainBrushMode(1);
             Console.WriteLine($"[Viewport] 🎨 Layer paint → {_bridge.TerrainBrushActive}");
@@ -3474,23 +3474,11 @@ ImGui.SameLine();
             }
         }
 
-        // ── Layer chips (only while the 🎨 paint tool is active) ──
+        // ── Paint tool hint (paint texture is set in Terrain Brush panel) ──
         if (paintTool)
         {
-            string[] layerNames = ["Air", "Tanah", "Rumput", "Salju"];
-            for (int li = 0; li < 4; li++)
-            {
-                bool layerActive = _bridge.TerrainPaintLayerIndex == li;
-                Vector4 chipCol = TerrainLayerColors[li];
-                if (ToolButton(layerNames[li], layerActive, chipCol,
-                    $"Paint layer: {layerNames[li]}", out y))
-                {
-                    _bridge.TerrainPaintLayerIndex = li;
-                    if (_bridge.SelectedEditorObject is { TerrainEnabled: true } selT)
-                        selT.TerrainPaintLayerIndex = li;
-                    Console.WriteLine($"[Viewport] Paint layer → {layerNames[li]}");
-                }
-            }
+            Vector4 chipCol = TerrainLayerColors[0];
+            ToolButton("Paint", true, chipCol, "Paint texture assigned in Terrain Brush panel. Left-drag to paint.", out y);
         }
 
         // ── Debug grid + shadow toggles ──
