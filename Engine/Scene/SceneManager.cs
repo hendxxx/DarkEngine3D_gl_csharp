@@ -282,8 +282,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                         else
                         {
-                            if (imguiCapture)
-                                Mouse.ResetScroll();
                             Mouse.Update(window, _editorCamera);
                             _editorCamera.SetCameraFlyMode(window, dt, true);
                         }

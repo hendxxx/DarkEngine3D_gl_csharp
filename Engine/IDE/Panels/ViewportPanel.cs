@@ -2526,14 +2526,19 @@ ImGui.SameLine();
                             _brushIndicatorObj.ShowBrushIndicator = false;
                         _brushIndicatorObj = hoverTerrain;
 
-                        // Ctrl + scroll = bigger / smaller brush. Camera zoom is suppressed
-                        // while Ctrl is held, so the wheel belongs to the brush here.
-                        float wheel = ImGui.GetIO().MouseWheel;
-                        if (wheel != 0f)
+                        // Ctrl + scroll = bigger / smaller brush. Only intercept scroll when
+                        // the brush tool is actually active AND Ctrl is held; otherwise let
+                        // scroll pass through to camera zoom.
+                        bool brushScroll = _bridge.TerrainBrushActive && _bridge.ViewportCtrlHeld;
+                        if (brushScroll)
                         {
-                            hoverTerrain.TerrainBrushSize = Math.Clamp(
-                                hoverTerrain.TerrainBrushSize * (1f + wheel * 0.08f), 0.5f, 50f);
-                            Console.WriteLine($"[Viewport] Brush size → {hoverTerrain.TerrainBrushSize:F1}");
+                            float wheel = ImGui.GetIO().MouseWheel;
+                            if (wheel != 0f)
+                            {
+                                hoverTerrain.TerrainBrushSize = Math.Clamp(
+                                    hoverTerrain.TerrainBrushSize * (1f + wheel * 0.08f), 0.5f, 200f);
+                                Console.WriteLine($"[Viewport] Brush size → {hoverTerrain.TerrainBrushSize:F1}");
+                            }
                         }
                     }
                     else if (_brushIndicatorObj != null)
