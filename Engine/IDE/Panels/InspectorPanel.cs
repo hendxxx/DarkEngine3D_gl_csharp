@@ -2660,6 +2660,15 @@ public class InspectorPanel
             ImGui.Separator();
 
             //  Slope toggle 
+            ImGui.Separator();
+            ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.4f, 1f), "PBR Material");
+            float tMet = editorObj.TerrainPbrMetallic;
+            if (ImGui.SliderFloat("Metallic", ref tMet, 0f, 1f, "%.2f")) { editorObj.TerrainPbrMetallic = tMet; editorObj.MarkDirty(); }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("0 = dielectric (non-metal), 1 = full metal. Affects Fresnel color and reflectivity.");
+            float tRou = editorObj.TerrainPbrRoughness;
+            if (ImGui.SliderFloat("Roughness", ref tRou, 0.04f, 1f, "%.2f")) { editorObj.TerrainPbrRoughness = tRou; editorObj.MarkDirty(); }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("0.04 = mirror-smooth, 1.0 = fully diffuse. Controls specular highlight sharpness.");
+
             ImGui.TextColored(new Vector4(0.8f, 0.6f, 0.3f, 1f), "Slope Layer");
             bool slopeOn = editorObj.TerrainSlopeEnabled;
             if (ImGui.Checkbox("Enable Slope Layer", ref slopeOn))

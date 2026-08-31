@@ -947,7 +947,9 @@ public class SceneManagerPanel
                         // Dynamic terrain layers + slope
                         TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
                         TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
-                        TerrainSlopeEnabled = obj.TerrainSlopeEnabled
+                        TerrainSlopeEnabled = obj.TerrainSlopeEnabled,
+                        TerrainPbrMetallic = obj.TerrainPbrMetallic,
+                        TerrainPbrRoughness = obj.TerrainPbrRoughness
                     });
                 }
             }
@@ -1351,6 +1353,8 @@ public class SceneManagerPanel
                             obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();
                             obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
                         }
+                        obj.TerrainPbrMetallic = objData.TerrainPbrMetallic;
+                        obj.TerrainPbrRoughness = objData.TerrainPbrRoughness;
 
                         obj.MarkDirty();
                         // Migrate old fixed-layer format to new dynamic layers

@@ -93,6 +93,7 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static readonly int[] _dynLayerBlendLocs = new int[EditorObject.MaxTerrainLayers];
     private static readonly int[] _dynLayerStochasticLocs = new int[EditorObject.MaxTerrainLayers];
     private static int _dynSlopeEnabledLoc = -1, _dynSlopeThresholdLoc = -1, _dynSlopeTilingLoc = -1, _dynSlopeTexLoc = -1, _dynSlopeStochasticLoc = -1;
+    private static int _terrainMetallicLoc = -1, _terrainRoughnessLoc = -1;
     private readonly uint[] _dynLayerTextures = new uint[EditorObject.MaxTerrainLayers];
     private readonly string?[] _dynLayerPaths = new string?[EditorObject.MaxTerrainLayers];
     private uint _dynSlopeTexture = 0;
@@ -979,6 +980,8 @@ public unsafe class EditorTerrainMesh : IDisposable
         _dynSlopeTilingLoc = GL.GetUniformLocation(_program, "slopeTilingVal");
         _dynSlopeTexLoc = GL.GetUniformLocation(_program, "dynSlopeTex");
         _dynSlopeStochasticLoc = GL.GetUniformLocation(_program, "slopeStochastic");
+        _terrainMetallicLoc = GL.GetUniformLocation(_program, "terrainMetallic");
+        _terrainRoughnessLoc = GL.GetUniformLocation(_program, "terrainRoughness");
 
         // ── PBR per-layer uniform locations (sampler2DArray + per-layer tuning) ──
         _pbrNormalMapLoc = GL.GetUniformLocation(_program, "pbrNormalMap");
@@ -1176,34 +1179,37 @@ public unsafe class EditorTerrainMesh : IDisposable
             }
         }
 
-        // ── PBR texture arrays (6 arrays on units 30-35) ──
-        if (_pbrArraysDirty) RebuildPbrArrays();
-        int[] pbrArrayLocs = [_pbrNormalMapLoc, _pbrMetallicMapLoc, _pbrRoughnessMapLoc, _pbrAoMapLoc, _pbrHeightMapLoc, _pbrEmissionMapLoc];
-        for (int p = 0; p < PbrMapCount; p++)
-        {
-            int unit = PbrUnitBase + p;
-            GL.ActiveTexture((uint)(Const.GL_TEXTURE0 + unit));
-            GL.BindTexture(Const.GL_TEXTURE_2D_ARRAY, _pbrArrays[p]);
-            if (pbrArrayLocs[p] >= 0) GL.Uniform1i(pbrArrayLocs[p], unit);
-        }
-        if (_pbrLayerCountLoc >= 0) GL.Uniform1i(_pbrLayerCountLoc, count);
+        // ── PBR texture arrays — skip until shader PBR is confirmed working ──
+        // PBR texture arrays + tuning — deferred until shader PBR confirmed working
+        // if (_pbrArraysDirty) RebuildPbrArrays();
+        // int[] pbrArrayLocs = [_pbrNormalMapLoc, _pbrMetallicMapLoc, _pbrRoughnessMapLoc, _pbrAoMapLoc, _pbrHeightMapLoc, _pbrEmissionMapLoc];
+        // for (int p = 0; p < PbrMapCount; p++)
+        // {
+        //     int unit = PbrUnitBase + p;
+        //     GL.ActiveTexture((uint)(Const.GL_TEXTURE0 + unit));
+        //     GL.BindTexture(Const.GL_TEXTURE_2D_ARRAY, _pbrArrays[p]);
+        //     if (pbrArrayLocs[p] >= 0) GL.Uniform1i(pbrArrayLocs[p], unit);
+        // }
+        // if (_pbrLayerCountLoc >= 0) GL.Uniform1i(_pbrLayerCountLoc, count);
+        // for (int i = 0; i < count; i++)
+        // {
+        //     var layer = layers[i];
+        //     if (_pbrNormalStrengthLocs[i] >= 0) GL.Uniform1f(_pbrNormalStrengthLocs[i], layer.NormalStrength);
+        //     if (_pbrMetallicStrengthLocs[i] >= 0) GL.Uniform1f(_pbrMetallicStrengthLocs[i], layer.MetallicStrength);
+        //     if (_pbrRoughnessStrengthLocs[i] >= 0) GL.Uniform1f(_pbrRoughnessStrengthLocs[i], layer.RoughnessStrength);
+        //     if (_pbrAoStrengthLocs[i] >= 0) GL.Uniform1f(_pbrAoStrengthLocs[i], layer.AoStrength);
+        //     if (_pbrHeightStrengthLocs[i] >= 0) GL.Uniform1f(_pbrHeightStrengthLocs[i], layer.HeightStrength);
+        //     if (_pbrEmissionIntensityLocs[i] >= 0) GL.Uniform1f(_pbrEmissionIntensityLocs[i], layer.EmissionIntensity);
+        //     if (_pbrRoughnessInvertLocs[i] >= 0) GL.Uniform1i(_pbrRoughnessInvertLocs[i], layer.RoughnessInvert ? 1 : 0);
+        //     if (_pbrHeightInvertLocs[i] >= 0) GL.Uniform1i(_pbrHeightInvertLocs[i], layer.HeightInvert ? 1 : 0);
+        //     if (_pbrAlbedoBrightnessLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoBrightnessLocs[i], layer.AlbedoBrightness);
+        //     if (_pbrAlbedoSaturationLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoSaturationLocs[i], layer.AlbedoSaturation);
+        //     if (_pbrAlbedoContrastLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoContrastLocs[i], layer.AlbedoContrast);
+        // }
 
-        // Upload PBR tuning uniforms per layer
-        for (int i = 0; i < count; i++)
-        {
-            var layer = layers[i];
-            if (_pbrNormalStrengthLocs[i] >= 0) GL.Uniform1f(_pbrNormalStrengthLocs[i], layer.NormalStrength);
-            if (_pbrMetallicStrengthLocs[i] >= 0) GL.Uniform1f(_pbrMetallicStrengthLocs[i], layer.MetallicStrength);
-            if (_pbrRoughnessStrengthLocs[i] >= 0) GL.Uniform1f(_pbrRoughnessStrengthLocs[i], layer.RoughnessStrength);
-            if (_pbrAoStrengthLocs[i] >= 0) GL.Uniform1f(_pbrAoStrengthLocs[i], layer.AoStrength);
-            if (_pbrHeightStrengthLocs[i] >= 0) GL.Uniform1f(_pbrHeightStrengthLocs[i], layer.HeightStrength);
-            if (_pbrEmissionIntensityLocs[i] >= 0) GL.Uniform1f(_pbrEmissionIntensityLocs[i], layer.EmissionIntensity);
-            if (_pbrRoughnessInvertLocs[i] >= 0) GL.Uniform1i(_pbrRoughnessInvertLocs[i], layer.RoughnessInvert ? 1 : 0);
-            if (_pbrHeightInvertLocs[i] >= 0) GL.Uniform1i(_pbrHeightInvertLocs[i], layer.HeightInvert ? 1 : 0);
-            if (_pbrAlbedoBrightnessLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoBrightnessLocs[i], layer.AlbedoBrightness);
-            if (_pbrAlbedoSaturationLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoSaturationLocs[i], layer.AlbedoSaturation);
-            if (_pbrAlbedoContrastLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoContrastLocs[i], layer.AlbedoContrast);
-        }
+        // ── Terrain PBR uniforms ──
+        if (_terrainMetallicLoc >= 0) GL.Uniform1f(_terrainMetallicLoc, owner.TerrainPbrMetallic);
+        if (_terrainRoughnessLoc >= 0) GL.Uniform1f(_terrainRoughnessLoc, owner.TerrainPbrRoughness);
 
         // Legacy layer textures (for old scenes) — bind to units 25-28 so they don't conflict with dynamic layers (0-7)
         uint[] legacyUnits = [Const.GL_TEXTURE0 + 25, Const.GL_TEXTURE0 + 26, Const.GL_TEXTURE0 + 27, Const.GL_TEXTURE0 + 28];

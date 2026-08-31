@@ -480,6 +480,10 @@ public unsafe class EditorObject
     public TerrainLayer? TerrainSlopeLayer { get; set; } = null;
     /// <summary>Slope layer data serialized separately (so slope can be null = disabled).</summary>
     public bool TerrainSlopeEnabled { get; set; } = false;
+    /// <summary>Terrain PBR metallic (0=dielectric, 1=metal).</summary>
+    public float TerrainPbrMetallic { get; set; } = 0.0f;
+    /// <summary>Terrain PBR roughness (0.04=mirror, 1=diffuse).</summary>
+    public float TerrainPbrRoughness { get; set; } = 0.5f;
     /// <summary>Max layers supported (GPU texture unit limit).</summary>
     public const int MaxTerrainLayers = 8;
     /// <summary>Migrate old fixed-layer properties to the new TerrainLayerList.

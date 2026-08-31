@@ -302,6 +302,10 @@ public class EditorObjectData
     public TerrainLayer? TerrainSlopeLayer { get; set; }
     /// <summary>Whether the slope layer is enabled.</summary>
     public bool TerrainSlopeEnabled { get; set; } = false;
+    /// <summary>Terrain PBR metallic (0=dielectric, 1=metal).</summary>
+    public float TerrainPbrMetallic { get; set; } = 0.0f;
+    /// <summary>Terrain PBR roughness (0.04=mirror, 1=diffuse).</summary>
+    public float TerrainPbrRoughness { get; set; } = 0.5f;
 }
 
 

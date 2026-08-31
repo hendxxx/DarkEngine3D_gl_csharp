@@ -30,6 +30,10 @@ uniform float slopeTilingVal;  // slope layer tiling
 uniform int slopeStochastic;    // slope layer random tile
 uniform sampler2D dynSlopeTex;
 
+// ── TERRAIN PBR (adjustable from Inspector) ──
+uniform float terrainMetallic = 0.0;
+uniform float terrainRoughness = 0.5;
+
 // ── Height detail strength (0 = off, 0.5 = subtle, 1.0 = strong) ──
 uniform float parallaxScale = 0.0;
 
@@ -393,6 +397,22 @@ vec3 samplePaintLayer(int idx, vec3 worldPos, vec3 norm, vec2 tiling, int stocha
     return col;
 }
 
+// ── PBR BRDF (Cook-Torrance, hardcoded defaults — no new uniforms needed) ──
+const float PI = 3.14159265359;
+vec3 pbrFresnel(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+float pbrDGGX(vec3 N, vec3 H, float r) {
+    float a = r * r; float a2 = a * a;
+    float d = dot(N, H); float d2 = d * d;
+    return a2 / max(PI * (d2 * (a2 - 1.0) + 1.0) * (d2 * (a2 - 1.0) + 1.0), 0.0001);
+}
+float pbrGSmith(vec3 N, vec3 V, vec3 L, float r) {
+    float k = (r + 1.0) * (r + 1.0) / 8.0;
+    float nv = max(dot(N, V), 0.0); float nl = max(dot(N, L), 0.0);
+    return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
+}
+
 void main() {
     vec3 norm = normalize(Normal);
     float slope = 1.0 - norm.y;
@@ -517,12 +537,23 @@ void main() {
         norm = heightNormalDetail(dynLayer0, FragPos.xz * primaryTiling.x, 1.0, norm, parallaxScale);
     }
 
+    // PBR sun lighting (terrainMetallic, terrainRoughness from Inspector)
     vec3 lightDir = normalize(sunDir);
-    float ndl = dot(norm, lightDir);
-    float sunShade = smoothstep(-0.18, 0.55, ndl);            // hard terminator = strong relief
-    float slopeShade = 1.0 - clamp(slope * 0.55, 0.0, 0.5);   // steeper faces get darker
-    vec3 ambient = 0.14 * lightColor * slopeShade;
-    vec3 diffuse = lightColor * (0.30 + 1.05 * sunShade);
+    vec3 V = normalize(viewPos - FragPos);
+    vec3 H = normalize(V + lightDir);
+    float tMet = clamp(terrainMetallic, 0.0, 1.0);
+    float tRou = clamp(terrainRoughness, 0.04, 1.0);
+    vec3 F0 = mix(vec3(0.04), texColor, tMet);
+    float NdotL = max(dot(norm, lightDir), 0.0);
+    float NdotV = max(dot(norm, V), 0.001);
+    float D = pbrDGGX(norm, H, tRou);
+    float G = pbrGSmith(norm, V, lightDir, tRou);
+    vec3 F = pbrFresnel(max(dot(H, V), 0.0), F0);
+    vec3 spec = D * G * F / max(4.0 * NdotV * NdotL, 0.0001);
+    vec3 kD = (vec3(1.0) - F) * (1.0 - tMet);
+    vec3 sunPbr = (kD * texColor / PI + spec) * lightColor * 4.0 * NdotL;
+    float slopeShade = 1.0 - clamp(slope * 0.55, 0.0, 0.5);
+    vec3 ambient = texColor * lightColor * 0.14 * slopeShade;
 
     // ── CSM SHADOWS (editor viewport) ──
     // Slope-scaled bias (same as fragment_shader.glsl) so the terrain doesn't show
@@ -582,7 +613,7 @@ void main() {
     // Terrain only receives shadows when the sun side faces up (no shadow on slopes
     // pointing away from the light) — same smoothstep mask as the main shader.
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, shadowLightDir));
-    vec3 result = (ambient + diffuse * shadowMask * shadow) * texColor;
+    vec3 result = ambient + sunPbr * shadowMask * shadow;
 
     // ── LOCAL LIGHTS (Point / Spot) — added on top of the sun lighting ──
     result += calcLocalLights(norm, normalize(viewPos - FragPos)) * texColor;
