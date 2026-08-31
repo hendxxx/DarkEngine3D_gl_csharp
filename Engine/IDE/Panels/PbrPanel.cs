@@ -242,6 +242,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.7f, 0.75f, 0.85f, 1f), "Mapping");
             float til = obj.PbrTexTiling; Tune("Map Tiling##object", ref til, 0.05f, 0.1f, 10f); obj.PbrTexTiling = til;
+            float parallax = obj.PbrParallaxScale; Tune("Parallax Depth##object", ref parallax, 0.005f, 0f, 0.5f); obj.PbrParallaxScale = parallax;
 
             ImGui.Spacing();
             if (ImGui.Button("Reset tuning to defaults"))
@@ -253,7 +254,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 obj.TerrainPbrAoStrength = 1f; obj.TerrainPbrAoBrightness = 0f;
                 obj.TerrainPbrHeightStrength = 1f; obj.TerrainPbrHeightInvert = false; obj.TerrainPbrHeightBlur = 0f;
                 obj.TerrainPbrEmissionIntensity = 1f;
-                obj.PbrTexTiling = 1f;
+                obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0.15f;
             }
         }
 

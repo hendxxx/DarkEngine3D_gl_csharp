@@ -56,8 +56,8 @@ public unsafe class EditorTerrainMesh : IDisposable
     // ── Manual layer paint (splat/control map) ──
     /// <summary>Default splat resolution per side (independent of mesh chunk size).</summary>
     private const int DefaultSplatSize = 128;
-    /// <summary>RGBA8 splat weights (R=air, G=dirt, B=grass, A=snow). All-zero = use the
-    /// automatic height+slope texturing. Painted with the 🎨 brush tool.</summary>
+    /// <summary>RGBA8 splat weights (R=Layer1, G=Layer2, B=Layer3, A=Layer4). All-zero = use the
+    /// automatic height+slope texturing. Painted with the paint brush tool.</summary>
     private byte[] _splat = new byte[DefaultSplatSize * DefaultSplatSize * 4];
     /// <summary>Actual splat resolution of <see cref="_splat"/> (persisted with the blob).</summary>
     private int _splatDim = DefaultSplatSize;
@@ -66,10 +66,10 @@ public unsafe class EditorTerrainMesh : IDisposable
     public bool SplatModified { get; private set; } = false;
     private static readonly Vector3[] FallbackColors =
     [
-        new(0.15f, 0.45f, 0.75f), // air / water (blue)
-        new(0.50f, 0.38f, 0.25f), // dirt (brown)
-        new(0.30f, 0.60f, 0.25f), // grass (green)
-        new(0.92f, 0.94f, 0.98f), // snow (white)
+        new(0.15f, 0.45f, 0.75f), // Layer 1 (blue)
+        new(0.50f, 0.38f, 0.25f), // Layer 2 (brown)
+        new(0.30f, 0.60f, 0.25f), // Layer 3 (green)
+        new(0.92f, 0.94f, 0.98f), // Layer 4 (white)
     ];
 
     // ── Editor terrain shader (lazy init, shared) ──
@@ -78,8 +78,9 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _sunDirLoc = -1, _lightColorLoc = -1, _viewPosLoc = -1;
     private static int _useFogLoc = -1, _fogColorLoc = -1;
     private static int _heightScaleLoc = -1, _layerLevelsLoc = -1;
-    private static int _slopeThresholdLoc = -1, _texTilingLoc = -1, _slopeTexTilingLoc = -1, _useStochasticSamplingLoc = -1;
+    private static int _slopeThresholdLoc = -1;
     private static int _usePaintMaskLoc = -1, _tex4Loc = -1;
+    private static int _parallaxScaleLoc = -1, _viewDirWSLoc = -1;
     private static int _showHeatmapLoc = -1;
     private static int _showContoursLoc = -1;
     private static readonly int[] _texLocs = new int[4];
@@ -90,11 +91,21 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static readonly int[] _dynLayerTilingLocs = new int[EditorObject.MaxTerrainLayers];
     private static readonly int[] _dynLayerHeightLocs = new int[EditorObject.MaxTerrainLayers];
     private static readonly int[] _dynLayerBlendLocs = new int[EditorObject.MaxTerrainLayers];
-    private static int _dynSlopeEnabledLoc = -1, _dynSlopeThresholdLoc = -1, _dynSlopeTilingLoc = -1, _dynSlopeTexLoc = -1;
+    private static readonly int[] _dynLayerStochasticLocs = new int[EditorObject.MaxTerrainLayers];
+    private static int _dynSlopeEnabledLoc = -1, _dynSlopeThresholdLoc = -1, _dynSlopeTilingLoc = -1, _dynSlopeTexLoc = -1, _dynSlopeStochasticLoc = -1;
     private readonly uint[] _dynLayerTextures = new uint[EditorObject.MaxTerrainLayers];
     private readonly string?[] _dynLayerPaths = new string?[EditorObject.MaxTerrainLayers];
     private uint _dynSlopeTexture = 0;
     private string? _dynSlopePath = null;
+
+    // ── Independent paint layer textures (paintTex0..3) ──
+    private readonly uint[] _paintLayerTextures = new uint[EditorObject.MaxPaintLayers];
+    private readonly string?[] _paintLayerPaths = new string?[EditorObject.MaxPaintLayers];
+    private static readonly int[] _paintLayerTexLocs = new int[EditorObject.MaxPaintLayers];
+    private static readonly int[] _paintLayerTilingLocs = new int[EditorObject.MaxPaintLayers];
+    private static readonly int[] _paintLayerStochasticLocs = new int[EditorObject.MaxPaintLayers];
+    private static int _paintTexCountLoc = -1;
+    private static int _paintLayerCountLoc = -1;
 
     // ── CSM shadow uniforms (editor viewport) ──
     private static int _shadowFilterLoc = -1, _shadowDirLoc = -1;
@@ -794,13 +805,12 @@ public unsafe class EditorTerrainMesh : IDisposable
         _heightScaleLoc = GL.GetUniformLocation(_program, "heightScale");
         _layerLevelsLoc = GL.GetUniformLocation(_program, "layerLevels");
         _slopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
-        _texTilingLoc = GL.GetUniformLocation(_program, "texTiling");
-        _slopeTexTilingLoc = GL.GetUniformLocation(_program, "slopeTexTiling");
-        _useStochasticSamplingLoc = GL.GetUniformLocation(_program, "useStochasticSampling");
         _usePaintMaskLoc = GL.GetUniformLocation(_program, "usePaintMask");
         _showHeatmapLoc = GL.GetUniformLocation(_program, "showHeatmap");
         _showContoursLoc = GL.GetUniformLocation(_program, "showContours");
         _tex4Loc = GL.GetUniformLocation(_program, "tex4");
+        _parallaxScaleLoc = GL.GetUniformLocation(_program, "parallaxScale");
+        _viewDirWSLoc = GL.GetUniformLocation(_program, "viewDirWS");
         for (int i = 0; i < 4; i++)
             _texLocs[i] = GL.GetUniformLocation(_program, $"tex{i}");
 
@@ -812,11 +822,24 @@ public unsafe class EditorTerrainMesh : IDisposable
             _dynLayerTilingLocs[i] = GL.GetUniformLocation(_program, $"layerTiling[{i}]");
             _dynLayerHeightLocs[i] = GL.GetUniformLocation(_program, $"layerHeightRange[{i}]");
             _dynLayerBlendLocs[i] = GL.GetUniformLocation(_program, $"layerBlendSharpness[{i}]");
+            _dynLayerStochasticLocs[i] = GL.GetUniformLocation(_program, $"layerStochastic[{i}]");
         }
         _dynSlopeEnabledLoc = GL.GetUniformLocation(_program, "slopeEnabled");
         _dynSlopeThresholdLoc = GL.GetUniformLocation(_program, "slopeThreshold");
         _dynSlopeTilingLoc = GL.GetUniformLocation(_program, "slopeTilingVal");
         _dynSlopeTexLoc = GL.GetUniformLocation(_program, "dynSlopeTex");
+        _dynSlopeStochasticLoc = GL.GetUniformLocation(_program, "slopeStochastic");
+
+        // Paint layer texture uniforms
+        for (int i = 0; i < EditorObject.MaxPaintLayers; i++)
+        {
+            _paintLayerTexLocs[i] = GL.GetUniformLocation(_program, $"paintTex{i}");
+            _paintLayerTilingLocs[i] = GL.GetUniformLocation(_program, $"paintTiling[{i}]");
+        }
+        _paintTexCountLoc = GL.GetUniformLocation(_program, "paintTexCount");
+        _paintLayerCountLoc = GL.GetUniformLocation(_program, "paintLayerCount");
+        for (int i = 0; i < EditorObject.MaxPaintLayers; i++)
+            _paintLayerStochasticLocs[i] = GL.GetUniformLocation(_program, $"paintStochastic[{i}]");
 
         // CSM shadow uniforms
         _shadowFilterLoc = GL.GetUniformLocation(_program, "shadowFilterMode");
@@ -905,9 +928,13 @@ public unsafe class EditorTerrainMesh : IDisposable
             owner.TerrainLayerAirTop, owner.TerrainLayerDirtTop,
             owner.TerrainLayerGrassTop, owner.TerrainLayerSnowTop);
         if (_slopeThresholdLoc >= 0) GL.Uniform1f(_slopeThresholdLoc, Math.Clamp(owner.TerrainSlopeThreshold, 0.02f, 0.98f));
-        if (_texTilingLoc >= 0) GL.Uniform1f(_texTilingLoc, Math.Max(0.01f, owner.TerrainTexTiling));
-        if (_slopeTexTilingLoc >= 0) GL.Uniform1f(_slopeTexTilingLoc, Math.Max(0.01f, owner.TerrainSlopeTexTiling));
-        if (_useStochasticSamplingLoc >= 0) GL.Uniform1i(_useStochasticSamplingLoc, owner.TerrainUseStochasticSampling ? 1 : 0);
+
+        // ── POM: Parallax Occlusion Mapping ──
+        if (_parallaxScaleLoc >= 0) GL.Uniform1f(_parallaxScaleLoc, Math.Clamp(owner.TerrainParallaxScale, 0f, 0.15f));
+        if (_viewDirWSLoc >= 0)
+        {
+            GL.Uniform3f(_viewDirWSLoc, camera.Front.X, camera.Front.Y, camera.Front.Z);
+        }
 
         // ── NEW: Dynamic layer system ──
         var layers = owner.TerrainLayerList;
@@ -933,6 +960,10 @@ public unsafe class EditorTerrainMesh : IDisposable
 
             // Upload per-layer blend sharpness
             GL.Uniform1f(_dynLayerBlendLocs[i], layer.BlendSharpness);
+
+            // Upload per-layer stochastic sampling
+            if (_dynLayerStochasticLocs[i] >= 0)
+                GL.Uniform1i(_dynLayerStochasticLocs[i], layer.StochasticSampling ? 1 : 0);
         }
 
         // ── Slope layer ──
@@ -943,6 +974,7 @@ public unsafe class EditorTerrainMesh : IDisposable
             var slope = owner.TerrainSlopeLayer!;
             GL.Uniform1f(_dynSlopeThresholdLoc, Math.Clamp(slope.SlopeThreshold, 0.02f, 0.98f));
             GL.Uniform1f(_dynSlopeTilingLoc, Math.Max(0.01f, (slope.TilingX + slope.TilingY) * 0.5f));
+            if (_dynSlopeStochasticLoc >= 0) GL.Uniform1i(_dynSlopeStochasticLoc, slope.StochasticSampling ? 1 : 0);
             uint slopeUnit = (uint)(Const.GL_TEXTURE0 + EditorObject.MaxTerrainLayers);
             GL.ActiveTexture(slopeUnit);
             GL.BindTexture(Const.GL_TEXTURE_2D, _dynSlopeTexture);
@@ -969,6 +1001,35 @@ public unsafe class EditorTerrainMesh : IDisposable
         GL.ActiveTexture(Const.GL_TEXTURE4);
         GL.BindTexture(Const.GL_TEXTURE_2D, _splatTex);
         GL.Uniform1i(_tex4Loc, 4);
+
+        // ── Independent paint layer textures (units 20-23) ──
+        {
+            int paintCount = 0;
+            for (int i = 0; i < EditorObject.MaxPaintLayers; i++)
+            {
+                string? path = owner.GetPaintLayerTexture(i);
+                path = string.IsNullOrEmpty(path) ? null : path;
+                if (_paintLayerPaths[i] != path)
+                {
+                    _paintLayerPaths[i] = path;
+                    if (_paintLayerTextures[i] != 0) { uint t = _paintLayerTextures[i]; GL.DeleteTextures(1, &t); _paintLayerTextures[i] = 0; }
+                    if (path != null) _paintLayerTextures[i] = LoadLayerTexture(path, new Vector3(0.5f));
+                }
+                if (_paintLayerTextures[i] != 0)
+                {
+                    uint unit = (uint)(Const.GL_TEXTURE0 + 20 + i);
+                    GL.ActiveTexture(unit);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, _paintLayerTextures[i]);
+                    GL.Uniform1i(_paintLayerTexLocs[i], 20 + i);
+                    GL.Uniform2f(_paintLayerTilingLocs[i], owner.PaintLayerTiling[i].X, owner.PaintLayerTiling[i].Y);
+                    if (_paintLayerStochasticLocs[i] >= 0)
+                        GL.Uniform1i(_paintLayerStochasticLocs[i], owner.PaintLayerStochastic[i] ? 1 : 0);
+                    paintCount = i + 1;
+                }
+            }
+            GL.Uniform1i(_paintTexCountLoc, paintCount);
+            GL.Uniform1i(_paintLayerCountLoc, owner.PaintLayerCount);
+        }
 
         // Draw every chunk as quads (2 triangles each, via the index buffer).
         foreach (var c in _chunks)

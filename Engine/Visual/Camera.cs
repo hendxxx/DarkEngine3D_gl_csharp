@@ -227,6 +227,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _projectionDirty = true;
         }
 
+        /// <summary>Sync smoothYaw/smoothPitch with the current Yaw/Pitch.
+        /// Call after externally setting Yaw/Pitch (e.g. loading from file, scene switch)
+        /// so freefly mode doesn't snap back to stale values.</summary>
+        public void SyncSmoothVectors()
+        {
+            smoothYaw = Yaw;
+            smoothPitch = Pitch;
+            smoothCamPos = Position;
+        }
+
         public void UpdateVectors()
         {
             float minPitch = CurrentPreset?.MinPitch ?? -85f;

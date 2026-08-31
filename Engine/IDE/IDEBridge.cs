@@ -71,6 +71,9 @@ public class IDEBridge
     public float? PendingCameraYaw { get; set; }
     public float? PendingCameraPitch { get; set; }
 
+    // ── Viewport HUD font size (view label, stats, etc.) ──
+    public float ViewportFontSize { get; set; } = 16f;
+
     // ── Object list (for hierarchy) ──
     public IReadOnlyList<GltfObject>? AllObjects { get; set; }
 
@@ -81,6 +84,9 @@ public class IDEBridge
 
     // ── Viewport focus state (set by ViewportPanel each frame) ──
     public bool IsViewportFocused { get; set; }
+    /// <summary>True when viewport input should be suppressed (popup/menu was just open).
+    /// Set by ViewportPanel after detecting a popup close, cleared after a few frames.</summary>
+    public bool SuppressViewportInput { get; set; }
 
     // ── Viewport mouse/click state for click-to-select in IDE mode ──
     /// <summary>Set by ViewportPanel when the scene image is clicked.</summary>
@@ -377,10 +383,10 @@ public class IDEBridge
     /// (toolbar button only — keyboard shortcuts are disabled). Left-drag raises,
     /// Ctrl+left-drag lowers.</summary>
     public bool TerrainBrushActive { get; set; }
-    /// <summary>Active brush tool: 0 = ⛰ height (raise/lower), 1 = 🎨 layer paint (air/tanah/rumput/salju).</summary>
+    /// <summary>Active brush tool: 0 = sculpt (raise/lower), 1 = paint, 2 = smooth, 3 = flatten.</summary>
     public int TerrainBrushMode { get; set; } = 0;
-    /// <summary>Active layer for the 🎨 paint brush: 0=air, 1=tanah, 2=rumput, 3=salju.</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 2;
+    /// <summary>Active paint layer index (0-3).</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 0;
     /// <summary>Called by ViewportPanel when a terrain height-paint stroke ends (for undo support).
     /// Passes the painted object plus the height snapshots taken BEFORE and AFTER the stroke
     /// (a no-op stroke with identical arrays is filtered out by HierarchyPanel).</summary>
@@ -481,6 +487,8 @@ public class IDEBridge
                 Camera.Position = p;
                 Camera.Yaw = next.CameraYaw ?? Camera.Yaw;
                 Camera.Pitch = next.CameraPitch ?? Camera.Pitch;
+                Camera.UpdateVectors();
+                Camera.SyncSmoothVectors();
             }
         }
     }

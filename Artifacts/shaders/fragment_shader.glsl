@@ -258,7 +258,7 @@ bool setupShadow(vec4 fragPosLightSpace, out vec2 uv, out float receiverZ)
 {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
-    uv = projCoords.xy;
+    uv = clamp(projCoords.xy, 0.001, 0.999);
     receiverZ = projCoords.z;
     return projCoords.z > 1.0 || projCoords.z < 0.0;
 }
@@ -448,59 +448,22 @@ void main() {
     // CSM + CalculateShadow
     float depth = viewDepth;
 
-    float blendRange0 = cascadeEnds[0] * u_BlendRange;
-    float blendRange1 = cascadeEnds[1] * u_BlendRange;
-
-    // FIX: gunakan arah bulan saat malam
-    //vec3 shadowLightDir = (nightBlendFactor > 0.5) ? moonDir : sunDir; 
-
-    // FIX: bias harus pakai shadowLightDir 
     float ndotl = max(dot(norm, shadowLightDir), 0.0);
-    // Slope-scaled bias (OpenGL Tutorial 16): bias ∝ tan(acos(N·L)) — zero on flat,
-    // light-facing surfaces, growing far faster than the old linear (1−N·L) on slopes
-    // that turn away from the light. That aggressive growth is exactly what kills
-    // self-shadow acne on steep terrain. tan(acos(x)) = sqrt(1−x²)/x, computed directly
-    // with the denominator clamped so N·L = 0 can't divide by zero.
     float ndotlSafe = max(ndotl, 0.05);
     float slopeFactor = sqrt(max(1.0 - ndotlSafe * ndotlSafe, 0.0)) / ndotlSafe;
-    float baseBias = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
-    float bias0 = baseBias;
-    // Far cascades cover much more world space per shadow-map texel, so they need a
-    // proportionally larger bias to stay acne-free (same 1.5×/3× scaling the gltf shader
-    // already applies for its cascade 1/2). The depth-range term keeps the WORLD offset
-    // consistent across cascades: worldOffset = bias_ndc × depthRange, and a far cascade's
-    // ortho Z range is 10×+ larger than the near one's — a fixed NDC bias there would push
-    // shadows tens of world units away and they would vanish at distance.
-    // World bias offset proportional to the LOCAL texel size (texel_i / texel_0): a constant
-    // texel count at every distance, so far cascades get proportionally more bias instead of
-    // the old fixed 1.5×/3× (which under-shot far cascades → sub-texel acne). The depth-range
-    // term converts that world offset into NDC; the ratio is clamped so a pathological small
-    // cascade-0 range can never explode the far-cascade bias.
-    float bias1 = baseBias * max(u_TexelWorld.y / max(u_TexelWorld.x, 1e-5), 1.0)
-                * clamp(u_DepthRange.x / u_DepthRange.y, 0.02, 4.0);
-    float bias2 = baseBias * max(u_TexelWorld.z / max(u_TexelWorld.x, 1e-5), 1.0)
-                * clamp(u_DepthRange.x / u_DepthRange.z, 0.02, 4.0);
-    // Peter-panning guard: the texel-proportional scaling keeps a constant TEXEL count,
-    // but in the far cascades a texel is ~0.5-1 m, so the bias' WORLD offset (bias × range)
-    // would reach meters and the shadow detaches from its caster (bright outline). Cap
-    // the world offset directly, per cascade — cascade 0 tight (kills the outline at
-    // object bases), cascade 2 loose (keeps anti-acne at distance).
-    bias0 = min(bias0, u_MaxWorldBias.x / max(u_DepthRange.x, 1e-4));
-    bias1 = min(bias1, u_MaxWorldBias.y / max(u_DepthRange.y, 1e-4));
-    bias2 = min(bias2, u_MaxWorldBias.z / max(u_DepthRange.z, 1e-4));
-
-    // PCF/PCSS radii are in TEXELS — scale per cascade by the texel-size ratio so the
-    // WORLD penumbra stays constant at every distance (a fixed 5-texel disk covers 0.15 m
-    // in cascade 0 but ~6 m in cascade 2). worldWidth = radius × texelWorld stays the same
-    // when radius ∝ texel0/texel_i; clamped so a pathological tiny near texel can't blow
-    // the far-cascade radius up (ratio > 1 is capped at 1.0).
-    float rScale1 = clamp(u_TexelWorld.x / max(u_TexelWorld.y, 1e-5), 0.25, 1.0);
-    float rScale2 = clamp(u_TexelWorld.x / max(u_TexelWorld.z, 1e-5), 0.25, 1.0);
+    float bias0 = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
+    float bias1 = bias0;
+    float bias2 = bias0;
+    // Same blend width for ALL transitions — identical look.
+    float blendW = cascadeEnds[0] * 0.5;
+    float blendRange0 = blendW;
+    float blendRange1 = blendW;
+    float rScale1 = 1.0;
+    float rScale2 = 1.0;
 
     float shadow;
     int cascadeIndex = 0;
     float cascadeBlendT = 0.0;
-
     vec4 worldPos4 = vec4(FragPos, 1.0);
 
     if (depth < cascadeEnds[0] - blendRange0) {
@@ -508,27 +471,26 @@ void main() {
         cascadeIndex = 0;
     }
     else if (depth < cascadeEnds[0]) {
-        float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
+        float t = smoothstep(cascadeEnds[0] - blendRange0, cascadeEnds[0], depth);
         float s0 = CalculateShadow(lightSpaceMatrices[0] * worldPos4, shadowMap0, bias0, 1.0);
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
         shadow = mix(s0, s1, t);
         cascadeIndex = 1;
         cascadeBlendT = t;
     }
     else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
+        shadow = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
         cascadeIndex = 1;
     }
     else if (depth < cascadeEnds[1]) {
-        float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
-        float s2 = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
-        shadow = mix(s1, s2, t);
+        float t = smoothstep(cascadeEnds[1] - blendRange1, cascadeEnds[1], depth);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
+        shadow = mix(s1, 1.0, t);
         cascadeIndex = 2;
         cascadeBlendT = t;
     }
     else {
-        shadow = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
+        shadow = 1.0;
         cascadeIndex = 2;
     }
 

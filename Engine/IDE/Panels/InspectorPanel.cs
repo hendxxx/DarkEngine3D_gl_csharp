@@ -8,7 +8,7 @@ using System.Numerics;
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
 /// <summary>
-/// Inspector panel — shows properties of the selected object or UI button.
+/// Inspector panel  shows properties of the selected object or UI button.
 /// Supports editing transform, viewing health, editing button properties, etc.
 /// </summary>
 public class InspectorPanel
@@ -16,21 +16,21 @@ public class InspectorPanel
     private readonly IDEBridge _bridge;
     private bool _visible = true;
 
-    // ── UI editing state ──
+    //  UI editing state 
     private System.Numerics.Vector2 _editVec2 = new();
 
-    // ── Per-texture settings: which slot/layer is being edited. Reset when the selected
-    //    object changes so a fresh selection always starts on the Simple / Air layer. ──
+    //  Per-texture settings: which slot/layer is being edited. Reset when the selected
+    //    object changes so a fresh selection always starts on the first layer. 
     private EditorObject? _texSettingsObj;
     private int _texSlotIdx;
     private int _terrainLayerIdx;
     private int _dynActiveLayerIdx = 0; // active layer in dynamic system
 
-    // ── Cached font list (scanned once) ──
+    //  Cached font list (scanned once) 
     private string[]? _availableFonts;
     private bool _fontsScanned = false;
 
-    // ── Element type labels (mirrors UIElementType order) ──
+    //  Element type labels (mirrors UIElementType order) 
     private static readonly string[] ElementTypeNames =
         ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox"];
 
@@ -44,19 +44,24 @@ public class InspectorPanel
 
         ImGui.Begin("Inspector", ref _visible);
 
+        // Use a child region for scrollable content  ImGui handles scroll-on-hover
+        // automatically for child regions, so no click is needed.
+        var avail = ImGui.GetContentRegionAvail();
+        ImGui.BeginChild("InspectorScroll", avail, ImGuiChildFlags.None, ImGuiWindowFlags.NoBackground);
+
         var uiElem = _bridge.SelectedUIElement;
         var obj = _bridge.SelectedObject;
         var agent = _bridge.SelectedAgent;
         var editorObj = _bridge.SelectedEditorObject;
 
-        // ── "Select Scene" button — shown when any object is selected, allows quick jump
+        //  "Select Scene" button  shown when any object is selected, allows quick jump
         //     to scene render properties (BackgroundColor, Wireframe, etc.).
         bool hasSelection = editorObj != null || (uiElem != null && uiElem.Type != UIElementType.Scene) || obj != null;
         if (hasSelection)
         {
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.20f, 0.35f, 0.55f, 1f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.30f, 0.50f, 0.75f, 1f));
-            if (ImGui.Button("🎬 Select Scene", new Vector2(-1, 26)))
+            if (ImGui.Button(" Select Scene", new Vector2(-1, 26)))
             {
                 // Clear all selections to jump to scene properties
                 _bridge.SelectedUIElement = null;
@@ -98,21 +103,22 @@ public class InspectorPanel
             RenderScenePropertiesFromSelection();
         }
 
-        ImGui.End();
+        ImGui.EndChild(); // InspectorScroll
+        ImGui.End(); // Inspector
     }
 
     private unsafe void RenderUIElementInspector(UIElement elem)
     {
-        // Unique ID scope per element instance — prevents ImGui ID collisions
+        // Unique ID scope per element instance  prevents ImGui ID collisions
         // when switching between elements (all InputText/DragFloat/Combo IDs are
         // scoped under elem.InstanceId, so each element gets its own ID space).
         ImGui.PushID(elem.InstanceId);
 
         bool isSceneType = elem.Type == UIElementType.Scene;
 
-        // ════════════════════════════════════════════
+        // 
         //  Element Identity
-        // ════════════════════════════════════════════
+        // 
         if (ImGui.CollapsingHeader("Element", ImGuiTreeNodeFlags.DefaultOpen))
         {
             // Editable name
@@ -132,7 +138,7 @@ public class InspectorPanel
             ImGui.Separator();
         }
 
-        // ── For Scene type, ONLY show Element + Children, skip everything else ──
+        //  For Scene type, ONLY show Element + Children, skip everything else 
         if (isSceneType)
         {
             // Children list (only section shown for Scene type)
@@ -152,14 +158,14 @@ public class InspectorPanel
             return; // Scene type: nothing else to show
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Type-Specific Properties (Moved to top)
-        // ════════════════════════════════════════════
+        // 
         RenderTypeSpecificProperties(elem);
 
-        // ════════════════════════════════════════════
+        // 
         //  Image (replaces Text & Font when ImagePath is set)
-        // ════════════════════════════════════════════
+        // 
         bool hasImage = !string.IsNullOrEmpty(elem.ImagePath);
         if (ImGui.CollapsingHeader("Image", ImGuiTreeNodeFlags.DefaultOpen))
         {
@@ -170,7 +176,7 @@ public class InspectorPanel
             if (ImGui.InputText("##img_path", ref imgPath, 512))
                 elem.ImagePath = imgPath;
 
-            // ── Drag-drop target for Asset Browser ──
+            //  Drag-drop target for Asset Browser 
             if (ImGui.BeginDragDropTarget())
             {
                 var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
@@ -192,7 +198,7 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Clear image");
 
-            // ── Image sizing mode ──
+            //  Image sizing mode 
             string[] imgModes = ["Stretch", "Zoom", "Fill"];
             int imgModeIdx = (int)elem.ImageMode;
             if (ImGui.Combo("Image Mode", ref imgModeIdx, imgModes, imgModes.Length))
@@ -201,7 +207,7 @@ public class InspectorPanel
             // Image preview indicator
             if (hasImage)
             {
-                ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $"✓ Image: {Path.GetFileName(elem.ImagePath)}");
+                ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $" Image: {Path.GetFileName(elem.ImagePath)}");
                 ImGui.TextDisabled($"Mode: {elem.ImageMode}");
             }
             else
@@ -212,19 +218,19 @@ public class InspectorPanel
 
             ImGui.Separator();
 
-            // ── Fit to Window button ──
-            if (ImGui.Button("⬜ Fit to Window", new Vector2(-1, 30)))
+            //  Fit to Window button 
+            if (ImGui.Button(" Fit to Window", new Vector2(-1, 30)))
             {
                 elem.X = 0;
                 elem.Y = 0;
                 elem.Width = 1920;
                 elem.Height = 1080;
-                Console.WriteLine($"[Inspector] Fit to Window: '{elem.Name}' → (0,0) [1920×1080]");
+                Console.WriteLine($"[Inspector] Fit to Window: '{elem.Name}' → (0,0) [19201080]");
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Resize element to fill the entire window (1920×1080)");
+                ImGui.SetTooltip("Resize element to fill the entire window (19201080)");
 
-            // ── Fallback Label (shown when image can't be loaded) — independent from main Text ──
+            //  Fallback Label (shown when image can't be loaded)  independent from main Text 
             ImGui.Spacing();
             string fallbackText = elem.FallbackText;
             ImGui.Text("Fallback Label:");
@@ -240,9 +246,9 @@ public class InspectorPanel
                 elem.Alignment = (TextAlignment)alignIdx;
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Text & Font (shown only when no image)
-        // ════════════════════════════════════════════
+        // 
         if (!hasImage && ImGui.CollapsingHeader("Text & Font", ImGuiTreeNodeFlags.DefaultOpen))
         {
             string text = elem.Text;
@@ -287,9 +293,9 @@ public class InspectorPanel
                 elem.Alignment = (TextAlignment)alignIdx;
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Transform (Position & Size)
-        // ════════════════════════════════════════════
+        // 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
         {
             _editVec2 = new System.Numerics.Vector2(elem.X, elem.Y);
@@ -307,12 +313,12 @@ public class InspectorPanel
             }
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Colors (Normal + Hover)
-        // ════════════════════════════════════════════
+        // 
         if (ImGui.CollapsingHeader("Colors", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            // ── Normal state ──
+            //  Normal state 
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Normal");
             ImGui.Indent();
 
@@ -334,14 +340,14 @@ public class InspectorPanel
             ImGui.Separator();
             ImGui.Spacing();
 
-            // ── Use Hover toggle ──
+            //  Use Hover toggle 
             bool useHover = elem.UseHover;
             if (ImGui.Checkbox("Use Hover", ref useHover))
                 elem.UseHover = useHover;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("When enabled, this element shows different colors on mouse hover. When disabled, normal colors are always used.");
 
-            // ── Hover state (greyed out when Use Hover is disabled) ──
+            //  Hover state (greyed out when Use Hover is disabled) 
             ImGui.BeginDisabled(!elem.UseHover);
             ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.7f, 1f), "Hover");
             ImGui.Indent();
@@ -363,9 +369,9 @@ public class InspectorPanel
             ImGui.EndDisabled();
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Behaviors (Click + Hover)
-        // ════════════════════════════════════════════
+        // 
         if (ImGui.CollapsingHeader("Behaviors", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var behaviors = IDEBridge.AvailableBehaviors;
@@ -401,7 +407,7 @@ public class InspectorPanel
                 currentParam = newParam;
             }
 
-            // ── Sub-parameter: overlay name (only when "overlay" type selected) ──
+            //  Sub-parameter: overlay name (only when "overlay" type selected) 
             if (string.Equals(currentType, "overlay", StringComparison.OrdinalIgnoreCase))
             {
                 ImGui.Spacing();
@@ -439,7 +445,7 @@ public class InspectorPanel
                 ImGui.Unindent();
             }
 
-            // ── Sub-parameter: scene name (only when "scene" type selected) ──
+            //  Sub-parameter: scene name (only when "scene" type selected) 
             if (string.Equals(currentType, "scene", StringComparison.OrdinalIgnoreCase))
             {
                 ImGui.Spacing();
@@ -450,7 +456,7 @@ public class InspectorPanel
                 string[] scenes = _bridge.AvailableSceneNames;
                 if (scenes.Length == 0)
                 {
-                    ImGui.TextDisabled("(no scenes — add scenes in Scene Manager)");
+                    ImGui.TextDisabled("(no scenes  add scenes in Scene Manager)");
                 }
                 else
                 {
@@ -487,7 +493,7 @@ public class InspectorPanel
             ImGui.Separator();
             ImGui.Spacing();
 
-            // ── Hover behaviors (simplified: just show type combo, no sub-params) ──
+            //  Hover behaviors (simplified: just show type combo, no sub-params) 
             int hoverEnterIdx = 0;
             var (hEnterType, _) = IDEBridge.ParseBehavior(elem.HoverEnterLabel);
             for (int i = 0; i < behaviors.Length; i++)
@@ -526,9 +532,9 @@ public class InspectorPanel
             ImGui.TextDisabled("Save scene to persist behavior changes");
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Visibility & Flags
-        // ════════════════════════════════════════════
+        // 
         if (ImGui.CollapsingHeader("Visibility", ImGuiTreeNodeFlags.DefaultOpen))
         {
             bool vis = elem.IsVisible;
@@ -537,11 +543,11 @@ public class InspectorPanel
 
             // Show a small preview chip
             if (vis)
-                ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "● Visible");
+                ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), " Visible");
             else
-                ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), "○ Hidden");
+                ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), " Hidden");
 
-            // ── Opacity / Transparency ──
+            //  Opacity / Transparency 
             float opacity = elem.Opacity;
             if (ImGui.SliderFloat("Opacity", ref opacity, 0f, 1f, "%.2f"))
                 elem.Opacity = Math.Clamp(opacity, 0f, 1f);
@@ -557,14 +563,14 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Auto-fill window (for overlay/background elements) ──
+            //  Auto-fill window (for overlay/background elements) 
             bool autoFill = elem.AutoFillWindow;
             if (ImGui.Checkbox("Auto-fill Window", ref autoFill))
                 elem.AutoFillWindow = autoFill;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("When enabled, this element automatically fills the entire viewport (X=0, Y=0, W=viewport, H=viewport)");
 
-            // ── Auto-center (for overlays/dialogs) ──
+            //  Auto-center (for overlays/dialogs) 
             bool autoCenter = elem.AutoCenter;
             if (ImGui.Checkbox("Auto-center", ref autoCenter))
                 elem.AutoCenter = autoCenter;
@@ -572,15 +578,15 @@ public class InspectorPanel
                 ImGui.SetTooltip("When enabled, this element is automatically centered in the viewport");
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Children list
-        // ════════════════════════════════════════════
+        // 
         if (elem.Children.Count > 0 && ImGui.CollapsingHeader($"Children ({elem.Children.Count})", ImGuiTreeNodeFlags.DefaultOpen))
         {
             for (int i = 0; i < elem.Children.Count; i++)
             {
                 var child = elem.Children[i];
-                // Clickable child entry — clicking selects it in the hierarchy
+                // Clickable child entry  clicking selects it in the hierarchy
                 ImGui.BulletText($"{child.GetIcon()} {child.Name}");
                 if (ImGui.IsItemClicked())
                     _bridge.SelectedUIElement = child;
@@ -653,9 +659,9 @@ public class InspectorPanel
                         elem.IsChecked = checkedVal;
 
                     if (elem.IsChecked)
-                        ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "● Checked");
+                        ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), " Checked");
                     else
-                        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), "○ Unchecked");
+                        ImGui.TextColored(new Vector4(0.6f, 0.6f, 0.6f, 1f), " Unchecked");
 
                     ImGui.Separator();
                     ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
@@ -694,7 +700,7 @@ public class InspectorPanel
                         if (i == elem.SelectedIndex)
                         {
                             ImGui.SameLine();
-                            ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "◄ Selected");
+                            ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), " Selected");
                         }
 
                         ImGui.PopID();
@@ -769,7 +775,7 @@ public class InspectorPanel
                         if (i == elem.SelectedTextIndex)
                         {
                             ImGui.SameLine();
-                            ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), "◄ Selected");
+                            ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.4f, 1f), " Selected");
                         }
 
                         ImGui.PopID();
@@ -883,7 +889,7 @@ public class InspectorPanel
         }
         else if (_bridge.EditorScenes.Count > 0)
         {
-            // No scene selected but there are editor scenes — pick the first one
+            // No scene selected but there are editor scenes  pick the first one
             foreach (var kvp in _bridge.EditorScenes)
             {
                 editorScene = kvp.Value;
@@ -931,9 +937,9 @@ public class InspectorPanel
             ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.6f, 1f), "or hierarchy tree to inspect it.");
         }
 
-        // ════════════════════════════════════════════
+        // 
         //  Render Properties (per-scene)
-        // ════════════════════════════════════════════
+        // 
         // Ensure the scene has a RenderProperties instance
         var renderProps = editorScene.RenderProperties;
         if (renderProps == null)
@@ -946,7 +952,7 @@ public class InspectorPanel
         {
             bool changed = false;
 
-            // ── Background Color ──
+            //  Background Color 
             var bgColor = renderProps.BackgroundColor;
             if (ImGui.ColorEdit3("Background Color", ref bgColor, ImGuiColorEditFlags.NoInputs))
             {
@@ -954,11 +960,11 @@ public class InspectorPanel
                 changed = true;
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("GL.ClearColor — background color when rendering this scene");
+                ImGui.SetTooltip("GL.ClearColor  background color when rendering this scene");
 
             ImGui.Spacing();
 
-            // ── VSync ──
+            //  VSync 
             bool vsync = renderProps.VSync;
             if (ImGui.Checkbox("VSync", ref vsync))
             {
@@ -970,7 +976,7 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // ── Face Culling ──
+            //  Face Culling 
             string[] cullModes = ["None", "Back", "Front", "Front & Back"];
             int cullIdx = (int)renderProps.FaceCulling;
             if (cullIdx < 0 || cullIdx >= cullModes.Length) cullIdx = 1;
@@ -982,7 +988,7 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Which faces to cull (Back = default, None = disable culling)");
 
-            // ── Front Face Winding ──
+            //  Front Face Winding 
             string[] windingModes = ["CCW (Counter-Clockwise)", "CW (Clockwise)"];
             int windingIdx = renderProps.FrontFaceWinding == WindingOrder.CCW ? 0 : 1;
             if (ImGui.Combo("Front Face Winding", ref windingIdx, windingModes, windingModes.Length))
@@ -995,7 +1001,7 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // ── Wireframe Mode ──
+            //  Wireframe Mode 
             bool wireframe = renderProps.WireframeMode;
             if (ImGui.Checkbox("Wireframe Mode", ref wireframe))
             {
@@ -1007,7 +1013,7 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // ── Depth Test ──
+            //  Depth Test 
             bool depthTest = renderProps.DepthTest;
             if (ImGui.Checkbox("Depth Test", ref depthTest))
             {
@@ -1017,7 +1023,7 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Enable/disable depth testing");
 
-            // ── Blending ──
+            //  Blending 
             bool blending = renderProps.Blending;
             if (ImGui.Checkbox("Blending", ref blending))
             {
@@ -1030,7 +1036,7 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Apply button ──
+            //  Apply button 
             if (changed)
             {
                 // Apply the render properties immediately
@@ -1047,9 +1053,9 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ════════════════════════════════════════════
-            //  Fog (global — Config.FogSettings, applies to every scene & object)
-            // ════════════════════════════════════════════
+            // 
+            //  Fog (global  Config.FogSettings, applies to every scene & object)
+            // 
             if (ImGui.CollapsingHeader("Fog", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 bool fogChanged = false;
@@ -1059,7 +1065,7 @@ public class InspectorPanel
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Master fog switch (same as the F key quick-toggle in-game).");
 
-                string[] fogModes = ["Linear", "Exponential", "Exponential² + Height"];
+                string[] fogModes = ["Linear", "Exponential", "Exponential + Height"];
                 int fogMode = Math.Clamp(Config.FogSettings.Mode - 1, 0, 2);
                 if (ImGui.Combo("Mode", ref fogMode, fogModes, fogModes.Length))
                 {
@@ -1067,7 +1073,7 @@ public class InspectorPanel
                     fogChanged = true;
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Linear = fades between Start and End distance.\nExponential = smooth density falloff.\nExp² + Height = the original terrain fog with height blending.");
+                    ImGui.SetTooltip("Linear = fades between Start and End distance.\nExponential = smooth density falloff.\nExp + Height = the original terrain fog with height blending.");
 
                 if (ImGui.Checkbox("Use Sky Color", ref Config.FogSettings.UseSkyColor))
                     fogChanged = true;
@@ -1091,7 +1097,7 @@ public class InspectorPanel
                     fogChanged = true;
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Fog thickness (Exponential / Exp² modes).");
+                    ImGui.SetTooltip("Fog thickness (Exponential / Exp modes).");
 
                 if (Config.FogSettings.Mode == 1)
                 {
@@ -1134,9 +1140,9 @@ public class InspectorPanel
                     Config.FogSettings.Persist();
             }
 
-            // ════════════════════════════════════════════
+            // 
             //  Selection Highlight Colors (global IDE settings)
-            // ════════════════════════════════════════════
+            // 
             if (ImGui.CollapsingHeader("Selection Highlight", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Customize the selection wireframe colors");
@@ -1169,9 +1175,9 @@ public class InspectorPanel
                 }
             }
 
-            // ════════════════════════════════════════════
+            // 
             //  Editor Settings (fly mode sensitivity, speed)
-            // ════════════════════════════════════════════
+            // 
             if (ImGui.CollapsingHeader("Editor Settings", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Fly Mode Camera");
@@ -1222,7 +1228,7 @@ public class InspectorPanel
                 ImGui.TextDisabled("Settings are applied immediately.");
             }
 
-            // ── Reset to defaults button ──
+            //  Reset to defaults button 
             ImGui.Spacing();
             if (ImGui.Button("Reset to Defaults", new Vector2(-1, 28)))
             {
@@ -1277,18 +1283,18 @@ public class InspectorPanel
     }
 
     /// <summary>Draw a color picker with label + colored square + eyedropper.
-    /// Uses ImGui ColorEdit3 with NoInputs flag — click the colored square to open the
+    /// Uses ImGui ColorEdit3 with NoInputs flag  click the colored square to open the
     /// picker popup, then use the eyedropper pipette icon to sample from screen.
     /// The <paramref name="idSuffix"/> ensures unique ImGui IDs when multiple
     /// pickers share the same label (e.g. "N" for Normal, "H" for Hover).
-    /// When the color differs from <paramref name="defaultColor"/>, a small ↺ reset
+    /// When the color differs from <paramref name="defaultColor"/>, a small  reset
     /// button appears to restore the default value.</summary>
     private static void DrawColorPicker(string label, string idSuffix, Vector3 color, Action<Vector3> onChanged, Vector3? defaultColor = null)
     {
         ImGui.Text(label);
         ImGui.SameLine();
 
-        // ── Reset button — only show when color differs from default ──
+        //  Reset button  only show when color differs from default 
         bool hasDefault = defaultColor.HasValue;
         bool isDefault = false;
         if (hasDefault)
@@ -1303,7 +1309,7 @@ public class InspectorPanel
         {
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.2f, 0.15f, 1f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.5f, 0.3f, 0.2f, 1f));
-            if (ImGui.SmallButton($"↺##reset_{label}_{idSuffix}"))
+            if (ImGui.SmallButton($"##reset_{label}_{idSuffix}"))
                 onChanged(defaultColor!.Value);
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
@@ -1347,7 +1353,7 @@ public class InspectorPanel
     /// <summary>Render inspector for an EditorObject (primitives, glb references).</summary>
     private unsafe void RenderEditorObjectInspector(EditorObject editorObj)
     {
-        // ── Multi-selection indicator ──
+        //  Multi-selection indicator 
         if (_bridge.SelectedEditorObjects.Count > 1)
         {
             ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
@@ -1355,7 +1361,7 @@ public class InspectorPanel
             ImGui.Separator();
         }
 
-        // ── Identity ──
+        //  Identity 
         if (ImGui.CollapsingHeader("Editor Object", ImGuiTreeNodeFlags.DefaultOpen))
         {
             string name = editorObj.Name;
@@ -1381,7 +1387,7 @@ public class InspectorPanel
             ImGui.Separator();
         }
 
-        // ── Transform ──
+        //  Transform 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var pos = editorObj.Position;
@@ -1406,22 +1412,22 @@ public class InspectorPanel
             }
         }
 
-        // ── Gizmo Pivot ──
+        //  Gizmo Pivot 
         if (ImGui.CollapsingHeader("Gizmo Pivot", ImGuiTreeNodeFlags.DefaultOpen))
         {
             bool hasPivot = editorObj.GizmoPivotOverride.HasValue;
             ImGui.TextColored(hasPivot
                 ? new Vector4(0.3f, 0.85f, 0.4f, 1f)
                 : new Vector4(0.6f, 0.6f, 0.6f, 1f),
-                hasPivot ? "● Custom pivot active" : "○ Using object position");
+                hasPivot ? " Custom pivot active" : " Using object position");
 
-            // Pivot world position — falls back to the object's position when no override set.
+            // Pivot world position  falls back to the object's position when no override set.
             // Dragging these inputs activates a custom pivot at the entered world position.
             var pivot = editorObj.GizmoPivotOverride ?? editorObj.Position;
             if (ImGui.DragFloat3("Pivot Position", ref pivot, 0.1f))
             {
                 editorObj.GizmoPivotOverride = pivot;
-                // Note: no MarkDirty() here — the pivot is a gizmo render position and
+                // Note: no MarkDirty() here  the pivot is a gizmo render position and
                 // does not affect the object's mesh/GPU resources.
             }
             if (ImGui.IsItemHovered())
@@ -1445,12 +1451,12 @@ public class InspectorPanel
             }
             ImGui.EndDisabled();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Remove the custom pivot — the gizmo follows the object position");
+                ImGui.SetTooltip("Remove the custom pivot  the gizmo follows the object position");
         }
 
-        // ── Height overlays (heatmap / contours) — available for ANY editor object;
+        //  Height overlays (heatmap / contours)  available for ANY editor object;
         // auto-selects the first terrain plane when none is selected (matches the
-        // viewport toolbar's Shade/Contours buttons). ──
+        // viewport toolbar's Shade/Contours buttons). 
         if (ImGui.CollapsingHeader("Height Overlays", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var overlayTerrain = _bridge.SelectedEditorObject is { TerrainEnabled: true } ot ? ot : null;
@@ -1487,21 +1493,21 @@ public class InspectorPanel
                 }
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Draw dark contour lines every 10% of the height range — the texture stays\nfully visible while the relief reads clearly. Auto-selects the first terrain if none is selected. Not saved with the scene.");
+                ImGui.SetTooltip("Draw dark contour lines every 10% of the height range  the texture stays\nfully visible while the relief reads clearly. Auto-selects the first terrain if none is selected. Not saved with the scene.");
         }
 
-        // ── Terrain properties (Plane only) ──
+        //  Terrain properties (Plane only) 
         if (editorObj.PrimitiveType == EditorPrimitiveType.Plane)
         {
             RenderTerrainInspector(editorObj);
         }
 
-        // ── Type-specific properties (Camera / Light / Sky) ──
+        //  Type-specific properties (Camera / Light / Sky) 
         if (editorObj.PrimitiveType == EditorPrimitiveType.Camera &&
             ImGui.CollapsingHeader("Camera Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
             float fov = editorObj.CameraFov;
-            if (ImGui.DragFloat("FOV", ref fov, 0.5f, 10f, 120f, "%.1f°"))
+            if (ImGui.DragFloat("FOV", ref fov, 0.5f, 10f, 120f, "%.1f"))
                 editorObj.CameraFov = fov;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Vertical field of view in degrees");
@@ -1521,7 +1527,7 @@ public class InspectorPanel
                 ImGui.SetTooltip("Show/hide the view-frustum wireframe gizmo for this camera in the viewport");
 
             ImGui.Spacing();
-            // ── Preview from this camera: teleport the editor camera to the marker ──
+            //  Preview from this camera: teleport the editor camera to the marker 
             if (ImGui.Button("Preview from Camera", new Vector2(-1, 28)))
             {
                 var cam = _bridge.Camera;
@@ -1548,9 +1554,9 @@ public class InspectorPanel
         if (editorObj.PrimitiveType == EditorPrimitiveType.Light &&
             ImGui.CollapsingHeader("Light Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            // ── Light type: Direct (sun-like, parallel) / Point (omnidirectional) /
+            //  Light type: Direct (sun-like, parallel) / Point (omnidirectional) /
             //    Spotlight (cone). The type drives which properties are shown below and
-            //    how the light affects the scene (see Lights.CollectLocalLights). ──
+            //    how the light affects the scene (see Lights.CollectLocalLights). 
             string[] lightTypes = ["Direct (Sun)", "Point", "Spotlight"];
             int lightTypeIdx = (int)editorObj.LightTypeEnum;
             if (ImGui.Combo("Type", ref lightTypeIdx, lightTypes, lightTypes.Length))
@@ -1561,7 +1567,7 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Direct = parallel rays like the sun (drives the scene's global light + shadows).\nPoint = omnidirectional from the marker position with distance falloff.\nSpotlight = cone-shaped beam with angle + distance falloff.");
 
-            // ── Per-type properties ──
+            //  Per-type properties 
             if (editorObj.LightTypeEnum is LightType.Direct or LightType.Spotlight)
             {
                 var dir = editorObj.LightDirection;
@@ -1583,10 +1589,10 @@ public class InspectorPanel
             if (editorObj.LightTypeEnum == LightType.Spotlight)
             {
                 float cone = editorObj.LightConeAngle;
-                if (ImGui.SliderFloat("Cone Angle", ref cone, 1f, 89f, "%.0f°"))
+                if (ImGui.SliderFloat("Cone Angle", ref cone, 1f, 89f, "%.0f"))
                     editorObj.LightConeAngle = cone;
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Spotlight cone half-angle — how wide the beam spreads");
+                    ImGui.SetTooltip("Spotlight cone half-angle  how wide the beam spreads");
             }
 
             float intensity = editorObj.LightIntensity;
@@ -1610,16 +1616,16 @@ public class InspectorPanel
         if (editorObj.PrimitiveType == EditorPrimitiveType.Sky &&
             ImGui.CollapsingHeader("Sky Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            // ── Legacy Time of Day ──
+            //  Legacy Time of Day 
             float tod = editorObj.SkyTimeOfDay;
             if (ImGui.SliderFloat("Time of Day", ref tod, 0f, 24f, "%.1f h"))
                 editorObj.SkyTimeOfDay = tod;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Hours since midnight (12 = midday, 18 = sunset, 6 = sunrise)");
 
-            // ── Time-of-day animation: play/pause + speed ──
+            //  Time-of-day animation: play/pause + speed 
             bool animating = editorObj.SkyTimeAnimSpeed > 0f && !editorObj.SkyTimeAnimPaused;
-            if (ImGui.Button(animating ? "⏸ Pause Day/Night" : "▶ Play Day/Night", new Vector2(-1, 26)))
+            if (ImGui.Button(animating ? " Pause Day/Night" : " Play Day/Night", new Vector2(-1, 26)))
             {
                 if (animating)
                     editorObj.SkyTimeAnimPaused = true;
@@ -1633,7 +1639,7 @@ public class InspectorPanel
                 }
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Play/pause the day/night cycle — the sun orbits automatically");
+                ImGui.SetTooltip("Play/pause the day/night cycle  the sun orbits automatically");
 
             float speed = editorObj.SkyTimeAnimSpeed;
             if (ImGui.SliderFloat("Day Speed", ref speed, 0f, 24f, "%.1f h/s"))
@@ -1644,15 +1650,15 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Sun position override ──
+            //  Sun position override 
             bool hasSunOverride = editorObj.SkySunPitch.HasValue && editorObj.SkySunYaw.HasValue;
             ImGui.TextDisabled("Sun Position");
             float pitch = editorObj.SkySunPitch ?? 30f;
             float yaw = editorObj.SkySunYaw ?? 180f;
             ImGui.BeginDisabled(!hasSunOverride);
-            if (ImGui.SliderFloat("Sun Pitch", ref pitch, -90f, 90f, "%.1f°"))
+            if (ImGui.SliderFloat("Sun Pitch", ref pitch, -90f, 90f, "%.1f"))
                 editorObj.SkySunPitch = pitch;
-            if (ImGui.SliderFloat("Sun Yaw", ref yaw, 0f, 360f, "%.1f°"))
+            if (ImGui.SliderFloat("Sun Yaw", ref yaw, 0f, 360f, "%.1f"))
                 editorObj.SkySunYaw = yaw;
             ImGui.EndDisabled();
             if (ImGui.IsItemHovered() && !hasSunOverride)
@@ -1680,14 +1686,14 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Cloud coverage ──
+            //  Cloud coverage 
             float clouds = editorObj.SkyCloudCoverage;
             if (ImGui.SliderFloat("Cloud Coverage", ref clouds, 0f, 1f, "%.2f"))
                 editorObj.SkyCloudCoverage = clouds;
 
-            // ── Sun brightness ──
+            //  Sun brightness 
             float sunI = editorObj.SkySunIntensity;
-            if (ImGui.SliderFloat("Sun Intensity", ref sunI, 0.1f, 3f, "%.2f×"))
+            if (ImGui.SliderFloat("Sun Intensity", ref sunI, 0.1f, 3f, "%.2f"))
                 editorObj.SkySunIntensity = sunI;
 
             bool showSkyGizmo = editorObj.ShowSkyGizmo;
@@ -1697,12 +1703,12 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ═══════════════════════════════════════════════════════
+            // 
             // NEW 3-TYPE SKY SYSTEM
-            // ═══════════════════════════════════════════════════════
+            // 
             var skySettings = editorObj.SkySettings;
 
-            // ── Sky Type Selector ──
+            //  Sky Type Selector 
             int skyTypeIdx = (int)skySettings.Type;
             if (ImGui.Combo("Sky Type", ref skyTypeIdx, "Procedural\0Skybox\0Dome\0"))
                 skySettings.Type = (SkyType)skyTypeIdx;
@@ -1711,22 +1717,22 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // ── Randomize Button ──
+            //  Randomize Button 
             if (skySettings.Type == SkyType.Procedural)
             {
-                if (ImGui.Button("🎲 Randomize All Values", new Vector2(-1, 30)))
+                if (ImGui.Button(" Randomize All Values", new Vector2(-1, 30)))
                     skySettings.Randomize();
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Randomize all procedural sky parameters for creative exploration");
                 ImGui.Spacing();
             }
 
-            // ═══ SKYBOX SETTINGS ═══
+            //  SKYBOX SETTINGS 
             if (skySettings.Type == SkyType.Skybox &&
                 ImGui.CollapsingHeader("Skybox Textures", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.TextDisabled("6 cubemap face textures (.png, .jpg)");
-                ImGui.TextDisabled("Drag and drop from Asset Browser ➜");
+                ImGui.TextDisabled("Drag and drop from Asset Browser ");
                 ImGui.Spacing();
 
                 // Helper: InputText + DragDrop + Clear for each face
@@ -1822,12 +1828,12 @@ public class InspectorPanel
                 ImGui.Separator();
             }
 
-            // ═══ DOME SETTINGS ═══
+            //  DOME SETTINGS 
             if (skySettings.Type == SkyType.Dome &&
                 ImGui.CollapsingHeader("Dome Settings", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.TextDisabled("Dome sphere with panoramic/equirectangular texture");
-                ImGui.TextDisabled("Drag and drop from Asset Browser ➜");
+                ImGui.TextDisabled("Drag and drop from Asset Browser ");
                 string domeTex = skySettings.Dome.TexturePath;
                 ImGui.Text("Texture:");
                 ImGui.SetNextItemWidth(-30);
@@ -1847,20 +1853,20 @@ public class InspectorPanel
                 var domeTint = skySettings.Dome.TintColor;
                 if (ImGui.ColorEdit3("Tint Color", ref domeTint)) skySettings.Dome.TintColor = domeTint;
                 float domeRot = skySettings.Dome.RotationY * (180f / MathF.PI);
-                if (ImGui.SliderFloat("Rotation Y", ref domeRot, 0f, 360f, "%.1f°"))
+                if (ImGui.SliderFloat("Rotation Y", ref domeRot, 0f, 360f, "%.1f"))
                     skySettings.Dome.RotationY = domeRot * (MathF.PI / 180f);
 
                 ImGui.Spacing();
                 ImGui.Separator();
 
-                // ── Auto Rotate ──
+                //  Auto Rotate 
                 ImGui.TextDisabled("Auto Rotate");
                 bool autoRot = skySettings.Dome.AutoRotate;
                 if (ImGui.Checkbox("Enable##auto_rot", ref autoRot)) skySettings.Dome.AutoRotate = autoRot;
 
                 ImGui.BeginDisabled(!autoRot);
                 float rotSpeed = skySettings.Dome.RotateSpeed;
-                if (ImGui.SliderFloat("Speed##dome", ref rotSpeed, 0.1f, 100f, "%.1f °/s")) skySettings.Dome.RotateSpeed = rotSpeed;
+                if (ImGui.SliderFloat("Speed##dome", ref rotSpeed, 0.1f, 100f, "%.1f /s")) skySettings.Dome.RotateSpeed = rotSpeed;
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Rotation speed in degrees per second");
 
                 int rotAxis = skySettings.Dome.RotateAxis;
@@ -1878,7 +1884,7 @@ public class InspectorPanel
 
                 ImGui.BeginDisabled(!pingPong);
                 float ppAmp = skySettings.Dome.PingPongAmplitude;
-                if (ImGui.SliderFloat("Amplitude##dome", ref ppAmp, 1f, 180f, "%.1f°")) skySettings.Dome.PingPongAmplitude = ppAmp;
+                if (ImGui.SliderFloat("Amplitude##dome", ref ppAmp, 1f, 180f, "%.1f")) skySettings.Dome.PingPongAmplitude = ppAmp;
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Max swing angle in ping-pong mode");
                 ImGui.EndDisabled();
 
@@ -1886,10 +1892,10 @@ public class InspectorPanel
                 ImGui.Separator();
             }
 
-            // ═══ PROCEDURAL REALTIME SETTINGS ═══
+            //  PROCEDURAL REALTIME SETTINGS 
             if (skySettings.Type == SkyType.Procedural)
             {
-                // ── Sky Presets ──
+                //  Sky Presets 
                 ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Sky Presets");
                 float btnW = (ImGui.GetContentRegionAvail().X - 4 * ImGui.GetStyle().ItemSpacing.X) / 4f;
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.15f, 0.55f, 0.35f, 1f));
@@ -1925,14 +1931,14 @@ public class InspectorPanel
                 float halfW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.5f, 0.3f, 0.6f, 1f));
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.65f, 0.4f, 0.75f, 1f));
-                if (ImGui.Button("🎲 Randomize", new Vector2(halfW, 0))) skySettings.Randomize();
+                if (ImGui.Button(" Randomize", new Vector2(halfW, 0))) skySettings.Randomize();
                 ImGui.PopStyleColor(2);
                 ImGui.SameLine();
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.4f, 0.55f, 0.2f, 1f));
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.5f, 0.65f, 0.3f, 1f));
                 bool hasSnapshot = editorObj.SavedSkySettings != null;
                 ImGui.BeginDisabled(!hasSnapshot);
-                if (ImGui.Button("📂 Load from Settings", new Vector2(halfW, 0)))
+                if (ImGui.Button(" Load from Settings", new Vector2(halfW, 0)))
                 {
                     if (editorObj.SavedSkySettings != null)
                     {
@@ -1942,12 +1948,12 @@ public class InspectorPanel
                 }
                 ImGui.EndDisabled();
                 ImGui.PopStyleColor(2);
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip(hasSnapshot ? "Restore sky settings from last saved snapshot" : "No snapshot available — save the scene first");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(hasSnapshot ? "Restore sky settings from last saved snapshot" : "No snapshot available  save the scene first");
                 ImGui.Spacing();
                 ImGui.Separator();
                 ImGui.Spacing();
 
-                // ── Sun ──
+                //  Sun 
                 if (ImGui.CollapsingHeader("☀ Sun", ImGuiTreeNodeFlags.DefaultOpen))
                 {
                     var sun = skySettings.Sun;
@@ -1962,8 +1968,8 @@ public class InspectorPanel
                     ImGui.Separator();
                 }
 
-                // ── Atmospheric Scattering ──
-                if (ImGui.CollapsingHeader("🌤 Atmospheric Scattering"))
+                //  Atmospheric Scattering 
+                if (ImGui.CollapsingHeader("☀ Atmospheric Scattering"))
                 {
                     var atmo = skySettings.Scattering;
                     float atmoInt = atmo.Intensity;
@@ -1985,7 +1991,7 @@ public class InspectorPanel
                     ImGui.Separator();
                 }
 
-                // ── Clouds ──
+                //  Clouds 
                 if (ImGui.CollapsingHeader("☁ Cloud"))
                 {
                     var vClouds = skySettings.Clouds;
@@ -2012,8 +2018,8 @@ public class InspectorPanel
                     ImGui.Separator();
                 }
 
-                // ── Moon ──
-                if (ImGui.CollapsingHeader("🌙 Moon"))
+                //  Moon 
+                if (ImGui.CollapsingHeader(" Moon"))
                 {
                     var moon = skySettings.Moon;
                     float mBright = moon.Brightness;
@@ -2031,7 +2037,7 @@ public class InspectorPanel
                     if (ImGui.IsItemHovered()) ImGui.SetTooltip("Moon texture rotation speed in radians/sec (0 = no rotation)");
                     string mTexPath = moon.TexturePath;
                     ImGui.Text("Texture:");
-                    ImGui.TextDisabled("Drag & drop from Asset Browser ➜");
+                    ImGui.TextDisabled("Drag & drop from Asset Browser ");
                     ImGui.SetNextItemWidth(-30);
                     if (ImGui.InputText("##moon_tex", ref mTexPath, 512)) moon.TexturePath = mTexPath;
                     if (ImGui.BeginDragDropTarget())
@@ -2047,8 +2053,8 @@ public class InspectorPanel
                     ImGui.Separator();
                 }
 
-                // ── Stars ──
-                if (ImGui.CollapsingHeader("✨ Stars"))
+                //  Stars 
+                if (ImGui.CollapsingHeader(" Stars"))
                 {
                     var stars = skySettings.Stars;
                     bool starsEn = stars.Enabled;
@@ -2064,8 +2070,8 @@ public class InspectorPanel
                     ImGui.Separator();
                 }
 
-                // ── Eclipses ──
-                if (ImGui.CollapsingHeader("🌑 Eclipses"))
+                //  Eclipses 
+                if (ImGui.CollapsingHeader(" Eclipses"))
                 {
                     var ecl = skySettings.Eclipses;
                     float solEcl = ecl.SolarEclipse;
@@ -2081,7 +2087,7 @@ public class InspectorPanel
                     ImGui.Separator();
                 }
 
-                // ── Sun Rays ──
+                //  Sun Rays 
                 if (ImGui.CollapsingHeader("☀ Sun Rays"))
                 {
                     var sr = skySettings.SunRays;
@@ -2105,7 +2111,7 @@ public class InspectorPanel
             ImGui.Separator();
         }
 
-        // ── Visual ──
+        //  Visual 
         if (ImGui.CollapsingHeader("Visual", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var color = editorObj.Color;
@@ -2123,7 +2129,7 @@ public class InspectorPanel
                 editorObj.MarkDirty();
             }
 
-            // ── Drag-drop target for Asset Browser ──
+            //  Drag-drop target for Asset Browser 
             if (ImGui.BeginDragDropTarget())
             {
                 var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
@@ -2138,11 +2144,11 @@ public class InspectorPanel
             }
         }
 
-        // ── Texture Settings: min/mag filter, mipmapping & advanced filters (anisotropy,
-        //    LOD bias), common presets, wrapping, and UV tiling/offset. PER TEXTURE — pick
+        //  Texture Settings: min/mag filter, mipmapping & advanced filters (anisotropy,
+        //    LOD bias), common presets, wrapping, and UV tiling/offset. PER TEXTURE  pick
         //    which texture slot to edit: Simple (TexturePath) or one of the 7 PBR maps.
-        //    Box/Sphere only — a Plane always renders as terrain, so its per-texture
-        //    sampling lives in the Terrain section ("Texture Sampling", per layer). ──
+        //    Box/Sphere only  a Plane always renders as terrain, so its per-texture
+        //    sampling lives in the Terrain section ("Texture Sampling", per layer). 
         if (editorObj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere
             && ImGui.CollapsingHeader("Texture Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
@@ -2160,7 +2166,7 @@ public class InspectorPanel
             ImGui.SetNextItemWidth(-1);
             if (ImGui.Combo("Texture##texslot", ref _texSlotIdx, slots, slots.Length))
             {
-                // Slot switched — nothing to re-apply yet, the settings below are live.
+                // Slot switched  nothing to re-apply yet, the settings below are live.
             }
 
             var slotSettings = _texSlotIdx == 0
@@ -2185,7 +2191,7 @@ public class InspectorPanel
             }
         }
 
-        // ── Flags ──
+        //  Flags 
         if (ImGui.CollapsingHeader("Flags", ImGuiTreeNodeFlags.DefaultOpen))
         {
             bool vis = editorObj.IsVisible;
@@ -2206,13 +2212,13 @@ public class InspectorPanel
         if (!ImGui.CollapsingHeader("Terrain", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        // Planes are always advanced heightmapped terrain — the old "Advanced Terrain"
+        // Planes are always advanced heightmapped terrain  the old "Advanced Terrain"
         // toggle was removed (a Plane can no longer be switched back to a flat plane).
         ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
             "Plane = advanced heightmapped terrain (always on).");
         ImGui.Spacing();
         ImGui.Separator();
-            // ── Heightmap ──
+            //  Heightmap 
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Heightmap");
             string hmPath = editorObj.TerrainHeightmapPath;
             ImGui.SetNextItemWidth(-1);
@@ -2254,7 +2260,7 @@ public class InspectorPanel
             }
 
             // Generate a fresh heightmap with MapLoader's procedural generator
-            if (ImGui.Button("🎲 Generate Random Heightmap", new Vector2(-1, 24)))
+            if (ImGui.Button(" Generate Random Heightmap", new Vector2(-1, 24)))
             {
                 try
                 {
@@ -2277,7 +2283,7 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Mesh detail ──
+            //  Mesh detail 
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Mesh");
             int chunksSide = editorObj.TerrainChunksPerSide;
             if (ImGui.SliderInt("Chunks per Side", ref chunksSide, 1, 128))
@@ -2286,11 +2292,11 @@ public class InspectorPanel
                 editorObj.MarkDirty();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Split the terrain into N×N chunk sub-meshes (1..128). More chunks = more sub-meshes = more total triangles (more detail).");
+                ImGui.SetTooltip("Split the terrain into NN chunk sub-meshes (1..128). More chunks = more sub-meshes = more total triangles (more detail).");
 
-            // Triangles per Chunk — slider + editable field. The grid resolution always
+            // Triangles per Chunk  slider + editable field. The grid resolution always
             // snaps to a multiple of 4, so the triangle count stays a multiple of 32
-            // (grid² × 2: 4→32, 8→128, 12→288, 16→512, …).
+            // (grid  2: 4→32, 8→128, 12→288, 16→512, ).
             int triPerChunk = editorObj.TerrainChunkSize * editorObj.TerrainChunkSize * 2;
             if (ImGui.SliderInt("Triangles per Chunk##sl", ref triPerChunk, 32, 32768))
             {
@@ -2304,9 +2310,9 @@ public class InspectorPanel
                 editorObj.MarkDirty();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Triangles in each chunk (edit box or slider) — snapped to multiples of 32.\n32×32 grid ≈ 2k, 128×128 ≈ 32k triangles per chunk.");
+                ImGui.SetTooltip("Triangles in each chunk (edit box or slider)  snapped to multiples of 32.\n3232 grid  2k, 128128  32k triangles per chunk.");
             int totalTri = editorObj.TerrainChunkSize * editorObj.TerrainChunkSize * 2 * editorObj.TerrainChunksPerSide * editorObj.TerrainChunksPerSide;
-            ImGui.TextDisabled($"Total: {totalTri:N0} triangles ({editorObj.TerrainChunksPerSide}×{editorObj.TerrainChunksPerSide} chunks)");
+            ImGui.TextDisabled($"Total: {totalTri:N0} triangles ({editorObj.TerrainChunksPerSide}{editorObj.TerrainChunksPerSide} chunks)");
 
             // ── Auto-recommend mesh density based on terrain footprint ──
             if (ImGui.Button("💡 Suggest Density", new Vector2(-1, 24)))
@@ -2333,55 +2339,53 @@ public class InspectorPanel
                 editorObj.MarkDirty();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Vertical exaggeration — full-white heightmap pixels reach this height.");
+                ImGui.SetTooltip("Vertical exaggeration  full-white heightmap pixels reach this height.");
 
-            float slope = editorObj.TerrainSlopeThreshold;
-            if (ImGui.SliderFloat("Slope", ref slope, 0.02f, 0.98f, "%.2f"))
+            //  POM: Parallax Occlusion Mapping 
+            float parallaxScale = editorObj.TerrainParallaxScale;
+            if (ImGui.DragFloat("Parallax Depth", ref parallaxScale, 0.002f, 0f, 0.15f, "%.3f"))
             {
-                editorObj.TerrainSlopeThreshold = slope;
+                editorObj.TerrainParallaxScale = Math.Clamp(parallaxScale, 0f, 0.15f);
                 editorObj.MarkDirty();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Steepness threshold: steeper slopes show the dirt/rock layer (like cliffs).");
+                ImGui.SetTooltip("Height-map displacement strength (POM). 0 = off, 0.02 = subtle, 0.06 = strong.");
 
-            float tiling = editorObj.TerrainTexTiling;
-            if (ImGui.SliderFloat("Texture Tiling", ref tiling, 0.05f, 2.0f, "%.2f"))
+            //  Auto recommendation buttons 
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Quick Presets");
+            float btnW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) * 0.5f;
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.55f, 0.3f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.25f, 0.65f, 0.4f, 1f));
+            if (ImGui.Button(" Quality", new Vector2(btnW, 24)))
             {
-                editorObj.TerrainTexTiling = tiling;
+                editorObj.TerrainChunkSize = 32; // 3232 = 2048 tri/chunk (high detail)
                 editorObj.MarkDirty();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("World-space texture repetition frequency.");
-
-            float slopeTiling = editorObj.TerrainSlopeTexTiling;
-            if (ImGui.SliderFloat("Slope Tiling", ref slopeTiling, 0.05f, 2.0f, "%.2f"))
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("High quality: 32 triangles per chunk side (2048 tri/chunk)");
+            ImGui.SameLine();
+            ImGui.PopStyleColor(2);
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.55f, 0.45f, 0.2f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.65f, 0.55f, 0.3f, 1f));
+            if (ImGui.Button(" Performance", new Vector2(btnW, 24)))
             {
-                editorObj.TerrainSlopeTexTiling = slopeTiling;
+                editorObj.TerrainChunkSize = 8; // 88 = 128 tri/chunk (fast)
                 editorObj.MarkDirty();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Texture tiling on steep cliff/slope surfaces.");
-
-            bool stochastic = editorObj.TerrainUseStochasticSampling;
-            if (ImGui.Checkbox("Random Tile Tiling", ref stochastic))
-            {
-                editorObj.TerrainUseStochasticSampling = stochastic;
-                editorObj.MarkDirty();
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern (OFF by default).");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Performance: 8 triangles per chunk side (128 tri/chunk)");
+            ImGui.PopStyleColor(2);
 
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Brush settings now live in the dedicated Terrain Brush panel ──
+            //  Brush settings now live in the dedicated Terrain Brush panel 
             ImGui.TextColored(new Vector4(0.6f, 0.8f, 0.7f, 1f),
-                "Brush settings → Terrain Brush panel (menu: Window ▸ Terrain Brush).");
+                "Brush settings → Terrain Brush panel (menu: Window  Terrain Brush).");
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Save painted heights back to a .raw file ──
-            if (ImGui.Button("💾 Save Painted Heightmap", new Vector2(-1, 24)))
+            //  Save painted heights back to a .raw file 
+            if (ImGui.Button(" Save Painted Heightmap", new Vector2(-1, 24)))
             {
                 if (editorObj.TerrainIsModified)
                 {
@@ -2418,15 +2422,15 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ═══════════════════════════════════════════════
+            // 
             //  DYNAMIC TERRAIN LAYERS
-            // ═══════════════════════════════════════════════
+            // 
             var dynLayers = editorObj.TerrainLayerList;
 
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1.0f, 1f), "Layers");
             ImGui.TextDisabled($"{dynLayers.Count} / {EditorObject.MaxTerrainLayers} layers");
 
-            // ── Add / Remove buttons ──
+            //  Add / Remove buttons 
             bool canAdd = dynLayers.Count < EditorObject.MaxTerrainLayers;
             bool canRemove = dynLayers.Count > 1;
             ImGui.BeginDisabled(!canAdd);
@@ -2452,7 +2456,7 @@ public class InspectorPanel
 
             ImGui.Spacing();
 
-            // ── Layer list ──
+            //  Layer list 
             Vector4[] layerColors = [
                 new(0.25f, 0.55f, 0.9f, 1f),  // blue
                 new(0.65f, 0.5f, 0.3f, 1f),   // brown
@@ -2488,7 +2492,7 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Active layer editing ──
+            //  Active layer editing 
             if (_dynActiveLayerIdx >= 0 && _dynActiveLayerIdx < dynLayers.Count)
             {
                 var activeLayer = dynLayers[_dynActiveLayerIdx];
@@ -2496,7 +2500,7 @@ public class InspectorPanel
                 ImGui.TextColored(layerColors[_dynActiveLayerIdx % layerColors.Length],
                     $"Editing Layer {_dynActiveLayerIdx + 1}: {activeLayer.Name}");
 
-                // Name — PushID already provides unique ID context
+                // Name  PushID already provides unique ID context
                 string name = activeLayer.Name;
                 ImGui.Text("Name:");
                 ImGui.SameLine();
@@ -2578,6 +2582,13 @@ public class InspectorPanel
                     activeLayer.TilingY = activeLayer.TilingX;
                     editorObj.MarkDirty();
                 }
+                bool stochastic = activeLayer.StochasticSampling;
+                if (ImGui.Checkbox("Random Tile", ref stochastic))
+                {
+                    activeLayer.StochasticSampling = stochastic;
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern.");
 
                 // PBR maps (collapsible)
                 if (ImGui.CollapsingHeader("PBR Maps"))
@@ -2648,7 +2659,7 @@ public class InspectorPanel
             ImGui.Spacing();
             ImGui.Separator();
 
-            // ── Slope toggle ──
+            //  Slope toggle 
             ImGui.TextColored(new Vector4(0.8f, 0.6f, 0.3f, 1f), "Slope Layer");
             bool slopeOn = editorObj.TerrainSlopeEnabled;
             if (ImGui.Checkbox("Enable Slope Layer", ref slopeOn))
@@ -2689,12 +2700,39 @@ public class InspectorPanel
                     editorObj.MarkDirty();
                 }
                 float stx = slopeLayer.TilingX;
-                if (ImGui.DragFloat("Slope Tiling", ref stx, 0.01f, 0.01f, 5f, "%.2f"))
+                if (ImGui.DragFloat("Slope Tiling X", ref stx, 0.01f, 0.01f, 5f, "%.2f"))
                 {
                     slopeLayer.TilingX = Math.Max(0.01f, stx);
-                    slopeLayer.TilingY = stx;
+                    if (Math.Abs(slopeLayer.TilingX - slopeLayer.TilingY) < 0.001f)
+                        slopeLayer.TilingY = stx;
                     editorObj.MarkDirty();
                 }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Texture tiling on steep cliff/slope surfaces (X axis)");
+                float sty = slopeLayer.TilingY;
+                if (ImGui.DragFloat("Slope Tiling Y", ref sty, 0.01f, 0.01f, 5f, "%.2f"))
+                {
+                    slopeLayer.TilingY = Math.Max(0.01f, sty);
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Texture tiling on steep cliff/slope surfaces (Y axis)");
+                bool slopeLinked = Math.Abs(slopeLayer.TilingX - slopeLayer.TilingY) < 0.001f;
+                if (ImGui.Checkbox("Link X/Y##slope", ref slopeLinked))
+                {
+                    if (slopeLinked) slopeLayer.TilingY = slopeLayer.TilingX;
+                    editorObj.MarkDirty();
+                }
+                if (slopeLinked && Math.Abs(slopeLayer.TilingX - slopeLayer.TilingY) > 0.001f)
+                {
+                    slopeLayer.TilingY = slopeLayer.TilingX;
+                    editorObj.MarkDirty();
+                }
+                bool slopeStoch = slopeLayer.StochasticSampling;
+                if (ImGui.Checkbox("Random Tile##slope", ref slopeStoch))
+                {
+                    slopeLayer.StochasticSampling = slopeStoch;
+                    editorObj.MarkDirty();
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Randomize sampling per tile to break up the repeating pattern.");
             }
 
             ImGui.Spacing();
@@ -2705,8 +2743,8 @@ public class InspectorPanel
 
     /// <summary>Scan Artifacts/Maps for bundled heightmaps (.raw / images).</summary>
     /// <summary>Convert a "Triangles per Chunk" value to a grid resolution per side that
-    /// is a multiple of 4 — so the resulting triangle count (grid² × 2) is always a
-    /// multiple of 32 (4→32, 8→128, 12→288, 16→512, 20→800, 24→1152, …).</summary>
+    /// is a multiple of 4  so the resulting triangle count (grid  2) is always a
+    /// multiple of 32 (4→32, 8→128, 12→288, 16→512, 20→800, 24→1152, ).</summary>
     private static int GridFromTriangles(int triangles)
     {
         int grid = Math.Clamp((int)MathF.Round(MathF.Sqrt(MathF.Max(2, triangles) / 2f)), 4, 128);
@@ -2776,14 +2814,14 @@ public class InspectorPanel
             ImGui.SetTooltip("Clear texture (uses solid color)");
 
         if (hasTexture)
-            ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $"✓ {Path.GetFileName(path)}");
+            ImGui.TextColored(new Vector4(0.3f, 0.8f, 0.5f, 1f), $" {Path.GetFileName(path)}");
         else
             ImGui.TextDisabled("Drop image here or type path");
     }
 
     private void RenderObjectInspector(GltfObject obj, CharacterAgent? agent)
     {
-        // ── Focus Camera button (always at top) ──
+        //  Focus Camera button (always at top) 
         if (ImGui.Button("Focus Camera", new Vector2(-1, 30)))
         {
             _bridge.FocusCameraOnSelected?.Invoke();
@@ -2793,7 +2831,7 @@ public class InspectorPanel
 
         ImGui.Separator();
 
-        // ── Object Info ──
+        //  Object Info 
         if (ImGui.CollapsingHeader("Object Info", ImGuiTreeNodeFlags.DefaultOpen))
         {
             string meshName = obj.GpuData.Data.Meshes.Length > 0 ? obj.GpuData.Data.Meshes[0].Name : "";
@@ -2805,7 +2843,7 @@ public class InspectorPanel
             ImGui.Text($"AnimLOD: {obj.AnimLOD}");
         }
 
-        // ── Transform ──
+        //  Transform 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var pos = obj.Position;
@@ -2820,7 +2858,7 @@ public class InspectorPanel
                 obj.Scale = scale;
         }
 
-        // ── Agent Info ──
+        //  Agent Info 
         if (agent != null && ImGui.CollapsingHeader("Agent", ImGuiTreeNodeFlags.DefaultOpen))
         {
             float health = agent.Health;
@@ -2830,7 +2868,7 @@ public class InspectorPanel
 
             ImGui.Text($"State:  {(agent.Dead ? "Dead" : "Alive")}");
             ImGui.Text($"Dead:   {agent.Dead}");
-            ImGui.Text($"Heading: {agent.Heading * 180f / MathF.PI:F1}°");
+            ImGui.Text($"Heading: {agent.Heading * 180f / MathF.PI:F1}");
 
             if (agent.Target != null)
                 ImGui.Text($"Target: {agent.Target.GetHashCode():X8}");
@@ -2840,7 +2878,7 @@ public class InspectorPanel
     }
 
     /// <summary>Shared "Texture Settings" editor used by primitives (with UV tiling/offset)
-    /// and terrains (world-space triplanar — filters/wrapping only). Groups:
+    /// and terrains (world-space triplanar  filters/wrapping only). Groups:
     /// 1) common filtering presets, 2) minification, 3) magnification, 4) mipmapping &
     /// advanced filters (anisotropy, LOD bias), 5) wrapping, 6) tiling & offset.
     /// Returns true when any value changed (caller re-applies the GL state).</summary>
@@ -2848,11 +2886,11 @@ public class InspectorPanel
     {
         bool changed = false;
 
-        // ── Auto Recommend button ──
+        //  Auto Recommend button 
         if (!string.IsNullOrEmpty(texturePath) && System.IO.File.Exists(texturePath))
         {
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.2f, 0.6f, 0.9f, 1f));
-            if (ImGui.Button("🤖 Auto Recommend Settings", new Vector2(-1, 26)))
+            if (ImGui.Button(" Auto Recommend Settings", new Vector2(-1, 26)))
             {
                 s.RecommendForTexture(texturePath);
                 changed = true;
@@ -2865,7 +2903,7 @@ public class InspectorPanel
             ImGui.Spacing();
         }
 
-        // ── Common Filtering Methods (preset drives min/mag/mipmap/aniso together) ──
+        //  Common Filtering Methods (preset drives min/mag/mipmap/aniso together) 
         int preset = (int)s.FilterPreset;
         if (ImGui.Combo("Filtering##texpreset", ref preset, TextureSettings.PresetNames, TextureSettings.PresetNames.Length))
         {
@@ -2874,9 +2912,9 @@ public class InspectorPanel
             changed = true;
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Common filtering methods:\nNearest = crisp pixels (no filtering)\nBilinear = smooth, no mipmaps\nTrilinear = mipmapped smooth\nAnisotropic 2x–16x = sharper at grazing angles");
+            ImGui.SetTooltip("Common filtering methods:\nNearest = crisp pixels (no filtering)\nBilinear = smooth, no mipmaps\nTrilinear = mipmapped smooth\nAnisotropic 2x16x = sharper at grazing angles");
 
-        // ── Minification / Magnification ──
+        //  Minification / Magnification 
         int min = (int)s.MinFilter;
         if (ImGui.Combo("Minification", ref min, TextureSettings.MinFilterNames, TextureSettings.MinFilterNames.Length))
         {
@@ -2895,7 +2933,7 @@ public class InspectorPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Filter used when the texture is larger than its on-screen area (close-up).");
 
-        // ── Mipmapping & Advanced Filters ──
+        //  Mipmapping & Advanced Filters 
         if (ImGui.Checkbox("Generate Mipmaps", ref s.GenerateMipmaps))
             changed = true;
         if (ImGui.IsItemHovered())
@@ -2917,9 +2955,9 @@ public class InspectorPanel
             changed = true;
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Anisotropic filtering strength — removes blur on surfaces viewed at an angle.");
+            ImGui.SetTooltip("Anisotropic filtering strength  removes blur on surfaces viewed at an angle.");
 
-        // ── Texture Wrapping ──
+        //  Texture Wrapping 
         int ws = (int)s.WrapS;
         if (ImGui.Combo("Wrap S", ref ws, TextureSettings.WrapNames, TextureSettings.WrapNames.Length))
         {
@@ -2935,15 +2973,15 @@ public class InspectorPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("How UVs outside 0..1 are handled: Repeat = tile, Mirrored Repeat = tile mirrored, Clamp to Edge = stretch, Clamp to Border = border color.");
 
-        // ── Tiling & Offset (UV transform: uv × Tiling + Offset) ──
+        //  Tiling & Offset (UV transform: uv  Tiling + Offset) 
         if (showTiling)
         {
-            // ── Random Tiling toggle: ON = tiling/offset randomized to break up the
-            //    repeating tile pattern; OFF = back to manual tiling 1×1 / offset 0. ──
+            //  Random Tiling toggle: ON = tiling/offset randomized to break up the
+            //    repeating tile pattern; OFF = back to manual tiling 11 / offset 0. 
             bool rand = s.RandomTiling;
             if (rand)
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.75f, 0.45f, 0.10f, 1f));
-            if (ImGui.Button(rand ? "🎲 Random Tiling: ON" : "🎲 Random Tiling: OFF", new Vector2(-1, 24)))
+            if (ImGui.Button(rand ? " Random Tiling: ON" : " Random Tiling: OFF", new Vector2(-1, 24)))
             {
                 if (rand) s.ResetTiling(); else s.ApplyRandomTiling();
                 changed = true;
@@ -2951,7 +2989,7 @@ public class InspectorPanel
             if (rand)
                 ImGui.PopStyleColor();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Randomize this texture's tiling/offset so the tile pattern looks varied instead of repeating\nin a perfect grid. Click again to turn OFF and restore tiling 1×1 / offset 0.");
+                ImGui.SetTooltip("Randomize this texture's tiling/offset so the tile pattern looks varied instead of repeating\nin a perfect grid. Click again to turn OFF and restore tiling 11 / offset 0.");
 
             var tiling = new Vector2(s.TilingX, s.TilingY);
             if (ImGui.DragFloat2("Tiling (UV Scale)", ref tiling, 0.05f, 0.05f, 100f, "%.2f"))
@@ -2962,7 +3000,7 @@ public class InspectorPanel
                 changed = true;
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Repeat frequency of the texture across the UV range (1 = once, 2 = twice, …).");
+                ImGui.SetTooltip("Repeat frequency of the texture across the UV range (1 = once, 2 = twice, ).");
 
             var offset = new Vector2(s.OffsetX, s.OffsetY);
             if (ImGui.DragFloat2("Offset (UV)", ref offset, 0.05f, -100f, 100f, "%.2f"))

@@ -10,7 +10,7 @@ using System.Linq;
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
 /// <summary>
-/// Scene Manager panel — lists all available scenes with Load/Switch functionality.
+/// Scene Manager panel  lists all available scenes with Load/Switch functionality.
 /// Supports single-click selection and double-click to immediately switch to a scene.
 /// Also shows the currently active scene and allows loading any scene.
 /// Features Add/Edit/Delete scene management.
@@ -21,17 +21,17 @@ public class SceneManagerPanel
     private readonly IDEBridge _bridge;
     private bool _visible = true;
 
-    // ── Selection state ──
+    //  Selection state 
     private int _selectedIdx = -1;
     private double _lastClickTime = 0;
     private const double DoubleClickInterval = 0.3;
 
-    // ── File dialog for Load/Save As ──
+    //  File dialog for Load/Save As 
     private readonly ImGuiFileDialog _fileDialog = new();
 
-    // ── Current save file: the .ing file this session is editing. Set when a file is
+    //  Current save file: the .ing file this session is editing. Set when a file is
     //    loaded (Load File) or saved via Save As. Save All + auto-save write here instead
-    //    of always overwriting game.ing. Falls back to game.ing when nothing was loaded. ──
+    //    of always overwriting game.ing. Falls back to game.ing when nothing was loaded. 
     private string? _currentSaveFile;
     public string? CurrentSaveFile => _currentSaveFile;
     private void SetCurrentSaveFile(string? path)
@@ -40,7 +40,7 @@ public class SceneManagerPanel
         _bridge.ActiveSaveFile = path;
     }
 
-    // ── Popup state ──
+    //  Popup state 
     private bool _showAddPopup = false;
     private bool _showEditPopup = false;
     private bool _showDeleteConfirm = false;
@@ -51,7 +51,7 @@ public class SceneManagerPanel
     private int _selectedEditSceneTypeIdx = 0;  // combo box index for Edit popup
     private const int InputBufSize = 256;
 
-    // ── Colors ──
+    //  Colors 
     private static readonly Vector4 ColActive     = new(0.3f, 0.9f, 0.3f, 1f);
     private static readonly Vector4 ColInactive   = new(0.7f, 0.7f, 0.7f, 1f);
     private static readonly Vector4 ColSelected   = new(0.2f, 0.4f, 0.8f, 1f);
@@ -75,7 +75,7 @@ public class SceneManagerPanel
 
     public void ShowInMenu() => ImGui.MenuItem("Scene Manager", null, ref _visible);
 
-    // ── Public API for main menu bar integration ──
+    //  Public API for main menu bar integration 
     /// <summary>Open the Add New Scene popup (File > New Scene).</summary>
     public void OpenAddScenePopup()
     {
@@ -139,19 +139,19 @@ public class SceneManagerPanel
 
         ImGui.Begin("Scene Manager", ref _visible);
 
-        // ── Header: current scene indicator ──
+        //  Header: current scene indicator 
         var sm = _bridge.SceneManager;
         string currentName = sm?.CurrentScene?.Name ?? "(none)";
         ImGui.TextColored(ColGreen, $"Active: {currentName}");
         ImGui.Separator();
 
-        // ── Toolbar: New / Add / Edit / Delete ──
+        //  Toolbar: New / Add / Edit / Delete 
         {
             bool hasSelection = _selectedIdx >= 0 && _selectedIdx < _bridge.AvailableScenes.Count;
 
             float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 3f) / 4f;
 
-            // New button (orange) — clears all scenes
+            // New button (orange)  clears all scenes
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.85f, 0.55f, 0.15f, 1f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.95f, 0.65f, 0.25f, 1f));
             if (ImGui.Button("New", new Vector2(btnWidth, 28)))
@@ -209,7 +209,7 @@ public class SceneManagerPanel
 
         ImGui.Separator();
 
-        // ── Available scenes list ──
+        //  Available scenes list 
         if (ImGui.BeginTable("scene_table", 4,
                 ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
         {
@@ -229,7 +229,7 @@ public class SceneManagerPanel
 
                 ImGui.TableNextRow();
 
-                // ── Column 0: Scene name + description ──
+                //  Column 0: Scene name + description 
                 ImGui.TableNextColumn();
                 ImGui.PushID($"scene_{i}");
 
@@ -265,7 +265,7 @@ public class SceneManagerPanel
 
                 ImGui.PopID();
 
-                // ── Column 1: Type badge ──
+                //  Column 1: Type badge 
                 ImGui.TableNextColumn();
                 var (typeLabel, typeCol) = entry.Type switch
                 {
@@ -276,17 +276,17 @@ public class SceneManagerPanel
                 };
                 ImGui.TextColored(typeCol, typeLabel);
 
-                // ── Column 2: State badge ──
+                //  Column 2: State badge 
                 ImGui.TableNextColumn();
-                string state = isActive ? "Active" : (entry.HasInitializedEntry ? "Loaded" : "—");
+                string state = isActive ? "Active" : (entry.HasInitializedEntry ? "Loaded" : "");
                 var stateCol = isActive ? ColActive : (entry.HasInitializedEntry ? ColInactive : ColDim);
                 ImGui.TextColored(stateCol, state);
 
-                // ── Column 3: Select/Edit button ──
+                //  Column 3: Select/Edit button 
                 ImGui.TableNextColumn();
                 if (isActive)
                 {
-                    ImGui.TextColored(ColDim, "—");
+                    ImGui.TextColored(ColDim, "");
                 }
                 else
                 {
@@ -306,17 +306,17 @@ public class SceneManagerPanel
             ImGui.EndTable();
         }
 
-        // ── Bottom hint ──
+        //  Bottom hint 
         ImGui.Separator();
         ImGui.TextDisabled("Double-click or click Select/Load to switch scenes");
 
-        // ── File operations: Save All / Save As / Load from file ──
+        //  File operations: Save All / Save As / Load from file 
         ImGui.Separator();
         {
             bool canSave = _bridge.EditorScenes.Count > 0;
             float btnW = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 2f) / 3f;
 
-            // Save All button (green) — saves to default game.ing
+            // Save All button (green)  saves to default game.ing
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.15f, 0.50f, 0.25f, 1f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.25f, 0.70f, 0.35f, 1f));
             ImGui.BeginDisabled(!canSave);
@@ -324,7 +324,7 @@ public class SceneManagerPanel
             {
                 if (_currentSaveFile == null)
                 {
-                    // No file loaded yet — ask user where to save
+                    // No file loaded yet  ask user where to save
                     _fileDialog.OpenForSave("game.ing");
                 }
                 else
@@ -336,13 +336,13 @@ public class SceneManagerPanel
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered() && canSave)
             {
-                string target = _currentSaveFile ?? "(no file — will ask for name)";
+                string target = _currentSaveFile ?? "(no file  will ask for name)";
                 ImGui.SetTooltip($"Save {_bridge.EditorScenes.Count} scene(s) to {Path.GetFileName(target)}");
             }
 
             ImGui.SameLine();
 
-            // Save As button (teal) — opens file dialog to choose location
+            // Save As button (teal)  opens file dialog to choose location
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.10f, 0.45f, 0.50f, 1f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.20f, 0.60f, 0.65f, 1f));
             ImGui.BeginDisabled(!canSave);
@@ -357,7 +357,7 @@ public class SceneManagerPanel
 
             ImGui.SameLine();
 
-            // Load from file button (blue) — opens file dialog to pick .ing file
+            // Load from file button (blue)  opens file dialog to pick .ing file
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.12f, 0.30f, 0.50f, 1f));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.18f, 0.40f, 0.65f, 1f));
             if (ImGui.Button("Load File...", new Vector2(btnW, 28)))
@@ -371,7 +371,7 @@ public class SceneManagerPanel
             ImGui.TextDisabled($"Editor scenes: {_bridge.EditorScenes.Count}");
         }
 
-        // ── Reload current scene button ──
+        //  Reload current scene button 
         if (sm != null && sm.CurrentScene != null)
         {
             ImGui.Separator();
@@ -388,9 +388,9 @@ public class SceneManagerPanel
 
         ImGui.End();
 
-        // ── Popups (rendered after End so they float above) ──
+        //  Popups (rendered after End so they float above) 
 
-        // ── Add Scene popup ──
+        //  Add Scene popup 
         if (_showAddPopup)
         {
             ImGui.OpenPopup("Add New Scene");
@@ -473,7 +473,7 @@ public class SceneManagerPanel
             ImGui.EndPopup();
         }
 
-        // ── Edit Scene popup ──
+        //  Edit Scene popup 
         if (_showEditPopup)
         {
             ImGui.OpenPopup("Edit Scene");
@@ -564,7 +564,7 @@ public class SceneManagerPanel
             ImGui.EndPopup();
         }
 
-        // ── Delete Confirm popup ──
+        //  Delete Confirm popup 
         if (_showDeleteConfirm)
         {
             ImGui.OpenPopup("Delete Scene?");
@@ -616,7 +616,7 @@ public class SceneManagerPanel
                     }
                     else
                     {
-                        // No scenes left — write empty manifest to clear the current file
+                        // No scenes left  write empty manifest to clear the current file
                         // (SaveGameIng() with no args would preserve old data, so write fresh)
                         Console.WriteLine($"[SceneManager] No scenes left, writing empty manifest");
                         var emptyManifest = new SceneManifest();
@@ -640,7 +640,7 @@ public class SceneManagerPanel
             ImGui.EndPopup();
         }
 
-        // ── New Scene Confirm popup ──
+        //  New Scene Confirm popup 
         if (_showNewConfirm)
         {
             ImGui.OpenPopup("New Scene?");
@@ -671,7 +671,7 @@ public class SceneManagerPanel
             ImGui.EndPopup();
         }
 
-         // ── File dialog (Load / Save As) ──
+         //  File dialog (Load / Save As) 
         _fileDialog.Render();
         if (_fileDialog.IsConfirmed && _fileDialog.SelectedPath != null)
         {
@@ -705,12 +705,12 @@ public class SceneManagerPanel
     /// <summary>Public wrapper so IDE can wire it to IDEBridge.RequestSaveAsDialog delegate.</summary>
     public void OpenSaveAsDialog() => _fileDialog.OpenForSave("game.ing");
 
-    /// <summary>Clear everything and return to a fresh empty state — like a new app launch.</summary>
+    /// <summary>Clear everything and return to a fresh empty state  like a new app launch.</summary>
     private void ClearAllScenes()
     {
         Console.WriteLine("[SceneManagerPanel] Clearing everything...");
 
-        // ── Clear all editor scenes & data ──
+        //  Clear all editor scenes & data 
         _bridge.EditorScenes.Clear();
         _bridge.AvailableScenesInternal.Clear();
         _bridge.SelectedEditorScene = null;
@@ -722,14 +722,14 @@ public class SceneManagerPanel
         _bridge.SelectedUIElement = null;
         _bridge.SelectedUIElements?.Clear();
         _selectedIdx = -1;
-        // Reset save target — New clears everything, so next Save must ask for a new name.
+        // Reset save target  New clears everything, so next Save must ask for a new name.
         SetCurrentSaveFile(null);
 
-        // ── Reset preview / in-game mode ──
+        //  Reset preview / in-game mode 
         _bridge.IsPreviewMode = false;
         _bridge.InGameActive = false;
 
-        // ── Reset camera to default position ──
+        //  Reset camera to default position 
         if (_bridge.Camera != null)
         {
             _bridge.Camera.Position = new Vector3(0f, 10f, 15f);
@@ -738,18 +738,18 @@ public class SceneManagerPanel
             _bridge.Camera.UpdateVectors();
         }
 
-        // ── Reset gizmo ──
+        //  Reset gizmo 
         if (_bridge.EditorGizmo != null)
         {
             _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
             _bridge.EditorGizmo.EndDrag();
         }
 
-        // ── Reset terrain brush ──
+        //  Reset terrain brush 
         _bridge.TerrainBrushActive = false;
         _bridge.TerrainBrushMode = 0;
 
-        // ── Create a fresh empty scene ──
+        //  Create a fresh empty scene 
         string sceneName = "Scene";
         var sceneRoot = new UIElement
         {
@@ -767,12 +767,12 @@ public class SceneManagerPanel
         _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
             sceneName, "Empty scene", false, IDEBridge.SceneType.MainMenu));
 
-        // ── Select the fresh scene ──
+        //  Select the fresh scene 
         SelectEditorScene(sceneName);
 
-        // Do NOT write to disk — New is a clean slate.
+        // Do NOT write to disk  New is a clean slate.
         // User must Save As with a new name, or Load an existing file.
-        Console.WriteLine("[SceneManagerPanel] Everything cleared — fresh start (no file saved)");
+        Console.WriteLine("[SceneManagerPanel] Everything cleared  fresh start (no file saved)");
     }
 
     /// <summary>Save ALL editor scenes to game.ing file, including 3D editor objects.</summary>
@@ -787,7 +787,7 @@ public class SceneManagerPanel
         // Build fresh manifest with UI elements AND 3D editor objects
         var manifest = new SceneManifest();
 
-        // ── Persist global IDE selection highlight colors ──
+        //  Persist global IDE selection highlight colors 
         manifest.SelectionHighlightColor = [_bridge.SelectionHighlights.GltfObject.X, _bridge.SelectionHighlights.GltfObject.Y, _bridge.SelectionHighlights.GltfObject.Z];
         manifest.EditorObjectHighlightColor = [_bridge.SelectionHighlights.EditorObject.X, _bridge.SelectionHighlights.EditorObject.Y, _bridge.SelectionHighlights.EditorObject.Z];
 
@@ -805,8 +805,8 @@ public class SceneManagerPanel
                 EditorObjects = []
             };
 
-            // ── Per-scene freefly camera: snapshot the LIVE camera for the currently
-            // selected scene, and keep each other scene's saved camera as-is. ──
+            //  Per-scene freefly camera: snapshot the LIVE camera for the currently
+            // selected scene, and keep each other scene's saved camera as-is. 
             if (string.Equals(name, _bridge.SelectedEditorScene, StringComparison.OrdinalIgnoreCase)
                 && _bridge.Camera != null)
             {
@@ -822,7 +822,7 @@ public class SceneManagerPanel
                 asset.EditorCameraPitch = editorScene.CameraPitch;
             }
 
-            // ── Snapshot sky settings for 'Load from Settings' ──
+            //  Snapshot sky settings for 'Load from Settings' 
             if (editorScene.ObjectManager != null)
             {
                 foreach (var obj in editorScene.ObjectManager.Objects)
@@ -832,7 +832,7 @@ public class SceneManagerPanel
                 }
             }
 
-            // ── Save 3D editor objects ──
+            //  Save 3D editor objects 
             if (editorScene.ObjectManager != null)
             {
                 foreach (var obj in editorScene.ObjectManager.Objects)
@@ -888,6 +888,8 @@ public class SceneManagerPanel
                         TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
                         TerrainTexTiling = obj.TerrainTexTiling,
                         TerrainSlopeTexTiling = obj.TerrainSlopeTexTiling,
+                        TerrainParallaxScale = obj.TerrainParallaxScale,
+                        TerrainPomSteps = obj.TerrainPomSteps,
                         TerrainUseStochasticSampling = obj.TerrainUseStochasticSampling,
                         TerrainLayerAirTop = obj.TerrainLayerAirTop,
                         TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
@@ -915,7 +917,7 @@ public class SceneManagerPanel
                         TerrainPbrHeightBlur = obj.TerrainPbrHeightBlur,
                         TerrainPbrEmissionIntensity = obj.TerrainPbrEmissionIntensity,
                         TerrainLayers = obj.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithRelativePaths()).ToArray(),
-                        // ── PBR material (Box/Sphere/flat plane) ──
+                        //  PBR material (Box/Sphere/flat plane) 
                         PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                         PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
                         PbrMetallicPath = PathHelpers.MakeRelative(obj.PbrMetallicPath),
@@ -937,12 +939,15 @@ public class SceneManagerPanel
                         TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                         TerrainPaintStrength = obj.TerrainPaintStrength,
                         TerrainSplatData = obj.TerrainSplatData,
-                        TerrainBrushMask = obj.TerrainBrushMask,
-                        DynamicTerrainLayers = obj.TerrainLayerList.Count > 0
-                            ? obj.TerrainLayerList.Select(l => l.Clone()).ToList()
-                            : null,
-                        TerrainSlopeEnabled = obj.TerrainSlopeEnabled,
-                        TerrainSlopeLayerData = obj.TerrainSlopeLayer?.Clone()
+                        PaintLayerTextures = [PathHelpers.MakeRelative(obj.GetPaintLayerTexture(0)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(1)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(2)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(3))],
+                        PaintLayerTilingX = [obj.PaintLayerTiling[0].X, obj.PaintLayerTiling[1].X, obj.PaintLayerTiling[2].X, obj.PaintLayerTiling[3].X],
+                        PaintLayerTilingY = [obj.PaintLayerTiling[0].Y, obj.PaintLayerTiling[1].Y, obj.PaintLayerTiling[2].Y, obj.PaintLayerTiling[3].Y],
+                        PaintLayerStochastic = [obj.PaintLayerStochastic[0], obj.PaintLayerStochastic[1], obj.PaintLayerStochastic[2], obj.PaintLayerStochastic[3]],
+                        PaintLayerCount = obj.PaintLayerCount,
+                        // Dynamic terrain layers + slope
+                        TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
+                        TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
+                        TerrainSlopeEnabled = obj.TerrainSlopeEnabled
                     });
                 }
             }
@@ -950,7 +955,7 @@ public class SceneManagerPanel
             manifest.Scenes.Add(asset);
         }
 
-        // Write to the CURRENT save file (the .ing this session is editing — loaded via
+        // Write to the CURRENT save file (the .ing this session is editing  loaded via
         // Load File or chosen via Save As). Falls back to game.ing when nothing was loaded.
         // The file is created if it doesn't exist yet (directories included).
         string target = _currentSaveFile ?? SceneAssetSerializer.GameIngPath;
@@ -1076,12 +1081,12 @@ public class SceneManagerPanel
             }
         }
 
-        Console.WriteLine($"[SceneManagerPanel] No AvailableScenes entry matches '{name}' — cannot reload");
+        Console.WriteLine($"[SceneManagerPanel] No AvailableScenes entry matches '{name}'  cannot reload");
     }
 
-    // ──────────────────────────────────────────────
-    //  File Dialog — Load / Save As
-    // ──────────────────────────────────────────────
+    // 
+    //  File Dialog  Load / Save As
+    // 
 
     /// <summary>Load all scenes from a .ing file and populate EditorScenes.
     /// Clears any existing editor scenes and replaces with the loaded data.</summary>
@@ -1096,10 +1101,10 @@ public class SceneManagerPanel
                 return;
             }
 
-            // This file is now the active save target — Save All / auto-save go here.
+            // This file is now the active save target  Save All / auto-save go here.
             SetCurrentSaveFile(Path.GetFullPath(filePath));
 
-            // ── Restore global IDE selection highlight colors ──
+            //  Restore global IDE selection highlight colors 
             if (manifest.SelectionHighlightColor?.Length == 3)
                 _bridge.SelectionHighlights.GltfObject = new Vector3(manifest.SelectionHighlightColor[0], manifest.SelectionHighlightColor[1], manifest.SelectionHighlightColor[2]);
             if (manifest.EditorObjectHighlightColor?.Length == 3)
@@ -1109,7 +1114,7 @@ public class SceneManagerPanel
             // own view). Legacy manifest-level fields are only used as a fallback for
             // scenes saved before per-scene cameras existed.
 
-            // Clear existing editor scenes AND the panel's scene list — we're replacing
+            // Clear existing editor scenes AND the panel's scene list  we're replacing
             // everything with the loaded data. Without clearing AvailableScenes, scenes from
             // a previously loaded file would linger and mix with the newly loaded ones.
             _bridge.EditorScenes.Clear();
@@ -1137,12 +1142,12 @@ public class SceneManagerPanel
                 UIElement sceneRoot;
                 if (asset.Elements.Count == 1)
                 {
-                    // Single element — use directly as the root
+                    // Single element  use directly as the root
                     sceneRoot = SceneAssetSerializer.ToUIElement(asset.Elements[0]);
                 }
                 else if (asset.Elements.Count > 1)
                 {
-                    // Multiple top-level elements — wrap them under a Scene-type root
+                    // Multiple top-level elements  wrap them under a Scene-type root
                     sceneRoot = new UIElement
                     {
                         Name = sceneName,
@@ -1158,12 +1163,12 @@ public class SceneManagerPanel
                 }
                 else
                 {
-                    // No elements — skip this scene
+                    // No elements  skip this scene
                     Console.WriteLine($"[SceneManagerPanel] Skipping scene '{sceneName}' (0 elements)");
                     continue;
                 }
 
-                // ── Restore 3D editor objects for this scene ──
+                //  Restore 3D editor objects for this scene 
                 var editorMgr = new EditorObjectManager();
                 if (asset.EditorObjects != null && asset.EditorObjects.Count > 0)
                 {
@@ -1214,11 +1219,11 @@ public class SceneManagerPanel
                         if (objData.SkySettings != null)
                             obj.SkySettings = objData.SkySettings;
 
-                        // Restore per-object gizmo pivot override (backward compatible — null if not present)
+                        // Restore per-object gizmo pivot override (backward compatible  null if not present)
                         if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)
                             obj.GizmoPivotOverride = new Vector3(objData.PivotOverrideX.Value, objData.PivotOverrideY.Value, objData.PivotOverrideZ.Value);
 
-                        // ── Restore advanced terrain settings (Plane) — backward compatible ──
+                        //  Restore advanced terrain settings (Plane)  backward compatible 
                         obj.TerrainEnabled = objData.TerrainEnabled;
                         if (!string.IsNullOrEmpty(objData.TerrainHeightmapPath))
                             obj.TerrainHeightmapPath = PathHelpers.Resolve(objData.TerrainHeightmapPath);
@@ -1228,6 +1233,8 @@ public class SceneManagerPanel
                         obj.TerrainSlopeThreshold = objData.TerrainSlopeThreshold;
                         obj.TerrainTexTiling = objData.TerrainTexTiling;
                         obj.TerrainSlopeTexTiling = objData.TerrainSlopeTexTiling;
+                        obj.TerrainParallaxScale = objData.TerrainParallaxScale;
+                        obj.TerrainPomSteps = objData.TerrainPomSteps;
                         obj.TerrainUseStochasticSampling = objData.TerrainUseStochasticSampling;
                         obj.TerrainLayerAirTop = objData.TerrainLayerAirTop;
                         obj.TerrainLayerDirtTop = objData.TerrainLayerDirtTop;
@@ -1254,10 +1261,10 @@ public class SceneManagerPanel
                         obj.TerrainPbrHeightInvert = objData.TerrainPbrHeightInvert;
                         obj.TerrainPbrHeightBlur = objData.TerrainPbrHeightBlur;
                         obj.TerrainPbrEmissionIntensity = objData.TerrainPbrEmissionIntensity;
-                        // ── Per-layer PBR (PBR is per texture) ──
+                        //  Per-layer PBR (PBR is per texture) 
                         obj.TerrainLayers = objData.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithResolvedPaths()).ToArray()
                             ?? obj.TerrainLayers;
-                        // Legacy scenes were saved with a single global tuning — push it into
+                        // Legacy scenes were saved with a single global tuning  push it into
                         // every layer so the per-layer system keeps the previously tuned look.
                         if (objData.TerrainLayers == null && obj.TerrainLayers is { Length: 5 } legacyLayers)
                         {
@@ -1281,7 +1288,7 @@ public class SceneManagerPanel
                                 l.EmissionIntensity = objData.TerrainPbrEmissionIntensity;
                             }
                         }
-                        // ── PBR material (Box/Sphere/flat plane) ──
+                        //  PBR material (Box/Sphere/flat plane) 
                         obj.PbrAlbedoPath = PathHelpers.Resolve(objData.PbrAlbedoPath);
                         obj.PbrNormalPath = PathHelpers.Resolve(objData.PbrNormalPath);
                         obj.PbrMetallicPath = PathHelpers.Resolve(objData.PbrMetallicPath);
@@ -1317,25 +1324,45 @@ public class SceneManagerPanel
                         obj.TerrainPaintStrength = objData.TerrainPaintStrength;
                         if (!string.IsNullOrEmpty(objData.TerrainSplatData))
                             obj.TerrainSplatData = objData.TerrainSplatData;
-                        obj.TerrainBrushMask = objData.TerrainBrushMask;
-                        // Dynamic terrain layers
-                        if (objData.DynamicTerrainLayers is { Count: > 0 } dynLayers)
-                            obj.TerrainLayerList = dynLayers.Select(l => l.Clone()).ToList();
-                        // Slope layer
-                        obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
-                        if (objData.TerrainSlopeLayerData != null)
-                            obj.TerrainSlopeLayer = objData.TerrainSlopeLayerData.Clone();
+
+                        // Per-paint-layer textures + tiling
+                        if (objData.PaintLayerTextures is { Length: >= 4 })
+                        {
+                            for (int i = 0; i < 4; i++)
+                                obj.SetPaintLayerTexture(i, PathHelpers.Resolve(objData.PaintLayerTextures[i]));
+                        }
+                        if (objData.PaintLayerTilingX is { Length: >= 4 } && objData.PaintLayerTilingY is { Length: >= 4 })
+                        {
+                            for (int i = 0; i < 4; i++)
+                                obj.PaintLayerTiling[i] = new System.Numerics.Vector2(objData.PaintLayerTilingX[i], objData.PaintLayerTilingY[i]);
+                        }
+                        if (objData.PaintLayerStochastic is { Length: >= 4 })
+                        {
+                            for (int i = 0; i < 4; i++)
+                                obj.PaintLayerStochastic[i] = objData.PaintLayerStochastic[i];
+                        }
+                        obj.PaintLayerCount = Math.Clamp(objData.PaintLayerCount, 1, 4);
+
+                        // Dynamic terrain layers + slope
+                        if (objData.TerrainLayerList is { Count: > 0 } savedLayers)
+                            obj.TerrainLayerList = savedLayers.Select(l => l.Clone().WithResolvedPaths()).ToList();
+                        if (objData.TerrainSlopeLayer != null)
+                        {
+                            obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();
+                            obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
+                        }
+
                         obj.MarkDirty();
                         // Migrate old fixed-layer format to new dynamic layers
-                        if (primType == EditorPrimitiveType.Plane && objData.DynamicTerrainLayers == null)
+                        if (primType == EditorPrimitiveType.Plane)
                             obj.MigrateTerrainLayers();
 
                         Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
                     }
 
-                    // ── Sky → Direct light (bug #7): after ALL objects are restored, make
-                    // sure a Sky has a Direct light — reusing one from the scene file if
-                    // present, creating it only when missing (no duplicates). ──
+                    //  Sky → Direct light (bug #7): after ALL objects are restored, make
+                    // sure a Sky has a Direct light  reusing one from the scene file if
+                    // present, creating it only when missing (no duplicates). 
                     editorMgr.EnsureDirectLightForAnySky();
                     // Sync counters so new objects never get duplicate names
                     editorMgr.SyncCounters();
@@ -1347,7 +1374,7 @@ public class SceneManagerPanel
                     ObjectManager = editorMgr
                 };
 
-                // ── Restore per-scene freefly camera (each scene keeps its own view) ──
+                //  Restore per-scene freefly camera (each scene keeps its own view) 
                 if (asset.EditorCameraPosition is { Length: 3 } camArr)
                 {
                     loadedScene.CameraPos = new Vector3(camArr[0], camArr[1], camArr[2]);
@@ -1355,7 +1382,7 @@ public class SceneManagerPanel
                     loadedScene.CameraPitch = asset.EditorCameraPitch;
                 }
                 // Legacy fallback: pre-per-scene .ing files stored ONE global camera on
-                // the manifest — apply it to every scene that has no per-scene camera.
+                // the manifest  apply it to every scene that has no per-scene camera.
                 else if (manifest.EditorCameraPosition is { Length: 3 } legacyArr)
                 {
                     loadedScene.CameraPos = new Vector3(legacyArr[0], legacyArr[1], legacyArr[2]);
@@ -1375,10 +1402,10 @@ public class SceneManagerPanel
             {
                 SelectEditorScene(firstLoadedScene);
 
-                // ── Apply the first scene's saved camera. If the editor camera isn't
+                //  Apply the first scene's saved camera. If the editor camera isn't
                 // created yet, stash it on the bridge so SceneManager applies it the
                 // moment the camera exists (SelectEditorScene already restored it when
-                // Bridge.Camera was alive). ──
+                // Bridge.Camera was alive). 
                 if (_bridge.Camera == null
                     && _bridge.EditorScenes.TryGetValue(firstLoadedScene, out var firstScene)
                     && firstScene.CameraPos is Vector3 fp)
@@ -1432,7 +1459,7 @@ public class SceneManagerPanel
             // Build manifest from editor scenes with 3D objects
             var manifest = new SceneManifest();
 
-            // ── Persist global IDE selection highlight colors ──
+            //  Persist global IDE selection highlight colors 
             manifest.SelectionHighlightColor = [_bridge.SelectionHighlights.GltfObject.X, _bridge.SelectionHighlights.GltfObject.Y, _bridge.SelectionHighlights.GltfObject.Z];
             manifest.EditorObjectHighlightColor = [_bridge.SelectionHighlights.EditorObject.X, _bridge.SelectionHighlights.EditorObject.Y, _bridge.SelectionHighlights.EditorObject.Z];
 
@@ -1446,8 +1473,8 @@ public class SceneManagerPanel
                     EditorObjects = []
                 };
 
-                // ── Per-scene freefly camera: snapshot the LIVE camera for the currently
-                // selected scene, and keep each other scene's saved camera as-is. ──
+                //  Per-scene freefly camera: snapshot the LIVE camera for the currently
+                // selected scene, and keep each other scene's saved camera as-is. 
                 if (string.Equals(name, _bridge.SelectedEditorScene, StringComparison.OrdinalIgnoreCase)
                     && _bridge.Camera != null)
                 {
@@ -1568,12 +1595,14 @@ public class SceneManagerPanel
                             TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
                             TerrainPaintStrength = obj.TerrainPaintStrength,
                             TerrainSplatData = obj.TerrainSplatData,
-                            TerrainBrushMask = obj.TerrainBrushMask,
-                            DynamicTerrainLayers = obj.TerrainLayerList.Count > 0
-                                ? obj.TerrainLayerList.Select(l => l.Clone()).ToList()
-                                : null,
-                            TerrainSlopeEnabled = obj.TerrainSlopeEnabled,
-                            TerrainSlopeLayerData = obj.TerrainSlopeLayer?.Clone()
+                            PaintLayerTextures = [PathHelpers.MakeRelative(obj.GetPaintLayerTexture(0)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(1)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(2)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(3))],
+                            PaintLayerTilingX = [obj.PaintLayerTiling[0].X, obj.PaintLayerTiling[1].X, obj.PaintLayerTiling[2].X, obj.PaintLayerTiling[3].X],
+                            PaintLayerTilingY = [obj.PaintLayerTiling[0].Y, obj.PaintLayerTiling[1].Y, obj.PaintLayerTiling[2].Y, obj.PaintLayerTiling[3].Y],
+                            PaintLayerStochastic = [obj.PaintLayerStochastic[0], obj.PaintLayerStochastic[1], obj.PaintLayerStochastic[2], obj.PaintLayerStochastic[3]],
+                            PaintLayerCount = obj.PaintLayerCount,
+                            TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
+                            TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
+                            TerrainSlopeEnabled = obj.TerrainSlopeEnabled
                         });
                     }
                 }
@@ -1594,7 +1623,7 @@ public class SceneManagerPanel
             }
 
             long fileSize = new FileInfo(filePath).Length;
-            Console.WriteLine($"[SceneManagerPanel] ✅ Saved {_bridge.EditorScenes.Count} scene(s) (+ 3D objects) to {filePath}");
+            Console.WriteLine($"[SceneManagerPanel]  Saved {_bridge.EditorScenes.Count} scene(s) (+ 3D objects) to {filePath}");
             Console.WriteLine($"[SceneManagerPanel] File size: {fileSize} bytes");
 
             // IMPORTANT: Do NOT change _currentSaveFile here. Save As creates a copy;
@@ -1611,25 +1640,25 @@ public class SceneManagerPanel
         }
         catch (UnauthorizedAccessException ex)
         {
-            Console.WriteLine($"[SceneManagerPanel] ❌ Permission denied: {ex.Message}");
+            Console.WriteLine($"[SceneManagerPanel]  Permission denied: {ex.Message}");
             Console.WriteLine($"[SceneManagerPanel] Cannot write to: {filePath}");
         }
         catch (DirectoryNotFoundException ex)
         {
-            Console.WriteLine($"[SceneManagerPanel] ❌ Directory not found: {ex.Message}");
+            Console.WriteLine($"[SceneManagerPanel]  Directory not found: {ex.Message}");
         }
         catch (IOException ex)
         {
-            Console.WriteLine($"[SceneManagerPanel] ❌ File I/O error: {ex.Message}");
+            Console.WriteLine($"[SceneManagerPanel]  File I/O error: {ex.Message}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SceneManagerPanel] ❌ Failed to save to {filePath}: {ex.GetType().Name}");
+            Console.WriteLine($"[SceneManagerPanel]  Failed to save to {filePath}: {ex.GetType().Name}");
             Console.WriteLine($"[SceneManagerPanel] Error details: {ex.Message}");
         }
     }
 
-    // ── Scene factory helpers ──
+    //  Scene factory helpers 
 
     private static MainMenuScene CreateMainMenuScene(SceneManager sm)
     {
@@ -1659,7 +1688,7 @@ public class SceneManagerPanel
 
     /// <summary>
     /// Create a scene by its explicit SceneType enum.
-    /// Full user control — no name-based auto-detection.
+    /// Full user control  no name-based auto-detection.
     /// </summary>
     private static IScene? CreateSceneByType(IDEBridge.SceneType type, SceneManager sm)
     {

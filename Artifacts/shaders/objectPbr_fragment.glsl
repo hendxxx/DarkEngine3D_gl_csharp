@@ -48,7 +48,7 @@ uniform int useAlbedo, useNormal, useMetallic, useRoughness, useAo, useHeight, u
 
 uniform vec2 u_uvScale[7];   // per-map UV tiling multiplier (x = U, y = V) — albedo..emission
 uniform vec2 u_uvOffset[7];  // per-map UV offset (x = U, y = V)
-uniform float parallaxScale = 0.02;   // base height-map displacement strength (0 = off)
+uniform float parallaxScale = 0.15;   // base height-map displacement strength (0 = off, 0.15 = default strong)
 
 // ── PBR MAP TUNING (uploaded from the PBR panel; applies to the selected object) ──
 uniform vec3 u_albedoTuning = vec3(1.0, 1.0, 1.0);    // brightness, saturation, contrast
@@ -343,15 +343,36 @@ void main() {
     vec2 uvHeight   = TexCoord * u_uvScale[5] + u_uvOffset[5];
     vec2 uvEmission = TexCoord * u_uvScale[6] + u_uvOffset[6];
 
-    // ── PARALLAX (height map displaces the sample UV along the tangent-space view
-    //    ray). Clamped so grazing angles can't swim the texture by many tiles. The
-    //    offset applies in each map's own UV space (identical when all share settings). ──
+    // ── STEEP PARALLAX OCCLUSION MAPPING (POM) ──
+    // Height map displaces UV along tangent-space view ray with multi-step
+    // ray marching for visible depth + self-shadowing. Much more "timbul" than
+    // the old single-sample parallax.
     vec2 off = vec2(0.0);
-    if (useHeight == 1) {
-        float hRaw = sampleHeightBlurred(heightMap, uvHeight, max(u_heightTuning.z, 0.0));
-        float hh = (hRaw - 0.5) * u_heightTuning.x * (u_heightTuning.y > 0.5 ? -1.0 : 1.0);
+    if (useHeight == 1 && parallaxScale > 0.0) {
         vec3 Vts = normalize(TBN * viewDir);
-        off = clamp(Vts.xy / max(abs(Vts.z), 0.02) * hh * parallaxScale, vec2(-0.05), vec2(0.05));
+        float layerDepth = 1.0 / 16.0;
+        vec2 texelPerLayer = Vts.xy / max(abs(Vts.z), 0.02) * parallaxScale / 16.0;
+        vec2 currentUV = uvHeight;
+        float currentLayerDepth = 0.0;
+        float currentTexelHeight = (sampleHeightBlurred(heightMap, currentUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
+        if (u_heightTuning.y > 0.5) currentTexelHeight = -currentTexelHeight;
+        // Ray march: find where layer depth exceeds texel height
+        for (int i = 0; i < 16; i++) {
+            if (currentLayerDepth >= currentTexelHeight) break;
+            currentUV -= texelPerLayer;
+            currentLayerDepth += layerDepth;
+            currentTexelHeight = (sampleHeightBlurred(heightMap, currentUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
+            if (u_heightTuning.y > 0.5) currentTexelHeight = -currentTexelHeight;
+        }
+        // Interpolate between previous and current for smoother result
+        vec2 prevUV = currentUV + texelPerLayer;
+        float afterDepth = currentTexelHeight - currentLayerDepth;
+        float beforeDepth = (sampleHeightBlurred(heightMap, prevUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
+        if (u_heightTuning.y > 0.5) beforeDepth = -beforeDepth;
+        beforeDepth -= (currentLayerDepth - layerDepth);
+        float weight = afterDepth / max(afterDepth - beforeDepth, 0.001);
+        off = (uvHeight - mix(currentUV, prevUV, weight)) * 0.5;
+        off = clamp(off, vec2(-0.15), vec2(0.15));
     }
 
     // ── ALBEDO: texture if present, else the object's vertex color. ──
@@ -420,22 +441,16 @@ void main() {
     // clamped so N·L = 0 can't divide by zero.
     float ndotlSafe = max(ndotl, 0.05);
     float slopeFactor = sqrt(max(1.0 - ndotlSafe * ndotlSafe, 0.0)) / ndotlSafe;
-    float baseBias = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
-    float bias0 = baseBias;
-    float bias1 = baseBias * max(u_TexelWorld.y / max(u_TexelWorld.x, 1e-5), 1.0)
-                * clamp(u_DepthRange.x / u_DepthRange.y, 0.02, 4.0);
-    float bias2 = baseBias * max(u_TexelWorld.z / max(u_TexelWorld.x, 1e-5), 1.0)
-                * clamp(u_DepthRange.x / u_DepthRange.z, 0.02, 4.0);
-    bias0 = min(bias0, u_MaxWorldBias.x / max(u_DepthRange.x, 1e-4));
-    bias1 = min(bias1, u_MaxWorldBias.y / max(u_DepthRange.y, 1e-4));
-    bias2 = min(bias2, u_MaxWorldBias.z / max(u_DepthRange.z, 1e-4));
+    float bias0 = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
+    float bias1 = bias0;
+    float bias2 = bias0;
     vec4 worldPos4 = vec4(FragPos, 1.0);
     float depth = viewDepth;
-    float blendRange0 = cascadeEnds[0] * u_BlendRange;
-    float blendRange1 = cascadeEnds[1] * u_BlendRange;
-
-    float rScale1 = clamp(u_TexelWorld.x / max(u_TexelWorld.y, 1e-5), 0.25, 1.0);
-    float rScale2 = clamp(u_TexelWorld.x / max(u_TexelWorld.z, 1e-5), 0.25, 1.0);
+    float blendW = cascadeEnds[0] * 0.5;
+    float blendRange0 = blendW;
+    float blendRange1 = blendW;
+    float rScale1 = 1.0;
+    float rScale2 = 1.0;
 
     int cascadeIndex = 0;
     float cascadeBlendT = 0.0;
@@ -445,27 +460,26 @@ void main() {
         cascadeIndex = 0;
     }
     else if (depth < cascadeEnds[0]) {
-        float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
+        float t = smoothstep(cascadeEnds[0] - blendRange0, cascadeEnds[0], depth);
         float s0 = CalculateShadow(lightSpaceMatrices[0] * worldPos4, shadowMap0, bias0, 1.0);
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
         shadow = mix(s0, s1, t);
         cascadeIndex = 1;
         cascadeBlendT = t;
     }
     else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
+        shadow = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
         cascadeIndex = 1;
     }
     else if (depth < cascadeEnds[1]) {
-        float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
-        float s2 = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
-        shadow = mix(s1, s2, t);
+        float t = smoothstep(cascadeEnds[1] - blendRange1, cascadeEnds[1], depth);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
+        shadow = mix(s1, 1.0, t);
         cascadeIndex = 2;
         cascadeBlendT = t;
     }
     else {
-        shadow = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
+        shadow = 1.0;
         cascadeIndex = 2;
     }
 

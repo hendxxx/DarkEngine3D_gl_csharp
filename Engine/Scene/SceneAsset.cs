@@ -197,7 +197,7 @@ public class EditorObjectData
     /// <summary>Grid resolution per side.</summary>
     public int TerrainChunkSize { get; set; } = 32;
     /// <summary>Chunk sub-meshes per side (1..8).</summary>
-    public int TerrainChunksPerSide { get; set; } = 8;
+    public int TerrainChunksPerSide { get; set; } = 1;
     /// <summary>Vertical height scale (world units).</summary>
     public float TerrainHeightScale { get; set; } = 30f;
     /// <summary>Slope threshold for the dirt/cliff layer.</summary>
@@ -206,6 +206,10 @@ public class EditorObjectData
     public float TerrainTexTiling { get; set; } = 0.5f;
     /// <summary>Texture tiling for steep slope/cliff surfaces.</summary>
     public float TerrainSlopeTexTiling { get; set; } = 0.3f;
+    /// <summary>Parallax occlusion mapping strength (0 = off).</summary>
+    public float TerrainParallaxScale { get; set; } = 0.0f;
+    /// <summary>POM ray-march steps (8-32).</summary>
+    public int TerrainPomSteps { get; set; } = 16;
     /// <summary>Stochastic (random per-tile) sampling toggle — OFF by default.</summary>
     public bool TerrainUseStochasticSampling { get; set; } = false;
     /// <summary>Normalized height bands for the 4 layers.</summary>
@@ -213,7 +217,7 @@ public class EditorObjectData
     public float TerrainLayerDirtTop { get; set; } = 0.45f;
     public float TerrainLayerGrassTop { get; set; } = 0.75f;
     public float TerrainLayerSnowTop { get; set; } = 1.0f;
-    /// <summary>Layer texture paths (1=air, 2=tanah, 3=rumput, 4=salju, 5=slope).</summary>
+    /// <summary>Legacy layer texture paths (Layer 1-4 + slope).</summary>
     public string TerrainTextureAirPath { get; set; } = "";
     public string TerrainTextureDirtPath { get; set; } = "";
     public string TerrainTextureGrassPath { get; set; } = "";
@@ -262,9 +266,9 @@ public class EditorObjectData
     /// Null/absent = legacy scene → each layer falls back to <see cref="TexSettings"/>.</summary>
     public TextureSettingsData[]? TerrainLayerSettings { get; set; }
     /// <summary>Brush radius in world units (viewport paint tool).</summary>
-    public float TerrainBrushSize { get; set; } = 5f;
+    public float TerrainBrushSize { get; set; } = 10f;
     /// <summary>Height delta per painted frame (world units).</summary>
-    public float TerrainBrushStrength { get; set; } = 0.125f;
+    public float TerrainBrushStrength { get; set; } = 1f;
     /// <summary>Brush edge falloff 0..1.</summary>
     public float TerrainBrushSoftness { get; set; } = 1f;
     /// <summary>Brush falloff curve: 0=Linear, 1=Smooth, 2=Sharp, 3=Spherical, 4=Soft.</summary>
@@ -272,9 +276,9 @@ public class EditorObjectData
     /// <summary>Base64-encoded painted heightmap blob (only set after brush edits, so
     /// brush paint survives scene save/load without touching the source .raw file).</summary>
     public string TerrainPaintedData { get; set; } = "";
-    /// <summary>Layer drawn by the 🎨 paint brush (0=air, 1=tanah, 2=rumput, 3=salju).</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 2;
-    /// <summary>Weight added to the painted layer per 🎨 brush stamp (0..1).</summary>
+    /// <summary>Layer drawn by the paint brush (0-3).</summary>
+    public int TerrainPaintLayerIndex { get; set; } = 0;
+    /// <summary>Weight added to the painted layer per brush stamp (0..1).</summary>
     public float TerrainPaintStrength { get; set; } = 0.45f;
     /// <summary>Base64-encoded manual layer-paint splat blob (empty = no manual paint).
     /// Persisted so layer paint survives scene save/load.</summary>
@@ -283,15 +287,23 @@ public class EditorObjectData
     public float[]? TerrainBrushColor { get; set; }
     /// <summary>Brush ring highlight transparency 0..1 — user-editable, saved with the scene.</summary>
     public float TerrainBrushAlpha { get; set; } = 0.35f;
-    /// <summary>Brush mask shape: 0=Circle..7=Diamond. Persisted so brush config survives save/load.</summary>
-    public int TerrainBrushMask { get; set; } = 0;
-    /// <summary>Dynamic terrain layers (new system). Serialized so user-added layers survive save/load.</summary>
-    public List<TerrainLayer>? DynamicTerrainLayers { get; set; }
-    /// <summary>Slope layer data (null = disabled). Serialized so slope texture survives save/load.</summary>
-    public TerrainLayer? TerrainSlopeLayerData { get; set; }
+
+    // ── Per-paint-layer textures (independent from terrain auto-layers) ──
+    public string[] PaintLayerTextures { get; set; } = ["", "", "", ""];
+    public float[] PaintLayerTilingX { get; set; } = [0.5f, 0.5f, 0.5f, 0.5f];
+    public float[] PaintLayerTilingY { get; set; } = [0.5f, 0.5f, 0.5f, 0.5f];
+    public bool[] PaintLayerStochastic { get; set; } = [false, false, false, false];
+    public int PaintLayerCount { get; set; } = 1;
+
+    // ── Dynamic terrain layers (per-layer texture, tiling, height range, PBR, stochastic) ──
+    /// <summary>Saved dynamic terrain layers. Null/empty = migrate from legacy 4-layer on load.</summary>
+    public List<TerrainLayer>? TerrainLayerList { get; set; }
+    /// <summary>Slope/cliff layer settings (optional override). Null = no slope layer.</summary>
+    public TerrainLayer? TerrainSlopeLayer { get; set; }
     /// <summary>Whether the slope layer is enabled.</summary>
     public bool TerrainSlopeEnabled { get; set; } = false;
 }
+
 
 /// <summary>
 /// A complete scene definition stored in a .ing file.

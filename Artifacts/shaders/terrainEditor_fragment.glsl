@@ -27,7 +27,11 @@ uniform sampler2D dynLayer4, dynLayer5, dynLayer6, dynLayer7;
 uniform int slopeEnabled;      // 0 = no slope, 1 = slope layer active
 uniform float slopeThreshold;  // steepness (1 - n.y) above which slope layer takes over
 uniform float slopeTilingVal;  // slope layer tiling
+uniform int slopeStochastic;    // slope layer random tile
 uniform sampler2D dynSlopeTex;
+
+// ── Height detail strength (0 = off, 0.5 = subtle, 1.0 = strong) ──
+uniform float parallaxScale = 0.0;
 
 // Legacy compat — map old uniforms
 uniform vec4 layerLevels;      // kept for old scenes, new system uses layerHeightRange
@@ -59,6 +63,13 @@ uniform sampler2D tex4;      // splat/control map: RGBA weights for up to 4 laye
 uniform int usePaintMask;    // 1 = the terrain has manual layer paint to apply
 uniform int showHeatmap;     // 1 = height heatmap + contour overlay (editor clarity)
 uniform int showContours;    // 1 = dark height contour lines only (no heatmap colors)
+
+// ── INDEPENDENT PAINT LAYER TEXTURES (separate from terrain auto-layers) ──
+uniform sampler2D paintTex0, paintTex1, paintTex2, paintTex3;
+uniform vec2 paintTiling[4];   // per-paint-layer tiling (X, Y)
+uniform int paintTexCount;     // how many paint layers have textures assigned (0..4)
+uniform int paintLayerCount;   // how many paint layers are active (1..4)
+uniform int paintStochastic[4]; // per-paint-layer random tile flag
 
 // ── CSM SHADOWS (editor viewport — same uniforms as fragment_shader.glsl) ──
 uniform int shadowFilterMode;
@@ -203,12 +214,11 @@ float smoothNoise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-// 1 = stochastic (randomized per-tile) sampling — breaks up the repeating tile pattern.
-// 0 (default) = plain texture sampling (deterministic, no tile jitter).
-uniform int useStochasticSampling;
+// Per-layer stochastic sampling: 1 = randomized per-tile, 0 = plain sampling.
+uniform int layerStochastic[MAX_LAYERS];
 
-vec3 sampleLayer(sampler2D tex, vec2 uv) {
-    if (useStochasticSampling == 0) {
+vec3 sampleLayer(sampler2D tex, vec2 uv, int stochastic) {
+    if (stochastic == 0) {
         return texture(tex, uv).rgb;
     }
     // Fast 2x2 stochastic: 4 samples instead of 9 — 3× cheaper
@@ -226,6 +236,20 @@ vec3 sampleLayer(sampler2D tex, vec2 uv) {
     return res;
 }
 
+// ── Height-based normal detail (from albedo luminance proxy) ──
+// Adds fine surface relief without extra textures. strength = 0..1.
+vec3 heightNormalDetail(sampler2D tex, vec2 uv, float tiling, vec3 geoNormal, float strength) {
+    if (strength <= 0.0) return geoNormal;
+    float texelSize = 1.0 / (textureSize(tex, 0).x * tiling);
+    float s = texelSize * 2.0;
+    vec3 c = texture(tex, uv).rgb;
+    float h  = dot(c, vec3(0.299, 0.587, 0.114));
+    float hx = dot(texture(tex, uv + vec2(s, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
+    float hz = dot(texture(tex, uv + vec2(0.0, s)).rgb, vec3(0.299, 0.587, 0.114));
+    vec3 tangentDetail = vec3((hx - h) * strength * 4.0, 0.0, (hz - h) * strength * 4.0);
+    return normalize(geoNormal + tangentDetail);
+}
+
 // Dark contour-line factor at normalized height t: 1 = exactly on a line (every 10%
 // height), 0 = between lines. Shared by the heatmap and the contour-only overlays so
 // the interval/width never drift apart.
@@ -234,14 +258,14 @@ float contourFactor(float t) {
     return 1.0 - smoothstep(0.0, 0.06, min(band, 1.0 - band));
 }
 
-vec3 triplanarLayer(sampler2D tex, vec3 worldPos, vec3 normal, float tiling) {
+vec3 triplanarLayer(sampler2D tex, vec3 worldPos, vec3 normal, float tiling, int stochastic) {
     vec3 blending = abs(normalize(normal));
     blending = pow(blending, vec3(10.0));
     blending /= (blending.x + blending.y + blending.z);
 
-    vec3 xTex = sampleLayer(tex, worldPos.zy * tiling);
-    vec3 yTex = sampleLayer(tex, worldPos.xz * tiling);
-    vec3 zTex = sampleLayer(tex, worldPos.xy * tiling);
+    vec3 xTex = sampleLayer(tex, worldPos.zy * tiling, stochastic);
+    vec3 yTex = sampleLayer(tex, worldPos.xz * tiling, stochastic);
+    vec3 zTex = sampleLayer(tex, worldPos.xy * tiling, stochastic);
 
     return xTex * blending.x + yTex * blending.y + zTex * blending.z;
 }
@@ -265,6 +289,7 @@ float poisson16(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float r
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
     if (projCoords.z > 1.0 || projCoords.z < 0.0) return 1.0;
+    vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
 
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
     float angle = randomAngle(gl_FragCoord.xy) * 6.2831853;
@@ -274,7 +299,7 @@ float poisson16(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float r
         float r = sqrt(poissonDisk16[i].x) * radius;
         float a = poissonDisk16[i].y + angle;
         vec2 offset = vec2(r * cos(a), r * sin(a));
-        float d = texture(shadowMap, projCoords.xy + offset * texelSize).r;
+        float d = texture(shadowMap, uv + offset * texelSize).r;
         shadow += (projCoords.z - bias > d) ? 0.0 : 1.0;
     }
     return shadow / 16.0;
@@ -285,7 +310,8 @@ float hardShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
     if (projCoords.z > 1.0 || projCoords.z < 0.0) return 1.0;
-    float d = texture(shadowMap, projCoords.xy).r;
+    vec2 uv = clamp(projCoords.xy, 0.001, 0.999);
+    float d = texture(shadowMap, uv).r;
     return (projCoords.z - bias > d) ? 0.0 : 1.0;
 }
 
@@ -299,49 +325,70 @@ float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, f
 // ======================================================
 // MAIN
 // ======================================================
-vec3 sampleDynLayer(int idx, vec2 worldXZ, vec3 norm, vec2 tiling) {
-    // Triplanar sample for a dynamic layer index
+vec3 sampleDynLayer(int idx, vec2 worldXZ, vec3 norm, vec2 tiling, int stochastic) {
     vec3 blending = abs(normalize(norm));
     blending = pow(blending, vec3(10.0));
     blending /= (blending.x + blending.y + blending.z);
 
-    vec2 uvXY = worldXZ * tiling;
-    vec2 uvXZ = worldXZ * tiling;
-    vec2 uvYZ = worldXZ * tiling;
-
     vec3 col = vec3(0.0);
     if (idx == 0) {
-        col = sampleLayer(dynLayer0, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer0, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer0, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer0, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer0, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer0, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 1) {
-        col = sampleLayer(dynLayer1, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer1, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer1, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer1, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer1, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer1, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 2) {
-        col = sampleLayer(dynLayer2, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer2, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer2, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer2, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer2, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer2, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 3) {
-        col = sampleLayer(dynLayer3, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer3, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer3, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer3, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer3, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer3, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 4) {
-        col = sampleLayer(dynLayer4, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer4, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer4, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer4, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer4, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer4, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 5) {
-        col = sampleLayer(dynLayer5, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer5, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer5, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer5, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer5, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer5, FragPos.xy * tiling, stochastic) * blending.z;
     } else if (idx == 6) {
-        col = sampleLayer(dynLayer6, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer6, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer6, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer6, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer6, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer6, FragPos.xy * tiling, stochastic) * blending.z;
     } else {
-        col = sampleLayer(dynLayer7, FragPos.zy * tiling) * blending.x
-            + sampleLayer(dynLayer7, FragPos.xz * tiling) * blending.y
-            + sampleLayer(dynLayer7, FragPos.xy * tiling) * blending.z;
+        col = sampleLayer(dynLayer7, FragPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(dynLayer7, FragPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(dynLayer7, FragPos.xy * tiling, stochastic) * blending.z;
+    }
+    return col;
+}
+
+// Triplanar sample for independent paint textures (paintTex0..3)
+vec3 samplePaintLayer(int idx, vec3 worldPos, vec3 norm, vec2 tiling, int stochastic) {
+    vec3 blending = abs(normalize(norm));
+    blending = pow(blending, vec3(10.0));
+    blending /= (blending.x + blending.y + blending.z);
+    vec3 col = vec3(0.0);
+    if (idx == 0) {
+        col = sampleLayer(paintTex0, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex0, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex0, worldPos.xy * tiling, stochastic) * blending.z;
+    } else if (idx == 1) {
+        col = sampleLayer(paintTex1, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex1, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex1, worldPos.xy * tiling, stochastic) * blending.z;
+    } else if (idx == 2) {
+        col = sampleLayer(paintTex2, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex2, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex2, worldPos.xy * tiling, stochastic) * blending.z;
+    } else {
+        col = sampleLayer(paintTex3, worldPos.zy * tiling, stochastic) * blending.x
+            + sampleLayer(paintTex3, worldPos.xz * tiling, stochastic) * blending.y
+            + sampleLayer(paintTex3, worldPos.xy * tiling, stochastic) * blending.z;
     }
     return col;
 }
@@ -392,7 +439,7 @@ void main() {
     for (int i = 0; i < layerCount; i++) {
         if (weights[i] < 0.001) continue;
         vec2 tiling = layerTiling[i];
-        vec3 lc = sampleDynLayer(i, FragPos.xz, norm, tiling);
+        vec3 lc = sampleDynLayer(i, FragPos.xz, norm, tiling, layerStochastic[i]);
         texColor += lc * weights[i];
     }
     // Fallback: if no layers rendered, use a default gray
@@ -401,24 +448,26 @@ void main() {
     // ── SLOPE OVERRIDE ──
     if (slopeEnabled == 1) {
         float cliffMask = smoothstep(slopeThreshold - 0.1, slopeThreshold + 0.12, slope + noise * 0.1);
-        vec3 slopeColor = triplanarLayer(dynSlopeTex, FragPos, norm, slopeTilingVal);
+        vec3 slopeColor = triplanarLayer(dynSlopeTex, FragPos, norm, slopeTilingVal, slopeStochastic);
         texColor = mix(texColor, slopeColor, cliffMask * 0.85);
     }
 
     // ── MANUAL LAYER PAINT (splat override, painted with the brush) ──
-    if (usePaintMask == 1 && layerCount <= 4) {
+    // Uses independent paint textures (paintTex0..3) — NOT the terrain auto-layers.
+    if (usePaintMask == 1) {
         vec4 w = texture(tex4, TexCoord + 0.5).rgba;
         float wsum = w.x + w.y + w.z + w.w;
         if (wsum > 0.02) {
             vec4 w2 = w * w;
             float t = w2.x + w2.y + w2.z + w2.w;
             if (t > 0.001) {
-                // Sample the first 4 layers for splat paint
+                // Sample independent paint textures with per-layer tiling + stochastic
                 vec3 painted = vec3(0.0);
-                if (layerCount > 0) painted += sampleDynLayer(0, FragPos.xz, norm, layerTiling[0]) * w2.x;
-                if (layerCount > 1) painted += sampleDynLayer(1, FragPos.xz, norm, layerTiling[1]) * w2.y;
-                if (layerCount > 2) painted += sampleDynLayer(2, FragPos.xz, norm, layerTiling[2]) * w2.z;
-                if (layerCount > 3) painted += sampleDynLayer(3, FragPos.xz, norm, layerTiling[3]) * w2.w;
+                int pCount = min(paintLayerCount, paintTexCount);
+                if (pCount > 0) painted += samplePaintLayer(0, FragPos, norm, paintTiling[0], paintStochastic[0]) * w2.x;
+                if (pCount > 1) painted += samplePaintLayer(1, FragPos, norm, paintTiling[1], paintStochastic[1]) * w2.y;
+                if (pCount > 2) painted += samplePaintLayer(2, FragPos, norm, paintTiling[2], paintStochastic[2]) * w2.z;
+                if (pCount > 3) painted += samplePaintLayer(3, FragPos, norm, paintTiling[3], paintStochastic[3]) * w2.w;
                 painted /= t;
                 texColor = mix(texColor, painted, clamp(wsum * 1.5, 0.0, 1.0));
             }
@@ -460,6 +509,14 @@ void main() {
     // A crisp terminator + slope darkening makes the terrain relief read instantly:
     // faces toward the sun are bright, faces away fall into shade, and steep cliffs
     // darken further — so the high/low structure is visible from any camera angle.
+    // ── HEIGHT NORMAL DETAIL ──
+    // Perturb the geometry normal using the primary layer's albedo luminance
+    // gradients — creates fine surface relief without extra textures.
+    if (parallaxScale > 0.0 && layerCount > 0) {
+        vec2 primaryTiling = layerTiling[0];
+        norm = heightNormalDetail(dynLayer0, FragPos.xz * primaryTiling.x, 1.0, norm, parallaxScale);
+    }
+
     vec3 lightDir = normalize(sunDir);
     float ndl = dot(norm, lightDir);
     float sunShade = smoothstep(-0.18, 0.55, ndl);            // hard terminator = strong relief
@@ -478,41 +535,17 @@ void main() {
     // tan(acos(x)) = sqrt(1−x²)/x, denominator clamped so N·L = 0 can't divide by zero.
     float ndotlSafe = max(ndotl, 0.05);
     float slopeFactor = sqrt(max(1.0 - ndotlSafe * ndotlSafe, 0.0)) / ndotlSafe;
-    float baseBias = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
-    // Far cascades need proportionally more bias (same 1.5×/3× scaling as fragment_shader)
-    // AND their ortho depth range is far larger, so normalize the NDC bias by the per-cascade
-    // depth range (uploaded from CSM) — otherwise the same NDC bias pushes shadows tens of
-    // world units away at distance and they vanish.
-    float bias0 = baseBias;
-    // World bias offset proportional to the LOCAL texel size (texel_i / texel_0): a constant
-    // texel count at every distance, so far cascades get proportionally more bias instead of
-    // the old fixed 1.5×/3× (which under-shot far cascades → sub-texel acne). The depth-range
-    // term converts that world offset into NDC; the ratio is clamped so a pathological small
-    // cascade-0 range can never explode the far-cascade bias.
-    float bias1 = baseBias * max(u_TexelWorld.y / max(u_TexelWorld.x, 1e-5), 1.0)
-                * clamp(u_DepthRange.x / u_DepthRange.y, 0.02, 4.0);
-    float bias2 = baseBias * max(u_TexelWorld.z / max(u_TexelWorld.x, 1e-5), 1.0)
-                * clamp(u_DepthRange.x / u_DepthRange.z, 0.02, 4.0);
-    // Peter-panning guard: the texel-proportional scaling keeps a constant TEXEL count,
-    // but in the far cascades a texel is ~0.5-1 m, so the bias' WORLD offset (bias × range)
-    // would reach meters and the shadow detaches from its caster (bright outline). Cap
-    // the world offset directly, per cascade — cascade 0 tight (kills the outline at
-    // object bases), cascade 2 loose (keeps anti-acne at distance).
-    bias0 = min(bias0, u_MaxWorldBias.x / max(u_DepthRange.x, 1e-4));
-    bias1 = min(bias1, u_MaxWorldBias.y / max(u_DepthRange.y, 1e-4));
-    bias2 = min(bias2, u_MaxWorldBias.z / max(u_DepthRange.z, 1e-4));
+    float bias0 = max(u_ConstantBias + u_SlopeBias * slopeFactor, u_MinBias);
+    float bias1 = bias0;
+    float bias2 = bias0;
     vec4 worldPos4 = vec4(FragPos, 1.0);
     float depth = viewDepth;
-    float blendRange0 = cascadeEnds[0] * u_BlendRange;
-    float blendRange1 = cascadeEnds[1] * u_BlendRange;
-
-    // PCF/PCSS radii are in TEXELS — scale per cascade by the texel-size ratio so the
-    // WORLD penumbra stays constant at every distance (a fixed 5-texel disk covers 0.15 m
-    // in cascade 0 but ~6 m in cascade 2). worldWidth = radius × texelWorld stays the same
-    // when radius ∝ texel0/texel_i; clamped so a pathological tiny near texel can't blow
-    // the far-cascade radius up (ratio > 1 is capped at 1.0).
-    float rScale1 = clamp(u_TexelWorld.x / max(u_TexelWorld.y, 1e-5), 0.25, 1.0);
-    float rScale2 = clamp(u_TexelWorld.x / max(u_TexelWorld.z, 1e-5), 0.25, 1.0);
+    // Same blend width for ALL transitions — identical look between every cascade pair.
+    float blendW = cascadeEnds[0] * 0.5;
+    float blendRange0 = blendW;
+    float blendRange1 = blendW;
+    float rScale1 = 1.0;
+    float rScale2 = 1.0;
 
     int cascadeIndex = 0;
     float cascadeBlendT = 0.0;
@@ -522,27 +555,27 @@ void main() {
         cascadeIndex = 0;
     }
     else if (depth < cascadeEnds[0]) {
-        float t = (depth - (cascadeEnds[0] - blendRange0)) / blendRange0;
+        float t = smoothstep(cascadeEnds[0] - blendRange0, cascadeEnds[0], depth);
         float s0 = CalculateShadow(lightSpaceMatrices[0] * worldPos4, shadowMap0, bias0, 1.0);
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
         shadow = mix(s0, s1, t);
         cascadeIndex = 1;
         cascadeBlendT = t;
     }
     else if (depth < cascadeEnds[1] - blendRange1) {
-        shadow = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
+        shadow = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
         cascadeIndex = 1;
     }
     else if (depth < cascadeEnds[1]) {
-        float t = (depth - (cascadeEnds[1] - blendRange1)) / blendRange1;
-        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, rScale1);
-        float s2 = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
-        shadow = mix(s1, s2, t);
+        // Blend: keep cascade 1 shadow, fade to fully lit at the boundary.
+        float t = smoothstep(cascadeEnds[1] - blendRange1, cascadeEnds[1], depth);
+        float s1 = CalculateShadow(lightSpaceMatrices[1] * worldPos4, shadowMap1, bias1, 1.0);
+        shadow = mix(s1, 1.0, t);
         cascadeIndex = 2;
         cascadeBlendT = t;
     }
     else {
-        shadow = CalculateShadow(lightSpaceMatrices[2] * worldPos4, shadowMap2, bias2, rScale2);
+        shadow = 1.0;
         cascadeIndex = 2;
     }
 
