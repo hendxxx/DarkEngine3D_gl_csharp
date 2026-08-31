@@ -107,6 +107,32 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static int _paintTexCountLoc = -1;
     private static int _paintLayerCountLoc = -1;
 
+    // ── PBR per-layer textures — GL_TEXTURE_2D_ARRAY (saves 48 texture units!) ──
+    // One 2D array per PBR map type; each slice = one terrain layer.
+    private const int PbrMapCount = 6; // normal=0, metallic=1, roughness=2, ao=3, height=4, emission=5
+    private const int PbrUnitBase = 30; // texture units 30-35 for the 6 PBR arrays
+    private readonly uint[] _pbrArrays = new uint[PbrMapCount]; // one 2D array per PBR map type
+    private readonly string?[,] _pbrPaths = new string?[EditorObject.MaxTerrainLayers, PbrMapCount];
+    private static int _pbrNormalMapLoc = -1, _pbrMetallicMapLoc = -1, _pbrRoughnessMapLoc = -1;
+    private static int _pbrAoMapLoc = -1, _pbrHeightMapLoc = -1, _pbrEmissionMapLoc = -1;
+    private static int _pbrLayerCountLoc = -1;
+    private static readonly int[] _pbrNormalStrengthLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrMetallicStrengthLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrRoughnessStrengthLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrAoStrengthLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrHeightStrengthLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrEmissionIntensityLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrRoughnessInvertLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrHeightInvertLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrAlbedoBrightnessLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrAlbedoSaturationLocs = new int[EditorObject.MaxTerrainLayers];
+    private static readonly int[] _pbrAlbedoContrastLocs = new int[EditorObject.MaxTerrainLayers];
+    private bool _pbrArraysDirty = true; // rebuild arrays when layers change
+    // Slope PBR textures (individual, not array — only 1 slope layer)
+    private readonly uint[] _slopePbrTextures = new uint[PbrMapCount];
+    private readonly string?[] _slopePbrPaths = new string?[PbrMapCount];
+    private static readonly int[] _slopePbrTexLocs = new int[PbrMapCount];
+
     // ── CSM shadow uniforms (editor viewport) ──
     private static int _shadowFilterLoc = -1, _shadowDirLoc = -1;
     private static int _showCSMCascadeColorLoc = -1;
@@ -736,6 +762,130 @@ public unsafe class EditorTerrainMesh : IDisposable
         }
     }
 
+    // ── PBR map type names for fallback colors ──
+    private static readonly Vector3[] PbrFallbackColors =
+    [
+        new(0.5f, 0.5f, 1.0f), // normal (flat)
+        new(0.0f, 0.0f, 0.0f), // metallic (dielectric)
+        new(0.5f, 0.5f, 0.5f), // roughness (mid)
+        new(1.0f, 1.0f, 1.0f), // ao (no occlusion)
+        new(0.5f, 0.5f, 0.5f), // height (mid)
+        new(0.0f, 0.0f, 0.0f), // emission (none)
+    ];
+
+    /// <summary>Load PBR textures (normal, metallic, roughness, ao, height, emission) for each
+    /// dynamic terrain layer. Call this whenever layers change.</summary>
+    public void SetDynLayerPbrTextures(IList<TerrainLayer> layers, TerrainLayer? slopeLayer)
+    {
+        // Track per-layer paths for change detection
+        bool changed = false;
+        for (int i = 0; i < EditorObject.MaxTerrainLayers; i++)
+        {
+            for (int p = 0; p < PbrMapCount; p++)
+            {
+                string? path = i < layers.Count ? layers[i].GetPbrPath(p) : null;
+                path = string.IsNullOrEmpty(path) ? null : PathHelpers.Resolve(path);
+                if (_pbrPaths[i, p] != path) { changed = true; _pbrPaths[i, p] = path; }
+            }
+        }
+        // Slope PBR textures (individual)
+        for (int p = 0; p < PbrMapCount; p++)
+        {
+            string? path = slopeLayer?.GetPbrPath(p);
+            path = string.IsNullOrEmpty(path) ? null : PathHelpers.Resolve(path);
+            if (_slopePbrPaths[p] != path)
+            {
+                _slopePbrPaths[p] = path;
+                if (_slopePbrTextures[p] != 0) { uint t = _slopePbrTextures[p]; GL.DeleteTextures(1, &t); _slopePbrTextures[p] = 0; }
+                _slopePbrTextures[p] = LoadLayerTexture(path ?? "", PbrFallbackColors[p]);
+            }
+        }
+        if (changed) _pbrArraysDirty = true;
+    }
+
+    /// <summary>Rebuild all 6 PBR 2D-array textures from the current per-layer paths.
+    /// Each array has MaxTerrainLayers slices (one per layer, fallback solid color if no path).</summary>
+    private unsafe void RebuildPbrArrays()
+    {
+        int slices = EditorObject.MaxTerrainLayers;
+        string[] mapNames = ["Normal", "Metallic", "Roughness", "AO", "Height", "Emission"];
+        // First pass: load all layer textures for each map type
+        var layerTexData = new byte[slices][][]; // [layer][mapType] = RGBA bytes
+        var layerTexW = new int[slices];
+        var layerTexH = new int[slices];
+        for (int i = 0; i < slices; i++)
+        {
+            layerTexData[i] = new byte[PbrMapCount][];
+            for (int p = 0; p < PbrMapCount; p++)
+            {
+                string? path = _pbrPaths[i, p];
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                {
+                    try
+                    {
+                        byte[] bytes = File.ReadAllBytes(path);
+                        using var stream = new System.IO.MemoryStream(bytes);
+                        var img = StbImageSharp.ImageResult.FromStream(stream, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+                        layerTexData[i][p] = img.Data;
+                        layerTexW[i] = img.Width;
+                        layerTexH[i] = img.Height;
+                    }
+                    catch { /* fallback to solid below */ }
+                }
+            }
+        }
+        // Find max dimensions across all loaded textures for each map type
+        // All slices in a 2D array must have the same dimensions, so we use the largest
+        int[] maxW = new int[PbrMapCount], maxH = new int[PbrMapCount];
+        for (int p = 0; p < PbrMapCount; p++)
+        {
+            maxW[p] = 4; maxH[p] = 4; // minimum 4x4 for GL
+            for (int i = 0; i < slices; i++)
+            {
+                if (layerTexData[i][p] != null && layerTexW[i] > maxW[p]) maxW[p] = layerTexW[i];
+                if (layerTexData[i][p] != null && layerTexH[i] > maxH[p]) maxH[p] = layerTexH[i];
+            }
+        }
+        // Delete old arrays
+        for (int p = 0; p < PbrMapCount; p++)
+        {
+            if (_pbrArrays[p] != 0) { uint t = _pbrArrays[p]; GL.DeleteTextures(1, &t); _pbrArrays[p] = 0; }
+        }
+        // Create 2D array textures
+        for (int p = 0; p < PbrMapCount; p++)
+        {
+            uint id;
+            GL.GenTextures(1, &id);
+            _pbrArrays[p] = id;
+            GL.BindTexture(Const.GL_TEXTURE_2D_ARRAY, id);
+            GL.TexImage3D(Const.GL_TEXTURE_2D_ARRAY, 0, (int)Const.GL_RGBA8,
+                maxW[p], maxH[p], slices, 0,
+                Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (void*)0);
+            // Fill each slice
+            for (int i = 0; i < slices; i++)
+            {
+                byte[] fallback = [(byte)(PbrFallbackColors[p].X * 255), (byte)(PbrFallbackColors[p].Y * 255), (byte)(PbrFallbackColors[p].Z * 255), 255];
+                byte[] data = layerTexData[i][p] ?? fallback;
+                // If loaded texture has different size than max, we need to upload at 0,0 (may clip/leave borders)
+                int w = layerTexW[i] > 0 ? layerTexW[i] : 1;
+                int h = layerTexH[i] > 0 ? layerTexH[i] : 1;
+                fixed (byte* pData = data)
+                {
+                    GL.TexSubImage3D(Const.GL_TEXTURE_2D_ARRAY, 0, 0, 0, i,
+                        Math.Min(w, maxW[p]), Math.Min(h, maxH[p]), 1,
+                        Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, pData);
+                }
+            }
+            GL.TexParameteri(Const.GL_TEXTURE_2D_ARRAY, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D_ARRAY, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D_ARRAY, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
+            GL.TexParameteri(Const.GL_TEXTURE_2D_ARRAY, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
+            GL.GenerateMipmap(Const.GL_TEXTURE_2D_ARRAY);
+            GL.BindTexture(Const.GL_TEXTURE_2D_ARRAY, 0);
+        }
+        _pbrArraysDirty = false;
+    }
+
     /// <summary>Re-apply the owner's per-layer <see cref="TextureSettings"/> (min/mag
     /// filter, mipmapping, anisotropy, wrapping) to each loaded layer texture and the splat
     /// mask. <paramref name="perLayer"/> has one entry per layer (air, dirt, grass, snow);
@@ -829,6 +979,33 @@ public unsafe class EditorTerrainMesh : IDisposable
         _dynSlopeTilingLoc = GL.GetUniformLocation(_program, "slopeTilingVal");
         _dynSlopeTexLoc = GL.GetUniformLocation(_program, "dynSlopeTex");
         _dynSlopeStochasticLoc = GL.GetUniformLocation(_program, "slopeStochastic");
+
+        // ── PBR per-layer uniform locations (sampler2DArray + per-layer tuning) ──
+        _pbrNormalMapLoc = GL.GetUniformLocation(_program, "pbrNormalMap");
+        _pbrMetallicMapLoc = GL.GetUniformLocation(_program, "pbrMetallicMap");
+        _pbrRoughnessMapLoc = GL.GetUniformLocation(_program, "pbrRoughnessMap");
+        _pbrAoMapLoc = GL.GetUniformLocation(_program, "pbrAoMap");
+        _pbrHeightMapLoc = GL.GetUniformLocation(_program, "pbrHeightMap");
+        _pbrEmissionMapLoc = GL.GetUniformLocation(_program, "pbrEmissionMap");
+        _pbrLayerCountLoc = GL.GetUniformLocation(_program, "pbrLayerCount");
+        for (int i = 0; i < EditorObject.MaxTerrainLayers; i++)
+        {
+            _pbrNormalStrengthLocs[i] = GL.GetUniformLocation(_program, $"pbrNormalStr[{i}]");
+            _pbrMetallicStrengthLocs[i] = GL.GetUniformLocation(_program, $"pbrMetallicStr[{i}]");
+            _pbrRoughnessStrengthLocs[i] = GL.GetUniformLocation(_program, $"pbrRoughnessStr[{i}]");
+            _pbrAoStrengthLocs[i] = GL.GetUniformLocation(_program, $"pbrAoStr[{i}]");
+            _pbrHeightStrengthLocs[i] = GL.GetUniformLocation(_program, $"pbrHeightStr[{i}]");
+            _pbrEmissionIntensityLocs[i] = GL.GetUniformLocation(_program, $"pbrEmissionStr[{i}]");
+            _pbrRoughnessInvertLocs[i] = GL.GetUniformLocation(_program, $"pbrRoughnessInv[{i}]");
+            _pbrHeightInvertLocs[i] = GL.GetUniformLocation(_program, $"pbrHeightInv[{i}]");
+            _pbrAlbedoBrightnessLocs[i] = GL.GetUniformLocation(_program, $"pbrAlbedoBright[{i}]");
+            _pbrAlbedoSaturationLocs[i] = GL.GetUniformLocation(_program, $"pbrAlbedoSat[{i}]");
+            _pbrAlbedoContrastLocs[i] = GL.GetUniformLocation(_program, $"pbrAlbedoContrast[{i}]");
+        }
+        // Slope PBR
+        string[] slopePbrNames = ["Normal", "Metallic", "Roughness", "AO", "Height", "Emission"];
+        for (int p = 0; p < PbrMapCount; p++)
+            _slopePbrTexLocs[p] = GL.GetUniformLocation(_program, $"slopePbr{slopePbrNames[p]}");
 
         // Paint layer texture uniforms
         for (int i = 0; i < EditorObject.MaxPaintLayers; i++)
@@ -979,6 +1156,53 @@ public unsafe class EditorTerrainMesh : IDisposable
             GL.ActiveTexture(slopeUnit);
             GL.BindTexture(Const.GL_TEXTURE_2D, _dynSlopeTexture);
             GL.Uniform1i(_dynSlopeTexLoc, EditorObject.MaxTerrainLayers);
+
+            // ── Slope PBR textures (individual sampler2D, units 36-41) ──
+            for (int p = 0; p < PbrMapCount; p++)
+            {
+                int slopePbrUnitIdx = PbrUnitBase + PbrMapCount + p; // units 36-41
+                GL.ActiveTexture((uint)(Const.GL_TEXTURE0 + slopePbrUnitIdx));
+                GL.BindTexture(Const.GL_TEXTURE_2D, _slopePbrTextures[p]);
+                if (_slopePbrTexLocs[p] >= 0) GL.Uniform1i(_slopePbrTexLocs[p], slopePbrUnitIdx);
+            }
+        }
+        else
+        {
+            for (int p = 0; p < PbrMapCount; p++)
+            {
+                int slopePbrUnitIdx = PbrUnitBase + PbrMapCount + p;
+                GL.ActiveTexture((uint)(Const.GL_TEXTURE0 + slopePbrUnitIdx));
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+        }
+
+        // ── PBR texture arrays (6 arrays on units 30-35) ──
+        if (_pbrArraysDirty) RebuildPbrArrays();
+        int[] pbrArrayLocs = [_pbrNormalMapLoc, _pbrMetallicMapLoc, _pbrRoughnessMapLoc, _pbrAoMapLoc, _pbrHeightMapLoc, _pbrEmissionMapLoc];
+        for (int p = 0; p < PbrMapCount; p++)
+        {
+            int unit = PbrUnitBase + p;
+            GL.ActiveTexture((uint)(Const.GL_TEXTURE0 + unit));
+            GL.BindTexture(Const.GL_TEXTURE_2D_ARRAY, _pbrArrays[p]);
+            if (pbrArrayLocs[p] >= 0) GL.Uniform1i(pbrArrayLocs[p], unit);
+        }
+        if (_pbrLayerCountLoc >= 0) GL.Uniform1i(_pbrLayerCountLoc, count);
+
+        // Upload PBR tuning uniforms per layer
+        for (int i = 0; i < count; i++)
+        {
+            var layer = layers[i];
+            if (_pbrNormalStrengthLocs[i] >= 0) GL.Uniform1f(_pbrNormalStrengthLocs[i], layer.NormalStrength);
+            if (_pbrMetallicStrengthLocs[i] >= 0) GL.Uniform1f(_pbrMetallicStrengthLocs[i], layer.MetallicStrength);
+            if (_pbrRoughnessStrengthLocs[i] >= 0) GL.Uniform1f(_pbrRoughnessStrengthLocs[i], layer.RoughnessStrength);
+            if (_pbrAoStrengthLocs[i] >= 0) GL.Uniform1f(_pbrAoStrengthLocs[i], layer.AoStrength);
+            if (_pbrHeightStrengthLocs[i] >= 0) GL.Uniform1f(_pbrHeightStrengthLocs[i], layer.HeightStrength);
+            if (_pbrEmissionIntensityLocs[i] >= 0) GL.Uniform1f(_pbrEmissionIntensityLocs[i], layer.EmissionIntensity);
+            if (_pbrRoughnessInvertLocs[i] >= 0) GL.Uniform1i(_pbrRoughnessInvertLocs[i], layer.RoughnessInvert ? 1 : 0);
+            if (_pbrHeightInvertLocs[i] >= 0) GL.Uniform1i(_pbrHeightInvertLocs[i], layer.HeightInvert ? 1 : 0);
+            if (_pbrAlbedoBrightnessLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoBrightnessLocs[i], layer.AlbedoBrightness);
+            if (_pbrAlbedoSaturationLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoSaturationLocs[i], layer.AlbedoSaturation);
+            if (_pbrAlbedoContrastLocs[i] >= 0) GL.Uniform1f(_pbrAlbedoContrastLocs[i], layer.AlbedoContrast);
         }
 
         // Legacy layer textures (for old scenes) — bind to units 25-28 so they don't conflict with dynamic layers (0-7)

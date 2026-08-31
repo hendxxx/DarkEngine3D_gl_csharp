@@ -963,6 +963,7 @@ public unsafe class EditorObject
         _terrainLoadedPath = TerrainHeightmapPath;
         mesh.SetLayerTextures(TerrainTextureAirPath, TerrainTextureDirtPath, TerrainTextureGrassPath, TerrainTextureSnowPath);
         mesh.SetDynLayerTextures(TerrainLayerList, TerrainSlopeEnabled ? TerrainSlopeLayer : null);
+        mesh.SetDynLayerPbrTextures(TerrainLayerList, TerrainSlopeEnabled ? TerrainSlopeLayer : null);
         mesh.Generate(TerrainChunkSize, TerrainChunksPerSide, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
         mesh.ApplyTextureSettings(TerrainLayerSettings);
         _terrainMesh = mesh;
