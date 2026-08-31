@@ -30,9 +30,9 @@ uniform float slopeTilingVal;  // slope layer tiling
 uniform int slopeStochastic;    // slope layer random tile
 uniform sampler2D dynSlopeTex;
 
-// ── TERRAIN PBR (adjustable from Inspector) ──
-uniform float terrainMetallic = 0.0;
-uniform float terrainRoughness = 0.5;
+// ── TERRAIN PBR (driven by first layer's PBR Tuning values) ──
+uniform float terrainPbrMetallic = 0.0;
+uniform float terrainPbrRoughness = 0.5;
 
 // ── Height detail strength (0 = off, 0.5 = subtle, 1.0 = strong) ──
 uniform float parallaxScale = 0.0;
@@ -537,12 +537,12 @@ void main() {
         norm = heightNormalDetail(dynLayer0, FragPos.xz * primaryTiling.x, 1.0, norm, parallaxScale);
     }
 
-    // PBR sun lighting (terrainMetallic, terrainRoughness from Inspector)
+    // PBR sun lighting (terrainPbrMetallic, terrainPbrRoughness from Inspector)
     vec3 lightDir = normalize(sunDir);
     vec3 V = normalize(viewPos - FragPos);
     vec3 H = normalize(V + lightDir);
-    float tMet = clamp(terrainMetallic, 0.0, 1.0);
-    float tRou = clamp(terrainRoughness, 0.04, 1.0);
+    float tMet = clamp(terrainPbrMetallic, 0.0, 1.0);
+    float tRou = clamp(terrainPbrRoughness, 0.04, 1.0);
     vec3 F0 = mix(vec3(0.04), texColor, tMet);
     float NdotL = max(dot(norm, lightDir), 0.0);
     float NdotV = max(dot(norm, V), 0.001);

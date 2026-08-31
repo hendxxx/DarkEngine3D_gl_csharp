@@ -389,8 +389,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 TexSettings = source.TexSettings.Clone(),
                 PbrTexSettings = source.PbrTexSettings.Select(s => s.Clone()).ToArray(),
                 TerrainLayerSettings = source.TerrainLayerSettings.Select(s => s.Clone()).ToArray(),
-                TerrainPbrMetallic = source.TerrainPbrMetallic,
-                TerrainPbrRoughness = source.TerrainPbrRoughness,
+
             };
             if (clone.PrimitiveType != EditorPrimitiveType.GlbReference)
                 clone.InitGPU();
