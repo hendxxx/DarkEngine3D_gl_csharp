@@ -32,7 +32,6 @@ public class IDE : IDisposable
     private readonly ShadowPanel _shadowPanel = null!;
     // PostFX removed
     private readonly PbrPanel _pbrPanel = null!;
-    private readonly TerrainBrushPanel _terrainBrush = null!;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
     private readonly ImGuiFileDialog _glbDialog = new();
 
@@ -262,7 +261,6 @@ public class IDE : IDisposable
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
             _pbrPanel = new PbrPanel(Bridge);
-            _terrainBrush = new TerrainBrushPanel(Bridge);
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -581,7 +579,6 @@ public class IDE : IDisposable
                 _renderTime.ShowInMenu();
                 _shadowPanel.ShowInMenu();
                 _pbrPanel.ShowInMenu();
-                _terrainBrush.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
 
@@ -656,7 +653,6 @@ public class IDE : IDisposable
         _renderTime.Render();
         _shadowPanel.Render();
         _pbrPanel.Render();
-        _terrainBrush.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
         _console.Render();
