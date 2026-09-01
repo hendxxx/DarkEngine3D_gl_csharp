@@ -2627,31 +2627,73 @@ public class InspectorPanel
                     }
                 }
 
-                // PBR tuning (collapsible)
+                // PBR tuning (collapsible) — matches PbrPanel layout
                 if (ImGui.CollapsingHeader("PBR Tuning"))
                 {
-                    float ns = activeLayer.NormalStrength;
-                    if (ImGui.SliderFloat("Normal Strength", ref ns, 0f, 2f, "%.2f")) { activeLayer.NormalStrength = ns; editorObj.MarkDirty(); }
-                    float ms = activeLayer.MetallicStrength;
-                    if (ImGui.SliderFloat("Metallic Strength", ref ms, 0f, 2f, "%.2f")) { activeLayer.MetallicStrength = ms; editorObj.MarkDirty(); }
-                    float rs = activeLayer.RoughnessStrength;
-                    if (ImGui.SliderFloat("Roughness Strength", ref rs, 0f, 2f, "%.2f")) { activeLayer.RoughnessStrength = rs; editorObj.MarkDirty(); }
-                    bool ri = activeLayer.RoughnessInvert;
-                    if (ImGui.Checkbox("Roughness Invert", ref ri)) { activeLayer.RoughnessInvert = ri; editorObj.MarkDirty(); }
-                    float aos = activeLayer.AoStrength;
-                    if (ImGui.SliderFloat("AO Strength", ref aos, 0f, 2f, "%.2f")) { activeLayer.AoStrength = aos; editorObj.MarkDirty(); }
-                    float hs = activeLayer.HeightStrength;
-                    if (ImGui.SliderFloat("Height Strength", ref hs, 0f, 2f, "%.2f")) { activeLayer.HeightStrength = hs; editorObj.MarkDirty(); }
-                    bool hi = activeLayer.HeightInvert;
-                    if (ImGui.Checkbox("Height Invert", ref hi)) { activeLayer.HeightInvert = hi; editorObj.MarkDirty(); }
-                    float ei = activeLayer.EmissionIntensity;
-                    if (ImGui.SliderFloat("Emission Intensity", ref ei, 0f, 5f, "%.2f")) { activeLayer.EmissionIntensity = ei; editorObj.MarkDirty(); }
+                    ImGui.TextColored(new Vector4(1f, 0.85f, 0.6f, 1f), "Albedo / Base Color");
                     float ab = activeLayer.AlbedoBrightness;
-                    if (ImGui.SliderFloat("Albedo Brightness", ref ab, 0f, 2f, "%.2f")) { activeLayer.AlbedoBrightness = ab; editorObj.MarkDirty(); }
+                    if (ImGui.SliderFloat("Brightness", ref ab, 0f, 2f, "%.3f")) { activeLayer.AlbedoBrightness = ab; editorObj.MarkDirty(); }
                     float asat = activeLayer.AlbedoSaturation;
-                    if (ImGui.SliderFloat("Albedo Saturation", ref asat, 0f, 3f, "%.2f")) { activeLayer.AlbedoSaturation = asat; editorObj.MarkDirty(); }
+                    if (ImGui.SliderFloat("Saturation", ref asat, 0f, 3f, "%.3f")) { activeLayer.AlbedoSaturation = asat; editorObj.MarkDirty(); }
                     float ac = activeLayer.AlbedoContrast;
-                    if (ImGui.SliderFloat("Albedo Contrast", ref ac, 0f, 3f, "%.2f")) { activeLayer.AlbedoContrast = ac; editorObj.MarkDirty(); }
+                    if (ImGui.SliderFloat("Contrast", ref ac, 0f, 3f, "%.3f")) { activeLayer.AlbedoContrast = ac; editorObj.MarkDirty(); }
+
+                    ImGui.Spacing();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 1f, 1f), "Normal Map");
+                    float ns = activeLayer.NormalStrength;
+                    if (ImGui.SliderFloat("Strength##normal", ref ns, 0f, 2f, "%.3f")) { activeLayer.NormalStrength = ns; editorObj.MarkDirty(); }
+                    float nb = activeLayer.NormalBlur;
+                    if (ImGui.SliderFloat("Blur (texels)##normal", ref nb, 0f, 8f, "%.2f")) { activeLayer.NormalBlur = nb; editorObj.MarkDirty(); }
+
+                    ImGui.Spacing();
+                    ImGui.TextColored(new Vector4(0.9f, 0.8f, 0.7f, 1f), "Metallic");
+                    float mthr = activeLayer.MetallicThreshold;
+                    if (ImGui.SliderFloat("Threshold##metallic", ref mthr, 0f, 1f, "%.3f")) { activeLayer.MetallicThreshold = mthr; editorObj.MarkDirty(); }
+                    float msof = activeLayer.MetallicSoftness;
+                    if (ImGui.SliderFloat("Softness##metallic", ref msof, 0f, 0.5f, "%.3f")) { activeLayer.MetallicSoftness = msof; editorObj.MarkDirty(); }
+                    float ms = activeLayer.MetallicStrength;
+                    if (ImGui.SliderFloat("Strength##metallic", ref ms, 0f, 2f, "%.3f")) { activeLayer.MetallicStrength = ms; editorObj.MarkDirty(); }
+
+                    ImGui.Spacing();
+                    ImGui.TextColored(new Vector4(0.8f, 0.9f, 0.7f, 1f), "Roughness");
+                    float rs = activeLayer.RoughnessStrength;
+                    if (ImGui.SliderFloat("Strength##roughness", ref rs, 0f, 2f, "%.3f")) { activeLayer.RoughnessStrength = rs; editorObj.MarkDirty(); }
+                    bool ri = activeLayer.RoughnessInvert;
+                    if (ImGui.Checkbox("Invert (smoothness map)##roughness", ref ri)) { activeLayer.RoughnessInvert = ri; editorObj.MarkDirty(); }
+
+                    ImGui.Spacing();
+                    ImGui.TextColored(new Vector4(0.7f, 0.8f, 0.9f, 1f), "Ambient Occlusion");
+                    float aos = activeLayer.AoStrength;
+                    if (ImGui.SliderFloat("Strength##ao", ref aos, 0f, 2f, "%.3f")) { activeLayer.AoStrength = aos; editorObj.MarkDirty(); }
+                    float aob = activeLayer.AoBrightness;
+                    if (ImGui.SliderFloat("Brightness##ao", ref aob, 0f, 1f, "%.3f")) { activeLayer.AoBrightness = aob; editorObj.MarkDirty(); }
+
+                    ImGui.Spacing();
+                    ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.9f, 1f), "Height / Displacement");
+                    float hs = activeLayer.HeightStrength;
+                    if (ImGui.SliderFloat("Strength##height", ref hs, 0f, 2f, "%.3f")) { activeLayer.HeightStrength = hs; editorObj.MarkDirty(); }
+                    bool hi = activeLayer.HeightInvert;
+                    if (ImGui.Checkbox("Invert (valleys/peaks)##height", ref hi)) { activeLayer.HeightInvert = hi; editorObj.MarkDirty(); }
+                    float hb = activeLayer.HeightBlur;
+                    if (ImGui.SliderFloat("Blur (texels)##height", ref hb, 0f, 8f, "%.2f")) { activeLayer.HeightBlur = hb; editorObj.MarkDirty(); }
+
+                    ImGui.Spacing();
+                    ImGui.TextColored(new Vector4(1f, 0.95f, 0.55f, 1f), "Emission");
+                    float ei = activeLayer.EmissionIntensity;
+                    if (ImGui.SliderFloat("Intensity##emission", ref ei, 0f, 5f, "%.3f")) { activeLayer.EmissionIntensity = ei; editorObj.MarkDirty(); }
+
+                    ImGui.Spacing();
+                    if (ImGui.Button("Reset tuning to defaults"))
+                    {
+                        activeLayer.AlbedoBrightness = 1f; activeLayer.AlbedoSaturation = 1f; activeLayer.AlbedoContrast = 1f;
+                        activeLayer.NormalStrength = 1f; activeLayer.NormalBlur = 0f;
+                        activeLayer.MetallicThreshold = 0.5f; activeLayer.MetallicSoftness = 0.1f; activeLayer.MetallicStrength = 1f;
+                        activeLayer.RoughnessStrength = 1f; activeLayer.RoughnessInvert = false;
+                        activeLayer.AoStrength = 1f; activeLayer.AoBrightness = 0f;
+                        activeLayer.HeightStrength = 1f; activeLayer.HeightInvert = false; activeLayer.HeightBlur = 0f;
+                        activeLayer.EmissionIntensity = 1f;
+                        editorObj.MarkDirty();
+                    }
                 }
                 ImGui.PopID(); // edit_layer_
             }

@@ -94,6 +94,10 @@ public unsafe class EditorTerrainMesh : IDisposable
     private static readonly int[] _dynLayerStochasticLocs = new int[EditorObject.MaxTerrainLayers];
     private static int _dynSlopeEnabledLoc = -1, _dynSlopeThresholdLoc = -1, _dynSlopeTilingLoc = -1, _dynSlopeTexLoc = -1, _dynSlopeStochasticLoc = -1;
     private static int _terrainPbrMetallicLoc = -1, _terrainPbrRoughnessLoc = -1;
+    private static int _terrainPbrMetallicThresholdLoc = -1, _terrainPbrMetallicSoftnessLoc = -1;
+    private static int _terrainPbrNormalStrLoc = -1, _terrainPbrAoStrLoc = -1, _terrainPbrAoBrightnessLoc = -1;
+    private static int _terrainPbrHeightStrLoc = -1, _terrainPbrEmissionLoc = -1;
+    private static int _terrainPbrAlbedoBrightLoc = -1, _terrainPbrAlbedoSatLoc = -1, _terrainPbrAlbedoContrastLoc = -1;
 
     private readonly uint[] _dynLayerTextures = new uint[EditorObject.MaxTerrainLayers];
     private readonly string?[] _dynLayerPaths = new string?[EditorObject.MaxTerrainLayers];
@@ -982,6 +986,16 @@ public unsafe class EditorTerrainMesh : IDisposable
         _dynSlopeTexLoc = GL.GetUniformLocation(_program, "dynSlopeTex");        _dynSlopeStochasticLoc = GL.GetUniformLocation(_program, "slopeStochastic");
         _terrainPbrMetallicLoc = GL.GetUniformLocation(_program, "terrainPbrMetallic");
         _terrainPbrRoughnessLoc = GL.GetUniformLocation(_program, "terrainPbrRoughness");
+        _terrainPbrMetallicThresholdLoc = GL.GetUniformLocation(_program, "terrainPbrMetallicThreshold");
+        _terrainPbrMetallicSoftnessLoc = GL.GetUniformLocation(_program, "terrainPbrMetallicSoftness");
+        _terrainPbrNormalStrLoc = GL.GetUniformLocation(_program, "terrainPbrNormalStr");
+        _terrainPbrAoStrLoc = GL.GetUniformLocation(_program, "terrainPbrAoStr");
+        _terrainPbrAoBrightnessLoc = GL.GetUniformLocation(_program, "terrainPbrAoBrightness");
+        _terrainPbrHeightStrLoc = GL.GetUniformLocation(_program, "terrainPbrHeightStr");
+        _terrainPbrEmissionLoc = GL.GetUniformLocation(_program, "terrainPbrEmissionIntensity");
+        _terrainPbrAlbedoBrightLoc = GL.GetUniformLocation(_program, "terrainPbrAlbedoBright");
+        _terrainPbrAlbedoSatLoc = GL.GetUniformLocation(_program, "terrainPbrAlbedoSat");
+        _terrainPbrAlbedoContrastLoc = GL.GetUniformLocation(_program, "terrainPbrAlbedoContrast");
 
         // ── PBR per-layer uniform locations (sampler2DArray + per-layer tuning) ──
         _pbrNormalMapLoc = GL.GetUniformLocation(_program, "pbrNormalMap");
@@ -1179,18 +1193,22 @@ public unsafe class EditorTerrainMesh : IDisposable
             }
         }
 
-        // ── PBR texture arrays — skip until shader PBR is confirmed working ──
-        // PBR texture arrays + tuning — deferred until shader PBR confirmed working
-        // if (_pbrArraysDirty) RebuildPbrArrays();
-        // int[] pbrArrayLocs = [_pbrNormalMapLoc, _pbrMetallicMapLoc, _pbrRoughnessMapLoc, _pbrAoMapLoc, _pbrHeightMapLoc, _pbrEmissionMapLoc];
-        // for (int p = 0; p < PbrMapCount; p++)
-        // {
-        //     int unit = PbrUnitBase + p;
-        //     GL.ActiveTexture((uint)(Const.GL_TEXTURE0 + unit));
-        //     GL.BindTexture(Const.GL_TEXTURE_2D_ARRAY, _pbrArrays[p]);
-        //     if (pbrArrayLocs[p] >= 0) GL.Uniform1i(pbrArrayLocs[p], unit);
-        // }
-        // if (_pbrLayerCountLoc >= 0) GL.Uniform1i(_pbrLayerCountLoc, count);
+        // ── PBR texture arrays (6 arrays on units 30-35, safe fallback) ──
+        SetDynLayerPbrTextures(owner.TerrainLayerList, owner.TerrainSlopeEnabled ? owner.TerrainSlopeLayer : null);
+        try
+        {
+            if (_pbrArraysDirty) RebuildPbrArrays();
+            int[] pbrArrayLocs = [_pbrNormalMapLoc, _pbrMetallicMapLoc, _pbrRoughnessMapLoc, _pbrAoMapLoc, _pbrHeightMapLoc, _pbrEmissionMapLoc];
+            for (int p = 0; p < PbrMapCount; p++)
+            {
+                int unit = PbrUnitBase + p;
+                GL.ActiveTexture((uint)(Const.GL_TEXTURE0 + unit));
+                GL.BindTexture(Const.GL_TEXTURE_2D_ARRAY, _pbrArrays[p]);
+                if (pbrArrayLocs[p] >= 0) GL.Uniform1i(pbrArrayLocs[p], unit);
+            }
+        }
+        catch { /* PBR arrays optional — uniform fallback if fails */ }
+        if (_pbrLayerCountLoc >= 0) GL.Uniform1i(_pbrLayerCountLoc, count);
         // for (int i = 0; i < count; i++)
         // {
         //     var layer = layers[i];
@@ -1212,7 +1230,23 @@ public unsafe class EditorTerrainMesh : IDisposable
         {
             var l0 = layers[0];
             if (_terrainPbrMetallicLoc >= 0) GL.Uniform1f(_terrainPbrMetallicLoc, Math.Clamp(l0.MetallicStrength, 0f, 1f));
-            if (_terrainPbrRoughnessLoc >= 0) GL.Uniform1f(_terrainPbrRoughnessLoc, Math.Clamp(l0.RoughnessStrength * (l0.RoughnessInvert ? -1f : 1f), 0.04f, 1f));
+            if (_terrainPbrRoughnessLoc >= 0)
+            {
+                float rou = l0.RoughnessStrength;
+                if (l0.RoughnessInvert) rou = 1.0f - Math.Clamp(rou, 0f, 1f);
+                GL.Uniform1f(_terrainPbrRoughnessLoc, Math.Clamp(rou, 0f, 1f));
+            }
+            // Other PBR tuning uniforms
+            if (_terrainPbrMetallicThresholdLoc >= 0) GL.Uniform1f(_terrainPbrMetallicThresholdLoc, l0.MetallicThreshold);
+            if (_terrainPbrMetallicSoftnessLoc >= 0) GL.Uniform1f(_terrainPbrMetallicSoftnessLoc, l0.MetallicSoftness);
+            if (_terrainPbrNormalStrLoc >= 0) GL.Uniform1f(_terrainPbrNormalStrLoc, l0.NormalStrength);
+            if (_terrainPbrAoStrLoc >= 0) GL.Uniform1f(_terrainPbrAoStrLoc, l0.AoStrength);
+            if (_terrainPbrAoBrightnessLoc >= 0) GL.Uniform1f(_terrainPbrAoBrightnessLoc, l0.AoBrightness);
+            if (_terrainPbrHeightStrLoc >= 0) GL.Uniform1f(_terrainPbrHeightStrLoc, l0.HeightStrength);
+            if (_terrainPbrEmissionLoc >= 0) GL.Uniform1f(_terrainPbrEmissionLoc, l0.EmissionIntensity);
+            if (_terrainPbrAlbedoBrightLoc >= 0) GL.Uniform1f(_terrainPbrAlbedoBrightLoc, l0.AlbedoBrightness);
+            if (_terrainPbrAlbedoSatLoc >= 0) GL.Uniform1f(_terrainPbrAlbedoSatLoc, l0.AlbedoSaturation);
+            if (_terrainPbrAlbedoContrastLoc >= 0) GL.Uniform1f(_terrainPbrAlbedoContrastLoc, l0.AlbedoContrast);
         }
 
         // Legacy layer textures (for old scenes) — bind to units 25-28 so they don't conflict with dynamic layers (0-7)

@@ -73,13 +73,18 @@ public class TerrainLayer
 
     // ── PBR tuning (per layer) ──
     public float NormalStrength { get; set; } = 1.0f;
+    public float NormalBlur { get; set; } = 0.0f;
+    public float MetallicThreshold { get; set; } = 0.5f;
+    public float MetallicSoftness { get; set; } = 0.1f;
     public float MetallicStrength { get; set; } = 1.0f;
     public float RoughnessStrength { get; set; } = 1.0f;
     public bool RoughnessInvert { get; set; } = false;
     public float AoStrength { get; set; } = 1.0f;
+    public float AoBrightness { get; set; } = 0.0f;
     public float HeightStrength { get; set; } = 1.0f;
     public bool HeightInvert { get; set; } = false;
-    public float EmissionIntensity { get; set; } = 0.0f;
+    public float HeightBlur { get; set; } = 0.0f;
+    public float EmissionIntensity { get; set; } = 1.0f;
     public float AlbedoBrightness { get; set; } = 1.0f;
     public float AlbedoSaturation { get; set; } = 1.0f;
     public float AlbedoContrast { get; set; } = 1.0f;

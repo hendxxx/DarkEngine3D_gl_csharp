@@ -33,6 +33,25 @@ uniform sampler2D dynSlopeTex;
 // ── TERRAIN PBR (driven by first layer's PBR Tuning values) ──
 uniform float terrainPbrMetallic = 0.0;
 uniform float terrainPbrRoughness = 0.5;
+uniform float terrainPbrMetallicThreshold = 0.5;
+uniform float terrainPbrMetallicSoftness = 0.1;
+uniform float terrainPbrNormalStr = 1.0;
+uniform float terrainPbrAoStr = 1.0;
+uniform float terrainPbrAoBrightness = 0.0;
+uniform float terrainPbrHeightStr = 1.0;
+uniform float terrainPbrEmissionIntensity = 1.0;
+uniform float terrainPbrAlbedoBright = 1.0;
+uniform float terrainPbrAlbedoSat = 1.0;
+uniform float terrainPbrAlbedoContrast = 1.0;
+
+// ── PBR texture arrays (optional — sampler returns 0 when unbound) ──
+uniform sampler2DArray pbrRoughnessMap;
+uniform sampler2DArray pbrMetallicMap;
+uniform sampler2DArray pbrNormalMap;
+uniform sampler2DArray pbrAoMap;
+uniform sampler2DArray pbrHeightMap;
+uniform sampler2DArray pbrEmissionMap;
+uniform int pbrLayerCount = 0;
 
 // ── Height detail strength (0 = off, 0.5 = subtle, 1.0 = strong) ──
 uniform float parallaxScale = 0.0;
@@ -413,6 +432,15 @@ float pbrGSmith(vec3 N, vec3 V, vec3 L, float r) {
     return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
 }
 
+// Albedo adjustment: brightness, saturation, contrast
+vec3 adjustAlbedo(vec3 col) {
+    col *= terrainPbrAlbedoBright;
+    float luma = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(luma), col, terrainPbrAlbedoSat);
+    col = (col - 0.5) * terrainPbrAlbedoContrast + 0.5;
+    return clamp(col, 0.0, 1.0);
+}
+
 void main() {
     vec3 norm = normalize(Normal);
     float slope = 1.0 - norm.y;
@@ -537,12 +565,42 @@ void main() {
         norm = heightNormalDetail(dynLayer0, FragPos.xz * primaryTiling.x, 1.0, norm, parallaxScale);
     }
 
-    // PBR sun lighting (terrainPbrMetallic, terrainPbrRoughness from Inspector)
+    // Apply albedo adjustment (brightness, saturation, contrast)
+    texColor = adjustAlbedo(texColor);
+
+    // Sample PBR textures (returns 0 when no texture bound)
+    vec2 pbrUv = FragPos.xz * 0.1;
+    float texRough = texture(pbrRoughnessMap, vec3(pbrUv, 0.0)).r;
+    float texMet = texture(pbrMetallicMap, vec3(pbrUv, 0.0)).r;
+    float texAo = texture(pbrAoMap, vec3(pbrUv, 0.0)).r;
+    vec3 texNorm = texture(pbrNormalMap, vec3(pbrUv, 0.0)).rgb;
+    vec3 texEmission = texture(pbrEmissionMap, vec3(pbrUv, 0.0)).rgb;
+    // Use texture when bound (non-zero), fallback to uniform sliders
+    float finalMet = (texMet > 0.001) ? clamp(texMet, 0.0, 1.0) : clamp(terrainPbrMetallic, 0.0, 1.0);
+    float finalRou = (texRough > 0.001) ? clamp(texRough, 0.0, 1.0) : clamp(terrainPbrRoughness, 0.0, 1.0);
+    float finalAo = (texAo > 0.001) ? texAo : terrainPbrAoStr;
+    // Apply normal map with strength control
+    if (terrainPbrNormalStr > 0.01) {
+        if (texNorm.r > 0.01 || texNorm.g > 0.01) {
+            vec3 mapN = normalize(texNorm * 2.0 - 1.0);
+            norm = normalize(mix(norm, mapN, clamp(terrainPbrNormalStr, 0.0, 2.0)));
+        }
+    }
+
+    // PBR sun lighting
     vec3 lightDir = normalize(sunDir);
     vec3 V = normalize(viewPos - FragPos);
     vec3 H = normalize(V + lightDir);
-    float tMet = clamp(terrainPbrMetallic, 0.0, 1.0);
-    float tRou = clamp(terrainPbrRoughness, 0.04, 1.0);
+    // Metallic: threshold+softness for texture, direct for uniform
+    float tMet;
+    if (texMet > 0.001) {
+        tMet = smoothstep(terrainPbrMetallicThreshold - terrainPbrMetallicSoftness,
+                         terrainPbrMetallicThreshold + terrainPbrMetallicSoftness,
+                         finalMet) * finalMet;
+    } else {
+        tMet = clamp(finalMet, 0.0, 1.0);
+    }
+    float tRou = clamp(finalRou, 0.0, 1.0);
     vec3 F0 = mix(vec3(0.04), texColor, tMet);
     float NdotL = max(dot(norm, lightDir), 0.0);
     float NdotV = max(dot(norm, V), 0.001);
@@ -553,7 +611,7 @@ void main() {
     vec3 kD = (vec3(1.0) - F) * (1.0 - tMet);
     vec3 sunPbr = (kD * texColor / PI + spec) * lightColor * 4.0 * NdotL;
     float slopeShade = 1.0 - clamp(slope * 0.55, 0.0, 0.5);
-    vec3 ambient = texColor * lightColor * 0.14 * slopeShade;
+    vec3 ambient = texColor * lightColor * 0.14 * slopeShade * finalAo;
 
     // ── CSM SHADOWS (editor viewport) ──
     // Slope-scaled bias (same as fragment_shader.glsl) so the terrain doesn't show
@@ -614,6 +672,10 @@ void main() {
     // pointing away from the light) — same smoothstep mask as the main shader.
     float shadowMask = smoothstep(0.0, 0.20, dot(norm, shadowLightDir));
     vec3 result = ambient + sunPbr * shadowMask * shadow;
+
+    // ── EMISSION (self-illumination, not affected by shadows) ──
+    vec3 emCol = (texEmission.r > 0.001) ? texEmission : texColor;
+    result += emCol * terrainPbrEmissionIntensity;
 
     // ── LOCAL LIGHTS (Point / Spot) — added on top of the sun lighting ──
     result += calcLocalLights(norm, normalize(viewPos - FragPos)) * texColor;
