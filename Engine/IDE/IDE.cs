@@ -1,5 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.IDE.Panels;
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
@@ -771,6 +772,40 @@ public class IDE : IDisposable
 
         // Render directly to foreground draw list — no ImGui windows!
         var drawList = ImGui.GetForegroundDrawList();
+
+        // ── Auto mouse/fly mode based on visible menu (Container) ──
+        // When a Container (menu) is visible at root level → show mouse, disable FlyMouseLook
+        // so the user can click menu buttons. When no Container → hide mouse, enable FlyMouseLook
+        // for 3D scene navigation.
+        bool hasVisibleMenu = false;
+        if (Bridge.EditorScenes.Count > 0 &&
+            Bridge.SelectedEditorScene != null &&
+            Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var _menuScene))
+        {
+            foreach (var rootChild in _menuScene.Root.Children)
+            {
+                if (rootChild.IsVisible && rootChild.Type == UIElementType.Container)
+                {
+                    hasVisibleMenu = true;
+                    break;
+                }
+            }
+        }
+        // Apply mouse/fly toggle (only when state changes to avoid per-frame noise)
+        var cam = Bridge.Camera;
+        if (cam != null)
+        {
+            if (hasVisibleMenu && cam.FlyMouseLook)
+            {
+                cam.FlyMouseLook = false;
+                Mouse.ShowMouse(true);
+            }
+            else if (!hasVisibleMenu && !cam.FlyMouseLook)
+            {
+                cam.FlyMouseLook = true;
+                Mouse.ShowMouse(false);
+            }
+        }
 
         // 1) Scene texture from running game scene (render first, behind UI)
         if (Bridge.SceneTextureID != 0)
