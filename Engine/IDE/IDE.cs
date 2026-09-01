@@ -170,6 +170,18 @@ public class IDE : IDisposable
         _inGameCameraWarning = null;
         _inGameCameraWarningTimer = 0f;
 
+        // Only GameScene type requires camera switch + warning
+        // MainMenu and Loading are pure UI — no camera needed
+        if (Bridge.SelectedEditorScene != null &&
+            Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var checkScene))
+        {
+            if (checkScene.Type != IDEBridge.SceneType.GameScene)
+            {
+                Console.WriteLine($"[IDE] In-Game Mode: {checkScene.Type} scene — skipping camera switch");
+                return;
+            }
+        }
+
         if (Bridge.EditorObjectManager == null)
         {
             _inGameCameraWarning = "No Camera found in scene — add a Camera object (Model → Camera) for in-game view.";
@@ -769,29 +781,97 @@ public class IDE : IDisposable
         // Render directly to foreground draw list — no ImGui windows!
         var drawList = ImGui.GetForegroundDrawList();
 
+        // ── ESC key: toggle menu visibility in in-game mode ──
+        // Must run BEFORE hasVisibleMenu check so the state is current.
+        if (ImGui.IsKeyPressed(ImGuiKey.Escape, false))
+        {
+            // Find Containers with TriggeredByKeyboardButton == "Escape" and toggle them.
+            // Also checks root itself (single Container element = root).
+            if (Bridge.EditorScenes.Count > 0 &&
+                Bridge.SelectedEditorScene != null &&
+                Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var escScene))
+            {
+                UIElement? fallbackMenu = null;
+                bool foundTriggered = false;
+
+                // Helper: check and toggle a container + restore children visibility
+                void ToggleContainer(UIElement c)
+                {
+                    if (fallbackMenu == null && c.Type == UIElementType.Container)
+                        fallbackMenu = c;
+                    if (c.Type == UIElementType.Container &&
+                        string.Equals(c.TriggeredByKeyboardButton, "Escape", StringComparison.OrdinalIgnoreCase))
+                    {
+                        c.IsVisible = !c.IsVisible;
+                        foundTriggered = true;
+                        // When showing container, also restore all children visibility
+                        if (c.IsVisible)
+                        {
+                            foreach (var child in c.Children)
+                                child.IsVisible = true;
+                        }
+                        Console.WriteLine($"[IDE] ESC: container '{c.Name}' {(c.IsVisible ? "shown" : "hidden")}");
+                    }
+                }
+
+                // 1) Check root itself (single Container element scenario)
+                ToggleContainer(escScene.Root);
+                // 2) Check root's children (multi-element scene)
+                foreach (var rootChild in escScene.Root.Children)
+                    ToggleContainer(rootChild);
+
+                // Fallback: toggle first container if none has TriggeredByKeyboardButton
+                if (!foundTriggered && fallbackMenu != null)
+                {
+                    fallbackMenu.IsVisible = !fallbackMenu.IsVisible;
+                    if (fallbackMenu.IsVisible)
+                    {
+                        foreach (var child in fallbackMenu.Children)
+                            child.IsVisible = true;
+                    }
+                    Console.WriteLine($"[IDE] ESC: fallback toggle '{fallbackMenu.Name}' {(fallbackMenu.IsVisible ? "shown" : "hidden")}");
+                }
+            }
+        }
+
         // ── Auto mouse/fly mode based on visible menu (Container) ──
-        // When a Container (menu) is visible at root level → show mouse, disable FlyMouseLook
-        // so the user can click menu buttons. When no Container → hide mouse, enable FlyMouseLook
-        // for 3D scene navigation.
+        // Recompute AFTER ESC toggle so the state reflects the latest visibility.
         bool hasVisibleMenu = false;
         if (Bridge.EditorScenes.Count > 0 &&
             Bridge.SelectedEditorScene != null &&
             Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var _menuScene))
         {
-            foreach (var rootChild in _menuScene.Root.Children)
+            // Check root itself (single Container element = root)
+            if (_menuScene.Root.IsVisible && _menuScene.Root.Type == UIElementType.Container)
+                hasVisibleMenu = true;
+            // Check root's children (multi-element scene)
+            if (!hasVisibleMenu)
             {
-                if (rootChild.IsVisible && rootChild.Type == UIElementType.Container)
+                foreach (var rootChild in _menuScene.Root.Children)
                 {
-                    hasVisibleMenu = true;
-                    break;
+                    if (rootChild.IsVisible && rootChild.Type == UIElementType.Container)
+                    {
+                        hasVisibleMenu = true;
+                        break;
+                    }
                 }
             }
         }
+
         // Apply mouse/fly toggle (only when state changes to avoid per-frame noise)
         var cam = Bridge.Camera;
         if (cam != null)
         {
-            if (hasVisibleMenu && cam.FlyMouseLook)
+            // ShowCursorInGame option overrides: always show cursor in-game mode
+            if (Bridge.ShowCursorInGame)
+            {
+                if (cam.FlyMouseLook)
+                {
+                    cam.FlyMouseLook = false;
+                    Mouse.ShowMouse(true);
+                }
+            }
+            else if (hasVisibleMenu && cam.FlyMouseLook)
             {
                 cam.FlyMouseLook = false;
                 Mouse.ShowMouse(true);
@@ -832,10 +912,11 @@ public class IDE : IDisposable
         }
 
         // 2) Editor scene UI elements (from loaded game.ing) — ALWAYS rendered on top
+        // Also render when root itself is a Container (single element scenario)
         if (Bridge.EditorScenes.Count > 0 &&
             Bridge.SelectedEditorScene != null &&
             Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var activeEditScene) &&
-            activeEditScene.Root.Children.Count > 0)
+            (activeEditScene.Root.Children.Count > 0 || activeEditScene.Root.Type == UIElementType.Container))
         {
             // Use scene texture dimensions as the virtual coordinate space
             // (elements' X/Y/W/H are stored relative to this resolution)
@@ -869,12 +950,19 @@ public class IDE : IDisposable
             // Elements behind the overlay are blocked from navigation, just like they're
             // blocked from mouse clicks by IsBlockedByOverlay in ViewportPanel.
             UIElement? activeOverlay = null;
-            foreach (var rootChild in activeEditScene.Root.Children)
+            // Check root itself (single Container element = root IS the overlay)
+            if (activeEditScene.Root.IsVisible && activeEditScene.Root.Type == UIElementType.Container)
+                activeOverlay = activeEditScene.Root;
+            // Check root's children (multi-element scene)
+            if (activeOverlay == null)
             {
-                if (rootChild.IsVisible && rootChild.Type == UIElementType.Container)
+                foreach (var rootChild in activeEditScene.Root.Children)
                 {
-                    activeOverlay = rootChild;
-                    break;
+                    if (rootChild.IsVisible && rootChild.Type == UIElementType.Container)
+                    {
+                        activeOverlay = rootChild;
+                        break;
+                    }
                 }
             }
 
@@ -992,11 +1080,17 @@ public class IDE : IDisposable
             bool activatePressed = ImGui.IsKeyPressed(ImGuiKey.Enter, false) ||
                                     ImGui.IsKeyPressed(ImGuiKey.Space, false);
 
+            // If root IS a Container, render it alone — recursion handles its children.
+            // Otherwise render root's children directly (multi-element scene).
+            var renderElements = activeEditScene.Root.Type == UIElementType.Container
+                ? (IReadOnlyList<UIElement>)[activeEditScene.Root]
+                : activeEditScene.Root.Children;
+
             _viewport.RenderUIElements(
                 drawList,
                 new Vector2(ox, oy), new Vector2(ox + canvasW, oy + canvasH),
                 virtualW, virtualH,
-                activeEditScene.Root.Children,
+                renderElements,
                 ImGui.GetMousePos(),
                 ImGui.IsMouseClicked(ImGuiMouseButton.Left),
                 isPreview: true,

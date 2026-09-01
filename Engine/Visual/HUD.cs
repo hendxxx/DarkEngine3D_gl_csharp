@@ -62,6 +62,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public int FontSlotIndex;
         /// <summary>Cached text extents — computed once in AddButton() to avoid GetTextExtents() per frame per button.</summary>
         public HUD.TextExtents CachedExtents;
+        /// <summary>When true, label text wraps to next line if it exceeds button width.</summary>
+        public bool WordWrap;
+        /// <summary>Text alignment: Left, Center, or Right.</summary>
+        public TextAlignment Alignment;
     }
 
     public unsafe class HUD
@@ -256,6 +260,43 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
 
             DrawTextBatched(text, startX, startY, color, fontSlotIndex);
+        }
+
+        /// <summary>Draw text with word wrap: split into lines so no line exceeds maxWidth.</summary>
+        public void DrawTextWrapped(string text, float startX, float startY, float maxWidth, Vector3 color, int fontSlotIndex = 0)
+        {
+            if (string.IsNullOrEmpty(text) || maxWidth <= 0f) return;
+            var lines = WordWrapText(text, maxWidth, fontSlotIndex);
+            float lineHeight = MeasureTextHeight("A|g");
+            for (int i = 0; i < lines.Count; i++)
+            {
+                DrawText(lines[i], startX, startY + i * lineHeight, color, null, 0f, fontSlotIndex);
+            }
+        }
+
+        /// <summary>Split text into lines that fit within maxWidth using the given font slot.</summary>
+        public List<string> WordWrapText(string text, float maxWidth, int fontSlotIndex = 0)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrEmpty(text)) { result.Add(""); return result; }
+            var words = text.Split(' ');
+            string currentLine = "";
+            foreach (var word in words)
+            {
+                string testLine = string.IsNullOrEmpty(currentLine) ? word : currentLine + " " + word;
+                if (MeasureText(testLine) > maxWidth && !string.IsNullOrEmpty(currentLine))
+                {
+                    result.Add(currentLine);
+                    currentLine = word;
+                }
+                else
+                {
+                    currentLine = testLine;
+                }
+            }
+            if (!string.IsNullOrEmpty(currentLine))
+                result.Add(currentLine);
+            return result;
         }
 
         // ════════════════════════════════════════════
@@ -753,9 +794,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 // Use cached text extents (computed once in AddButton) instead of GetTextExtents per frame
                 var ext = btn.CachedExtents;
-                float textX = bx + (bw - ext.Width) * 0.5f;
                 float textY = ext.GetCenteredBaselineY(by, bh);
-                DrawText(btn.Label, textX, textY, tx, null, 0f, btn.FontSlotIndex);
+                float textPad = 8f;
+                float textX;
+                switch (btn.Alignment)
+                {
+                    case TextAlignment.Left:
+                        textX = bx + textPad;
+                        break;
+                    case TextAlignment.Right:
+                        textX = bx + bw - textPad - ext.Width;
+                        break;
+                    default: // Center
+                        textX = bx + (bw - ext.Width) * 0.5f;
+                        break;
+                }
+                if (btn.WordWrap)
+                {
+                    DrawTextWrapped(btn.Label, bx + textPad, textY, bw - textPad * 2f, tx, btn.FontSlotIndex);
+                }
+                else
+                {
+                    DrawText(btn.Label, textX, textY, tx, null, 0f, btn.FontSlotIndex);
+                }
             }
 
             // Flush all queued button geometry immediately so buttons are rendered

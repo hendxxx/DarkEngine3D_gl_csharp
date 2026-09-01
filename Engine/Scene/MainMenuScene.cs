@@ -531,6 +531,7 @@ public unsafe class MainMenuScene : IScene
                     BorderColor = elem.BorderColor,
                     HoverBorderColor = elem.HoverBorderColor,
                     Alignment = elem.Alignment,
+                    WordWrap = elem.WordWrap,
                     IsVisible = elem.IsVisible,
                     ClickBehaviorLabel = elem.ClickBehaviorLabel,
                     OnClick = elem.OnClick,

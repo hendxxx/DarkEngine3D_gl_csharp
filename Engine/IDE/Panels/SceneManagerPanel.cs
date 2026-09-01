@@ -749,30 +749,9 @@ public class SceneManagerPanel
         _bridge.TerrainBrushActive = false;
         _bridge.TerrainBrushMode = 0;
 
-        //  Create a fresh empty scene 
-        string sceneName = "Scene";
-        var sceneRoot = new UIElement
-        {
-            Name = sceneName,
-            Type = UIElementType.Scene,
-            IsVisible = true,
-        };
-        var editorMgr = new EditorObjectManager();
-        var editorScene = new IDEBridge.EditorScene(
-            sceneName, IDEBridge.SceneType.MainMenu, sceneRoot)
-        {
-            ObjectManager = editorMgr
-        };
-        _bridge.EditorScenes[sceneName] = editorScene;
-        _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
-            sceneName, "Empty scene", false, IDEBridge.SceneType.MainMenu));
-
-        //  Select the fresh scene 
-        SelectEditorScene(sceneName);
-
-        // Do NOT write to disk  New is a clean slate.
-        // User must Save As with a new name, or Load an existing file.
-        Console.WriteLine("[SceneManagerPanel] Everything cleared  fresh start (no file saved)");
+        //  No scene created — truly empty state.
+        //  User adds scenes via + Add button, or opens a saved .ing file.
+        Console.WriteLine("[SceneManagerPanel] Everything cleared — no active file.");
     }
 
     /// <summary>Save ALL editor scenes to game.ing file, including 3D editor objects.</summary>

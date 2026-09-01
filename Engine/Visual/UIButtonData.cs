@@ -115,8 +115,16 @@ public class UIElement
 
     // ── Auto-fill window (for overlay/background elements) ──
     public bool AutoFillWindow { get; set; } = false;
-    /// <summary>Auto-center this element in the viewport (for overlays/dialogs).</summary>
-    public bool AutoCenter { get; set; } = false;
+    /// <summary>Auto-center this element horizontally in the viewport.</summary>
+    public bool AutoCenterX { get; set; } = false;
+    /// <summary>Auto-center this element vertically in the viewport.</summary>
+    public bool AutoCenterY { get; set; } = false;
+    /// <summary>Legacy: auto-center both axes. Sets/clears both AutoCenterX and AutoCenterY.</summary>
+    public bool AutoCenter
+    {
+        get => AutoCenterX && AutoCenterY;
+        set { AutoCenterX = value; AutoCenterY = value; }
+    }
     /// <summary>Whether hover colors are applied on mouse hover.
     /// When false, element always uses normal colors (no hover effect).
     /// Default per type: true for Button, false for Label/Container/Dialog.</summary>
@@ -135,6 +143,11 @@ public class UIElement
     public string ClickBehaviorLabel { get; set; } = "None";
     public string HoverEnterLabel { get; set; } = "None";
     public string HoverExitLabel { get; set; } = "None";
+
+    // ── Container trigger (for Container type) ──
+    /// <summary>Keyboard key that toggles this container visible/hidden in in-game mode
+    /// (e.g. "Escape", "F1"). When pressed, the container shows/hides.</summary>
+    public string TriggeredByKeyboardButton { get; set; } = "";
 
     public Action? OnClick { get; set; }
     public Action? OnHoverEnter { get; set; }
@@ -170,6 +183,10 @@ public class UIElement
     /// <summary>Text shown when the element has an ImagePath but the image fails to load.
     /// Independent from the main Text property (which is shown when no image is set).</summary>
     public string FallbackText { get; set; } = "";
+
+    // ── Word Wrap (for Label type) ──
+    /// <summary>When true, text wraps to next line if it exceeds element width.</summary>
+    public bool WordWrap { get; set; } = true;
 
     // ── TextBox properties (for TextBox type) ──
     /// <summary>Placeholder text shown when input is empty.</summary>
@@ -282,6 +299,8 @@ public class UIElement
             OnHoverExit = OnHoverExit,
             IsHovered = IsHovered,
             Tag = this,
+            WordWrap = WordWrap,
+            Alignment = Alignment,
         };
     }
 
@@ -338,7 +357,8 @@ public class UIElement
     {
         float x = X, y = Y, w = Width, h = Height;
         if (AutoFillWindow) { x = 0f; y = 0f; w = canvasW; h = canvasH; }
-        if (AutoCenter) { x = Math.Max(0f, (canvasW - w) * 0.5f); y = Math.Max(0f, (canvasH - h) * 0.5f); }
+        if (AutoCenterX) { x = Math.Max(0f, (canvasW - w) * 0.5f); }
+        if (AutoCenterY) { y = Math.Max(0f, (canvasH - h) * 0.5f); }
         return (x, y, w, h);
     }
 
@@ -389,6 +409,7 @@ public class UIButtonData
     public TextAlignment Alignment { get; set; } = TextAlignment.Center;
     public bool IsVisible { get; set; } = true;
     public bool IsHovered { get; set; }
+    public bool WordWrap { get; set; } = false;
     public string ClickBehaviorLabel { get; set; } = "None";
     public string HoverEnterLabel { get; set; } = "None";
     public string HoverExitLabel { get; set; } = "None";
@@ -403,7 +424,8 @@ public class UIButtonData
             Label = Text, X = X, Y = Y, W = Width, H = Height,
             OnClick = onClickOverride ?? OnClick,
             OnHoverEnter = OnHoverEnter, OnHoverExit = OnHoverExit,
-            IsHovered = IsHovered, Tag = this,
+            IsHovered = IsHovered, Tag = this, WordWrap = WordWrap,
+            Alignment = Alignment,
         };
     }
 }

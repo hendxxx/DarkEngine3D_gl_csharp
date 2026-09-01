@@ -209,9 +209,12 @@ public unsafe class ViewportPanel
             }
 
             // Auto-center: center the element in the viewport (in texture coordinates)
-            if (elem.AutoCenter)
+            if (elem.AutoCenterX)
             {
                 elem.X = Math.Max(0f, (_texW - elem.Width) * 0.5f);
+            }
+            if (elem.AutoCenterY)
+            {
                 elem.Y = Math.Max(0f, (_texH - elem.Height) * 0.5f);
             }
 
@@ -387,9 +390,63 @@ public unsafe class ViewportPanel
                 textX = Math.Max(csx0 + 2f, Math.Min(textX, csx1 - textW - 2f));
                 textY = Math.Max(csy0 + 2f, Math.Min(textY, csy1 - textH - 2f));
 
-                drawList.AddText(fontToUse, previewFontSize, new Vector2(textX, textY),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f * elemOpacity)),
-                    label);
+                if (elem.WordWrap && elem.Type == UIElementType.Label)
+                {
+                    // Word wrap: split text into lines that fit within the element width
+                    var lines = new List<string>();
+                    var words = label.Split(' ');
+                    string currentLine = "";
+                    foreach (var word in words)
+                    {
+                        string testLine = string.IsNullOrEmpty(currentLine) ? word : currentLine + " " + word;
+                        var testSize = hasCustomFont
+                            ? fontToUse.CalcTextSizeA(previewFontSize, float.MaxValue, 0f, testLine)
+                            : ImGui.CalcTextSize(testLine);
+                        if (testSize.X > availW && !string.IsNullOrEmpty(currentLine))
+                        {
+                            lines.Add(currentLine);
+                            currentLine = word;
+                        }
+                        else
+                        {
+                            currentLine = testLine;
+                        }
+                    }
+                    if (!string.IsNullOrEmpty(currentLine))
+                        lines.Add(currentLine);
+                    // Render each line with per-line alignment
+                    float lineHeight = previewFontSize * 1.2f;
+                    float startY = csy0 + (csy1 - csy0) * 0.5f - (lines.Count * lineHeight) * 0.5f;
+                    for (int li = 0; li < lines.Count; li++)
+                    {
+                        var lineSize = hasCustomFont
+                            ? fontToUse.CalcTextSizeA(previewFontSize, float.MaxValue, 0f, lines[li])
+                            : ImGui.CalcTextSize(lines[li]);
+                        float lineX;
+                        switch (elem.Alignment)
+                        {
+                            case TextAlignment.Left:
+                                lineX = csx0 + textPad;
+                                break;
+                            case TextAlignment.Right:
+                                lineX = csx1 - textPad - lineSize.X;
+                                break;
+                            default: // Center
+                                lineX = csx0 + (csx1 - csx0) * 0.5f - lineSize.X * 0.5f;
+                                break;
+                        }
+                        lineX = Math.Max(csx0 + 2f, Math.Min(lineX, csx1 - lineSize.X - 2f));
+                        drawList.AddText(fontToUse, previewFontSize, new Vector2(lineX, startY + li * lineHeight),
+                            ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f * elemOpacity)),
+                            lines[li]);
+                    }
+                }
+                else
+                {
+                    drawList.AddText(fontToUse, previewFontSize, new Vector2(textX, textY),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f * elemOpacity)),
+                        label);
+                }
             }
 
             //  Draw border  skip for Labels with default transparent border colors 
@@ -824,6 +881,8 @@ public unsafe class ViewportPanel
                         elem.SelectedIndex = (elem.SelectedIndex + 1) % elem.Options.Count;
                         Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' → '{elem.Options[elem.SelectedIndex]}'");
                     }
+
+
                 }
                 else
                 {
@@ -841,6 +900,8 @@ public unsafe class ViewportPanel
                 DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
         }
     }
+
+
 
     //  Preview texture cache for viewport editor 
     private readonly Dictionary<string, uint> _previewTextureCache = [];
@@ -870,7 +931,11 @@ public unsafe class ViewportPanel
             return cached;
 
         if (!File.Exists(path))
+        {
+            Console.WriteLine($"[Viewport] Image file not found: {path}");
             return 0;
+        }
+        Console.WriteLine($"[Viewport] Loading image: {path}");
 
         try
         {
@@ -897,8 +962,9 @@ public unsafe class ViewportPanel
             _previewTextureDims[path] = (image.Width, image.Height);
             return texID;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[Viewport] Failed to load image '{path}': {ex.Message}");
             return 0;
         }
     }
@@ -2159,12 +2225,17 @@ ImGui.SameLine();
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
                             _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
 
-                            // Auto-center owns the position  manually dragging the element
-                            // turns auto-center OFF so the drag isn't fought every frame (bug #6).
-                            if (selUiElem.AutoCenter)
+                            // Auto-center owns the position — manually dragging the element
+                            // turns auto-center OFF so the drag isn't fought every frame.
+                            if (selUiElem.AutoCenterX)
                             {
-                                selUiElem.AutoCenter = false;
-                                Console.WriteLine($"[Viewport] Auto-center disabled on '{selUiElem.Name}' (manual drag)");
+                                selUiElem.AutoCenterX = false;
+                                Console.WriteLine($"[Viewport] Auto-center X disabled on '{selUiElem.Name}' (manual drag)");
+                            }
+                            if (selUiElem.AutoCenterY)
+                            {
+                                selUiElem.AutoCenterY = false;
+                                Console.WriteLine($"[Viewport] Auto-center Y disabled on '{selUiElem.Name}' (manual drag)");
                             }
                         }
                     }

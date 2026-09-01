@@ -41,7 +41,8 @@ public class SceneElementData
     public bool IsVisible { get; set; } = true;
     public float Opacity { get; set; } = 1f;
     public bool AutoFillWindow { get; set; } = false;
-    public bool AutoCenter { get; set; } = false;
+    public bool AutoCenterX { get; set; } = false;
+    public bool AutoCenterY { get; set; } = false;
     public bool UseHover { get; set; } = true;
 
     // Behavior string — mapped to actual Action<> at runtime
@@ -66,6 +67,8 @@ public class SceneElementData
 
     // ── Fallback text when image fails to load ──
     public string FallbackText { get; set; } = "";
+    public bool WordWrap { get; set; } = true;
+    public string TriggeredByKeyboardButton { get; set; } = "";
 
     // ── TextBox properties ──
     public string Placeholder { get; set; } = "Enter text...";

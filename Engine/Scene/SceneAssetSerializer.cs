@@ -257,13 +257,15 @@ public static class SceneAssetSerializer
             IsVisible = data.IsVisible,
             Opacity = Math.Clamp(data.Opacity, 0f, 1f),
             AutoFillWindow = data.AutoFillWindow,
-            AutoCenter = data.AutoCenter,
+            AutoCenterX = data.AutoCenterX,
+            AutoCenterY = data.AutoCenterY,
             UseHover = data.UseHover,
             ClickBehaviorLabel = data.ClickBehavior,
             HoverEnterLabel = data.HoverEnterBehavior,
-            HoverExitLabel = data.HoverExitBehavior,
-            FallbackText = data.FallbackText,
-
+            HoverExitLabel = data.HoverExitBehavior,            FallbackText = data.FallbackText,
+            WordWrap = data.WordWrap,
+            TriggeredByKeyboardButton = data.TriggeredByKeyboardButton,
+ 
             // ── New element type properties ──
             MinValue = data.MinValue,
             MaxValue = data.MaxValue,
@@ -357,13 +359,15 @@ public static class SceneAssetSerializer
             IsVisible = elem.IsVisible,
             Opacity = elem.Opacity,
             AutoFillWindow = elem.AutoFillWindow,
-            AutoCenter = elem.AutoCenter,
+            AutoCenterX = elem.AutoCenterX,
+            AutoCenterY = elem.AutoCenterY,
             UseHover = elem.UseHover,
             ClickBehavior = elem.ClickBehaviorLabel,
             HoverEnterBehavior = elem.HoverEnterLabel,
-            HoverExitBehavior = elem.HoverExitLabel,
-            FallbackText = elem.FallbackText,
-
+            HoverExitBehavior = elem.HoverExitLabel,            FallbackText = elem.FallbackText,
+            WordWrap = elem.WordWrap,
+            TriggeredByKeyboardButton = elem.TriggeredByKeyboardButton,
+ 
             // ── New element type properties ──
             MinValue = elem.MinValue,
             MaxValue = elem.MaxValue,

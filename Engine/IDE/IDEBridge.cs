@@ -104,6 +104,8 @@ public class IDEBridge
     public bool InGameActive { get; set; }
     // ── Preview mode (F5) — hides editor gizmos/helpers without changing camera behavior ──
     public bool IsPreviewMode { get; set; }
+    // ── In-game option: when true, mouse cursor stays visible during in-game mode ──
+    public bool ShowCursorInGame { get; set; } = false;
 
     // ── Editor debug grid toggle (shown in the viewport while editing) ──
     public bool ShowDebugGrid { get; set; } = true;

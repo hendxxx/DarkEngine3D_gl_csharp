@@ -129,6 +129,7 @@ public unsafe class Program
         // stay consistent across restarts (previously reset to defaults).
         ide.Bridge.ShowDebugGrid = settings.ShowDebugGrid;
         ide.Bridge.ShowShadows = settings.ShowShadows;
+        ide.Bridge.ShowCursorInGame = settings.ShowCursorInGame;
         ide.SetViewportSnap(settings.SnapEnabled, settings.SnapGridSize);
 
         SceneManager sceneManager = new();

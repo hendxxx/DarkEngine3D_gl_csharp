@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
@@ -253,13 +254,23 @@ public class InspectorPanel
         if (!hasImage && ImGui.CollapsingHeader("Text & Font", ImGuiTreeNodeFlags.DefaultOpen))
         {
             string text = elem.Text;
-            if (ImGui.InputText("Label", ref text, 256))
+            if (ImGui.InputTextMultiline("Label", ref text, 4096, new System.Numerics.Vector2(-1, 80)))
                 elem.Text = text;
 
             // Font size slider with reset
             float fontSize = elem.FontSize;
             if (ImGui.SliderFloat("Font Size", ref fontSize, 8f, 72f, "%.0f"))
                 elem.FontSize = fontSize;
+
+            // Word wrap toggle (Label type)
+            if (elem.Type == UIElementType.Label)
+            {
+                bool wordWrap = elem.WordWrap;
+                if (ImGui.Checkbox("Word Wrap", ref wordWrap))
+                    elem.WordWrap = wordWrap;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("When enabled, text wraps to the next line if it exceeds element width");
+            }
 
             // Font picker (combo from scanned fonts)
             ScanFontsOnce();
@@ -529,6 +540,32 @@ public class InspectorPanel
                 elem.OnHoverExit = null;
             }
 
+            //  TriggeredByKeyboardButton (Container type only) 
+            if (elem.Type == UIElementType.Container)
+            {
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Text("Triggered by Keyboard:");
+                ImGui.SetNextItemWidth(-1);
+
+                string[] keyboardKeys = ["(none)", "Escape", "F1", "F2", "F3", "F4", "F5",
+                    "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+                    "Space", "Enter", "Tab"];
+                int kbIdx = 0;
+                for (int i = 0; i < keyboardKeys.Length; i++)
+                {
+                    if (string.Equals(keyboardKeys[i], elem.TriggeredByKeyboardButton, StringComparison.OrdinalIgnoreCase))
+                    { kbIdx = i; break; }
+                }
+                if (ImGui.Combo("##trigger_kb", ref kbIdx, keyboardKeys, keyboardKeys.Length))
+                {
+                    elem.TriggeredByKeyboardButton = kbIdx == 0 ? "" : keyboardKeys[kbIdx];
+                    Console.WriteLine($"[Inspector] Container '{elem.Name}' triggered by keyboard: '{elem.TriggeredByKeyboardButton}'");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Keyboard key that toggles this container in in-game mode (e.g. Escape = ESC key)");
+            }
+
             ImGui.Spacing();
             ImGui.TextDisabled("Save scene to persist behavior changes");
         }
@@ -571,12 +608,19 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("When enabled, this element automatically fills the entire viewport (X=0, Y=0, W=viewport, H=viewport)");
 
-            //  Auto-center (for overlays/dialogs) 
-            bool autoCenter = elem.AutoCenter;
-            if (ImGui.Checkbox("Auto-center", ref autoCenter))
-                elem.AutoCenter = autoCenter;
+            //  Auto-center horizontal
+            bool autoCenterX = elem.AutoCenterX;
+            if (ImGui.Checkbox("Auto-center X (horizontal)", ref autoCenterX))
+                elem.AutoCenterX = autoCenterX;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("When enabled, this element is automatically centered in the viewport");
+                ImGui.SetTooltip("When enabled, this element is automatically centered horizontally in the viewport");
+
+            //  Auto-center vertical
+            bool autoCenterY = elem.AutoCenterY;
+            if (ImGui.Checkbox("Auto-center Y (vertical)", ref autoCenterY))
+                elem.AutoCenterY = autoCenterY;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("When enabled, this element is automatically centered vertically in the viewport");
         }
 
         // 
@@ -1245,6 +1289,28 @@ public class InspectorPanel
                 GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
                 Console.WriteLine($"[Inspector] Reset render properties to defaults for scene '{editorScene.Name}'");
             }
+        }
+
+        //
+        //  In-Game Settings
+        //
+        if (ImGui.CollapsingHeader("In-Game Settings", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            bool showCursor = _bridge.ShowCursorInGame;
+            if (ImGui.Checkbox("Show Mouse In-Game", ref showCursor))
+            {
+                _bridge.ShowCursorInGame = showCursor;
+                try
+                {
+                    var s = SettingsSave.Load();
+                    s.ShowCursorInGame = showCursor;
+                    SettingsSave.Save(s);
+                }
+                catch { }
+                Console.WriteLine($"[Inspector] Show Mouse In-Game: {showCursor}");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("When enabled, mouse cursor stays visible during in-game mode (GameScene)");
         }
     }
 
