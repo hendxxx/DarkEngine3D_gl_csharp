@@ -56,6 +56,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         private float totalTime = 0.0f;
+#pragma warning disable CS0414
         private float exposureState = 0.0f;
 
         /// <summary>Optional cloud-coverage override (0..1). When set, this replaces

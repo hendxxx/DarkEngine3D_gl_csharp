@@ -57,6 +57,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         // ── Texture caches ──
         private readonly Dictionary<string, uint> _textureCache = new();
+#pragma warning disable CS0414
         private uint _moonTextureID = 0;
 
         // ── Time accumulator ──

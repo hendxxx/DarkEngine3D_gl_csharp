@@ -13,6 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         private static delegate* unmanaged[Cdecl]<IntPtr, int, void> glfwSetWindowShouldClose;
         static bool isWireframe = false;
         static bool f1Pressed = false;
+#pragma warning disable CS0414
         static float speedCam = 1.0f;
         static int lineVLoc = 0;
         static int linePLoc = 0;
@@ -40,6 +41,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         public static bool GetCullFreezeMode() => cullFreezeMode;
         public static Matrix4x4 GetCullFreezeViewProj() => cullFreezeViewProj;
 
+#pragma warning disable CS0414
         // ← TAMBAHKAN: Travel time measurement system
         static Stopwatch? travelStopwatch = null;
         static Vector3? travelStartPos = new Vector3();

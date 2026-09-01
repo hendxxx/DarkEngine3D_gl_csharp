@@ -42,6 +42,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _albedoMapLoc;
         private readonly int _jointLoc;
         private readonly int _jointsLoc;
+#pragma warning disable CS0649
         private readonly int _useSkinningLoc;
         
         // Shadow map uniforms

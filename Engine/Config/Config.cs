@@ -234,6 +234,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public readonly static float Run = 1.25f;
         public readonly static float Sprint = 4.0f;
 
+#pragma warning disable CS0414
         private readonly static float _verticalVelocity = 0f;
         private const float gravity = -25f;
         private const float jumpForce = 10f;

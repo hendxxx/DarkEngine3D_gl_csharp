@@ -20,7 +20,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         private int modelLocation;
         private Vector3 objectPosition;
-        private Vector3[] localVertices;
+        private Vector3[] localVertices = [];
         private Matrix4x4 modelMatrix;
 
         public uint VAO, VBO;

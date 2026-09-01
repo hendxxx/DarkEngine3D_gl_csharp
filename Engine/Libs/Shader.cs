@@ -28,6 +28,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // program with 7 optional maps + tuning (reuses the shared vertex shader).
         static uint objectPbrShaderProgram;
 
+#pragma warning disable CS0649
         static uint rainStreakShaderProgram;
         static uint rainOverlayShaderProgram;
         static uint rainGlassShaderProgram; 

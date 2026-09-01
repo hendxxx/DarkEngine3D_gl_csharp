@@ -106,10 +106,12 @@ public unsafe class MainMenuScene : IScene
     private SaveSlotInfo[] _loadSlots = new SaveSlotInfo[SaveManager.NumSlots];
 
     // ── Exit confirm selection ──
+#pragma warning disable CS0414
     private int _exitConfirmSelection = 0;
 
     // ── Settings navigation state ──
     private int _settingsSelection = 0;
+#pragma warning disable CS0414
     private int _settingsLastHoveredRow = -1;
 
     // 🛠️ FIX #9: Use shared ResolutionConfig instead of local ResInfo struct.
@@ -1519,6 +1521,7 @@ public unsafe class MainMenuScene : IScene
         int w = Glfw.WindowWidth;
         int h = Glfw.WindowHeight;
 
+#pragma warning disable CS0219
         // ── Grid lines ──
         float gridSpacing = 40f;
         float gridAlpha = 0.04f + 0.02f * MathF.Sin(_totalTime * 0.3f);

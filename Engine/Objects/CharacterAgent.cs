@@ -92,6 +92,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly Random _rng;
 
         private readonly string _idleClip;
+#pragma warning disable CS0169
         private readonly List<string> _idleClips;
         private readonly string _walkClip;
         private readonly List<string> _walkClips;
@@ -934,8 +935,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             Block,
             Jump
         }
+#pragma warning disable CS0414
         private AnimState _animState = AnimState.Idle;
 
+#pragma warning disable CS0414
+#pragma warning disable CS0414
         private bool _punchPlaying = false;
         private bool _blockPlaying = false;
 
@@ -943,6 +947,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private bool _isBackward = false;
         private string _currentBackwardClip;
 
+#pragma warning disable CS0414
 
         private Gait _currentGait = Gait.Idle;
         private bool _isWalking = false;

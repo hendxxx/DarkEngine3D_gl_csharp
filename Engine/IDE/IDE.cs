@@ -27,11 +27,11 @@ public class IDE : IDisposable
     private readonly ConsolePanel _console;
     private readonly SceneManagerPanel _sceneManagerPanel;
     private readonly HierarchyPanel _hierarchy;
-    private readonly RenderTimePanel _renderTime;
-    private readonly ShadowPanel _shadowPanel;
+    private readonly RenderTimePanel _renderTime = null!;
+    private readonly ShadowPanel _shadowPanel = null!;
     // PostFX removed
-    private readonly PbrPanel _pbrPanel;
-    private readonly TerrainBrushPanel _terrainBrush;
+    private readonly PbrPanel _pbrPanel = null!;
+    private readonly TerrainBrushPanel _terrainBrush = null!;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
     private readonly ImGuiFileDialog _glbDialog = new();
 
@@ -230,7 +230,7 @@ public class IDE : IDisposable
         float alpha = Math.Clamp(_inGameCameraWarningTimer, 0f, 1f);
         var font = ImGui.GetFont();
         float fontSize = Bridge.ViewportFontSize > 0f ? Bridge.ViewportFontSize : 18f;
-        var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, _inGameCameraWarning);
+        var textSize = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, _inGameCameraWarning);
         float cx = io.DisplaySize.X * 0.5f;
         float cy = io.DisplaySize.Y * 0.15f;
         var bgMin = new Vector2(cx - textSize.X * 0.5f - 12f, cy - textSize.Y * 0.5f - 6f);
@@ -673,8 +673,11 @@ public class IDE : IDisposable
     /// then calls _imgui.Render() to flush. Exit via F8 only.</summary>
     /// <summary>Scan for IDE fonts (project + common Windows fonts) and render as menu items.</summary>
     private string _cachedIDEFontPath = "";
+#pragma warning disable CS0414
     private bool _fontCacheLoaded = false;
+#pragma warning restore CS0414
 
+#pragma warning disable CS0414
     private void ScanIDEFontsMenu()
     {
         if (_ideFontNames == null)

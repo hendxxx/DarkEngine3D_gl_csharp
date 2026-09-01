@@ -24,6 +24,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         private uint _simpleVAO, _simpleVBO;
 
         private readonly List<IPostProcessPass> _passes = new();
+#pragma warning disable CS0414
         private int _ppDebugCount = 0;
 
         public PostProcessStack(int width, int height)

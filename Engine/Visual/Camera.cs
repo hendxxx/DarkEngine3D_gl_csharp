@@ -67,7 +67,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             get => _cameraMode;
             set => _cameraMode = value;
         }
-        public CameraPreset CurrentPreset => CameraConfig.Presets.TryGetValue(_cameraMode, out var p) ? p : null;
+        public CameraPreset? CurrentPreset => CameraConfig.Presets.TryGetValue(_cameraMode, out var p) ? p : null;
 
         // Shoulder swap
         private float shoulderOffset = 0.6f;

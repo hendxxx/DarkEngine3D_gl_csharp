@@ -685,6 +685,7 @@ public unsafe class EditorObject
     public Vector3? GizmoPivotOverride { get; set; }
 
     // ── Shader uniform locations (cached for Draw overloads) ──
+#pragma warning disable CS0414
     private int _modelLoc = -1, _viewLoc = -1, _projLoc = -1;
     private int _sunDirLoc = -1, _lightColorLoc = -1, _viewPosLoc = -1;
     private int _useFogLoc = -1, _fogColorLoc = -1;

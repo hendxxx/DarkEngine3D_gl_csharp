@@ -23,6 +23,7 @@ public class InspectorPanel
     //    object changes so a fresh selection always starts on the first layer. 
     private EditorObject? _texSettingsObj;
     private int _texSlotIdx;
+#pragma warning disable CS0169
     private int _terrainLayerIdx;
     private int _dynActiveLayerIdx = 0; // active layer in dynamic system
 
