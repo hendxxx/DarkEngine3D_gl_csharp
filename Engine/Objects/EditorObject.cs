@@ -384,16 +384,12 @@ public unsafe class EditorObject
     /// <summary>For Point lights: falloff distance in world units (0 = no falloff, uses intensity only).</summary>
     public float LightPointRadius { get; set; } = 50f;
 
-    // ── Terrain (only used when PrimitiveType == Plane) ──
+    // ── Terrain removed — planes render as flat PBR primitives ──
     private bool _terrainEnabled = false;
-    /// <summary>Planes ALWAYS render as advanced heightmapped terrain — the "Advanced
-    /// Terrain" toggle was removed (planes are forced into advanced mode). The backing
-    /// flag is only kept settable so old scene files ("terrainEnabled": false) stay
-    /// compatible: any value assigned to a Plane is coerced back to true.</summary>
     public bool TerrainEnabled
     {
-        get => _terrainEnabled || PrimitiveType == EditorPrimitiveType.Plane;
-        set => _terrainEnabled = value || PrimitiveType == EditorPrimitiveType.Plane; // planes are always advanced terrain
+        get => false; // terrain rendering disabled — flat plane only
+        set => _terrainEnabled = false; // always false
     }
     /// <summary>Heightmap file (.raw 8-bit or any image). Empty = flat plane (height 0 everywhere).</summary>
     public string TerrainHeightmapPath { get; set; } = "";

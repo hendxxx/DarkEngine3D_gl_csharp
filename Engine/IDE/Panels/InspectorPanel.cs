@@ -1497,11 +1497,8 @@ public class InspectorPanel
                 ImGui.SetTooltip("Draw dark contour lines every 10% of the height range  the texture stays\nfully visible while the relief reads clearly. Auto-selects the first terrain if none is selected. Not saved with the scene.");
         }
 
-        //  Terrain properties (Plane only) 
-        if (editorObj.PrimitiveType == EditorPrimitiveType.Plane)
-        {
-            RenderTerrainInspector(editorObj);
-        }
+        //  Terrain removed — planes render as flat PBR primitives
+        //  (RenderTerrainInspector stripped per user request)
 
         //  Type-specific properties (Camera / Light / Sky) 
         if (editorObj.PrimitiveType == EditorPrimitiveType.Camera &&

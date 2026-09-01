@@ -6,259 +6,41 @@ using System.Text;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 namespace DarkEngine3D_gl_csharp.Engine.Terrains
 {
+    /// <summary>Terrain chunk — gutted to static drawing utilities only. No heightmap rendering.</summary>
     public class TerrainChunk : IDisposable
     {
-
-        // Global LOD level (1..3). Higher = more subdivisions. 1 = 128x128, 2 = 256x256, 3 = 512x512 (per chunk).
-        // LOD mapping implemented in GetSubdivisionsForLOD
+        // Static properties kept for API compatibility with other systems
         public static int GlobalLODLevel { get; set; } = 1;
-        public static int MapSize { get; set; } = 512;   // default map size (photoreal maps are ~512/1024)
-        public static int ChunkSize { get; set; } = Math.Max(MapSize / 8, 32);  // grid = map/8, min 32
+        public static int MapSize { get; set; } = 512;
+        public static int ChunkSize { get; set; } = 64;
         public static int ChunksPerSide { get; set; } = MapSize / ChunkSize;
-        public static float TerrainScale { get; set; } = 1.0f;  // Tambahkan ini
-        public static float HeightScale { get; set; } = 80.0f;  // Tambahkan ini
+        public static float TerrainScale { get; set; } = 1.0f;
+        public static float HeightScale { get; set; } = 80.0f;
 
-        // Cached value — updated whenever ChunksPerSide or ChunkSize changes (in Init)
         private static int _halfMapSize = (MapSize / ChunkSize * ChunkSize) / 2;
-
-        private static TerrainData[,]? worldMap = null;
-
         private static readonly Plane[] planes = new Plane[6];
         private static int cachedTotalMapTriangles = 0;
 
-        private uint shaderProgram;
-        private int modelLocation;
-
-        // Line shader + uniform locations untuk menggambar kotak
-        private uint lineShaderProgram;
-        private int lineViewLocation;
-        private int lineProjLocation;
-
-        // Frozen frustum storage (populated when user presses P)
+        // Frozen frustum storage
         private Vector3[]? frozenCorners = null;
         private Plane[]? frozenPlanes = null;
-
-        private bool highlightFrustumMatches = false;
 
         // Cached debug buffers (shared, created on first use)
         private static uint debugVao = 0;
         private static uint debugVbo = 0;
         private static readonly Lock debugBufferLock = new();
 
-        // Event untuk melacak progress loading
         public static event Action<float>? OnLoadProgress;
-
-        private MapLoader mapLoader = null!;
-        private readonly Texture[] terrainTextures = [];
 
         public TerrainChunk(string imagePath, Texture[] _terrainTextures)
         {
-            terrainTextures = _terrainTextures;
-            Init(imagePath);
-        }
-
-        private static int GetSubdivisionsForLOD(int lod)
-        {
-            return lod switch
-            {
-                4 => 6, // super High detail (6x6 grid)
-                3 => 4, // High detail (4x4 grid)
-                2 => 2, // Medium detail (2x2 grid)
-                1 => 1, // Low detail (1x1 grid)
-                _ => 1
-            };
+            // Terrain rendering removed — flat plane only.
+            OnLoadProgress?.Invoke(1.0f);
         }
 
         public void Init(string imagePath)
         {
-            // Dispose existing world map contents
-            if (worldMap != null)
-            {
-                for (int x = 0; x < worldMap.GetLength(0); x++)
-                {
-                    for (int z = 0; z < worldMap.GetLength(1); z++)
-                    {
-                        var c = worldMap[x, z];
-                        if (c != null)
-                        {
-                            c.Dispose();
-                            worldMap[x, z] = null!;
-                        }
-                    }
-                }
-                worldMap = null;
-            }
-
-            // Emit 0% progress sebelum mulai load
-            OnLoadProgress?.Invoke(0f);
-            // Load terrain dengan scale & height 
-            mapLoader = new MapLoader(imagePath);
-
-            MapLoader.TerrainScale = TerrainScale;
-            MapLoader.HeightScale = HeightScale;
-
-
-            // Emit 25% progress
-            OnLoadProgress?.Invoke(0.25f);
-
-            // Update static MapSize dari image
-            MapSize = mapLoader.Width;
-
-            // Grid (chunk) size = map size / 8, with a minimum of 32:
-            //   512 → 64, 128 → 32, 1024 → 128.
-            ChunkSize = Math.Max(MapSize / 8, 32);
-            if (ChunkSize > MapSize) ChunkSize = Math.Max(1, MapSize); // tiny maps → single chunk
-
-            ChunksPerSide = Math.Max(1, MapSize / ChunkSize);
-            _halfMapSize = (ChunksPerSide * ChunkSize) / 2;
-
-            Console.WriteLine($"[TerrainChunk] Init: MapSize={MapSize}, ChunkSize={ChunkSize}, ChunksPerSide={ChunksPerSide}, halfMapSize={_halfMapSize}");
-
-            uint _shaderProgram = Shader.GetShaderProgram();
-            worldMap = new TerrainData[ChunksPerSide, ChunksPerSide];
-
-            int halfMapSize = (ChunksPerSide * ChunkSize) / 2;
-            int subdivisions = GetSubdivisionsForLOD(GlobalLODLevel);
-
-            // Emit 30% progress
-            OnLoadProgress?.Invoke(0.30f);
-
-            int totalChunks = ChunksPerSide * ChunksPerSide;
-            int processedChunks = 0;
-
-            for (int x = 0; x < ChunksPerSide; x++)
-            {
-                for (int z = 0; z < ChunksPerSide; z++)
-                {
-                    worldMap[x, z] = new TerrainData();
-
-                    int offsetX = (x * ChunkSize) - halfMapSize;
-                    int offsetZ = (z * ChunkSize) - halfMapSize;
-
-                    worldMap[x, z].Generate(ChunkSize, offsetX, offsetZ, mapLoader, terrainTextures);
-
-                    processedChunks++;
-
-                    // Progress dari 30% hingga 95%
-                    float progress = 0.30f + (processedChunks / (float)totalChunks) * 0.65f;
-                    OnLoadProgress?.Invoke(progress);
-                }
-            }
-
-            modelLocation = GL.GetUniformLocation(_shaderProgram, "model");
-            shaderProgram = _shaderProgram;
-
-            lineShaderProgram = Shader.GetLineShaderProgram();
-            lineViewLocation = GL.GetUniformLocation(lineShaderProgram, "view");
-            lineProjLocation = GL.GetUniformLocation(lineShaderProgram, "projection");
-
-            // Hitung total map triangles sekali untuk di-cache
-            cachedTotalMapTriangles = 0;
-            for (int x = 0; x < ChunksPerSide; x++)
-            {
-                for (int z = 0; z < ChunksPerSide; z++)
-                {
-                    if (worldMap[x, z] != null) cachedTotalMapTriangles += worldMap[x, z].TriangleCount;
-                }
-            }
-
-            // Print metrics
-            //PrintTerrainMetrics();
-
-            // Emit 100% progress
-            OnLoadProgress?.Invoke(1.0f);
-        }
-
-        /// <summary>
-        /// Cetak statistik terrain ke console dan file untuk measurement
-        /// </summary>
-        private static void PrintTerrainMetrics()
-        {
-            // Hitung total vertices dan triangles
-            int totalVertices = 0;
-            int totalTriangles = 0;
-            float minHeightGlobal = float.MaxValue;
-            float maxHeightGlobal = float.MinValue;
-
-            if (worldMap != null)
-            {
-                for (int x = 0; x < ChunksPerSide; x++)
-                {
-                    for (int z = 0; z < ChunksPerSide; z++)
-                    {
-                        var chunk = worldMap[x, z];
-                        if (chunk != null)
-                        {
-                            totalVertices += chunk.VertexCount;
-                            totalTriangles += chunk.TriangleCount;
-                            minHeightGlobal = MathF.Min(minHeightGlobal, chunk.MinY);
-                            maxHeightGlobal = MathF.Max(maxHeightGlobal, chunk.MaxY);
-                        }
-                    }
-                }
-            }
-
-            // Hitung world size
-            float worldWidth = MapSize * TerrainScale;
-            float worldHeight = MapSize * TerrainScale;
-            float mapArea = worldWidth * worldHeight;
-            float heightRange = maxHeightGlobal - minHeightGlobal;
-
-            // Format output
-            var metrics = new StringBuilder();
-            metrics.AppendLine("═══════════════════════════════════════════════════════");
-            metrics.AppendLine("             🎮 TERRAIN METRICS REPORT 🎮");
-            metrics.AppendLine("═══════════════════════════════════════════════════════");
-            metrics.AppendLine();
-
-            metrics.AppendLine("📐 MAP DIMENSIONS:");
-            metrics.AppendLine($"  • MapSize (pixels):        {MapSize} × {MapSize}");
-            metrics.AppendLine($"  • TerrainScale:            {TerrainScale}");
-            metrics.AppendLine($"  • World Size:              {worldWidth:F1} × {worldHeight:F1} units");
-            metrics.AppendLine($"  • Total Area:              {mapArea:F0} square units");
-            metrics.AppendLine();
-
-            metrics.AppendLine("📊 MESH DATA:");
-            metrics.AppendLine($"  • ChunkSize:               {ChunkSize} × {ChunkSize} pixels");
-            metrics.AppendLine($"  • ChunksPerSide:           {ChunksPerSide} × {ChunksPerSide}");
-            metrics.AppendLine($"  • Total Chunks:            {ChunksPerSide * ChunksPerSide}");
-            metrics.AppendLine($"  • Total Vertices:          {totalVertices:N0}");
-            metrics.AppendLine($"  • Total Triangles:         {totalTriangles:N0}");
-            metrics.AppendLine($"  • Avg Vertices/Chunk:      {totalVertices / (ChunksPerSide * ChunksPerSide):F0}");
-            metrics.AppendLine();
-
-            metrics.AppendLine("🏔️  ELEVATION DATA:");
-            metrics.AppendLine($"  • Min Height:              {minHeightGlobal:F2} units");
-            metrics.AppendLine($"  • Max Height:              {maxHeightGlobal:F2} units");
-            metrics.AppendLine($"  • Height Range:            {heightRange:F2} units");
-            metrics.AppendLine($"  • Aspect Ratio (H:W):      1:{(worldWidth / heightRange):F2}");
-            metrics.AppendLine();
-
-            metrics.AppendLine("🎲 LOD & DETAIL:");
-            metrics.AppendLine($"  • GlobalLODLevel:          {GlobalLODLevel}");
-            metrics.AppendLine($"  • Subdivisions/LOD:        {GetSubdivisionsForLOD(GlobalLODLevel)}");
-            metrics.AppendLine($"  • Vertex Density:          {(totalVertices / mapArea):F4} verts/unit²");
-            metrics.AppendLine();
-
-            metrics.AppendLine("═══════════════════════════════════════════════════════");
-
-            string report = metrics.ToString();
-
-            // Print ke console
-            Console.WriteLine(report);
-            System.Diagnostics.Debug.WriteLine(report);
-
-            // Simpan ke file
-            try
-            {
-                string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "terrain_metrics.txt");
-                File.WriteAllText(logPath, report);
-                Console.WriteLine($"✅ Metrics saved to: {logPath}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Failed to save metrics: {ex.Message}");
-            }
+            // No-op — terrain rendering removed.
         }
 
         // Called by Keyboard when user presses P
@@ -275,10 +57,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         }
 
         // Expose MapLoader so external systems (main loop) can clamp camera before rendering
-        public MapLoader GetMapLoader()
-        {
-            return mapLoader;
-        }
+        public MapLoader? GetMapLoader() => null;
 
         public static int GetMapSize()
         {
@@ -290,10 +69,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             return ChunkSize;
         }
 
-        public void SetHighlightFrustumMatches(bool enabled)
-        {
-            highlightFrustumMatches = enabled;
-        }
+        public void SetHighlightFrustumMatches(bool enabled) { }
 
         public Plane[]? GetFrozenPlanes()
         {
@@ -302,162 +78,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         public int Render(Camera camera, Plane[]? frozenPlanes, Plane[]? cullFreezePlanes = null, bool skipDebug = false)
         {
-            int totalTriangles = 0;
-
-            GL.UseProgram(shaderProgram);
-            
-            // 1. Hitung Matriks Gabungan (View * Projection)
-            Matrix4x4 vp = camera.GetViewMatrix() * camera.GetProjectionMatrix();
-
-            ExtractPlanes(vp, planes);
-
-            // Gunakan cull-freeze planes jika aktif, bukan live camera frustum
-            Plane[] cullPlanes = cullFreezePlanes ?? planes;
-
-            bool usingFrozen = frozenPlanes != null;
-
-            for (int x = 0; x < ChunksPerSide; x++)
-            {
-                for (int z = 0; z < ChunksPerSide; z++)
-                {
-                    // 2. Cek apakah chunk terlihat (pakai cull freeze planes jika aktif)
-                    bool inside = IsChunkInFrustum(x, z, cullPlanes);
-
-                    if (inside)
-                    {
-                        Matrix4x4 model = Matrix4x4.Identity;
-                        unsafe
-                        {
-                            GL.UniformMatrix4fv(modelLocation, 1, false, (float*)&model);
-                        }
-
-                        if (worldMap?[x, z] != null)
-                        {
-                            // Hitung jarak untuk distance-based LOD
-                            float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
-                            float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
-                            float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
-                            Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
-                            float dist = Vector3.Distance(camera.Position, chunkCenter);
-
-                            // LOD distance-based pake threshold dari Config
-                            float tLOD0 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD0_Distance;
-                            float tLOD1 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD1_Distance;
-                            float tLOD2 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD2_Distance;
-                            int lodIndex;
-                            if (dist < tLOD0) lodIndex = 0;
-                            else if (dist < tLOD1) lodIndex = 1;
-                            else if (dist < tLOD2) lodIndex = 2;
-                            else lodIndex = 3;
-
-                            if (lodIndex > 3) lodIndex = 3;
-                              
-                            worldMap[x, z].Draw(lodIndex); 
-
-                            // Estimate actual triangles rendered based on LOD
-                            int chunkTriangles = worldMap[x, z].TriangleCount;
-                            if (lodIndex == 1) chunkTriangles /= 4;
-                            if (lodIndex == 2) chunkTriangles /= 16;
-                            if (lodIndex == 3) chunkTriangles /= 64;
-
-                            totalTriangles += chunkTriangles;
-                        }
-                    }
-
-                    // Draw bounding box only when debug BBox is enabled (P key toggle)
-                    // Hidden when skipDebug is true (preview/in-game mode)
-                    if (!skipDebug && Keyboard.GetShowBBox())
-                    {
-                        bool insideFrozen = false;
-                        if (usingFrozen)
-                            insideFrozen = IsAABBInsideFrustum(frozenPlanes, x, z);
-                        DrawChunkBoundingBox(x, z, usingFrozen, insideFrozen, inside, camera, camera.GetAspect());
-                    }
-
-                }
-            }
-
-            // If frozen frustum exists, draw the frozen frustum wireframe
-            // Hidden when skipDebug is true (preview/in-game mode)
-            if (!skipDebug && frozenCorners != null)
-            {
-                GL.UseProgram(lineShaderProgram);
-                GL.Disable(Const.GL_DEPTH_TEST);
-
-                Matrix4x4 v = camera.GetViewMatrix();
-                Matrix4x4 p = camera.GetProjectionMatrix();
-                unsafe
-                {
-                    GL.UniformMatrix4fv(lineViewLocation, 1, true, (float*)&v);
-                    GL.UniformMatrix4fv(lineProjLocation, 1, true, (float*)&p);
-                }
-                RenderFrustumDebug(frozenCorners, lineShaderProgram, lineViewLocation, lineProjLocation, camera);
-                GL.Enable(Const.GL_DEPTH_TEST);
-
-            }
-             
-            return totalTriangles;
+            // Terrain rendering removed — flat plane only.
+            return 0;
         }
 
         public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
         {
-            GL.UseProgram(shadowShader);
-
-            // Live normal-bias tuning (Shadow Settings panel) — game terrain shadows. Same
-            // size-based boost as the editor terrain (shared helper): the map is a huge
-            // heightmap (default 512×512 units, 80 units of relief). The per-chunk world
-            // footprint is the local scale that matters for shadow texels — a taller relief
-            // gets proportionally more normal bias while the clamp keeps peter-panning in
-            // check (whole-map footprint would saturate the clamp for every real map).
-            Visual.ShadowUniforms.UploadTerrainNormalBias(
-                shadowShader, ChunkSize * TerrainScale, HeightScale);
-
-            // Model matrix (identity)
-            Matrix4x4 model = Matrix4x4.Identity;
-            unsafe
-            {
-                GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
-            }
-
-            // Ambil frustum ortho cascade ini
-            Plane[]? orthoPlanes = CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
-
-            for (int x = 0; x < ChunksPerSide; x++)
-            {
-                for (int z = 0; z < ChunksPerSide; z++)
-                {
-                    if (worldMap?[x, z] == null)
-                        continue;
-
-                    // CULLING PAKAI ORTHO FRUSTUM (bukan kamera)
-                    if (!IsAABBInsideFrustumWorld(orthoPlanes, x, z))
-                        continue;
-
-                    // Hitung jarak untuk distance-based LOD (shadow)
-                    float chunkCenterX = ((x * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
-                    float chunkCenterZ = ((z * ChunkSize) - _halfMapSize + (ChunkSize * 0.5f)) * TerrainScale;
-                    float chunkCenterY = (worldMap[x, z].MinY + worldMap[x, z].MaxY) * 0.5f;
-                    Vector3 chunkCenter = new(chunkCenterX, chunkCenterY, chunkCenterZ);
-                    float dist = Vector3.Distance(camera.Position, chunkCenter);
-
-                    float tLOD0 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD0_Distance;
-                    float tLOD1 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD1_Distance;
-                    float tLOD2 = DarkEngine3D_gl_csharp.Engine.Config.LODConfig.TerrainLOD2_Distance;
-                    int lodIndex;
-                    if (dist < tLOD0) lodIndex = 0;
-                    else if (dist < tLOD1) lodIndex = 1;
-                    else if (dist < tLOD2) lodIndex = 2;
-                    else lodIndex = 3;
-
-                    if (lodIndex > 3) lodIndex = 3;
-
-                    worldMap[x, z].Draw(lodIndex, false);
-                }
-            }
-
-            // Restore the standard normal bias so subsequent casters drawn with this
-            // program in the same cascade don't inherit the terrain's boosted value.
-            Visual.ShadowUniforms.UploadNormalBias(shadowShader);
+            // Terrain shadow rendering removed — flat plane only.
         }
 
         private static bool IsAABBInsideFrustumWorld(Plane[]? frustumPlanes, int chunkIndexX, int chunkIndexZ)
@@ -468,19 +95,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             float maxX = minX + ChunkSize * TerrainScale;
             float minZ = ((chunkIndexZ * ChunkSize) - _halfMapSize) * TerrainScale;
             float maxZ = minZ + ChunkSize * TerrainScale;
-
-            float minY = -MapSize*2;
-            float maxY = MapSize*2;
-
-            if (worldMap != null)
-            {
-                var chunk = worldMap[chunkIndexX, chunkIndexZ];
-                if (chunk != null)
-                {
-                    minY = MathF.Min(minY, chunk.MinY);
-                    maxY = MathF.Max(maxY, chunk.MaxY);
-                }
-            }
+            float minY = -MapSize * 2;
+            float maxY = MapSize * 2;
 
             Span<Vector3> corners =
             [
@@ -620,17 +236,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             float minY = -5f;
             float maxY = 5f;
-
-            if (worldMap != null)
-            {
-                var chunk = worldMap[chunkIndexX, chunkIndexZ];
-                if (chunk != null)
-                {
-                    minY = MathF.Min(minY, chunk.MinY);
-                    maxY = MathF.Max(maxY, chunk.MaxY);
-                }
-            }
-
             float yPadding = 2.0f;
             minY -= yPadding;
             maxY += yPadding;
@@ -1499,7 +1104,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         private unsafe void DrawChunkBoundingBox( int chunkIndexX, int chunkIndexZ,  bool usingFrozen, bool insideFrozen, bool insideCamera,  Camera camera, float aspect)
         {
-            // Samakan dengan world-space AABB yang dipakai di culling
             float minX = ((chunkIndexX * ChunkSize) - _halfMapSize) * TerrainScale;
             float maxX = minX + ChunkSize * TerrainScale;
             float minZ = ((chunkIndexZ * ChunkSize) - _halfMapSize) * TerrainScale;
@@ -1507,18 +1111,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             float minY = -5f;
             float maxY = 5f;
-
-            if (worldMap != null)
-            {
-                var chunk = worldMap[chunkIndexX, chunkIndexZ];
-                if (chunk != null)
-                {
-                    minY = MathF.Min(minY, chunk.MinY);
-                    maxY = MathF.Max(maxY, chunk.MaxY);
-                }
-            }
-
-            // Optional padding biar box debug lebih gampang dilihat
             float yPadding = 2.0f;
             minY -= yPadding;
             maxY += yPadding;
@@ -1539,19 +1131,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
             float[] lineData =
             [
-                // Near
                 c[0].X, c[0].Y, c[0].Z,  c[1].X, c[1].Y, c[1].Z,
                 c[1].X, c[1].Y, c[1].Z,  c[2].X, c[2].Y, c[2].Z,
                 c[2].X, c[2].Y, c[2].Z,  c[3].X, c[3].Y, c[3].Z,
                 c[3].X, c[3].Y, c[3].Z,  c[0].X, c[0].Y, c[0].Z,
 
-                // Far
                 c[4].X, c[4].Y, c[4].Z,  c[5].X, c[5].Y, c[5].Z,
                 c[5].X, c[5].Y, c[5].Z,  c[6].X, c[6].Y, c[6].Z,
                 c[6].X, c[6].Y, c[6].Z,  c[7].X, c[7].Y, c[7].Z,
                 c[7].X, c[7].Y, c[7].Z,  c[4].X, c[4].Y, c[4].Z,
 
-                // Bridge
                 c[0].X, c[0].Y, c[0].Z,  c[4].X, c[4].Y, c[4].Z,
                 c[1].X, c[1].Y, c[1].Z,  c[5].X, c[5].Y, c[5].Z,
                 c[2].X, c[2].Y, c[2].Z,  c[6].X, c[6].Y, c[6].Z,
@@ -1567,16 +1156,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 }
             }
 
-            GL.UseProgram(lineShaderProgram);
+            uint lineShader = Shader.GetLineShaderProgram();
+            GL.UseProgram(lineShader);
 
-            int colorLoc = GL.GetUniformLocation(lineShaderProgram, "lineColor");
+            int colorLoc = GL.GetUniformLocation(lineShader, "lineColor");
             GL.Uniform3f(colorLoc, finalColor.X, finalColor.Y, finalColor.Z);
 
+            int vLoc = GL.GetUniformLocation(lineShader, "view");
+            int pLoc = GL.GetUniformLocation(lineShader, "projection");
             Matrix4x4 v = camera.GetViewMatrix();
             Matrix4x4 p = camera.GetProjectionMatrix();
 
-            GL.UniformMatrix4fv(lineViewLocation, 1, false, (float*)&v);
-            GL.UniformMatrix4fv(lineProjLocation, 1, false, (float*)&p);
+            GL.UniformMatrix4fv(vLoc, 1, false, (float*)&v);
+            GL.UniformMatrix4fv(pLoc, 1, false, (float*)&p);
 
             GL.BindVertexArray(debugVao);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, debugVbo);
@@ -1650,24 +1242,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
 
         public void Dispose()
         {
-            // Dispose all chunk data and free debug GL buffers
-            if (worldMap != null)
-            {
-                for (int x = 0; x < worldMap.GetLength(0); x++)
-                {
-                    for (int z = 0; z < worldMap.GetLength(1); z++)
-                    {
-                        var c = worldMap[x, z];
-                        if (c != null)
-                        {
-                            c.Dispose();
-                            worldMap[x, z] = null!;
-                        }
-                    }
-                }
-                worldMap = null;
-            }
-
             lock (debugBufferLock)
             {
                 if (debugVao != 0)
@@ -1699,7 +1273,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         /// <summary>Dapatkan tinggi terrain di posisi world X,Z (untuk snap object ke terrain).</summary>
         public float GetHeightAt(float worldX, float worldZ)
         {
-            return mapLoader?.GetHeightInterpolated(worldX, worldZ) ?? 0f;
+            // Terrain removed — flat plane only.
+            return 0f;
         }
 
         /// <summary>Dapatkan world-space AABB untuk chunk tertentu.</summary>
@@ -1711,15 +1286,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             float maxZ = minZ + ChunkSize * TerrainScale;
             float minY = -10f;
             float maxY = 10f;
-            if (worldMap != null)
-            {
-                var chunk = worldMap[chunkX, chunkZ];
-                if (chunk != null)
-                {
-                    minY = MathF.Min(minY, chunk.MinY);
-                    maxY = MathF.Max(maxY, chunk.MaxY);
-                }
-            }
             return new Helpers.ObjectHelpers.AABB(
                 new Vector3(minX, minY, minZ),
                 new Vector3(maxX, maxY, maxZ)
