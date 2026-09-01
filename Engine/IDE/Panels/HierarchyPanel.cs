@@ -1028,7 +1028,7 @@ public class HierarchyPanel
                 for (int ti = 0; ti < ElementTypeLabels.Length; ti++)
                 {
                     string label = ElementTypeLabels[ti];
-                    bool isSeparator = label.StartsWith("");
+                    bool isSeparator = label == " 3D ";
                     
                     if (isSeparator)
                     {
