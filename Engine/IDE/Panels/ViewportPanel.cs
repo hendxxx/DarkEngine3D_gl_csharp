@@ -1003,19 +1003,48 @@ public unsafe class ViewportPanel
                 break;
 
             case "scene":
-                if (!string.IsNullOrEmpty(param) && _bridge.EditorScenes.TryGetValue(param, out var targetScene))
+                if (!string.IsNullOrEmpty(param))
                 {
-                    Console.WriteLine($"[Viewport] scene:{param} → switching to editor scene");
-                    // Switch the editor scene root to the target scene
-                    _bridge.SelectedEditorScene = param;
-                    _bridge.SceneRoot = targetScene.Root;
-                    _bridge.SceneRootElements = new List<UIElement> { targetScene.Root }.AsReadOnly();
-                    // Reset overlay visibility for the new scene
-                    ResetSceneOverlays();
-                }
-                else if (!string.IsNullOrEmpty(param))
-                {
-                    Console.WriteLine($"[Viewport] scene:{param} → scene not found in editor scenes");
+                    // Try exact match first, then fall back to case-insensitive lookup to
+                    // tolerate differences in naming/casing between saved behavior strings
+                    // and the editor's scene keys.
+                    if (_bridge.EditorScenes.TryGetValue(param, out var targetScene))
+                    {
+                        Console.WriteLine($"[Viewport] scene:{param} → switching to editor scene (exact)");
+                    }
+                    else
+                    {
+                        // Case-insensitive search
+                        string? foundKey = null;
+                        foreach (var k in _bridge.EditorScenes.Keys)
+                        {
+                            if (string.Equals(k, param, StringComparison.OrdinalIgnoreCase))
+                            {
+                                foundKey = k;
+                                break;
+                            }
+                        }
+                        if (foundKey != null)
+                        {
+                            targetScene = _bridge.EditorScenes[foundKey];
+                            param = foundKey; // normalize to actual key
+                            Console.WriteLine($"[Viewport] scene:{param} → switching to editor scene (case-insensitive)");
+                        }
+                    }
+
+                    if (targetScene != null)
+                    {
+                        // Switch the editor scene root to the target scene
+                        _bridge.SelectedEditorScene = param;
+                        _bridge.SceneRoot = targetScene.Root;
+                        _bridge.SceneRootElements = new List<UIElement> { targetScene.Root }.AsReadOnly();
+                        // Reset overlay visibility for the new scene
+                        ResetSceneOverlays();
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[Viewport] scene:{param} → scene not found in editor scenes");
+                    }
                 }
                 break;
 

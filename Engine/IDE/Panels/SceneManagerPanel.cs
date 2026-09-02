@@ -1110,12 +1110,20 @@ public class SceneManagerPanel
             {
                 string sceneName = asset.SceneName ?? $"Scene_{sceneCount}";
 
+                // Determine scene type from the loaded asset. If the asset contains
+                // multiple top-level elements or any element explicitly marked as
+                // a Scene, treat it as a GameScene; otherwise default to MainMenu.
+                var sceneType = (asset.Elements.Count > 1 ||
+                                 asset.Elements.Any(e => string.Equals(e.Type, "Scene", StringComparison.OrdinalIgnoreCase)))
+                    ? IDEBridge.SceneType.GameScene
+                    : IDEBridge.SceneType.MainMenu;
+
                 // Add to AvailableScenes (list was cleared above, so no duplicates possible)
                 _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
                     sceneName,
                     $"Loaded from {Path.GetFileName(filePath)}",
                     false,
-                    IDEBridge.SceneType.MainMenu));
+                    sceneType));
 
                 // Build a tree root from the elements
                 UIElement sceneRoot;
@@ -1349,7 +1357,7 @@ public class SceneManagerPanel
                 }
 
                 var loadedScene = new IDEBridge.EditorScene(
-                    sceneName, IDEBridge.SceneType.MainMenu, sceneRoot)
+                    sceneName, sceneType, sceneRoot)
                 {
                     ObjectManager = editorMgr
                 };
@@ -1448,7 +1456,7 @@ public class SceneManagerPanel
                 var asset = new SceneAsset
                 {
                     SceneName = name,
-                    Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
+                    Elements = [SceneAssetSerializer.ToSceneData(editorScene.Root)],
                     BackgroundObjects = [],
                     EditorObjects = []
                 };

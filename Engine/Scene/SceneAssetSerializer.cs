@@ -128,7 +128,7 @@ public static class SceneAssetSerializer
         var asset = new SceneAsset
         {
             SceneName = root.Name,
-            Elements = [ToData(root)],
+            Elements = [ToSceneData(root)],
             BackgroundObjects = bgObjects ?? []
         };
 
@@ -155,7 +155,7 @@ public static class SceneAssetSerializer
             manifest.Scenes.Add(new SceneAsset
             {
                 SceneName = name,
-                Elements = [ToData(root)],
+                Elements = [ToSceneData(root)],
                 BackgroundObjects = []
             });
         }
@@ -411,6 +411,27 @@ public static class SceneAssetSerializer
         return data;
     }
 
+    /// <summary>
+    /// Ensure the serialized top-level element is a Scene root. If the provided
+    /// element is not a Scene, wrap it under a Scene-typed SceneElementData so
+    /// saved .ing files always contain a Scene root per scene definition.
+    /// This avoids losing the Scene root type when the runtime root is a single
+    /// interactive element (legacy/compact format).
+    /// </summary>
+    public static SceneElementData ToSceneData(UIElement root)
+    {
+        if (root.Type == UIElementType.Scene)
+            return ToData(root);
+
+        var wrapper = new SceneElementData
+        {
+            Name = root.Name,
+            Type = "Scene",
+        };
+        wrapper.Children.Add(ToData(root));
+        return wrapper;
+    }
+
     // ── Helpers ──
 
     private static Vector3 ArrayToVec3(float[]? arr, Vector3 fallback)
@@ -510,7 +531,7 @@ public static class SceneAssetSerializer
             manifest.Scenes.Add(new SceneAsset
             {
                 SceneName = name,
-                Elements = [ToData(root)],
+                Elements = [ToSceneData(root)],
                 BackgroundObjects = bgObjects
             });
 

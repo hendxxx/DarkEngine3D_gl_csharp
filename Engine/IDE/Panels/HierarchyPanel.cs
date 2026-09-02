@@ -69,6 +69,7 @@ public class HierarchyPanel
     private static readonly Vector4 ColDelBtnHov   = new(0.75f, 0.25f, 0.25f, 1f);
     private static readonly Vector4 ColSaveBtn     = new(0.10f, 0.55f, 0.30f, 1f);
     private static readonly Vector4 ColSaveBtnHov  = new(0.15f, 0.70f, 0.40f, 1f);
+    // Reload button removed — keep colors defined for backward compat if referenced elsewhere
     private static readonly Vector4 ColReloadBtn   = new(0.40f, 0.30f, 0.55f, 1f);
     private static readonly Vector4 ColReloadBtnHov= new(0.55f, 0.40f, 0.75f, 1f);
     private static readonly Vector4 ColDim         = new(0.5f, 0.5f, 0.6f, 1f);
@@ -553,15 +554,13 @@ public class HierarchyPanel
                     : (has3DSelection ? "Delete selected 3D object" : "Delete the selected element"));
         }
 
-        //  Toolbar Row 2: Save / Reload from .ing 
+        //  Toolbar Row 2: Save (Reload removed)
         {
-            float btnWidth = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 1f) / 2f;
-
-            // Save button (green)
+            // Single full-width Save button — Reload removed from Scene Detail per request.
             ImGui.PushStyleColor(ImGuiCol.Button, ColSaveBtn);
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColSaveBtnHov);
             ImGui.BeginDisabled(!hasRoots);
-            if (ImGui.Button("Save", new Vector2(btnWidth, 26)))
+            if (ImGui.Button("Save", new Vector2(-1, 26)))
             {
                 SaveCurrentSceneHierarchy();
             }
@@ -569,22 +568,6 @@ public class HierarchyPanel
             ImGui.PopStyleColor(2);
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Save current hierarchy to .ing file");
-
-            ImGui.SameLine();
-
-            // Reload button (purple)  always enabled so user can recover from empty state
-            ImGui.PushStyleColor(ImGuiCol.Button, ColReloadBtn);
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColReloadBtnHov);
-            if (ImGui.Button("↻ Reload", new Vector2(btnWidth, 26)))
-            {
-                if (_undoStack.Count > 0 || _redoStack.Count > 0 || hasSelection)
-                    _showReloadConfirm = true;
-                else
-                    ReloadSceneHierarchy();
-            }
-            ImGui.PopStyleColor(2);
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Reload hierarchy from .ing file (discard unsaved edits)");
         }
 
         //  Toolbar Row 3: Quick-add 3D primitives (Box, Sphere, Plane) 
@@ -2786,11 +2769,25 @@ public class HierarchyPanel
             }
 
             // Clear existing children and load from asset
+            // If the saved asset used a top-level Scene element (our canonical format),
+            // unwrap it and import its children into the existing scene root so we do
+            // not create a nested Scene->Scene structure.
             sceneRoot.ClearChildren();
             foreach (var elemData in asset.Elements)
             {
-                var child = SceneAssetSerializer.ToUIElement(elemData);
-                sceneRoot.AddChild(child);
+                if (!string.IsNullOrEmpty(elemData.Type) && elemData.Type.Equals("Scene", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var childData in elemData.Children)
+                    {
+                        var child = SceneAssetSerializer.ToUIElement(childData);
+                        sceneRoot.AddChild(child);
+                    }
+                }
+                else
+                {
+                    var child = SceneAssetSerializer.ToUIElement(elemData);
+                    sceneRoot.AddChild(child);
+                }
             }
 
             // 4. Set bridge references

@@ -152,11 +152,14 @@ public unsafe class MainMenuScene : IScene
     // the sky sun / light marker, same shadow pass GameScene uses) ──
     private CSM? _csm;
 
-    public MainMenuScene(SceneManager sceneManager, Camera camera, Lights light)
+    private readonly string? _initialSceneName;
+
+    public MainMenuScene(SceneManager sceneManager, Camera camera, Lights light, string? initialSceneName = null)
     {
         _sceneManager = sceneManager;
         _camera = camera;
         _light = light;
+        _initialSceneName = initialSceneName;
     }
 
     /// <summary>Load UI hierarchy from .ing file into the given root element.
@@ -164,22 +167,36 @@ public unsafe class MainMenuScene : IScene
     /// Returns true if data was loaded.</summary>
     private bool LoadHierarchyFromIng(UIElement root)
     {
-        string scenePath = SceneAssetSerializer.GetScenePath("MainMenu");
+        string sceneKey = _initialSceneName ?? "MainMenu";
+        string scenePath = SceneAssetSerializer.GetScenePath(sceneKey);
         var asset = SceneAssetSerializer.LoadScene(scenePath)
-                 ?? SceneAssetSerializer.FindScene("MainMenu");
+                 ?? SceneAssetSerializer.FindScene(sceneKey);
 
         if (asset == null || asset.Elements.Count == 0)
         {
-            Console.WriteLine("[MainMenu] No .ing file found — starting with empty hierarchy.");
+            Console.WriteLine($"[MainMenu] No .ing file found for '{sceneKey}' — starting with empty hierarchy.");
             return false;
         }
 
-        // Clear existing children and load from asset
+        // Clear existing children and load from asset.
+        // If the saved asset has a top-level Scene element, unwrap it so its
+        // children become the runtime scene root's children (avoid nesting).
         root.ClearChildren();
         foreach (var elemData in asset.Elements)
         {
-            var child = SceneAssetSerializer.ToUIElement(elemData);
-            root.AddChild(child);
+            if (!string.IsNullOrEmpty(elemData.Type) && elemData.Type.Equals("Scene", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var childData in elemData.Children)
+                {
+                    var child = SceneAssetSerializer.ToUIElement(childData);
+                    root.AddChild(child);
+                }
+            }
+            else
+            {
+                var child = SceneAssetSerializer.ToUIElement(elemData);
+                root.AddChild(child);
+            }
         }
 
         Console.WriteLine($"[MainMenu] Loaded hierarchy from .ing ({root.Children.Count} top-level elements)");
@@ -266,8 +283,9 @@ public unsafe class MainMenuScene : IScene
         EnsureDefaultUI();
 
         // ── Register for IDE Save All ──
-        SceneAssetSerializer.RegisterSceneRoot("MainMenu", _sceneRoot);
-        SceneAssetSerializer.RegisterBgObjects("MainMenu", _bgObjectDataList);
+        string registerKey = _initialSceneName ?? "MainMenu";
+        SceneAssetSerializer.RegisterSceneRoot(registerKey, _sceneRoot);
+        SceneAssetSerializer.RegisterBgObjects(registerKey, _bgObjectDataList);
 
         Console.WriteLine("[MainMenu] Entered.");
     }
@@ -561,6 +579,25 @@ public unsafe class MainMenuScene : IScene
     private Action? MapBehaviorAction(string behavior)
     {
         var lower = behavior.ToLowerInvariant();
+
+        // ── Direct scene switch: "scene:Name" ──
+        if (lower.StartsWith("scene:"))
+        {
+            string target = behavior["scene:".Length..];
+            return () =>
+            {
+                var asset = SceneAssetSerializer.FindScene(target);
+                if (asset != null)
+                {
+                    Console.WriteLine($"[MainMenu] scene:{target} → switching to scene '{target}'");
+                    _sceneManager.SwitchScene(new MainMenuScene(_sceneManager, _camera, _light, target));
+                }
+                else
+                {
+                    Console.WriteLine($"[MainMenu] scene:{target} → scene not found");
+                }
+            };
+        }
 
         // ── Cycle setting: "cycleSetting:N" ──
         if (lower.StartsWith("cyclesetting:"))
