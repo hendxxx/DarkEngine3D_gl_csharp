@@ -47,6 +47,12 @@ public class SceneManagerPanel
     private bool _showNewConfirm = false;
     private string _editNameBuffer = "";
     private string _editDescBuffer = "";
+    // Transition edit buffers
+    private int _editTransitionTypeIdx = 0; // 0=Fade,1=SlideLeft,2=SlideRight
+    private float _editTransitionDuration = 0.6f;
+    private System.Numerics.Vector3 _editTransitionColor = new(0f, 0f, 0f);
+    private int _editTransitionEasingIdx = 0; // 0=linear,1=easein,2=easeout,3=easeinout
+    private bool _editTransitionBlock = false;
     private int _selectedNewSceneTypeIdx = 0;   // combo box index for Add popup
     private int _selectedEditSceneTypeIdx = 0;  // combo box index for Edit popup
     private const int InputBufSize = 256;
@@ -416,6 +422,26 @@ public class SceneManagerPanel
             int prevSceneTypeIdx = _selectedNewSceneTypeIdx;
             ImGui.Combo("##add_type", ref _selectedNewSceneTypeIdx,
                 IDEBridge.SceneTypeLabels, IDEBridge.SceneTypeLabels.Length);
+            ImGui.Text("Default Transition (e.g. fade:0.6 or slide:left:0.5):");
+            ImGui.SetNextItemWidth(280);
+            // Transition fields
+            ImGui.Text("Transition Type:");
+            ImGui.SetNextItemWidth(280);
+            ImGui.Combo("##add_trans_type", ref _editTransitionTypeIdx, new[] { "Fade", "Slide Left", "Slide Right" }, 3);
+            ImGui.Text("Duration (s):");
+            ImGui.SetNextItemWidth(280);
+            ImGui.DragFloat("##add_trans_dur", ref _editTransitionDuration, 0.05f, 0.05f, 10f, "%.2f");
+            ImGui.Text("Color:");
+            ImGui.SetNextItemWidth(280);
+            var col = _editTransitionColor;
+            ImGui.ColorEdit3("##add_trans_col", ref col);
+            _editTransitionColor = col;
+            ImGui.Text("Easing:");
+            ImGui.SetNextItemWidth(280);
+            ImGui.Combo("##add_trans_ease", ref _editTransitionEasingIdx, new[] { "linear", "easein", "easeout", "easeinout" }, 4);
+            ImGui.Text("Block Input:");
+            ImGui.SetNextItemWidth(280);
+            ImGui.Checkbox("##add_trans_block", ref _editTransitionBlock);
             if (_selectedNewSceneTypeIdx != prevSceneTypeIdx)
             {
                 string oldDefault = prevSceneTypeIdx switch { 0 => "mn", 1 => "scn", 2 => "load", _ => "scene" };
@@ -433,11 +459,16 @@ public class SceneManagerPanel
                 string sceneName = _editNameBuffer.Trim();
 
                 // Add new scene entry with user-chosen type
-                _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
+                    _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
                     sceneName,
                     string.IsNullOrWhiteSpace(_editDescBuffer) ? "Custom scene" : _editDescBuffer.Trim(),
                     false,
-                    (IDEBridge.SceneType)_selectedNewSceneTypeIdx));
+                    (IDEBridge.SceneType)_selectedNewSceneTypeIdx,
+                    (Engine.Scene.TransitionType)_editTransitionTypeIdx,
+                    _editTransitionDuration,
+                    new float[3] { _editTransitionColor.X, _editTransitionColor.Y, _editTransitionColor.Z },
+                    _editTransitionEasingIdx switch { 0 => "linear", 1 => "easein", 2 => "easeout", 3 => "easeinout", _ => "linear" },
+                    _editTransitionBlock));
                 _selectedIdx = _bridge.AvailableScenes.Count - 1;
                 Console.WriteLine($"[SceneManager] Added scene: {sceneName} (type={IDEBridge.SceneTypeLabels[_selectedNewSceneTypeIdx]})");
 
@@ -498,6 +529,26 @@ public class SceneManagerPanel
             ImGui.SetNextItemWidth(280);
             ImGui.Combo("##edit_type", ref _selectedEditSceneTypeIdx,
                 IDEBridge.SceneTypeLabels, IDEBridge.SceneTypeLabels.Length);
+        ImGui.Text("Default Transition (e.g. fade:0.6 or slide:left:0.5):");
+        ImGui.SetNextItemWidth(280);
+            // Transition fields (edit)
+            ImGui.Text("Transition Type:");
+            ImGui.SetNextItemWidth(280);
+            ImGui.Combo("##edit_trans_type", ref _editTransitionTypeIdx, new[] { "Fade", "Slide Left", "Slide Right" }, 3);
+            ImGui.Text("Duration (s):");
+            ImGui.SetNextItemWidth(280);
+            ImGui.DragFloat("##edit_trans_dur", ref _editTransitionDuration, 0.05f, 0.05f, 10f, "%.2f");
+            ImGui.Text("Color:");
+            ImGui.SetNextItemWidth(280);
+            var col = _editTransitionColor;
+            ImGui.ColorEdit3("##edit_trans_col", ref col);
+            _editTransitionColor = col;
+            ImGui.Text("Easing:");
+            ImGui.SetNextItemWidth(280);
+            ImGui.Combo("##edit_trans_ease", ref _editTransitionEasingIdx, new[] { "linear", "easein", "easeout", "easeinout" }, 4);
+            ImGui.Text("Block Input:");
+            ImGui.SetNextItemWidth(280);
+            ImGui.Checkbox("##edit_trans_block", ref _editTransitionBlock);
 
             ImGui.Separator();
 
@@ -514,6 +565,11 @@ public class SceneManagerPanel
                         Name = newName,
                         Description = string.IsNullOrWhiteSpace(_editDescBuffer) ? old.Description : _editDescBuffer.Trim(),
                         Type = (IDEBridge.SceneType)_selectedEditSceneTypeIdx,
+                        TransitionType = (Engine.Scene.TransitionType)_editTransitionTypeIdx,
+                        TransitionDuration = _editTransitionDuration,
+                        TransitionColor = new float[3] { _editTransitionColor.X, _editTransitionColor.Y, _editTransitionColor.Z },
+                        TransitionEasing = _editTransitionEasingIdx switch { 0 => "linear", 1 => "easein", 2 => "easeout", 3 => "easeinout", _ => "linear" },
+                        TransitionBlockInput = _editTransitionBlock,
                     };
 
                     // If name changed, update EditorScenes dictionary key too
@@ -1034,7 +1090,29 @@ public class SceneManagerPanel
         if (newScene != null)
         {
             _bridge.MarkSceneInitialized(entry.Name);
-            sm.SwitchScene(newScene);
+            // Use scene's default transition if configured (structured fields)
+            var def = new TransitionDefinition
+            {
+                Type = entry.TransitionType,
+                Duration = entry.TransitionDuration > 0f ? entry.TransitionDuration : 0.6f,
+                Color = new System.Numerics.Vector3(
+                    entry.TransitionColor?.ElementAtOrDefault(0) ?? 0f,
+                    entry.TransitionColor?.ElementAtOrDefault(1) ?? 0f,
+                    entry.TransitionColor?.ElementAtOrDefault(2) ?? 0f),
+                Easing = entry.TransitionEasing?.ToLowerInvariant() switch
+                {
+                    "easein" => TransitionEasing.EaseIn,
+                    "easeout" => TransitionEasing.EaseOut,
+                    "easeinout" => TransitionEasing.EaseInOut,
+                    _ => TransitionEasing.Linear,
+                },
+                BlockInput = entry.TransitionBlockInput,
+            };
+
+            if (def != null && def.Duration > 0f)
+                sm.TransitionToScene(newScene, def);
+            else
+                sm.SwitchScene(newScene);
         }
     }
 
@@ -1118,12 +1196,39 @@ public class SceneManagerPanel
                     ? IDEBridge.SceneType.GameScene
                     : IDEBridge.SceneType.MainMenu;
 
+                // Build transition defaults from asset if present
+                var tType = TransitionType.Fade;
+                float tDur = 0.6f;
+                float[] tCol = [0f, 0f, 0f];
+                string tEase = "linear";
+                bool tBlock = false;
+                try
+                {
+                    if (!string.IsNullOrEmpty(asset.TransitionType))
+                    {
+                        var tt = asset.TransitionType.ToLowerInvariant();
+                        if (tt.Contains("slide") && tt.Contains("left")) tType = TransitionType.SlideLeft;
+                        else if (tt.Contains("slide") && tt.Contains("right")) tType = TransitionType.SlideRight;
+                        else tType = TransitionType.Fade;
+                    }
+                    tDur = asset.TransitionDuration > 0f ? asset.TransitionDuration : tDur;
+                    if (asset.TransitionColor != null && asset.TransitionColor.Length >= 3) tCol = asset.TransitionColor;
+                    if (!string.IsNullOrEmpty(asset.TransitionEasing)) tEase = asset.TransitionEasing;
+                    tBlock = asset.TransitionBlockInput;
+                }
+                catch { }
+
                 // Add to AvailableScenes (list was cleared above, so no duplicates possible)
                 _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
                     sceneName,
                     $"Loaded from {Path.GetFileName(filePath)}",
                     false,
-                    sceneType));
+                    sceneType,
+                    tType,
+                    tDur,
+                    tCol,
+                    tEase,
+                    tBlock));
 
                 // Build a tree root from the elements
                 UIElement sceneRoot;
@@ -1460,6 +1565,23 @@ public class SceneManagerPanel
                     BackgroundObjects = [],
                     EditorObjects = []
                 };
+
+                // Inject per-scene transition metadata from AvailableScenes if present
+                var matching = _bridge.AvailableScenes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (matching != null)
+                {
+                    asset.TransitionType = matching.TransitionType switch
+                    {
+                        TransitionType.Fade => "fade",
+                        TransitionType.SlideLeft => "slide:left",
+                        TransitionType.SlideRight => "slide:right",
+                        _ => "fade",
+                    };
+                    asset.TransitionDuration = matching.TransitionDuration;
+                    asset.TransitionColor = matching.TransitionColor ?? new float[3] { 0f, 0f, 0f };
+                    asset.TransitionEasing = string.IsNullOrEmpty(matching.TransitionEasing) ? "linear" : matching.TransitionEasing;
+                    asset.TransitionBlockInput = matching.TransitionBlockInput;
+                }
 
                 //  Per-scene freefly camera: snapshot the LIVE camera for the currently
                 // selected scene, and keep each other scene's saved camera as-is. 

@@ -324,6 +324,18 @@ public class SceneAsset
     /// <summary>Editor-placed 3D primitives (Box, Sphere, Plane) — saved per scene.</summary>
     public List<EditorObjectData> EditorObjects { get; set; } = [];
 
+    // ── Transition metadata (optional) ──
+    /// <summary>Transition type: "fade", "slideleft", "slideright" (optional).</summary>
+    public string TransitionType { get; set; } = "fade";
+    /// <summary>Transition duration in seconds.</summary>
+    public float TransitionDuration { get; set; } = 0.6f;
+    /// <summary>Transition color [r,g,b].</summary>
+    public float[] TransitionColor { get; set; } = [0f, 0f, 0f];
+    /// <summary>Easing: "linear", "easein", "easeout", "easeinout".</summary>
+    public string TransitionEasing { get; set; } = "linear";
+    /// <summary>Whether the transition should block input while active.</summary>
+    public bool TransitionBlockInput { get; set; } = false;
+
     // ── Freefly camera (per scene, so each scene remembers its own view) ──
     /// <summary>Editor camera position [x, y, z] — null = keep the default camera.</summary>
     public float[]? EditorCameraPosition { get; set; }

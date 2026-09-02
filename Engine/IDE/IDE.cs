@@ -28,6 +28,7 @@ public class IDE : IDisposable
     private readonly ConsolePanel _console;
     private readonly SceneManagerPanel _sceneManagerPanel;
     private readonly HierarchyPanel _hierarchy;
+    private readonly TransitionPanel _transitionPanel;
     private readonly RenderTimePanel _renderTime = null!;
     private readonly ShadowPanel _shadowPanel = null!;
     // PostFX removed
@@ -270,6 +271,7 @@ public class IDE : IDisposable
             _console = new ConsolePanel(Bridge);
             _sceneManagerPanel = new SceneManagerPanel(Bridge);
             _hierarchy = new HierarchyPanel(Bridge);
+            _transitionPanel = new TransitionPanel(Bridge);
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
             _pbrPanel = new PbrPanel(Bridge);
@@ -593,6 +595,7 @@ public class IDE : IDisposable
                 _pbrPanel.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
+                _transitionPanel.ShowInMenu();
 
                 // ── IDE Font selector ──
                 ImGui.Separator();
@@ -669,8 +672,16 @@ public class IDE : IDisposable
         _hierarchy.Render();
         _console.Render();
         _sceneManagerPanel.Render();
+        _transitionPanel.Render();
 
         // ── Render ImGui draw data ──
+        // Render transition overlay (if any) while ImGui frame is active
+        try
+        {
+            Bridge.SceneManager?.RenderTransitionOverlay();
+        }
+        catch { }
+
         _imgui.Render();
     }
 

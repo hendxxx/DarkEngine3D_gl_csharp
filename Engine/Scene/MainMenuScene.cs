@@ -580,6 +580,22 @@ public unsafe class MainMenuScene : IScene
     {
         var lower = behavior.ToLowerInvariant();
 
+        // Timer behavior: "timer:<seconds>:<innerBehavior>"
+        if (lower.StartsWith("timer:"))
+        {
+            // Split into 3 parts max: timer, seconds, rest
+            var parts = behavior.Split(':', 3);
+            if (parts.Length >= 3 && float.TryParse(parts[1], out float secs) && secs >= 0f)
+            {
+                string inner = parts[2];
+                return () =>
+                {
+                    Console.WriteLine($"[MainMenu] Scheduling '{inner}' in {secs} seconds");
+                    _sceneManager.ScheduleBehavior(inner, secs);
+                };
+            }
+        }
+
         // ── Direct scene switch: "scene:Name" ──
         if (lower.StartsWith("scene:"))
         {

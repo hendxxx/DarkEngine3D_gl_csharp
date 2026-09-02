@@ -3,6 +3,8 @@ using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 
+using DarkEngine3D_gl_csharp.Engine.Scene;
+
 namespace DarkEngine3D_gl_csharp.Engine.IDE;
 
 /// <summary>
@@ -418,8 +420,10 @@ public class IDEBridge
         Loading,
     }
 
-    /// <summary>Available scene descriptors for the SceneManagerPanel.</summary>
-    public record SceneEntry(string Name, string Description, bool HasInitializedEntry, SceneType Type);
+    /// <summary>Available scene descriptors for the SceneManagerPanel.
+    /// DefaultTransition is an optional editor-configured transition spec (e.g. "fade:0.6" or "slide:left:0.5").</summary>
+    public record SceneEntry(string Name, string Description, bool HasInitializedEntry, SceneType Type,
+        TransitionType TransitionType, float TransitionDuration, float[] TransitionColor, string TransitionEasing, bool TransitionBlockInput);
 
     /// <summary>Human-readable labels for the SceneType enum (for combo box).</summary>
     public static readonly string[] SceneTypeLabels =
@@ -454,6 +458,13 @@ public class IDEBridge
 
     /// <summary>All scenes created/managed by the UI Editor. Keyed by scene name.</summary>
     public Dictionary<string, EditorScene> EditorScenes { get; } = [];
+
+    /// <summary>Global default transition settings used when no per-scene default is set.</summary>
+    public TransitionType DefaultTransitionType { get; set; } = TransitionType.Fade;
+    public float DefaultTransitionDuration { get; set; } = 0.6f;
+    public float[] DefaultTransitionColor { get; set; } = [0f, 0f, 0f];
+    public string DefaultTransitionEasing { get; set; } = "linear";
+    public bool DefaultTransitionBlockInput { get; set; } = false;
 
     private string? _selectedEditorScene;
 

@@ -15,6 +15,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     /// </summary>
     public unsafe class SceneManager
     {
+        private readonly TransitionManager _transitionManager = new();
+        // Scheduled delayed behaviors (timer actions)
+        private record ScheduledBehavior(float Remaining, string Behavior)
+        {
+            public float RemainingSeconds = Remaining;
+            public string Action = Behavior;
+        }
+
+        private readonly List<ScheduledBehavior> _scheduledBehaviors = new();
         private IScene? _currentScene;
         private IScene? _nextScene;
         private bool _running;
@@ -651,6 +660,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_ide != null && _ide.IsActive)
                     _ide.Render();
 
+                // Transition overlay is rendered by the IDE while the ImGui frame is active.
+                // Do not draw ImGui overlay here to avoid calling ImGui draw-list APIs
+                // outside of an active frame (can cause native access violations).
+
                 // ═══════════════════════════════════════════════════════
                 // PHASE 3: DEFERRED SCENE SWITCH (applied AFTER render)
                 // ═══════════════════════════════════════════════════════
@@ -684,8 +697,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _ide = null;
 
             // Cleanup current scene
-            _currentScene?.Exit();
-            _currentScene?.Dispose();
+            var oldScene = _currentScene;
+            oldScene?.Exit();
+            oldScene?.Dispose();
             _currentScene = null;
             _nextScene = null;
 
@@ -698,6 +712,151 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         public void SwitchScene(IScene scene)
         {
             _nextScene = scene;
+        }
+
+        /// <summary>Begin a transition and switch to the given scene at the transition midpoint.</summary>
+        public void TransitionToScene(IScene scene, TransitionDefinition def)
+        {
+            if (def == null) { SwitchScene(scene); return; }
+            // Start transition; at midpoint set next scene. If transition blocks input,
+            // set Bridge.SuppressViewportInput while active and clear when done.
+            var bridge = _ide?.Bridge;
+            Action? onMid = () => { _nextScene = scene; };
+            Action? onDone = null;
+            if (bridge != null && def.BlockInput)
+            {
+                bridge.SuppressViewportInput = true;
+                onDone = () => { bridge.SuppressViewportInput = false; };
+            }
+            _transitionManager.Start(def, onMid, onDone);
+        }
+
+        /// <summary>
+        /// Start a transition for preview purposes without switching scenes.
+        /// If the transition blocks input, suppress viewport input for its duration.
+        /// </summary>
+        public void PreviewTransition(TransitionDefinition def)
+        {
+            if (def == null) return;
+            var bridge = _ide?.Bridge;
+            Action? onDone = null;
+            if (bridge != null && def.BlockInput)
+            {
+                bridge.SuppressViewportInput = true;
+                onDone = () => { bridge.SuppressViewportInput = false; };
+            }
+            // Start transition without a midpoint action (no scene switch)
+            _transitionManager.Start(def, null, onDone);
+        }
+
+        /// <summary>Render the transition overlay (callable from the IDE while an ImGui frame is active).</summary>
+        public void RenderTransitionOverlay()
+        {
+            // Delegate to TransitionManager's DrawOverlay. This method is intended to
+            // be called from IDE.Render() while an ImGui frame is active so the
+            // ImGui draw-list APIs are safe to use.
+            _transitionManager.DrawOverlay();
+        }
+
+        /// <summary>
+        /// Schedule a behavior string to execute after a delay in seconds. Behavior strings use
+        /// the same format as ClickBehaviorLabel (e.g. "scene:MainMenu", "exit").
+        /// Supports nested timer: "timer:5:scene:MainMenu" via callers as well.
+        /// </summary>
+        public void ScheduleBehavior(string behavior, float delaySeconds)
+        {
+            if (string.IsNullOrEmpty(behavior) || delaySeconds < 0f) return;
+            lock (_scheduledBehaviors)
+            {
+                _scheduledBehaviors.Add(new ScheduledBehavior(delaySeconds, behavior));
+            }
+            Console.WriteLine($"[SceneManager] Scheduled behavior '{behavior}' in {delaySeconds:F2}s");
+        }
+
+        /// <summary>Execute a behavior string immediately on the main thread.</summary>
+        private void ExecuteBehavior(string behavior)
+        {
+            if (string.IsNullOrEmpty(behavior)) return;
+            // Support timer prefix: timer:5:... => schedule inner
+            if (behavior.StartsWith("timer:", StringComparison.OrdinalIgnoreCase))
+            {
+                // format: timer:<seconds>:<inner>
+                int firstColon = behavior.IndexOf(':');
+                int secondColon = behavior.IndexOf(':', firstColon + 1);
+                if (secondColon > 0)
+                {
+                    string num = behavior.Substring(firstColon + 1, secondColon - firstColon - 1);
+                    if (float.TryParse(num, out float secs))
+                    {
+                        string inner = behavior.Substring(secondColon + 1);
+                        ScheduleBehavior(inner, secs);
+                        return;
+                    }
+                }
+            }
+
+            // Parse simple behaviors: scene:<name>, exit
+            var (type, param) = Engine.IDE.IDEBridge.ParseBehavior(behavior);
+            switch (type)
+            {
+                case "scene":
+                    if (!string.IsNullOrEmpty(param))
+                    {
+                        // param may contain extras after '|' e.g. "Name|transition=fade:0.6"
+                        string sceneName = param;
+                        string extras = "";
+                        int pipe = param.IndexOf('|');
+                        if (pipe >= 0)
+                        {
+                            sceneName = param.Substring(0, pipe);
+                            extras = param.Substring(pipe + 1);
+                        }
+
+                        // Load the scene asset and switch to a MainMenuScene that will load it
+                        var asset = SceneAssetSerializer.FindScene(sceneName);
+                        if (asset != null)
+                        {
+                            Console.WriteLine($"[SceneManager] Executing scene behavior: {sceneName}");
+                            var newScene = new MainMenuScene(this, new Camera(0f, 40f, 0f, 0f, -30f, (float)Glfw.WindowWidth / Glfw.WindowHeight, 60f, 0.1f, 2800f), new Lights(new System.Numerics.Vector3(1f,0.5f,0f), new System.Numerics.Vector3(1f,0.95f,0.8f), new System.Numerics.Vector3(0,0,0), "16:00"), sceneName);
+
+                            // If extras specify transition=..., parse and use TransitionToScene
+                            if (!string.IsNullOrEmpty(extras))
+                            {
+                                var parts = extras.Split('|');
+                                foreach (var part in parts)
+                                {
+                                    var kv = part.Split('=', 2);
+                                    if (kv.Length == 2 && kv[0].Trim().ToLowerInvariant() == "transition")
+                                    {
+                                        string spec = kv[1].Trim();
+                                        var def = TransitionDefinition.FromSpec(spec);
+                                        TransitionToScene(newScene, def);
+                                        goto SCENE_DONE;
+                                    }
+                                }
+                            }
+
+                            // Default: immediate switch
+                            SwitchScene(newScene);
+                        SCENE_DONE: ;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[SceneManager] Scene not found: {sceneName}");
+                        }
+                    }
+                    break;
+
+                case "exit":
+                case "exitgame":
+                    Console.WriteLine("[SceneManager] Executing exit behavior");
+                    Stop();
+                    break;
+
+                default:
+                    Console.WriteLine($"[SceneManager] Unknown scheduled behavior: '{behavior}'");
+                    break;
+            }
         }
 
         /// <summary>
