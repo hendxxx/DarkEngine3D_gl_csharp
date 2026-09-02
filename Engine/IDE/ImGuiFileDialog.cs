@@ -13,7 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE;
 /// </summary>
 public class ImGuiFileDialog
 {
-    private enum DialogMode { None, Open, Save }
+    private enum DialogMode { None, Open, Save, PickFolder }
     private DialogMode _mode = DialogMode.None;
 
     private string _currentDir;
@@ -60,6 +60,17 @@ public class ImGuiFileDialog
         _mode = DialogMode.Save;
         Title = "Save .ing file";
         _fileNameBuffer = defaultName;
+        _selectedIdx = -1;
+        SelectedPath = null;
+        IsConfirmed = false;
+        Refresh();
+    }
+
+    public void OpenForPickFolder(string title = "Select Folder")
+    {
+        _mode = DialogMode.PickFolder;
+        Title = title;
+        _fileNameBuffer = "";
         _selectedIdx = -1;
         SelectedPath = null;
         IsConfirmed = false;
@@ -130,20 +141,24 @@ public class ImGuiFileDialog
                     ImGui.SetTooltip(_currentDir);
             }
 
-            // ── Filter ──
-            ImGui.SetNextItemWidth(120);
-            if (ImGui.BeginCombo("##filter", _filter))
+            // ── Filter (file modes only) ──
+            if (_mode != DialogMode.PickFolder)
             {
-                string[] filters = ["*.ing", "*.*"];
-                foreach (var f in filters)
+                ImGui.SetNextItemWidth(120);
+                if (ImGui.BeginCombo("##filter", _filter))
                 {
-                    if (ImGui.Selectable(f, _filter == f))
+                    string[] filters = ["*.ing", "*.*"];
+                    foreach (var f in filters)
                     {
-                        _filter = f;
-                        Refresh();
+                        bool isF = _filter == f;
+                        if (ImGui.Selectable(f, isF))
+                        {
+                            _filter = f;
+                            Refresh();
+                        }
                     }
+                    ImGui.EndCombo();
                 }
-                ImGui.EndCombo();
             }
 
             ImGui.Separator();
@@ -152,10 +167,10 @@ public class ImGuiFileDialog
             ImGui.BeginChild("##file_list", new Vector2(0, -60), ImGuiChildFlags.None, ImGuiWindowFlags.None);
 
             // Directories
-            foreach (var dir in _dirs)
+            for (int di = 0; di < _dirs.Length; di++)
             {
-                bool isSel = false;
-                if (ImGui.Selectable($"[Dir] {dir}", ref isSel))
+                string dir = _dirs[di];
+                if (ImGui.Selectable($"[Dir] {dir}"))
                 {
                     _currentDir = Path.Combine(_currentDir, dir);
                     _selectedIdx = -1;
@@ -169,27 +184,42 @@ public class ImGuiFileDialog
                 }
             }
 
-            // Files
-            ImGui.Separator();
-            for (int i = 0; i < _files.Length; i++)
+            // Files (only in file modes)
+            if (_mode != DialogMode.PickFolder)
             {
-                bool isSel = i == _selectedIdx;
-                if (ImGui.Selectable(_files[i], ref isSel))
+                ImGui.Separator();
+                for (int i = 0; i < _files.Length; i++)
                 {
-                    _selectedIdx = i;
-                    _fileNameBuffer = _files[i];
-                }
-                if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                {
-                    _selectedIdx = i;
-                    _fileNameBuffer = _files[i];
-                    ConfirmSelection();
+                    bool isSel = i == _selectedIdx;
+                    if (ImGui.Selectable(_files[i], ref isSel))
+                    {
+                        _selectedIdx = i;
+                        _fileNameBuffer = _files[i];
+                    }
+                    if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                    {
+                        _selectedIdx = i;
+                        _fileNameBuffer = _files[i];
+                        ConfirmSelection();
+                    }
                 }
             }
 
             ImGui.EndChild();
 
-            // ── File name input ──
+            // ── Folder selection: show "Select This Folder" button ──
+            if (_mode == DialogMode.PickFolder)
+            {
+                ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.5f, 1f), $"Selected: {_currentDir}");
+                if (ImGui.Button("Select This Folder", new Vector2(160, 0)))
+                {
+                    SelectedPath = _currentDir;
+                    IsConfirmed = true;
+                    _mode = DialogMode.None;
+                }
+            }
+
+            // ── File name input (Save mode only) ──
             if (_mode == DialogMode.Save)
             {
                 ImGui.Text("File name:");
@@ -199,13 +229,15 @@ public class ImGuiFileDialog
             }
 
             // ── Action buttons ──
-            string confirmLabel = _mode == DialogMode.Open ? "Open" : "Save";
-            if (ImGui.Button(confirmLabel, new Vector2(100, 0)))
+            if (_mode != DialogMode.PickFolder)
             {
-                ConfirmSelection();
+                string confirmLabel = _mode == DialogMode.Open ? "Open" : "Save";
+                if (ImGui.Button(confirmLabel, new Vector2(100, 0)))
+                {
+                    ConfirmSelection();
+                }
+                ImGui.SameLine();
             }
-
-            ImGui.SameLine();
 
             if (ImGui.Button("Cancel", new Vector2(100, 0)))
             {

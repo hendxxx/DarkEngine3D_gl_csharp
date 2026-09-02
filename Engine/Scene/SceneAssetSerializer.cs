@@ -40,15 +40,18 @@ public static class SceneAssetSerializer
 
     /// <summary>Directory where .ing scene files are stored.</summary>
     public static string ScenesDirectory =>
-        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scenes");
+        Project.ProjectManager.IsProjectLoaded ? Project.ProjectManager.ScenesDir
+        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scenes");
 
     /// <summary>Full path for a named scene file (e.g. "MainMenu" → "scenes/MainMenu.ing").</summary>
     public static string GetScenePath(string sceneName) =>
-        Path.Combine(ScenesDirectory, $"{sceneName}.ing");
+        Project.ProjectManager.IsProjectLoaded ? Project.ProjectManager.GetScenePath(sceneName)
+        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scenes", $"{sceneName}.ing");
 
     /// <summary>Full path for the combined game.ing file.</summary>
     public static string GameIngPath =>
-        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "game.ing");
+        Project.ProjectManager.IsProjectLoaded ? Project.ProjectManager.GameIngPath
+        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "game.ing");
 
     // ── Per-scene transition settings (editor → save pipeline) ──
     // TransitionPanel writes to this dictionary; SaveAllRegisteredScenes reads from it.
@@ -285,6 +288,19 @@ public static class SceneAssetSerializer
             AutoFillWindow = data.AutoFillWindow,
             AutoCenterX = data.AutoCenterX,
             AutoCenterY = data.AutoCenterY,
+            Anchor = !string.IsNullOrEmpty(data.Anchor) ? data.Anchor.ToLowerInvariant() switch
+            {
+                "topleft" => UIAnchor.TopLeft,
+                "topcenter" => UIAnchor.TopCenter,
+                "topright" => UIAnchor.TopRight,
+                "centerleft" => UIAnchor.CenterLeft,
+                "center" => UIAnchor.Center,
+                "centerright" => UIAnchor.CenterRight,
+                "bottomleft" => UIAnchor.BottomLeft,
+                "bottomcenter" => UIAnchor.BottomCenter,
+                "bottomright" => UIAnchor.BottomRight,
+                _ => UIAnchor.None
+            } : UIAnchor.None,
             UseHover = data.UseHover,
             ClickBehaviorLabel = data.ClickBehavior,
             HoverEnterLabel = data.HoverEnterBehavior,
@@ -387,6 +403,7 @@ public static class SceneAssetSerializer
             AutoFillWindow = elem.AutoFillWindow,
             AutoCenterX = elem.AutoCenterX,
             AutoCenterY = elem.AutoCenterY,
+            Anchor = elem.Anchor.ToString(),
             UseHover = elem.UseHover,
             ClickBehavior = elem.ClickBehaviorLabel,
             HoverEnterBehavior = elem.HoverEnterLabel,

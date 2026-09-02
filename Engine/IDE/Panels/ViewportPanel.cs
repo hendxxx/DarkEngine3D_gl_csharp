@@ -218,6 +218,14 @@ public unsafe class ViewportPanel
                 elem.Y = Math.Max(0f, (_texH - elem.Height) * 0.5f);
             }
 
+            // Anchor: recalculate position from viewport edges
+            if (elem.Anchor != UIAnchor.None && !elem.AutoFillWindow)
+            {
+                var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
+                elem.X = ax;
+                elem.Y = ay;
+            }
+
             // Convert scene coords to screen coords (no Y-flip  scene Y=0 is top)
             float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
             float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
@@ -2264,6 +2272,11 @@ ImGui.SameLine();
                             {
                                 selUiElem.AutoCenterY = false;
                                 Console.WriteLine($"[Viewport] Auto-center Y disabled on '{selUiElem.Name}' (manual drag)");
+                            }
+                            if (selUiElem.Anchor != UIAnchor.None)
+                            {
+                                selUiElem.Anchor = UIAnchor.None;
+                                Console.WriteLine($"[Viewport] Anchor disabled on '{selUiElem.Name}' (manual drag)");
                             }
                         }
                     }

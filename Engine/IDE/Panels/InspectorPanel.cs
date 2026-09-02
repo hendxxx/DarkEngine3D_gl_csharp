@@ -634,6 +634,16 @@ public class InspectorPanel
                 elem.AutoCenterY = autoCenterY;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("When enabled, this element is automatically centered vertically in the viewport");
+
+            //  Anchor (stick to viewport edges)
+            string[] anchorLabels = ["None", "TopLeft", "TopCenter", "TopRight",
+                "CenterLeft", "Center", "CenterRight",
+                "BottomLeft", "BottomCenter", "BottomRight"];
+            int anchorIdx = (int)elem.Anchor;
+            if (ImGui.Combo("Anchor", ref anchorIdx, anchorLabels, anchorLabels.Length))
+                elem.Anchor = (UIAnchor)anchorIdx;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Anchor element to viewport edges. X/Y become offsets from the anchor point.");
         }
 
         // 

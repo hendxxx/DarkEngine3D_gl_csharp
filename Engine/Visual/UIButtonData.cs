@@ -11,6 +11,23 @@ public enum TextAlignment
     Right
 }
 
+/// <summary>Anchor position relative to viewport edges.
+/// When anchored, element position is recalculated from the anchor point each frame.
+/// X/Y become offsets from the anchor point.</summary>
+public enum UIAnchor
+{
+    None,
+    TopLeft,
+    TopCenter,
+    TopRight,
+    CenterLeft,
+    Center,
+    CenterRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight
+}
+
 /// <summary>Slider value label position.</summary>
 public enum SliderLabelPosition
 {
@@ -119,6 +136,10 @@ public class UIElement
     public bool AutoCenterX { get; set; } = false;
     /// <summary>Auto-center this element vertically in the viewport.</summary>
     public bool AutoCenterY { get; set; } = false;
+
+    // ── Anchor (element stays attached to viewport edges) ──
+    /// <summary>Anchor position relative to viewport. X/Y become offsets from anchor point.</summary>
+    public UIAnchor Anchor { get; set; } = UIAnchor.None;
     /// <summary>Legacy: auto-center both axes. Sets/clears both AutoCenterX and AutoCenterY.</summary>
     public bool AutoCenter
     {
@@ -246,6 +267,36 @@ public class UIElement
         foreach (var c in Children)
             c.Parent = null;
         Children.Clear();
+    }
+
+    // ════════════════════════════════════════════════
+    //  Anchor Position Calculation
+    // ════════════════════════════════════════════════
+
+    /// <summary>
+    /// Calculate the actual position (ax, ay) based on the anchor setting.
+    /// Call this each frame before rendering. X/Y are the element's base offset;
+    /// the anchor shifts the origin to the appropriate viewport edge.
+    /// </summary>
+    public (float x, float y) GetAnchoredPosition(float virtualW, float virtualH)
+    {
+        if (Anchor == UIAnchor.None || AutoFillWindow)
+            return (X, Y);
+
+        float ax = X, ay = Y;
+        switch (Anchor)
+        {
+            case UIAnchor.TopLeft:      ax = X;                    ay = Y; break;
+            case UIAnchor.TopCenter:    ax = (virtualW - Width) / 2f + X; ay = Y; break;
+            case UIAnchor.TopRight:     ax = virtualW - Width - X;  ay = Y; break;
+            case UIAnchor.CenterLeft:   ax = X;                    ay = (virtualH - Height) / 2f + Y; break;
+            case UIAnchor.Center:       ax = (virtualW - Width) / 2f + X; ay = (virtualH - Height) / 2f + Y; break;
+            case UIAnchor.CenterRight:  ax = virtualW - Width - X;  ay = (virtualH - Height) / 2f + Y; break;
+            case UIAnchor.BottomLeft:   ax = X;                    ay = virtualH - Height - Y; break;
+            case UIAnchor.BottomCenter: ax = (virtualW - Width) / 2f + X; ay = virtualH - Height - Y; break;
+            case UIAnchor.BottomRight:  ax = virtualW - Width - X;  ay = virtualH - Height - Y; break;
+        }
+        return (ax, ay);
     }
 
     /// <summary>

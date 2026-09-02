@@ -50,6 +50,12 @@ public class IDE : IDisposable
     // ── Keyboard navigation in in-game mode ──
     private UIElement? _focusedInGameElement = null;
     private int _focusedInGameIndex = -1;
+    // ── Project dialogs ──
+    private bool _showNewProjectDialog = false;
+    private bool _showOpenProjectDialog = false;
+    private byte[] _newProjectNameBuf = new byte[256];
+    private byte[] _newProjectPathBuf = new byte[512];
+    private readonly ImGuiFileDialog _projectFolderDialog = new();
     /// <summary>When true, all ImGui panels are hidden and the game scene fills the entire screen.</summary>
     public bool InGameMode
     {
@@ -372,6 +378,8 @@ public class IDE : IDisposable
             }
         }
 
+
+
         // ── Build main menu bar ──
         ImGui.BeginMainMenuBar();
         {
@@ -425,6 +433,37 @@ public class IDE : IDisposable
                 // Save As...
                 if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
                     _sceneManagerPanel.OpenSaveAsDialog();
+
+                ImGui.Separator();
+
+                // ── Project ──
+                if (ImGui.BeginMenu("Project"))
+                {
+                    if (Engine.Project.ProjectManager.IsProjectLoaded)
+                    {
+                        ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.5f, 1f), $"  {Path.GetFileName(Engine.Project.ProjectManager.ProjectRoot)}");
+                        ImGui.TextDisabled($"  {Engine.Project.ProjectManager.ProjectRoot}");
+                        ImGui.Separator();
+                    }
+
+                    if (ImGui.MenuItem("New Project..."))
+                    {
+                        _projectFolderDialog.OpenForPickFolder("Select Project Location");
+                    }
+                    if (ImGui.MenuItem("Open Project..."))
+                    {
+                        _showOpenProjectDialog = true;
+                    }
+                    if (Engine.Project.ProjectManager.IsProjectLoaded)
+                    {
+                        if (ImGui.MenuItem("Close Project"))
+                        {
+                            Engine.Project.ProjectManager.CloseProject();
+                            Console.WriteLine("[IDE] Project closed");
+                        }
+                    }
+                    ImGui.EndMenu();
+                }
 
                 ImGui.Separator();
 
@@ -656,6 +695,8 @@ public class IDE : IDisposable
             ImGui.EndMainMenuBar();
         }
 
+
+
         // ── Docking space ──
         ImGui.DockSpaceOverViewport();
 
@@ -674,6 +715,9 @@ public class IDE : IDisposable
         _sceneManagerPanel.Render();
         _transitionPanel.Render();
 
+        // ── Project popups (rendered after panels, so window context exists) ──
+        RenderProjectPopups();
+
         // ── Render ImGui draw data ──
         // Render transition overlay (if any) while ImGui frame is active
         try
@@ -683,6 +727,94 @@ public class IDE : IDisposable
         catch { }
 
         _imgui.Render();
+    }
+
+    /// <summary>Render project management popups (New/Open Project, Folder Picker).
+    /// Called after panels render so ImGui window context exists for OpenPopup.</summary>
+    private void RenderProjectPopups()
+    {
+        // ── Folder picker for New Project ──
+        _projectFolderDialog.Render();
+        if (_projectFolderDialog.IsConfirmed && _projectFolderDialog.SelectedPath != null)
+        {
+            string selectedFolder = _projectFolderDialog.SelectedPath;
+            Array.Clear(_newProjectNameBuf);
+            Array.Clear(_newProjectPathBuf);
+            System.Text.Encoding.UTF8.GetBytes(selectedFolder, _newProjectPathBuf);
+            _showNewProjectDialog = true;
+            _projectFolderDialog.Close();
+        }
+
+        // ── New Project name dialog ──
+        if (_showNewProjectDialog)
+        {
+            ImGui.OpenPopup("New Project");
+            _showNewProjectDialog = false;
+        }
+        bool newProjOpen = true;
+        if (ImGui.BeginPopupModal("New Project", ref newProjOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.Text("Location:");
+            ImGui.TextColored(new Vector4(0.5f, 0.7f, 1f, 1f), $"  {System.Text.Encoding.UTF8.GetString(_newProjectPathBuf).TrimEnd('\0')}");
+            ImGui.Spacing();
+            ImGui.Text("Project Name:");
+            ImGui.SetNextItemWidth(300);
+            ImGui.InputText("##proj_name", _newProjectNameBuf, (uint)_newProjectNameBuf.Length);
+
+            ImGui.Separator();
+            if (ImGui.Button("Create", new Vector2(120, 0)))
+            {
+                string name = System.Text.Encoding.UTF8.GetString(_newProjectNameBuf).TrimEnd('\0');
+                string dir = System.Text.Encoding.UTF8.GetString(_newProjectPathBuf).TrimEnd('\0');
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(dir))
+                {
+                    string rootPath = Path.Combine(dir, name);
+                    Engine.Project.ProjectManager.CreateProject(rootPath, name);
+                    Console.WriteLine($"[IDE] Created project '{name}' at {rootPath}");
+                    ImGui.CloseCurrentPopup();
+                }
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
+
+        // ── Open Project dialog ──
+        if (_showOpenProjectDialog)
+        {
+            ImGui.OpenPopup("Open Project Folder");
+            _showOpenProjectDialog = false;
+        }
+        bool openProjOpen = true;
+        if (ImGui.BeginPopupModal("Open Project Folder", ref openProjOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.Text("Project Folder Path (containing project.json):")  ;
+            ImGui.SetNextItemWidth(400);
+            ImGui.InputText("##open_proj_path", _newProjectPathBuf, (uint)_newProjectPathBuf.Length);
+
+            ImGui.Separator();
+            if (ImGui.Button("Open", new Vector2(120, 0)))
+            {
+                string path2 = System.Text.Encoding.UTF8.GetString(_newProjectPathBuf).TrimEnd('\0');
+                if (!string.IsNullOrWhiteSpace(path2))
+                {
+                    if (Engine.Project.ProjectManager.OpenProject(path2))
+                    {
+                        Console.WriteLine($"[IDE] Opened project at {path2}");
+                        ImGui.CloseCurrentPopup();
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[IDE] Failed to open project at {path2}");
+                    }
+                }
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
     }
 
     /// <summary>Render a full-screen game viewport with no ImGui chrome.

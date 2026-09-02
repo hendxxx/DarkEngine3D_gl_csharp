@@ -43,6 +43,8 @@ public class SceneElementData
     public bool AutoFillWindow { get; set; } = false;
     public bool AutoCenterX { get; set; } = false;
     public bool AutoCenterY { get; set; } = false;
+    /// <summary>Anchor position: None, TopLeft, TopCenter, etc.</summary>
+    public string Anchor { get; set; } = "None";
     public bool UseHover { get; set; } = true;
 
     // Behavior string — mapped to actual Action<> at runtime

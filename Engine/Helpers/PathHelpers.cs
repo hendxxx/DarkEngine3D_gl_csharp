@@ -32,8 +32,8 @@ public static class PathHelpers
         return sb.ToString();
     }
 
-    /// <summary>Resolve a possibly-relative path to an absolute path rooted at the exe folder.
-    /// Absolute paths are returned as-is; empty strings pass through.</summary>
+    /// <summary>Resolve a possibly-relative path to an absolute path.
+    /// Checks project Assets first, then exe directory. Absolute paths returned as-is.</summary>
     public static string Resolve(string? path)
     {
         if (string.IsNullOrEmpty(path)) return path ?? "";
@@ -41,6 +41,17 @@ public static class PathHelpers
         try
         {
             if (Path.IsPathRooted(p)) return Path.GetFullPath(p);
+
+            // Try project assets first
+            if (DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded)
+            {
+                string projectPath = Path.GetFullPath(Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, p));
+                if (File.Exists(projectPath)) return projectPath;
+                string assetsPath = Path.GetFullPath(Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.AssetsDir, p));
+                if (File.Exists(assetsPath)) return assetsPath;
+            }
+
+            // Fallback to exe directory
             return Path.GetFullPath(Path.Combine(AppBaseDir, p));
         }
         catch
