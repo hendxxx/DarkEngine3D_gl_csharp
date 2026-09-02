@@ -2,9 +2,7 @@ using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
-
-using DarkEngine3D_gl_csharp.Engine.Scene;
-
+  
 namespace DarkEngine3D_gl_csharp.Engine.IDE;
 
 /// <summary>

@@ -1,6 +1,7 @@
 using ImGuiNET;
 using System.Numerics;
 using System.Linq;
+using DarkEngine3D_gl_csharp.Engine.Scene;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -15,6 +16,7 @@ public class TransitionPanel
     private Vector3 _color = new Vector3(0f, 0f, 0f);
     private int _selectedEasingIdx = 0;
     private bool _blockInput = false;
+    private int _lastSyncedSceneIdx = -1; // track last synced scene to detect dropdown change
 
     private static readonly string[] _typeLabels = ["Fade", "Slide Left", "Slide Right"];
 
@@ -48,6 +50,17 @@ public class TransitionPanel
             _bridge.DefaultTransitionEasing = _selectedEasingIdx switch { 0 => "linear", 1 => "easein", 2 => "easeout", 3 => "easeinout", _ => "linear" };
             _bridge.DefaultTransitionBlockInput = _blockInput;
             Console.WriteLine($"[TransitionPanel] Set global default transition: {spec}");
+
+            // Persist to settings.json
+            var s = DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Load();
+            s.DefaultTransitionType = _selectedTypeIdx;
+            s.DefaultTransitionDuration = _duration;
+            s.DefaultTransitionColorR = _color.X;
+            s.DefaultTransitionColorG = _color.Y;
+            s.DefaultTransitionColorB = _color.Z;
+            s.DefaultTransitionEasing = _bridge.DefaultTransitionEasing;
+            s.DefaultTransitionBlockInput = _blockInput;
+            DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Save(s);
         }
         ImGui.SameLine();
         if (ImGui.Button("Preview"))
@@ -88,6 +101,27 @@ public class TransitionPanel
         ImGui.Combo("Scene", ref _selectedSceneIdx, names, names.Length);
 
         var cur = scenes[_selectedSceneIdx];
+
+        // Sync UI controls to selected scene's saved transition settings when dropdown changes
+        if (_selectedSceneIdx != _lastSyncedSceneIdx)
+        {
+            _lastSyncedSceneIdx = _selectedSceneIdx;
+            _selectedTypeIdx = cur.TransitionType switch
+            {
+                Engine.Scene.TransitionType.SlideLeft => 1,
+                Engine.Scene.TransitionType.SlideRight => 2,
+                _ => 0
+            };
+            _duration = cur.TransitionDuration > 0f ? cur.TransitionDuration : 0.6f;
+            if (cur.TransitionColor != null && cur.TransitionColor.Length >= 3)
+                _color = new Vector3(cur.TransitionColor[0], cur.TransitionColor[1], cur.TransitionColor[2]);
+            _selectedEasingIdx = cur.TransitionEasing?.ToLowerInvariant() switch
+            {
+                "easein" => 1, "easeout" => 2, "easeinout" => 3, _ => 0
+            };
+            _blockInput = cur.TransitionBlockInput;
+        }
+
         ImGui.Text($"Current: type={cur.TransitionType} dur={cur.TransitionDuration:F2} ease={cur.TransitionEasing} block={cur.TransitionBlockInput}");
         if (ImGui.Button("Apply To Scene"))
         {
@@ -104,6 +138,11 @@ public class TransitionPanel
                     TransitionBlockInput = _blockInput,
                 };
                 Console.WriteLine($"[TransitionPanel] Applied transition '{spec}' to scene '{old.Name}'");
+
+                // Persist to SceneAssetSerializer so save includes transition settings
+                string tType = _selectedTypeIdx switch { 0 => "fade", 1 => "slideleft", 2 => "slideright", _ => "fade" };
+                string tEase = _selectedEasingIdx switch { 0 => "linear", 1 => "easein", 2 => "easeout", 3 => "easeinout", _ => "linear" };
+                SceneAssetSerializer.SetTransitionSettings(old.Name, tType, _duration, new float[3] { _color.X, _color.Y, _color.Z }, tEase, _blockInput);
             }
         }
 

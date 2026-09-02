@@ -411,7 +411,20 @@ public class InspectorPanel
                 if (string.IsNullOrEmpty(newType))
                     newParam = "";
                 else if (newType != currentType)
+                {
                     newParam = ""; // reset param when switching type
+                    // Auto-select first available item for scene/overlay
+                    if (string.Equals(newType, "scene", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var scenes = _bridge.AvailableSceneNames;
+                        if (scenes.Length > 0) newParam = scenes[0];
+                    }
+                    else if (string.Equals(newType, "overlay", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var overlays = IDEBridge.GetOverlayNamesFromScene(_bridge.SceneRoot);
+                        if (overlays.Length > 0) newParam = overlays[0];
+                    }
+                }
                 elem.ClickBehaviorLabel = IDEBridge.BuildBehavior(newType, newParam);
                 elem.OnClick = null;
                 // Update current values so sub-combo appears immediately

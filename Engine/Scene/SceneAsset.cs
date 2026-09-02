@@ -317,6 +317,8 @@ public class SceneAsset
 {
     public string SceneName { get; set; } = "Untitled";
     public string Description { get; set; } = "";
+    /// <summary>Scene type: "MainMenu", "GameScene", "Loading" (persists editor type choice).</summary>
+    public string SceneType { get; set; } = "MainMenu";
     /// <summary>Top-level UI elements (usually one Scene-type root per definition).</summary>
     public List<SceneElementData> Elements { get; set; } = [];
     /// <summary>3D background objects to render behind the UI (models, position, scale).</summary>

@@ -7,7 +7,7 @@
       "elements": [
         {
           "name": "mnMain",
-          "type": "Scene",
+          "type": "MainMenu",
           "text": "Element",
           "x": 0,
           "y": 0,

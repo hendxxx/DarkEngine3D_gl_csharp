@@ -39,6 +39,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Font size for the viewport toolbar buttons (px).</summary>
         public float ToolbarFontSize { get; set; } = 14f;
 
+        // ── Transition defaults (persisted from TransitionPanel's "Apply Global Default") ──
+        public int DefaultTransitionType { get; set; } = 0; // 0=Fade, 1=SlideLeft, 2=SlideRight
+        public float DefaultTransitionDuration { get; set; } = 0.6f;
+        public float DefaultTransitionColorR { get; set; } = 0f;
+        public float DefaultTransitionColorG { get; set; } = 0f;
+        public float DefaultTransitionColorB { get; set; } = 0f;
+        public string DefaultTransitionEasing { get; set; } = "linear";
+        public bool DefaultTransitionBlockInput { get; set; } = false;
+
         // ── Shadow Settings (tuned live in the IDE Shadow Settings panel; persisted so
         // they survive restarts — ShadowSettings.Persist()/Apply()) ──
         /// <summary>Cascade split distances in world units.</summary>

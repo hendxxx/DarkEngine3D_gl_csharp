@@ -301,6 +301,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_ide != null)
                     _ide.Update(dt);
 
+                // ── Advance transition animation each frame ──
+                _transitionManager.Update(dt);
+
                 // ── Keep the IDE FPS/FrameMs readouts fresh EVERY frame regardless of
                 // which scene is active (SceneViewPanel + in-game overlay read these).
                 if (_ide != null)

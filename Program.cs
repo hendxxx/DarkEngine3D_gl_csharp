@@ -132,6 +132,13 @@ public unsafe class Program
         ide.Bridge.ShowCursorInGame = settings.ShowCursorInGame;
         ide.SetViewportSnap(settings.SnapEnabled, settings.SnapGridSize);
 
+        // Restore transition defaults
+        ide.Bridge.DefaultTransitionType = (Engine.Scene.TransitionType)settings.DefaultTransitionType;
+        ide.Bridge.DefaultTransitionDuration = settings.DefaultTransitionDuration;
+        ide.Bridge.DefaultTransitionColor = new float[3] { settings.DefaultTransitionColorR, settings.DefaultTransitionColorG, settings.DefaultTransitionColorB };
+        ide.Bridge.DefaultTransitionEasing = settings.DefaultTransitionEasing ?? "linear";
+        ide.Bridge.DefaultTransitionBlockInput = settings.DefaultTransitionBlockInput;
+
         SceneManager sceneManager = new();
         sceneManager.AttachIde(ide);
 

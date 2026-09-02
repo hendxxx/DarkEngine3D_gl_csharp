@@ -472,6 +472,11 @@ public class SceneManagerPanel
                 _selectedIdx = _bridge.AvailableScenes.Count - 1;
                 Console.WriteLine($"[SceneManager] Added scene: {sceneName} (type={IDEBridge.SceneTypeLabels[_selectedNewSceneTypeIdx]})");
 
+                // Persist transition settings for save
+                string tTypeStr = _editTransitionTypeIdx switch { 1 => "slideleft", 2 => "slideright", _ => "fade" };
+                string tEaseStr = _editTransitionEasingIdx switch { 1 => "easein", 2 => "easeout", 3 => "easeinout", _ => "linear" };
+                SceneAssetSerializer.SetTransitionSettings(sceneName, tTypeStr, _editTransitionDuration, new float[3] { _editTransitionColor.X, _editTransitionColor.Y, _editTransitionColor.Z }, tEaseStr, _editTransitionBlock);
+
                 // Create an EditorScene (UIElement root) for this scene so it can be edited in SceneDetail
                 if (!_bridge.EditorScenes.ContainsKey(sceneName))
                 {
@@ -837,8 +842,10 @@ public class SceneManagerPanel
                 SceneName = name,
                 Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
                 BackgroundObjects = [],
-                EditorObjects = []
+                EditorObjects = [],
+                SceneType = editorScene.Type.ToString()
             };
+            SceneAssetSerializer.ApplyTransitionSettings(asset);
 
             //  Per-scene freefly camera: snapshot the LIVE camera for the currently
             // selected scene, and keep each other scene's saved camera as-is. 
@@ -1188,13 +1195,18 @@ public class SceneManagerPanel
             {
                 string sceneName = asset.SceneName ?? $"Scene_{sceneCount}";
 
-                // Determine scene type from the loaded asset. If the asset contains
-                // multiple top-level elements or any element explicitly marked as
-                // a Scene, treat it as a GameScene; otherwise default to MainMenu.
-                var sceneType = (asset.Elements.Count > 1 ||
-                                 asset.Elements.Any(e => string.Equals(e.Type, "Scene", StringComparison.OrdinalIgnoreCase)))
-                    ? IDEBridge.SceneType.GameScene
-                    : IDEBridge.SceneType.MainMenu;
+                // Determine scene type: use saved SceneType if present, otherwise auto-detect.
+                var sceneType = !string.IsNullOrEmpty(asset.SceneType)
+                    ? asset.SceneType.ToLowerInvariant() switch
+                    {
+                        "gamescene" => IDEBridge.SceneType.GameScene,
+                        "loading" => IDEBridge.SceneType.Loading,
+                        _ => IDEBridge.SceneType.MainMenu
+                    }
+                    : (asset.Elements.Count > 1 ||
+                       asset.Elements.Any(e => string.Equals(e.Type, "Scene", StringComparison.OrdinalIgnoreCase)))
+                        ? IDEBridge.SceneType.GameScene
+                        : IDEBridge.SceneType.MainMenu;
 
                 // Build transition defaults from asset if present
                 var tType = TransitionType.Fade;
@@ -1229,6 +1241,10 @@ public class SceneManagerPanel
                     tCol,
                     tEase,
                     tBlock));
+
+                // Populate TransitionSettings dictionary so save preserves transition config
+                string tTypeStr = tType switch { TransitionType.SlideLeft => "slideleft", TransitionType.SlideRight => "slideright", _ => "fade" };
+                SceneAssetSerializer.SetTransitionSettings(sceneName, tTypeStr, tDur, tCol, tEase, tBlock);
 
                 // Build a tree root from the elements
                 UIElement sceneRoot;
@@ -1563,10 +1579,12 @@ public class SceneManagerPanel
                     SceneName = name,
                     Elements = [SceneAssetSerializer.ToSceneData(editorScene.Root)],
                     BackgroundObjects = [],
-                    EditorObjects = []
+                    EditorObjects = [],
+                    SceneType = editorScene.Type.ToString()
                 };
+                SceneAssetSerializer.ApplyTransitionSettings(asset);
 
-                // Inject per-scene transition metadata from AvailableScenes if present
+                // Inject per-scene transition metadata from AvailableScenes if present (overrides dictionary)
                 var matching = _bridge.AvailableScenes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
                 if (matching != null)
                 {

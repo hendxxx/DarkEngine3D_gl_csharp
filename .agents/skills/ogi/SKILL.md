@@ -39,5 +39,10 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Post-Processing:** Pluggable `IPostProcessPass` pipeline (e.g., `InvertPass`)
 - **Lighting:** `CSM` (Cascaded Shadow Maps), `Lights`
 
+## ImGui Editor Rules:
+- **Dropdown Auto-Select**: Semua dropdown (Combo/BeginCombo) harus auto-select index 0 saat pertama kali muncul atau saat parent value berubah. Jangan biarkan dropdown kosong/tidak terpilih. Contoh: ketika user ganti tipe behavior ke "scene", dropdown target scene harus langsung pilih scene pertama.
+- **BeginCombo > Combo**: Gunakan BeginCombo/EndCombo untuk dropdown yang perlu bisa dipilih meskipun cuma 1 item (Combo ImGui disable dropdown jika cuma 1 item).
+- **Scene Type Persistence**: Simpan tipe scene (MainMenu/GameScene/Loading) ke file .ing agar saat load kembali tipe tetap benar.
+
 ## Bahasa:
 - Bisa berbahasa **Indonesia** dan **Inggris**.

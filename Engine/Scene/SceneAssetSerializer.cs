@@ -50,6 +50,29 @@ public static class SceneAssetSerializer
     public static string GameIngPath =>
         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "game.ing");
 
+    // ── Per-scene transition settings (editor → save pipeline) ──
+    // TransitionPanel writes to this dictionary; SaveAllRegisteredScenes reads from it.
+    public static Dictionary<string, (string TransitionType, float Duration, float[] Color, string Easing, bool BlockInput)> TransitionSettings { get; } = new();
+
+    /// <summary>Set transition settings for a scene (called by TransitionPanel).</summary>
+    public static void SetTransitionSettings(string sceneName, string transitionType, float duration, float[] color, string easing, bool blockInput)
+    {
+        TransitionSettings[sceneName] = (transitionType, duration, color, easing, blockInput);
+    }
+
+    /// <summary>Apply saved transition settings to a SceneAsset during save.</summary>
+    public static void ApplyTransitionSettings(SceneAsset asset)
+    {
+        if (TransitionSettings.TryGetValue(asset.SceneName, out var ts))
+        {
+            asset.TransitionType = ts.TransitionType;
+            asset.TransitionDuration = ts.Duration;
+            asset.TransitionColor = ts.Color;
+            asset.TransitionEasing = ts.Easing;
+            asset.TransitionBlockInput = ts.BlockInput;
+        }
+    }
+
     /// <summary>Load a SceneManifest from an arbitrary .ing file path.
     /// Supports both manifest files (multiple scenes) and single scene files.
     /// Returns null if not found or invalid.</summary>
@@ -131,6 +154,7 @@ public static class SceneAssetSerializer
             Elements = [ToSceneData(root)],
             BackgroundObjects = bgObjects ?? []
         };
+        ApplyTransitionSettings(asset);
 
         // Store asset paths relative to the exe so the .ing is portable.
         NormalizeBgForSave(asset.BackgroundObjects);
@@ -152,12 +176,14 @@ public static class SceneAssetSerializer
 
         foreach (var (name, root) in scenes)
         {
-            manifest.Scenes.Add(new SceneAsset
+            var sceneAsset = new SceneAsset
             {
                 SceneName = name,
                 Elements = [ToSceneData(root)],
                 BackgroundObjects = []
-            });
+            };
+            ApplyTransitionSettings(sceneAsset);
+            manifest.Scenes.Add(sceneAsset);
         }
 
         string json = JsonSerializer.Serialize(manifest, JsonOptions);
@@ -528,12 +554,14 @@ public static class SceneAssetSerializer
                 ? registered
                 : [];
 
-            manifest.Scenes.Add(new SceneAsset
+            var sceneAsset = new SceneAsset
             {
                 SceneName = name,
                 Elements = [ToSceneData(root)],
                 BackgroundObjects = bgObjects
-            });
+            };
+            ApplyTransitionSettings(sceneAsset);
+            manifest.Scenes.Add(sceneAsset);
 
             // Store asset paths relative to the exe so the .ing is portable.
             NormalizeBgForSave(manifest.Scenes[^1].BackgroundObjects);

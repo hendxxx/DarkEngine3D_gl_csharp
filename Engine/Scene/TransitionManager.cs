@@ -35,6 +35,7 @@ public class TransitionManager
     {
         if (!_active || _def == null) return;
         _elapsed += dt;
+        try { Console.WriteLine($"[Transition] Update: elapsed={_elapsed:F3}/{_def.Duration:F2} active={_active}"); } catch { }
         float half = _def.Duration * 0.5f;
         if (!_midpointCalled && _elapsed >= half)
         {
@@ -64,10 +65,12 @@ public class TransitionManager
             io = ImGui.GetIO(); // will throw if context missing
             draw = ImGui.GetForegroundDrawList();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            try { Console.WriteLine($"[Transition] DrawOverlay failed to get draw list: {ex.Message}"); } catch { }
             return;
         }
+        try { Console.WriteLine($"[Transition] DrawOverlay: elapsed={_elapsed:F3} active={_active}"); } catch { }
         float w = io.DisplaySize.X;
         float h = io.DisplaySize.Y;
             float t = _elapsed / Math.Max(0.0001f, _def.Duration);

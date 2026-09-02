@@ -330,13 +330,13 @@ public class IDE : IDisposable
         if (Bridge.SelectedEditorScene == null && Bridge.EditorScenes.Count > 0)
         {
             // No scene is selected but there are editor scenes — auto-select the first one.
-            // This ensures the Inspector, Hierarchy, and Viewport always have a scene to display.
+            // Use SceneManagerPanel.SelectEditorScene for full initialization.
             foreach (var kvp in Bridge.EditorScenes)
             {
-                Bridge.SelectedEditorScene = kvp.Key;
-                Console.WriteLine($"[IDE] Auto-selected scene: {kvp.Key}");
+                _sceneManagerPanel.SelectEditorScenePublic(kvp.Key);
                 break;
             }
+            Console.WriteLine($"[IDE] Auto-selected scene: {Bridge.SelectedEditorScene}");
         }
 
         if (Bridge.SelectedEditorScene != null &&
@@ -1209,6 +1209,13 @@ public class IDE : IDisposable
         // ── Camera warning overlay (shown when no Camera object found) ──
         float dt = io.DeltaTime;
         RenderInGameWarning(dt);
+
+        // ── Render transition overlay (if any) while ImGui frame is active ──
+        try
+        {
+            Bridge.SceneManager?.RenderTransitionOverlay();
+        }
+        catch { }
 
         // No ImGui windows at all — just flush the draw list
         _imgui.Render();

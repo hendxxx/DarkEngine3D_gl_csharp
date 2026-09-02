@@ -1998,10 +1998,9 @@ ImGui.SameLine();
 
             //  UI Element Wireframe & Interactive Editing 
             // In Preview mode, skip ALL editor overlays (wireframe, handles, info labels, drag)
-            // For Loading and GameScene editor types, skip helpers (only MainMenu needs UI layout editing)
             if (!_previewMode)
             {
-            bool showHelpers = IsEditorSceneType(IDEBridge.SceneType.MainMenu);
+            bool showHelpers = true; // Show helpers for all scene types (MainMenu, GameScene, Loading)
 
             if (showHelpers)
             {
