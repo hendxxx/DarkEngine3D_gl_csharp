@@ -218,19 +218,20 @@ public unsafe class ViewportPanel
                 elem.Y = Math.Max(0f, (_texH - elem.Height) * 0.5f);
             }
 
-            // Anchor: recalculate position from viewport edges
+            // Anchor: calculate position from viewport edges WITHOUT modifying elem.X/Y
+            float renderX = elem.X, renderY = elem.Y;
             if (elem.Anchor != UIAnchor.None && !elem.AutoFillWindow)
             {
                 var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
-                elem.X = ax;
-                elem.Y = ay;
+                renderX = ax;
+                renderY = ay;
             }
 
             // Convert scene coords to screen coords (no Y-flip  scene Y=0 is top)
-            float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
-            float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
-            float sx1 = _imageMin.X + ((elem.X + elem.Width) / _texW) * _imageSize.X;
-            float sy1 = _imageMin.Y + ((elem.Y + elem.Height) / _texH) * _imageSize.Y;
+            float sx0 = _imageMin.X + (renderX / _texW) * _imageSize.X;
+            float sy0 = _imageMin.Y + (renderY / _texH) * _imageSize.Y;
+            float sx1 = _imageMin.X + ((renderX + elem.Width) / _texW) * _imageSize.X;
+            float sy1 = _imageMin.Y + ((renderY + elem.Height) / _texH) * _imageSize.Y;
 
             // Skip elements completely outside the image bounds
             if (sx1 < _imageMin.X || sx0 > _imageMax.X || sy1 < _imageMin.Y || sy0 > _imageMax.Y)
@@ -2023,10 +2024,17 @@ ImGui.SameLine();
                 //  Helper: draw a wireframe for a single element 
                 void DrawElemWireframe(UIElement elem, bool isPrimary)
                 {
-                    float sx0 = _imageMin.X + (elem.X / _texW) * _imageSize.X;
-                    float sy0 = _imageMin.Y + (elem.Y / _texH) * _imageSize.Y;
-                    float sx1 = _imageMin.X + ((elem.X + elem.Width) / _texW) * _imageSize.X;
-                    float sy1 = _imageMin.Y + ((elem.Y + elem.Height) / _texH) * _imageSize.Y;
+                    // Apply anchor without modifying elem.X/Y
+                    float rx = elem.X, ry = elem.Y;
+                    if (elem.Anchor != UIAnchor.None && !elem.AutoFillWindow)
+                    {
+                        var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
+                        rx = ax; ry = ay;
+                    }
+                    float sx0 = _imageMin.X + (rx / _texW) * _imageSize.X;
+                    float sy0 = _imageMin.Y + (ry / _texH) * _imageSize.Y;
+                    float sx1 = _imageMin.X + ((rx + elem.Width) / _texW) * _imageSize.X;
+                    float sy1 = _imageMin.Y + ((ry + elem.Height) / _texH) * _imageSize.Y;
 
                     float csx0 = Math.Clamp(sx0, _imageMin.X, _imageMax.X);
                     float csy0 = Math.Clamp(sy0, _imageMin.Y, _imageMax.Y);
@@ -2145,11 +2153,17 @@ ImGui.SameLine();
                 }
                 else
                 {
-                //  Interactive drag handling 
-                float psx0 = _imageMin.X + (selUiElem.X / _texW) * _imageSize.X;
-                float psy0 = _imageMin.Y + (selUiElem.Y / _texH) * _imageSize.Y;
-                float psx1 = _imageMin.X + ((selUiElem.X + selUiElem.Width) / _texW) * _imageSize.X;
-                float psy1 = _imageMin.Y + ((selUiElem.Y + selUiElem.Height) / _texH) * _imageSize.Y;
+                //  Interactive drag handling (apply anchor without modifying elem.X/Y)
+                float dragRX = selUiElem.X, dragRY = selUiElem.Y;
+                if (selUiElem.Anchor != UIAnchor.None && !selUiElem.AutoFillWindow)
+                {
+                    var (dax, day) = selUiElem.GetAnchoredPosition(_texW, _texH);
+                    dragRX = dax; dragRY = day;
+                }
+                float psx0 = _imageMin.X + (dragRX / _texW) * _imageSize.X;
+                float psy0 = _imageMin.Y + (dragRY / _texH) * _imageSize.Y;
+                float psx1 = _imageMin.X + ((dragRX + selUiElem.Width) / _texW) * _imageSize.X;
+                float psy1 = _imageMin.Y + ((dragRY + selUiElem.Height) / _texH) * _imageSize.Y;
                 float pcsx0 = Math.Clamp(psx0, _imageMin.X, _imageMax.X);
                 float pcsy0 = Math.Clamp(psy0, _imageMin.Y, _imageMax.Y);
                 float pcsx1 = Math.Clamp(psx1, _imageMin.X, _imageMax.X);
