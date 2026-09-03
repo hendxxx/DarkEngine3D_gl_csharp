@@ -204,8 +204,21 @@ public unsafe class ViewportPanel
             float renderW = elem.Width, renderH = elem.Height;
             float renderX = elem.X, renderY = elem.Y;
 
-            // Apply scroll offset (Placeholder itself is excluded — only its children move)
-            if (elem.Type != UIElementType.Placeholder)
+            // Children inside Container: positions are Container-local, add parent positions
+            var pp = elem.Parent;
+            while (pp != null)
+            {
+                if (pp.Type == UIElementType.Container)
+                {
+                    renderX += pp.X;
+                    renderY += pp.Y;
+                }
+                pp = pp.Parent;
+            }
+
+            // Container with scroll: exclude from scroll offset (only children move)
+            bool isScrollableContainer = elem.Type == UIElementType.Container && elem.ContentHeight > elem.Height;
+            if (!isScrollableContainer)
                 renderY += scrollOffsetY;
 
             // Auto-fill window: force element to cover the entire viewport
@@ -261,7 +274,7 @@ public unsafe class ViewportPanel
                              mouseScreen.Y >= csy0 && mouseScreen.Y <= csy1;
 
             // Placeholder scrollbar: deselect only on CLICK (not hover) BEFORE wireframe is drawn
-            if (elem.Type == UIElementType.Placeholder && isHovered && elem.ContentHeight > elem.Height
+            if (isScrollableContainer && isHovered
                 && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             {
                 float sbRight = sx1 - 2f;
@@ -295,7 +308,7 @@ public unsafe class ViewportPanel
 
             //  Draw background (filled rect)  skip for Labels + Placeholder
             // Placeholder: DrawPlaceholder handles its own background + scroll
-            bool isScrollContainer = elem.Type == UIElementType.Placeholder;
+            bool isScrollContainer = isScrollableContainer;
             if (!labelDefaultBg && !isScrollContainer)
             {
                 drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
@@ -935,10 +948,40 @@ public unsafe class ViewportPanel
                 else
                 {
                     // Editor mode: select element for inspection
-                    _bridge.SelectedUIElement = elem;
-                    _bridge.SelectedUIElements.Clear();
-                    _bridge.SelectedUIElements.Add(elem);
-                    Console.WriteLine($"[Viewport] Selected '{elem.Name}' in editor");
+                    bool ctrlHeld = ImGui.GetIO().KeyCtrl;
+                    if (ctrlHeld)
+                    {
+                        // Ctrl+Click: toggle multi-select
+                        if (_bridge.SelectedUIElements.Contains(elem))
+                        {
+                            _bridge.SelectedUIElements.Remove(elem);
+                            _bridge.SelectedUIElement = _bridge.SelectedUIElements.Count > 0
+                                ? _bridge.SelectedUIElements.Last() : null;
+                        }
+                        else
+                        {
+                            _bridge.SelectedUIElements.Add(elem);
+                            _bridge.SelectedUIElement = elem;
+                        }
+                    }
+                    else
+                    {
+                        _bridge.SelectedUIElement = elem;
+                        _bridge.SelectedUIElements.Clear();
+                        _bridge.SelectedUIElements.Add(elem);
+                        // Container: also select all children (grouping)
+                        if (elem.Type == UIElementType.Container && elem.Children.Count > 0)
+                        {
+                            foreach (var child in elem.Children)
+                            {
+                                if (child.IsVisible)
+                                {
+                                    _bridge.SelectedUIElements.Add(child);
+                                }
+                            }
+                        }
+                    }
+                    Console.WriteLine($"[Viewport] Selected '{elem.Name}' (multi={_bridge.SelectedUIElements.Count})");
                 }
             }
 
@@ -946,7 +989,7 @@ public unsafe class ViewportPanel
             //  Always recurse for children (so they render regardless of click state) 
             if (elem.Children.Count > 0)
             {
-                if (elem.Type == UIElementType.Placeholder)
+                if (elem.Type == UIElementType.Container && elem.ContentHeight > elem.Height)
                     DrawPlaceholder(drawList, elem, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
                 else
                     DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
@@ -1096,6 +1139,7 @@ public unsafe class ViewportPanel
     private float _placeholderDragStartMouseY;
     private float _placeholderDragStartScrollY;
     private readonly Dictionary<int, Vector2> _dragStartChildPos = [];
+    private readonly Dictionary<int, Vector2> _dragStartChildSize = [];
     private readonly Dictionary<string, (int w, int h)> _previewTextureDims = [];
     // Tracks the last scene root to detect scene switches and clear the cache
     private UIElement? _lastSceneRoot = null;
@@ -2247,8 +2291,19 @@ ImGui.SameLine();
                 //  Helper: draw a wireframe for a single element 
                 void DrawElemWireframe(UIElement elem, bool isPrimary)
                 {
-                    // Apply anchor without modifying elem.X/Y
+                    // Compute absolute scene position by walking up parent chain
                     float rx = elem.X, ry = elem.Y;
+                    var p = elem.Parent;
+                    while (p != null)
+                    {
+                        if (p.Type == UIElementType.Container)
+                        {
+                            rx += p.X;
+                            ry += p.Y;
+                        }
+                        p = p.Parent;
+                    }
+                    // Apply anchor without modifying elem.X/Y
                     if (elem.Anchor != UIAnchor.None && !elem.AutoFillWindow)
                     {
                         var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
@@ -2373,9 +2428,11 @@ ImGui.SameLine();
                 // NOTE: fittowindow is applied via renderX/Y/W/H in the main render loop,
                 // not by modifying elem.X/Y (to avoid drift bug).
 
-                if (isSceneElem)
+                // Container with AutoFillWindow: locked in place, no drag
+                bool isLockedContainer = selUiElem.Type == UIElementType.Container && selUiElem.AutoFillWindow;
+
+                if (isSceneElem || isLockedContainer)
                 {
-                    // Ensure any lingering drag mode from a previously-selected element is cleared
                     _dragMode = DragMode.None;
                 }
                 else
@@ -2431,7 +2488,7 @@ ImGui.SameLine();
                 // Body = anywhere inside the element that is NOT a corner/move-handle zone
                 // For Placeholder: also exclude the scrollbar area on the right
                 bool overScrollbar = false;
-                if (selUiElem.Type == UIElementType.Placeholder && selUiElem.ContentHeight > selUiElem.Height)
+                if (selUiElem.Type == UIElementType.Container && selUiElem.ContentHeight > selUiElem.Height)
                 {
                     float sbW = selUiElem.ScrollBarWidth;
                     float sbScreenW = (sbW / _texW) * _imageSize.X;
@@ -2511,11 +2568,7 @@ ImGui.SameLine();
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
                             _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
 
-                            // Capture child positions for Placeholder move
-                            _dragStartChildPos.Clear();
-                            if (selUiElem.Type == UIElementType.Placeholder)
-                                foreach (var child in selUiElem.Children)
-                                    _dragStartChildPos[child.InstanceId] = new Vector2(child.X, child.Y);
+
                         }
                     }
                 }
@@ -2576,15 +2629,7 @@ ImGui.SameLine();
                     selUiElem.X = newX; selUiElem.Y = newY;
                     selUiElem.Width = newW; selUiElem.Height = newH;
 
-                    // Placeholder: move children with parent on Move (not Resize)
-                    if (selUiElem.Type == UIElementType.Placeholder && _dragStartChildPos.Count > 0 && _dragMode == DragMode.Move)
-                    {
-                        float childDx = newX - _dragStartX;
-                        float childDy = newY - _dragStartY;
-                        foreach (var child in selUiElem.Children)
-                            if (_dragStartChildPos.TryGetValue(child.InstanceId, out var origPos))
-                            { child.X = origPos.X + childDx; child.Y = origPos.Y + childDy; }
-                    }
+                    // Container group: children move with parent via rendering (no need to modify child coords)
                 }
 
                 //  Post-apply safety: reset if mouse is neither down nor being released 
@@ -2592,7 +2637,7 @@ ImGui.SameLine();
                 {
                     _dragMode = DragMode.None;
                 }
-                } // end if (!isSceneElem)
+                } // end if (!isSceneElem && !isLockedContainer)
                 } // end if (selUiElem != null)
                 } // end if (showHelpers)
             } // end if (!_previewMode)

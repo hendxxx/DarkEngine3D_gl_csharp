@@ -250,7 +250,6 @@ public static class SceneAssetSerializer
             "checkbox" => UIElementType.Checkbox,
             "dropdown" => UIElementType.Dropdown,
             "textbox" => UIElementType.TextBox,
-            "placeholder" => UIElementType.Placeholder,
             _ => UIElementType.Button,
         };
 
@@ -323,7 +322,7 @@ public static class SceneAssetSerializer
             TextOptions = data.TextOptions,
             SelectedTextIndex = data.SelectedTextIndex,
 
-            // ── Placeholder (scrollable container) properties ──
+            // ── Container scroll properties ──
             ScrollY = data.ScrollY,
             ScrollBarWidth = data.ScrollBarWidth > 0f ? data.ScrollBarWidth : 10f,
             ScrollBarTrackColor = ArrayToVec3(data.ScrollBarTrackColor, new Vector3(0.15f, 0.15f, 0.20f)),
@@ -378,7 +377,6 @@ public static class SceneAssetSerializer
                 UIElementType.Checkbox => "Checkbox",
                 UIElementType.Dropdown => "Dropdown",
                 UIElementType.TextBox => "TextBox",
-                UIElementType.Placeholder => "Placeholder",
                 _ => "Button",
             },
             Text = elem.Text,
@@ -434,7 +432,7 @@ public static class SceneAssetSerializer
             TextOptions = elem.TextOptions,
             SelectedTextIndex = elem.SelectedTextIndex,
 
-            // ── Placeholder (scrollable container) properties ──
+            // ── Container scroll properties ──
             ScrollY = elem.ScrollY,
             ScrollBarWidth = elem.ScrollBarWidth,
             ScrollBarTrackColor = Vec3ToArray(elem.ScrollBarTrackColor),

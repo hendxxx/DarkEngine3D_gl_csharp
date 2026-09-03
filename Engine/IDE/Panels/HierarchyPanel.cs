@@ -78,8 +78,8 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "Placeholder", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
-    private const int First3DTypeIdx = 10; // Index in ElementTypeLabels where 3D types start
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
+    private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
@@ -1776,7 +1776,6 @@ public class HierarchyPanel
             5 => UIElementType.Checkbox,
             6 => UIElementType.Dropdown,
             7 => UIElementType.TextBox,
-            8 => UIElementType.Placeholder,
             _ => UIElementType.Button,
         };
 
@@ -1854,14 +1853,7 @@ public class HierarchyPanel
             newElem.InputText = "";
             newElem.MaxLength = 0;
         }
-        else if (elemType == UIElementType.Placeholder)
-        {
-            newElem.UseHover = false;
-            newElem.Width = 300;
-            newElem.Height = 400;
-            newElem.BgColor = new Vector3(0.08f, 0.09f, 0.14f);
-            newElem.BorderColor = new Vector3(0.20f, 0.22f, 0.30f);
-        }
+
 
         UIElement? parent;
         int childIndex;
