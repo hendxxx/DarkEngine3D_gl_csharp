@@ -4,10 +4,11 @@
     {
       "sceneName": "mnMain",
       "description": "",
+      "sceneType": "MainMenu",
       "elements": [
         {
           "name": "mnMain",
-          "type": "MainMenu",
+          "type": "Button",
           "text": "Element",
           "x": 0,
           "y": 0,
@@ -53,6 +54,7 @@
           "autoFillWindow": false,
           "autoCenterX": false,
           "autoCenterY": false,
+          "anchor": "None",
           "useHover": true,
           "clickBehavior": "None",
           "hoverEnterBehavior": "None",
@@ -134,9 +136,9 @@
               "type": "Container",
               "text": "contMain",
               "x": 0,
-              "y": 0,
-              "width": 2560,
-              "height": 1351,
+              "y": 10,
+              "width": 1920,
+              "height": 991,
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
@@ -177,6 +179,7 @@
               "autoFillWindow": true,
               "autoCenterX": false,
               "autoCenterY": false,
+              "anchor": "None",
               "useHover": false,
               "clickBehavior": "None",
               "hoverEnterBehavior": "None",
@@ -257,8 +260,8 @@
                   "name": "lbTitle",
                   "type": "Label",
                   "text": "DEMO",
-                  "x": 1120,
-                  "y": 260,
+                  "x": 810,
+                  "y": 320,
                   "width": 320,
                   "height": 160,
                   "imagePath": "",
@@ -299,8 +302,9 @@
                   "isVisible": true,
                   "opacity": 1,
                   "autoFillWindow": false,
-                  "autoCenterX": false,
+                  "autoCenterX": true,
                   "autoCenterY": false,
+                  "anchor": "None",
                   "useHover": false,
                   "clickBehavior": "None",
                   "hoverEnterBehavior": "None",
@@ -382,10 +386,10 @@
                   "name": "lbWarning",
                   "type": "Label",
                   "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras pulvinar ante porta, posuere odio sit amet, dictum nisl. Phasellus quis est porttitor, interdum ex vitae, accumsan quam. Etiam et congue massa. Vestibulum vel gravida augue. Phasellus sagittis faucibus viverra. Phasellus mauris velit, posuere ultrices hendrerit sed, vulputate sit amet odio. Nullam at mauris feugiat, rutrum nisi sed, ornare urna. Vestibulum egestas tellus vel vehicula accumsan. Nullam magna enim, egestas eget mi nec, pretium volutpat ligula. Suspendisse vel orci iaculis, sagittis quam interdum, molestie turpis. Maecenas facilisis est sit amet dui ultricies, eu ullamcorper lectus porta. Nam vel erat vitae velit congue porta scelerisque a nulla. Phasellus volutpat risus ut consequat rhoncus. Integer vitae nunc tincidunt, sodales ligula vel, mattis purus. Praesent interdum nisi ipsum, sit amet posuere ligula rhoncus sit amet.",
-                  "x": 40,
-                  "y": 1140,
-                  "width": 2480,
-                  "height": 200,
+                  "x": 0,
+                  "y": 0,
+                  "width": 1810,
+                  "height": 240,
                   "imagePath": "",
                   "imageMode": "Stretch",
                   "fontSize": 18,
@@ -426,6 +430,7 @@
                   "autoFillWindow": false,
                   "autoCenterX": false,
                   "autoCenterY": false,
+                  "anchor": "BottomCenter",
                   "useHover": false,
                   "clickBehavior": "None",
                   "hoverEnterBehavior": "None",
@@ -507,8 +512,8 @@
                   "name": "btnNew",
                   "type": "Button",
                   "text": "New",
-                  "x": 1160,
-                  "y": 620,
+                  "x": 840,
+                  "y": 510,
                   "width": 240,
                   "height": 80,
                   "imagePath": "",
@@ -549,8 +554,9 @@
                   "isVisible": true,
                   "opacity": 1,
                   "autoFillWindow": false,
-                  "autoCenterX": false,
+                  "autoCenterX": true,
                   "autoCenterY": false,
+                  "anchor": "None",
                   "useHover": true,
                   "clickBehavior": "scene:scn",
                   "hoverEnterBehavior": "None",
@@ -632,8 +638,8 @@
                   "name": "btnExit",
                   "type": "Button",
                   "text": "Exit",
-                  "x": 1160,
-                  "y": 740,
+                  "x": 840,
+                  "y": 640,
                   "width": 240,
                   "height": 80,
                   "imagePath": "",
@@ -676,6 +682,7 @@
                   "autoFillWindow": false,
                   "autoCenterX": true,
                   "autoCenterY": false,
+                  "anchor": "None",
                   "useHover": true,
                   "clickBehavior": "exit",
                   "hoverEnterBehavior": "None",
@@ -757,8 +764,8 @@
                   "name": "contLogo",
                   "type": "Container",
                   "text": "contLogo",
-                  "x": 2240,
-                  "y": 60,
+                  "x": 0,
+                  "y": 0,
                   "width": 280,
                   "height": 280,
                   "imagePath": "Artifacts\\Textures\\moon.png",
@@ -801,6 +808,7 @@
                   "autoFillWindow": false,
                   "autoCenterX": false,
                   "autoCenterY": false,
+                  "anchor": "TopRight",
                   "useHover": false,
                   "clickBehavior": "None",
                   "hoverEnterBehavior": "None",
@@ -882,8 +890,8 @@
                   "name": "contLogo2",
                   "type": "Container",
                   "text": "contLogo",
-                  "x": 60,
-                  "y": 960,
+                  "x": 30,
+                  "y": 260,
                   "width": 420,
                   "height": 180,
                   "imagePath": "Artifacts\\Textures\\logo.png",
@@ -926,6 +934,7 @@
                   "autoFillWindow": false,
                   "autoCenterX": false,
                   "autoCenterY": false,
+                  "anchor": "BottomLeft",
                   "useHover": false,
                   "clickBehavior": "None",
                   "hoverEnterBehavior": "None",
@@ -1010,10 +1019,19 @@
       ],
       "backgroundObjects": [],
       "editorObjects": [],
+      "transitionType": "slideleft",
+      "transitionDuration": 0.6,
+      "transitionColor": [
+        1,
+        0,
+        0
+      ],
+      "transitionEasing": "linear",
+      "transitionBlockInput": false,
       "editorCameraPosition": [
-        -0.17721207,
-        10.594252,
-        15.594987
+        -11.22295,
+        28.092417,
+        12.11227
       ],
       "editorCameraYaw": -2447.5,
       "editorCameraPitch": -56.5
@@ -1021,6 +1039,7 @@
     {
       "sceneName": "scn",
       "description": "",
+      "sceneType": "MainMenu",
       "elements": [
         {
           "name": "scn",
@@ -1070,6 +1089,7 @@
           "autoFillWindow": false,
           "autoCenterX": false,
           "autoCenterY": false,
+          "anchor": "None",
           "useHover": true,
           "clickBehavior": "None",
           "hoverEnterBehavior": "None",
@@ -1152,8 +1172,8 @@
               "text": "",
               "x": 0,
               "y": 0,
-              "width": 2560,
-              "height": 1351,
+              "width": 1920,
+              "height": 991,
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
@@ -1194,6 +1214,7 @@
               "autoFillWindow": true,
               "autoCenterX": false,
               "autoCenterY": false,
+              "anchor": "None",
               "useHover": false,
               "clickBehavior": "None",
               "hoverEnterBehavior": "None",
@@ -1274,8 +1295,8 @@
                   "name": "btnBack",
                   "type": "Button",
                   "text": "Back",
-                  "x": 60,
-                  "y": 1220,
+                  "x": 40,
+                  "y": 880,
                   "width": 240,
                   "height": 80,
                   "imagePath": "",
@@ -1318,8 +1339,261 @@
                   "autoFillWindow": false,
                   "autoCenterX": false,
                   "autoCenterY": false,
+                  "anchor": "None",
                   "useHover": true,
                   "clickBehavior": "closeoverlay",
+                  "hoverEnterBehavior": "",
+                  "hoverExitBehavior": "None",
+                  "minValue": 0,
+                  "maxValue": 100,
+                  "step": 1,
+                  "currentValue": 50,
+                  "textOptions": [
+                    "Option A",
+                    "Option B",
+                    "Option C"
+                  ],
+                  "selectedTextIndex": 0,
+                  "isChecked": false,
+                  "options": [
+                    "Option 1",
+                    "Option 2",
+                    "Option 3"
+                  ],
+                  "selectedIndex": 0,
+                  "fallbackText": "",
+                  "wordWrap": true,
+                  "triggeredByKeyboardButton": "",
+                  "placeholder": "Enter text...",
+                  "maxLength": 0,
+                  "inputText": "",
+                  "sliderTrackColor": [
+                    0.3,
+                    0.3,
+                    0.35
+                  ],
+                  "sliderFillColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "sliderThumbBorderColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbSize": 14,
+                  "sliderTrackHeight": 6,
+                  "sliderLabelPosition": 2,
+                  "checkmarkColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "checkedBgColor": [
+                    0.25,
+                    0.55,
+                    1
+                  ],
+                  "uncheckedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "arrowColor": [
+                    0.5,
+                    0.5,
+                    0.7
+                  ],
+                  "cursorColor": [
+                    0.5,
+                    0.8,
+                    1
+                  ],
+                  "children": []
+                },
+                {
+                  "name": "btnA",
+                  "type": "Button",
+                  "text": "Test",
+                  "x": 40,
+                  "y": 780,
+                  "width": 240,
+                  "height": 80,
+                  "imagePath": "",
+                  "imageMode": "Stretch",
+                  "fontSize": 30,
+                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                  "textColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "bgColor": [
+                    0.1,
+                    0.12,
+                    0.18
+                  ],
+                  "borderColor": [
+                    0.15,
+                    0.18,
+                    0.25
+                  ],
+                  "hoverTextColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "hoverBgColor": [
+                    0.22,
+                    0.28,
+                    0.45
+                  ],
+                  "hoverBorderColor": [
+                    0.5,
+                    0.6,
+                    1
+                  ],
+                  "alignment": "Center",
+                  "isVisible": true,
+                  "opacity": 1,
+                  "autoFillWindow": false,
+                  "autoCenterX": false,
+                  "autoCenterY": false,
+                  "anchor": "None",
+                  "useHover": true,
+                  "clickBehavior": "scene:scn2",
+                  "hoverEnterBehavior": "",
+                  "hoverExitBehavior": "None",
+                  "minValue": 0,
+                  "maxValue": 100,
+                  "step": 1,
+                  "currentValue": 50,
+                  "textOptions": [
+                    "Option A",
+                    "Option B",
+                    "Option C"
+                  ],
+                  "selectedTextIndex": 0,
+                  "isChecked": false,
+                  "options": [
+                    "Option 1",
+                    "Option 2",
+                    "Option 3"
+                  ],
+                  "selectedIndex": 0,
+                  "fallbackText": "",
+                  "wordWrap": true,
+                  "triggeredByKeyboardButton": "",
+                  "placeholder": "Enter text...",
+                  "maxLength": 0,
+                  "inputText": "",
+                  "sliderTrackColor": [
+                    0.3,
+                    0.3,
+                    0.35
+                  ],
+                  "sliderFillColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "sliderThumbBorderColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbSize": 14,
+                  "sliderTrackHeight": 6,
+                  "sliderLabelPosition": 2,
+                  "checkmarkColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "checkedBgColor": [
+                    0.25,
+                    0.55,
+                    1
+                  ],
+                  "uncheckedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "arrowColor": [
+                    0.5,
+                    0.5,
+                    0.7
+                  ],
+                  "cursorColor": [
+                    0.5,
+                    0.8,
+                    1
+                  ],
+                  "children": []
+                },
+                {
+                  "name": "btnBackToMainMenu",
+                  "type": "Button",
+                  "text": "Back to main menu",
+                  "x": 300,
+                  "y": 880,
+                  "width": 390,
+                  "height": 80,
+                  "imagePath": "",
+                  "imageMode": "Stretch",
+                  "fontSize": 30,
+                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                  "textColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "bgColor": [
+                    0.1,
+                    0.12,
+                    0.18
+                  ],
+                  "borderColor": [
+                    0.15,
+                    0.18,
+                    0.25
+                  ],
+                  "hoverTextColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "hoverBgColor": [
+                    0.22,
+                    0.28,
+                    0.45
+                  ],
+                  "hoverBorderColor": [
+                    0.5,
+                    0.6,
+                    1
+                  ],
+                  "alignment": "Center",
+                  "isVisible": true,
+                  "opacity": 1,
+                  "autoFillWindow": false,
+                  "autoCenterX": false,
+                  "autoCenterY": false,
+                  "anchor": "TopLeft",
+                  "useHover": true,
+                  "clickBehavior": "scene:mnMain",
                   "hoverEnterBehavior": "",
                   "hoverExitBehavior": "None",
                   "minValue": 0,
@@ -1402,13 +1676,186 @@
       ],
       "backgroundObjects": [],
       "editorObjects": [],
-      "editorCameraPosition": [
-        -0.13217458,
-        11.301598,
-        15.627708
+      "transitionType": "slideright",
+      "transitionDuration": 0.6,
+      "transitionColor": [
+        1,
+        0,
+        0
       ],
-      "editorCameraYaw": -2418.5,
-      "editorCameraPitch": 82
+      "transitionEasing": "linear",
+      "transitionBlockInput": false,
+      "editorCameraPosition": [
+        -0.4275071,
+        8.625383,
+        15.643166
+      ],
+      "editorCameraYaw": -2439,
+      "editorCameraPitch": 85
+    },
+    {
+      "sceneName": "scn2",
+      "description": "",
+      "sceneType": "GameScene",
+      "elements": [
+        {
+          "name": "scn2",
+          "type": "Scene",
+          "text": "Element",
+          "x": 0,
+          "y": 0,
+          "width": 200,
+          "height": 50,
+          "imagePath": "",
+          "imageMode": "Stretch",
+          "fontSize": 13,
+          "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+          "textColor": [
+            0.95,
+            0.95,
+            1
+          ],
+          "bgColor": [
+            0.1,
+            0.12,
+            0.18
+          ],
+          "borderColor": [
+            0.15,
+            0.18,
+            0.25
+          ],
+          "hoverTextColor": [
+            0.95,
+            0.95,
+            1
+          ],
+          "hoverBgColor": [
+            0.22,
+            0.28,
+            0.45
+          ],
+          "hoverBorderColor": [
+            0.5,
+            0.6,
+            1
+          ],
+          "alignment": "Center",
+          "isVisible": false,
+          "opacity": 1,
+          "autoFillWindow": false,
+          "autoCenterX": false,
+          "autoCenterY": false,
+          "anchor": "None",
+          "useHover": true,
+          "clickBehavior": "None",
+          "hoverEnterBehavior": "None",
+          "hoverExitBehavior": "None",
+          "minValue": 0,
+          "maxValue": 100,
+          "step": 1,
+          "currentValue": 50,
+          "textOptions": [
+            "Option A",
+            "Option B",
+            "Option C"
+          ],
+          "selectedTextIndex": 0,
+          "isChecked": false,
+          "options": [
+            "Option 1",
+            "Option 2",
+            "Option 3"
+          ],
+          "selectedIndex": 0,
+          "fallbackText": "",
+          "wordWrap": true,
+          "triggeredByKeyboardButton": "",
+          "placeholder": "Enter text...",
+          "maxLength": 0,
+          "inputText": "",
+          "sliderTrackColor": [
+            0.3,
+            0.3,
+            0.35
+          ],
+          "sliderFillColor": [
+            0.3,
+            0.6,
+            1
+          ],
+          "sliderThumbColor": [
+            0.9,
+            0.9,
+            1
+          ],
+          "sliderThumbBorderColor": [
+            0.3,
+            0.6,
+            1
+          ],
+          "sliderThumbSize": 14,
+          "sliderTrackHeight": 6,
+          "sliderLabelPosition": 2,
+          "checkmarkColor": [
+            0.9,
+            0.9,
+            1
+          ],
+          "checkedBgColor": [
+            0.25,
+            0.55,
+            1
+          ],
+          "uncheckedBgColor": [
+            0.15,
+            0.15,
+            0.22
+          ],
+          "arrowColor": [
+            0.5,
+            0.5,
+            0.7
+          ],
+          "cursorColor": [
+            0.5,
+            0.8,
+            1
+          ],
+          "children": []
+        }
+      ],
+      "backgroundObjects": [],
+      "editorObjects": [],
+      "transitionType": "fade",
+      "transitionDuration": 0.6,
+      "transitionColor": [
+        0,
+        0.26666665,
+        1
+      ],
+      "transitionEasing": "linear",
+      "transitionBlockInput": false,
+      "editorCameraPosition": [
+        -0.3041677,
+        10.0527315,
+        15.662701
+      ],
+      "editorCameraYaw": -2439,
+      "editorCameraPitch": 85,
+      "renderProperties": {
+        "backgroundColor": [
+          0,
+          0,
+          0
+        ],
+        "vSync": true,
+        "faceCulling": "Back",
+        "frontFaceWinding": "CCW",
+        "wireframeMode": false,
+        "depthTest": true,
+        "blending": false
+      }
     }
   ],
   "selectionHighlightColor": [

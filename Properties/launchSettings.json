@@ -1,7 +1,8 @@
 {
   "profiles": {
     "DarkEngine3D_gl_csharp": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "\r\n"
     }
   }
 }
