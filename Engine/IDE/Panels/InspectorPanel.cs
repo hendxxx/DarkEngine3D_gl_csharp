@@ -109,57 +109,6 @@ public class InspectorPanel
         ImGui.End(); // Inspector
     }
 
-    /// <summary>Convert element X/Y from old anchor coordinate space to new anchor coordinate space
-    /// so the element stays visually in the same position when anchor type changes.</summary>
-    private static void ConvertAnchorPosition(UIElement elem, UIAnchor oldAnchor, UIAnchor newAnchor)
-    {
-        if (oldAnchor == newAnchor) return;
-
-        // Use a virtual viewport size — the actual viewport size doesn't matter
-        // because we're converting between anchor coordinate systems, not computing
-        // absolute positions. The conversion is linear and size-independent.
-        // We use 1920x1080 as reference; the ratios cancel out.
-        const float vw = 1920f, vh = 1080f;
-
-        // Step 1: Get current absolute screen position from old anchor
-        var (oldAbsX, oldAbsY) = GetAnchoredPos(elem, oldAnchor, vw, vh);
-
-        // Step 2: Convert absolute position to new anchor's X/Y offset
-        float newX = 0f, newY = 0f;
-        switch (newAnchor)
-        {
-            case UIAnchor.TopLeft:      newX = oldAbsX;                    newY = oldAbsY; break;
-            case UIAnchor.TopCenter:    newX = oldAbsX - (vw - elem.Width) / 2f; newY = oldAbsY; break;
-            case UIAnchor.TopRight:     newX = vw - elem.Width - oldAbsX;  newY = oldAbsY; break;
-            case UIAnchor.CenterLeft:   newX = oldAbsX;                    newY = oldAbsY - (vh - elem.Height) / 2f; break;
-            case UIAnchor.Center:       newX = oldAbsX - (vw - elem.Width) / 2f; newY = oldAbsY - (vh - elem.Height) / 2f; break;
-            case UIAnchor.CenterRight:  newX = vw - elem.Width - oldAbsX;  newY = oldAbsY - (vh - elem.Height) / 2f; break;
-            case UIAnchor.BottomLeft:   newX = oldAbsX;                    newY = vh - elem.Height - oldAbsY; break;
-            case UIAnchor.BottomCenter: newX = oldAbsX - (vw - elem.Width) / 2f; newY = vh - elem.Height - oldAbsY; break;
-            case UIAnchor.BottomRight:  newX = vw - elem.Width - oldAbsX;  newY = vh - elem.Height - oldAbsY; break;
-        }
-        elem.X = Math.Max(0f, newX);
-        elem.Y = Math.Max(0f, newY);
-    }
-
-    /// <summary>Helper: compute anchored absolute position for any anchor type.</summary>
-    private static (float x, float y) GetAnchoredPos(UIElement elem, UIAnchor anchor, float vw, float vh)
-    {
-        switch (anchor)
-        {
-            case UIAnchor.TopLeft:      return (elem.X, elem.Y);
-            case UIAnchor.TopCenter:    return ((vw - elem.Width) / 2f + elem.X, elem.Y);
-            case UIAnchor.TopRight:     return (vw - elem.Width - elem.X, elem.Y);
-            case UIAnchor.CenterLeft:   return (elem.X, (vh - elem.Height) / 2f + elem.Y);
-            case UIAnchor.Center:       return ((vw - elem.Width) / 2f + elem.X, (vh - elem.Height) / 2f + elem.Y);
-            case UIAnchor.CenterRight:  return (vw - elem.Width - elem.X, (vh - elem.Height) / 2f + elem.Y);
-            case UIAnchor.BottomLeft:   return (elem.X, vh - elem.Height - elem.Y);
-            case UIAnchor.BottomCenter: return ((vw - elem.Width) / 2f + elem.X, vh - elem.Height - elem.Y);
-            case UIAnchor.BottomRight:  return (vw - elem.Width - elem.X, vh - elem.Height - elem.Y);
-            default:                    return (elem.X, elem.Y);
-        }
-    }
-
     private unsafe void RenderUIElementInspector(UIElement elem)
     {
         // Unique ID scope per element instance  prevents ImGui ID collisions
@@ -695,11 +644,9 @@ public class InspectorPanel
             int anchorIdx = (int)elem.Anchor;
             if (ImGui.Combo("Anchor", ref anchorIdx, anchorLabels, anchorLabels.Length))
             {
-                // Convert current position to new anchor's coordinate space
-                // so the element stays visually in the same spot
-                var newAnchor = (UIAnchor)anchorIdx;
-                ConvertAnchorPosition(elem, elem.Anchor, newAnchor);
-                elem.Anchor = newAnchor;
+                elem.Anchor = (UIAnchor)anchorIdx;
+                elem.X = 0f;
+                elem.Y = 0f;
             }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Anchor element to viewport edges. X/Y become offsets from the anchor point.");
