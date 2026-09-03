@@ -1418,6 +1418,132 @@
                   "children": []
                 },
                 {
+                  "name": "btnA",
+                  "type": "Button",
+                  "text": "Test",
+                  "x": 40,
+                  "y": 780,
+                  "width": 240,
+                  "height": 80,
+                  "imagePath": "",
+                  "imageMode": "Stretch",
+                  "fontSize": 30,
+                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                  "textColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "bgColor": [
+                    0.1,
+                    0.12,
+                    0.18
+                  ],
+                  "borderColor": [
+                    0.15,
+                    0.18,
+                    0.25
+                  ],
+                  "hoverTextColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "hoverBgColor": [
+                    0.22,
+                    0.28,
+                    0.45
+                  ],
+                  "hoverBorderColor": [
+                    0.5,
+                    0.6,
+                    1
+                  ],
+                  "alignment": "Center",
+                  "isVisible": true,
+                  "opacity": 1,
+                  "autoFillWindow": false,
+                  "autoCenterX": false,
+                  "autoCenterY": false,
+                  "anchor": "None",
+                  "useHover": true,
+                  "clickBehavior": "scene:scn2",
+                  "hoverEnterBehavior": "",
+                  "hoverExitBehavior": "None",
+                  "minValue": 0,
+                  "maxValue": 100,
+                  "step": 1,
+                  "currentValue": 50,
+                  "textOptions": [
+                    "Option A",
+                    "Option B",
+                    "Option C"
+                  ],
+                  "selectedTextIndex": 0,
+                  "isChecked": false,
+                  "options": [
+                    "Option 1",
+                    "Option 2",
+                    "Option 3"
+                  ],
+                  "selectedIndex": 0,
+                  "fallbackText": "",
+                  "wordWrap": true,
+                  "triggeredByKeyboardButton": "",
+                  "placeholder": "Enter text...",
+                  "maxLength": 0,
+                  "inputText": "",
+                  "sliderTrackColor": [
+                    0.3,
+                    0.3,
+                    0.35
+                  ],
+                  "sliderFillColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "sliderThumbBorderColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbSize": 14,
+                  "sliderTrackHeight": 6,
+                  "sliderLabelPosition": 2,
+                  "checkmarkColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "checkedBgColor": [
+                    0.25,
+                    0.55,
+                    1
+                  ],
+                  "uncheckedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "arrowColor": [
+                    0.5,
+                    0.5,
+                    0.7
+                  ],
+                  "cursorColor": [
+                    0.5,
+                    0.8,
+                    1
+                  ],
+                  "children": []
+                },
+                {
                   "name": "btnBackToMainMenu",
                   "type": "Button",
                   "text": "Back to main menu",
@@ -1560,12 +1686,176 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
+        -0.4275071,
+        8.625383,
+        15.643166
+      ],
+      "editorCameraYaw": -2439,
+      "editorCameraPitch": 85
+    },
+    {
+      "sceneName": "scn2",
+      "description": "",
+      "sceneType": "GameScene",
+      "elements": [
+        {
+          "name": "scn2",
+          "type": "Scene",
+          "text": "Element",
+          "x": 0,
+          "y": 0,
+          "width": 200,
+          "height": 50,
+          "imagePath": "",
+          "imageMode": "Stretch",
+          "fontSize": 13,
+          "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+          "textColor": [
+            0.95,
+            0.95,
+            1
+          ],
+          "bgColor": [
+            0.1,
+            0.12,
+            0.18
+          ],
+          "borderColor": [
+            0.15,
+            0.18,
+            0.25
+          ],
+          "hoverTextColor": [
+            0.95,
+            0.95,
+            1
+          ],
+          "hoverBgColor": [
+            0.22,
+            0.28,
+            0.45
+          ],
+          "hoverBorderColor": [
+            0.5,
+            0.6,
+            1
+          ],
+          "alignment": "Center",
+          "isVisible": false,
+          "opacity": 1,
+          "autoFillWindow": false,
+          "autoCenterX": false,
+          "autoCenterY": false,
+          "anchor": "None",
+          "useHover": true,
+          "clickBehavior": "None",
+          "hoverEnterBehavior": "None",
+          "hoverExitBehavior": "None",
+          "minValue": 0,
+          "maxValue": 100,
+          "step": 1,
+          "currentValue": 50,
+          "textOptions": [
+            "Option A",
+            "Option B",
+            "Option C"
+          ],
+          "selectedTextIndex": 0,
+          "isChecked": false,
+          "options": [
+            "Option 1",
+            "Option 2",
+            "Option 3"
+          ],
+          "selectedIndex": 0,
+          "fallbackText": "",
+          "wordWrap": true,
+          "triggeredByKeyboardButton": "",
+          "placeholder": "Enter text...",
+          "maxLength": 0,
+          "inputText": "",
+          "sliderTrackColor": [
+            0.3,
+            0.3,
+            0.35
+          ],
+          "sliderFillColor": [
+            0.3,
+            0.6,
+            1
+          ],
+          "sliderThumbColor": [
+            0.9,
+            0.9,
+            1
+          ],
+          "sliderThumbBorderColor": [
+            0.3,
+            0.6,
+            1
+          ],
+          "sliderThumbSize": 14,
+          "sliderTrackHeight": 6,
+          "sliderLabelPosition": 2,
+          "checkmarkColor": [
+            0.9,
+            0.9,
+            1
+          ],
+          "checkedBgColor": [
+            0.25,
+            0.55,
+            1
+          ],
+          "uncheckedBgColor": [
+            0.15,
+            0.15,
+            0.22
+          ],
+          "arrowColor": [
+            0.5,
+            0.5,
+            0.7
+          ],
+          "cursorColor": [
+            0.5,
+            0.8,
+            1
+          ],
+          "children": []
+        }
+      ],
+      "backgroundObjects": [],
+      "editorObjects": [],
+      "transitionType": "fade",
+      "transitionDuration": 0.6,
+      "transitionColor": [
+        0,
+        0.26666665,
+        1
+      ],
+      "transitionEasing": "linear",
+      "transitionBlockInput": false,
+      "editorCameraPosition": [
         -0.3041677,
         10.0527315,
         15.662701
       ],
       "editorCameraYaw": -2439,
-      "editorCameraPitch": 85
+      "editorCameraPitch": 85,
+      "renderProperties": {
+        "backgroundColor": [
+          0,
+          0,
+          0
+        ],
+        "vSync": true,
+        "faceCulling": "Back",
+        "frontFaceWinding": "CCW",
+        "wireframeMode": false,
+        "depthTest": true,
+        "blending": false
+      }
     }
   ],
   "selectionHighlightColor": [
