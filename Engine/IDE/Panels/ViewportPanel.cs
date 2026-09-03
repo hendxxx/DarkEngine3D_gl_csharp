@@ -1,6 +1,7 @@
 
 using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
@@ -191,7 +192,7 @@ public unsafe class ViewportPanel
     /// Pass isMouseDown=true when the mouse button is held (for slider dragging).
     /// focusedElement is highlighted with a glow border for keyboard navigation.
     /// keyboardActivate signals that Enter/Space was pressed for the focused element.</summary>
-    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false, UIElement? focusedElement = null, bool keyboardActivate = false)
+    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false, UIElement? focusedElement = null, bool keyboardActivate = false, float scrollOffsetY = 0f)
     {
         for (int ei = 0; ei < elements.Count; ei++)
         {
@@ -202,6 +203,10 @@ public unsafe class ViewportPanel
             // Compute render position WITHOUT modifying elem.X/Y (avoid drift bug)
             float renderW = elem.Width, renderH = elem.Height;
             float renderX = elem.X, renderY = elem.Y;
+
+            // Apply scroll offset (Placeholder itself is excluded — only its children move)
+            if (elem.Type != UIElementType.Placeholder)
+                renderY += scrollOffsetY;
 
             // Auto-fill window: force element to cover the entire viewport
             if (elem.AutoFillWindow)
@@ -255,6 +260,23 @@ public unsafe class ViewportPanel
             bool isHovered = mouseScreen.X >= csx0 && mouseScreen.X <= csx1 &&
                              mouseScreen.Y >= csy0 && mouseScreen.Y <= csy1;
 
+            // Placeholder scrollbar: deselect only on CLICK (not hover) BEFORE wireframe is drawn
+            if (elem.Type == UIElementType.Placeholder && isHovered && elem.ContentHeight > elem.Height
+                && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+            {
+                float sbRight = sx1 - 2f;
+                float sbLeft = sbRight - (elem.ScrollBarWidth / _texW) * _imageSize.X - 4f;
+                if (mouseScreen.X >= sbLeft && mouseScreen.X <= sbRight &&
+                    mouseScreen.Y >= sy0 && mouseScreen.Y <= sy1)
+                {
+                    if (_bridge.SelectedUIElement == elem)
+                    {
+                        _bridge.SelectedUIElement = null;
+                        _bridge.SelectedUIElements.Clear();
+                    }
+                }
+            }
+
             // Check if this element is blocked by an open overlay above it
             bool blockedByOverlay = IsBlockedByOverlay(elem);
 
@@ -271,10 +293,10 @@ public unsafe class ViewportPanel
             bool isLabel = elem.Type == UIElementType.Label;
             bool labelDefaultBg = isLabel && bgColor.X < 0.001f && bgColor.Y < 0.001f && bgColor.Z < 0.001f;
 
-            //  Draw background (filled rect)  skip for Labels with default transparent colors 
-            // Uses elemOpacity directly as alpha so the element's Opacity property is the sole
-            // control for transparency (no hardcoded multiplier).
-            if (!labelDefaultBg)
+            //  Draw background (filled rect)  skip for Labels + Placeholder
+            // Placeholder: DrawPlaceholder handles its own background + scroll
+            bool isScrollContainer = elem.Type == UIElementType.Placeholder;
+            if (!labelDefaultBg && !isScrollContainer)
             {
                 drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
                     ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, 1.0f * elemOpacity)),
@@ -849,8 +871,17 @@ public unsafe class ViewportPanel
             bool clickActive = leftClicked || ImGui.IsMouseClicked(ImGuiMouseButton.Left);
             // Drag guard: in editor mode, skip clicks while dragging; preview mode: always allow
             bool dragOk = isPreview || _dragMode == DragMode.None;
+            // For Placeholder: skip clicks on scrollbar area (scrollbar has its own drag)
+            bool blockedByScrollbar = false;
+            if (isScrollContainer && elem.ContentHeight > elem.Height)
+            {
+                float sbRight = sx1 - 2f;
+                float sbLeft = sbRight - (elem.ScrollBarWidth / _texW) * _imageSize.X - 4f;
+                blockedByScrollbar = mouseScreen.X >= sbLeft && mouseScreen.X <= sbRight &&
+                                     mouseScreen.Y >= sy0 && mouseScreen.Y <= sy1;
+            }
             // Mouse click: must be hovered. Keyboard activation: bypass hover check for focused element.
-            bool mouseClick = isHovered && clickActive;
+            bool mouseClick = isHovered && clickActive && !blockedByScrollbar;
             bool keyActivate = isPreview && keyboardActivate && focusedElement != null && elem == focusedElement;
             if ((mouseClick || keyActivate) && dragOk && !blockedByOverlay)
             {
@@ -914,14 +945,157 @@ public unsafe class ViewportPanel
 
             //  Always recurse for children (so they render regardless of click state) 
             if (elem.Children.Count > 0)
-                DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+            {
+                if (elem.Type == UIElementType.Placeholder)
+                    DrawPlaceholder(drawList, elem, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+                else
+                    DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+            }
         }
     }
 
+    /// <summary>
+    /// Render a Placeholder element: background, scrollable children with clip rect, and scrollbar.
+    /// The Placeholder box stays fixed; only children inside scroll vertically.
+    /// Consumes Mouse.ScrollY when hovered so scroll doesn't leak to camera zoom.</summary>
+    private void DrawPlaceholder(ImDrawListPtr drawList, UIElement placeholder, Vector2 mouseScreen,
+        bool leftClicked, bool isPreview, bool isMouseDown, UIElement? focusedElement, bool keyboardActivate)
+    {
+        int id = placeholder.InstanceId;
+        if (!_placeholderScrollY.ContainsKey(id))
+            _placeholderScrollY[id] = 0f;
 
+        // Compute render position (same logic as main loop — NO scroll offset on the box itself)
+        float renderW = placeholder.Width, renderH = placeholder.Height;
+        float renderX = placeholder.X, renderY = placeholder.Y;
+
+        if (placeholder.AutoFillWindow) { renderX = 0f; renderY = 0f; renderW = _texW; renderH = _texH; }
+        else
+        {
+            if (placeholder.AutoCenterX) renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
+            else if (placeholder.Anchor != UIAnchor.None) renderX = placeholder.GetAnchoredPosition(_texW, _texH).x;
+            if (placeholder.AutoCenterY) renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
+            else if (placeholder.Anchor != UIAnchor.None) renderY = placeholder.GetAnchoredPosition(_texW, _texH).y;
+        }
+
+        float sx0 = _imageMin.X + (renderX / _texW) * _imageSize.X;
+        float sy0 = _imageMin.Y + (renderY / _texH) * _imageSize.Y;
+        float sx1 = _imageMin.X + ((renderX + renderW) / _texW) * _imageSize.X;
+        float sy1 = _imageMin.Y + ((renderY + renderH) / _texH) * _imageSize.Y;
+
+        float elemOpacity = Math.Clamp(placeholder.Opacity, 0f, 1f);
+
+        // Draw background (the ONLY place the Placeholder background is drawn)
+        var bgColor = placeholder.BgColor;
+        var borderColor = placeholder.BorderColor;
+        drawList.AddRectFilled(new Vector2(sx0, sy0), new Vector2(sx1, sy1),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, elemOpacity)), 4f);
+        drawList.AddRect(new Vector2(sx0, sy0), new Vector2(sx1, sy1),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, elemOpacity)), 4f);
+
+        // Compute content height from children
+        float scrollBarW = placeholder.ScrollBarWidth;
+        bool isHovered = mouseScreen.X >= sx0 && mouseScreen.X <= sx1 && mouseScreen.Y >= sy0 && mouseScreen.Y <= sy1;
+
+        float contentH = 0f;
+        foreach (var child in placeholder.Children)
+        {
+            if (!child.IsVisible) continue;
+            float childBottom = child.Y + child.Height;
+            if (childBottom > contentH) contentH = childBottom;
+        }
+        placeholder.ContentHeight = contentH;
+
+        bool hasScroll = contentH > renderH;
+        float maxScroll = hasScroll ? Math.Max(0f, contentH - renderH) : 0f;
+
+        // Mark scroll as captured when mouse is over this Placeholder (prevents camera zoom)
+        if (isHovered && hasScroll)
+            _bridge.ScrollCapturedByUI = true;
+
+        // Scroll with mouse wheel — use ImGui IO (Mouse.GetScrollDeltaY already reset it)
+        float rawScroll = ImGui.GetIO().MouseWheel;
+        if (isHovered && rawScroll != 0f)
+        {
+            float scrollDelta = rawScroll * 30f;
+            _placeholderScrollY[id] = Math.Clamp(_placeholderScrollY[id] - scrollDelta, 0f, maxScroll);
+        }
+
+        float scrollY = Math.Clamp(_placeholderScrollY[id], 0f, maxScroll);
+        placeholder.ScrollY = scrollY;
+
+        // Scrollbar thumb
+        if (hasScroll)
+        {
+            float thumbAreaH = sy1 - sy0;
+            float thumbH = Math.Max(20f, (renderH / contentH) * thumbAreaH);
+            float thumbMaxY = thumbAreaH - thumbH;
+            float thumbRatio = maxScroll > 0f ? scrollY / maxScroll : 0f;
+            float thumbY = sy0 + thumbRatio * thumbMaxY;
+            float thumbX = sx1 - scrollBarW - 2f;
+            float thumbW = scrollBarW;
+
+            bool thumbHovered = mouseScreen.X >= thumbX && mouseScreen.X <= thumbX + thumbW &&
+                               mouseScreen.Y >= thumbY && mouseScreen.Y <= thumbY + thumbH;
+
+            // Track
+            var trackCol = placeholder.ScrollBarTrackColor;
+            drawList.AddRectFilled(new Vector2(thumbX, sy0 + 1f), new Vector2(thumbX + thumbW, sy1 - 1f),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(trackCol.X, trackCol.Y, trackCol.Z, 0.6f * elemOpacity)), 3f);
+
+            // Thumb
+            var thumbCol = (thumbHovered || _placeholderDragId == id) ? placeholder.ScrollBarThumbHoverColor : placeholder.ScrollBarThumbColor;
+            drawList.AddRectFilled(new Vector2(thumbX, thumbY), new Vector2(thumbX + thumbW, thumbY + thumbH),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(thumbCol.X, thumbCol.Y, thumbCol.Z, 0.85f * elemOpacity)), 3f);
+
+            // Drag thumb — moves only the scrollbar bar, not the Placeholder box
+            if (isHovered)
+            {
+                bool mouseDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+                if (mouseDown && thumbHovered && _placeholderDragId == -1)
+                {
+                    _placeholderDragId = id;
+                    _placeholderDragStartMouseY = mouseScreen.Y;
+                    _placeholderDragStartScrollY = scrollY;
+                    // Deselect Placeholder so wireframe doesn't show during scrollbar drag
+                    if (_bridge.SelectedUIElement == placeholder)
+                    {
+                        _bridge.SelectedUIElement = null;
+                        _bridge.SelectedUIElements.Clear();
+                    }
+                }
+                if (_placeholderDragId == id && mouseDown)
+                {
+                    float mouseDelta = mouseScreen.Y - _placeholderDragStartMouseY;
+                    float scrollDelta = (mouseDelta / thumbMaxY) * maxScroll;
+                    _placeholderScrollY[id] = Math.Clamp(_placeholderDragStartScrollY + scrollDelta, 0f, maxScroll);
+                    placeholder.ScrollY = _placeholderScrollY[id];
+                }
+                else if (!mouseDown && _placeholderDragId == id)
+                    _placeholderDragId = -1;
+            }
+        }
+
+        // Push clip rect — children only render inside the Placeholder bounds
+        drawList.PushClipRect(
+            new Vector2(sx0 + 1f, sy0 + 1f),
+            new Vector2(sx1 - 1f - (hasScroll ? scrollBarW + 4f : 0f), sy1 - 1f), true);
+
+        // Render children with scroll offset (children move UP when scrollY increases)
+        DrawEditorUIPreview(drawList, placeholder.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, -scrollY);
+
+        drawList.PopClipRect();
+    }
 
     //  Preview texture cache for viewport editor 
     private readonly Dictionary<string, uint> _previewTextureCache = [];
+
+    //  Placeholder scroll state
+    private readonly Dictionary<int, float> _placeholderScrollY = [];
+    private int _placeholderDragId = -1;
+    private float _placeholderDragStartMouseY;
+    private float _placeholderDragStartScrollY;
+    private readonly Dictionary<int, Vector2> _dragStartChildPos = [];
     private readonly Dictionary<string, (int w, int h)> _previewTextureDims = [];
     // Tracks the last scene root to detect scene switches and clear the cache
     private UIElement? _lastSceneRoot = null;
@@ -2000,6 +2174,7 @@ ImGui.SameLine();
             // In preview mode: elements are rendered with click-to-interact behavior (game-like).
             if (_bridge.SceneRoot != null && _bridge.SceneRoot.Children.Count > 0)
             {
+                _bridge.ScrollCapturedByUI = false; // reset each frame, set by DrawPlaceholder if hovered
                 var drawList = ImGui.GetWindowDrawList();
                 DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked, isPreview: _previewMode, isMouseDown: cachedLeftDown);
             }
@@ -2183,6 +2358,16 @@ ImGui.SameLine();
                 if (!isSceneElem)
                     DrawElemWireframe(selUiElem, true);
 
+                //  Multi-select: draw wireframes for other selected elements
+                if (allSelected != null)
+                {
+                    foreach (var other in allSelected)
+                    {
+                        if (other != null && other != selUiElem && other.IsVisible && other.Type != UIElementType.Scene)
+                            DrawElemWireframe(other, false);
+                    }
+                }
+
                 //  Scene-type elements: NO resize/move handlers 
                 bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
                 // NOTE: fittowindow is applied via renderX/Y/W/H in the main render loop,
@@ -2244,9 +2429,18 @@ ImGui.SameLine();
                 bool overBL = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx0) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy1) <= cornerRadius;
                 bool overBR = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx1) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy1) <= cornerRadius;
                 // Body = anywhere inside the element that is NOT a corner/move-handle zone
+                // For Placeholder: also exclude the scrollbar area on the right
+                bool overScrollbar = false;
+                if (selUiElem.Type == UIElementType.Placeholder && selUiElem.ContentHeight > selUiElem.Height)
+                {
+                    float sbW = selUiElem.ScrollBarWidth;
+                    float sbScreenW = (sbW / _texW) * _imageSize.X;
+                    float sbLeftX = pcsx1 - sbScreenW - 8f;
+                    overScrollbar = viewportMouseScreen.X >= sbLeftX && viewportMouseScreen.X <= pcsx1;
+                }
                 bool overBody = viewportMouseScreen.X >= pcsx0 && viewportMouseScreen.X <= pcsx1 &&
                                 viewportMouseScreen.Y >= pcsy0 && viewportMouseScreen.Y <= pcsy1 &&
-                                !overTL && !overTR && !overBL && !overBR && !overMoveHandle;
+                                !overTL && !overTR && !overBL && !overBR && !overMoveHandle && !overScrollbar;
 
                 if (!isFitToWindowElem)
                 {
@@ -2316,6 +2510,12 @@ ImGui.SameLine();
                             _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
                             _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
+
+                            // Capture child positions for Placeholder move
+                            _dragStartChildPos.Clear();
+                            if (selUiElem.Type == UIElementType.Placeholder)
+                                foreach (var child in selUiElem.Children)
+                                    _dragStartChildPos[child.InstanceId] = new Vector2(child.X, child.Y);
                         }
                     }
                 }
@@ -2375,6 +2575,16 @@ ImGui.SameLine();
 
                     selUiElem.X = newX; selUiElem.Y = newY;
                     selUiElem.Width = newW; selUiElem.Height = newH;
+
+                    // Placeholder: move children with parent on Move (not Resize)
+                    if (selUiElem.Type == UIElementType.Placeholder && _dragStartChildPos.Count > 0 && _dragMode == DragMode.Move)
+                    {
+                        float childDx = newX - _dragStartX;
+                        float childDy = newY - _dragStartY;
+                        foreach (var child in selUiElem.Children)
+                            if (_dragStartChildPos.TryGetValue(child.InstanceId, out var origPos))
+                            { child.X = origPos.X + childDx; child.Y = origPos.Y + childDy; }
+                    }
                 }
 
                 //  Post-apply safety: reset if mouse is neither down nor being released 

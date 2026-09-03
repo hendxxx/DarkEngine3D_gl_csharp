@@ -88,6 +88,9 @@ public class IDEBridge
     /// Set by ViewportPanel after detecting a popup close, cleared after a few frames.</summary>
     public bool SuppressViewportInput { get; set; }
 
+    /// <summary>True when the mouse is over a scrollable Placeholder — camera should NOT consume scroll.</summary>
+    public bool ScrollCapturedByUI { get; set; }
+
     // ── Viewport mouse/click state for click-to-select in IDE mode ──
     /// <summary>Set by ViewportPanel when the scene image is clicked.</summary>
     public bool IsViewportClicked { get; set; }

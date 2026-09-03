@@ -75,6 +75,8 @@ public enum UIElementType
     Dropdown,
     /// <summary>A text input field (Save Name, Player Name, etc.).</summary>
     TextBox,
+    /// <summary>A scrollable container that clips children and shows a vertical scrollbar.</summary>
+    Placeholder,
 }
 
 /// <summary>
@@ -208,6 +210,20 @@ public class UIElement
     // ── Word Wrap (for Label type) ──
     /// <summary>When true, text wraps to next line if it exceeds element width.</summary>
     public bool WordWrap { get; set; } = true;
+
+    // ── Placeholder properties (for Placeholder type) ──
+    /// <summary>Current vertical scroll offset in pixels (0 = top).</summary>
+    public float ScrollY { get; set; } = 0f;
+    /// <summary>Width of the vertical scrollbar track.</summary>
+    public float ScrollBarWidth { get; set; } = 10f;
+    /// <summary>Color of the scrollbar track background.</summary>
+    public Vector3 ScrollBarTrackColor { get; set; } = new(0.15f, 0.15f, 0.20f);
+    /// <summary>Color of the scrollbar thumb.</summary>
+    public Vector3 ScrollBarThumbColor { get; set; } = new(0.45f, 0.45f, 0.55f);
+    /// <summary>Color of the scrollbar thumb when hovered.</summary>
+    public Vector3 ScrollBarThumbHoverColor { get; set; } = new(0.55f, 0.55f, 0.65f);
+    /// <summary>Computed content height (sum of children bounds). Updated each frame during render.</summary>
+    public float ContentHeight { get; set; } = 0f;
 
     // ── TextBox properties (for TextBox type) ──
     /// <summary>Placeholder text shown when input is empty.</summary>
@@ -468,6 +484,7 @@ public class UIElement
             UIElementType.Checkbox => "[chk]",
             UIElementType.Dropdown => "[drp]",
             UIElementType.TextBox => "[txt]",
+            UIElementType.Placeholder => "[scroll]",
             _ => "❓",
         };
     }

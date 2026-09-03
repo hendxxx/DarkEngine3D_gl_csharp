@@ -34,7 +34,7 @@ public class InspectorPanel
 
     //  Element type labels (mirrors UIElementType order) 
     private static readonly string[] ElementTypeNames =
-        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox"];
+        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "Placeholder"];
 
     public InspectorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -945,6 +945,30 @@ public class InspectorPanel
                     ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
                     DrawColorPicker("Cursor Color", "tc", elem.CursorColor, c => elem.CursorColor = c,
                         defaultColor: new(0.5f, 0.8f, 1.0f));
+                }
+                break;
+
+            case UIElementType.Placeholder:
+                if (ImGui.CollapsingHeader("Scrollable Container", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    float sbWidth = elem.ScrollBarWidth;
+                    if (ImGui.DragFloat("Scrollbar Width", ref sbWidth, 0.5f, 4f, 30f, "%.1f"))
+                        elem.ScrollBarWidth = Math.Max(4f, sbWidth);
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Scrollbar Colors");
+                    DrawColorPicker("Track Color", "sbt", elem.ScrollBarTrackColor, c => elem.ScrollBarTrackColor = c,
+                        defaultColor: new(0.15f, 0.15f, 0.20f));
+                    DrawColorPicker("Thumb Color", "sbth", elem.ScrollBarThumbColor, c => elem.ScrollBarThumbColor = c,
+                        defaultColor: new(0.45f, 0.45f, 0.55f));
+                    DrawColorPicker("Thumb Hover", "sbthv", elem.ScrollBarThumbHoverColor, c => elem.ScrollBarThumbHoverColor = c,
+                        defaultColor: new(0.55f, 0.55f, 0.65f));
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.6f, 0.7f, 0.8f, 1f),
+                        $"Content Height: {elem.ContentHeight:F0}px  (visible: {elem.Height:F0}px)");
+                    ImGui.TextColored(new Vector4(0.6f, 0.7f, 0.8f, 1f),
+                        $"Scroll: {elem.ScrollY:F0}px");
                 }
                 break;
         }

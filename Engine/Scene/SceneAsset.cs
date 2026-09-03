@@ -77,6 +77,13 @@ public class SceneElementData
     public int MaxLength { get; set; } = 0;
     public string InputText { get; set; } = "";
 
+    // ── Placeholder (scrollable container) properties ──
+    public float ScrollY { get; set; } = 0f;
+    public float ScrollBarWidth { get; set; } = 10f;
+    public float[] ScrollBarTrackColor { get; set; } = [0.15f, 0.15f, 0.20f];
+    public float[] ScrollBarThumbColor { get; set; } = [0.45f, 0.45f, 0.55f];
+    public float[] ScrollBarThumbHoverColor { get; set; } = [0.55f, 0.55f, 0.65f];
+
     // ════════════════════════════════════════════════
     //  Visual Style Properties (for type-specific rendering)
     // ════════════════════════════════════════════════

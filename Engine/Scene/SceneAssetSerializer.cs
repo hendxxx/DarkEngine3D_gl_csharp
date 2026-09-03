@@ -250,6 +250,7 @@ public static class SceneAssetSerializer
             "checkbox" => UIElementType.Checkbox,
             "dropdown" => UIElementType.Dropdown,
             "textbox" => UIElementType.TextBox,
+            "placeholder" => UIElementType.Placeholder,
             _ => UIElementType.Button,
         };
 
@@ -322,6 +323,13 @@ public static class SceneAssetSerializer
             TextOptions = data.TextOptions,
             SelectedTextIndex = data.SelectedTextIndex,
 
+            // ── Placeholder (scrollable container) properties ──
+            ScrollY = data.ScrollY,
+            ScrollBarWidth = data.ScrollBarWidth > 0f ? data.ScrollBarWidth : 10f,
+            ScrollBarTrackColor = ArrayToVec3(data.ScrollBarTrackColor, new Vector3(0.15f, 0.15f, 0.20f)),
+            ScrollBarThumbColor = ArrayToVec3(data.ScrollBarThumbColor, new Vector3(0.45f, 0.45f, 0.55f)),
+            ScrollBarThumbHoverColor = ArrayToVec3(data.ScrollBarThumbHoverColor, new Vector3(0.55f, 0.55f, 0.65f)),
+
             // ── Visual style properties ──
             SliderTrackColor = ArrayToVec3(data.SliderTrackColor, new Vector3(0.30f, 0.30f, 0.35f)),
             SliderFillColor = ArrayToVec3(data.SliderFillColor, new Vector3(0.3f, 0.6f, 1.0f)),
@@ -370,6 +378,7 @@ public static class SceneAssetSerializer
                 UIElementType.Checkbox => "Checkbox",
                 UIElementType.Dropdown => "Dropdown",
                 UIElementType.TextBox => "TextBox",
+                UIElementType.Placeholder => "Placeholder",
                 _ => "Button",
             },
             Text = elem.Text,
@@ -424,6 +433,13 @@ public static class SceneAssetSerializer
             InputText = elem.InputText,
             TextOptions = elem.TextOptions,
             SelectedTextIndex = elem.SelectedTextIndex,
+
+            // ── Placeholder (scrollable container) properties ──
+            ScrollY = elem.ScrollY,
+            ScrollBarWidth = elem.ScrollBarWidth,
+            ScrollBarTrackColor = Vec3ToArray(elem.ScrollBarTrackColor),
+            ScrollBarThumbColor = Vec3ToArray(elem.ScrollBarThumbColor),
+            ScrollBarThumbHoverColor = Vec3ToArray(elem.ScrollBarThumbHoverColor),
 
             // ── Visual style properties ──
             SliderTrackColor = Vec3ToArray(elem.SliderTrackColor),

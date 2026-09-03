@@ -289,6 +289,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             Mouse.Update(window, _editorCamera);
                             _editorCamera.SetCameraFlyMode(window, dt, false); // false = skip input
                         }
+                        else if (bridge.ScrollCapturedByUI)
+                        {
+                            // Scroll captured by Placeholder UI — suppress camera zoom only
+                            Mouse.Update(window, _editorCamera);
+                            _editorCamera.SetCameraFlyMode(window, dt, false);
+                        }
                         else
                         {
                             Mouse.Update(window, _editorCamera);

@@ -78,8 +78,8 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
-    private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "Placeholder", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
+    private const int First3DTypeIdx = 10; // Index in ElementTypeLabels where 3D types start
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
@@ -1776,6 +1776,7 @@ public class HierarchyPanel
             5 => UIElementType.Checkbox,
             6 => UIElementType.Dropdown,
             7 => UIElementType.TextBox,
+            8 => UIElementType.Placeholder,
             _ => UIElementType.Button,
         };
 
@@ -1852,6 +1853,14 @@ public class HierarchyPanel
             newElem.Placeholder = "Enter text...";
             newElem.InputText = "";
             newElem.MaxLength = 0;
+        }
+        else if (elemType == UIElementType.Placeholder)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 300;
+            newElem.Height = 400;
+            newElem.BgColor = new Vector3(0.08f, 0.09f, 0.14f);
+            newElem.BorderColor = new Vector3(0.20f, 0.22f, 0.30f);
         }
 
         UIElement? parent;
@@ -2054,25 +2063,28 @@ public class HierarchyPanel
     {
         string baseName = original.Name;
         // If original already ends with "Copy N", strip it and use the base name
-        // Pattern: "something Copy 1", "something Copy 2", etc.
         var match = System.Text.RegularExpressions.Regex.Match(baseName, @"^(.*?)\s+Copy\s+(\d+)$");
         if (match.Success)
             baseName = match.Groups[1].Value.Trim();
 
-        // Find the highest existing Copy N number among siblings
-        int maxCopy = 0;
+        // Find ALL existing names among siblings (excluding the original)
+        var existingNames = new HashSet<string>();
         foreach (var sibling in parent.Children)
         {
             if (sibling == original) continue;
-            var m = System.Text.RegularExpressions.Regex.Match(sibling.Name, @$"^{System.Text.RegularExpressions.Regex.Escape(baseName)}\s+Copy\s+(\d+)$");
-            if (m.Success)
-            {
-                int num = int.Parse(m.Groups[1].Value);
-                if (num > maxCopy) maxCopy = num;
-            }
+            existingNames.Add(sibling.Name);
         }
 
-        return $"{baseName} Copy {maxCopy + 1}";
+        // Also include the original's own name as taken
+        existingNames.Add(original.Name);
+
+        // Find first available Copy N that doesn't exist yet
+        for (int n = 1; ; n++)
+        {
+            string candidate = $"{baseName} Copy {n}";
+            if (!existingNames.Contains(candidate))
+                return candidate;
+        }
     }
 
     /// <summary>Duplicate the selected element (deep clone) and insert it as a sibling after the original.
@@ -2096,6 +2108,10 @@ public class HierarchyPanel
         // Deep clone the element
         var clone = source.DeepClone();
         clone.Name = GetDuplicateName(source, parent);
+
+        // Offset clone slightly so it doesn't overlap
+        clone.X = source.X + 20f;
+        clone.Y = source.Y + 20f;
 
         // Insert right after the original
         int insertIdx = Math.Min(sourceIndex + 1, parent.Children.Count);
@@ -2182,6 +2198,10 @@ public class HierarchyPanel
         {
             var clone = elem.DeepClone();
             clone.Name = GetDuplicateName(elem, parent);
+
+            // Offset clone slightly so it doesn't overlap
+            clone.X = elem.X + 20f;
+            clone.Y = elem.Y + 20f;
 
             int insertIdx = Math.Min(idx + 1, parent.Children.Count);
             clone.Parent = parent;
