@@ -199,27 +199,30 @@ public unsafe class ViewportPanel
             if (!elem.IsVisible) continue;
             float elemOpacity = Math.Clamp(elem.Opacity, 0f, 1f);
 
+            // Compute render position WITHOUT modifying elem.X/Y (avoid drift bug)
+            float renderW = elem.Width, renderH = elem.Height;
+            float renderX = elem.X, renderY = elem.Y;
+
             // Auto-fill window: force element to cover the entire viewport
             if (elem.AutoFillWindow)
             {
-                elem.X = 0f;
-                elem.Y = 0f;
-                elem.Width = _texW;
-                elem.Height = _texH;
+                renderX = 0f;
+                renderY = 0f;
+                renderW = _texW;
+                renderH = _texH;
             }
 
             // Auto-center: center the element in the viewport (in texture coordinates)
-            if (elem.AutoCenterX)
+            if (elem.AutoCenterX && !elem.AutoFillWindow)
             {
-                elem.X = Math.Max(0f, (_texW - elem.Width) * 0.5f);
+                renderX = Math.Max(0f, (_texW - renderW) * 0.5f) + elem.X;
             }
-            if (elem.AutoCenterY)
+            if (elem.AutoCenterY && !elem.AutoFillWindow)
             {
-                elem.Y = Math.Max(0f, (_texH - elem.Height) * 0.5f);
+                renderY = Math.Max(0f, (_texH - renderH) * 0.5f) + elem.Y;
             }
 
-            // Anchor: calculate position from viewport edges WITHOUT modifying elem.X/Y
-            float renderX = elem.X, renderY = elem.Y;
+            // Anchor: calculate position from viewport edges
             if (elem.Anchor != UIAnchor.None && !elem.AutoFillWindow)
             {
                 var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
@@ -230,8 +233,8 @@ public unsafe class ViewportPanel
             // Convert scene coords to screen coords (no Y-flip  scene Y=0 is top)
             float sx0 = _imageMin.X + (renderX / _texW) * _imageSize.X;
             float sy0 = _imageMin.Y + (renderY / _texH) * _imageSize.Y;
-            float sx1 = _imageMin.X + ((renderX + elem.Width) / _texW) * _imageSize.X;
-            float sy1 = _imageMin.Y + ((renderY + elem.Height) / _texH) * _imageSize.Y;
+            float sx1 = _imageMin.X + ((renderX + renderW) / _texW) * _imageSize.X;
+            float sy1 = _imageMin.Y + ((renderY + renderH) / _texH) * _imageSize.Y;
 
             // Skip elements completely outside the image bounds
             if (sx1 < _imageMin.X || sx0 > _imageMax.X || sy1 < _imageMin.Y || sy0 > _imageMax.Y)
