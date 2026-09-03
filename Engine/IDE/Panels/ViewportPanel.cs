@@ -212,22 +212,27 @@ public unsafe class ViewportPanel
                 renderH = _texH;
             }
 
-            // Auto-center: center the element in the viewport (in texture coordinates)
-            if (elem.AutoCenterX && !elem.AutoFillWindow)
+            // Layout priority: AutoFill > AutoCenter > Anchor > raw X/Y
+            // AutoCenter and Anchor are mutually exclusive — if both set, AutoCenter wins.
+            if (!elem.AutoFillWindow)
             {
-                renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
-            }
-            if (elem.AutoCenterY && !elem.AutoFillWindow)
-            {
-                renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
-            }
+                if (elem.AutoCenterX)
+                {
+                    renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
+                }
+                else if (elem.Anchor != UIAnchor.None)
+                {
+                    renderX = elem.GetAnchoredPosition(_texW, _texH).x;
+                }
 
-            // Anchor: calculate position from viewport edges
-            if (elem.Anchor != UIAnchor.None && !elem.AutoFillWindow)
-            {
-                var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
-                renderX = ax;
-                renderY = ay;
+                if (elem.AutoCenterY)
+                {
+                    renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
+                }
+                else if (elem.Anchor != UIAnchor.None)
+                {
+                    renderY = elem.GetAnchoredPosition(_texW, _texH).y;
+                }
             }
 
             // Convert scene coords to screen coords (no Y-flip  scene Y=0 is top)
@@ -2140,14 +2145,8 @@ ImGui.SameLine();
 
                 //  Scene-type elements: NO resize/move handlers 
                 bool isFitToWindowElem = selUiElem.ClickBehaviorLabel == "fittowindow";
-
-                if (isFitToWindowElem)
-                {
-                    selUiElem.X = 0;
-                    selUiElem.Y = 0;
-                    selUiElem.Width = _texW;
-                    selUiElem.Height = _texH;
-                }
+                // NOTE: fittowindow is applied via renderX/Y/W/H in the main render loop,
+                // not by modifying elem.X/Y (to avoid drift bug).
 
                 if (isSceneElem)
                 {

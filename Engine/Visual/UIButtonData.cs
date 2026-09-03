@@ -408,21 +408,47 @@ public class UIElement
     {
         float x = X, y = Y, w = Width, h = Height;
         if (AutoFillWindow) { x = 0f; y = 0f; w = canvasW; h = canvasH; }
-        if (AutoCenterX && !AutoFillWindow) { x = Math.Max(0f, (canvasW - w) * 0.5f); }
-        if (AutoCenterY && !AutoFillWindow) { y = Math.Max(0f, (canvasH - h) * 0.5f); }
-        if (Anchor != UIAnchor.None && !AutoFillWindow)
+        else
         {
-            switch (Anchor)
+            // AutoCenter and Anchor are mutually exclusive — AutoCenter wins if both set.
+            if (AutoCenterX)
             {
-                case UIAnchor.TopLeft:      x = X;                    y = Y; break;
-                case UIAnchor.TopCenter:    x = (canvasW - w) / 2f + X; y = Y; break;
-                case UIAnchor.TopRight:     x = canvasW - w - X;  y = Y; break;
-                case UIAnchor.CenterLeft:   x = X;                    y = (canvasH - h) / 2f + Y; break;
-                case UIAnchor.Center:       x = (canvasW - w) / 2f + X; y = (canvasH - h) / 2f + Y; break;
-                case UIAnchor.CenterRight:  x = canvasW - w - X;  y = (canvasH - h) / 2f + Y; break;
-                case UIAnchor.BottomLeft:   x = X;                    y = canvasH - h - Y; break;
-                case UIAnchor.BottomCenter: x = (canvasW - w) / 2f + X; y = canvasH - h - Y; break;
-                case UIAnchor.BottomRight:  x = canvasW - w - X;  y = canvasH - h - Y; break;
+                x = Math.Max(0f, (canvasW - w) * 0.5f);
+            }
+            else if (Anchor != UIAnchor.None)
+            {
+                switch (Anchor)
+                {
+                    case UIAnchor.TopLeft:      x = X; break;
+                    case UIAnchor.TopCenter:    x = (canvasW - w) / 2f + X; break;
+                    case UIAnchor.TopRight:     x = canvasW - w - X; break;
+                    case UIAnchor.CenterLeft:   x = X; break;
+                    case UIAnchor.Center:       x = (canvasW - w) / 2f + X; break;
+                    case UIAnchor.CenterRight:  x = canvasW - w - X; break;
+                    case UIAnchor.BottomLeft:   x = X; break;
+                    case UIAnchor.BottomCenter: x = (canvasW - w) / 2f + X; break;
+                    case UIAnchor.BottomRight:  x = canvasW - w - X; break;
+                }
+            }
+
+            if (AutoCenterY)
+            {
+                y = Math.Max(0f, (canvasH - h) * 0.5f);
+            }
+            else if (Anchor != UIAnchor.None)
+            {
+                switch (Anchor)
+                {
+                    case UIAnchor.TopLeft:      y = Y; break;
+                    case UIAnchor.TopCenter:    y = Y; break;
+                    case UIAnchor.TopRight:     y = Y; break;
+                    case UIAnchor.CenterLeft:   y = (canvasH - h) / 2f + Y; break;
+                    case UIAnchor.Center:       y = (canvasH - h) / 2f + Y; break;
+                    case UIAnchor.CenterRight:  y = (canvasH - h) / 2f + Y; break;
+                    case UIAnchor.BottomLeft:   y = canvasH - h - Y; break;
+                    case UIAnchor.BottomCenter: y = canvasH - h - Y; break;
+                    case UIAnchor.BottomRight:  y = canvasH - h - Y; break;
+                }
             }
         }
         return (x, y, w, h);
