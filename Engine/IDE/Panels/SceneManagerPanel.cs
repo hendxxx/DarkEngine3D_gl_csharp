@@ -1023,6 +1023,9 @@ public class SceneManagerPanel
         File.WriteAllText(target, json);
         Console.WriteLine($"[SceneManagerPanel] Saved {_bridge.EditorScenes.Count} editor scenes (+ 3D objects) to {target}");
         // Cache auto-invalidates on next read by file timestamp change.
+
+        //  Update .projing LastSaved timestamp 
+        Engine.Project.ProjectManager.TouchProject();
     }
 
     /// <summary>Public wrapper so IDE can restore scene selection after in-game reload.</summary>

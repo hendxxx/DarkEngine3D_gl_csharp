@@ -11,6 +11,7 @@ public class ProjectData
     public string Version { get; set; } = "1.0";
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime LastOpened { get; set; } = DateTime.UtcNow;
+    public DateTime LastSaved { get; set; } = DateTime.MinValue;
 }
 
 /// <summary>
@@ -155,6 +156,28 @@ public static class ProjectManager
         ProjectRoot = null;
         Console.WriteLine("[ProjectManager] Project closed");
         OnProjectChanged?.Invoke();
+    }
+
+    /// <summary>Update the .projing file's LastSaved timestamp. Called on every Save All.</summary>
+    public static void TouchProject()
+    {
+        if (!IsProjectLoaded) return;
+        string projectFile = ProjectJsonPath;
+        if (!File.Exists(projectFile)) return;
+        try
+        {
+            string json = File.ReadAllText(projectFile);
+            var data = JsonSerializer.Deserialize<ProjectData>(json, JsonOpts);
+            if (data != null)
+            {
+                data.LastSaved = DateTime.UtcNow;
+                File.WriteAllText(projectFile, JsonSerializer.Serialize(data, JsonOpts));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ProjectManager] TouchProject failed: {ex.Message}");
+        }
     }
 
     /// <summary>Get a scene file path relative to the project.</summary>
