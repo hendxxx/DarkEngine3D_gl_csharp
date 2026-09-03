@@ -215,11 +215,11 @@ public unsafe class ViewportPanel
             // Auto-center: center the element in the viewport (in texture coordinates)
             if (elem.AutoCenterX && !elem.AutoFillWindow)
             {
-                renderX = Math.Max(0f, (_texW - renderW) * 0.5f) + elem.X;
+                renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
             }
             if (elem.AutoCenterY && !elem.AutoFillWindow)
             {
-                renderY = Math.Max(0f, (_texH - renderH) * 0.5f) + elem.Y;
+                renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
             }
 
             // Anchor: calculate position from viewport edges
