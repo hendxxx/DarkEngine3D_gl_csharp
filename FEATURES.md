@@ -18,15 +18,32 @@ DarkEngine3D_gl_csharp/
 │   ├── Inputs/          — GLFW keyboard/mouse input wrappers
 │   ├── Libs/            — OpenGL loader, GLFW bindings, Shader compiler, Texture utils
 │   ├── Objects/          — EditorObject, Object3D, TerrainMesh, GLB/GLTF loaders
+│   ├── Project/         — ProjectManager, .projing file handling
 │   ├── Scene/            — Scene management, Save/Load (.ing JSON format)
 │   ├── Terrains/         — TerrainChunk, MapLoader, Noise generation
 │   └── Visual/           — Camera, CSM, Lights, Skybox, PostFX, Billboard, HUD
 ├── Artifacts/
 │   ├── shaders/          — 40 GLSL shaders (vertex, fragment, geometry)
 │   ├── Textures/         — Default textures
-│   └── fonts/            — IDE fonts
-├── game.ing              — Default scene file (JSON)
-└── settings.json         — Editor settings persistence
+│   └── fonts/            — IDE fonts (copied to project on create)
+└── bin/Debug/net9.0/     — Build output (exe runs from here)
+
+Project Folder (user-created):
+ProjectRoot/
+├── {Name}.projing         — Project metadata + scene inventory
+├── settings.json          — Per-project engine settings
+├── shadow_presets.json    — Per-project shadow presets
+├── imgui.ini              — Per-project IDE layout
+├── recent_files.json      — Per-project recent scenes
+├── game.ing               — Combined scene file (auto-loaded on open)
+├── saves/                 — Save game slots (per-project)
+│   └── slot_N/
+├── Assets/
+│   ├── fonts/             — Copied from exe on project create
+│   ├── images/
+│   ├── models/
+│   └── Maps/              — Heightmaps
+└── Scenes/                — Individual scene files (.ing)
 ```
 
 ### Core Classes
@@ -222,6 +239,77 @@ Each layer in `TerrainLayerList`:
 - **Save As**: Opens file dialog, saves JSON + thumbnail PNG
 - **Load**: Reads .ing JSON, reconstructs all objects, loads textures
 - **Settings persistence**: `settings.json` for PostFX, Shadows, Fog, Quality, IDE fonts
+
+---
+
+## 3.6 Project System (.projing)
+
+### 3.6.1 Project Structure
+
+Every project is a self-contained folder with a `{Name}.projing` metadata file:
+
+```json
+{
+  "projectName": "MyGame",
+  "version": "1.0",
+  "created": "2026-05-06T10:00:00",
+  "lastOpened": "2026-09-03T14:00:00",
+  "lastSaved": "2026-09-03T15:30:00",
+  "scenes": ["game.ing", "Scenes/MainMenu.ing", "Scenes/Level1.ing"],
+  "autoLoadGameIng": true
+}
+```
+
+### 3.6.2 Per-Project Files
+
+| File | Purpose |
+|------|---------|
+| `{Name}.projing` | Project metadata + scene inventory |
+| `settings.json` | Engine settings (resolution, shadows, fog, post-FX, fonts) |
+| `shadow_presets.json` | Saved shadow presets |
+| `imgui.ini` | IDE panel layout (positions, sizes) |
+| `recent_files.json` | Recently opened scene files |
+| `game.ing` | Combined scene file (auto-loaded on project open) |
+| `saves/` | Save game slots (slot_0 through slot_4) |
+| `Assets/fonts/` | Project fonts (copied from exe on create) |
+| `Assets/images/` | Image assets |
+| `Assets/models/` | 3D model assets |
+| `Assets/Maps/` | Heightmaps |
+| `Scenes/` | Individual scene files (.ing) |
+
+### 3.6.3 Project Lifecycle
+
+1. **New Project** (File > New Project): Pick folder → enter name → creates structure + copies fonts
+2. **Open Project** (File > Open Project): Browse for `.projing` file → auto-loads `game.ing`
+3. **Recent Projects**: File > Recent Projects submenu (persisted globally)
+4. **Save All** (Ctrl+S): Saves scenes + updates `.projing` (LastSaved + scene inventory)
+5. **Close Project**: File > Close Project (clears editor, no auto-reload)
+
+### 3.6.4 Path Resolution
+
+All asset paths are resolved via `PathHelpers.Resolve()`:
+1. Check project root (`ProjectRoot/relativePath`)
+2. Check project Assets (`ProjectRoot/Assets/relativePath`)
+3. Fallback to exe directory (`BaseDirectory/relativePath`)
+
+When saving, `PathHelpers.MakeRelative()` converts absolute paths to portable relative form.
+
+### 3.6.5 File Menu Layout
+
+```
+File
+├── New Project...
+├── Open Project...       (file browser: *.projing)
+├── Recent Projects       (submenu)
+├── ── Current Project ──  (shows name + path + Close)
+├── ── Separator ──
+├── New Scene (Ctrl+N)
+├── Open Scene... (Ctrl+O)
+├── Open Recent Scene     (submenu)
+├── Save (Ctrl+S)
+├── Save As... (Ctrl+Shift+S)
+└── Exit
+```
 
 ---
 

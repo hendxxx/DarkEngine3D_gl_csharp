@@ -31,6 +31,7 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Anti-aliasing:** Prioritized for pixel-perfect rendering
 
 ## Architecture:
+- **Project System:** `ProjectManager` manages project lifecycle. Each project has a `.projing` file containing metadata + scene inventory. All settings, saves, fonts, and layout are per-project.
 - **Object Management:** All objects managed via `ObjectManager` / `StaticObjectManager`
 - **Scene System:** Objects placed in `IScene` implementations (e.g., `GameScene`, `MainMenuScene`, `LoadingScene`)
 - **Shader Management:** Custom `Shader` class with GLSL compilation
@@ -39,10 +40,23 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Post-Processing:** Pluggable `IPostProcessPass` pipeline (e.g., `InvertPass`)
 - **Lighting:** `CSM` (Cascaded Shadow Maps), `Lights`
 
+## Project System Rules:
+- **`.projing` File**: Project metadata stored as `{ProjectName}.projing` in project root. Contains: name, version, timestamps, scene inventory, autoLoadGameIng flag.
+- **Per-Project Files**: All settings live in project folder: `settings.json`, `shadow_presets.json`, `imgui.ini`, `recent_files.json`, `saves/`, `Assets/fonts/`, `Assets/Maps/`.
+- **Path Resolution**: `PathHelpers.Resolve()` checks project root first, then exe fallback. `PathHelpers.MakeRelative()` makes paths portable.
+- **Project Creation**: `ProjectManager.CreateProject()` creates folder structure + copies default fonts from exe `Artifacts/fonts/`.
+- **Project Open**: `OnProjectChanged` event auto-loads `game.ing` from project root.
+- **Save All**: `TouchProject()` updates `.projing` with `LastSaved` timestamp + scans for `.ing` scene files.
+- **File Menu Order**: New Project → Open Project → Recent Projects → Scenes → Save → Exit.
+- **File Browser**: Open Project uses `ImGuiFileDialog` filtering `*.projing`.
+- **No Hardcoded Paths**: Never use `AppDomain.CurrentDomain.BaseDirectory` directly for project files. Always check `ProjectManager.IsProjectLoaded` and use project-relative paths.
+
 ## ImGui Editor Rules:
 - **Dropdown Auto-Select**: Semua dropdown (Combo/BeginCombo) harus auto-select index 0 saat pertama kali muncul atau saat parent value berubah. Jangan biarkan dropdown kosong/tidak terpilih. Contoh: ketika user ganti tipe behavior ke "scene", dropdown target scene harus langsung pilih scene pertama.
 - **BeginCombo > Combo**: Gunakan BeginCombo/EndCombo untuk dropdown yang perlu bisa dipilih meskipun cuma 1 item (Combo ImGui disable dropdown jika cuma 1 item).
 - **Scene Type Persistence**: Simpan tipe scene (MainMenu/GameScene/Loading) ke file .ing agar saat load kembali tipe tetap benar.
+- **RenderProperties Persistence**: Simpan SceneRenderProperties (background color, wireframe, VSync, culling, depth test, blending) per-scene di `.ing` file.
+- **Save Must Update .projing**: Setiap Save All harus update `.projing` via `ProjectManager.TouchProject()`.
 
 ## Bahasa:
 - Bisa berbahasa **Indonesia** dan **Inggris**.
