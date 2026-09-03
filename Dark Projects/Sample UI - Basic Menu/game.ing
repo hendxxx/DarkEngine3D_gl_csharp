@@ -513,7 +513,7 @@
                   "type": "Button",
                   "text": "New",
                   "x": 840,
-                  "y": 610,
+                  "y": 510,
                   "width": 240,
                   "height": 80,
                   "imagePath": "",
@@ -639,7 +639,7 @@
                   "type": "Button",
                   "text": "Exit",
                   "x": 840,
-                  "y": 510,
+                  "y": 640,
                   "width": 240,
                   "height": 80,
                   "imagePath": "",
@@ -1019,10 +1019,10 @@
       ],
       "backgroundObjects": [],
       "editorObjects": [],
-      "transitionType": "fade",
+      "transitionType": "slideleft",
       "transitionDuration": 0.6,
       "transitionColor": [
-        0,
+        1,
         0,
         0
       ],
@@ -1467,7 +1467,7 @@
                   "autoCenterY": false,
                   "anchor": "TopLeft",
                   "useHover": true,
-                  "clickBehavior": "closeoverlay",
+                  "clickBehavior": "scene:mnMain",
                   "hoverEnterBehavior": "",
                   "hoverExitBehavior": "None",
                   "minValue": 0,
@@ -1550,10 +1550,10 @@
       ],
       "backgroundObjects": [],
       "editorObjects": [],
-      "transitionType": "fade",
+      "transitionType": "slideright",
       "transitionDuration": 0.6,
       "transitionColor": [
-        0,
+        1,
         0,
         0
       ],
@@ -1564,8 +1564,8 @@
         10.0527315,
         15.662701
       ],
-      "editorCameraYaw": -2418.5,
-      "editorCameraPitch": 82
+      "editorCameraYaw": -2439,
+      "editorCameraPitch": 85
     }
   ],
   "selectionHighlightColor": [

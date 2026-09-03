@@ -1179,25 +1179,22 @@ public unsafe class ViewportPanel
     /// - Otherwise → close the app</summary>
     private void HandleExit()
     {
-        //  In-game mode (F8 fullscreen): close the app entirely 
+        // In IDE mode (any preview/in-game/fullscreen active): back to editor
         if (_fullscreenMode)
         {
-            Console.WriteLine("[Viewport] exit → closing app (in-game mode, via GLFW)");
-            nint window = Glfw.GetWindow();
-            if (window != nint.Zero)
-                Glfw.SetWindowShouldClose(window, 1);
+            Console.WriteLine("[Viewport] exit → exiting fullscreen, back to editor");
+            _fullscreenMode = false;
+            ResetSceneOverlays();
         }
-        //  Viewport preview mode (F5): back to editor 
         else if (_previewMode)
         {
-            Console.WriteLine("[Viewport] exit → exiting preview mode, resetting overlays");
+            Console.WriteLine("[Viewport] exit → exiting preview mode, back to editor");
             _previewMode = false;
-            _bridge.IsPreviewMode = false; // Back to edit mode: show editor gizmos/helpers
+            _bridge.IsPreviewMode = false;
             ResetSceneOverlays();
-            // Reset all edit-mode actions to default/off
             _bridge.TerrainBrushActive = false;
             _bridge.TerrainBrushMode = 0;
-            _bridge.GizmoMode = 0; // Translate (default)
+            _bridge.GizmoMode = 0;
             if (_bridge.EditorGizmo != null)
             {
                 _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
@@ -1205,8 +1202,7 @@ public unsafe class ViewportPanel
             }
             ClearBrushIndicator();
         }
-        //  In-game input mode (F9 active): back to editor 
-        else if (_bridge.InGameActive && _bridge.SceneManager != null)
+        else if (_bridge.InGameActive)
         {
             Console.WriteLine("[Viewport] exit → back to edit mode");
             _bridge.InGameActive = false;
@@ -1216,11 +1212,13 @@ public unsafe class ViewportPanel
                     child.IsVisible = false;
             }
         }
-        //  Otherwise: close the app 
+        // Not in IDE mode (standalone game): close the app
         else
         {
             Console.WriteLine("[Viewport] exit → stopping app");
-            _bridge.SceneManager?.Stop();
+            nint window = Glfw.GetWindow();
+            if (window != nint.Zero)
+                Glfw.SetWindowShouldClose(window, 1);
         }
     }
 
