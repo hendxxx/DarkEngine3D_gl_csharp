@@ -347,6 +347,24 @@ public class SceneAsset
     public float? EditorCameraYaw { get; set; }
     /// <summary>Editor camera pitch (degrees).</summary>
     public float? EditorCameraPitch { get; set; }
+
+    // ── Per-scene render properties (background color, wireframe, VSync, etc.) ──
+    /// <summary>Serialized render properties. Null = use engine defaults.</summary>
+    public SceneRenderPropertiesData? RenderProperties { get; set; }
+}
+
+/// <summary>
+/// Serializable representation of SceneRenderProperties for .ing file persistence.
+/// </summary>
+public class SceneRenderPropertiesData
+{
+    public float[] BackgroundColor { get; set; } = [0f, 0f, 0f];
+    public bool VSync { get; set; } = true;
+    public string FaceCulling { get; set; } = "Back"; // None, Back, Front, FrontAndBack
+    public string FrontFaceWinding { get; set; } = "CCW"; // CCW, CW
+    public bool WireframeMode { get; set; } = false;
+    public bool DepthTest { get; set; } = true;
+    public bool Blending { get; set; } = false;
 }
 
 /// <summary>

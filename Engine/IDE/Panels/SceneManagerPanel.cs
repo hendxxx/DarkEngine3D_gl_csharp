@@ -864,6 +864,22 @@ public class SceneManagerPanel
                 asset.EditorCameraPitch = editorScene.CameraPitch;
             }
 
+            //  Save per-scene render properties (background color, wireframe, VSync, etc.) 
+            if (editorScene.RenderProperties != null)
+            {
+                var rp = editorScene.RenderProperties;
+                asset.RenderProperties = new SceneRenderPropertiesData
+                {
+                    BackgroundColor = [rp.BackgroundColor.X, rp.BackgroundColor.Y, rp.BackgroundColor.Z],
+                    VSync = rp.VSync,
+                    FaceCulling = rp.FaceCulling.ToString(),
+                    FrontFaceWinding = rp.FrontFaceWinding.ToString(),
+                    WireframeMode = rp.WireframeMode,
+                    DepthTest = rp.DepthTest,
+                    Blending = rp.Blending,
+                };
+            }
+
             //  Snapshot sky settings for 'Load from Settings' 
             if (editorScene.ObjectManager != null)
             {
@@ -1498,6 +1514,29 @@ public class SceneManagerPanel
                     loadedScene.CameraYaw = manifest.EditorCameraYaw;
                     loadedScene.CameraPitch = manifest.EditorCameraPitch;
                 }
+
+                //  Restore per-scene render properties (background color, wireframe, VSync, etc.) 
+                if (asset.RenderProperties != null)
+                {
+                    var rpData = asset.RenderProperties;
+                    var rp = new SceneRenderProperties
+                    {
+                        BackgroundColor = new Vector3(rpData.BackgroundColor[0], rpData.BackgroundColor[1], rpData.BackgroundColor[2]),
+                        VSync = rpData.VSync,
+                        FaceCulling = rpData.FaceCulling.ToLowerInvariant() switch
+                        {
+                            "none" => CullMode.None,
+                            "front" => CullMode.Front,
+                            "frontandback" => CullMode.FrontAndBack,
+                            _ => CullMode.Back,
+                        },
+                        FrontFaceWinding = rpData.FrontFaceWinding.ToUpperInvariant() == "CW" ? WindingOrder.CW : WindingOrder.CCW,
+                        WireframeMode = rpData.WireframeMode,
+                        DepthTest = rpData.DepthTest,
+                        Blending = rpData.Blending,
+                    };
+                    loadedScene.RenderProperties = rp;
+                }
                 _bridge.EditorScenes[sceneName] = loadedScene;
 
                 // Track the first loaded scene for auto-selection
@@ -1616,6 +1655,22 @@ public class SceneManagerPanel
                     asset.EditorCameraPosition = [camPos.X, camPos.Y, camPos.Z];
                     asset.EditorCameraYaw = editorScene.CameraYaw;
                     asset.EditorCameraPitch = editorScene.CameraPitch;
+                }
+
+                //  Save per-scene render properties 
+                if (editorScene.RenderProperties != null)
+                {
+                    var rp = editorScene.RenderProperties;
+                    asset.RenderProperties = new SceneRenderPropertiesData
+                    {
+                        BackgroundColor = [rp.BackgroundColor.X, rp.BackgroundColor.Y, rp.BackgroundColor.Z],
+                        VSync = rp.VSync,
+                        FaceCulling = rp.FaceCulling.ToString(),
+                        FrontFaceWinding = rp.FrontFaceWinding.ToString(),
+                        WireframeMode = rp.WireframeMode,
+                        DepthTest = rp.DepthTest,
+                        Blending = rp.Blending,
+                    };
                 }
 
                 // Save 3D editor objects
