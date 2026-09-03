@@ -2300,40 +2300,47 @@ ImGui.SameLine();
                     float dy = currentMouseScene.Y - _dragStartMouseScene.Y;
                     const float minSize = 10f;
 
+                    // Invert delta for bottom/right anchors: Y increases upward from bottom edge,
+                    // X increases leftward from right edge, so drag direction must be flipped.
+                    bool invertY = selUiElem.Anchor is UIAnchor.BottomLeft or UIAnchor.BottomCenter or UIAnchor.BottomRight;
+                    bool invertX = selUiElem.Anchor is UIAnchor.TopRight or UIAnchor.CenterRight or UIAnchor.BottomRight;
+                    float adjDx = invertX ? -dx : dx;
+                    float adjDy = invertY ? -dy : dy;
+
                     float newX = selUiElem.X, newY = selUiElem.Y;
                     float newW = selUiElem.Width, newH = selUiElem.Height;
 
                     switch (_dragMode)
                     {
                         case DragMode.Move:
-                            newX = _dragStartX + dx; newY = _dragStartY + dy;
+                            newX = _dragStartX + adjDx; newY = _dragStartY + adjDy;
                             newX = SnapToGrid(newX); newY = SnapToGrid(newY);
                             break;
                         case DragMode.ResizeTL:
-                            newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + dx);
-                            newW = Math.Max(minSize, _dragStartW - dx);
-                            newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + dy);
-                            newH = Math.Max(minSize, _dragStartH - dy);
+                            newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + adjDx);
+                            newW = Math.Max(minSize, _dragStartW - adjDx);
+                            newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + adjDy);
+                            newH = Math.Max(minSize, _dragStartH - adjDy);
                             newX = SnapToGrid(newX); newY = SnapToGrid(newY);
                             newW = SnapToGrid(newW); newH = SnapToGrid(newH);
                             break;
                         case DragMode.ResizeTR:
-                            newW = Math.Max(minSize, _dragStartW + dx);
-                            newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + dy);
-                            newH = Math.Max(minSize, _dragStartH - dy);
+                            newW = Math.Max(minSize, _dragStartW + adjDx);
+                            newY = Math.Min(_dragStartY + _dragStartH - minSize, _dragStartY + adjDy);
+                            newH = Math.Max(minSize, _dragStartH - adjDy);
                             newY = SnapToGrid(newY);
                             newW = SnapToGrid(newW); newH = SnapToGrid(newH);
                             break;
                         case DragMode.ResizeBL:
-                            newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + dx);
-                            newW = Math.Max(minSize, _dragStartW - dx);
-                            newH = Math.Max(minSize, _dragStartH + dy);
+                            newX = Math.Min(_dragStartX + _dragStartW - minSize, _dragStartX + adjDx);
+                            newW = Math.Max(minSize, _dragStartW - adjDx);
+                            newH = Math.Max(minSize, _dragStartH + adjDy);
                             newX = SnapToGrid(newX);
                             newW = SnapToGrid(newW); newH = SnapToGrid(newH);
                             break;
                         case DragMode.ResizeBR:
-                            newW = Math.Max(minSize, _dragStartW + dx);
-                            newH = Math.Max(minSize, _dragStartH + dy);
+                            newW = Math.Max(minSize, _dragStartW + adjDx);
+                            newH = Math.Max(minSize, _dragStartH + adjDy);
                             newW = SnapToGrid(newW); newH = SnapToGrid(newH);
                             break;
                     }
