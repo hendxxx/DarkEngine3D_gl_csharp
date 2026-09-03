@@ -2276,18 +2276,7 @@ ImGui.SameLine();
                         {
                             _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
-                            _dragStartMouseScene = ScreenToScene(viewportMouseScreen);                            // Auto-center owns the position — manually dragging the element
-                            // turns auto-center OFF so the drag isn't fought every frame.
-                            if (selUiElem.AutoCenterX)
-                            {
-                                selUiElem.AutoCenterX = false;
-                                Console.WriteLine($"[Viewport] Auto-center X disabled on '{selUiElem.Name}' (manual drag)");
-                            }
-                            if (selUiElem.AutoCenterY)
-                            {
-                                selUiElem.AutoCenterY = false;
-                                Console.WriteLine($"[Viewport] Auto-center Y disabled on '{selUiElem.Name}' (manual drag)");
-                            }
+                            _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
                         }
                     }
                 }
