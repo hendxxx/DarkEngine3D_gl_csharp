@@ -162,6 +162,28 @@ public class IDE : IDisposable
         Console.WriteLine($"[IDE] Reloaded ({Bridge.EditorScenes.Count} scenes)");
     }
 
+    /// <summary>Auto-load game.ing when a project is opened or closed.</summary>
+    private void OnProjectChanged()
+    {
+        if (Engine.Project.ProjectManager.IsProjectLoaded)
+        {
+            string gameIng = Engine.Project.ProjectManager.GameIngPath;
+            if (File.Exists(gameIng))
+            {
+                Console.WriteLine($"[IDE] Auto-loading {gameIng}...");
+                _sceneManagerPanel.LoadFromFilePath(gameIng);
+            }
+            else
+            {
+                Console.WriteLine($"[IDE] No game.ing found in project, starting fresh.");
+            }
+        }
+        else
+        {
+            Console.WriteLine("[IDE] Project closed, clearing scenes.");
+        }
+    }
+
     /// <summary>Warning text shown when no Camera object is found in the scene during in-game mode.</summary>
     private string? _inGameCameraWarning = null;
     private float _inGameCameraWarningTimer = 0f;
@@ -288,11 +310,12 @@ public class IDE : IDisposable
 
             // Wire save integration: HierarchyPanel can trigger SceneManager's Save All / Save As
             Bridge.SaveAllScenes = () => _sceneManagerPanel.SaveAllEditorScenesPublic();
-            Bridge.SaveToGameIng = () => _sceneManagerPanel.SaveToGameIng();
-            Bridge.RequestSaveAsDialog = () => _sceneManagerPanel.OpenSaveAsDialog();
+            Bridge.SaveToGameIng = () => _sceneManagerPanel.SaveToGameIng();            Bridge.RequestSaveAsDialog = () => _sceneManagerPanel.OpenSaveAsDialog();
+
+            // Auto-load scenes when project is opened
+            Engine.Project.ProjectManager.OnProjectChanged += OnProjectChanged;
 
             IsHealthy = true;
-
             Console.WriteLine("[IDE] Initialized.");
         }
         catch (Exception ex)

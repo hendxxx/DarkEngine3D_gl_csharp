@@ -12,6 +12,10 @@ public class ProjectData
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime LastOpened { get; set; } = DateTime.UtcNow;
     public DateTime LastSaved { get; set; } = DateTime.MinValue;
+    /// <summary>Scene files (.ing) found in the project. Populated on save.</summary>
+    public List<string> Scenes { get; set; } = [];
+    /// <summary>Whether to auto-load game.ing on project open.</summary>
+    public bool AutoLoadGameIng { get; set; } = true;
 }
 
 /// <summary>
@@ -174,6 +178,8 @@ public static class ProjectManager
             if (data != null)
             {
                 data.LastSaved = DateTime.UtcNow;
+                // Scan for .ing scene files
+                data.Scenes = ScanProjectScenes();
                 File.WriteAllText(projectFile, JsonSerializer.Serialize(data, JsonOpts));
             }
         }
@@ -181,6 +187,26 @@ public static class ProjectManager
         {
             Console.WriteLine($"[ProjectManager] TouchProject failed: {ex.Message}");
         }
+    }
+
+    /// <summary>Scan project folder for .ing scene files (game.ing + Scenes/*.ing).</summary>
+    private static List<string> ScanProjectScenes()
+    {
+        var scenes = new List<string>();
+        try
+        {
+            // game.ing at root
+            if (File.Exists(GameIngPath))
+                scenes.Add("game.ing");
+            // Individual scenes in Scenes/
+            if (Directory.Exists(ScenesDir))
+            {
+                foreach (string f in Directory.GetFiles(ScenesDir, "*.ing"))
+                    scenes.Add(Path.GetRelativePath(ProjectRoot!, f).Replace('\\', '/'));
+            }
+        }
+        catch { /* ignore scan errors */ }
+        return scenes;
     }
 
     /// <summary>Get a scene file path relative to the project.</summary>
