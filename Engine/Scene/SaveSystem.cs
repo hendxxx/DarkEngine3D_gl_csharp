@@ -45,8 +45,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     public static unsafe class SaveManager
     {
         public const int NumSlots = 5;
-        private static readonly string SavesDir = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "saves");
+        private static string SavesDir =>
+            DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded
+                ? Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, "saves")
+                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "saves");
 
         private static string SlotDir(int index) => Path.Combine(SavesDir, $"slot_{index}");
         private static string MetaPath(int index) => Path.Combine(SlotDir(index), "save.json");

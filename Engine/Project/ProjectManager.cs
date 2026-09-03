@@ -79,6 +79,9 @@ public static class ProjectManager
         Directory.CreateDirectory(Path.Combine(rootPath, "Assets", "models"));
         Directory.CreateDirectory(Path.Combine(rootPath, "Scenes"));
 
+        // Copy default fonts from the exe's Artifacts into the project
+        CopyFontsToProject(rootPath);
+
         // Write {name}.projing
         var projectData = new ProjectData
         {
@@ -253,5 +256,27 @@ public static class ProjectManager
 
         // Return original path even if not found (caller handles missing)
         return relativePath;
+    }
+
+    /// <summary>Copy default fonts from the exe's Artifacts/fonts into the project's Assets/fonts.</summary>
+    private static void CopyFontsToProject(string projectRoot)
+    {
+        string srcDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
+        string dstDir = Path.Combine(projectRoot, "Assets", "fonts");
+        if (!Directory.Exists(srcDir)) return;
+        try
+        {
+            foreach (string srcFile in Directory.GetFiles(srcDir, "*.ttf"))
+            {
+                string dstFile = Path.Combine(dstDir, Path.GetFileName(srcFile));
+                if (!File.Exists(dstFile))
+                    File.Copy(srcFile, dstFile, false);
+            }
+            Console.WriteLine($"[ProjectManager] Copied fonts to {dstDir}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ProjectManager] Font copy failed: {ex.Message}");
+        }
     }
 }

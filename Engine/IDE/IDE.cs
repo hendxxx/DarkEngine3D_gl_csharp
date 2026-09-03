@@ -850,7 +850,9 @@ public class IDE : IDisposable
             // Project fonts
             try
             {
-                string fontsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
+                string fontsDir = Engine.Project.ProjectManager.IsProjectLoaded
+                    ? Path.Combine(Engine.Project.ProjectManager.AssetsDir, "fonts")
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
                 if (Directory.Exists(fontsDir))
                 {
                     foreach (var f in Directory.GetFiles(fontsDir, "*.ttf"))

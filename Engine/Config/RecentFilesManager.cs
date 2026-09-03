@@ -11,8 +11,10 @@ public class RecentFilesData
 /// <summary>Manages the list of recently opened .ing files, persisted to a JSON file.</summary>
 public static class RecentFilesManager
 {
-    private static readonly string FilePath = System.IO.Path.Combine(
-        AppDomain.CurrentDomain.BaseDirectory, "recent_files.json");
+    private static string FilePath =>
+        DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded
+            ? System.IO.Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, "recent_files.json")
+            : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "recent_files.json");
 
     private const int MaxRecentFiles = 10;
 

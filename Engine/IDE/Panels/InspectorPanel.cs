@@ -286,7 +286,9 @@ public class InspectorPanel
 
                 if (ImGui.Combo("Font", ref fontIdx, _availableFonts, _availableFonts.Length))
                 {
-                    string fontsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
+                    string fontsDir = Engine.Project.ProjectManager.IsProjectLoaded
+                        ? Path.Combine(Engine.Project.ProjectManager.AssetsDir, "fonts")
+                        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
                     elem.FontPath = Path.Combine(fontsDir, _availableFonts[fontIdx]);
                 }
             }
@@ -1425,7 +1427,9 @@ public class InspectorPanel
 
         try
         {
-            string fontsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
+            string fontsDir = Engine.Project.ProjectManager.IsProjectLoaded
+                ? Path.Combine(Engine.Project.ProjectManager.AssetsDir, "fonts")
+                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
             if (Directory.Exists(fontsDir))
             {
                 var files = Directory.GetFiles(fontsDir, "*.ttf");
@@ -2340,7 +2344,9 @@ public class InspectorPanel
                 if (mapIdx < 0) mapIdx = 0;
                 if (ImGui.Combo("##ter_hm_combo", ref mapIdx, maps, maps.Length))
                 {
-                    string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+                    string mapsDir = Engine.Project.ProjectManager.IsProjectLoaded
+                        ? Path.Combine(Engine.Project.ProjectManager.AssetsDir, "Maps")
+                        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
                     editorObj.TerrainHeightmapPath = Path.Combine(mapsDir, maps[mapIdx]);
                     editorObj.MarkDirty();
                 }
@@ -2351,7 +2357,9 @@ public class InspectorPanel
             {
                 try
                 {
-                    string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+                    string mapsDir = Engine.Project.ProjectManager.IsProjectLoaded
+                        ? Path.Combine(Engine.Project.ProjectManager.AssetsDir, "Maps")
+                        : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
                     Directory.CreateDirectory(mapsDir);
                     string path = Path.Combine(mapsDir, $"editor_terrain_{DateTime.Now:HHmmss}.raw");
                     DarkEngine3D_gl_csharp.Engine.Terrains.MapLoader.GeneratePhotorealHeightmap(path, 257);
@@ -2479,7 +2487,9 @@ public class InspectorPanel
                     string path = editorObj.TerrainHeightmapPath;
                     if (string.IsNullOrEmpty(path) || !Path.HasExtension(path))
                     {
-                        string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+                        string mapsDir = Engine.Project.ProjectManager.IsProjectLoaded
+                            ? Path.Combine(Engine.Project.ProjectManager.AssetsDir, "Maps")
+                            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
                         Directory.CreateDirectory(mapsDir);
                         path = Path.Combine(mapsDir, $"painted_{DateTime.Now:HHmmss}.raw");
                     }
@@ -2885,7 +2895,9 @@ public class InspectorPanel
     {
         try
         {
-            string mapsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
+            string mapsDir = Engine.Project.ProjectManager.IsProjectLoaded
+                ? Path.Combine(Engine.Project.ProjectManager.AssetsDir, "Maps")
+                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Maps");
             if (!Directory.Exists(mapsDir)) return [];
             var files = Directory.GetFiles(mapsDir)
                 .Where(f => f.EndsWith(".raw", StringComparison.OrdinalIgnoreCase)
