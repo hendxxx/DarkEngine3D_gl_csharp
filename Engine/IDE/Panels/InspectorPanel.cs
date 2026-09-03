@@ -643,7 +643,12 @@ public class InspectorPanel
                 "BottomLeft", "BottomCenter", "BottomRight"];
             int anchorIdx = (int)elem.Anchor;
             if (ImGui.Combo("Anchor", ref anchorIdx, anchorLabels, anchorLabels.Length))
+            {
                 elem.Anchor = (UIAnchor)anchorIdx;
+                // Reset X/Y to 0,0 relative to the new anchor point
+                elem.X = 0f;
+                elem.Y = 0f;
+            }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Anchor element to viewport edges. X/Y become offsets from the anchor point.");
         }
