@@ -31,9 +31,14 @@ public unsafe class AssetBrowserPanel
     public AssetBrowserPanel(IDEBridge bridge)
     {
         _bridge = bridge;
-        _rootPath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Artifacts"));
-        if (!Directory.Exists(_rootPath))
-            _rootPath = AppDomain.CurrentDomain.BaseDirectory;
+        if (Engine.Project.ProjectManager.IsProjectLoaded)
+            _rootPath = Engine.Project.ProjectManager.ProjectRoot!;
+        else
+        {
+            _rootPath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Artifacts"));
+            if (!Directory.Exists(_rootPath))
+                _rootPath = AppDomain.CurrentDomain.BaseDirectory;
+        }
         _currentPath = _rootPath;
         Refresh();
     }

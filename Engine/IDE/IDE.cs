@@ -388,6 +388,64 @@ public class IDE : IDisposable
             // ════════════════════════════════════════════════════
             if (ImGui.BeginMenu("File"))
             {
+                // ═══ Project (top) ═══
+                if (ImGui.MenuItem("New Project..."))
+                {
+                    _projectFolderDialog.OpenForPickFolder("Select Project Location");
+                }
+                if (ImGui.MenuItem("Open Project..."))
+                {
+                    _showOpenProjectDialog = true;
+                }
+
+                // ── Recent Projects ──
+                var recentProjects = RecentProjectsManager.GetRecentProjects();
+                if (recentProjects.Count > 0)
+                {
+                    if (ImGui.BeginMenu("Recent Projects"))
+                    {
+                        for (int ri = 0; ri < recentProjects.Count; ri++)
+                        {
+                            string projPath = recentProjects[ri];
+                            string projName = Path.GetFileName(projPath);
+                            if (string.IsNullOrEmpty(projName)) projName = projPath;
+                            bool opened = ImGui.MenuItem(projName);
+                            if (ImGui.IsItemHovered())
+                                ImGui.SetTooltip(projPath);
+                            if (opened)
+                            {
+                                if (Engine.Project.ProjectManager.OpenProject(projPath))
+                                {
+                                    RecentProjectsManager.AddRecentProject(projPath);
+                                    Console.WriteLine($"[IDE] Opened recent project: {projPath}");
+                                }
+                            }
+                        }
+                        ImGui.Separator();
+                        if (ImGui.MenuItem("Clear Recent Projects"))
+                        {
+                            RecentProjectsManager.ClearRecentProjects();
+                        }
+                        ImGui.EndMenu();
+                    }
+                }
+
+                // Show current project info + close
+                if (Engine.Project.ProjectManager.IsProjectLoaded)
+                {
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.5f, 1f), $"  {Path.GetFileName(Engine.Project.ProjectManager.ProjectRoot)}");
+                    ImGui.TextDisabled($"  {Engine.Project.ProjectManager.ProjectRoot}");
+                    if (ImGui.MenuItem("Close Project"))
+                    {
+                        Engine.Project.ProjectManager.CloseProject();
+                        Console.WriteLine("[IDE] Project closed");
+                    }
+                }
+
+                ImGui.Separator();
+
+                // ═══ Scenes ═══
                 // New Scene — opens SceneManager's Add Scene popup
                 if (ImGui.MenuItem("New Scene", "Ctrl+N"))
                     _sceneManagerPanel.OpenAddScenePopup();
@@ -400,12 +458,12 @@ public class IDE : IDisposable
                 var recentFiles = RecentFilesManager.GetRecentFiles();
                 if (recentFiles.Count > 0)
                 {
-                    if (ImGui.BeginMenu("Open Recent"))
+                    if (ImGui.BeginMenu("Open Recent Scene"))
                     {
                         for (int ri = 0; ri < recentFiles.Count; ri++)
                         {
                             string path = recentFiles[ri];
-                            string label = System.IO.Path.GetFileName(path);
+                            string label = Path.GetFileName(path);
                             bool loaded = ImGui.MenuItem(label, $"Ctrl+F{ri + 1}");
                             if (ImGui.IsItemHovered())
                                 ImGui.SetTooltip(path);
@@ -433,37 +491,6 @@ public class IDE : IDisposable
                 // Save As...
                 if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
                     _sceneManagerPanel.OpenSaveAsDialog();
-
-                ImGui.Separator();
-
-                // ── Project ──
-                if (ImGui.BeginMenu("Project"))
-                {
-                    if (Engine.Project.ProjectManager.IsProjectLoaded)
-                    {
-                        ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.5f, 1f), $"  {Path.GetFileName(Engine.Project.ProjectManager.ProjectRoot)}");
-                        ImGui.TextDisabled($"  {Engine.Project.ProjectManager.ProjectRoot}");
-                        ImGui.Separator();
-                    }
-
-                    if (ImGui.MenuItem("New Project..."))
-                    {
-                        _projectFolderDialog.OpenForPickFolder("Select Project Location");
-                    }
-                    if (ImGui.MenuItem("Open Project..."))
-                    {
-                        _showOpenProjectDialog = true;
-                    }
-                    if (Engine.Project.ProjectManager.IsProjectLoaded)
-                    {
-                        if (ImGui.MenuItem("Close Project"))
-                        {
-                            Engine.Project.ProjectManager.CloseProject();
-                            Console.WriteLine("[IDE] Project closed");
-                        }
-                    }
-                    ImGui.EndMenu();
-                }
 
                 ImGui.Separator();
 
@@ -770,6 +797,7 @@ public class IDE : IDisposable
                 {
                     string rootPath = Path.Combine(dir, name);
                     Engine.Project.ProjectManager.CreateProject(rootPath, name);
+                    Config.RecentProjectsManager.AddRecentProject(rootPath);
                     Console.WriteLine($"[IDE] Created project '{name}' at {rootPath}");
                     ImGui.CloseCurrentPopup();
                 }
@@ -801,6 +829,7 @@ public class IDE : IDisposable
                 {
                     if (Engine.Project.ProjectManager.OpenProject(path2))
                     {
+                        Config.RecentProjectsManager.AddRecentProject(Path.GetFullPath(path2));
                         Console.WriteLine($"[IDE] Opened project at {path2}");
                         ImGui.CloseCurrentPopup();
                     }

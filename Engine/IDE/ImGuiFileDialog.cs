@@ -52,6 +52,8 @@ public class ImGuiFileDialog
         _selectedIdx = -1;
         SelectedPath = null;
         IsConfirmed = false;
+        if (Engine.Project.ProjectManager.IsProjectLoaded)
+            _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
         Refresh();
     }
 
@@ -63,6 +65,8 @@ public class ImGuiFileDialog
         _selectedIdx = -1;
         SelectedPath = null;
         IsConfirmed = false;
+        if (Engine.Project.ProjectManager.IsProjectLoaded)
+            _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
         Refresh();
     }
 
@@ -74,6 +78,8 @@ public class ImGuiFileDialog
         _selectedIdx = -1;
         SelectedPath = null;
         IsConfirmed = false;
+        if (Engine.Project.ProjectManager.IsProjectLoaded)
+            _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
         Refresh();
     }
 
