@@ -56,6 +56,7 @@ public class IDE : IDisposable
     private byte[] _newProjectNameBuf = new byte[256];
     private byte[] _newProjectPathBuf = new byte[512];
     private readonly ImGuiFileDialog _projectFolderDialog = new();
+    private readonly ImGuiFileDialog _projingFileDialog = new();
     /// <summary>When true, all ImGui panels are hidden and the game scene fills the entire screen.</summary>
     public bool InGameMode
     {
@@ -395,7 +396,7 @@ public class IDE : IDisposable
                 }
                 if (ImGui.MenuItem("Open Project..."))
                 {
-                    _showOpenProjectDialog = true;
+                    _projingFileDialog.OpenForLoad("*.projing", "Open Project (.projing)");
                 }
 
                 // ── Recent Projects ──
@@ -798,7 +799,7 @@ public class IDE : IDisposable
                     string rootPath = Path.Combine(dir, name);
                     Engine.Project.ProjectManager.CreateProject(rootPath, name);
                     Config.RecentProjectsManager.AddRecentProject(rootPath);
-                    Console.WriteLine($"[IDE] Created project '{name}' at {rootPath}");
+                    Console.WriteLine($"[IDE] Created project '{name}' ({name}.projing) at {rootPath}");
                     ImGui.CloseCurrentPopup();
                 }
             }
@@ -808,41 +809,21 @@ public class IDE : IDisposable
             ImGui.EndPopup();
         }
 
-        // ── Open Project dialog ──
-        if (_showOpenProjectDialog)
+        // ── Open Project file browser ──
+        _projingFileDialog.Render();
+        if (_projingFileDialog.IsConfirmed && _projingFileDialog.SelectedPath != null)
         {
-            ImGui.OpenPopup("Open Project Folder");
-            _showOpenProjectDialog = false;
-        }
-        bool openProjOpen = true;
-        if (ImGui.BeginPopupModal("Open Project Folder", ref openProjOpen, ImGuiWindowFlags.AlwaysAutoResize))
-        {
-            ImGui.Text("Project Folder Path (containing project.json):")  ;
-            ImGui.SetNextItemWidth(400);
-            ImGui.InputText("##open_proj_path", _newProjectPathBuf, (uint)_newProjectPathBuf.Length);
-
-            ImGui.Separator();
-            if (ImGui.Button("Open", new Vector2(120, 0)))
+            string projingPath = _projingFileDialog.SelectedPath;
+            if (Engine.Project.ProjectManager.OpenProject(projingPath))
             {
-                string path2 = System.Text.Encoding.UTF8.GetString(_newProjectPathBuf).TrimEnd('\0');
-                if (!string.IsNullOrWhiteSpace(path2))
-                {
-                    if (Engine.Project.ProjectManager.OpenProject(path2))
-                    {
-                        Config.RecentProjectsManager.AddRecentProject(Path.GetFullPath(path2));
-                        Console.WriteLine($"[IDE] Opened project at {path2}");
-                        ImGui.CloseCurrentPopup();
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[IDE] Failed to open project at {path2}");
-                    }
-                }
+                Config.RecentProjectsManager.AddRecentProject(Path.GetFullPath(Path.GetDirectoryName(projingPath)!));
+                Console.WriteLine($"[IDE] Opened project from {projingPath}");
             }
-            ImGui.SameLine();
-            if (ImGui.Button("Cancel", new Vector2(120, 0)))
-                ImGui.CloseCurrentPopup();
-            ImGui.EndPopup();
+            else
+            {
+                Console.WriteLine($"[IDE] Failed to open project at {projingPath}");
+            }
+            _projingFileDialog.Close();
         }
     }
 

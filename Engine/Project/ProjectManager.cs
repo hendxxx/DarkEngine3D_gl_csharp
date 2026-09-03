@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace DarkEngine3D_gl_csharp.Engine.Project;
 
 /// <summary>
-/// Project metadata stored in project.json inside the project root.
+/// Project metadata stored in {name}.projing inside the project root.
 /// </summary>
 public class ProjectData
 {
@@ -18,7 +18,7 @@ public class ProjectData
 /// 
 /// Project structure:
 ///   ProjectRoot/
-///   ├── project.json         (metadata)
+///   ├── {name}.projing      (metadata)
 ///   ├── game.ing             (combined scene file)
 ///   ├── settings.json        (editor settings, per-project)
 ///   ├── Assets/
@@ -51,7 +51,10 @@ public static class ProjectManager
     public static string ScenesDir => Path.Combine(ProjectRoot ?? "", "Scenes");
     public static string GameIngPath => Path.Combine(ProjectRoot ?? "", "game.ing");
     public static string SettingsPath => Path.Combine(ProjectRoot ?? "", "settings.json");
-    public static string ProjectJsonPath => Path.Combine(ProjectRoot ?? "", "project.json");
+    public static string ProjectJsonPath => Path.Combine(ProjectRoot ?? "", ProjectName + ".projing");
+
+    /// <summary>Project name (read from .projing file).</summary>
+    public static string ProjectName { get; private set; } = "Untitled";
 
     /// <summary>Event fired when project is opened or closed.</summary>
     public static event Action? OnProjectChanged;
@@ -75,7 +78,7 @@ public static class ProjectManager
         Directory.CreateDirectory(Path.Combine(rootPath, "Assets", "models"));
         Directory.CreateDirectory(Path.Combine(rootPath, "Scenes"));
 
-        // Write project.json
+        // Write {name}.projing
         var projectData = new ProjectData
         {
             ProjectName = projectName,
@@ -83,35 +86,57 @@ public static class ProjectManager
             LastOpened = DateTime.UtcNow,
         };
         string json = JsonSerializer.Serialize(projectData, JsonOpts);
-        File.WriteAllText(Path.Combine(rootPath, "project.json"), json);
+        File.WriteAllText(Path.Combine(rootPath, projectName + ".projing"), json);
 
+        ProjectName = projectName;
         ProjectRoot = rootPath;
         Console.WriteLine($"[ProjectManager] Created project '{projectName}' at {rootPath}");
         OnProjectChanged?.Invoke();
     }
 
     /// <summary>
-    /// Open an existing project from a directory containing project.json.
-    /// Returns false if project.json not found.
+    /// Open an existing project from a .projing file path or directory.
+    /// If a directory is given, scans for *.projing inside it.
+    /// Returns false if no .projing found.
     /// </summary>
-    public static bool OpenProject(string rootPath)
+    public static bool OpenProject(string path)
     {
-        rootPath = Path.GetFullPath(rootPath);
-        string projectFile = Path.Combine(rootPath, "project.json");
+        path = Path.GetFullPath(path);
+        string projectFile;
+        string rootPath;
 
-        if (!File.Exists(projectFile))
+        if (File.Exists(path) && path.EndsWith(".projing", StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine($"[ProjectManager] No project.json found at {rootPath}");
+            // Opened a .projing file directly
+            projectFile = path;
+            rootPath = Path.GetDirectoryName(path)!;
+        }
+        else if (Directory.Exists(path))
+        {
+            // Directory given — scan for *.projing
+            var projFiles = Directory.GetFiles(path, "*.projing");
+            if (projFiles.Length == 0)
+            {
+                Console.WriteLine($"[ProjectManager] No .projing file found at {path}");
+                return false;
+            }
+            projectFile = projFiles[0];
+            rootPath = path;
+        }
+        else
+        {
+            Console.WriteLine($"[ProjectManager] Path not found: {path}");
             return false;
         }
 
-        // Update lastOpened
+        // Read metadata and update lastOpened
         try
         {
             string json = File.ReadAllText(projectFile);
             var data = JsonSerializer.Deserialize<ProjectData>(json, JsonOpts);
             if (data != null)
             {
+                ProjectName = data.ProjectName;
                 data.LastOpened = DateTime.UtcNow;
                 File.WriteAllText(projectFile, JsonSerializer.Serialize(data, JsonOpts));
             }
@@ -119,7 +144,7 @@ public static class ProjectManager
         catch { /* ignore */ }
 
         ProjectRoot = rootPath;
-        Console.WriteLine($"[ProjectManager] Opened project at {rootPath}");
+        Console.WriteLine($"[ProjectManager] Opened project '{ProjectName}' at {rootPath}");
         OnProjectChanged?.Invoke();
         return true;
     }
