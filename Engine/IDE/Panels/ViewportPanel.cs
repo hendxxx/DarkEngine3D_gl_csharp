@@ -1051,12 +1051,44 @@ public unsafe class ViewportPanel
 
                     if (targetScene != null)
                     {
-                        // Switch the editor scene root to the target scene
-                        _bridge.SelectedEditorScene = param;
-                        _bridge.SceneRoot = targetScene.Root;
-                        _bridge.SceneRootElements = new List<UIElement> { targetScene.Root }.AsReadOnly();
-                        // Reset overlay visibility for the new scene
-                        ResetSceneOverlays();
+                        // Look up transition settings for the target scene
+                        var sceneEntry = _bridge.AvailableScenes.FirstOrDefault(s =>
+                            string.Equals(s.Name, param, StringComparison.OrdinalIgnoreCase));
+
+                        if (sceneEntry != null && _bridge.SceneManager != null)
+                        {
+                            // Build transition definition from scene settings
+                            var def = new Engine.Scene.TransitionDefinition
+                            {
+                                Type = sceneEntry.TransitionType,
+                                Duration = sceneEntry.TransitionDuration,
+                                Color = new System.Numerics.Vector3(
+                                    sceneEntry.TransitionColor[0],
+                                    sceneEntry.TransitionColor[1],
+                                    sceneEntry.TransitionColor[2]),
+                                Easing = Engine.Scene.TransitionDefinition.ParseEasing(sceneEntry.TransitionEasing),
+                                BlockInput = sceneEntry.TransitionBlockInput,
+                            };
+
+                            if (def.Duration > 0.01f)
+                            {
+                                // Transition: switch scene at midpoint
+                                string sceneKey = param;
+                                _bridge.SceneManager.StartTransition(def,
+                                    onMidpoint: () => SwitchSceneImmediate(sceneKey, targetScene));
+                                Console.WriteLine($"[Viewport] scene:{param} → transition ({def.Type}, {def.Duration:F2}s)");
+                            }
+                            else
+                            {
+                                // No transition duration — switch immediately
+                                SwitchSceneImmediate(param, targetScene);
+                            }
+                        }
+                        else
+                        {
+                            // No transition configured — switch immediately
+                            SwitchSceneImmediate(param, targetScene);
+                        }
                     }
                     else
                     {
@@ -1094,6 +1126,16 @@ public unsafe class ViewportPanel
                 Console.WriteLine($"[Viewport] Unknown behavior: '{type}' (raw: '{elem.ClickBehaviorLabel}')");
                 break;
         }
+    }
+
+    /// <summary>Switch scene immediately without transition.</summary>
+    private void SwitchSceneImmediate(string sceneName, IDEBridge.EditorScene targetScene)
+    {
+        _bridge.SelectedEditorScene = sceneName;
+        _bridge.SceneRoot = targetScene.Root;
+        _bridge.SceneRootElements = new List<UIElement> { targetScene.Root }.AsReadOnly();
+        ResetSceneOverlays();
+        Console.WriteLine($"[Viewport] scene:{sceneName} → switched immediately");
     }
 
     /// <summary>Toggle an overlay's visibility. Finds the overlay by name and toggles it.

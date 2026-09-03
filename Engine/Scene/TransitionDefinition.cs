@@ -43,4 +43,15 @@ public class TransitionDefinition
         if (float.TryParse(parts[^1], out float d)) def.Duration = MathF.Max(0.05f, d);
         return def;
     }
+
+    public static TransitionEasing ParseEasing(string easing)
+    {
+        return easing?.ToLowerInvariant() switch
+        {
+            "easein" => TransitionEasing.EaseIn,
+            "easeout" => TransitionEasing.EaseOut,
+            "easeinout" => TransitionEasing.EaseInOut,
+            _ => TransitionEasing.Linear,
+        };
+    }
 }

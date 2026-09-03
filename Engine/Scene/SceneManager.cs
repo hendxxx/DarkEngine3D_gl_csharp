@@ -735,6 +735,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
         /// <summary>
+        /// Start a transition with custom midpoint/completed callbacks.
+        /// Used by the editor viewport to transition between UI scenes.
+        /// </summary>
+        public void StartTransition(TransitionDefinition def, Action? onMidpoint = null, Action? onCompleted = null)
+        {
+            if (def == null) return;
+            var bridge = _ide?.Bridge;
+            bool blockInput = bridge != null && def.BlockInput;
+            if (blockInput)
+                bridge!.SuppressViewportInput = true;
+            _transitionManager.Start(def, onMidpoint, () =>
+            {
+                if (blockInput)
+                    bridge!.SuppressViewportInput = false;
+                onCompleted?.Invoke();
+            });
+        }
+
+        /// <summary>
         /// Start a transition for preview purposes without switching scenes.
         /// If the transition blocks input, suppress viewport input for its duration.
         /// </summary>
