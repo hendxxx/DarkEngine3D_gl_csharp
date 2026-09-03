@@ -70,12 +70,13 @@ public unsafe class ImGuiController : IDisposable
         var io = ImGui.GetIO();
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
 
-        // ── imgui.ini lives NEXT TO THE EXE (bin folder), not in the working directory,
-        // so the IDE layout persists no matter where the app is launched from and the
-        // project folder never gets a stray imgui.ini. ImGui loads this on the first
-        // NewFrame and saves it on exit / periodically — the pointer must stay valid
-        // until DestroyContext, so it is freed in Dispose(). ──
-        string iniPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "imgui.ini");
+        // ── imgui.ini lives in the project folder (or exe fallback), so IDE layout
+        // persists per-project. ImGui loads this on the first NewFrame and saves it
+        // on exit / periodically — the pointer must stay valid until DestroyContext,
+        // so it is freed in Dispose(). ──
+        string iniPath = DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded
+            ? System.IO.Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, "imgui.ini")
+            : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "imgui.ini");
         _iniFilenamePtr = (byte*)Marshal.StringToCoTaskMemUTF8(iniPath);
         io.NativePtr->IniFilename = _iniFilenamePtr;
         Console.WriteLine($"[ImGui] imgui.ini: {iniPath}");
