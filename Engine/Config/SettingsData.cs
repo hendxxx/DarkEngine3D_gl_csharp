@@ -115,19 +115,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float FogHeightRange { get; set; } = 100f;
     }
 
-    /// <summary>Loads/saves SettingsData to a JSON file next to the executable.</summary>
+    /// <summary>Loads/saves SettingsData to a JSON file in the project folder (or exe fallback).</summary>
     public static class SettingsSave
     {
-        private static readonly string FilePath = System.IO.Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "settings.json");
+        private static string FilePath =>
+            DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded
+                ? DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.SettingsPath
+                : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
+
+        /// <summary>Reload the FilePath in case project changed (e.g. after Open Project).</summary>
+        private static string CurrentPath => FilePath;
 
         public static SettingsData Load()
         {
+            string path = FilePath;
             try
             {
-                if (System.IO.File.Exists(FilePath))
+                if (System.IO.File.Exists(path))
                 {
-                    string json = System.IO.File.ReadAllText(FilePath);
+                    string json = System.IO.File.ReadAllText(path);
                     var data = JsonSerializer.Deserialize<SettingsData>(json);
                     if (data != null)
                     {
@@ -145,13 +151,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
 
         public static void Save(SettingsData data)
         {
+            string path = FilePath;
             try
             {
                 string json = JsonSerializer.Serialize(data, new JsonSerializerOptions
                 {
                     WriteIndented = true
                 });
-                System.IO.File.WriteAllText(FilePath, json);
+                System.IO.File.WriteAllText(path, json);
             }
             catch (Exception ex)
             {

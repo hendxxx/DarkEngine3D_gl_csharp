@@ -35,8 +35,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
     /// <see cref="ShadowSettings"/> — a preset is just a named snapshot you can recall.</summary>
     public static class ShadowPresetStore
     {
-        private static readonly string FilePath = System.IO.Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "shadow_presets.json");
+        private static string FilePath =>
+            DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded
+                ? System.IO.Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, "shadow_presets.json")
+                : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "shadow_presets.json");
 
         /// <summary>Load all saved presets. Returns an empty list on missing/corrupt file.</summary>
         public static List<ShadowPresetData> Load()
