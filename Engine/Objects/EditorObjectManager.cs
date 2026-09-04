@@ -20,6 +20,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private int _cameraCounter = 1;
         private int _lightCounter = 1;
         private int _skyCounter = 1;
+        private int _map2dCounter = 1;
         private readonly uint _shaderProgram;
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
@@ -140,6 +141,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 EditorPrimitiveType.Camera => $"camera{_cameraCounter++}",
                 EditorPrimitiveType.Light => $"light{_lightCounter++}",
                 EditorPrimitiveType.Sky => $"sky{_skyCounter++}",
+                EditorPrimitiveType.Map2D => $"map2d{_map2dCounter++}",
                 _ => $"object{_boxCounter++}",
             };
         }
@@ -162,6 +164,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         case EditorPrimitiveType.Camera:    if (num >= _cameraCounter) _cameraCounter = num + 1; break;
                         case EditorPrimitiveType.Light:     if (num >= _lightCounter) _lightCounter = num + 1; break;
                         case EditorPrimitiveType.Sky:       if (num >= _skyCounter) _skyCounter = num + 1; break;
+                        case EditorPrimitiveType.Map2D:     if (num >= _map2dCounter) _map2dCounter = num + 1; break;
                     }
                 }
             }
@@ -184,6 +187,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 Scale = type == EditorPrimitiveType.Sphere ? new Vector3(1f, 1f, 1f)
                        : type == EditorPrimitiveType.Plane ? new Vector3(100f, 0.05f, 100f)
                        : type == EditorPrimitiveType.Camera ? new Vector3(0.5f, 0.4f, 0.6f)
+                       : type == EditorPrimitiveType.Map2D ? new Vector3(1600f, 1f, 640f)
                        : Vector3.One, // Box / Light / Sky
                 Color = type switch
                 {

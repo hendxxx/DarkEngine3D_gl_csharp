@@ -20,7 +20,8 @@ public enum EditorPrimitiveType
     GlbReference,
     Camera,
     Light,
-    Sky
+    Sky,
+    Map2D
 }
 
 /// <summary>
@@ -680,6 +681,22 @@ public unsafe class EditorObject
     /// Persists across selection changes — each object remembers its own pivot override.</summary>
     public Vector3? GizmoPivotOverride { get; set; }
 
+    // ── 2D Map (only used when PrimitiveType == Map2D) ──
+    /// <summary>Reference to the Tilemap2D data this object renders.</summary>
+    [JsonIgnore] public Tilemap2D? Map2dTilemap { get; set; }
+    /// <summary>Tileset texture GPU ID (loaded from Map2dTilemap.TilesetImagePath).</summary>
+    [JsonIgnore] private uint _map2dTilesetTex = 0;
+    [JsonIgnore] private string _map2dTilesetPath = "";
+    /// <summary>Tileset grid layout.</summary>
+    public int Map2dTilesetCols { get; set; } = 8;
+    public int Map2dTilesetRows { get; set; } = 8;
+    /// <summary>Whether to show the grid overlay on the map.</summary>
+    public bool Map2dShowGrid { get; set; } = true;
+    /// <summary>Cached VAO/VBO for the tilemap mesh (rebuilt when tiles change).</summary>
+    [JsonIgnore] private uint _map2dVAO, _map2dVBO;
+    [JsonIgnore] private int _map2dVertCount = 0;
+    [JsonIgnore] private string _map2dMeshCacheKey = "";
+
     // ── Shader uniform locations (cached for Draw overloads) ──
 #pragma warning disable CS0414
     private int _modelLoc = -1, _viewLoc = -1, _projLoc = -1;
@@ -699,6 +716,7 @@ public unsafe class EditorObject
         {
             EditorPrimitiveType.Plane => new Vector3(500f, 0.05f, 500f),
             EditorPrimitiveType.Camera => new Vector3(0.5f, 0.4f, 0.6f),
+            EditorPrimitiveType.Map2D => new Vector3(1f, 1f, 1f),
             _ => Vector3.One,
         };
         Color = type switch
@@ -710,6 +728,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Camera => new Vector3(0.2f, 0.7f, 0.8f),
             EditorPrimitiveType.Light => new Vector3(1.0f, 0.85f, 0.3f),
             EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
+            EditorPrimitiveType.Map2D => new Vector3(0.8f, 0.8f, 0.9f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
     }
@@ -1063,6 +1082,12 @@ public unsafe class EditorObject
                 // Camera/Light/Sky markers are 2D billboard icons (drawn via Draw2DMarker) —
                 // no solid mesh (the camera shows a wireframe frustum gizmo instead).
                 // Keep _object3D null so they don't render as 3D boxes/spheres.
+                _vertexCache = null;
+                break;
+            }
+            case EditorPrimitiveType.Map2D:
+            {
+                // Map2D builds a custom quad mesh; tileset texture loaded separately.
                 _vertexCache = null;
                 break;
             }
@@ -1705,6 +1730,13 @@ public unsafe class EditorObject
 
             // Terrain enabled but no valid mesh (missing heightmap): fall back to the
             // flat plane mesh so the object stays visible and editable.
+
+            // ── 2D Map: render as textured plane with tile images ──
+            if (PrimitiveType == EditorPrimitiveType.Map2D)
+            {
+                DrawMap2D(modelLoc, viewLoc, projLoc, sunDirLoc, lightColorLoc, viewPosLoc, useFogLoc, fogColorLoc, camera, light, csm);
+                return;
+            }
 
             if (_object3D == null) return;
 
@@ -2665,6 +2697,239 @@ public unsafe class EditorObject
         return obj;
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  2D Map rendering — textured plane with per-tile UV mapping
+    //  Uses a dedicated inline shader (similar to Sprite2D) for simple
+    //  textured rendering without the complex terrain lighting.
+    // ════════════════════════════════════════════════════════════════════
+
+    // Dedicated shader for Map2D (simple textured quad with per-vertex alpha)
+    private static uint _map2dShader;
+    private static int _map2dLocView, _map2dLocProj, _map2dLocModel, _map2dLocTex, _map2dLocTint;
+
+    private static unsafe void EnsureMap2DShader()
+    {
+        if (_map2dShader != 0) return;
+
+        string vertSrc = @"#version 330 core
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec2 aUV;
+layout(location=2) in vec4 aTint;
+uniform mat4 view;
+uniform mat4 projection;
+uniform mat4 model;
+out vec2 vUV;
+out vec4 vTint;
+void main() {
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    vUV = aUV;
+    vTint = aTint;
+}";
+
+        string fragSrc = @"#version 330 core
+in vec2 vUV;
+in vec4 vTint;
+uniform sampler2D tex;
+out vec4 FragColor;
+void main() {
+    vec4 c = texture(tex, vUV) * vTint;
+    if (c.a < 0.01) discard;
+    FragColor = c;
+}";
+
+        uint vert = GL.CreateShader(Const.GL_VERTEX_SHADER);
+        GL.ShaderSource(vert, vertSrc);
+        GL.CompileShader(vert);
+
+        uint frag = GL.CreateShader(Const.GL_FRAGMENT_SHADER);
+        GL.ShaderSource(frag, fragSrc);
+        GL.CompileShader(frag);
+
+        _map2dShader = GL.CreateProgram();
+        GL.AttachShader(_map2dShader, vert);
+        GL.AttachShader(_map2dShader, frag);
+        GL.LinkProgram(_map2dShader);
+        GL.DeleteShader(vert);
+        GL.DeleteShader(frag);
+
+        _map2dLocView = GL.GetUniformLocation(_map2dShader, "view");
+        _map2dLocProj = GL.GetUniformLocation(_map2dShader, "projection");
+        _map2dLocModel = GL.GetUniformLocation(_map2dShader, "model");
+        _map2dLocTex = GL.GetUniformLocation(_map2dShader, "tex");
+        _map2dLocTint = GL.GetUniformLocation(_map2dShader, "tint");
+    }
+
+    private struct Map2DVertex
+    {
+        // layout: pos(vec3) + uv(vec2) + tint(vec4)
+        public float X, Y, Z;      // location 0: position
+        public float U, V;         // location 1: texcoord
+        public float R, G, B, A;   // location 2: tint (RGBA)
+        public Map2DVertex(float x, float y, float z, float u, float v, float r, float g, float b, float a)
+        {
+            X = x; Y = y; Z = z;
+            U = u; V = v;
+            R = r; G = g; B = b; A = a;
+        }
+    }
+
+    /// <summary>Build a VBO with one quad per non-empty tile, UV-mapped into the tileset grid.
+    /// Vertices are in local space; the WorldMatrix positions/scales the whole mesh.</summary>
+    private unsafe void BuildMap2DMesh()
+    {
+        var map = Map2dTilemap;
+        if (map == null) return;
+
+        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}";
+        foreach (var layer in map.Layers)
+            for (int i = 0; i < map.Width * map.Height; i++)
+                cacheKey += $"|{layer.GetTile(i % map.Width, i / map.Width)}";
+
+        if (_map2dMeshCacheKey == cacheKey && _map2dVAO != 0) return;
+        _map2dMeshCacheKey = cacheKey;
+
+        if (_map2dVAO != 0) { uint v = _map2dVAO; GL.DeleteVertexArrays(1, &v); _map2dVAO = 0; }
+        if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
+
+        int mapW = map.Width;
+        int mapH = map.Height;
+        int tsCols = Math.Max(1, Map2dTilesetCols);
+        int tsRows = Math.Max(1, Map2dTilesetRows);
+        float tileUW = 1f / tsCols;
+        float tileVH = 1f / tsRows;
+
+        var verts = new List<Map2DVertex>();
+        foreach (var layer in map.Layers)
+        {
+            if (!layer.IsVisible) continue;
+            for (int ty = 0; ty < mapH; ty++)
+            {
+                for (int tx = 0; tx < mapW; tx++)
+                {
+                    int tileId = layer.GetTile(tx, ty);
+                    if (tileId < 0) continue;
+
+                    int tc = tileId % tsCols;
+                    int tr = tileId / tsCols;
+                    if (tr >= tsRows) continue;
+
+                    float u0 = tc * tileUW;
+                    float v0 = tr * tileVH;
+                    float u1 = u0 + tileUW;
+                    float v1 = v0 + tileVH;
+
+                    float x0 = tx * map.TileSize;
+                    float x1 = x0 + map.TileSize;
+                    float z0 = ty * map.TileSize;
+                    float z1 = z0 + map.TileSize;
+                    float a = layer.Opacity;
+
+                    verts.Add(new Map2DVertex(x0, 0, z0, u0, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, 0, z0, u1, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, 0, z1, u1, v1, 1, 1, 1, a));
+
+                    verts.Add(new Map2DVertex(x0, 0, z0, u0, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, 0, z1, u1, v1, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x0, 0, z1, u0, v1, 1, 1, 1, a));
+                }
+            }
+        }
+
+        _map2dVertCount = verts.Count;
+        if (_map2dVertCount == 0) return;
+
+        uint vao = 0, vbo = 0;
+        GL.GenVertexArrays(1, &vao);
+        GL.BindVertexArray(vao);
+
+        GL.GenBuffers(1, &vbo);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+
+        int stride = sizeof(Map2DVertex);
+        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(_map2dVertCount * stride), (void*)0, Const.GL_DYNAMIC_DRAW);
+
+        fixed (Map2DVertex* p = verts.ToArray())
+        {
+            GL.BufferSubData(Const.GL_ARRAY_BUFFER, (nuint)0, (nuint)(_map2dVertCount * stride), p);
+        }
+
+        // location 0 = aPos (vec3)
+        GL.EnableVertexAttribArray(0);
+        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+        // location 1 = aUV (vec2)
+        GL.EnableVertexAttribArray(1);
+        GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
+        // location 2 = aTint (vec4)
+        GL.EnableVertexAttribArray(2);
+        GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, stride, (void*)(5 * sizeof(float)));
+
+        GL.BindVertexArray(0);
+
+        _map2dVAO = vao;
+        _map2dVBO = vbo;
+    }
+
+    /// <summary>Draw the 2D map as a textured plane in the 3D scene.</summary>
+    private unsafe void DrawMap2D(
+        int modelLoc, int viewLoc, int projLoc,
+        int sunDirLoc, int lightColorLoc, int viewPosLoc,
+        int useFogLoc, int fogColorLoc,
+        Camera camera, Lights light, CSM? csm)
+    {
+        if (Map2dTilemap == null) return;
+
+        // Load tileset texture if needed
+        string tilesetPath = Map2dTilemap.TilesetImagePath ?? "";
+        if (!string.IsNullOrEmpty(tilesetPath) && tilesetPath != _map2dTilesetPath)
+        {
+            if (_map2dTilesetTex != 0) { uint t = _map2dTilesetTex; GL.DeleteTextures(1, &t); _map2dTilesetTex = 0; }
+            if (File.Exists(tilesetPath))
+            {
+                var tex = new Texture(tilesetPath);
+                _map2dTilesetTex = tex.ID;
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+            _map2dTilesetPath = tilesetPath;
+        }
+
+        BuildMap2DMesh();
+        if (_map2dVAO == 0 || _map2dVertCount == 0) return;
+
+        EnsureMap2DShader();
+        if (_map2dShader == 0) return;
+
+        GL.UseProgram(_map2dShader);
+
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+        var model = WorldMatrix;
+        GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+        GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        GL.BindTexture(Const.GL_TEXTURE_2D, _map2dTilesetTex);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+        GL.Uniform1i(_map2dLocTex, 0);
+        GL.Uniform4f(_map2dLocTint, 1f, 1f, 1f, 1f);
+
+        GL.Enable(Const.GL_BLEND);
+        GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+        GL.BindVertexArray(_map2dVAO);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, _map2dVertCount);
+        GL.BindVertexArray(0);
+
+        GL.Disable(Const.GL_BLEND);
+        GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+        // Restore main shader
+        GL.UseProgram(Shader.GetShaderProgram());
+    }
+
     public void Dispose()
     {
         if (_textureID != 0)
@@ -2675,10 +2940,17 @@ public unsafe class EditorObject
             }
             _textureID = 0;
         }
+        if (_map2dTilesetTex != 0)
+        {
+            uint t = _map2dTilesetTex;
+            GL.DeleteTextures(1, &t);
+            _map2dTilesetTex = 0;
+        }
+        if (_map2dVAO != 0) { uint v = _map2dVAO; GL.DeleteVertexArrays(1, &v); _map2dVAO = 0; }
+        if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
         _terrainMesh?.Dispose();
         _terrainMesh = null;
         DisposePbrTextures();
-        // Object3D cleanup is handled externally
         _object3D = null;
     }
 }

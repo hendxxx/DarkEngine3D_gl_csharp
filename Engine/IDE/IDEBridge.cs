@@ -143,6 +143,15 @@ public class IDEBridge
 
     // ── Active Tilemap (for 2D map editor) ──
     public Tilemap2D? ActiveTilemap { get; set; }
+    public int ActiveTileLayer { get; set; } = 1;
+    public int SelectedTileId { get; set; } = 0;
+    public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick
+    public int BrushSize { get; set; } = 1;
+    public uint TilesetTextureId { get; set; }
+    public int TilesetCols { get; set; } = 8;
+    public int TilesetRows { get; set; } = 8;
+    public int TilesetImgW { get; set; }
+    public int TilesetImgH { get; set; }
     public List<DarkEngine3D_gl_csharp.Engine.IDE.Panels.ParallaxLayer>? ParallaxLayers { get; set; }
 
     // ── Editor Object Manager ──

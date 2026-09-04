@@ -4559,8 +4559,9 @@ ImGui.SameLine();
     }
 
     /// <summary>
-    /// Render tilemap grid overlay in the viewport.
-    /// Draws smooth, anti-aliased empty grid squares for each tile position.
+    /// Handle tilemap paint interaction in the viewport.
+    /// The tilemap tiles are now rendered as a 3D Map2D object in the scene.
+    /// This method only handles hover highlight + click-to-paint using screen-space projection.
     /// </summary>
     private void RenderTilemapGrid(ImDrawListPtr drawList)
     {
@@ -4571,13 +4572,13 @@ ImGui.SameLine();
         float worldW = mapW * tileSize;
         float worldH = mapH * tileSize;
 
-        // Grid fills the viewport center area
+        // Tiles are now rendered as a 3D Map2D object in the scene.
+        // This overlay only handles paint interaction via screen-space projection.
         var vpMin = _imageMin;
         var vpMax = _imageMax;
         float vpW = vpMax.X - vpMin.X;
         float vpH = vpMax.Y - vpMin.Y;
 
-        // Scale to fit viewport while maintaining aspect ratio
         float scaleX = vpW / worldW;
         float scaleY = vpH / worldH;
         float scale = MathF.Min(scaleX, scaleY) * 0.85f;
@@ -4586,73 +4587,66 @@ ImGui.SameLine();
         float dispH = worldH * scale;
         float offsetX = vpMin.X + (vpW - dispW) * 0.5f;
         float offsetY = vpMin.Y + (vpH - dispH) * 0.5f;
-
-        // Smooth background with gradient
-        var bgMin = new Vector2(offsetX - 2, offsetY - 2);
-        var bgMax = new Vector2(offsetX + dispW + 2, offsetY + dispH + 2);
-        uint bgOuter = ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.05f, 0.07f, 0.9f));
-        uint bgInner = ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.08f, 0.11f, 0.95f));
-        drawList.AddRectFilled(bgMin, bgMax, bgOuter, 6f);
-        drawList.AddRectFilled(new Vector2(offsetX, offsetY), new Vector2(offsetX + dispW, offsetY + dispH), bgInner, 4f);
-
-        // Subtle grid lines with soft colors
         float cellW = dispW / mapW;
         float cellH = dispH / mapH;
-        uint lineColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.35f, 0.38f, 0.50f, 0.25f));
-        uint borderColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.55f, 0.75f, 0.55f));
-        uint midLineColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.40f, 0.50f, 0.65f, 0.35f));
 
-        float thinLine = 0.5f;
-        float thickLine = 1.0f;
+        var io = ImGui.GetIO();
+        var mousePos = io.MousePos;
+        bool mouseInGrid = mousePos.X >= offsetX && mousePos.X <= offsetX + dispW &&
+                           mousePos.Y >= offsetY && mousePos.Y <= offsetY + dispH;
 
-        // Vertical lines
-        for (int x = 0; x <= mapW; x++)
+        if (!mouseInGrid) return;
+
+        float mx = mousePos.X - offsetX;
+        float my = mousePos.Y - offsetY;
+        int tx = Math.Clamp((int)(mx / cellW), 0, mapW - 1);
+        int ty = Math.Clamp((int)(my / cellH), 0, mapH - 1);
+
+        // Hover indicator
+        if (tx >= 0 && tx < mapW && ty >= 0 && ty < mapH)
         {
-            float px = offsetX + x * cellW;
-            bool isEdge = x == 0 || x == mapW;
-            bool isMid = x == mapW / 2;
-            uint col = isEdge ? borderColor : isMid ? midLineColor : lineColor;
-            float w = isEdge ? thickLine : isMid ? 0.8f : thinLine;
-            drawList.AddLine(new Vector2(px, offsetY), new Vector2(px, offsetY + dispH), col, w);
+            float hx = offsetX + tx * cellW;
+            float hy = offsetY + ty * cellH;
+            drawList.AddRect(new Vector2(hx, hy), new Vector2(hx + cellW, hy + cellH),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 0f, 0.5f)), 0f, 0, 1.5f);
         }
 
-        // Horizontal lines
-        for (int y = 0; y <= mapH; y++)
+        // Click to paint/erase/fill/pick
+        if (io.MouseClicked[0])
         {
-            float py = offsetY + y * cellH;
-            bool isEdge = y == 0 || y == mapH;
-            bool isMid = y == mapH / 2;
-            uint col = isEdge ? borderColor : isMid ? midLineColor : lineColor;
-            float w = isEdge ? thickLine : isMid ? 0.8f : thinLine;
-            drawList.AddLine(new Vector2(offsetX, py), new Vector2(offsetX + dispW, py), col, w);
+            int tool = _bridge.MapPaintTool;
+            int layerIdx = _bridge.ActiveTileLayer;
+            int tileId = _bridge.SelectedTileId;
+            int brush = _bridge.BrushSize;
+
+            if (layerIdx >= 0 && layerIdx < map.Layers.Count)
+            {
+                var layer = map.Layers[layerIdx];
+                if (!layer.IsLocked)
+                {
+                    if (tool == 0) // Paint
+                    {
+                        int half = brush / 2;
+                        for (int dy = -half; dy <= half; dy++)
+                            for (int dx = -half; dx <= half; dx++)
+                                map.SetTile(layerIdx, tx + dx, ty + dy, tileId);
+                    }
+                    else if (tool == 1) // Erase
+                    {
+                        int half = brush / 2;
+                        for (int dy = -half; dy <= half; dy++)
+                            for (int dx = -half; dx <= half; dx++)
+                                map.SetTile(layerIdx, tx + dx, ty + dy, -1);
+                    }
+                    else if (tool == 2) // Fill
+                        map.FloodFill(layerIdx, tx, ty, tileId);
+                    else if (tool == 3) // Pick
+                    {
+                        int picked = map.GetTile(layerIdx, tx, ty);
+                        if (picked >= 0) _bridge.SelectedTileId = picked;
+                    }
+                }
+            }
         }
-
-        // Corner accents (small colored squares at origin)
-        float accent = 3f;
-        uint originColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.8f, 0.4f, 0.8f));
-        drawList.AddRectFilled(new Vector2(offsetX - accent, offsetY - accent),
-            new Vector2(offsetX + accent, offsetY + accent), originColor, 1f);
-
-        // Smooth label background with rounded corners
-        string mapLabel = $"  {map.Name} ({mapW}x{mapH} @ {tileSize}px)  ";
-        var labelSize = ImGui.CalcTextSize(mapLabel);
-        var labelMin = new Vector2(offsetX, offsetY - labelSize.Y - 10);
-        var labelMax = new Vector2(offsetX + labelSize.X + 8, offsetY - 4);
-        uint labelBg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.10f, 0.18f, 0.85f));
-        uint labelBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.25f, 0.40f, 0.65f, 0.5f));
-        drawList.AddRectFilled(labelMin, labelMax, labelBg, 5f);
-        drawList.AddRect(labelMin, labelMax, labelBorder, 5f, ImDrawFlags.None, 0.5f);
-        drawList.AddText(new Vector2(offsetX + 4, offsetY - labelSize.Y - 7),
-            ImGui.ColorConvertFloat4ToU32(new Vector4(0.6f, 0.8f, 1f, 0.95f)), mapLabel);
-
-        // Bottom info bar
-        string toolInfo = $"  {mapW * mapH} tiles | {map.Layers.Count} layers  ";
-        var toolSize = ImGui.CalcTextSize(toolInfo);
-        var infoMin = new Vector2(offsetX, offsetY + dispH + 4);
-        var infoMax = new Vector2(offsetX + toolSize.X + 8, offsetY + dispH + 4 + toolSize.Y + 4);
-        drawList.AddRectFilled(infoMin, infoMax, labelBg, 5f);
-        drawList.AddRect(infoMin, infoMax, labelBorder, 5f, ImDrawFlags.None, 0.5f);
-        drawList.AddText(new Vector2(offsetX + 4, offsetY + dispH + 6),
-            ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.55f, 0.70f, 0.8f)), toolInfo);
     }
 }

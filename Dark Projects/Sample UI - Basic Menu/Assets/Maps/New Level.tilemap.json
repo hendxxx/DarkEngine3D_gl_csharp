@@ -1,0 +1,26 @@
+{
+  "Tilemap": {
+    "Name": "New Level",
+    "Width": 50,
+    "Height": 20,
+    "TileSize": 32,
+    "TilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Decor.png",
+    "TilesetColumns": 13,
+    "TilesetRows": 17,
+    "OffsetX": 0,
+    "OffsetY": 0,
+    "Layers": [
+      {
+        "Name": "Background",
+        "IsVisible": true,
+        "IsLocked": false,
+        "Opacity": 1,
+        "Width": 0,
+        "Height": 0,
+        "Tiles": [],
+        "CollisionTileIds": []
+      }
+    ]
+  },
+  "ParallaxLayers": []
+}

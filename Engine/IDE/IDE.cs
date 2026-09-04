@@ -208,6 +208,8 @@ public class IDE : IDisposable
             _assetBrowser?.SetProjectRoot(Engine.Project.ProjectManager.ProjectRoot);
             // Auto-load sprite sheets
             _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
+            // Auto-load map
+            _mapEditor?.AutoLoadMap(Engine.Project.ProjectManager.ProjectRoot);
         }
         else
         {

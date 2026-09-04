@@ -834,6 +834,18 @@ public class SpriteEditorPanel
                 _clipPlaying = true;
                 _clipTime = 0f;
                 _clipCurrentFrame = 0;
+
+                // Switch to the clip's sprite sheet if different
+                if (!string.IsNullOrEmpty(SelectedClip.SpriteSheetName))
+                {
+                    int sheetIdx = SpriteSheets.FindIndex(s => s.Name == SelectedClip.SpriteSheetName);
+                    if (sheetIdx >= 0 && sheetIdx != _selectedSheetIdx)
+                    {
+                        _selectedSheetIdx = sheetIdx;
+                        _selectedFrameIdx = -1;
+                        LoadSheetSettings();
+                    }
+                }
             }
         }
 

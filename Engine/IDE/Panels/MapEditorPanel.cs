@@ -5,6 +5,7 @@ using ImGuiNET;
 using StbImageSharp;
 using System.Numerics;
 using System.IO;
+using System.Text.Json;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -45,6 +46,13 @@ public class MapEditorPanel
     private int _paletteCols = 8;
     private float _paletteCellSize = 32f;
 
+    // ── Scene warning ──
+    private bool _showSceneWarning;
+
+    // ── Save/Load ──
+    private readonly ImGuiFileDialog _saveDialog = new();
+    private readonly ImGuiFileDialog _loadDialog = new();
+
     // ── Tileset ──
     private uint _tilesetTextureId;
     private int _tilesetImgW, _tilesetImgH;
@@ -75,6 +83,12 @@ public class MapEditorPanel
             ImGui.SameLine();
             if (ActiveTilemap != null && ImGui.Button("Resize"))
                 ResizeMap();
+            ImGui.SameLine();
+            if (ImGui.Button("Save"))
+                SaveMap();
+            ImGui.SameLine();
+            if (ImGui.Button("Load"))
+                LoadMapDialog();
 
             if (ActiveTilemap == null)
             {
@@ -140,6 +154,28 @@ public class MapEditorPanel
         ProcessTilesetLoadResult();
         _parallaxDialog.Render();
         ProcessParallaxDialogResult();
+        _saveDialog.Render();
+        ProcessMapSaveResult();
+        _loadDialog.Render();
+        ProcessMapLoadResult();
+
+        // Scene type warning popup
+        if (_showSceneWarning)
+        {
+            ImGui.OpenPopup("Scene Type Warning");
+            _showSceneWarning = false;
+        }
+        if (ImGui.BeginPopupModal("Scene Type Warning", ref _showSceneWarning, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.TextColored(new Vector4(1f, 0.6f, 0.2f, 1f), "⚠ Tilemap requires GameScene");
+            ImGui.Separator();
+            ImGui.Text("Tilemap can only be created in a GameScene type scene.");
+            ImGui.Text("Please switch to a GameScene in the Scene Manager.");
+            ImGui.Separator();
+            if (ImGui.Button("OK", new Vector2(120, 0)))
+                ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
     }
 
     private void RenderTileset()
@@ -234,6 +270,13 @@ public class MapEditorPanel
             ActiveTilemap.TilesetColumns = _tilesetCols;
             ActiveTilemap.TilesetRows = _tilesetRows;
 
+            // Sync to bridge for viewport rendering
+            _bridge.TilesetTextureId = _tilesetTextureId;
+            _bridge.TilesetCols = _tilesetCols;
+            _bridge.TilesetRows = _tilesetRows;
+            _bridge.TilesetImgW = _tilesetImgW;
+            _bridge.TilesetImgH = _tilesetImgH;
+
             Console.WriteLine($"[MapEditor] Loaded tileset: {path} ({_tilesetImgW}x{_tilesetImgH}, {_tilesetCols}x{_tilesetRows} tiles)");
         }
         catch (Exception ex)
@@ -258,9 +301,15 @@ public class MapEditorPanel
         ImGui.NewLine();
 
         ImGui.SliderInt("Brush Size", ref _brushSize, 1, 10);
-        ImGui.Checkbox("Show Grid", ref _showGrid);
+        ImGui.Checkbox("Show Grid##toolbar", ref _showGrid);
         ImGui.SameLine();
-        ImGui.Checkbox("Show Collision", ref _showCollisions);
+        ImGui.Checkbox("Show Collision##toolbar", ref _showCollisions);
+
+        // Sync to bridge for viewport painting
+        _bridge.MapPaintTool = (int)_currentTool;
+        _bridge.SelectedTileId = _selectedTileId;
+        _bridge.ActiveTileLayer = _selectedLayerIdx;
+        _bridge.BrushSize = _brushSize;
     }
 
     private void RenderLayers()
@@ -303,7 +352,7 @@ public class MapEditorPanel
         // Add/Remove layer
         ImGui.InputText("##newlayer", ref _newLayerName, 64);
         ImGui.SameLine();
-        if (ImGui.Button("+ Add Layer"))
+        if (ImGui.Button("+ Add Layer##tile"))
         {
             ActiveTilemap.Layers.Add(new TileLayer
             {
@@ -313,7 +362,7 @@ public class MapEditorPanel
             });
             _selectedLayerIdx = ActiveTilemap.Layers.Count - 1;
         }
-        if (ActiveTilemap.Layers.Count > 0 && ImGui.Button("- Remove"))
+        if (ActiveTilemap.Layers.Count > 0 && ImGui.Button("- Remove##tile"))
         {
             ActiveTilemap.Layers.RemoveAt(_selectedLayerIdx);
             _selectedLayerIdx = Math.Min(_selectedLayerIdx, ActiveTilemap.Layers.Count - 1);
@@ -408,7 +457,7 @@ public class MapEditorPanel
 
     private void RenderGridSettings()
     {
-        ImGui.Checkbox("Show Grid", ref _showGrid);
+        ImGui.Checkbox("Show Grid##gridsettings", ref _showGrid);
         ImGui.ColorEdit4("Grid Color", ref _gridColor);
         ImGui.InputInt("Palette Columns", ref _paletteCols);
         ImGui.SliderFloat("Palette Cell", ref _paletteCellSize, 16f, 64f);
@@ -431,8 +480,23 @@ public class MapEditorPanel
         }
     }
 
+    private bool IsCurrentSceneGameScene()
+    {
+        if (_bridge.SelectedEditorScene == null) return false;
+        if (_bridge.EditorScenes.TryGetValue(_bridge.SelectedEditorScene, out var editorScene))
+            return editorScene.Type == IDEBridge.SceneType.GameScene;
+        return false;
+    }
+
     public void CreateNewMap()
     {
+        if (!IsCurrentSceneGameScene())
+        {
+            _showSceneWarning = true;
+            Console.WriteLine("[MapEditor] Cannot create tilemap: requires GameScene type");
+            return;
+        }
+
         int width = 50;
         int height = 20;
         int tileSize = 32;
@@ -443,6 +507,23 @@ public class MapEditorPanel
         };
         _bridge.ActiveTilemap = ActiveTilemap;
         _selectedLayerIdx = 1;
+        _showSceneWarning = false;
+
+        // Create a Map2D scene object at (0,0) so the tilemap renders in the 3D viewport
+        if (_bridge.EditorObjectManager != null)
+        {
+            var mapObj = _bridge.EditorObjectManager.AddPrimitive(
+                Engine.Objects.EditorPrimitiveType.Map2D, System.Numerics.Vector3.Zero);
+            mapObj.Name = ActiveTilemap.Name;
+            mapObj.Map2dTilemap = ActiveTilemap;
+            // Scale the plane to match tilemap size in world units
+            float worldW = width * tileSize;
+            float worldH = height * tileSize;
+            mapObj.Scale = new System.Numerics.Vector3(worldW, 1f, worldH);
+            _bridge.SelectEditorObject(mapObj);
+            Console.WriteLine($"[MapEditor] Created Map2D scene object: '{mapObj.Name}' at (0,0) [{width}x{height} @ {tileSize}px]");
+        }
+
         Console.WriteLine($"[MapEditor] Created new map: {width}x{height} tiles ({tileSize}px)");
     }
 
@@ -450,6 +531,170 @@ public class MapEditorPanel
     {
         if (ActiveTilemap == null) return;
         Console.WriteLine("[MapEditor] Resize dialog would open here");
+    }
+
+    // ── Save/Load ──
+    private string GetDefaultSavePath()
+    {
+        string dir = Engine.Project.ProjectManager.IsProjectLoaded
+            ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Assets", "Maps")
+            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Maps");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, $"{ActiveTilemap?.Name ?? "map"}.tilemap.json");
+    }
+
+    public void SaveMap()
+    {
+        if (ActiveTilemap == null) return;
+        string path = GetDefaultSavePath();
+        try
+        {
+            var data = new MapSaveData
+            {
+                Tilemap = ActiveTilemap.ToData(),
+                ParallaxLayers = ParallaxLayers.Select(p => new ParallaxLayerData
+                {
+                    Name = p.Name,
+                    ImagePath = p.ImagePath,
+                    IsVisible = p.IsVisible,
+                    ScrollFactor = p.ScrollFactor,
+                    YPosition = p.YPosition,
+                    Alpha = p.Alpha,
+                    TileHorizontal = p.TileHorizontal
+                }).ToList()
+            };
+            var opts = new JsonSerializerOptions { WriteIndented = true };
+            string json = JsonSerializer.Serialize(data, opts);
+            File.WriteAllText(path, json);
+            Console.WriteLine($"[MapEditor] Saved map to: {path}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MapEditor] Save failed: {ex.Message}");
+        }
+    }
+
+    public void SaveMapDialog()
+    {
+        _saveDialog.OpenForSave($"{ActiveTilemap?.Name ?? "map"}.tilemap.json");
+    }
+
+    private void ProcessMapSaveResult()
+    {
+        if (_saveDialog.IsConfirmed && _saveDialog.SelectedPath != null && ActiveTilemap != null)
+        {
+            try
+            {
+                var data = new MapSaveData
+                {
+                    Tilemap = ActiveTilemap.ToData(),
+                    ParallaxLayers = ParallaxLayers.Select(p => new ParallaxLayerData
+                    {
+                        Name = p.Name,
+                        ImagePath = p.ImagePath,
+                        IsVisible = p.IsVisible,
+                        ScrollFactor = p.ScrollFactor,
+                        YPosition = p.YPosition,
+                        Alpha = p.Alpha,
+                        TileHorizontal = p.TileHorizontal
+                    }).ToList()
+                };
+                var opts = new JsonSerializerOptions { WriteIndented = true };
+                string json = JsonSerializer.Serialize(data, opts);
+                File.WriteAllText(_saveDialog.SelectedPath, json);
+                Console.WriteLine($"[MapEditor] Saved map to: {_saveDialog.SelectedPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MapEditor] Save failed: {ex.Message}");
+            }
+        }
+    }
+
+    public void LoadMapDialog()
+    {
+        _loadDialog.OpenForLoad("*.tilemap.json", "Load Tilemap");
+    }
+
+    private void ProcessMapLoadResult()
+    {
+        if (_loadDialog.IsConfirmed && _loadDialog.SelectedPath != null)
+        {
+            LoadMapFromFile(_loadDialog.SelectedPath);
+        }
+    }
+
+    public void LoadMapFromFile(string path)
+    {
+        try
+        {
+            string json = File.ReadAllText(path);
+            var data = JsonSerializer.Deserialize<MapSaveData>(json);
+            if (data?.Tilemap == null)
+            {
+                Console.WriteLine($"[MapEditor] Invalid map file: {path}");
+                return;
+            }
+
+            ActiveTilemap = Tilemap2D.FromData(data.Tilemap);
+            _bridge.ActiveTilemap = ActiveTilemap;
+            _selectedLayerIdx = Math.Min(1, ActiveTilemap.Layers.Count - 1);
+
+            // Load parallax layers
+            ParallaxLayers.Clear();
+            if (data.ParallaxLayers != null)
+            {
+                foreach (var pld in data.ParallaxLayers)
+                {
+                    var layer = new ParallaxLayer
+                    {
+                        Name = pld.Name,
+                        ImagePath = pld.ImagePath,
+                        IsVisible = pld.IsVisible,
+                        ScrollFactor = pld.ScrollFactor,
+                        YPosition = pld.YPosition,
+                        Alpha = pld.Alpha,
+                        TileHorizontal = pld.TileHorizontal
+                    };
+                    ParallaxLayers.Add(layer);
+                    if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(layer.ImagePath))
+                        LoadParallaxTexture(layer.ImagePath, layer);
+                }
+                _bridge.ParallaxLayers = ParallaxLayers;
+            }
+
+            // Load tileset texture if available
+            if (!string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath) && File.Exists(ActiveTilemap.TilesetImagePath))
+                LoadTilesetTexture(ActiveTilemap.TilesetImagePath);
+
+            Console.WriteLine($"[MapEditor] Loaded map from: {path} ({ActiveTilemap.Width}x{ActiveTilemap.Height}, {ActiveTilemap.Layers.Count} layers)");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MapEditor] Load failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Auto-load map when a project is opened.</summary>
+    public void AutoLoadMap(string? projectRoot)
+    {
+        ActiveTilemap = null;
+        ParallaxLayers.Clear();
+        _bridge.ActiveTilemap = null;
+        _bridge.ParallaxLayers = null;
+
+        if (string.IsNullOrEmpty(projectRoot)) return;
+
+        string mapsDir = Path.Combine(projectRoot, "Assets", "Maps");
+        if (!Directory.Exists(mapsDir)) return;
+
+        // Load the first .tilemap.json found
+        var files = Directory.GetFiles(mapsDir, "*.tilemap.json");
+        if (files.Length > 0)
+        {
+            LoadMapFromFile(files[0]);
+            Console.WriteLine($"[MapEditor] Auto-loaded map: {files[0]}");
+        }
     }
 
     // ── Parallax Layers ──
@@ -474,10 +719,10 @@ public class MapEditorPanel
     private void RenderParallaxLayers()
     {
         // Add button
-        if (ImGui.Button("+ Add Layer"))
+        if (ImGui.Button("+ Add Layer##plx"))
             AddParallaxLayer();
         ImGui.SameLine();
-        if (ParallaxLayers.Count > 0 && ImGui.Button("- Remove") && _selectedParallaxIdx >= 0)
+        if (ParallaxLayers.Count > 0 && ImGui.Button("- Remove##plx") && _selectedParallaxIdx >= 0)
         {
             ParallaxLayers.RemoveAt(_selectedParallaxIdx);
             _selectedParallaxIdx = Math.Min(_selectedParallaxIdx, ParallaxLayers.Count - 1);
@@ -510,13 +755,13 @@ public class MapEditorPanel
 
             // Move up/down
             ImGui.SameLine();
-            if (ImGui.SmallButton("▲") && i > 0)
+            if (ImGui.SmallButton($"▲##plx{i}") && i > 0)
             {
                 (ParallaxLayers[i], ParallaxLayers[i - 1]) = (ParallaxLayers[i - 1], ParallaxLayers[i]);
                 _selectedParallaxIdx--;
             }
             ImGui.SameLine();
-            if (ImGui.SmallButton("▼") && i < ParallaxLayers.Count - 1)
+            if (ImGui.SmallButton($"▼##plx{i}") && i < ParallaxLayers.Count - 1)
             {
                 (ParallaxLayers[i], ParallaxLayers[i + 1]) = (ParallaxLayers[i + 1], ParallaxLayers[i]);
                 _selectedParallaxIdx++;
@@ -549,7 +794,7 @@ public class MapEditorPanel
                 sel.Alpha = alpha;
 
             // Load image
-            if (ImGui.Button("Load Image"))
+            if (ImGui.Button("Load Image##plx"))
                 _parallaxDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Parallax Image");
 
             if (!string.IsNullOrEmpty(sel.ImagePath))
@@ -689,4 +934,23 @@ public class ParallaxLayer
     /// <summary>Image dimensions (set when loaded).</summary>
     public int ImageWidth;
     public int ImageHeight;
+}
+
+/// <summary>Top-level save data for a tilemap + parallax layers.</summary>
+public class MapSaveData
+{
+    public Tilemap2DData? Tilemap { get; set; }
+    public List<ParallaxLayerData>? ParallaxLayers { get; set; }
+}
+
+/// <summary>Serializable parallax layer data.</summary>
+public class ParallaxLayerData
+{
+    public string Name { get; set; } = "";
+    public string ImagePath { get; set; } = "";
+    public bool IsVisible { get; set; } = true;
+    public float ScrollFactor { get; set; } = 0.5f;
+    public float YPosition { get; set; }
+    public float Alpha { get; set; } = 1f;
+    public bool TileHorizontal { get; set; } = true;
 }

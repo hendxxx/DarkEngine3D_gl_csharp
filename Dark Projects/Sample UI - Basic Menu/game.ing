@@ -1309,12 +1309,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        -11.299845,
-        28.20748,
-        12.093809
+        0,
+        0,
+        0
       ],
-      "editorCameraYaw": -2443.5,
-      "editorCameraPitch": -55.5
+      "editorCameraYaw": 180,
+      "editorCameraPitch": 0
     },
     {
       "sceneName": "scnUtama",
@@ -4237,12 +4237,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        -1.0780691,
-        1.0964739,
-        15.538843
+        1.3119243,
+        3.158363,
+        7.3777103
       ],
-      "editorCameraYaw": -2505.7573,
-      "editorCameraPitch": 66.20025,
+      "editorCameraYaw": 520.5,
+      "editorCameraPitch": -89,
       "renderProperties": {
         "backgroundColor": [
           0,
