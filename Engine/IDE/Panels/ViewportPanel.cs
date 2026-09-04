@@ -1204,17 +1204,29 @@ public unsafe class ViewportPanel
                     }
                     else
                     {
-                        _bridge.SelectedUIElement = elem;
-                        _bridge.SelectedUIElements.Clear();
-                        _bridge.SelectedUIElements.Add(elem);
-                        // Container: also select all children (grouping)
-                        if (elem.Type == UIElementType.Container && elem.Children.Count > 0)
+                        // Rule 1: When multi-select is active (yellow box), container parent
+                        // cannot be selected — this preserves the group so it can be dragged.
+                        // Rule 2: When no multi-select, container can be selected normally.
+                        bool isMultiSelectActive = _bridge.SelectedUIElements.Count > 1;
+                        if (isMultiSelectActive && elem.Type == UIElementType.Container)
                         {
-                            foreach (var child in elem.Children)
+                            // Skip container selection — keep the current yellow group intact
+                            Console.WriteLine($"[Viewport] Container '{elem.Name}' skipped (multi-select active)");
+                        }
+                        else
+                        {
+                            _bridge.SelectedUIElement = elem;
+                            _bridge.SelectedUIElements.Clear();
+                            _bridge.SelectedUIElements.Add(elem);
+                            // Container: also select all children (grouping)
+                            if (elem.Type == UIElementType.Container && elem.Children.Count > 0)
                             {
-                                if (child.IsVisible)
+                                foreach (var child in elem.Children)
                                 {
-                                    _bridge.SelectedUIElements.Add(child);
+                                    if (child.IsVisible)
+                                    {
+                                        _bridge.SelectedUIElements.Add(child);
+                                    }
                                 }
                             }
                         }
