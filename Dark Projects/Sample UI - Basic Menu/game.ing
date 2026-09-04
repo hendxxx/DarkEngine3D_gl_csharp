@@ -122,6 +122,8 @@
           "sliderThumbSize": 14,
           "sliderTrackHeight": 6,
           "sliderLabelPosition": 2,
+          "sliderLabelSpacing": 8,
+          "labelSpacing": 8,
           "checkmarkColor": [
             0.9,
             0.9,
@@ -147,6 +149,22 @@
             0.8,
             1
           ],
+          "radioSelectedColor": [
+            0.3,
+            0.7,
+            1
+          ],
+          "radioSelectedBgColor": [
+            0.2,
+            0.4,
+            0.65
+          ],
+          "radioUnselectedBgColor": [
+            0.15,
+            0.15,
+            0.22
+          ],
+          "radioGroup": "default",
           "children": [
             {
               "name": "contMain",
@@ -264,6 +282,8 @@
               "sliderThumbSize": 14,
               "sliderTrackHeight": 6,
               "sliderLabelPosition": 2,
+              "sliderLabelSpacing": 8,
+              "labelSpacing": 8,
               "checkmarkColor": [
                 0.9,
                 0.9,
@@ -289,12 +309,28 @@
                 0.8,
                 1
               ],
+              "radioSelectedColor": [
+                0.3,
+                0.7,
+                1
+              ],
+              "radioSelectedBgColor": [
+                0.2,
+                0.4,
+                0.65
+              ],
+              "radioUnselectedBgColor": [
+                0.15,
+                0.15,
+                0.22
+              ],
+              "radioGroup": "default",
               "children": [
                 {
                   "name": "lbTitle",
                   "type": "Label",
                   "text": "DEMO",
-                  "x": 810,
+                  "x": 800,
                   "y": 320,
                   "width": 320,
                   "height": 160,
@@ -406,6 +442,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -431,6 +469,22 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
@@ -439,8 +493,8 @@
                   "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras pulvinar ante porta, posuere odio sit amet, dictum nisl. Phasellus quis est porttitor, interdum ex vitae, accumsan quam. Etiam et congue massa. Vestibulum vel gravida augue. Phasellus sagittis faucibus viverra. Phasellus mauris velit, posuere ultrices hendrerit sed, vulputate sit amet odio. Nullam at mauris feugiat, rutrum nisi sed, ornare urna. Vestibulum egestas tellus vel vehicula accumsan. Nullam magna enim, egestas eget mi nec, pretium volutpat ligula. Suspendisse vel orci iaculis, sagittis quam interdum, molestie turpis. Maecenas facilisis est sit amet dui ultricies, eu ullamcorper lectus porta. Nam vel erat vitae velit congue porta scelerisque a nulla. Phasellus volutpat risus ut consequat rhoncus. Integer vitae nunc tincidunt, sodales ligula vel, mattis purus. Praesent interdum nisi ipsum, sit amet posuere ligula rhoncus sit amet.",
                   "x": 0,
                   "y": 0,
-                  "width": 1810,
-                  "height": 240,
+                  "width": 1880,
+                  "height": 280,
                   "imagePath": "",
                   "imageMode": "Stretch",
                   "fontSize": 18,
@@ -549,6 +603,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -574,6 +630,22 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
@@ -581,7 +653,7 @@
                   "type": "Button",
                   "text": "New",
                   "x": 840,
-                  "y": 510,
+                  "y": 520,
                   "width": 240,
                   "height": 80,
                   "imagePath": "",
@@ -692,6 +764,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -717,6 +791,22 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
@@ -835,6 +925,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -860,6 +952,22 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
@@ -978,6 +1086,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -1003,13 +1113,29 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
                   "name": "contLogo2",
                   "type": "Container",
                   "text": "contLogo",
-                  "x": 30,
+                  "x": 20,
                   "y": 260,
                   "width": 420,
                   "height": 180,
@@ -1121,6 +1247,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -1146,6 +1274,22 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 }
               ]
@@ -1169,8 +1313,8 @@
         28.092417,
         12.11227
       ],
-      "editorCameraYaw": -2447.5,
-      "editorCameraPitch": -56.5
+      "editorCameraYaw": -2443.5,
+      "editorCameraPitch": -55.5
     },
     {
       "sceneName": "scn",
@@ -1293,6 +1437,8 @@
           "sliderThumbSize": 14,
           "sliderTrackHeight": 6,
           "sliderLabelPosition": 2,
+          "sliderLabelSpacing": 8,
+          "labelSpacing": 8,
           "checkmarkColor": [
             0.9,
             0.9,
@@ -1318,6 +1464,22 @@
             0.8,
             1
           ],
+          "radioSelectedColor": [
+            0.3,
+            0.7,
+            1
+          ],
+          "radioSelectedBgColor": [
+            0.2,
+            0.4,
+            0.65
+          ],
+          "radioUnselectedBgColor": [
+            0.15,
+            0.15,
+            0.22
+          ],
+          "radioGroup": "default",
           "children": [
             {
               "name": "contMenu",
@@ -1435,6 +1597,8 @@
               "sliderThumbSize": 14,
               "sliderTrackHeight": 6,
               "sliderLabelPosition": 2,
+              "sliderLabelSpacing": 8,
+              "labelSpacing": 8,
               "checkmarkColor": [
                 0.9,
                 0.9,
@@ -1460,156 +1624,29 @@
                 0.8,
                 1
               ],
+              "radioSelectedColor": [
+                0.3,
+                0.7,
+                1
+              ],
+              "radioSelectedBgColor": [
+                0.2,
+                0.4,
+                0.65
+              ],
+              "radioUnselectedBgColor": [
+                0.15,
+                0.15,
+                0.22
+              ],
+              "radioGroup": "default",
               "children": [
-                {
-                  "name": "btnBack",
-                  "type": "Button",
-                  "text": "Back",
-                  "x": 40,
-                  "y": 880,
-                  "width": 240,
-                  "height": 80,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 30,
-                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "bgColor": [
-                    0.1,
-                    0.12,
-                    0.18
-                  ],
-                  "borderColor": [
-                    0.15,
-                    0.18,
-                    0.25
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0.22,
-                    0.28,
-                    0.45
-                  ],
-                  "hoverBorderColor": [
-                    0.5,
-                    0.6,
-                    1
-                  ],
-                  "alignment": "Center",
-                  "isVisible": true,
-                  "opacity": 1,
-                  "autoFillWindow": false,
-                  "autoCenterX": false,
-                  "autoCenterY": false,
-                  "anchor": "None",
-                  "useHover": true,
-                  "clickBehavior": "closeoverlay",
-                  "hoverEnterBehavior": "",
-                  "hoverExitBehavior": "None",
-                  "minValue": 0,
-                  "maxValue": 100,
-                  "step": 1,
-                  "currentValue": 50,
-                  "textOptions": [
-                    "Option A",
-                    "Option B",
-                    "Option C"
-                  ],
-                  "selectedTextIndex": 0,
-                  "isChecked": false,
-                  "options": [
-                    "Option 1",
-                    "Option 2",
-                    "Option 3"
-                  ],
-                  "selectedIndex": 0,
-                  "fallbackText": "",
-                  "wordWrap": true,
-                  "triggeredByKeyboardButton": "",
-                  "placeholder": "Enter text...",
-                  "maxLength": 0,
-                  "inputText": "",
-                  "scrollY": 0,
-                  "scrollBarWidth": 10,
-                  "scrollBarTrackColor": [
-                    0.15,
-                    0.15,
-                    0.2
-                  ],
-                  "scrollBarThumbColor": [
-                    0.45,
-                    0.45,
-                    0.55
-                  ],
-                  "scrollBarThumbHoverColor": [
-                    0.55,
-                    0.55,
-                    0.65
-                  ],
-                  "sliderTrackColor": [
-                    0.3,
-                    0.3,
-                    0.35
-                  ],
-                  "sliderFillColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "sliderThumbBorderColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbSize": 14,
-                  "sliderTrackHeight": 6,
-                  "sliderLabelPosition": 2,
-                  "checkmarkColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "checkedBgColor": [
-                    0.25,
-                    0.55,
-                    1
-                  ],
-                  "uncheckedBgColor": [
-                    0.15,
-                    0.15,
-                    0.22
-                  ],
-                  "arrowColor": [
-                    0.5,
-                    0.5,
-                    0.7
-                  ],
-                  "cursorColor": [
-                    0.5,
-                    0.8,
-                    1
-                  ],
-                  "children": []
-                },
                 {
                   "name": "btnA",
                   "type": "Button",
                   "text": "Test",
                   "x": 40,
-                  "y": 780,
+                  "y": 1100,
                   "width": 240,
                   "height": 80,
                   "imagePath": "",
@@ -1720,6 +1757,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -1745,6 +1784,183 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
+                  "children": []
+                },
+                {
+                  "name": "btnBack",
+                  "type": "Button",
+                  "text": "Back",
+                  "x": 40,
+                  "y": 1220,
+                  "width": 240,
+                  "height": 80,
+                  "imagePath": "",
+                  "imageMode": "Stretch",
+                  "fontSize": 30,
+                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                  "textColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "bgColor": [
+                    0.1,
+                    0.12,
+                    0.18
+                  ],
+                  "borderColor": [
+                    0.15,
+                    0.18,
+                    0.25
+                  ],
+                  "hoverTextColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "hoverBgColor": [
+                    0.22,
+                    0.28,
+                    0.45
+                  ],
+                  "hoverBorderColor": [
+                    0.5,
+                    0.6,
+                    1
+                  ],
+                  "alignment": "Center",
+                  "isVisible": true,
+                  "opacity": 1,
+                  "autoFillWindow": false,
+                  "autoCenterX": false,
+                  "autoCenterY": false,
+                  "anchor": "None",
+                  "useHover": true,
+                  "clickBehavior": "closeoverlay",
+                  "hoverEnterBehavior": "",
+                  "hoverExitBehavior": "None",
+                  "minValue": 0,
+                  "maxValue": 100,
+                  "step": 1,
+                  "currentValue": 50,
+                  "textOptions": [
+                    "Option A",
+                    "Option B",
+                    "Option C"
+                  ],
+                  "selectedTextIndex": 0,
+                  "isChecked": false,
+                  "options": [
+                    "Option 1",
+                    "Option 2",
+                    "Option 3"
+                  ],
+                  "selectedIndex": 0,
+                  "fallbackText": "",
+                  "wordWrap": true,
+                  "triggeredByKeyboardButton": "",
+                  "placeholder": "Enter text...",
+                  "maxLength": 0,
+                  "inputText": "",
+                  "scrollY": 0,
+                  "scrollBarWidth": 10,
+                  "scrollBarTrackColor": [
+                    0.15,
+                    0.15,
+                    0.2
+                  ],
+                  "scrollBarThumbColor": [
+                    0.45,
+                    0.45,
+                    0.55
+                  ],
+                  "scrollBarThumbHoverColor": [
+                    0.55,
+                    0.55,
+                    0.65
+                  ],
+                  "sliderTrackColor": [
+                    0.3,
+                    0.3,
+                    0.35
+                  ],
+                  "sliderFillColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "sliderThumbBorderColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbSize": 14,
+                  "sliderTrackHeight": 6,
+                  "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
+                  "checkmarkColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "checkedBgColor": [
+                    0.25,
+                    0.55,
+                    1
+                  ],
+                  "uncheckedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "arrowColor": [
+                    0.5,
+                    0.5,
+                    0.7
+                  ],
+                  "cursorColor": [
+                    0.5,
+                    0.8,
+                    1
+                  ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
@@ -1752,7 +1968,7 @@
                   "type": "Button",
                   "text": "Back to main menu",
                   "x": 300,
-                  "y": 880,
+                  "y": 1220,
                   "width": 390,
                   "height": 80,
                   "imagePath": "",
@@ -1863,6 +2079,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -1888,6 +2106,22 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 }
               ]
@@ -2035,6 +2269,8 @@
           "sliderThumbSize": 14,
           "sliderTrackHeight": 6,
           "sliderLabelPosition": 2,
+          "sliderLabelSpacing": 8,
+          "labelSpacing": 8,
           "checkmarkColor": [
             0.9,
             0.9,
@@ -2060,15 +2296,31 @@
             0.8,
             1
           ],
+          "radioSelectedColor": [
+            0.3,
+            0.7,
+            1
+          ],
+          "radioSelectedBgColor": [
+            0.2,
+            0.4,
+            0.65
+          ],
+          "radioUnselectedBgColor": [
+            0.15,
+            0.15,
+            0.22
+          ],
+          "radioGroup": "default",
           "children": [
             {
               "name": "cont",
               "type": "Container",
               "text": "",
-              "x": 350,
-              "y": 340,
-              "width": 1340,
-              "height": 480,
+              "x": 80,
+              "y": 40,
+              "width": 1980,
+              "height": 1280,
               "imagePath": "",
               "imageMode": "Stretch",
               "fontSize": 13,
@@ -2105,8 +2357,8 @@
               ],
               "alignment": "Center",
               "isVisible": true,
-              "opacity": 1,
-              "autoFillWindow": false,
+              "opacity": 0.25,
+              "autoFillWindow": true,
               "autoCenterX": false,
               "autoCenterY": false,
               "anchor": "None",
@@ -2177,6 +2429,8 @@
               "sliderThumbSize": 14,
               "sliderTrackHeight": 6,
               "sliderLabelPosition": 2,
+              "sliderLabelSpacing": 8,
+              "labelSpacing": 8,
               "checkmarkColor": [
                 0.9,
                 0.9,
@@ -2202,15 +2456,31 @@
                 0.8,
                 1
               ],
+              "radioSelectedColor": [
+                0.3,
+                0.7,
+                1
+              ],
+              "radioSelectedBgColor": [
+                0.2,
+                0.4,
+                0.65
+              ],
+              "radioUnselectedBgColor": [
+                0.15,
+                0.15,
+                0.22
+              ],
+              "radioGroup": "default",
               "children": [
                 {
-                  "name": "element",
-                  "type": "Dropdown",
-                  "text": "element",
-                  "x": 890,
+                  "name": "contSetting",
+                  "type": "Container",
+                  "text": "",
+                  "x": 480,
                   "y": 220,
-                  "width": 250,
-                  "height": 40,
+                  "width": 1440,
+                  "height": 820,
                   "imagePath": "",
                   "imageMode": "Stretch",
                   "fontSize": 13,
@@ -2226,9 +2496,9 @@
                     0.18
                   ],
                   "borderColor": [
-                    0.15,
-                    0.18,
-                    0.25
+                    0.1,
+                    0.12,
+                    0.18
                   ],
                   "hoverTextColor": [
                     0.95,
@@ -2249,8 +2519,8 @@
                   "isVisible": true,
                   "opacity": 1,
                   "autoFillWindow": false,
-                  "autoCenterX": false,
-                  "autoCenterY": false,
+                  "autoCenterX": true,
+                  "autoCenterY": true,
                   "anchor": "None",
                   "useHover": false,
                   "clickBehavior": "None",
@@ -2319,6 +2589,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -2344,19 +2616,2131 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
+                  "children": [
+                    {
+                      "name": "drpShadow",
+                      "type": "Dropdown",
+                      "text": "Shadow",
+                      "x": 400,
+                      "y": 320,
+                      "width": 740,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.101960786,
+                        0.12156863,
+                        0.18039216
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "No Shadow",
+                        "Hard Shadow",
+                        "Soft Shadow"
+                      ],
+                      "selectedIndex": 2,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "sldResolution",
+                      "type": "SliderText",
+                      "text": "Resolution",
+                      "x": 400,
+                      "y": 160,
+                      "width": 740,
+                      "height": 100,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "1024 x 768",
+                        "1280 x 720",
+                        "1980 x 1080",
+                        "2560 x 1440",
+                        "3840 x 2160"
+                      ],
+                      "selectedTextIndex": 3,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 21,
+                      "sliderTrackHeight": 13,
+                      "sliderLabelPosition": 4,
+                      "sliderLabelSpacing": 30.5,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "chkUseVsync",
+                      "type": "Checkbox",
+                      "text": "Use Vsync",
+                      "x": 400,
+                      "y": 250,
+                      "width": 260,
+                      "height": 60,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": true,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "sldrVolume",
+                      "type": "SliderNumber",
+                      "text": "Volume",
+                      "x": 400,
+                      "y": 920,
+                      "width": 740,
+                      "height": 100,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.15,
+                        0.18,
+                        0.25
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 100,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 4,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "rdInputKeyboardAndMouse",
+                      "type": "RadioButton",
+                      "text": "Mouse and Keyboard",
+                      "x": 400,
+                      "y": 480,
+                      "width": 740,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.15,
+                        0.18,
+                        0.25
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": true,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "rdInputMouse",
+                      "type": "RadioButton",
+                      "text": "Mouse",
+                      "x": 400,
+                      "y": 560,
+                      "width": 740,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.15,
+                        0.18,
+                        0.25
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "rdInputKeyboard",
+                      "type": "RadioButton",
+                      "text": "Keyboard",
+                      "x": 400,
+                      "y": 640,
+                      "width": 740,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.15,
+                        0.18,
+                        0.25
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "rdInputGamePad",
+                      "type": "RadioButton",
+                      "text": "Game Pad\n",
+                      "x": 400,
+                      "y": 720,
+                      "width": 740,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0.1,
+                        0.12,
+                        0.18
+                      ],
+                      "borderColor": [
+                        0.15,
+                        0.18,
+                        0.25
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0.22,
+                        0.28,
+                        0.45
+                      ],
+                      "hoverBorderColor": [
+                        0.5,
+                        0.6,
+                        1
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "lbSettings",
+                      "type": "Label",
+                      "text": "Settings",
+                      "x": 20,
+                      "y": 20,
+                      "width": 1360,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 54,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "borderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverBorderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "lbInput",
+                      "type": "Label",
+                      "text": "Input",
+                      "x": 20,
+                      "y": 420,
+                      "width": 1360,
+                      "height": 60,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "borderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverBorderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignment": "Left",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "lbVideo",
+                      "type": "Label",
+                      "text": "Video",
+                      "x": 20,
+                      "y": 100,
+                      "width": 1360,
+                      "height": 60,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "borderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverBorderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignment": "Left",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
+                      "name": "lbSound",
+                      "type": "Label",
+                      "text": "Sound",
+                      "x": 20,
+                      "y": 860,
+                      "width": 1360,
+                      "height": 60,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 30,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "borderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverBorderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignment": "Left",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "btnApply",
+                  "type": "Button",
+                  "text": "Apply",
+                  "x": -40,
+                  "y": 1100,
+                  "width": 260,
+                  "height": 80,
+                  "imagePath": "",
+                  "imageMode": "Stretch",
+                  "fontSize": 30,
+                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                  "textColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "bgColor": [
+                    0.1,
+                    0.12,
+                    0.18
+                  ],
+                  "borderColor": [
+                    0.15,
+                    0.18,
+                    0.25
+                  ],
+                  "hoverTextColor": [
+                    0.95,
+                    0.95,
+                    1
+                  ],
+                  "hoverBgColor": [
+                    0.22,
+                    0.28,
+                    0.45
+                  ],
+                  "hoverBorderColor": [
+                    0.5,
+                    0.6,
+                    1
+                  ],
+                  "alignment": "Center",
+                  "isVisible": true,
+                  "opacity": 1,
+                  "autoFillWindow": false,
+                  "autoCenterX": false,
+                  "autoCenterY": false,
+                  "anchor": "None",
+                  "useHover": true,
+                  "clickBehavior": "None",
+                  "hoverEnterBehavior": "None",
+                  "hoverExitBehavior": "None",
+                  "minValue": 0,
+                  "maxValue": 100,
+                  "step": 1,
+                  "currentValue": 50,
+                  "textOptions": [
+                    "Option A",
+                    "Option B",
+                    "Option C"
+                  ],
+                  "selectedTextIndex": 0,
+                  "isChecked": false,
+                  "options": [
+                    "Option 1",
+                    "Option 2",
+                    "Option 3"
+                  ],
+                  "selectedIndex": 0,
+                  "fallbackText": "",
+                  "wordWrap": true,
+                  "triggeredByKeyboardButton": "",
+                  "placeholder": "Enter text...",
+                  "maxLength": 0,
+                  "inputText": "",
+                  "scrollY": 0,
+                  "scrollBarWidth": 10,
+                  "scrollBarTrackColor": [
+                    0.15,
+                    0.15,
+                    0.2
+                  ],
+                  "scrollBarThumbColor": [
+                    0.45,
+                    0.45,
+                    0.55
+                  ],
+                  "scrollBarThumbHoverColor": [
+                    0.55,
+                    0.55,
+                    0.65
+                  ],
+                  "sliderTrackColor": [
+                    0.3,
+                    0.3,
+                    0.35
+                  ],
+                  "sliderFillColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "sliderThumbBorderColor": [
+                    0.3,
+                    0.6,
+                    1
+                  ],
+                  "sliderThumbSize": 14,
+                  "sliderTrackHeight": 6,
+                  "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
+                  "checkmarkColor": [
+                    0.9,
+                    0.9,
+                    1
+                  ],
+                  "checkedBgColor": [
+                    0.25,
+                    0.55,
+                    1
+                  ],
+                  "uncheckedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "arrowColor": [
+                    0.5,
+                    0.5,
+                    0.7
+                  ],
+                  "cursorColor": [
+                    0.5,
+                    0.8,
+                    1
+                  ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
-                  "name": "element Copy 2",
-                  "type": "Dropdown",
-                  "text": "element",
-                  "x": 890,
-                  "y": 320,
-                  "width": 250,
-                  "height": 40,
+                  "name": "btnBackScene",
+                  "type": "Button",
+                  "text": "Back",
+                  "x": -40,
+                  "y": 1200,
+                  "width": 260,
+                  "height": 80,
                   "imagePath": "",
                   "imageMode": "Stretch",
-                  "fontSize": 13,
+                  "fontSize": 30,
                   "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
@@ -2395,9 +4779,9 @@
                   "autoCenterX": false,
                   "autoCenterY": false,
                   "anchor": "None",
-                  "useHover": false,
-                  "clickBehavior": "None",
-                  "hoverEnterBehavior": "None",
+                  "useHover": true,
+                  "clickBehavior": "closeoverlay",
+                  "hoverEnterBehavior": "",
                   "hoverExitBehavior": "None",
                   "minValue": 0,
                   "maxValue": 100,
@@ -2462,6 +4846,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -2487,19 +4873,35 @@
                     0.8,
                     1
                   ],
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
+                    0.65
+                  ],
+                  "radioUnselectedBgColor": [
+                    0.15,
+                    0.15,
+                    0.22
+                  ],
+                  "radioGroup": "default",
                   "children": []
                 },
                 {
-                  "name": "element Copy 3",
-                  "type": "Dropdown",
-                  "text": "element",
-                  "x": 890,
-                  "y": 370,
-                  "width": 250,
-                  "height": 40,
+                  "name": "btnBackToMainMenuScene",
+                  "type": "Button",
+                  "text": "Back to main menu",
+                  "x": 320,
+                  "y": 1240,
+                  "width": 390,
+                  "height": 80,
                   "imagePath": "",
                   "imageMode": "Stretch",
-                  "fontSize": 13,
+                  "fontSize": 30,
                   "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
@@ -2537,10 +4939,10 @@
                   "autoFillWindow": false,
                   "autoCenterX": false,
                   "autoCenterY": false,
-                  "anchor": "None",
-                  "useHover": false,
-                  "clickBehavior": "None",
-                  "hoverEnterBehavior": "None",
+                  "anchor": "TopLeft",
+                  "useHover": true,
+                  "clickBehavior": "scene:mnMain",
+                  "hoverEnterBehavior": "",
                   "hoverExitBehavior": "None",
                   "minValue": 0,
                   "maxValue": 100,
@@ -2605,6 +5007,8 @@
                   "sliderThumbSize": 14,
                   "sliderTrackHeight": 6,
                   "sliderLabelPosition": 2,
+                  "sliderLabelSpacing": 8,
+                  "labelSpacing": 8,
                   "checkmarkColor": [
                     0.9,
                     0.9,
@@ -2630,292 +5034,22 @@
                     0.8,
                     1
                   ],
-                  "children": []
-                },
-                {
-                  "name": "element Copy 4",
-                  "type": "Dropdown",
-                  "text": "element",
-                  "x": 890,
-                  "y": 420,
-                  "width": 250,
-                  "height": 40,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 13,
-                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
+                  "radioSelectedColor": [
+                    0.3,
+                    0.7,
                     1
                   ],
-                  "bgColor": [
-                    0.1,
-                    0.12,
-                    0.18
-                  ],
-                  "borderColor": [
-                    0.15,
-                    0.18,
-                    0.25
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0.22,
-                    0.28,
-                    0.45
-                  ],
-                  "hoverBorderColor": [
-                    0.5,
-                    0.6,
-                    1
-                  ],
-                  "alignment": "Center",
-                  "isVisible": true,
-                  "opacity": 1,
-                  "autoFillWindow": false,
-                  "autoCenterX": false,
-                  "autoCenterY": false,
-                  "anchor": "None",
-                  "useHover": false,
-                  "clickBehavior": "None",
-                  "hoverEnterBehavior": "None",
-                  "hoverExitBehavior": "None",
-                  "minValue": 0,
-                  "maxValue": 100,
-                  "step": 1,
-                  "currentValue": 50,
-                  "textOptions": [
-                    "Option A",
-                    "Option B",
-                    "Option C"
-                  ],
-                  "selectedTextIndex": 0,
-                  "isChecked": false,
-                  "options": [
-                    "Option 1",
-                    "Option 2",
-                    "Option 3"
-                  ],
-                  "selectedIndex": 0,
-                  "fallbackText": "",
-                  "wordWrap": true,
-                  "triggeredByKeyboardButton": "",
-                  "placeholder": "Enter text...",
-                  "maxLength": 0,
-                  "inputText": "",
-                  "scrollY": 0,
-                  "scrollBarWidth": 10,
-                  "scrollBarTrackColor": [
-                    0.15,
-                    0.15,
-                    0.2
-                  ],
-                  "scrollBarThumbColor": [
-                    0.45,
-                    0.45,
-                    0.55
-                  ],
-                  "scrollBarThumbHoverColor": [
-                    0.55,
-                    0.55,
+                  "radioSelectedBgColor": [
+                    0.2,
+                    0.4,
                     0.65
                   ],
-                  "sliderTrackColor": [
-                    0.3,
-                    0.3,
-                    0.35
-                  ],
-                  "sliderFillColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "sliderThumbBorderColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbSize": 14,
-                  "sliderTrackHeight": 6,
-                  "sliderLabelPosition": 2,
-                  "checkmarkColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "checkedBgColor": [
-                    0.25,
-                    0.55,
-                    1
-                  ],
-                  "uncheckedBgColor": [
+                  "radioUnselectedBgColor": [
                     0.15,
                     0.15,
                     0.22
                   ],
-                  "arrowColor": [
-                    0.5,
-                    0.5,
-                    0.7
-                  ],
-                  "cursorColor": [
-                    0.5,
-                    0.8,
-                    1
-                  ],
-                  "children": []
-                },
-                {
-                  "name": "element Copy 1",
-                  "type": "Dropdown",
-                  "text": "element",
-                  "x": 890,
-                  "y": 270,
-                  "width": 250,
-                  "height": 40,
-                  "imagePath": "",
-                  "imageMode": "Stretch",
-                  "fontSize": 13,
-                  "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-                  "textColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "bgColor": [
-                    0.1,
-                    0.12,
-                    0.18
-                  ],
-                  "borderColor": [
-                    0.15,
-                    0.18,
-                    0.25
-                  ],
-                  "hoverTextColor": [
-                    0.95,
-                    0.95,
-                    1
-                  ],
-                  "hoverBgColor": [
-                    0.22,
-                    0.28,
-                    0.45
-                  ],
-                  "hoverBorderColor": [
-                    0.5,
-                    0.6,
-                    1
-                  ],
-                  "alignment": "Center",
-                  "isVisible": true,
-                  "opacity": 1,
-                  "autoFillWindow": false,
-                  "autoCenterX": false,
-                  "autoCenterY": false,
-                  "anchor": "None",
-                  "useHover": false,
-                  "clickBehavior": "None",
-                  "hoverEnterBehavior": "None",
-                  "hoverExitBehavior": "None",
-                  "minValue": 0,
-                  "maxValue": 100,
-                  "step": 1,
-                  "currentValue": 50,
-                  "textOptions": [
-                    "Option A",
-                    "Option B",
-                    "Option C"
-                  ],
-                  "selectedTextIndex": 0,
-                  "isChecked": false,
-                  "options": [
-                    "Option 1",
-                    "Option 2",
-                    "Option 3"
-                  ],
-                  "selectedIndex": 0,
-                  "fallbackText": "",
-                  "wordWrap": true,
-                  "triggeredByKeyboardButton": "",
-                  "placeholder": "Enter text...",
-                  "maxLength": 0,
-                  "inputText": "",
-                  "scrollY": 0,
-                  "scrollBarWidth": 10,
-                  "scrollBarTrackColor": [
-                    0.15,
-                    0.15,
-                    0.2
-                  ],
-                  "scrollBarThumbColor": [
-                    0.45,
-                    0.45,
-                    0.55
-                  ],
-                  "scrollBarThumbHoverColor": [
-                    0.55,
-                    0.55,
-                    0.65
-                  ],
-                  "sliderTrackColor": [
-                    0.3,
-                    0.3,
-                    0.35
-                  ],
-                  "sliderFillColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "sliderThumbBorderColor": [
-                    0.3,
-                    0.6,
-                    1
-                  ],
-                  "sliderThumbSize": 14,
-                  "sliderTrackHeight": 6,
-                  "sliderLabelPosition": 2,
-                  "checkmarkColor": [
-                    0.9,
-                    0.9,
-                    1
-                  ],
-                  "checkedBgColor": [
-                    0.25,
-                    0.55,
-                    1
-                  ],
-                  "uncheckedBgColor": [
-                    0.15,
-                    0.15,
-                    0.22
-                  ],
-                  "arrowColor": [
-                    0.5,
-                    0.5,
-                    0.7
-                  ],
-                  "cursorColor": [
-                    0.5,
-                    0.8,
-                    1
-                  ],
+                  "radioGroup": "default",
                   "children": []
                 }
               ]
@@ -2935,12 +5069,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        -0.31598935,
-        9.915926,
-        15.66083
+        -1.0780691,
+        1.0964739,
+        15.538843
       ],
-      "editorCameraYaw": -2439,
-      "editorCameraPitch": 85,
+      "editorCameraYaw": -2505.7573,
+      "editorCameraPitch": 66.20025,
       "renderProperties": {
         "backgroundColor": [
           0,

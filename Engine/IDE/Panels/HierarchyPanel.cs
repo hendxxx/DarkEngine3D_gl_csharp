@@ -78,7 +78,7 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
     private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
 
     /// <summary>Recorded action for undo/redo.</summary>
@@ -334,89 +334,101 @@ public class HierarchyPanel
     public void Duplicate() => DuplicateAllSelected();
     public void DeleteSelection() => DeleteSelectedElement();
 
-    //  Clipboard for Copy/Paste 
-    private UIElement? _clipboardElement = null;
+    //  Clipboard for Copy/Paste (supports multi-select and cross-scene paste)
+    private List<UIElement> _clipboardElements = [];
 
-    /// <summary>Copy the primary selected element (deep clone) into clipboard.</summary>
+    /// <summary>True if clipboard has elements ready to paste.</summary>
+    public bool HasClipboard => _clipboardElements.Count > 0;
+
+    /// <summary>Number of elements in clipboard.</summary>
+    public int ClipboardCount => _clipboardElements.Count;
+
+    /// <summary>Copy all selected elements (deep clone) into clipboard.</summary>
     public void CopySelection()
     {
-        var sel = _bridge.SelectedUIElement;
-        if (sel == null) return;
-        _clipboardElement = sel.DeepClone();
-        Console.WriteLine($"[SceneDetail] Copied '{sel.Name}' to clipboard");
+        _clipboardElements.Clear();
+        var all = _bridge.SelectedUIElements;
+        if (all != null && all.Count > 0)
+        {
+            foreach (var e in all)
+            {
+                if (e != null && e.IsVisible)
+                    _clipboardElements.Add(e.DeepClone());
+            }
+        }
+        else if (_bridge.SelectedUIElement != null)
+        {
+            _clipboardElements.Add(_bridge.SelectedUIElement.DeepClone());
+        }
+        if (_clipboardElements.Count > 0)
+            Console.WriteLine($"[Hierarchy] Copied {_clipboardElements.Count} element(s) to clipboard");
     }
 
-    /// <summary>Cut the primary selected element: copy to clipboard then delete it (Ctrl+X).</summary>
+    /// <summary>Cut the selected elements: copy to clipboard then delete them (Ctrl+X).</summary>
     public void CutSelection()
     {
         CopySelection();
         DeleteSelection();
     }
 
-    /// <summary>Paste the clipboard element as a sibling after the primary selection.
-    /// If nothing is selected, append to the scene root.
-    /// If clipboard is empty or pasted element name collides, generates unique name.</summary>
+    /// <summary>Paste clipboard elements into the currently active scene.
+    /// Elements are appended to the scene root (or inserted after the selected element).</summary>
     public void PasteClipboard()
     {
-        if (_clipboardElement == null) return;
+        if (_clipboardElements.Count == 0) return;
 
         var rootElements = _bridge.SceneRootElements;
         if (rootElements == null) return;
 
-        var clone = _clipboardElement.DeepClone();
+        UIElement? targetParent = _bridge.SceneRoot;
+        int insertIdx = targetParent?.Children.Count ?? 0;
 
-        UIElement? parent;
-        int insertIdx;
-
+        // If an element is selected, paste after it (as sibling)
         var sel = _bridge.SelectedUIElement;
         if (sel != null && sel != _bridge.SceneRoot)
         {
             var (foundParent, _) = FindParentAndIndex(rootElements, sel, _bridge.SceneRoot);
-            parent = foundParent ?? _bridge.SceneRoot;
-            if (parent != null)
-            {
-                insertIdx = parent.Children.IndexOf(sel) + 1;
-                insertIdx = Math.Clamp(insertIdx, 0, parent.Children.Count);
-                // Generate unique name among siblings
-                clone.Name = GetDuplicateName(clone, parent);
-                clone.Parent = parent;
-                parent.Children.Insert(insertIdx, clone);
-            }
-            else
-            {
-                parent = _bridge.SceneRoot;
-                insertIdx = parent?.Children.Count ?? 0;
-                parent?.AddChild(clone);
-            }
+            targetParent = foundParent ?? _bridge.SceneRoot;
+            insertIdx = targetParent?.Children.IndexOf(sel) + 1 ?? 0;
+            insertIdx = Math.Clamp(insertIdx, 0, targetParent?.Children.Count ?? 0);
         }
-        else if (_bridge.SceneRoot != null)
+
+        if (targetParent == null)
         {
-            parent = _bridge.SceneRoot;
-            clone.Name = GetDuplicateName(clone, parent);
-            insertIdx = parent.Children.Count;
-            parent.AddChild(clone);
-        }
-        else
-        {
-            Console.WriteLine("[SceneDetail] Paste: no scene root available");
+            Console.WriteLine("[Hierarchy] Paste: no scene root available");
             return;
         }
 
-        // Record undo
-        PushUndo(new UndoRedoAction
+        var pastedElements = new List<UIElement>();
+        foreach (var original in _clipboardElements)
         {
-            Type = UndoRedoAction.ActionType.Add,
-            Element = clone,
-            Parent = parent,
-            ChildIndex = insertIdx,
-        });
+            var clone = original.DeepClone();
+            clone.Name = GetDuplicateName(clone, targetParent);
+            clone.Parent = targetParent;
+            targetParent.Children.Insert(insertIdx, clone);
+            pastedElements.Add(clone);
+            insertIdx++;
+        }
 
-        // Select the pasted element
-        _bridge.SelectedUIElement = clone;
+        // Record undo for all pasted elements
+        foreach (var pe in pastedElements)
+        {
+            int idx = targetParent.Children.IndexOf(pe);
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.Add,
+                Element = pe,
+                Parent = targetParent,
+                ChildIndex = idx,            });
+        }
+
+        // Select all pasted elements
+        _bridge.SelectedUIElement = pastedElements[0];
         _bridge.SelectedUIElements?.Clear();
-        _bridge.SelectedUIElements?.Add(clone);
+        foreach (var pe in pastedElements)
+            _bridge.SelectedUIElements?.Add(pe);
 
-        Console.WriteLine($"[SceneDetail] Pasted '{clone.Name}' at '{parent.Name}'[{insertIdx}]");
+        Console.WriteLine($"[Hierarchy] Pasted {pastedElements.Count} element(s) into '{_bridge.SelectedEditorScene ?? "?"}'");
     }
 
     public void Render()
@@ -1776,6 +1788,7 @@ public class HierarchyPanel
             5 => UIElementType.Checkbox,
             6 => UIElementType.Dropdown,
             7 => UIElementType.TextBox,
+            8 => UIElementType.RadioButton,
             _ => UIElementType.Button,
         };
 
@@ -1853,32 +1866,51 @@ public class HierarchyPanel
             newElem.InputText = "";
             newElem.MaxLength = 0;
         }
-
+        else if (elemType == UIElementType.RadioButton)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 200;
+            newElem.Height = 36;
+            newElem.IsChecked = false;
+            newElem.RadioGroup = "default";
+        }
 
         UIElement? parent;
         int childIndex;
 
-        // Add as SIBLING of the selected element (same parent, after it)
+        // Add element: if selected is a Container, add as CHILD; otherwise as SIBLING
         var selected = _bridge.SelectedUIElement;
         if (selected != null && selected != _bridge.SceneRoot)
         {
-            // Sibling: same parent as selected, inserted right after it
-            parent = selected.Parent ?? _bridge.SceneRoot;
-            if (parent != null)
+            if (selected.Type == UIElementType.Container)
             {
-                childIndex = parent.Children.IndexOf(selected) + 1;
-                childIndex = Math.Clamp(childIndex, 0, parent.Children.Count);
+                // Add as CHILD of the selected Container
+                parent = selected;
+                childIndex = parent.Children.Count;
                 newElem.Parent = parent;
-                parent.Children.Insert(childIndex, newElem);
-                Console.WriteLine($"[SceneDetail] Added sibling '{name}' after '{selected.Name}' in '{parent.Name}'");
+                parent.Children.Add(newElem);
+                Console.WriteLine($"[SceneDetail] Added child '{name}' to container '{parent.Name}'");
             }
             else
             {
-                // Fallback: add to scene root
-                parent = _bridge.SceneRoot;
-                childIndex = parent?.Children.Count ?? 0;
-                parent?.AddChild(newElem);
-                Console.WriteLine($"[SceneDetail] Added '{name}' to scene root (fallback)");
+                // Sibling: same parent as selected, inserted right after it
+                parent = selected.Parent ?? _bridge.SceneRoot;
+                if (parent != null)
+                {
+                    childIndex = parent.Children.IndexOf(selected) + 1;
+                    childIndex = Math.Clamp(childIndex, 0, parent.Children.Count);
+                    newElem.Parent = parent;
+                    parent.Children.Insert(childIndex, newElem);
+                    Console.WriteLine($"[SceneDetail] Added sibling '{name}' after '{selected.Name}' in '{parent.Name}'");
+                }
+                else
+                {
+                    // Fallback: add to scene root
+                    parent = _bridge.SceneRoot;
+                    childIndex = parent?.Children.Count ?? 0;
+                    parent?.AddChild(newElem);
+                    Console.WriteLine($"[SceneDetail] Added '{name}' to scene root (fallback)");
+                }
             }
         }
         else if (_bridge.SceneRoot != null)

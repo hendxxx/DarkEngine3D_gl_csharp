@@ -75,6 +75,8 @@ public enum UIElementType
     Dropdown,
     /// <summary>A text input field (Save Name, Player Name, etc.).</summary>
     TextBox,
+    /// <summary>A radio button for single-choice selection within a group.</summary>
+    RadioButton,
 }
 
 /// <summary>
@@ -249,7 +251,11 @@ public class UIElement
     /// <summary>Height of the slider track bar in scene pixels.</summary>
     public float SliderTrackHeight { get; set; } = 6f;
     /// <summary>Position of the slider value label (None, Left, Right, Top, Bottom).</summary>
-    public SliderLabelPosition SliderValuePosition { get; set; } = SliderLabelPosition.Right;
+    public SliderLabelPosition SliderValuePosition { get; set; } = SliderLabelPosition.Left;
+    /// <summary>Spacing (in pixels) between the label and the slider track when label is Left or Right.</summary>
+    public float SliderLabelSpacing { get; set; } = 8f;
+    /// <summary>Spacing (in pixels) between the element label and the interactive control.</summary>
+    public float LabelSpacing { get; set; } = 8f;
 
     // ── Checkbox colors ──
     /// <summary>Color of the checkbox checkmark.</summary>
@@ -258,6 +264,16 @@ public class UIElement
     public Vector3 CheckedBgColor { get; set; } = new(0.25f, 0.55f, 1.0f);
     /// <summary>Background color when checkbox is unchecked.</summary>
     public Vector3 UncheckedBgColor { get; set; } = new(0.15f, 0.15f, 0.22f);
+
+    // ── RadioButton colors ──
+    /// <summary>Color of the radio button inner dot when selected.</summary>
+    public Vector3 RadioSelectedColor { get; set; } = new(0.3f, 0.7f, 1.0f);
+    /// <summary>Background color when radio button is selected.</summary>
+    public Vector3 RadioSelectedBgColor { get; set; } = new(0.2f, 0.4f, 0.65f);
+    /// <summary>Background color when radio button is not selected.</summary>
+    public Vector3 RadioUnselectedBgColor { get; set; } = new(0.15f, 0.15f, 0.22f);
+    /// <summary>Group name for radio button (same group = mutual exclusion).</summary>
+    public string RadioGroup { get; set; } = "default";
 
     // ── Dropdown colors ──
     /// <summary>Color of the dropdown arrow icon.</summary>
@@ -409,9 +425,47 @@ public class UIElement
     /// The clone gets a fresh InstanceId but preserves all other values.</summary>
     public UIElement DeepClone()
     {
-        // Serialize to data, then deserialize back to a new element tree
-        var data = SceneAssetSerializer.ToData(this);
-        return SceneAssetSerializer.ToUIElement(data);
+        var clone = new UIElement
+        {
+            Name = Name,
+            Type = Type,
+            Text = Text,
+            X = X, Y = Y, Width = Width, Height = Height,
+            ImagePath = ImagePath, ImageMode = ImageMode,
+            FontSize = FontSize, FontPath = FontPath,
+            TextColor = TextColor, BgColor = BgColor, BorderColor = BorderColor,
+            HoverTextColor = HoverTextColor, HoverBgColor = HoverBgColor, HoverBorderColor = HoverBorderColor,
+            Alignment = Alignment, IsVisible = IsVisible, Opacity = Opacity,
+            AutoFillWindow = AutoFillWindow, AutoCenterX = AutoCenterX, AutoCenterY = AutoCenterY,
+            Anchor = Anchor, UseHover = UseHover,
+            ClickBehaviorLabel = ClickBehaviorLabel, HoverEnterLabel = HoverEnterLabel, HoverExitLabel = HoverExitLabel,
+            FallbackText = FallbackText, WordWrap = WordWrap,
+            TriggeredByKeyboardButton = TriggeredByKeyboardButton,
+            // Slider properties
+            MinValue = MinValue, MaxValue = MaxValue, Step = Step, CurrentValue = CurrentValue,
+            TextOptions = [.. TextOptions], SelectedTextIndex = SelectedTextIndex,
+            SliderTrackColor = SliderTrackColor, SliderFillColor = SliderFillColor,
+            SliderThumbColor = SliderThumbColor, SliderThumbBorderColor = SliderThumbBorderColor,
+            SliderThumbSize = SliderThumbSize, SliderTrackHeight = SliderTrackHeight,
+            SliderValuePosition = SliderValuePosition, SliderLabelSpacing = SliderLabelSpacing, LabelSpacing = LabelSpacing,
+            // Checkbox/RadioButton properties
+            IsChecked = IsChecked,
+            CheckmarkColor = CheckmarkColor, CheckedBgColor = CheckedBgColor, UncheckedBgColor = UncheckedBgColor,
+            RadioSelectedColor = RadioSelectedColor, RadioSelectedBgColor = RadioSelectedBgColor,
+            RadioUnselectedBgColor = RadioUnselectedBgColor, RadioGroup = RadioGroup,
+            // Dropdown properties
+            Options = [.. Options], SelectedIndex = SelectedIndex, ArrowColor = ArrowColor,
+            // TextBox properties
+            Placeholder = Placeholder, MaxLength = MaxLength, InputText = InputText, CursorColor = CursorColor,
+            // Container scroll properties
+            ScrollBarWidth = ScrollBarWidth,
+            ScrollBarTrackColor = ScrollBarTrackColor, ScrollBarThumbColor = ScrollBarThumbColor,
+            ScrollBarThumbHoverColor = ScrollBarThumbHoverColor,
+        };
+        // Deep-clone children
+        foreach (var child in Children)
+            clone.AddChild(child.DeepClone());
+        return clone;
     }
 
     /// <summary>Compute the effective X/Y/W/H after applying AutoFillWindow and
@@ -482,6 +536,7 @@ public class UIElement
             UIElementType.Checkbox => "[chk]",
             UIElementType.Dropdown => "[drp]",
             UIElementType.TextBox => "[txt]",
+            UIElementType.RadioButton => "[radio]",
             _ => "❓",
         };
     }

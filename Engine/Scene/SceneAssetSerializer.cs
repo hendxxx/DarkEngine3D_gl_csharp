@@ -250,6 +250,7 @@ public static class SceneAssetSerializer
             "checkbox" => UIElementType.Checkbox,
             "dropdown" => UIElementType.Dropdown,
             "textbox" => UIElementType.TextBox,
+            "radiobutton" => UIElementType.RadioButton,
             _ => UIElementType.Button,
         };
 
@@ -343,13 +344,19 @@ public static class SceneAssetSerializer
                 2 => SliderLabelPosition.Right,
                 3 => SliderLabelPosition.Top,
                 4 => SliderLabelPosition.Bottom,
-                _ => SliderLabelPosition.Right,
+                _ => SliderLabelPosition.Left,
             },
+            SliderLabelSpacing = data.SliderLabelSpacing,
+            LabelSpacing = data.LabelSpacing,
             CheckmarkColor = ArrayToVec3(data.CheckmarkColor, new Vector3(0.9f, 0.9f, 1.0f)),
             CheckedBgColor = ArrayToVec3(data.CheckedBgColor, new Vector3(0.25f, 0.55f, 1.0f)),
             UncheckedBgColor = ArrayToVec3(data.UncheckedBgColor, new Vector3(0.15f, 0.15f, 0.22f)),
             ArrowColor = ArrayToVec3(data.ArrowColor, new Vector3(0.5f, 0.5f, 0.7f)),
             CursorColor = ArrayToVec3(data.CursorColor, new Vector3(0.5f, 0.8f, 1.0f)),
+            RadioSelectedColor = ArrayToVec3(data.RadioSelectedColor, new Vector3(0.3f, 0.7f, 1.0f)),
+            RadioSelectedBgColor = ArrayToVec3(data.RadioSelectedBgColor, new Vector3(0.2f, 0.4f, 0.65f)),
+            RadioUnselectedBgColor = ArrayToVec3(data.RadioUnselectedBgColor, new Vector3(0.15f, 0.15f, 0.22f)),
+            RadioGroup = data.RadioGroup ?? "default",
         };
 
         foreach (var childData in data.Children)
@@ -377,6 +384,7 @@ public static class SceneAssetSerializer
                 UIElementType.Checkbox => "Checkbox",
                 UIElementType.Dropdown => "Dropdown",
                 UIElementType.TextBox => "TextBox",
+                UIElementType.RadioButton => "RadioButton",
                 _ => "Button",
             },
             Text = elem.Text,
@@ -455,11 +463,17 @@ public static class SceneAssetSerializer
                 SliderLabelPosition.Bottom => 4,
                 _ => 2,
             },
+            SliderLabelSpacing = elem.SliderLabelSpacing,
+            LabelSpacing = elem.LabelSpacing,
             CheckmarkColor = Vec3ToArray(elem.CheckmarkColor),
             CheckedBgColor = Vec3ToArray(elem.CheckedBgColor),
             UncheckedBgColor = Vec3ToArray(elem.UncheckedBgColor),
             ArrowColor = Vec3ToArray(elem.ArrowColor),
             CursorColor = Vec3ToArray(elem.CursorColor),
+            RadioSelectedColor = Vec3ToArray(elem.RadioSelectedColor),
+            RadioSelectedBgColor = Vec3ToArray(elem.RadioSelectedBgColor),
+            RadioUnselectedBgColor = Vec3ToArray(elem.RadioUnselectedBgColor),
+            RadioGroup = elem.RadioGroup,
         };
 
         foreach (var child in elem.Children)

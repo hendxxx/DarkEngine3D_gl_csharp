@@ -75,6 +75,10 @@ public static class ProjectManager
 
         rootPath = Path.GetFullPath(rootPath);
 
+        // If a .projing file exists at rootPath (leftover from a failed run), remove it
+        if (File.Exists(rootPath))
+            File.Delete(rootPath);
+
         // Create folder structure
         Directory.CreateDirectory(rootPath);
         Directory.CreateDirectory(Path.Combine(rootPath, "Assets"));

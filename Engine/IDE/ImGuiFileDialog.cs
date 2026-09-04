@@ -266,9 +266,14 @@ public class ImGuiFileDialog
             return;
         }
 
-        // Add .ing extension if missing
-        if (!fileName.EndsWith(".ing", StringComparison.OrdinalIgnoreCase))
-            fileName += ".ing";
+        // Add default extension only for Save mode (Open mode picks existing files)
+        if (_mode == DialogMode.Save)
+        {
+            string ext = Path.GetExtension(_filter); // e.g. ".ing" from "*.ing"
+            if (!string.IsNullOrEmpty(ext) &&
+                !fileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                fileName += ext;
+        }
 
         SelectedPath = Path.Combine(_currentDir, fileName);
         IsConfirmed = true;

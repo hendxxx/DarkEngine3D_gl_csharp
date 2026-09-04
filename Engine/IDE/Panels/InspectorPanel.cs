@@ -34,7 +34,7 @@ public class InspectorPanel
 
     //  Element type labels (mirrors UIElementType order) 
     private static readonly string[] ElementTypeNames =
-        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox"];
+        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton"];
 
     public InspectorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -674,6 +674,15 @@ public class InspectorPanel
     /// <summary>Render type-specific properties for slider, checkbox, dropdown, textbox elements.</summary>
     private static void RenderTypeSpecificProperties(UIElement elem)
     {
+        // Common: Label Spacing (for all input elements)
+        if (elem.Type != UIElementType.Scene && elem.Type != UIElementType.Container &&
+            elem.Type != UIElementType.Label && elem.Type != UIElementType.Button)
+        {
+            float labelSpacing = elem.LabelSpacing;
+            if (ImGui.DragFloat("Label Spacing", ref labelSpacing, 0.5f, 0f, 50f))
+                elem.LabelSpacing = labelSpacing;
+        }
+
         switch (elem.Type)
         {
             case UIElementType.SliderNumber:
@@ -703,6 +712,13 @@ public class InspectorPanel
                     int posIdx = (int)elem.SliderValuePosition;
                     if (ImGui.Combo("Value Position", ref posIdx, labelPositions, labelPositions.Length))
                         elem.SliderValuePosition = (SliderLabelPosition)posIdx;
+
+                    if (elem.SliderValuePosition == SliderLabelPosition.Left || elem.SliderValuePosition == SliderLabelPosition.Right)
+                    {
+                        float labelSpacing = elem.SliderLabelSpacing;
+                        if (ImGui.DragFloat("Label Spacing", ref labelSpacing, 0.5f, 0f, 50f))
+                            elem.SliderLabelSpacing = labelSpacing;
+                    }
 
                     ImGui.Separator();
                     ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
@@ -901,6 +917,13 @@ public class InspectorPanel
                     if (ImGui.Combo("Value Position", ref posIdx, labelPositions, labelPositions.Length))
                         elem.SliderValuePosition = (SliderLabelPosition)posIdx;
 
+                    if (elem.SliderValuePosition == SliderLabelPosition.Left || elem.SliderValuePosition == SliderLabelPosition.Right)
+                    {
+                        float labelSpacing = elem.SliderLabelSpacing;
+                        if (ImGui.DragFloat("Label Spacing", ref labelSpacing, 0.5f, 0f, 50f))
+                            elem.SliderLabelSpacing = labelSpacing;
+                    }
+
                     ImGui.Separator();
                     ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
                     DrawColorPicker("Track Color", "stt", elem.SliderTrackColor, c => elem.SliderTrackColor = c,
@@ -945,6 +968,27 @@ public class InspectorPanel
                     ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
                     DrawColorPicker("Cursor Color", "tc", elem.CursorColor, c => elem.CursorColor = c,
                         defaultColor: new(0.5f, 0.8f, 1.0f));
+                }
+                break;
+
+            case UIElementType.RadioButton:
+                if (ImGui.CollapsingHeader("Radio Button Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    bool rbChecked = elem.IsChecked;
+                    if (ImGui.Checkbox("Selected", ref rbChecked))
+                        elem.IsChecked = rbChecked;
+
+                    string rbGroup = elem.RadioGroup;
+                    if (ImGui.InputText("Group", ref rbGroup, 128))                        elem.RadioGroup = rbGroup;
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Style");
+                    DrawColorPicker("Selected Dot", "rbs", elem.RadioSelectedColor, c => elem.RadioSelectedColor = c,
+                        defaultColor: new(0.3f, 0.7f, 1.0f));
+                    DrawColorPicker("Selected Bg", "rbsb", elem.RadioSelectedBgColor, c => elem.RadioSelectedBgColor = c,
+                        defaultColor: new(0.2f, 0.4f, 0.65f));
+                    DrawColorPicker("Unselected Bg", "rbub", elem.RadioUnselectedBgColor, c => elem.RadioUnselectedBgColor = c,
+                        defaultColor: new(0.15f, 0.15f, 0.22f));
                 }
                 break;
 

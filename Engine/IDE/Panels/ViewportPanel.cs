@@ -45,11 +45,14 @@ public unsafe class ViewportPanel
     public UIElement? LastInGameClickedElement { get; set; }
 
     //  Drag state for UI element editing 
-    private enum DragMode { None, Move, ResizeTL, ResizeTR, ResizeBL, ResizeBR }
+    private enum DragMode { None, Move, ResizeTL, ResizeTR, ResizeBL, ResizeBR, GroupMove }
     private DragMode _dragMode = DragMode.None;
     // Starting state when drag began (scene coords)
     private float _dragStartX, _dragStartY, _dragStartW, _dragStartH;
     private Vector2 _dragStartMouseScene; // mouse position in scene coords when drag started
+
+    //  Group drag state (multi-select)
+    private readonly Dictionary<UIElement, (float x, float y)> _groupDragStartPositions = [];
 
     //  Model Editor Gizmo 
     private readonly TransformGizmo _gizmo = new();
@@ -194,6 +197,22 @@ public unsafe class ViewportPanel
     /// keyboardActivate signals that Enter/Space was pressed for the focused element.</summary>
     private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false, UIElement? focusedElement = null, bool keyboardActivate = false, float scrollOffsetY = 0f)
     {
+        // Close dropdown if clicking outside of it (check full scene tree, not just current list)
+        if (_openDropdown != null && leftClicked)
+        {
+            bool clickedOnOpenDd = false;
+            if (_bridge.SceneRoot != null)
+            {
+                void WalkFind(UIElement e)
+                {
+                    if (e == _openDropdown) { clickedOnOpenDd = true; return; }
+                    foreach (var c in e.Children) { if (!clickedOnOpenDd) WalkFind(c); }
+                }
+                WalkFind(_bridge.SceneRoot);
+            }
+            if (!clickedOnOpenDd) _openDropdown = null;
+        }
+
         for (int ei = 0; ei < elements.Count; ei++)
         {
             var elem = elements[ei];
@@ -204,23 +223,6 @@ public unsafe class ViewportPanel
             float renderW = elem.Width, renderH = elem.Height;
             float renderX = elem.X, renderY = elem.Y;
 
-            // Children inside Container: positions are Container-local, add parent positions
-            var pp = elem.Parent;
-            while (pp != null)
-            {
-                if (pp.Type == UIElementType.Container)
-                {
-                    renderX += pp.X;
-                    renderY += pp.Y;
-                }
-                pp = pp.Parent;
-            }
-
-            // Container with scroll: exclude from scroll offset (only children move)
-            bool isScrollableContainer = elem.Type == UIElementType.Container && elem.ContentHeight > elem.Height;
-            if (!isScrollableContainer)
-                renderY += scrollOffsetY;
-
             // Auto-fill window: force element to cover the entire viewport
             if (elem.AutoFillWindow)
             {
@@ -229,29 +231,42 @@ public unsafe class ViewportPanel
                 renderW = _texW;
                 renderH = _texH;
             }
-
-            // Layout priority: AutoFill > AutoCenter > Anchor > raw X/Y
-            // AutoCenter and Anchor are mutually exclusive — if both set, AutoCenter wins.
-            if (!elem.AutoFillWindow)
+            // AutoCenter: always center relative to viewport (skip parent chain walk)
+            else if (elem.AutoCenterX || elem.AutoCenterY)
             {
                 if (elem.AutoCenterX)
-                {
                     renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
-                }
-                else if (elem.Anchor != UIAnchor.None)
+                if (elem.AutoCenterY)
+                    renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
+            }
+            else
+            {
+                // Children inside Container: positions are Container-local, add parent positions
+                var pp = elem.Parent;
+                while (pp != null)
                 {
-                    renderX = elem.GetAnchoredPosition(_texW, _texH).x;
+                    if (pp.Type == UIElementType.Container)
+                    {
+                        renderX += pp.X;
+                        renderY += pp.Y;
+                    }
+                    pp = pp.Parent;
                 }
 
-                if (elem.AutoCenterY)
+                // Anchor
+                if (elem.Anchor != UIAnchor.None)
                 {
-                    renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
-                }
-                else if (elem.Anchor != UIAnchor.None)
-                {
+                    renderX = elem.GetAnchoredPosition(_texW, _texH).x;
                     renderY = elem.GetAnchoredPosition(_texW, _texH).y;
                 }
             }
+
+            // Apply parent scroll offset — even scrollable containers must move when a parent scrolls.
+            // The container's OWN scroll is handled separately by DrawPlaceholder.
+            renderY += scrollOffsetY;
+
+            // Track whether this is a scrollable container (used for scrollbar handling below)
+            bool isScrollableContainer = elem.Type == UIElementType.Container && elem.ContentHeight > elem.Height;
 
             // Convert scene coords to screen coords (no Y-flip  scene Y=0 is top)
             float sx0 = _imageMin.X + (renderX / _texW) * _imageSize.X;
@@ -404,7 +419,10 @@ public unsafe class ViewportPanel
             }
 
             //  Draw text label with element's FontSize (skip for image elements & checkbox  checkbox has its own label rendering) 
-            if (!hasImage && elem.Type != UIElementType.Checkbox && !string.IsNullOrEmpty(elem.Text))
+            if (!hasImage && elem.Type != UIElementType.Checkbox && elem.Type != UIElementType.RadioButton &&
+                elem.Type != UIElementType.Dropdown && elem.Type != UIElementType.SliderNumber &&
+                elem.Type != UIElementType.SliderText && elem.Type != UIElementType.TextBox &&
+                !string.IsNullOrEmpty(elem.Text))
             {
                 string label = elem.Text;
                 float previewFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
@@ -533,11 +551,50 @@ public unsafe class ViewportPanel
 
             if (elem.Type == UIElementType.SliderNumber)
             {
-                //  SliderNumber: track + filled portion + thumb + value label 
+                //  SliderNumber: label on left + track + filled portion + thumb + value label 
+                float slFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var slFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, slFontSize);
+                bool hasSlFont = slFontRaw != null && (nint)slFontRaw != IntPtr.Zero;
+                var slFont = hasSlFont ? new ImFontPtr(slFontRaw!) : ImGui.GetFont();
+                if (!string.IsNullOrEmpty(elem.Text))
+                {
+                    var slLblSize = hasSlFont
+                        ? slFont.CalcTextSizeA(slFontSize, float.MaxValue, 0f, elem.Text)
+                        : ImGui.CalcTextSize(elem.Text);
+                    float slLblX = csx0 + innerPad;
+                    float slLblY = csy0 + (elemScreenH - slLblSize.Y) * 0.5f;
+                    uint slLblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.8f, 0.95f, 0.8f * elemOpacity));
+                    drawList.AddText(slFont, slFontSize, new Vector2(slLblX, slLblY), slLblCol, elem.Text);
+                }
+
                 float trackY = csy0 + elemScreenH * 0.5f - 3f;
                 float trackHStyle = Math.Max(2f, elem.SliderTrackHeight);
+                float spacing = elem.SliderLabelSpacing;
                 float trackX = csx0 + innerPad;
                 float trackW = (csx1 - csx0) - innerPad * 2f;
+                // Offset track to the right if element has a label
+                if (!string.IsNullOrEmpty(elem.Text))
+                {
+                    var slLblSz2 = hasSlFont
+                        ? slFont.CalcTextSizeA(slFontSize, float.MaxValue, 0f, elem.Text)
+                        : ImGui.CalcTextSize(elem.Text);
+                    trackX += slLblSz2.X + elem.LabelSpacing;
+                    trackW -= slLblSz2.X + elem.LabelSpacing;
+                }
+                // Adjust track for left/right value label spacing
+                if (elem.SliderValuePosition == SliderLabelPosition.Left)
+                {
+                    string tmpVal = $"{elem.CurrentValue:F1}";
+                    var tmpSize = ImGui.CalcTextSize(tmpVal);
+                    trackX += tmpSize.X + spacing;
+                    trackW -= tmpSize.X + spacing;
+                }
+                else if (elem.SliderValuePosition == SliderLabelPosition.Right)
+                {
+                    string tmpVal = $"{elem.CurrentValue:F1}";
+                    var tmpSize = ImGui.CalcTextSize(tmpVal);
+                    trackW -= tmpSize.X + spacing;
+                }
 
                 // Track background
                 float thumbSizeStyle = Math.Max(6f, elem.SliderThumbSize);
@@ -620,11 +677,52 @@ public unsafe class ViewportPanel
             }
             else if (elem.Type == UIElementType.SliderText)
             {
-                //  SliderText: track + filled portion + thumb + text label 
+                //  SliderText: label on left + track + filled portion + thumb + text label 
+                float stFontSize2 = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var stFontRaw2 = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, stFontSize2);
+                bool hasStFont2 = stFontRaw2 != null && (nint)stFontRaw2 != IntPtr.Zero;
+                var stFont2 = hasStFont2 ? new ImFontPtr(stFontRaw2!) : ImGui.GetFont();
+                if (!string.IsNullOrEmpty(elem.Text))
+                {
+                    var stLblSize = hasStFont2
+                        ? stFont2.CalcTextSizeA(stFontSize2, float.MaxValue, 0f, elem.Text)
+                        : ImGui.CalcTextSize(elem.Text);
+                    float stLblX = csx0 + innerPad;
+                    float stLblY = csy0 + (elemScreenH - stLblSize.Y) * 0.5f;
+                    uint stLblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.8f, 0.95f, 0.8f * elemOpacity));
+                    drawList.AddText(stFont2, stFontSize2, new Vector2(stLblX, stLblY), stLblCol, elem.Text);
+                }
+
                 float trackY = csy0 + elemScreenH * 0.5f - 3f;
                 float trackHStyle = Math.Max(2f, elem.SliderTrackHeight);
+                float stSpacing = elem.SliderLabelSpacing;
                 float trackX = csx0 + innerPad;
                 float trackW = (csx1 - csx0) - innerPad * 2f;
+                // Offset track to the right if element has a label
+                if (!string.IsNullOrEmpty(elem.Text))
+                {
+                    var stLblSz2 = hasStFont2
+                        ? stFont2.CalcTextSizeA(stFontSize2, float.MaxValue, 0f, elem.Text)
+                        : ImGui.CalcTextSize(elem.Text);
+                    trackX += stLblSz2.X + elem.LabelSpacing;
+                    trackW -= stLblSz2.X + elem.LabelSpacing;
+                }
+                // Adjust track for left/right value label spacing
+                if (elem.SliderValuePosition == SliderLabelPosition.Left)
+                {
+                    string stSelText = elem.SelectedTextIndex >= 0 && elem.SelectedTextIndex < elem.TextOptions.Count
+                        ? elem.TextOptions[elem.SelectedTextIndex] : "?";
+                    var stSize = ImGui.CalcTextSize(stSelText);
+                    trackX += stSize.X + stSpacing;
+                    trackW -= stSize.X + stSpacing;
+                }
+                else if (elem.SliderValuePosition == SliderLabelPosition.Right)
+                {
+                    string stSelText = elem.SelectedTextIndex >= 0 && elem.SelectedTextIndex < elem.TextOptions.Count
+                        ? elem.TextOptions[elem.SelectedTextIndex] : "?";
+                    var stSize = ImGui.CalcTextSize(stSelText);
+                    trackW -= stSize.X + stSpacing;
+                }
 
                 // Track background
                 float thumbSizeStyle = Math.Max(6f, elem.SliderThumbSize);
@@ -704,12 +802,27 @@ public unsafe class ViewportPanel
             }
             else if (elem.Type == UIElementType.Checkbox)
             {
-                //  Checkbox: square + checkmark + label 
+                //  Checkbox: label on left + square + checkmark 
                 float boxSize = Math.Min(24f, elemScreenH - innerPad * 2f);
-                float boxX = csx0 + innerPad;
+                float chkFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var chkFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, chkFontSize);
+                bool hasChkFont = chkFontRaw != null && (nint)chkFontRaw != IntPtr.Zero;
+                var chkFont = hasChkFont ? new ImFontPtr(chkFontRaw!) : ImGui.GetFont();
+                string chkLabel = !string.IsNullOrEmpty(elem.Text) ? elem.Text : elem.Name;
+                var chkTextSize = hasChkFont
+                    ? chkFont.CalcTextSizeA(chkFontSize, float.MaxValue, 0f, chkLabel)
+                    : ImGui.CalcTextSize(chkLabel);
+
+                // Label on the left
+                float lblX = csx0 + innerPad;
+                float lblY = csy0 + (elemScreenH - chkTextSize.Y) * 0.5f;
+                uint lblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
+                drawList.AddText(chkFont, chkFontSize, new Vector2(lblX, lblY), lblCol, chkLabel);
+
+                // Checkbox square on the right side of the label
+                float boxX = lblX + chkTextSize.X + elem.LabelSpacing;
                 float boxY = csy0 + (elemScreenH - boxSize) * 0.5f;
 
-                // Checkbox square
                 uint chkBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.4f, 0.55f, 1f * elemOpacity));
                 var chkCheckedBg = elem.CheckedBgColor;
                 var chkUncheckedBg = elem.UncheckedBgColor;
@@ -719,7 +832,6 @@ public unsafe class ViewportPanel
                 drawList.AddRectFilled(new Vector2(boxX, boxY), new Vector2(boxX + boxSize, boxY + boxSize), chkBg, 4f);
                 drawList.AddRect(new Vector2(boxX, boxY), new Vector2(boxX + boxSize, boxY + boxSize), chkBorder, 4f, ImDrawFlags.None, 1.5f);
 
-                // Checkmark (when checked)
                 if (elem.IsChecked)
                 {
                     var cmCol = elem.CheckmarkColor;
@@ -730,24 +842,67 @@ public unsafe class ViewportPanel
                     drawList.AddLine(new Vector2(cx - cs, cy), new Vector2(cx - cs * 0.2f, cy + cs * 0.7f), checkCol, 2.5f);
                     drawList.AddLine(new Vector2(cx - cs * 0.2f, cy + cs * 0.7f), new Vector2(cx + cs * 0.8f, cy - cs * 0.5f), checkCol, 2.5f);
                 }
+            }
+            else if (elem.Type == UIElementType.RadioButton)
+            {
+                //  RadioButton: circle + inner dot + label 
+                float circleSize = Math.Min(24f, elemScreenH - innerPad * 2f);
+                float circleX = csx0 + innerPad + circleSize * 0.5f;
+                float circleY = csy0 + elemScreenH * 0.5f;
+                float circleR = circleSize * 0.5f;
+
+                // Outer circle border
+                uint rbBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.4f, 0.55f, 1f * elemOpacity));
+                var rbSelBg = elem.RadioSelectedBgColor;
+                var rbUnselBg = elem.RadioUnselectedBgColor;
+                uint rbBg = ImGui.ColorConvertFloat4ToU32(elem.IsChecked
+                    ? new Vector4(rbSelBg.X, rbSelBg.Y, rbSelBg.Z, 0.9f * elemOpacity)
+                    : new Vector4(rbUnselBg.X, rbUnselBg.Y, rbUnselBg.Z, 0.9f * elemOpacity));
+                drawList.AddCircleFilled(new Vector2(circleX, circleY), circleR, rbBg, 20);
+                drawList.AddCircle(new Vector2(circleX, circleY), circleR, rbBorder, 20, 1.5f);
+
+                // Inner dot (when selected)
+                if (elem.IsChecked)
+                {
+                    var rbSelCol = elem.RadioSelectedColor;
+                    uint dotCol = ImGui.ColorConvertFloat4ToU32(new Vector4(rbSelCol.X, rbSelCol.Y, rbSelCol.Z, 1f * elemOpacity));
+                    drawList.AddCircleFilled(new Vector2(circleX, circleY), circleR * 0.4f, dotCol, 16);
+                }
 
                 // Label text
-                string chkLabel = !string.IsNullOrEmpty(elem.Text) ? elem.Text : elem.Name;
-                float lblX = boxX + boxSize + innerPad;
-                var chkFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, 13f);
-                bool hasChkFont = chkFontRaw != null && (nint)chkFontRaw != IntPtr.Zero;
-                var chkFont = hasChkFont ? new ImFontPtr(chkFontRaw!) : ImGui.GetFont();
-                float chkFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
-                var chkTextSize = hasChkFont
-                    ? chkFont.CalcTextSizeA(chkFontSize, float.MaxValue, 0f, chkLabel)
-                    : ImGui.CalcTextSize(chkLabel);
-                float lblY = csy0 + (elemScreenH - chkTextSize.Y) * 0.5f;
-                uint lblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
-                drawList.AddText(chkFont, chkFontSize, new Vector2(lblX, lblY), lblCol, chkLabel);
+                string rbLabel = !string.IsNullOrEmpty(elem.Text) ? elem.Text : elem.Name;
+                float rbLblX = csx0 + innerPad + circleSize + elem.LabelSpacing;
+                float rbFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var rbFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, rbFontSize);
+                bool hasRbFont = rbFontRaw != null && (nint)rbFontRaw != IntPtr.Zero;
+                var rbFont = hasRbFont ? new ImFontPtr(rbFontRaw!) : ImGui.GetFont();
+                var rbTextSize = hasRbFont
+                    ? rbFont.CalcTextSizeA(rbFontSize, float.MaxValue, 0f, rbLabel)
+                    : ImGui.CalcTextSize(rbLabel);
+                float rbLblY = csy0 + (elemScreenH - rbTextSize.Y) * 0.5f;
+                uint rbLblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
+                drawList.AddText(rbFont, rbFontSize, new Vector2(rbLblX, rbLblY), rbLblCol, rbLabel);
             }
             else if (elem.Type == UIElementType.Dropdown)
             {
-                //  Dropdown: box + selected text + dropdown arrow 
+                //  Dropdown: label + box + selected text + dropdown arrow 
+                float ddFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var ddFontRaw2 = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, ddFontSize);
+                bool hasDdFont2 = ddFontRaw2 != null && (nint)ddFontRaw2 != IntPtr.Zero;
+                var ddFont2 = hasDdFont2 ? new ImFontPtr(ddFontRaw2!) : ImGui.GetFont();
+
+                // Render element name as label to the left of the dropdown box
+                if (!string.IsNullOrEmpty(elem.Text))
+                {
+                    var lblSize = hasDdFont2
+                        ? ddFont2.CalcTextSizeA(ddFontSize, float.MaxValue, 0f, elem.Text)
+                        : ImGui.CalcTextSize(elem.Text);
+                    float lblX = csx0 + innerPad;
+                    float lblY = csy0 + (elemScreenH - lblSize.Y) * 0.5f;
+                    uint lblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.8f, 0.95f, 0.8f * elemOpacity));
+                    drawList.AddText(ddFont2, ddFontSize, new Vector2(lblX, lblY), lblCol, elem.Text);
+                }
+
                 float arrowSize = 10f;
                 float arrowX = csx1 - innerPad - arrowSize;
                 float arrowY = csy0 + (elemScreenH - arrowSize) * 0.5f;
@@ -758,10 +913,9 @@ public unsafe class ViewportPanel
                     : "(select)";
                 uint ddTextCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f * elemOpacity));
 
-                float ddFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
-                var ddFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, ddFontSize);
-                bool hasDdFont = ddFontRaw != null && (nint)ddFontRaw != IntPtr.Zero;
-                var ddFont = hasDdFont ? new ImFontPtr(ddFontRaw!) : ImGui.GetFont();
+                // Reuse font declared above for label
+                var ddFont = ddFont2;
+                bool hasDdFont = hasDdFont2;
 
                 // Truncate if too wide
                 float maxTextW = (csx1 - csx0) - innerPad * 3f - arrowSize;
@@ -781,7 +935,15 @@ public unsafe class ViewportPanel
                     selText += "...";
                 }
 
-                float ddTextX = csx0 + innerPad;
+                float ddTextOffset = innerPad;
+                if (!string.IsNullOrEmpty(elem.Text))
+                {
+                    var ddLblSz = hasDdFont
+                        ? ddFont.CalcTextSizeA(ddFontSize, float.MaxValue, 0f, elem.Text)
+                        : ImGui.CalcTextSize(elem.Text);
+                    ddTextOffset += ddLblSz.X + elem.LabelSpacing;
+                }
+                float ddTextX = csx0 + ddTextOffset;
                 float ddTextY = csy0 + (elemScreenH - ddTextSize.Y) * 0.5f;
                 drawList.AddText(ddFont, ddFontSize, new Vector2(ddTextX, ddTextY), ddTextCol, selText);
 
@@ -802,14 +964,32 @@ public unsafe class ViewportPanel
                     uint phCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.5f, 0.5f, 0.5f, 0.6f * elemOpacity));
                     drawList.AddText(new Vector2(ddTextX, ddTextY), phCol, phText);
                 }
+
+                // Dropdown popup is rendered in a SEPARATE pass (RenderDropdownPopup)
+                // to avoid being clipped by container PushClipRect
             }
             else if (elem.Type == UIElementType.TextBox)
             {
-                //  TextBox: input field with placeholder or current text 
+                //  TextBox: label on left + input field 
+                float tbFontSize2 = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+                var tbFontRaw2 = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, tbFontSize2);
+                bool hasTbFont2 = tbFontRaw2 != null && (nint)tbFontRaw2 != IntPtr.Zero;
+                var tbFont2 = hasTbFont2 ? new ImFontPtr(tbFontRaw2!) : ImGui.GetFont();
                 float inputPadX = 10f;
                 float inputX = csx0 + inputPadX;
+                if (!string.IsNullOrEmpty(elem.Text))
+                {
+                    var tbLblSize = hasTbFont2
+                        ? tbFont2.CalcTextSizeA(tbFontSize2, float.MaxValue, 0f, elem.Text)
+                        : ImGui.CalcTextSize(elem.Text);
+                    float tbLblX = csx0 + inputPadX;
+                    float tbLblY = csy0 + (elemScreenH - tbLblSize.Y) * 0.5f;
+                    uint tbLblCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.8f, 0.95f, 0.8f * elemOpacity));
+                    drawList.AddText(tbFont2, tbFontSize2, new Vector2(tbLblX, tbLblY), tbLblCol, elem.Text);
+                    inputX += tbLblSize.X + elem.LabelSpacing;
+                }
                 float inputY = csy0 + 4f;
-                float inputW = (csx1 - csx0) - inputPadX * 2f;
+                float inputW = (csx1 - inputX) - inputPadX;
                 float inputH = elemScreenH - 8f;
 
                 // Input background (slightly lighter)
@@ -917,6 +1097,20 @@ public unsafe class ViewportPanel
                             catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
                         }
                     }
+                    //  RadioButton: select this, deselect others in same group 
+                    else if (elem.Type == UIElementType.RadioButton)
+                    {
+                        elem.IsChecked = true;
+                        // Deselect all other RadioButtons in the same group (walk all scene elements)
+                        DeselectRadioGroup(elem.RadioGroup, elem);
+                        Console.WriteLine($"[Viewport] RadioButton '{elem.Name}' selected in group '{elem.RadioGroup}'");
+
+                        if (elem.OnClick != null)
+                        {
+                            try { elem.OnClick.Invoke(); }
+                            catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
+                        }
+                    }
                     // Custom handler (OnClick delegate) takes priority for non-checkbox elements
                     else if (elem.OnClick != null)
                     {
@@ -939,16 +1133,23 @@ public unsafe class ViewportPanel
                     //  Default interactive element behaviors (fallback when no custom handler) 
                     else if (elem.Type == UIElementType.Dropdown && elem.Options.Count > 0)
                     {
-                        elem.SelectedIndex = (elem.SelectedIndex + 1) % elem.Options.Count;
-                        Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' → '{elem.Options[elem.SelectedIndex]}'");
+                        // Toggle dropdown popup
+                        _openDropdown = (_openDropdown == elem) ? null : elem;
+                        Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' popup {(_openDropdown != null ? "opened" : "closed")}");
                     }
-
 
                 }
                 else
                 {
+                    // Editor mode: toggle dropdown popup + select for inspection
+                    if (elem.Type == UIElementType.Dropdown && elem.Options.Count > 0)
+                    {
+                        _openDropdown = (_openDropdown == elem) ? null : elem;
+                        Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' popup {(_openDropdown != null ? "opened" : "closed")}");
+                    }
                     // Editor mode: select element for inspection
                     bool ctrlHeld = ImGui.GetIO().KeyCtrl;
+                    bool altHeld = ImGui.GetIO().KeyAlt;
                     if (ctrlHeld)
                     {
                         // Ctrl+Click: toggle multi-select
@@ -962,6 +1163,34 @@ public unsafe class ViewportPanel
                         {
                             _bridge.SelectedUIElements.Add(elem);
                             _bridge.SelectedUIElement = elem;
+                        }
+                    }
+                    else if (altHeld)
+                    {
+                        // Alt+Click: walk up parent chain to select nearest Container parent
+                        UIElement? target = elem.Parent;
+                        while (target != null && target.Type != UIElementType.Container)
+                            target = target.Parent;
+                        if (target != null)
+                        {
+                            _bridge.SelectedUIElement = target;
+                            _bridge.SelectedUIElements.Clear();
+                            _bridge.SelectedUIElements.Add(target);
+                            // Also add container's direct children to selection (grouping)
+                            foreach (var child in target.Children)
+                            {
+                                if (child.IsVisible)
+                                    _bridge.SelectedUIElements.Add(child);
+                            }
+                            Console.WriteLine($"[Viewport] Alt+Click: selected parent container '{target.Name}' (multi={_bridge.SelectedUIElements.Count})");
+                        }
+                        else
+                        {
+                            // No container parent found — just select the element itself
+                            _bridge.SelectedUIElement = elem;
+                            _bridge.SelectedUIElements.Clear();
+                            _bridge.SelectedUIElements.Add(elem);
+                            Console.WriteLine($"[Viewport] Alt+Click: selected '{elem.Name}' (no container parent)");
                         }
                     }
                     else
@@ -989,8 +1218,15 @@ public unsafe class ViewportPanel
             //  Always recurse for children (so they render regardless of click state) 
             if (elem.Children.Count > 0)
             {
-                if (elem.Type == UIElementType.Container && elem.ContentHeight > elem.Height)
-                    DrawPlaceholder(drawList, elem, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+                if (elem.Type == UIElementType.Container)
+                {
+                    // Always use DrawPlaceholder for containers:
+                    // - Clips children to container bounds (PushClipRect)
+                    // - Adds scrollbar when content exceeds container height
+                    // - Without this, children render outside the container box
+                    // Pass accumulated scrollOffsetY so nested containers account for parent scroll
+                    DrawPlaceholder(drawList, elem, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, scrollOffsetY);
+                }
                 else
                     DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
             }
@@ -1002,24 +1238,42 @@ public unsafe class ViewportPanel
     /// The Placeholder box stays fixed; only children inside scroll vertically.
     /// Consumes Mouse.ScrollY when hovered so scroll doesn't leak to camera zoom.</summary>
     private void DrawPlaceholder(ImDrawListPtr drawList, UIElement placeholder, Vector2 mouseScreen,
-        bool leftClicked, bool isPreview, bool isMouseDown, UIElement? focusedElement, bool keyboardActivate)
+        bool leftClicked, bool isPreview, bool isMouseDown, UIElement? focusedElement, bool keyboardActivate,
+        float parentScrollOffsetY = 0f)
     {
         int id = placeholder.InstanceId;
         if (!_placeholderScrollY.ContainsKey(id))
             _placeholderScrollY[id] = 0f;
 
-        // Compute render position (same logic as main loop — NO scroll offset on the box itself)
+        // Compute render position (same logic as main loop)
         float renderW = placeholder.Width, renderH = placeholder.Height;
         float renderX = placeholder.X, renderY = placeholder.Y;
 
         if (placeholder.AutoFillWindow) { renderX = 0f; renderY = 0f; renderW = _texW; renderH = _texH; }
+        else if (placeholder.AutoCenterX || placeholder.AutoCenterY)
+        {
+            // AutoCenter: center relative to viewport, skip parent chain walk
+            if (placeholder.AutoCenterX) renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
+            if (placeholder.AutoCenterY) renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
+        }
         else
         {
-            if (placeholder.AutoCenterX) renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
-            else if (placeholder.Anchor != UIAnchor.None) renderX = placeholder.GetAnchoredPosition(_texW, _texH).x;
-            if (placeholder.AutoCenterY) renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
-            else if (placeholder.Anchor != UIAnchor.None) renderY = placeholder.GetAnchoredPosition(_texW, _texH).y;
+            // Walk parent chain for nested containers
+            var phPP = placeholder.Parent;
+            while (phPP != null)
+            {
+                if (phPP.Type == UIElementType.Container) { renderX += phPP.X; renderY += phPP.Y; }
+                phPP = phPP.Parent;
+            }
+            if (placeholder.Anchor != UIAnchor.None)
+            {
+                renderX = placeholder.GetAnchoredPosition(_texW, _texH).x;
+                renderY = placeholder.GetAnchoredPosition(_texW, _texH).y;
+            }
         }
+
+        // Apply parent scroll offset — the container box must move when a parent scrolls
+        renderY += parentScrollOffsetY;
 
         float sx0 = _imageMin.X + (renderX / _texW) * _imageSize.X;
         float sy0 = _imageMin.Y + (renderY / _texH) * _imageSize.Y;
@@ -1124,8 +1378,8 @@ public unsafe class ViewportPanel
             new Vector2(sx0 + 1f, sy0 + 1f),
             new Vector2(sx1 - 1f - (hasScroll ? scrollBarW + 4f : 0f), sy1 - 1f), true);
 
-        // Render children with scroll offset (children move UP when scrollY increases)
-        DrawEditorUIPreview(drawList, placeholder.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, -scrollY);
+        // Render children with accumulated scroll offset (parent + this container's scroll)
+        DrawEditorUIPreview(drawList, placeholder.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, parentScrollOffsetY - scrollY);
 
         drawList.PopClipRect();
     }
@@ -1140,6 +1394,10 @@ public unsafe class ViewportPanel
     private float _placeholderDragStartScrollY;
     private readonly Dictionary<int, Vector2> _dragStartChildPos = [];
     private readonly Dictionary<int, Vector2> _dragStartChildSize = [];
+
+    //  Dropdown popup state
+    private UIElement? _openDropdown = null;
+    private int _dropdownHoverIdx = -1;
     private readonly Dictionary<string, (int w, int h)> _previewTextureDims = [];
     // Tracks the last scene root to detect scene switches and clear the cache
     private UIElement? _lastSceneRoot = null;
@@ -1602,6 +1860,105 @@ public unsafe class ViewportPanel
         Console.WriteLine("[Viewport] Created default ExitConfirm dialog for preview mode.");
     }
 
+    /// <summary>Deselect all RadioButtons in the same group except the specified one.</summary>
+    private void DeselectRadioGroup(string group, UIElement except)
+    {
+        void WalkChildren(IReadOnlyList<UIElement> elements)
+        {
+            foreach (var e in elements)
+            {
+                if (e == except) { WalkChildren(e.Children); continue; }
+                if (e.Type == UIElementType.RadioButton &&
+                    string.Equals(e.RadioGroup, group, StringComparison.Ordinal))
+                    e.IsChecked = false;
+                WalkChildren(e.Children);
+            }
+        }
+        if (_bridge.SceneRoot != null) WalkChildren(_bridge.SceneRoot.Children);
+    }
+
+    /// <summary>Render dropdown options popup OUTSIDE any clip rect so it's never clipped by containers.</summary>
+    private void RenderDropdownPopup(ImDrawListPtr drawList, Vector2 mouseScreen, bool leftClicked, bool isPreview)
+    {
+        if (_openDropdown == null || _openDropdown.Options.Count == 0) return;
+        var elem = _openDropdown;
+
+        // Compute screen position of the dropdown box (walk parent chain)
+        float rx = elem.X, ry = elem.Y;
+        var pp = elem.Parent;
+        while (pp != null)
+        {
+            if (pp.Type == UIElementType.Container) { rx += pp.X; ry += pp.Y - pp.ScrollY; }
+            pp = pp.Parent;
+        }
+        if (elem.AutoFillWindow) { rx = 0f; ry = 0f; }
+        else if (elem.Anchor != UIAnchor.None)
+        {
+            var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
+            rx = ax; ry = ay;
+        }
+
+        float sx0 = _imageMin.X + (rx / _texW) * _imageSize.X;
+        float sy0 = _imageMin.Y + (ry / _texH) * _imageSize.Y;
+        float sx1 = _imageMin.X + ((rx + elem.Width) / _texW) * _imageSize.X;
+        float sy1 = _imageMin.Y + ((ry + elem.Height) / _texH) * _imageSize.Y;
+
+        float ddFontSize = elem.FontSize > 0f ? Math.Max(8f, elem.FontSize) : 13f;
+        var ddFontRaw = _bridge.ImGuiCtrl?.GetFont(elem.FontPath, ddFontSize);
+        bool hasDdFont = ddFontRaw != null && (nint)ddFontRaw != IntPtr.Zero;
+        var ddFont = hasDdFont ? new ImFontPtr(ddFontRaw!) : ImGui.GetFont();
+        var ddTextSize = hasDdFont
+            ? ddFont.CalcTextSizeA(ddFontSize, float.MaxValue, 0f, "Xg")
+            : ImGui.CalcTextSize("Xg");
+
+        float optH = ddTextSize.Y + 8f;
+        float popupH = optH * elem.Options.Count;
+        float popupW = sx1 - sx0;
+        float popupX = sx0;
+        float popupY = sy1 + 2f;
+
+        // Clamp popup inside image bounds
+        if (popupY + popupH > _imageMax.Y)
+            popupY = sy0 - popupH - 2f;
+        if (popupX + popupW > _imageMax.X)
+            popupW = _imageMax.X - popupX;
+
+        // Popup background
+        uint popupBg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.12f, 0.12f, 0.18f, 0.95f));
+        uint popupBorder = ImGui.ColorConvertFloat4ToU32(new Vector4(0.35f, 0.45f, 0.65f, 0.9f));
+        drawList.AddRectFilled(new Vector2(popupX, popupY), new Vector2(popupX + popupW, popupY + popupH), popupBg, 4f);
+        drawList.AddRect(new Vector2(popupX, popupY), new Vector2(popupX + popupW, popupY + popupH), popupBorder, 4f, ImDrawFlags.None, 1.5f);
+
+        for (int oi = 0; oi < elem.Options.Count; oi++)
+        {
+            float optY = popupY + oi * optH;
+            bool optHovered = mouseScreen.X >= popupX && mouseScreen.X <= popupX + popupW &&
+                             mouseScreen.Y >= optY && mouseScreen.Y <= optY + optH;
+
+            if (optHovered)
+            {
+                uint hoverBg = ImGui.ColorConvertFloat4ToU32(new Vector4(0.25f, 0.4f, 0.65f, 0.7f));
+                drawList.AddRectFilled(new Vector2(popupX + 2f, optY + 1f), new Vector2(popupX + popupW - 2f, optY + optH - 1f), hoverBg, 3f);
+            }
+
+            if (oi == elem.SelectedIndex)
+            {
+                uint selCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.7f, 1.0f, 1f));
+                drawList.AddRectFilled(new Vector2(popupX + 4f, optY + optH * 0.3f), new Vector2(popupX + 7f, optY + optH * 0.7f), selCol, 2f);
+            }
+
+            uint optTextCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 1f));
+            drawList.AddText(ddFont, ddFontSize, new Vector2(popupX + 14f, optY + 4f), optTextCol, elem.Options[oi]);
+
+            if (optHovered && leftClicked)
+            {
+                elem.SelectedIndex = oi;
+                _openDropdown = null;
+                Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' selected: '{elem.Options[oi]}'");
+            }
+        }
+    }
+
     /// <summary>Check if an element is blocked by an open overlay (Dialog/Container) above it.
     /// Elements outside the overlay are blocked; elements inside (or the overlay itself) are not.</summary>
     private bool IsBlockedByOverlay(UIElement elem)
@@ -1778,6 +2135,8 @@ public unsafe class ViewportPanel
         _texH = texH;
 
         DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+        // Render dropdown popup AFTER all elements (outside any container clip rect)
+        RenderDropdownPopup(drawList, mouseScreen, leftClicked, isPreview);
 
         _imageMin = savedMin;
         _imageMax = savedMax;
@@ -2221,6 +2580,8 @@ ImGui.SameLine();
                 _bridge.ScrollCapturedByUI = false; // reset each frame, set by DrawPlaceholder if hovered
                 var drawList = ImGui.GetWindowDrawList();
                 DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked, isPreview: _previewMode, isMouseDown: cachedLeftDown);
+                // Render dropdown popup AFTER all elements (outside any container clip rect)
+                RenderDropdownPopup(drawList, viewportMouseScreen, cachedLeftClicked, _previewMode);
             }
 
             //  Preview mode indicator badge (bottom-right corner) 
@@ -2291,28 +2652,39 @@ ImGui.SameLine();
                 //  Helper: draw a wireframe for a single element 
                 void DrawElemWireframe(UIElement elem, bool isPrimary)
                 {
-                    // Compute absolute scene position by walking up parent chain
                     float rx = elem.X, ry = elem.Y;
-                    var p = elem.Parent;
-                    while (p != null)
+                    float rw = elem.Width, rh = elem.Height;
+
+                    if (elem.AutoFillWindow)
                     {
-                        if (p.Type == UIElementType.Container)
-                        {
-                            rx += p.X;
-                            ry += p.Y;
-                        }
-                        p = p.Parent;
+                        rx = 0f; ry = 0f;
+                        rw = _texW; rh = _texH;
                     }
-                    // Apply anchor without modifying elem.X/Y
-                    if (elem.Anchor != UIAnchor.None && !elem.AutoFillWindow)
+                    else if (elem.AutoCenterX || elem.AutoCenterY)
                     {
-                        var (ax, ay) = elem.GetAnchoredPosition(_texW, _texH);
-                        rx = ax; ry = ay;
+                        // AutoCenter: center relative to viewport, skip parent chain walk
+                        if (elem.AutoCenterX) rx = Math.Max(0f, (_texW - rw) * 0.5f);
+                        if (elem.AutoCenterY) ry = Math.Max(0f, (_texH - rh) * 0.5f);
+                    }
+                    else
+                    {
+                        // Walk parent chain for non-auto-centered elements
+                        var p = elem.Parent;
+                        while (p != null)
+                        {
+                            if (p.Type == UIElementType.Container) { rx += p.X; ry += p.Y - p.ScrollY; }
+                            p = p.Parent;
+                        }
+                        if (elem.Anchor != UIAnchor.None)
+                        {
+                            rx = elem.GetAnchoredPosition(_texW, _texH).x;
+                            ry = elem.GetAnchoredPosition(_texW, _texH).y;
+                        }
                     }
                     float sx0 = _imageMin.X + (rx / _texW) * _imageSize.X;
                     float sy0 = _imageMin.Y + (ry / _texH) * _imageSize.Y;
-                    float sx1 = _imageMin.X + ((rx + elem.Width) / _texW) * _imageSize.X;
-                    float sy1 = _imageMin.Y + ((ry + elem.Height) / _texH) * _imageSize.Y;
+                    float sx1 = _imageMin.X + ((rx + rw) / _texW) * _imageSize.X;
+                    float sy1 = _imageMin.Y + ((ry + rh) / _texH) * _imageSize.Y;
 
                     float csx0 = Math.Clamp(sx0, _imageMin.X, _imageMax.X);
                     float csy0 = Math.Clamp(sy0, _imageMin.Y, _imageMax.Y);
@@ -2345,7 +2717,7 @@ ImGui.SameLine();
 
                     if (isPrimary)
                     {
-                        float bracketLen = Math.Min(16f, (csx1 - csx0) * 0.25f);
+                        float bracketLen = Math.Min(24f, (csx1 - csx0) * 0.30f);
                         drawList.AddLine(new Vector2(csx0, csy0), new Vector2(csx0 + bracketLen, csy0), bracketColor, 2f);
                         drawList.AddLine(new Vector2(csx0, csy0), new Vector2(csx0, csy0 + bracketLen), bracketColor, 2f);
                         drawList.AddLine(new Vector2(csx1, csy0), new Vector2(csx1 - bracketLen, csy0), bracketColor, 2f);
@@ -2355,7 +2727,7 @@ ImGui.SameLine();
                         drawList.AddLine(new Vector2(csx1, csy1), new Vector2(csx1 - bracketLen, csy1), bracketColor, 2f);
                         drawList.AddLine(new Vector2(csx1, csy1), new Vector2(csx1, csy1 - bracketLen), bracketColor, 2f);
 
-                        float handleSz = 12f, handleHalf = handleSz * 0.5f;
+                        float handleSz = 18f, handleHalf = handleSz * 0.5f;
                         if (!isFitToWindow && fullyVis)
                         {
                             Vector2[] corners = [
@@ -2368,7 +2740,7 @@ ImGui.SameLine();
                             {
                                 drawList.AddCircleFilled(
                                     new Vector2(c.X, c.Y),
-                                    handleSz * 0.7f, glowColor, 12);
+                                    handleSz * 1.0f, glowColor, 16);
                             }
 
                             // Draw handle squares
@@ -2421,6 +2793,56 @@ ImGui.SameLine();
                         if (other != null && other != selUiElem && other.IsVisible && other.Type != UIElementType.Scene)
                             DrawElemWireframe(other, false);
                     }
+
+                    //  Combined bounding box around ALL selected elements
+                    if (allSelected.Count > 1)
+                    {
+                        float bboxMinX = float.MaxValue, bboxMinY = float.MaxValue;
+                        float bboxMaxX = float.MinValue, bboxMaxY = float.MinValue;
+                        foreach (var e in allSelected)
+                        {
+                            if (e == null || !e.IsVisible) continue;
+                            float ex = e.X, ey = e.Y, ew = e.Width, eh = e.Height;
+                            // Walk parent chain for absolute position
+                            var pp = e.Parent;
+                            while (pp != null)
+                            {
+                                if (pp.Type == UIElementType.Container) { ex += pp.X; ey += pp.Y - pp.ScrollY; }
+                                pp = pp.Parent;
+                            }
+                            if (e.AutoFillWindow) { ex = 0f; ey = 0f; ew = _texW; eh = _texH; }
+                            else if (e.Anchor != UIAnchor.None)
+                            {
+                                var (ax, ay) = e.GetAnchoredPosition(_texW, _texH);
+                                ex = ax; ey = ay;
+                            }
+                            if (ex < bboxMinX) bboxMinX = ex;
+                            if (ey < bboxMinY) bboxMinY = ey;
+                            if (ex + ew > bboxMaxX) bboxMaxX = ex + ew;
+                            if (ey + eh > bboxMaxY) bboxMaxY = ey + eh;
+                        }
+                        if (bboxMinX < float.MaxValue)
+                        {
+                            float bsx0 = _imageMin.X + (bboxMinX / _texW) * _imageSize.X;
+                            float bsy0 = _imageMin.Y + (bboxMinY / _texH) * _imageSize.Y;
+                            float bsx1 = _imageMin.X + (bboxMaxX / _texW) * _imageSize.X;
+                            float bsy1 = _imageMin.Y + (bboxMaxY / _texH) * _imageSize.Y;
+                            uint groupColor = ImGui.ColorConvertFloat4ToU32(new Vector4(0.9f, 0.7f, 0.1f, pulse * 0.7f));
+                            drawList.AddRect(
+                                new Vector2(bsx0, bsy0), new Vector2(bsx1, bsy1),
+                                groupColor, 0f, ImDrawFlags.None, 2f);
+                            // Draw bracket corners on the combined box
+                            float bLen = Math.Min(14f, Math.Min(bsx1 - bsx0, bsy1 - bsy0) * 0.15f);
+                            drawList.AddLine(new Vector2(bsx0, bsy0), new Vector2(bsx0 + bLen, bsy0), groupColor, 2.5f);
+                            drawList.AddLine(new Vector2(bsx0, bsy0), new Vector2(bsx0, bsy0 + bLen), groupColor, 2.5f);
+                            drawList.AddLine(new Vector2(bsx1, bsy0), new Vector2(bsx1 - bLen, bsy0), groupColor, 2.5f);
+                            drawList.AddLine(new Vector2(bsx1, bsy0), new Vector2(bsx1, bsy0 + bLen), groupColor, 2.5f);
+                            drawList.AddLine(new Vector2(bsx0, bsy1), new Vector2(bsx0 + bLen, bsy1), groupColor, 2.5f);
+                            drawList.AddLine(new Vector2(bsx0, bsy1), new Vector2(bsx0, bsy1 - bLen), groupColor, 2.5f);
+                            drawList.AddLine(new Vector2(bsx1, bsy1), new Vector2(bsx1 - bLen, bsy1), groupColor, 2.5f);
+                            drawList.AddLine(new Vector2(bsx1, bsy1), new Vector2(bsx1, bsy1 - bLen), groupColor, 2.5f);
+                        }
+                    }
                 }
 
                 //  Scene-type elements: NO resize/move handlers 
@@ -2437,17 +2859,39 @@ ImGui.SameLine();
                 }
                 else
                 {
-                //  Interactive drag handling (apply anchor without modifying elem.X/Y)
+                //  Interactive drag handling (apply anchor/autoFill + parent chain offsets)
                 float dragRX = selUiElem.X, dragRY = selUiElem.Y;
-                if (selUiElem.Anchor != UIAnchor.None && !selUiElem.AutoFillWindow)
+                float dragRW = selUiElem.Width, dragRH = selUiElem.Height;
+                if (selUiElem.AutoFillWindow)
                 {
-                    var (dax, day) = selUiElem.GetAnchoredPosition(_texW, _texH);
-                    dragRX = dax; dragRY = day;
+                    dragRX = 0f; dragRY = 0f;
+                    dragRW = _texW; dragRH = _texH;
+                }
+                else if (selUiElem.AutoCenterX || selUiElem.AutoCenterY)
+                {
+                    // AutoCenter: center relative to viewport, skip parent chain walk
+                    if (selUiElem.AutoCenterX) dragRX = Math.Max(0f, (_texW - dragRW) * 0.5f);
+                    if (selUiElem.AutoCenterY) dragRY = Math.Max(0f, (_texH - dragRH) * 0.5f);
+                }
+                else
+                {
+                    // Walk parent chain for non-auto-centered elements
+                    var dragPP = selUiElem.Parent;
+                    while (dragPP != null)
+                    {
+                        if (dragPP.Type == UIElementType.Container) { dragRX += dragPP.X; dragRY += dragPP.Y - dragPP.ScrollY; }
+                        dragPP = dragPP.Parent;
+                    }
+                    if (selUiElem.Anchor != UIAnchor.None)
+                    {
+                        var (dax, day) = selUiElem.GetAnchoredPosition(_texW, _texH);
+                        dragRX = dax; dragRY = day;
+                    }
                 }
                 float psx0 = _imageMin.X + (dragRX / _texW) * _imageSize.X;
                 float psy0 = _imageMin.Y + (dragRY / _texH) * _imageSize.Y;
-                float psx1 = _imageMin.X + ((dragRX + selUiElem.Width) / _texW) * _imageSize.X;
-                float psy1 = _imageMin.Y + ((dragRY + selUiElem.Height) / _texH) * _imageSize.Y;
+                float psx1 = _imageMin.X + ((dragRX + dragRW) / _texW) * _imageSize.X;
+                float psy1 = _imageMin.Y + ((dragRY + dragRH) / _texH) * _imageSize.Y;
                 float pcsx0 = Math.Clamp(psx0, _imageMin.X, _imageMax.X);
                 float pcsy0 = Math.Clamp(psy0, _imageMin.Y, _imageMax.Y);
                 float pcsx1 = Math.Clamp(psx1, _imageMin.X, _imageMax.X);
@@ -2457,12 +2901,27 @@ ImGui.SameLine();
                 //  Corner detection radius: proportional to element screen size 
                 float elemScreenW = psx1 - psx0;
                 float elemScreenH = psy1 - psy0;
-                float cornerRadius = Math.Max(6f, Math.Min(10f, Math.Min(elemScreenW, elemScreenH) * 0.25f));
+                float cornerRadius = Math.Max(10f, Math.Min(18f, Math.Min(elemScreenW, elemScreenH) * 0.30f));
 
                 // Normal drag end
                 if (cachedLeftReleased && _dragMode != DragMode.None)
                 {
-                    if (selUiElem != null && _bridge.RecordTransformUndo != null)
+                    if (_dragMode == DragMode.GroupMove)
+                    {
+                        // Record undo for each moved element in the group
+                        foreach (var kvp in _groupDragStartPositions)
+                        {
+                            var ge = kvp.Key;
+                            if (_bridge.RecordTransformUndo != null)
+                            {
+                                _bridge.RecordTransformUndo(
+                                    ge, kvp.Value.x, kvp.Value.y, ge.Width, ge.Height,
+                                    ge.X, ge.Y, ge.Width, ge.Height);
+                            }
+                        }
+                        _groupDragStartPositions.Clear();
+                    }
+                    else if (selUiElem != null && _bridge.RecordTransformUndo != null)
                     {
                         _bridge.RecordTransformUndo(
                             selUiElem,
@@ -2476,9 +2935,9 @@ ImGui.SameLine();
                 float mhx = (psx0 + psx1) * 0.5f;
                 float mhy = psy0;
                 bool overMoveHandle = primaryFullyVisible &&
-                    Math.Abs(viewportMouseScreen.X - mhx) <= cornerRadius &&
-                    viewportMouseScreen.Y >= mhy - cornerRadius * 2f &&
-                    viewportMouseScreen.Y <= mhy + cornerRadius * 0.5f;
+                    Math.Abs(viewportMouseScreen.X - mhx) <= cornerRadius * 1.5f &&
+                    viewportMouseScreen.Y >= mhy - cornerRadius * 2.5f &&
+                    viewportMouseScreen.Y <= mhy + cornerRadius * 0.8f;
 
                 // Corner detection (only when fully visible)
                 bool overTL = primaryFullyVisible && Math.Abs(viewportMouseScreen.X - psx0) <= cornerRadius && Math.Abs(viewportMouseScreen.Y - psy0) <= cornerRadius;
@@ -2499,9 +2958,65 @@ ImGui.SameLine();
                                 viewportMouseScreen.Y >= pcsy0 && viewportMouseScreen.Y <= pcsy1 &&
                                 !overTL && !overTR && !overBL && !overBR && !overMoveHandle && !overScrollbar;
 
+                //  Group hover: detect hover over yellow combined bounding box (multi-select)
+                bool overGroupBox = false;
+                if (!isFitToWindowElem && allSelected != null && allSelected.Count > 1 && _dragMode == DragMode.None)
+                {
+                    float gMinX = float.MaxValue, gMinY = float.MaxValue;
+                    float gMaxX = float.MinValue, gMaxY = float.MinValue;
+                    foreach (var ge in allSelected)
+                    {
+                        if (ge == null || !ge.IsVisible) continue;
+                        float gx = ge.X, gy = ge.Y;
+                        if (ge.AutoFillWindow) { gx = 0f; gy = 0f; }
+                        else if (ge.AutoCenterX || ge.AutoCenterY)
+                        {
+                            if (ge.AutoCenterX) gx = Math.Max(0f, (_texW - ge.Width) * 0.5f);
+                            if (ge.AutoCenterY) gy = Math.Max(0f, (_texH - ge.Height) * 0.5f);
+                        }
+                        else
+                        {
+                            var gpp = ge.Parent;
+                            while (gpp != null)
+                            {
+                                if (gpp.Type == UIElementType.Container) { gx += gpp.X; gy += gpp.Y - gpp.ScrollY; }
+                                gpp = gpp.Parent;
+                            }
+                            if (ge.Anchor != UIAnchor.None)
+                            {
+                                gx = ge.GetAnchoredPosition(_texW, _texH).x;
+                                gy = ge.GetAnchoredPosition(_texW, _texH).y;
+                            }
+                        }
+                        if (gx < gMinX) gMinX = gx;
+                        if (gy < gMinY) gMinY = gy;
+                        if (gx + ge.Width > gMaxX) gMaxX = gx + ge.Width;
+                        if (gy + ge.Height > gMaxY) gMaxY = gy + ge.Height;
+                    }
+                    if (gMinX < float.MaxValue)
+                    {
+                        float gbsx0 = _imageMin.X + (gMinX / _texW) * _imageSize.X;
+                        float gbsy0 = _imageMin.Y + (gMinY / _texH) * _imageSize.Y;
+                        float gbsx1 = _imageMin.X + (gMaxX / _texW) * _imageSize.X;
+                        float gbsy1 = _imageMin.Y + (gMaxY / _texH) * _imageSize.Y;
+                        overGroupBox = viewportMouseScreen.X >= gbsx0 && viewportMouseScreen.X <= gbsx1 &&
+                                       viewportMouseScreen.Y >= gbsy0 && viewportMouseScreen.Y <= gbsy1;
+                    }
+                }
+
                 if (!isFitToWindowElem)
                 {
-                    if (overMoveHandle && _dragMode == DragMode.None)
+                    if (overGroupBox)
+                    {
+                        ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
+                        if (_dragMode == DragMode.None)
+                        {
+                            ImGui.BeginTooltip();
+                            ImGui.Text($"Drag to move {allSelected.Count} elements");
+                            ImGui.EndTooltip();
+                        }
+                    }
+                    else if (overMoveHandle && _dragMode == DragMode.None)
                     {
                         ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
                         ImGui.BeginTooltip();
@@ -2567,8 +3082,62 @@ ImGui.SameLine();
                             _dragStartX = selUiElem.X; _dragStartY = selUiElem.Y;
                             _dragStartW = selUiElem.Width; _dragStartH = selUiElem.Height;
                             _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
-
-
+                        }
+                        else if (!dragStarted && allSelected != null && allSelected.Count > 1)
+                        {
+                            //  Group drag: click inside the yellow combined bounding box
+                            float gMinX = float.MaxValue, gMinY = float.MaxValue;
+                            float gMaxX = float.MinValue, gMaxY = float.MinValue;
+                            foreach (var ge in allSelected)
+                            {
+                                if (ge == null || !ge.IsVisible) continue;
+                                float gx = ge.X, gy = ge.Y;
+                                if (ge.AutoFillWindow) { gx = 0f; gy = 0f; }
+                                else if (ge.AutoCenterX || ge.AutoCenterY)
+                                {
+                                    if (ge.AutoCenterX) gx = Math.Max(0f, (_texW - ge.Width) * 0.5f);
+                                    if (ge.AutoCenterY) gy = Math.Max(0f, (_texH - ge.Height) * 0.5f);
+                                }
+                                else
+                                {
+                                    var gpp = ge.Parent;
+                                    while (gpp != null)
+                                    {
+                                        if (gpp.Type == UIElementType.Container) { gx += gpp.X; gy += gpp.Y - gpp.ScrollY; }
+                                        gpp = gpp.Parent;
+                                    }
+                                    if (ge.Anchor != UIAnchor.None)
+                                    {
+                                        gx = ge.GetAnchoredPosition(_texW, _texH).x;
+                                        gy = ge.GetAnchoredPosition(_texW, _texH).y;                                    }
+                                }
+                                if (gx < gMinX) gMinX = gx;
+                                if (gy < gMinY) gMinY = gy;
+                                if (gx + ge.Width > gMaxX) gMaxX = gx + ge.Width;
+                                if (gy + ge.Height > gMaxY) gMaxY = gy + ge.Height;
+                            }
+                            if (gMinX < float.MaxValue)
+                            {
+                                float gbsx0 = _imageMin.X + (gMinX / _texW) * _imageSize.X;
+                                float gbsy0 = _imageMin.Y + (gMinY / _texH) * _imageSize.Y;
+                                float gbsx1 = _imageMin.X + (gMaxX / _texW) * _imageSize.X;
+                                float gbsy1 = _imageMin.Y + (gMaxY / _texH) * _imageSize.Y;
+                                bool groupClick = viewportMouseScreen.X >= gbsx0 && viewportMouseScreen.X <= gbsx1 &&
+                                                  viewportMouseScreen.Y >= gbsy0 && viewportMouseScreen.Y <= gbsy1;
+                                if (groupClick)
+                                {
+                                    _dragMode = DragMode.GroupMove;
+                                    _dragStartMouseScene = ScreenToScene(viewportMouseScreen);
+                                    // Store start positions for all selected elements
+                                    _groupDragStartPositions.Clear();
+                                    foreach (var ge in allSelected)
+                                    {
+                                        if (ge != null && ge.IsVisible)
+                                            _groupDragStartPositions[ge] = (ge.X, ge.Y);
+                                    }
+                                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeAll);
+                                }
+                            }
                         }
                     }
                 }
@@ -2581,6 +3150,20 @@ ImGui.SameLine();
                     float dy = currentMouseScene.Y - _dragStartMouseScene.Y;
                     const float minSize = 10f;
 
+                    // GroupMove: move ALL selected elements together
+                    if (_dragMode == DragMode.GroupMove)
+                    {
+                        float snapDx = SnapToGrid(dx);
+                        float snapDy = SnapToGrid(dy);
+                        foreach (var kvp in _groupDragStartPositions)
+                        {
+                            var ge = kvp.Key;
+                            ge.X = kvp.Value.x + snapDx;
+                            ge.Y = kvp.Value.y + snapDy;
+                        }
+                    }
+                    else
+                    {
                     // Invert delta for bottom/right anchors: Y increases upward from bottom edge,
                     // X increases leftward from right edge, so drag direction must be flipped.
                     bool invertY = selUiElem.Anchor is UIAnchor.BottomLeft or UIAnchor.BottomCenter or UIAnchor.BottomRight;
@@ -2630,6 +3213,7 @@ ImGui.SameLine();
                     selUiElem.Width = newW; selUiElem.Height = newH;
 
                     // Container group: children move with parent via rendering (no need to modify child coords)
+                    } // end else (non-GroupMove)
                 }
 
                 //  Post-apply safety: reset if mouse is neither down nor being released 

@@ -96,7 +96,9 @@ public class SceneElementData
     public float SliderThumbSize { get; set; } = 14f;
     public float SliderTrackHeight { get; set; } = 6f;
     /// <summary>Position of the slider value label (0=None, 1=Left, 2=Right, 3=Top, 4=Bottom).</summary>
-    public int SliderLabelPosition { get; set; } = 2;
+    public int SliderLabelPosition { get; set; } = 1;
+    public float SliderLabelSpacing { get; set; } = 8f;
+    public float LabelSpacing { get; set; } = 8f;
 
     // ── Checkbox visual style ──
     public float[] CheckmarkColor { get; set; } = [0.9f, 0.9f, 1.0f];
@@ -108,6 +110,12 @@ public class SceneElementData
 
     // ── TextBox visual style ──
     public float[] CursorColor { get; set; } = [0.5f, 0.8f, 1.0f];
+
+    // ── RadioButton visual style ──
+    public float[] RadioSelectedColor { get; set; } = [0.3f, 0.7f, 1.0f];
+    public float[] RadioSelectedBgColor { get; set; } = [0.2f, 0.4f, 0.65f];
+    public float[] RadioUnselectedBgColor { get; set; } = [0.15f, 0.15f, 0.22f];
+    public string RadioGroup { get; set; } = "default";
 
     // Recursive children
     public List<SceneElementData> Children { get; set; } = [];

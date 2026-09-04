@@ -165,17 +165,39 @@ public class IDE : IDisposable
     /// <summary>Auto-load game.ing when a project is opened or closed.</summary>
     private void OnProjectChanged()
     {
+        Console.WriteLine($"[IDE] OnProjectChanged: IsProjectLoaded={Engine.Project.ProjectManager.IsProjectLoaded}, ProjectRoot='{Engine.Project.ProjectManager.ProjectRoot}'");
         if (Engine.Project.ProjectManager.IsProjectLoaded)
         {
             string gameIng = Engine.Project.ProjectManager.GameIngPath;
+            Console.WriteLine($"[IDE] Looking for game.ing at: {gameIng}, exists={File.Exists(gameIng)}");
             if (File.Exists(gameIng))
             {
                 Console.WriteLine($"[IDE] Auto-loading {gameIng}...");
-                _sceneManagerPanel.LoadFromFilePath(gameIng);
+                _sceneManagerPanel?.LoadFromFilePath(gameIng);
             }
             else
             {
-                Console.WriteLine($"[IDE] No game.ing found in project, starting fresh.");
+                // Fallback: scan for any .ing files in the project
+                string scenesDir = Engine.Project.ProjectManager.ScenesDir;
+                string projectRoot = Engine.Project.ProjectManager.ProjectRoot ?? "";
+                Console.WriteLine($"[IDE] No game.ing. ScenesDir='{scenesDir}' exists={Directory.Exists(scenesDir)}");
+                string[] searchDirs = [projectRoot, scenesDir];
+                string? foundIng = null;
+                foreach (var dir in searchDirs)
+                {
+                    if (!Directory.Exists(dir)) continue;
+                    var files = Directory.GetFiles(dir, "*.ing");
+                    if (files.Length > 0) { foundIng = files[0]; break; }
+                }
+                if (foundIng != null)
+                {
+                    Console.WriteLine($"[IDE] Found fallback .ing file: {foundIng}");
+                    _sceneManagerPanel?.LoadFromFilePath(foundIng);
+                }
+                else
+                {
+                    Console.WriteLine($"[IDE] No .ing files found in project, starting fresh.");
+                }
             }
         }
         else
@@ -617,6 +639,27 @@ public class IDE : IDisposable
                 if (ImGui.MenuItem("Paste", "Ctrl+V"))
                     _hierarchy.PasteClipboard();
 
+                // Paste to specific scene
+                ImGui.BeginDisabled(!_hierarchy.HasClipboard);
+                if (ImGui.BeginMenu("Paste to Scene..."))
+                {
+                    foreach (var sceneName in Bridge.AvailableSceneNames)
+                    {
+                        if (ImGui.MenuItem(sceneName))
+                        {
+                            // Switch to target scene, then paste
+                            string prevScene = Bridge.SelectedEditorScene ?? "";
+                            if (sceneName != prevScene)
+                            {
+                                _sceneManagerPanel.SelectEditorScenePublic(sceneName);
+                            }
+                            _hierarchy.PasteClipboard();
+                        }
+                    }
+                    ImGui.EndMenu();
+                }
+                ImGui.EndDisabled();
+
                 if (ImGui.MenuItem("Duplicate", "Ctrl+D"))
                     _hierarchy.Duplicate();
                 ImGui.EndDisabled();
@@ -819,11 +862,18 @@ public class IDE : IDisposable
                 string dir = System.Text.Encoding.UTF8.GetString(_newProjectPathBuf).TrimEnd('\0');
                 if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(dir))
                 {
-                    string rootPath = Path.Combine(dir, name);
-                    Engine.Project.ProjectManager.CreateProject(rootPath, name);
-                    Config.RecentProjectsManager.AddRecentProject(rootPath);
-                    Console.WriteLine($"[IDE] Created project '{name}' ({name}.projing) at {rootPath}");
-                    ImGui.CloseCurrentPopup();
+                    try
+                    {
+                        string rootPath = Path.Combine(dir, name);
+                        Engine.Project.ProjectManager.CreateProject(rootPath, name);
+                        Config.RecentProjectsManager.AddRecentProject(rootPath);
+                        Console.WriteLine($"[IDE] Created project '{name}' ({name}.projing) at {rootPath}");
+                        ImGui.CloseCurrentPopup();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[IDE] Failed to create project: {ex.Message}");
+                    }
                 }
             }
             ImGui.SameLine();
@@ -1400,7 +1450,8 @@ public class IDE : IDisposable
                 elem.Type == UIElementType.Dropdown ||
                 elem.Type == UIElementType.SliderNumber ||
                 elem.Type == UIElementType.SliderText ||
-                elem.Type == UIElementType.TextBox)
+                elem.Type == UIElementType.TextBox ||
+                elem.Type == UIElementType.RadioButton)
             {
                 result.Add(elem);
             }
