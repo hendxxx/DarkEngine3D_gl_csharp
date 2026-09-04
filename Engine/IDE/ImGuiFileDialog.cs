@@ -18,6 +18,7 @@ public class ImGuiFileDialog
 
     private string _currentDir;
     private string _filter = "*.ing";
+    private string[] _customFilters = [];
     private string _fileNameBuffer = "";
     private string[] _files = [];
     private string[] _dirs = [];
@@ -48,6 +49,7 @@ public class ImGuiFileDialog
         _mode = DialogMode.Open;
         Title = title;
         _filter = filter;
+        _customFilters = filter.Contains(';') ? filter.Split(';', StringSplitOptions.RemoveEmptyEntries) : [filter];
         _fileNameBuffer = "";
         _selectedIdx = -1;
         SelectedPath = null;
@@ -100,10 +102,28 @@ public class ImGuiFileDialog
                 .OrderBy(n => n)
                 .ToArray();
 
-            _files = di.GetFiles(_filter)
-                .Select(f => f.Name)
-                .OrderBy(n => n)
-                .ToArray();
+            // Support multiple filters separated by semicolons
+            if (_customFilters.Length > 1)
+            {
+                var fileSet = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var f in _customFilters)
+                {
+                    try
+                    {
+                        foreach (var fi in di.GetFiles(f))
+                            fileSet.Add(fi.Name);
+                    }
+                    catch { /* skip unsupported filter patterns */ }
+                }
+                _files = fileSet.ToArray();
+            }
+            else
+            {
+                _files = di.GetFiles(_filter)
+                    .Select(f => f.Name)
+                    .OrderBy(n => n)
+                    .ToArray();
+            }
         }
         catch
         {
@@ -153,13 +173,17 @@ public class ImGuiFileDialog
                 ImGui.SetNextItemWidth(120);
                 if (ImGui.BeginCombo("##filter", _filter))
                 {
-                    string[] filters = ["*.ing", "*.*"];
-                    foreach (var f in filters)
+                    // Build filter list: custom filters + common defaults
+                    var filterList = new List<string>(_customFilters);
+                    if (!filterList.Contains("*.*")) filterList.Add("*.*");
+                    if (!filterList.Contains("*.ing")) filterList.Add("*.ing");
+                    foreach (var f in filterList)
                     {
                         bool isF = _filter == f;
                         if (ImGui.Selectable(f, isF))
                         {
                             _filter = f;
+                            _customFilters = [f];
                             Refresh();
                         }
                     }

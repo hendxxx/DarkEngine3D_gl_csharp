@@ -45,6 +45,32 @@ public unsafe class AssetBrowserPanel
 
     public void ShowInMenu() => ImGui.MenuItem("Asset Browser", null, ref _visible);
 
+    /// <summary>
+    /// Update root path when project is loaded/closed.
+    /// Navigates to the project's Assets folder if available.
+    /// </summary>
+    public void SetProjectRoot(string? projectRoot)
+    {
+        if (!string.IsNullOrEmpty(projectRoot) && Directory.Exists(projectRoot))
+        {
+            _rootPath = projectRoot;
+            // Navigate to Assets folder if it exists, otherwise project root
+            string assetsDir = Path.Combine(projectRoot, "Assets");
+            _currentPath = Directory.Exists(assetsDir) ? assetsDir : projectRoot;
+        }
+        else
+        {
+            // No project loaded — fallback to Artifacts or exe directory
+            _rootPath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Artifacts"));
+            if (!Directory.Exists(_rootPath))
+                _rootPath = AppDomain.CurrentDomain.BaseDirectory;
+            _currentPath = _rootPath;
+        }
+        ClearThumbnailCache();
+        Refresh();
+        Console.WriteLine($"[AssetBrowser] Root: {_rootPath}, Current: {_currentPath}");
+    }
+
     /// <summary>Clear thumbnail textures when navigating to a new directory.</summary>
     private void ClearThumbnailCache()
     {

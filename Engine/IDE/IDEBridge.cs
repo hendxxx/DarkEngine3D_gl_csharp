@@ -141,6 +141,10 @@ public class IDEBridge
     // ── Scene Manager (for SceneManagerPanel to switch scenes) ──
     public SceneManager? SceneManager { get; set; }
 
+    // ── Active Tilemap (for 2D map editor) ──
+    public Tilemap2D? ActiveTilemap { get; set; }
+    public List<DarkEngine3D_gl_csharp.Engine.IDE.Panels.ParallaxLayer>? ParallaxLayers { get; set; }
+
     // ── Editor Object Manager ──
     private EditorObjectManager? _editorObjectManager;
     /// <summary>Manages editor-placed 3D primitives (Plane, Box, Sphere, glb references).

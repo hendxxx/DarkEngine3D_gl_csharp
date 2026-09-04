@@ -33,6 +33,11 @@ public class IDE : IDisposable
     private readonly ShadowPanel _shadowPanel = null!;
     // PostFX removed
     private readonly PbrPanel _pbrPanel = null!;
+    // ── 2D Sidescroller Panels ──
+    private readonly SpriteEditorPanel _spriteEditor = null!;
+    private readonly MapEditorPanel _mapEditor = null!;
+    private readonly CollisionEditorPanel _collisionEditor = null!;
+    private readonly IDESettingsPanel _ideSettings = null!;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
     private readonly ImGuiFileDialog _glbDialog = new();
 
@@ -199,6 +204,10 @@ public class IDE : IDisposable
                     Console.WriteLine($"[IDE] No .ing files found in project, starting fresh.");
                 }
             }
+            // Update Asset Browser to project root
+            _assetBrowser?.SetProjectRoot(Engine.Project.ProjectManager.ProjectRoot);
+            // Auto-load sprite sheets
+            _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
         }
         else
         {
@@ -212,6 +221,10 @@ public class IDE : IDisposable
             Bridge.SelectedUIElement = null;
             Bridge.SelectedUIElements.Clear();
             Bridge.SelectedEditorObjects.Clear();
+            // Reset Asset Browser to default
+            _assetBrowser?.SetProjectRoot(null);
+            // Clear sprite sheets
+            _spriteEditor?.OnProjectChanged(null);
         }
     }
 
@@ -335,6 +348,10 @@ public class IDE : IDisposable
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
             _pbrPanel = new PbrPanel(Bridge);
+            _spriteEditor = new SpriteEditorPanel(Bridge);
+            _mapEditor = new MapEditorPanel(Bridge);
+            _collisionEditor = new CollisionEditorPanel(Bridge);
+            _ideSettings = new IDESettingsPanel(Bridge);
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -620,6 +637,18 @@ public class IDE : IDisposable
             }
 
             // ════════════════════════════════════════════════════
+            //  2D Menu
+            // ════════════════════════════════════════════════════
+            if (ImGui.BeginMenu("2D"))
+            {
+                if (ImGui.MenuItem("New Tilemap"))
+                    _mapEditor.CreateNewMap();
+                if (ImGui.MenuItem("Add Parallax Layer"))
+                    _mapEditor.AddParallaxLayer();
+                ImGui.EndMenu();
+            }
+
+            // ════════════════════════════════════════════════════
             //  Edit Menu
             // ════════════════════════════════════════════════════
             if (ImGui.BeginMenu("Edit"))
@@ -738,6 +767,13 @@ public class IDE : IDisposable
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
                 _transitionPanel.ShowInMenu();
+                ImGui.Separator();
+                // ── 2D Sidescroller Panels ──
+                _spriteEditor.ShowInMenu();
+                _mapEditor.ShowInMenu();
+                _collisionEditor.ShowInMenu();
+                ImGui.Separator();
+                _ideSettings.ShowInMenu();
 
                 // ── IDE Font selector ──
                 ImGui.Separator();
@@ -817,6 +853,11 @@ public class IDE : IDisposable
         _console.Render();
         _sceneManagerPanel.Render();
         _transitionPanel.Render();
+        // ── 2D Sidescroller Panels ──
+        _spriteEditor.Render();
+        _mapEditor.Render();
+        _collisionEditor.Render();
+        _ideSettings.Render();
 
         // ── Project popups (rendered after panels, so window context exists) ──
         RenderProjectPopups();
