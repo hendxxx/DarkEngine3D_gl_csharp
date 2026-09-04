@@ -165,6 +165,7 @@ public static class ProjectManager
     public static void CloseProject()
     {
         ProjectRoot = null;
+        ProjectName = null;
         Console.WriteLine("[ProjectManager] Project closed");
         OnProjectChanged?.Invoke();
     }

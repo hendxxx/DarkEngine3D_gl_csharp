@@ -126,7 +126,17 @@ public class InspectorPanel
             // Editable name
             string name = elem.Name;
             if (ImGui.InputText("Name", ref name, 256))
-                elem.Name = name;
+            {
+                string oldName = elem.Name;
+                string newName = name;
+                elem.Name = newName;
+
+                // If this is a Scene root element, sync rename to AvailableScenes + EditorScenes
+                if (isSceneType && !string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+                {
+                    SyncSceneRename(oldName, newName);
+                }
+            }
 
             // Type selector
             int typeIdx = (int)elem.Type;
@@ -1420,6 +1430,37 @@ public class InspectorPanel
         foreach (var child in elem.Children)
             count += CountElementsRecursive(child);
         return count;
+    }
+
+    /// <summary>Sync a scene root element rename to AvailableScenes and EditorScenes dictionaries.
+    /// Keeps scene data in sync when the user renames a Scene root in the Inspector.</summary>
+    private void SyncSceneRename(string oldName, string newName)
+    {
+        // Update AvailableScenes entry name
+        for (int i = 0; i < _bridge.AvailableScenesInternal.Count; i++)
+        {
+            if (string.Equals(_bridge.AvailableScenesInternal[i].Name, oldName, StringComparison.OrdinalIgnoreCase))
+            {
+                var entry = _bridge.AvailableScenesInternal[i];
+                _bridge.AvailableScenesInternal[i] = entry with { Name = newName };
+                break;
+            }
+        }
+
+        // Update EditorScenes dictionary key
+        if (_bridge.EditorScenes.TryGetValue(oldName, out var editorScene))
+        {
+            _bridge.EditorScenes.Remove(oldName);
+            _bridge.EditorScenes[newName] = editorScene with { Name = newName };
+
+            // If this was the selected scene, update selection
+            if (_bridge.SelectedEditorScene == oldName)
+            {
+                _bridge.SelectedEditorScene = newName;
+            }
+        }
+
+        Console.WriteLine($"[Inspector] Synced scene rename: '{oldName}' → '{newName}'");
     }
 
     private static int CountVisibleRecursive(UIElement elem)

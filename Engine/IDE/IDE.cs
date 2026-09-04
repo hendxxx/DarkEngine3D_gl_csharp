@@ -202,7 +202,16 @@ public class IDE : IDisposable
         }
         else
         {
-            Console.WriteLine("[IDE] Project closed, clearing scenes.");
+            // Project closed — reset all editor state (same as New Project)
+            Console.WriteLine("[IDE] Project closed, clearing all editor state.");
+            Bridge.EditorScenes.Clear();
+            Bridge.AvailableScenesInternal.Clear();
+            Bridge.SceneRoot = null;
+            Bridge.SceneRootElements = null;
+            Bridge.SelectedEditorScene = null;
+            Bridge.SelectedUIElement = null;
+            Bridge.SelectedUIElements.Clear();
+            Bridge.SelectedEditorObjects.Clear();
         }
     }
 
@@ -1015,9 +1024,11 @@ public class IDE : IDisposable
         {
             // Find Containers with TriggeredByKeyboardButton == "Escape" and toggle them.
             // Also checks root itself (single Container element = root).
+            // ESC only works for GameScene type — MainMenu/Loading scenes skip ESC.
             if (Bridge.EditorScenes.Count > 0 &&
                 Bridge.SelectedEditorScene != null &&
-                Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var escScene))
+                Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var escScene)
+                && escScene.Type == IDEBridge.SceneType.GameScene)
             {
                 UIElement? fallbackMenu = null;
                 bool foundTriggered = false;
