@@ -9,6 +9,7 @@ using ImGuiNET;
 using StbImageSharp;
 using System.Numerics;
 using System.IO;
+using System.Diagnostics;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -162,6 +163,92 @@ public unsafe class ViewportPanel
     }
 
 
+    // ── Scene Detail Timing Profiler ──
+    private bool _showTimingPanel = false;
+    public bool ShowTimingPanel { get => _showTimingPanel; set => _showTimingPanel = value; }
+    private readonly Dictionary<string, (double totalMs, int count, double minMs, double maxMs)> _elementTimings = [];
+    private readonly Stopwatch _elementTimer = new();
+    private double _lastFrameTotalMs = 0;
+    private int _timingFrameCount = 0;
+
+    private void BeginElementTiming(string elementName)
+    {
+        if (!_showTimingPanel) return;
+        _elementTimer.Restart();
+    }
+
+    private void EndElementTiming(string elementName)
+    {
+        if (!_showTimingPanel) return;
+        _elementTimer.Stop();
+        double ms = _elementTimer.Elapsed.TotalMilliseconds;
+        if (_elementTimings.TryGetValue(elementName, out var existing))
+        {
+            _elementTimings[elementName] = (
+                existing.totalMs + ms,
+                existing.count + 1,
+                Math.Min(existing.minMs, ms),
+                Math.Max(existing.maxMs, ms));
+        }
+        else
+        {
+            _elementTimings[elementName] = (ms, 1, ms, ms);
+        }
+    }
+
+    private void ResetTimingStats()
+    {
+        _elementTimings.Clear();
+        _timingFrameCount = 0;
+        _lastFrameTotalMs = 0;
+    }
+
+    private void RenderTimingPanel()
+    {
+        if (!_showTimingPanel) return;
+        ImGui.SetNextWindowSize(new Vector2(480, 400), ImGuiCond.FirstUseEver);
+        if (ImGui.Begin("Scene Detail Timing", ref _showTimingPanel))
+        {
+            ImGui.Text($"Frame: {_lastFrameTotalMs:F3} ms  |  Elements: {_elementTimings.Count}");
+            ImGui.Separator();
+
+            if (ImGui.Button("Reset Stats")) ResetTimingStats();
+            ImGui.SameLine();
+            ImGui.Text($"Samples: {_timingFrameCount}");
+            ImGui.Separator();
+
+            if (ImGui.BeginTable("##timing", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp))
+            {
+                ImGui.TableSetupColumn("Element", ImGuiTableColumnFlags.WidthFixed, 200f);
+                ImGui.TableSetupColumn("Avg (ms)", ImGuiTableColumnFlags.WidthFixed, 80f);
+                ImGui.TableSetupColumn("Min (ms)", ImGuiTableColumnFlags.WidthFixed, 80f);
+                ImGui.TableSetupColumn("Max (ms)", ImGuiTableColumnFlags.WidthFixed, 80f);
+                ImGui.TableSetupColumn("Count", ImGuiTableColumnFlags.WidthFixed, 60f);
+                ImGui.TableSetupScrollFreeze(0, 1);
+                ImGui.TableHeadersRow();
+
+                foreach (var kvp in _elementTimings.OrderByDescending(k => k.Value.totalMs / k.Value.count))
+                {
+                    var (total, count, min, max) = kvp.Value;
+                    double avg = total / count;
+                    ImGui.TableNextRow();
+                    ImGui.TableSetColumnIndex(0);
+                    ImGui.Text(kvp.Key);
+                    ImGui.TableSetColumnIndex(1);
+                    ImGui.TextColored(avg > 1.0 ? new Vector4(1, 0.3f, 0.3f, 1) : new Vector4(0.3f, 1, 0.3f, 1), $"{avg:F3}");
+                    ImGui.TableSetColumnIndex(2);
+                    ImGui.Text($"{min:F3}");
+                    ImGui.TableSetColumnIndex(3);
+                    ImGui.Text($"{max:F3}");
+                    ImGui.TableSetColumnIndex(4);
+                    ImGui.Text($"{count}");
+                }
+                ImGui.EndTable();
+            }
+        }
+        ImGui.End();
+    }
+
     //  Cached conversion data (set each frame in overlay) 
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
@@ -217,6 +304,7 @@ public unsafe class ViewportPanel
         {
             var elem = elements[ei];
             if (!elem.IsVisible) continue;
+            BeginElementTiming(elem.Type.ToString());
             float elemOpacity = Math.Clamp(elem.Opacity, 0f, 1f);
 
             // Compute render position WITHOUT modifying elem.X/Y (avoid drift bug)
@@ -1236,6 +1324,8 @@ public unsafe class ViewportPanel
             }
 
 
+            EndElementTiming(elem.Type.ToString());
+
             //  Always recurse for children (so they render regardless of click state) 
             if (elem.Children.Count > 0)
             {
@@ -2157,9 +2247,19 @@ public unsafe class ViewportPanel
         _texW = texW;
         _texH = texH;
 
+        // Frame-level timing
+        if (_showTimingPanel) _elementTimer.Restart();
+
         DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
         // Render dropdown popup AFTER all elements (outside any container clip rect)
         RenderDropdownPopup(drawList, mouseScreen, leftClicked, isPreview);
+
+        if (_showTimingPanel)
+        {
+            _elementTimer.Stop();
+            _lastFrameTotalMs = _elementTimer.Elapsed.TotalMilliseconds;
+            _timingFrameCount++;
+        }
 
         _imageMin = savedMin;
         _imageMax = savedMax;
@@ -3933,6 +4033,9 @@ ImGui.SameLine();
         DrawEditorObjectTypeLabels(hasSceneTexture);
 
         ImGui.End();
+
+        //  Render timing panel (outside viewport window) 
+        RenderTimingPanel();
     }
 
     /// <summary>Draw a small type tag ("Camera" / "Light" / "Sky") above every placed
