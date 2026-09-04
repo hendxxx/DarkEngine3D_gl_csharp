@@ -1416,12 +1416,11 @@ public unsafe class ViewportPanel
     private int _placeholderDragId = -1;
     private float _placeholderDragStartMouseY;
     private float _placeholderDragStartScrollY;
-    private readonly Dictionary<int, Vector2> _dragStartChildPos = [];
-    private readonly Dictionary<int, Vector2> _dragStartChildSize = [];
+
 
     //  Dropdown popup state
     private UIElement? _openDropdown = null;
-    private int _dropdownHoverIdx = -1;
+
     private readonly Dictionary<string, (int w, int h)> _previewTextureDims = [];
     // Tracks the last scene root to detect scene switches and clear the cache
     private UIElement? _lastSceneRoot = null;

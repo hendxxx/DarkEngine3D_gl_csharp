@@ -69,9 +69,7 @@ public class HierarchyPanel
     private static readonly Vector4 ColDelBtnHov   = new(0.75f, 0.25f, 0.25f, 1f);
     private static readonly Vector4 ColSaveBtn     = new(0.10f, 0.55f, 0.30f, 1f);
     private static readonly Vector4 ColSaveBtnHov  = new(0.15f, 0.70f, 0.40f, 1f);
-    // Reload button removed — keep colors defined for backward compat if referenced elsewhere
-    private static readonly Vector4 ColReloadBtn   = new(0.40f, 0.30f, 0.55f, 1f);
-    private static readonly Vector4 ColReloadBtnHov= new(0.55f, 0.40f, 0.75f, 1f);
+
     private static readonly Vector4 ColDim         = new(0.5f, 0.5f, 0.6f, 1f);
     private static readonly Vector4 ColText        = new(0.9f, 0.9f, 0.95f, 1f);
     private static readonly Vector4 ColGreen       = new(0.3f, 0.85f, 0.4f, 1f);

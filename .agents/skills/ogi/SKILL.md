@@ -57,6 +57,27 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Scene Type Persistence**: Simpan tipe scene (MainMenu/GameScene/Loading) ke file .ing agar saat load kembali tipe tetap benar.
 - **RenderProperties Persistence**: Simpan SceneRenderProperties (background color, wireframe, VSync, culling, depth test, blending) per-scene di `.ing` file.
 - **Save Must Update .projing**: Setiap Save All harus update `.projing` via `ProjectManager.TouchProject()`.
+- **ESC Key**: ESC hanya aktif di scene tipe `GameScene`. Di MainMenu/Loading, ESC tidak boleh trigger apapun.
+- **Close Project Reset**: Close Project harus reset SEMUA state: `EditorScenes.Clear()`, `AvailableScenesInternal.Clear()`, `SceneRoot = null`, `SelectedEditorScene = null`, `SelectedUIElement = null`, `SelectedUIElements.Clear()`, `SelectedEditorObjects.Clear()`.
+- **Scene Rename Sync**: Ketika rename Scene root element di Inspector, harus sync ke `AvailableScenesInternal` dan `EditorScenes` dictionary. Jangan hanya update `elem.Name`.
+
+## UI Container System Rules:
+- **Nested Container Selection**: Alt+Click pada child elemen memilih parent Container terdekat (walk up parent chain).
+- **Scrollable Container**: Container dengan `ContentHeight > Height` memiliki scrollbar. Children di-clip ke container bounds via `PushClipRect`.
+- **Scroll Offset Propagation**: Parent scroll offset harus dipropagasi ke nested containers via `parentScrollOffsetY` parameter di `DrawPlaceholder`.
+- **Clip Bounds Hit Test**: Elemen di luar area visible container tidak boleh bisa di-hover/click. `DrawPlaceholder` mengirim `clipBounds` ke `DrawEditorUIPreview`.
+- **Container Selection Rules**:
+  - Rule 1: Ketika multi-select aktif (kotak kuning), parent Container TIDAK bisa di-select.
+  - Rule 2: Ketika tidak ada multi-select, Container bisa di-select normal.
+  - Rule 3: Kotak kuning = group move drag. Semua elemen selected bisa digeser bersama.
+- **DrawPlaceholder Signature**: `DrawPlaceholder(drawList, placeholder, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, parentScrollOffsetY)`
+- **DrawEditorUIPreview Signature**: `DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, scrollOffsetY, clipBounds)`
+
+## Scene Management Rules:
+- **SceneEntry**: `record SceneEntry(Name, Description, HasInitializedEntry, Type, ...)` — stored in `AvailableScenesInternal`.
+- **EditorScene**: `record EditorScene(Name, Type, Root)` — stored in `EditorScenes` dictionary keyed by scene name.
+- **SceneType enum**: `MainMenu`, `GameScene`, `Loading`.
+- **AvailableScenes vs EditorScenes**: `AvailableScenes` is read-only list from `AvailableScenesInternal`. `EditorScenes` holds live UIElement roots. Both must stay in sync on rename.
 
 ## Bahasa:
 - Bisa berbahasa **Indonesia** dan **Inggris**.

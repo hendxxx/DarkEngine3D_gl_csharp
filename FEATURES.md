@@ -86,13 +86,26 @@ ProjectRoot/
 | **Inspector** | Property editor | Context-sensitive per object type (see §2.3) |
 | **AssetBrowser** | File browser | Drag-drop images/models to Inspector |
 | **Console** | Log output | Stdout/stderr capture |
-| **SceneManager** | Scene list | Add/remove/switch scenes, save/load |
+| **SceneManager** | Scene list | Add/remove/switch scenes, save/load, scene rename sync |
 | **ShadowSettings** | Shadow config | CSM bias/blend, local light shadows |
 | **PostFxPanel** | Post-processing | Bloom, tonemapping, auto-exposure, gamma |
 | **TerrainBrush** | Terrain tools | Brush size/strength/softness, paint layers, sculpt |
 | **PbrPanel** | PBR material | Per-object texture slots + tuning (see §5) |
 | **RenderTime** | Performance | FPS, frame time, GPU timing |
 | **FramebufferViewer** | Debug | View any FBO texture |
+
+### 2.2.1 UI Editor — Container & Selection Features
+
+| Feature | Description |
+|---------|-------------|
+| **Nested Container Selection** | Alt+Click on any child to select nearest parent Container |
+| **Scrollable Containers** | Container clips children to bounds, scrollbar when content exceeds height |
+| **Nested Scroll Propagation** | Parent scroll offset propagates to nested containers correctly |
+| **Clip Bounds Hit Test** | Elements outside container visible area cannot be hovered/clicked |
+| **Multi-Select Group Drag** | Ctrl+Click to multi-select, drag yellow bounding box to move all together |
+| **Container Selection Rules** | When multi-select active, parent Container cannot be selected (preserves group) |
+| **Marquee Selection** | Rubber-band selection for multiple UI elements |
+| **GroupMove with Undo** | Group drag records undo per-element for single Ctrl+Z restore |
 
 ### 2.3 Inspector — Object Types
 
@@ -283,7 +296,7 @@ Every project is a self-contained folder with a `{Name}.projing` metadata file:
 2. **Open Project** (File > Open Project): Browse for `.projing` file → auto-loads `game.ing`
 3. **Recent Projects**: File > Recent Projects submenu (persisted globally)
 4. **Save All** (Ctrl+S): Saves scenes + updates `.projing` (LastSaved + scene inventory)
-5. **Close Project**: File > Close Project (clears editor, no auto-reload)
+5. **Close Project**: File > Close Project (resets all editor state: scenes, selection, hierarchy, editor objects)
 
 ### 3.6.4 Path Resolution
 
@@ -663,6 +676,7 @@ Modes: Linear (1), Exponential (2), Exp2 + height blend (3)
 | F1 | Toggle wireframe |
 | F5 | Preview mode |
 | F8 | In-Game mode |
+| ESC | Toggle menu (GameScene only — disabled for MainMenu/Loading) |
 | H | Toggle selected object visibility |
 | O | Toggle grid |
 | J/K | Cycle through objects |
