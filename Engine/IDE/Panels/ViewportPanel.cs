@@ -195,7 +195,7 @@ public unsafe class ViewportPanel
     /// Pass isMouseDown=true when the mouse button is held (for slider dragging).
     /// focusedElement is highlighted with a glow border for keyboard navigation.
     /// keyboardActivate signals that Enter/Space was pressed for the focused element.</summary>
-    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false, UIElement? focusedElement = null, bool keyboardActivate = false, float scrollOffsetY = 0f)
+    private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false, UIElement? focusedElement = null, bool keyboardActivate = false, float scrollOffsetY = 0f, Vector4? clipBounds = null)
     {
         // Close dropdown if clicking outside of it (check full scene tree, not just current list)
         if (_openDropdown != null && leftClicked)
@@ -287,6 +287,15 @@ public unsafe class ViewportPanel
             // Check if mouse is hovering over this element
             bool isHovered = mouseScreen.X >= csx0 && mouseScreen.X <= csx1 &&
                              mouseScreen.Y >= csy0 && mouseScreen.Y <= csy1;
+
+            // Block hover/click on elements outside the parent container's visible clip area
+            if (isHovered && clipBounds.HasValue)
+            {
+                Vector4 cb = clipBounds.Value;
+                // Element must be at least partially inside the clip bounds
+                if (csx1 <= cb.X || csx0 >= cb.Z || csy1 <= cb.Y || csy0 >= cb.W)
+                    isHovered = false;
+            }
 
             // Placeholder scrollbar: deselect only on CLICK (not hover) BEFORE wireframe is drawn
             if (isScrollableContainer && isHovered
@@ -1228,7 +1237,7 @@ public unsafe class ViewportPanel
                     DrawPlaceholder(drawList, elem, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, scrollOffsetY);
                 }
                 else
-                    DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+                    DrawEditorUIPreview(drawList, elem.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, 0f, clipBounds);
             }
         }
     }
@@ -1379,7 +1388,10 @@ public unsafe class ViewportPanel
             new Vector2(sx1 - 1f - (hasScroll ? scrollBarW + 4f : 0f), sy1 - 1f), true);
 
         // Render children with accumulated scroll offset (parent + this container's scroll)
-        DrawEditorUIPreview(drawList, placeholder.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, parentScrollOffsetY - scrollY);
+        // Pass clip bounds so children outside the visible area cannot be hovered/clicked
+        Vector4 childClipBounds = new Vector4(sx0 + 1f, sy0 + 1f,
+            sx1 - 1f - (hasScroll ? scrollBarW + 4f : 0f), sy1 - 1f);
+        DrawEditorUIPreview(drawList, placeholder.Children, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, parentScrollOffsetY - scrollY, childClipBounds);
 
         drawList.PopClipRect();
     }
