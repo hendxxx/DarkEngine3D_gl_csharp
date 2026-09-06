@@ -2620,6 +2620,8 @@ ImGui.SameLine();
             // ── Tilemap grid overlay ──
             if (_bridge.ActiveTilemap != null)
             {
+                // Sync grid settings from Map Editor (real-time)
+                SyncWorldGridFromBridge();
                 var drawList = ImGui.GetWindowDrawList();
                 RenderTilemapGrid(drawList);
             }
@@ -4582,8 +4584,6 @@ ImGui.SameLine();
         float worldW = mapW * tileSize;
         float worldH = mapH * tileSize;
 
-        // Tiles are now rendered as a 3D Map2D object in the scene.
-        // This overlay only handles paint interaction via screen-space projection.
         var vpMin = _imageMin;
         var vpMax = _imageMax;
         float vpW = vpMax.X - vpMin.X;
@@ -4599,6 +4599,28 @@ ImGui.SameLine();
         float offsetY = vpMin.Y + (vpH - dispH) * 0.5f;
         float cellW = dispW / mapW;
         float cellH = dispH / mapH;
+
+        // ── World grid lines ──
+        if (_showWorldGrid)
+        {
+            uint gridCol = ImGui.ColorConvertFloat4ToU32(_worldGridColor);
+            float gridStep = Math.Max(1f, tileSize / _worldGridSize * cellW);
+            // Vertical lines
+            for (float gx = 0; gx <= dispW; gx += gridStep)
+            {
+                float sx = offsetX + gx;
+                drawList.AddLine(new Vector2(sx, offsetY), new Vector2(sx, offsetY + dispH), gridCol, 0.5f);
+            }
+            // Horizontal lines
+            for (float gy = 0; gy <= dispH; gy += gridStep)
+            {
+                float sy = offsetY + gy;
+                drawList.AddLine(new Vector2(offsetX, sy), new Vector2(offsetX + dispW, sy), gridCol, 0.5f);
+            }
+            // Border (brighter)
+            uint borderCol = ImGui.ColorConvertFloat4ToU32(new Vector4(_worldGridColor.X, _worldGridColor.Y, _worldGridColor.Z, Math.Min(1f, _worldGridColor.W * 3f)));
+            drawList.AddRect(new Vector2(offsetX, offsetY), new Vector2(offsetX + dispW, offsetY + dispH), borderCol, 0f, 0, 1.5f);
+        }
 
         var io = ImGui.GetIO();
         var mousePos = io.MousePos;

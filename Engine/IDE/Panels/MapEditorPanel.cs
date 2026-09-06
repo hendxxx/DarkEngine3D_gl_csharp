@@ -534,20 +534,6 @@ public class MapEditorPanel
                         ImGui.ColorConvertFloat4ToU32(Vector4.One), label);
                 }
 
-                // Palette grid lines
-                if (_showPaletteGrid)
-                {
-                    uint gridCol = ImGui.ColorConvertFloat4ToU32(_paletteGridColor);
-                    for (int gc = 1; gc < cols; gc++)
-                        drawList.AddLine(new Vector2(cursorPos.X + gc * _paletteCellSize, cursorPos.Y),
-                                         new Vector2(cursorPos.X + gc * _paletteCellSize, cursorPos.Y + rows * _paletteCellSize),
-                                         gridCol, 1f);
-                    for (int gr = 1; gr < rows; gr++)
-                        drawList.AddLine(new Vector2(cursorPos.X, cursorPos.Y + gr * _paletteCellSize),
-                                         new Vector2(cursorPos.X + cols * _paletteCellSize, cursorPos.Y + gr * _paletteCellSize),
-                                         gridCol, 1f);
-                }
-
                 // Selection border
                 if (isSelected)
                     drawList.AddRect(new Vector2(x, y), new Vector2(x + _paletteCellSize, y + _paletteCellSize),
@@ -559,6 +545,20 @@ public class MapEditorPanel
                 if (ImGui.IsItemClicked())
                     _selectedTileId = tileId;
             }
+        }
+
+        // Palette grid lines (drawn once after all tiles)
+        if (_showPaletteGrid)
+        {
+            uint gridCol = ImGui.ColorConvertFloat4ToU32(_paletteGridColor);
+            for (int gc = 1; gc < cols; gc++)
+                drawList.AddLine(new Vector2(cursorPos.X + gc * _paletteCellSize, cursorPos.Y),
+                                 new Vector2(cursorPos.X + gc * _paletteCellSize, cursorPos.Y + rows * _paletteCellSize),
+                                 gridCol, 1f);
+            for (int gr = 1; gr < rows; gr++)
+                drawList.AddLine(new Vector2(cursorPos.X, cursorPos.Y + gr * _paletteCellSize),
+                                 new Vector2(cursorPos.X + cols * _paletteCellSize, cursorPos.Y + gr * _paletteCellSize),
+                                 gridCol, 1f);
         }
 
         ImGui.SetCursorScreenPos(new Vector2(cursorPos.X, cursorPos.Y + rows * _paletteCellSize + 4f));
@@ -626,7 +626,7 @@ public class MapEditorPanel
             Name = "New Level"
         };
         _bridge.ActiveTilemap = ActiveTilemap;
-        _selectedLayerIdx = 1;
+        _selectedLayerIdx = 0;
         _showSceneWarning = false;
 
         // Create a Map2D scene object at (0,0) so the tilemap renders in the 3D viewport

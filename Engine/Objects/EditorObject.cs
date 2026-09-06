@@ -2530,7 +2530,6 @@ public unsafe class EditorObject
     {
         if (_glbObject == null) return;
         _glbObject.Position = Position;
-        _glbObject.Rotation = Quaternion.CreateFromYawPitchRoll(RotationEuler.Y * MathF.PI / 180f, RotationEuler.X * MathF.PI / 180f, RotationEuler.Z * MathF.PI / 180f);
         _glbObject.Rotation = Quaternion.CreateFromYawPitchRoll(
             RotationEuler.Y * MathF.PI / 180f,
             RotationEuler.X * MathF.PI / 180f,
@@ -2948,6 +2947,76 @@ void main() {
 
         GL.Disable(Const.GL_BLEND);
         GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+        // ── Grid lines (3D world-space at origin) ──
+        if (Map2dShowGrid)
+        {
+            int mapW = Map2dTilemap.Width;
+            int mapH = Map2dTilemap.Height;
+            int ts = Map2dTilemap.TileSize;
+            float totalW = mapW * ts;
+            float totalH = mapH * ts;
+
+            GL.UseProgram(Shader.GetShaderProgram());
+            GL.UniformMatrix4fv(_modelLoc, 1, false, &model.M11);
+            GL.UniformMatrix4fv(_viewLoc, 1, false, &view.M11);
+            GL.UniformMatrix4fv(_projLoc, 1, false, &proj.M11);
+            GL.DisableVertexAttribArray(1); // disable UV
+            GL.DisableVertexAttribArray(2); // disable tint
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+            GL.Enable(Const.GL_BLEND);
+            GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+            float gridColorR = 0.6f, gridColorG = 0.65f, gridColorB = 0.7f, gridColorA = 0.35f;
+
+            // Vertical lines
+            var lineVerts = new List<float>();
+            for (int x = 0; x <= mapW; x++)
+            {
+                float px = x * ts;
+                lineVerts.AddRange([px, 0.01f, 0f, gridColorR, gridColorG, gridColorB, gridColorA]);
+                lineVerts.AddRange([px, 0.01f, totalH, gridColorR, gridColorG, gridColorB, gridColorA]);
+            }
+            // Horizontal lines
+            for (int y = 0; y <= mapH; y++)
+            {
+                float pz = y * ts;
+                lineVerts.AddRange([0f, 0.01f, pz, gridColorR, gridColorG, gridColorB, gridColorA]);
+                lineVerts.AddRange([totalW, 0.01f, pz, gridColorR, gridColorG, gridColorB, gridColorA]);
+            }
+
+            int lineVertCount = lineVerts.Count / 7;
+            if (lineVertCount > 0)
+            {
+                uint lineVao = 0, lineVbo = 0;
+                GL.GenVertexArrays(1, &lineVao);
+                GL.BindVertexArray(lineVao);
+                GL.GenBuffers(1, &lineVbo);
+                GL.BindBuffer(Const.GL_ARRAY_BUFFER, lineVbo);
+                float[] lineArr = lineVerts.ToArray();
+                fixed (float* p = lineArr)
+                {
+                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineArr.Length * sizeof(float)), p, Const.GL_DYNAMIC_DRAW);
+                }
+                // location 0 = aPos (vec3)
+                GL.EnableVertexAttribArray(0);
+                GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 7 * sizeof(float), (void*)0);
+                // location 1 = aColor (vec3)
+                GL.EnableVertexAttribArray(1);
+                GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+                // location 2 = aAlpha (float via 4th component)
+                GL.EnableVertexAttribArray(2);
+                GL.VertexAttribPointer(2, 1, Const.GL_FLOAT, false, 7 * sizeof(float), (void*)(6 * sizeof(float)));
+
+                GL.DrawArrays(Const.GL_LINES, 0, lineVertCount);
+
+                GL.BindVertexArray(0);
+                uint lv = lineVao; GL.DeleteVertexArrays(1, &lv);
+                uint lb = lineVbo; GL.DeleteBuffers(1, &lb);
+            }
+
+            GL.Disable(Const.GL_BLEND);
+        }
 
         // Restore main shader
         GL.UseProgram(Shader.GetShaderProgram());
