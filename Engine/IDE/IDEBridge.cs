@@ -154,6 +154,13 @@ public class IDEBridge
     public int TilesetImgH { get; set; }
     public List<DarkEngine3D_gl_csharp.Engine.IDE.Panels.ParallaxLayer>? ParallaxLayers { get; set; }
 
+    // ── Map Editor grid settings (synced to ViewportPanel) ──
+    public bool ShowWorldGrid { get; set; } = true;
+    public float WorldGridSize { get; set; } = 128f;
+    public Vector4 WorldGridColor { get; set; } = new(1f, 1f, 1f, 0.12f);
+    public bool ShowPaletteGrid { get; set; } = true;
+    public Vector4 PaletteGridColor { get; set; } = new(1f, 1f, 1f, 0.25f);
+
     // ── Editor Object Manager ──
     private EditorObjectManager? _editorObjectManager;
     /// <summary>Manages editor-placed 3D primitives (Plane, Box, Sphere, glb references).

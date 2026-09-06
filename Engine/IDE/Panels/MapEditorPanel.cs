@@ -37,6 +37,11 @@ public class MapEditorPanel
     // ── Grid settings ──
     private bool _showGrid = true;
     private Vector4 _gridColor = new(0.5f, 0.5f, 0.6f, 0.3f);
+    private bool _showWorldGrid = true;
+    private float _worldGridSize = 128f;
+    private Vector4 _worldGridColor = new(1f, 1f, 1f, 0.12f);
+    private bool _showPaletteGrid = true;
+    private Vector4 _paletteGridColor = new(1f, 1f, 1f, 0.25f);
     private bool _showCollisions;
 
     // ── Brush settings ──
@@ -305,11 +310,16 @@ public class MapEditorPanel
         ImGui.SameLine();
         ImGui.Checkbox("Show Collision##toolbar", ref _showCollisions);
 
-        // Sync to bridge for viewport painting
+        // Sync to bridge for viewport painting + world grid
         _bridge.MapPaintTool = (int)_currentTool;
         _bridge.SelectedTileId = _selectedTileId;
         _bridge.ActiveTileLayer = _selectedLayerIdx;
         _bridge.BrushSize = _brushSize;
+        _bridge.ShowWorldGrid = _showWorldGrid;
+        _bridge.WorldGridSize = _worldGridSize;
+        _bridge.WorldGridColor = _worldGridColor;
+        _bridge.ShowPaletteGrid = _showPaletteGrid;
+        _bridge.PaletteGridColor = _paletteGridColor;
     }
 
     private void RenderLayers()
@@ -354,16 +364,66 @@ public class MapEditorPanel
         ImGui.SameLine();
         if (ImGui.Button("+ Add Layer##tile"))
         {
-            ActiveTilemap.Layers.Add(new TileLayer
+            // Add new layer to tilemap data
+            var newLayer = new TileLayer
             {
                 Name = _newLayerName,
                 Width = ActiveTilemap.Width,
                 Height = ActiveTilemap.Height
-            });
-            _selectedLayerIdx = ActiveTilemap.Layers.Count - 1;
+            };
+            ActiveTilemap.Layers.Add(newLayer);
+            int newLayerIdx = ActiveTilemap.Layers.Count - 1;
+            _selectedLayerIdx = newLayerIdx;
+
+            // Create a Map2D EditorObject for this layer
+            if (_bridge.EditorObjectManager != null)
+            {
+                var mapObj = new Engine.Objects.EditorObject(
+                    Engine.Objects.EditorPrimitiveType.Map2D,
+                    $"{_newLayerName}");
+                mapObj.Map2dTilemap = ActiveTilemap;
+                mapObj.Map2dLayerIndex = newLayerIdx;  // Set to render only this layer
+                mapObj.Map2dTilesetCols = ActiveTilemap.TilesetColumns;
+                mapObj.Map2dTilesetRows = ActiveTilemap.TilesetRows;
+                // Position and scale to match tilemap
+                float worldW = ActiveTilemap.Width * ActiveTilemap.TileSize;
+                float worldH = ActiveTilemap.Height * ActiveTilemap.TileSize;
+                mapObj.Position = new System.Numerics.Vector3(-worldW * 0.5f, newLayerIdx * 0.01f, -worldH * 0.5f);
+                mapObj.Scale = new System.Numerics.Vector3(worldW, 1f, worldH);
+                mapObj.RotationEuler = new System.Numerics.Vector3(-90f, 0, 0);
+                _bridge.EditorObjectManager.Add(mapObj);
+                Console.WriteLine($"[MapEditor] Created Map2D EditorObject for layer {newLayerIdx}: '{_newLayerName}'");
+            }
         }
         if (ActiveTilemap.Layers.Count > 0 && ImGui.Button("- Remove##tile"))
         {
+            // Remove layer from tilemap and find + destroy corresponding EditorObject
+            if (_bridge.EditorObjectManager != null)
+            {
+                var layer = ActiveTilemap.Layers[_selectedLayerIdx];
+                // Find and remove EditorObject(s) pointing to this layer index
+                var toRemove = _bridge.EditorObjectManager.Objects
+                    .Where(obj => obj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D 
+                        && obj.Map2dTilemap == ActiveTilemap 
+                        && obj.Map2dLayerIndex == _selectedLayerIdx)
+                    .ToList();
+                foreach (var obj in toRemove)
+                {
+                    _bridge.EditorObjectManager.Remove(obj);
+                    Console.WriteLine($"[MapEditor] Removed Map2D EditorObject for layer {_selectedLayerIdx}");
+                }
+
+                // Adjust Map2dLayerIndex for objects pointing to layers after the removed one
+                foreach (var obj in _bridge.EditorObjectManager.Objects)
+                {
+                    if (obj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D 
+                        && obj.Map2dTilemap == ActiveTilemap 
+                        && obj.Map2dLayerIndex > _selectedLayerIdx)
+                    {
+                        obj.Map2dLayerIndex--;
+                    }
+                }
+            }
             ActiveTilemap.Layers.RemoveAt(_selectedLayerIdx);
             _selectedLayerIdx = Math.Min(_selectedLayerIdx, ActiveTilemap.Layers.Count - 1);
         }
@@ -372,6 +432,24 @@ public class MapEditorPanel
         {
             (ActiveTilemap.Layers[_selectedLayerIdx], ActiveTilemap.Layers[_selectedLayerIdx - 1]) =
                 (ActiveTilemap.Layers[_selectedLayerIdx - 1], ActiveTilemap.Layers[_selectedLayerIdx]);
+
+            // Swap layer indices in EditorObjects
+            if (_bridge.EditorObjectManager != null)
+            {
+                var obj1 = _bridge.EditorObjectManager.Objects.FirstOrDefault(
+                    obj => obj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D 
+                        && obj.Map2dTilemap == ActiveTilemap 
+                        && obj.Map2dLayerIndex == _selectedLayerIdx - 1);
+                var obj2 = _bridge.EditorObjectManager.Objects.FirstOrDefault(
+                    obj => obj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D 
+                        && obj.Map2dTilemap == ActiveTilemap 
+                        && obj.Map2dLayerIndex == _selectedLayerIdx);
+
+                if (obj1 != null && obj2 != null)
+                {
+                    (obj1.Map2dLayerIndex, obj2.Map2dLayerIndex) = (obj2.Map2dLayerIndex, obj1.Map2dLayerIndex);
+                }
+            }
             _selectedLayerIdx--;
         }
         ImGui.SameLine();
@@ -379,6 +457,24 @@ public class MapEditorPanel
         {
             (ActiveTilemap.Layers[_selectedLayerIdx], ActiveTilemap.Layers[_selectedLayerIdx + 1]) =
                 (ActiveTilemap.Layers[_selectedLayerIdx + 1], ActiveTilemap.Layers[_selectedLayerIdx]);
+
+            // Swap layer indices in EditorObjects
+            if (_bridge.EditorObjectManager != null)
+            {
+                var obj1 = _bridge.EditorObjectManager.Objects.FirstOrDefault(
+                    obj => obj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D 
+                        && obj.Map2dTilemap == ActiveTilemap 
+                        && obj.Map2dLayerIndex == _selectedLayerIdx + 1);
+                var obj2 = _bridge.EditorObjectManager.Objects.FirstOrDefault(
+                    obj => obj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D 
+                        && obj.Map2dTilemap == ActiveTilemap 
+                        && obj.Map2dLayerIndex == _selectedLayerIdx);
+
+                if (obj1 != null && obj2 != null)
+                {
+                    (obj1.Map2dLayerIndex, obj2.Map2dLayerIndex) = (obj2.Map2dLayerIndex, obj1.Map2dLayerIndex);
+                }
+            }
             _selectedLayerIdx++;
         }
     }
@@ -438,6 +534,20 @@ public class MapEditorPanel
                         ImGui.ColorConvertFloat4ToU32(Vector4.One), label);
                 }
 
+                // Palette grid lines
+                if (_showPaletteGrid)
+                {
+                    uint gridCol = ImGui.ColorConvertFloat4ToU32(_paletteGridColor);
+                    for (int gc = 1; gc < cols; gc++)
+                        drawList.AddLine(new Vector2(cursorPos.X + gc * _paletteCellSize, cursorPos.Y),
+                                         new Vector2(cursorPos.X + gc * _paletteCellSize, cursorPos.Y + rows * _paletteCellSize),
+                                         gridCol, 1f);
+                    for (int gr = 1; gr < rows; gr++)
+                        drawList.AddLine(new Vector2(cursorPos.X, cursorPos.Y + gr * _paletteCellSize),
+                                         new Vector2(cursorPos.X + cols * _paletteCellSize, cursorPos.Y + gr * _paletteCellSize),
+                                         gridCol, 1f);
+                }
+
                 // Selection border
                 if (isSelected)
                     drawList.AddRect(new Vector2(x, y), new Vector2(x + _paletteCellSize, y + _paletteCellSize),
@@ -461,6 +571,16 @@ public class MapEditorPanel
         ImGui.ColorEdit4("Grid Color", ref _gridColor);
         ImGui.InputInt("Palette Columns", ref _paletteCols);
         ImGui.SliderFloat("Palette Cell", ref _paletteCellSize, 16f, 64f);
+
+        ImGui.Separator();
+        ImGui.Text("Viewport Grid:");
+        ImGui.Checkbox("Show World Grid##vpgrid", ref _showWorldGrid);
+        ImGui.SliderFloat("Grid Size##vpgrid", ref _worldGridSize, 16f, 128f, "%.0f px");
+        ImGui.ColorEdit4("World Grid Color##vpgrid", ref _worldGridColor);
+        ImGui.Separator();
+        ImGui.TextWrapped("Tile Palette Grid:");
+        ImGui.Checkbox("Show Palette Grid##palgrid", ref _showPaletteGrid);
+        ImGui.ColorEdit4("Palette Grid Color##palgrid", ref _paletteGridColor);
     }
 
     private void RenderCollisionSettings()

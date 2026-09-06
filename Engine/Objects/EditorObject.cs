@@ -692,6 +692,10 @@ public unsafe class EditorObject
     public int Map2dTilesetRows { get; set; } = 8;
     /// <summary>Whether to show the grid overlay on the map.</summary>
     public bool Map2dShowGrid { get; set; } = true;
+    /// <summary>
+    /// Which layer index this Map2D object renders (-1 = render all visible layers, >=0 = render single layer only).
+    /// </summary>
+    public int Map2dLayerIndex { get; set; } = -1;
     /// <summary>Cached VAO/VBO for the tilemap mesh (rebuilt when tiles change).</summary>
     [JsonIgnore] private uint _map2dVAO, _map2dVBO;
     [JsonIgnore] private int _map2dVertCount = 0;
@@ -2526,6 +2530,7 @@ public unsafe class EditorObject
     {
         if (_glbObject == null) return;
         _glbObject.Position = Position;
+        _glbObject.Rotation = Quaternion.CreateFromYawPitchRoll(RotationEuler.Y * MathF.PI / 180f, RotationEuler.X * MathF.PI / 180f, RotationEuler.Z * MathF.PI / 180f);
         _glbObject.Rotation = Quaternion.CreateFromYawPitchRoll(
             RotationEuler.Y * MathF.PI / 180f,
             RotationEuler.X * MathF.PI / 180f,
@@ -2774,16 +2779,28 @@ void main() {
     }
 
     /// <summary>Build a VBO with one quad per non-empty tile, UV-mapped into the tileset grid.
-    /// Vertices are in local space; the WorldMatrix positions/scales the whole mesh.</summary>
+    /// Vertices are in local space; the WorldMatrix positions/scales the whole mesh.
+    /// If Map2dLayerIndex >= 0, render only that layer; if -1, render all visible layers.</summary>
     private unsafe void BuildMap2DMesh()
     {
         var map = Map2dTilemap;
         if (map == null) return;
 
-        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}";
-        foreach (var layer in map.Layers)
+        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}";
+
+        // Include specific layer data in cache key
+        if (Map2dLayerIndex >= 0 && Map2dLayerIndex < map.Layers.Count)
+        {
+            var layer = map.Layers[Map2dLayerIndex];
             for (int i = 0; i < map.Width * map.Height; i++)
                 cacheKey += $"|{layer.GetTile(i % map.Width, i / map.Width)}";
+        }
+        else if (Map2dLayerIndex < 0)
+        {
+            foreach (var layer in map.Layers)
+                for (int i = 0; i < map.Width * map.Height; i++)
+                    cacheKey += $"|{layer.GetTile(i % map.Width, i / map.Width)}";
+        }
 
         if (_map2dMeshCacheKey == cacheKey && _map2dVAO != 0) return;
         _map2dMeshCacheKey = cacheKey;
@@ -2799,7 +2816,13 @@ void main() {
         float tileVH = 1f / tsRows;
 
         var verts = new List<Map2DVertex>();
-        foreach (var layer in map.Layers)
+
+        // Determine which layers to iterate
+        var layersToRender = Map2dLayerIndex >= 0 && Map2dLayerIndex < map.Layers.Count
+            ? new[] { map.Layers[Map2dLayerIndex] }
+            : map.Layers.ToArray();
+
+        foreach (var layer in layersToRender)
         {
             if (!layer.IsVisible) continue;
             for (int ty = 0; ty < mapH; ty++)

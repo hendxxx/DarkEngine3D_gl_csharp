@@ -20,12 +20,17 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 public unsafe class ViewportPanel
 {
     private readonly IDEBridge _bridge;
-    private bool _visible = true;
-
-    //  Snap-to-grid state 
+    private bool _visible = true;    // Snap-to-grid state 
     private bool _snapEnabled = true;
     private float _snapGridSize = 20f;
     private static readonly float[] SnapOptions = [5f, 10f, 20f, 40f, 50f];
+
+    public void SyncWorldGridFromBridge()
+    {
+        _showWorldGrid = _bridge.ShowWorldGrid;
+        _worldGridSize = _bridge.WorldGridSize;
+        _worldGridColor = _bridge.WorldGridColor;
+    }
 
     /// <summary>Snap a value to the nearest grid increment.</summary>
     private float SnapToGrid(float value) =>
@@ -165,6 +170,11 @@ public unsafe class ViewportPanel
     //  Cached conversion data (set each frame in overlay) 
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
+
+    //  World grid (synced from Map Editor via IDEBridge) 
+    private bool _showWorldGrid = true;
+    private float _worldGridSize = 128f;
+    private Vector4 _worldGridColor = new(1f, 1f, 1f, 0.12f);
 
     //  Left-edge floating toolbar bounds (edit mode, drawn over the image) 
     private Vector2 _leftToolbarMin, _leftToolbarMax;
