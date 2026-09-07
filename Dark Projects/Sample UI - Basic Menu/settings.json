@@ -16,7 +16,7 @@
   "ShowDebugGrid": true,
   "ShowShadows": true,
   "SnapEnabled": true,
-  "SnapGridSize": 20,
+  "SnapGridSize": 10,
   "ToolbarFontSize": 14,
   "DefaultTransitionType": 0,
   "DefaultTransitionDuration": 0.6,

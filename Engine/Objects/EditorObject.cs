@@ -2840,10 +2840,16 @@ void main() {
                     float u1 = u0 + tileUW;
                     float v1 = v0 + tileVH;
 
-                    float x0 = tx * map.TileSize;
-                    float x1 = x0 + map.TileSize;
-                    float z0 = ty * map.TileSize;
-                    float z1 = z0 + map.TileSize;
+                    // Geometry is baked at Tilemap2D.WorldScale (1/10) so the upright
+                    // plane is width×height×tileSize×0.1 world units (matches the editor
+                    // viewport scale); GridToWorld uses the same mapping.
+                    float worldTs = map.TileSize * Tilemap2D.WorldScale;
+                    float x0 = tx * worldTs;
+                    float x1 = x0 + worldTs;
+                    // Row 0 at the top (matches Tilemap2D.GridToWorld, where y is
+                    // flipped); the -90° X rotation turns this into upright +Y.
+                    float z0 = (mapH - 1 - ty) * worldTs;
+                    float z1 = z0 + worldTs;
                     float a = layer.Opacity;
 
                     verts.Add(new Map2DVertex(x0, 0, z0, u0, v0, 1, 1, 1, a));
@@ -2915,107 +2921,86 @@ void main() {
         }
 
         BuildMap2DMesh();
-        if (_map2dVAO == 0 || _map2dVertCount == 0) return;
-
-        EnsureMap2DShader();
-        if (_map2dShader == 0) return;
-
-        GL.UseProgram(_map2dShader);
-
-        var view = camera.GetViewMatrix();
-        var proj = camera.GetProjectionMatrix();
         var model = WorldMatrix;
-        GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
-        GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
-        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
 
-        GL.ActiveTexture(Const.GL_TEXTURE0);
-        GL.BindTexture(Const.GL_TEXTURE_2D, _map2dTilesetTex);
-        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
-        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
-        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
-        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
-        GL.Uniform1i(_map2dLocTex, 0);
-        GL.Uniform4f(_map2dLocTint, 1f, 1f, 1f, 1f);
+        // Draw the tiles only when the map has some; the grid pass below still runs
+        // for an empty map so "New Map" immediately shows the upright plane outline
+        // with square cells in the 3D viewport.
+        if (_map2dVAO != 0 && _map2dVertCount != 0)
+        {
+            EnsureMap2DShader();
+            if (_map2dShader != 0)
+            {
+                GL.UseProgram(_map2dShader);
 
-        GL.Enable(Const.GL_BLEND);
-        GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+                var view = camera.GetViewMatrix();
+                var proj = camera.GetProjectionMatrix();
+                GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+                GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+                GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
 
-        GL.BindVertexArray(_map2dVAO);
-        GL.DrawArrays(Const.GL_TRIANGLES, 0, _map2dVertCount);
-        GL.BindVertexArray(0);
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _map2dTilesetTex);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.Uniform1i(_map2dLocTex, 0);
+                GL.Uniform4f(_map2dLocTint, 1f, 1f, 1f, 1f);
 
-        GL.Disable(Const.GL_BLEND);
-        GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
 
-        // ── Grid lines (3D world-space at origin) ──
+                // Map is visible from both sides (layers stack along Z; the editor
+                // camera can orbit either side).
+                bool cullEnabled = GL.IsEnabled(Const.GL_CULL_FACE);
+                GL.Disable(Const.GL_CULL_FACE);
+
+                GL.BindVertexArray(_map2dVAO);
+                GL.DrawArrays(Const.GL_TRIANGLES, 0, _map2dVertCount);
+                GL.BindVertexArray(0);
+
+                if (cullEnabled)
+                    GL.Enable(Const.GL_CULL_FACE);
+                GL.Disable(Const.GL_BLEND);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+        }
+
+        // ── Grid lines: world-space squares transformed with the object's model
+        //    matrix so they follow its position/rotation/scale. Drawn via the line
+        //    shader (with alpha) and depth test disabled so the grid always reads
+        //    over the tiles, like an editor overlay. ──
         if (Map2dShowGrid)
         {
             int mapW = Map2dTilemap.Width;
             int mapH = Map2dTilemap.Height;
             int ts = Map2dTilemap.TileSize;
-            float totalW = mapW * ts;
-            float totalH = mapH * ts;
-
-            GL.UseProgram(Shader.GetShaderProgram());
-            GL.UniformMatrix4fv(_modelLoc, 1, false, &model.M11);
-            GL.UniformMatrix4fv(_viewLoc, 1, false, &view.M11);
-            GL.UniformMatrix4fv(_projLoc, 1, false, &proj.M11);
-            GL.DisableVertexAttribArray(1); // disable UV
-            GL.DisableVertexAttribArray(2); // disable tint
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-
-            GL.Enable(Const.GL_BLEND);
-            GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
-            float gridColorR = 0.6f, gridColorG = 0.65f, gridColorB = 0.7f, gridColorA = 0.35f;
-
-            // Vertical lines
-            var lineVerts = new List<float>();
-            for (int x = 0; x <= mapW; x++)
+            // Cell size matches the editor world grid (1 unit, see SceneManager
+            // RenderEditorGrid) so the map grid lines up with the viewport grid.
+            // The mesh is baked at WorldScale, so spans are width×height×ts×WorldScale.
+            const int gridStep = 1;
+            float extentW = mapW * ts * Tilemap2D.WorldScale;
+            float extentH = mapH * ts * Tilemap2D.WorldScale;
+            var gridVerts = new List<Vector3>();
+            for (float x = 0f; x <= extentW; x += gridStep)
             {
-                float px = x * ts;
-                lineVerts.AddRange([px, 0.01f, 0f, gridColorR, gridColorG, gridColorB, gridColorA]);
-                lineVerts.AddRange([px, 0.01f, totalH, gridColorR, gridColorG, gridColorB, gridColorA]);
+                float px = x;
+                gridVerts.Add(Vector3.Transform(new Vector3(px, 0, 0), model));
+                gridVerts.Add(Vector3.Transform(new Vector3(px, 0, extentH), model));
             }
-            // Horizontal lines
-            for (int y = 0; y <= mapH; y++)
+            for (float y = 0f; y <= extentH; y += gridStep)
             {
-                float pz = y * ts;
-                lineVerts.AddRange([0f, 0.01f, pz, gridColorR, gridColorG, gridColorB, gridColorA]);
-                lineVerts.AddRange([totalW, 0.01f, pz, gridColorR, gridColorG, gridColorB, gridColorA]);
+                float pz = y;
+                gridVerts.Add(Vector3.Transform(new Vector3(0, 0, pz), model));
+                gridVerts.Add(Vector3.Transform(new Vector3(extentW, 0, pz), model));
             }
 
-            int lineVertCount = lineVerts.Count / 7;
-            if (lineVertCount > 0)
-            {
-                uint lineVao = 0, lineVbo = 0;
-                GL.GenVertexArrays(1, &lineVao);
-                GL.BindVertexArray(lineVao);
-                GL.GenBuffers(1, &lineVbo);
-                GL.BindBuffer(Const.GL_ARRAY_BUFFER, lineVbo);
-                float[] lineArr = lineVerts.ToArray();
-                fixed (float* p = lineArr)
-                {
-                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(lineArr.Length * sizeof(float)), p, Const.GL_DYNAMIC_DRAW);
-                }
-                // location 0 = aPos (vec3)
-                GL.EnableVertexAttribArray(0);
-                GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 7 * sizeof(float), (void*)0);
-                // location 1 = aColor (vec3)
-                GL.EnableVertexAttribArray(1);
-                GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, 7 * sizeof(float), (void*)(3 * sizeof(float)));
-                // location 2 = aAlpha (float via 4th component)
-                GL.EnableVertexAttribArray(2);
-                GL.VertexAttribPointer(2, 1, Const.GL_FLOAT, false, 7 * sizeof(float), (void*)(6 * sizeof(float)));
-
-                GL.DrawArrays(Const.GL_LINES, 0, lineVertCount);
-
-                GL.BindVertexArray(0);
-                uint lv = lineVao; GL.DeleteVertexArrays(1, &lv);
-                uint lb = lineVbo; GL.DeleteBuffers(1, &lb);
-            }
-
-            GL.Disable(Const.GL_BLEND);
+            bool depthEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
+            GL.Disable(Const.GL_DEPTH_TEST);
+            Terrains.TerrainChunk.DrawLineSegments(gridVerts, new Vector3(0.6f, 0.65f, 0.7f), camera, 0.35f);
+            if (depthEnabled)
+                GL.Enable(Const.GL_DEPTH_TEST);
         }
 
         // Restore main shader

@@ -25,13 +25,6 @@ public unsafe class ViewportPanel
     private float _snapGridSize = 20f;
     private static readonly float[] SnapOptions = [5f, 10f, 20f, 40f, 50f];
 
-    public void SyncWorldGridFromBridge()
-    {
-        _showWorldGrid = _bridge.ShowWorldGrid;
-        _worldGridSize = _bridge.WorldGridSize;
-        _worldGridColor = _bridge.WorldGridColor;
-    }
-
     /// <summary>Snap a value to the nearest grid increment.</summary>
     private float SnapToGrid(float value) =>
         _snapEnabled ? MathF.Round(value / _snapGridSize) * _snapGridSize : value;
@@ -68,6 +61,10 @@ public unsafe class ViewportPanel
     private Vector2? _marqueeStart = null;
     private Vector2 _marqueeCurrent;
     private bool _marqueeActive = false;
+    // Tilemap paint stroke in progress (suppresses marquee/select while painting).
+    private bool _mapPaintActive = false;
+    // Show/hide the floating "▲ Views" menu + corner axis indicator.
+    private bool _showViewsOverlay = true;
     // Post-popup suppress: after any popup/menu closes, suppress scene interactions
     // for a few frames so the click that closed the menu doesn't leak into the scene.
     private int _postPopupFrames = 0;
@@ -170,11 +167,6 @@ public unsafe class ViewportPanel
     //  Cached conversion data (set each frame in overlay) 
     private Vector2 _imageMin, _imageMax, _imageSize;
     private float _texW = 1f, _texH = 1f;
-
-    //  World grid (synced from Map Editor via IDEBridge) 
-    private bool _showWorldGrid = true;
-    private float _worldGridSize = 128f;
-    private Vector4 _worldGridColor = new(1f, 1f, 1f, 0.12f);
 
     //  Left-edge floating toolbar bounds (edit mode, drawn over the image) 
     private Vector2 _leftToolbarMin, _leftToolbarMax;
@@ -2617,15 +2609,6 @@ ImGui.SameLine();
                 RenderDropdownPopup(drawList, viewportMouseScreen, cachedLeftClicked, _previewMode);
             }
 
-            // ── Tilemap grid overlay ──
-            if (_bridge.ActiveTilemap != null)
-            {
-                // Sync grid settings from Map Editor (real-time)
-                SyncWorldGridFromBridge();
-                var drawList = ImGui.GetWindowDrawList();
-                RenderTilemapGrid(drawList);
-            }
-
             //  Preview mode indicator badge (bottom-right corner) 
             if (_previewMode)
             {
@@ -3610,6 +3593,93 @@ ImGui.SameLine();
                 }
             }
 
+            //  Tilemap paint: raycast the cursor onto the active layer's vertical
+            //  Map2D plane (z = ActiveTileLayer) and stamp tiles. Runs before the
+            //  marquee/select/gizmo so a paint stroke never changes the selection;
+            //  clicks that miss the map fall through to normal object selection.
+            //  Only active when a visible Map2D object actually renders the map —
+            //  no map object, no yellow hover highlight, no click consumption.
+            if (!_previewMode && _bridge.ActiveTilemap != null && _bridge.Camera != null
+                && _bridge.EditorObjectManager != null && mouseOverImage && HasVisibleMapObject()
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                && hasSceneTexture && _dragMode == DragMode.None
+                && !suppressInput && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
+            {
+                var cam = _bridge.Camera;
+                int vpw = _bridge.SceneTextureWidth;
+                int vph = _bridge.SceneTextureHeight;
+
+                float glMouseY = vph - _bridge.ViewportMouseY;
+                cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
+                    out Vector3 rayOrigin, out Vector3 rayDir);
+
+                // All Map2D layer planes are upright at z = layer index (base z=0,
+                // layer1 z=1, ...) — intersect the active layer's plane.
+                float layerZ = _bridge.ActiveTileLayer;
+                if (MathF.Abs(rayDir.Z) > 0.0001f)
+                {
+                    float t = (layerZ - rayOrigin.Z) / rayDir.Z;
+                    if (t > 0f)
+                    {
+                        var hit = rayOrigin + rayDir * t;
+                        var map = _bridge.ActiveTilemap;
+                        var (gx, gy) = map.WorldToGrid(new Vector2(hit.X, hit.Y));
+
+                        if (gx >= 0 && gx < map.Width && gy >= 0 && gy < map.Height)
+                        {
+                            //  Hover highlight: yellow cell outline + soft fill on the
+                            //  hovered tile. GridToWorld returns the BOTTOM-LEFT corner
+                            //  of a tile (Y grows upward), so the quad's top edge comes
+                            //  from row (gy - 1) and its bottom edge from row (gy) —
+                            //  this keeps the highlight exactly on the hovered tile
+                            //  (the old gy/gy+1 pair drew it one row too low, so hovering
+                            //  the bottom row highlighted empty space below the plane).
+                            var cA = map.GridToWorld(gx, gy - 1);     // top-left
+                            var cB = map.GridToWorld(gx + 1, gy - 1); // top-right
+                            var cC = map.GridToWorld(gx + 1, gy);     // bottom-right
+                            var cD = map.GridToWorld(gx, gy);         // bottom-left
+                            var hp0 = TransformGizmo.ProjectToScreen(cam, new Vector3(cA.X, cA.Y, layerZ), vpw, vph);
+                            var hp1 = TransformGizmo.ProjectToScreen(cam, new Vector3(cB.X, cB.Y, layerZ), vpw, vph);
+                            var hp2 = TransformGizmo.ProjectToScreen(cam, new Vector3(cC.X, cC.Y, layerZ), vpw, vph);
+                            var hp3 = TransformGizmo.ProjectToScreen(cam, new Vector3(cD.X, cD.Y, layerZ), vpw, vph);
+                            var hs0 = SceneToScreen(hp0.X, vph - hp0.Y);
+                            var hs1 = SceneToScreen(hp1.X, vph - hp1.Y);
+                            var hs2 = SceneToScreen(hp2.X, vph - hp2.Y);
+                            var hs3 = SceneToScreen(hp3.X, vph - hp3.Y);
+                            var hdl = ImGui.GetWindowDrawList();
+                            uint hFill = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 0f, 0.16f));
+                            uint hLine = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 0f, 0.9f));
+                            hdl.AddQuadFilled(hs0, hs1, hs2, hs3, hFill);
+                            hdl.AddQuad(hs0, hs1, hs2, hs3, hLine, 2f);
+
+                            int tool = _bridge.MapPaintTool;
+                            bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+
+                            if (leftDown)
+                            {
+                                if (tool == 0 || tool == 1) // Paint / Erase (drag-friendly)
+                                    _bridge.MapPaintAt?.Invoke(new Vector2(hit.X, hit.Y));
+                            }
+                            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                            {
+                                if (tool == 2)
+                                    _bridge.MapFillAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                else if (tool == 3)
+                                    _bridge.MapPickAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                _mapPaintActive = true;
+                            }
+
+                            // Consume the click so it doesn't also select/deselect objects.
+                            _bridge.IsViewportClicked = false;
+                        }
+                    }
+                }
+
+                // End the stroke once the button is released.
+                if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                    _mapPaintActive = false;
+            }
+
             //  Marquee (rubber-band) multi-select for 3D editor objects 
             // Left-press on empty viewport space starts a drag rectangle; on release
             // every object whose projected screen position lands inside the rect is
@@ -3625,7 +3695,7 @@ ImGui.SameLine();
                 // NOT hovering the views button, NOT dragging a UI element, and NOT
                 // painting with the terrain brush.
                 if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
-                    && !_bridge.TerrainBrushActive && _brushObj == null
+                    && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
                     && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null
                     && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar())
                 {
@@ -3848,7 +3918,7 @@ ImGui.SameLine();
             // Uses screen-space coordinates  gizmo renders at bottom-center of viewport
             if (!_previewMode && _bridge.Camera != null && _bridge.EditorGizmo != null
                 && _bridge.SelectedEditorObject != null && mouseOverImage
-                && !_bridge.TerrainBrushActive && _brushObj == null
+                && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
                 && _skySunDragObj == null && SkySunHandleAtMouse() == null
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
@@ -3938,6 +4008,9 @@ ImGui.SameLine();
 
         //  Camera view menu overlay (top-left corner of the viewport image) 
         DrawViewportCameraOverlay(hasSceneTexture);
+
+        //  Corner axis orientation indicator (bottom-left of the viewport image) 
+        DrawViewportAxisIndicator();
 
         //  Editor tool toolbar (left edge of the viewport image) 
         DrawViewportLeftToolbar(hasSceneTexture);
@@ -4216,6 +4289,11 @@ ImGui.SameLine();
     /// button never also starts a marquee or a viewport raycast.</summary>
     private (Vector2 min, Vector2 max) GetViewportViewsButtonRect()
     {
+        // When the Views overlay is hidden, collapse the rect so the left toolbar
+        // still starts at the top and no mouse hovers the (invisible) button.
+        if (!_showViewsOverlay)
+            return (new Vector2(_imageMin.X, _imageMin.Y), new Vector2(_imageMin.X, _imageMin.Y));
+
         float padX = 8f, padY = 6f;
         var font = ImGui.GetFont();
         float vpFs = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 15f;
@@ -4229,13 +4307,74 @@ ImGui.SameLine();
     /// Used to suppress marquee/raycast selection while interacting with the overlay.</summary>
     private bool IsMouseOverViewportViewsButton()
     {
+        if (!_showViewsOverlay) return false;
         var (min, max) = GetViewportViewsButtonRect();
         var mouse = ImGui.GetMousePos();
         return mouse.X >= min.X && mouse.X <= max.X && mouse.Y >= min.Y && mouse.Y <= max.Y;
     }
 
+    /// <summary>Draw a compact 3D axis orientation indicator in the bottom-left corner
+    /// of the viewport (X red, Y green, Z blue), showing the current camera orientation.
+    /// Hidden together with the Views overlay.</summary>
+    private void DrawViewportAxisIndicator()
+    {
+        if (_previewMode || _bridge.Camera == null) return;
+        if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
+        if (!_showViewsOverlay) return;
+
+        var cam = _bridge.Camera;
+        int vpw = _bridge.SceneTextureWidth > 0 ? _bridge.SceneTextureWidth : 1920;
+        int vph = _bridge.SceneTextureHeight > 0 ? _bridge.SceneTextureHeight : 1080;
+
+        // Reference point ahead of the camera; project it and the three axis tips so
+        // the indicator rotates with the view like a classic orientation gizmo.
+        Vector3 refPt = cam.Position + cam.Front * 25f;
+        const float len = 1.6f;
+        var p0 = TransformGizmo.ProjectToScreen(cam, refPt, vpw, vph);
+        var px = TransformGizmo.ProjectToScreen(cam, refPt + Vector3.UnitX * len, vpw, vph);
+        var py = TransformGizmo.ProjectToScreen(cam, refPt + Vector3.UnitY * len, vpw, vph);
+        var pz = TransformGizmo.ProjectToScreen(cam, refPt + Vector3.UnitZ * len, vpw, vph);
+
+        // GL Y-up screen coords → ImGui screen coords.
+        Vector2 s0 = SceneToScreen(p0.X, vph - p0.Y);
+        Vector2 sx = SceneToScreen(px.X, vph - px.Y);
+        Vector2 sy = SceneToScreen(py.X, vph - py.Y);
+        Vector2 sz = SceneToScreen(pz.X, vph - pz.Y);
+
+        // Indicator origin pinned to the bottom-left corner of the viewport image.
+        var origin = new Vector2(_imageMin.X + 26f, _imageMax.Y - 26f);
+
+        // Screen direction of each axis (skip axes pointing away / degenerate).
+        bool TryDir(Vector2 tip, out Vector2 dir)
+        {
+            Vector2 d = tip - s0;
+            if (d.LengthSquared() < 1e-4f) { dir = default; return false; }
+            dir = Vector2.Normalize(d) * 22f;
+            return true;
+        }
+
+        var dl = ImGui.GetWindowDrawList();
+        dl.AddCircleFilled(origin, 17f, ImGui.ColorConvertFloat4ToU32(new Vector4(0.10f, 0.11f, 0.17f, 0.82f)), 24);
+        dl.AddCircle(origin, 17f, ImGui.ColorConvertFloat4ToU32(new Vector4(0.45f, 0.50f, 0.70f, 0.7f)), 24, 1f);
+
+        uint colX = ImGui.ColorConvertFloat4ToU32(new Vector4(0.95f, 0.28f, 0.28f, 1f));
+        uint colY = ImGui.ColorConvertFloat4ToU32(new Vector4(0.30f, 0.85f, 0.30f, 1f));
+        uint colZ = ImGui.ColorConvertFloat4ToU32(new Vector4(0.30f, 0.52f, 1f, 1f));
+
+        if (TryDir(sx, out var dx)) dl.AddLine(origin, origin + dx, colX, 2.2f);
+        if (TryDir(sy, out var dy)) dl.AddLine(origin, origin + dy, colY, 2.2f);
+        if (TryDir(sz, out var dz)) dl.AddLine(origin, origin + dz, colZ, 2.2f);
+
+        var font = ImGui.GetFont();
+        float fs = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize * 0.8f : 12f;
+        if (TryDir(sx, out var dxl)) dl.AddText(font, fs, origin + dxl + new Vector2(2f, -fs * 0.5f), colX, "X");
+        if (TryDir(sy, out var dyl)) dl.AddText(font, fs, origin + dyl + new Vector2(2f, -fs * 0.5f), colY, "Y");
+        if (TryDir(sz, out var dzl)) dl.AddText(font, fs, origin + dzl + new Vector2(2f, -fs * 0.5f), colZ, "Z");
+    }
+
     private void DrawViewportCameraOverlay(bool hasSceneTexture)
     {
+        if (!_showViewsOverlay) return;
         if (_previewMode || !hasSceneTexture || _bridge.Camera == null) return;
         if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
 
@@ -4538,9 +4677,32 @@ ImGui.SameLine();
             Console.WriteLine($"[Viewport] Shadows {(shadowsOn ? "disabled" : "enabled")}");
         }
 
+        //  Floating Views menu + corner axis indicator toggle 
+        if (ToolButton(_showViewsOverlay ? "▲ Views: On" : "▲ Views: Off", _showViewsOverlay, new Vector4(0.30f, 0.50f, 0.65f, 0.95f),
+            "Toggle the floating Views menu + corner axis indicator", out y))
+        {
+            _showViewsOverlay = !_showViewsOverlay;
+            Console.WriteLine($"[Viewport] Views overlay → {(_showViewsOverlay ? "shown" : "hidden")}");
+        }
+
         // Record the full toolbar bounds for the click-suppression guard.
         _leftToolbarMin = new Vector2(x, GetViewportViewsButtonRect().max.Y + 6f);
         _leftToolbarMax = new Vector2(x + btnW, y - gap + btnH);
+    }
+
+    /// <summary>True when a visible Map2D EditorObject bound to the active tilemap is in
+    /// the scene — the viewport tilemap hover/paint only applies to actually-rendered maps.</summary>
+    private bool HasVisibleMapObject()
+    {
+        if (_bridge.ActiveTilemap == null || _bridge.EditorObjectManager == null) return false;
+        foreach (var o in _bridge.EditorObjectManager.Objects)
+        {
+            if (o != null && o.IsVisible
+                && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+                && ReferenceEquals(o.Map2dTilemap, _bridge.ActiveTilemap))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Render an animated gradient background for the viewport canvas when no scene texture is available.</summary>
@@ -4570,115 +4732,4 @@ ImGui.SameLine();
             bandCol);
     }
 
-    /// <summary>
-    /// Handle tilemap paint interaction in the viewport.
-    /// The tilemap tiles are now rendered as a 3D Map2D object in the scene.
-    /// This method only handles hover highlight + click-to-paint using screen-space projection.
-    /// </summary>
-    private void RenderTilemapGrid(ImDrawListPtr drawList)
-    {
-        var map = _bridge.ActiveTilemap!;
-        int mapW = map.Width;
-        int mapH = map.Height;
-        int tileSize = map.TileSize;
-        float worldW = mapW * tileSize;
-        float worldH = mapH * tileSize;
-
-        var vpMin = _imageMin;
-        var vpMax = _imageMax;
-        float vpW = vpMax.X - vpMin.X;
-        float vpH = vpMax.Y - vpMin.Y;
-
-        float scaleX = vpW / worldW;
-        float scaleY = vpH / worldH;
-        float scale = MathF.Min(scaleX, scaleY) * 0.85f;
-
-        float dispW = worldW * scale;
-        float dispH = worldH * scale;
-        float offsetX = vpMin.X + (vpW - dispW) * 0.5f;
-        float offsetY = vpMin.Y + (vpH - dispH) * 0.5f;
-        float cellW = dispW / mapW;
-        float cellH = dispH / mapH;
-
-        // ── World grid lines ──
-        if (_showWorldGrid)
-        {
-            uint gridCol = ImGui.ColorConvertFloat4ToU32(_worldGridColor);
-            float gridStep = Math.Max(1f, tileSize / _worldGridSize * cellW);
-            // Vertical lines
-            for (float gx = 0; gx <= dispW; gx += gridStep)
-            {
-                float sx = offsetX + gx;
-                drawList.AddLine(new Vector2(sx, offsetY), new Vector2(sx, offsetY + dispH), gridCol, 0.5f);
-            }
-            // Horizontal lines
-            for (float gy = 0; gy <= dispH; gy += gridStep)
-            {
-                float sy = offsetY + gy;
-                drawList.AddLine(new Vector2(offsetX, sy), new Vector2(offsetX + dispW, sy), gridCol, 0.5f);
-            }
-            // Border (brighter)
-            uint borderCol = ImGui.ColorConvertFloat4ToU32(new Vector4(_worldGridColor.X, _worldGridColor.Y, _worldGridColor.Z, Math.Min(1f, _worldGridColor.W * 3f)));
-            drawList.AddRect(new Vector2(offsetX, offsetY), new Vector2(offsetX + dispW, offsetY + dispH), borderCol, 0f, 0, 1.5f);
-        }
-
-        var io = ImGui.GetIO();
-        var mousePos = io.MousePos;
-        bool mouseInGrid = mousePos.X >= offsetX && mousePos.X <= offsetX + dispW &&
-                           mousePos.Y >= offsetY && mousePos.Y <= offsetY + dispH;
-
-        if (!mouseInGrid) return;
-
-        float mx = mousePos.X - offsetX;
-        float my = mousePos.Y - offsetY;
-        int tx = Math.Clamp((int)(mx / cellW), 0, mapW - 1);
-        int ty = Math.Clamp((int)(my / cellH), 0, mapH - 1);
-
-        // Hover indicator
-        if (tx >= 0 && tx < mapW && ty >= 0 && ty < mapH)
-        {
-            float hx = offsetX + tx * cellW;
-            float hy = offsetY + ty * cellH;
-            drawList.AddRect(new Vector2(hx, hy), new Vector2(hx + cellW, hy + cellH),
-                ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 0f, 0.5f)), 0f, 0, 1.5f);
-        }
-
-        // Click to paint/erase/fill/pick
-        if (io.MouseClicked[0])
-        {
-            int tool = _bridge.MapPaintTool;
-            int layerIdx = _bridge.ActiveTileLayer;
-            int tileId = _bridge.SelectedTileId;
-            int brush = _bridge.BrushSize;
-
-            if (layerIdx >= 0 && layerIdx < map.Layers.Count)
-            {
-                var layer = map.Layers[layerIdx];
-                if (!layer.IsLocked)
-                {
-                    if (tool == 0) // Paint
-                    {
-                        int half = brush / 2;
-                        for (int dy = -half; dy <= half; dy++)
-                            for (int dx = -half; dx <= half; dx++)
-                                map.SetTile(layerIdx, tx + dx, ty + dy, tileId);
-                    }
-                    else if (tool == 1) // Erase
-                    {
-                        int half = brush / 2;
-                        for (int dy = -half; dy <= half; dy++)
-                            for (int dx = -half; dx <= half; dx++)
-                                map.SetTile(layerIdx, tx + dx, ty + dy, -1);
-                    }
-                    else if (tool == 2) // Fill
-                        map.FloodFill(layerIdx, tx, ty, tileId);
-                    else if (tool == 3) // Pick
-                    {
-                        int picked = map.GetTile(layerIdx, tx, ty);
-                        if (picked >= 0) _bridge.SelectedTileId = picked;
-                    }
-                }
-            }
-        }
-    }
 }

@@ -147,6 +147,10 @@ public class IDEBridge
     public int SelectedTileId { get; set; } = 0;
     public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick
     public int BrushSize { get; set; } = 1;
+    // Tilemap painting hooks (wired by IDE.cs to MapEditorPanel).
+    public Action<Vector2>? MapPaintAt { get; set; }
+    public Action<Vector2>? MapFillAt { get; set; }
+    public Action<Vector2>? MapPickAt { get; set; }
     public uint TilesetTextureId { get; set; }
     public int TilesetCols { get; set; } = 8;
     public int TilesetRows { get; set; } = 8;

@@ -28,6 +28,10 @@ public class Tilemap2D
     // ── World offset ──
     public Vector2 Offset; // Position of tilemap origin in world space
 
+    /// <summary>World units per pixel. The 3D Map2D plane renders at this scale so a
+    /// 1600px-wide map is 160 world units — matches the editor viewport scale.</summary>
+    public const float WorldScale = 0.1f;
+
     // ── Default layer ──
     public TileLayer ActiveLayer
     {
@@ -76,7 +80,8 @@ public class Tilemap2D
     /// </summary>
     public Vector2 GridToWorld(int x, int y)
     {
-        return Offset + new Vector2(x * TileSize, (Height - 1 - y) * TileSize);
+        float scale = TileSize * WorldScale;
+        return Offset + new Vector2(x * scale, (Height - 1 - y) * scale);
     }
 
     /// <summary>
@@ -84,8 +89,9 @@ public class Tilemap2D
     /// </summary>
     public (int x, int y) WorldToGrid(Vector2 worldPos)
     {
-        int gx = (int)MathF.Floor((worldPos.X - Offset.X) / TileSize);
-        int gy = (int)MathF.Floor((Offset.Y + Height * TileSize - worldPos.Y) / TileSize);
+        float scale = TileSize * WorldScale;
+        int gx = (int)MathF.Floor((worldPos.X - Offset.X) / scale);
+        int gy = (int)MathF.Floor((Offset.Y + Height * scale - worldPos.Y) / scale);
         return (gx, gy);
     }
 

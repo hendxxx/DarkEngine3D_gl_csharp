@@ -438,19 +438,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 bool rightLook = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT);
                 if (!ctrlHeld && (FlyMouseLook || rightLook))
                 {
-                    // Use configurable sensitivity from CameraConfig
-                    float sens = Config.CameraConfig.FlyMouseSensitivity;
-                    smoothYaw -= Mouse.DeltaX * sens;
-                    smoothPitch -= Mouse.DeltaY * sens;
-                    smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
-
-                    if (!_mouseLookWasActive)
+                    // In orthographic mode a plain right-drag PANS the camera in the view
+                    // plane (screen X → camera Right, screen Y → camera Up) instead of
+                    // rotating, like standard ortho editors. Explicit Fly look (✈ toggle)
+                    // still rotates so the ortho viewing angle stays adjustable.
+                    if (IsOrthographic && rightLook && !FlyMouseLook)
                     {
-                        Mouse.ShowMouse(false);
-                        // GLFW re-centers the hidden cursor (disabled mode) — drop the stale
-                        // delta so the camera doesn't snap on the first look frame.
-                        Mouse.ResetState();
-                        _mouseLookWasActive = true;
+                        // Pan speed scales with the ortho volume: dragging across the
+                        // whole viewport pans roughly one view height.
+                        float panK = OrthoSize * 0.002f;
+                        Position += (Right * -Mouse.DeltaX + Up * Mouse.DeltaY) * panK;
+                    }
+                    else
+                    {
+                        // Use configurable sensitivity from CameraConfig
+                        float sens = Config.CameraConfig.FlyMouseSensitivity;
+                        smoothYaw -= Mouse.DeltaX * sens;
+                        smoothPitch -= Mouse.DeltaY * sens;
+                        smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
+
+                        if (!_mouseLookWasActive)
+                        {
+                            Mouse.ShowMouse(false);
+                            // GLFW re-centers the hidden cursor (disabled mode) — drop the stale
+                            // delta so the camera doesn't snap on the first look frame.
+                            Mouse.ResetState();
+                            _mouseLookWasActive = true;
+                        }
                     }
                 }
                 else
@@ -488,13 +502,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                     Position += move * FlySpeed * dt;
 
-                    // Scroll wheel for zoom (move camera along Front direction).
-                    // Uses its own FlyZoomSpeed so zooming stays responsive even though
-                    // WASD movement (CameraFlySpeed) is deliberately slower for precision.
+                    // Scroll wheel for zoom. In perspective this dollies the camera
+                    // along Front (its own FlyZoomSpeed keeps zooming responsive even
+                    // though WASD movement is deliberately slower). In orthographic the
+                    // view distance does nothing, so scroll scales the ortho volume
+                    // (OrthoSize) instead — the classic ortho zoom.
                     if (Mouse.ScrollY != 0)
                     {
-                        Position += Front * Mouse.ScrollY * Config.CameraConfig.FlyZoomSpeed * dt;
-                        Mouse.ResetScroll();
+                        if (IsOrthographic)
+                        {
+                            OrthoSize = Math.Clamp(OrthoSize * (1f - Mouse.ScrollY * 0.08f), 1f, 200f);
+                            Mouse.ResetScroll();
+                        }
+                        else
+                        {
+                            Position += Front * Mouse.ScrollY * Config.CameraConfig.FlyZoomSpeed * dt;
+                            Mouse.ResetScroll();
+                        }
                     }
                 }
             }
