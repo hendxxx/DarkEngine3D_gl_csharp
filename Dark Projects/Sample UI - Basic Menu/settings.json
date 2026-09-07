@@ -13,7 +13,7 @@
   "IDEFontPath": "",
   "IDEFontSize": 20,
   "ViewportFontSize": 16,
-  "ShowDebugGrid": true,
+  "ShowDebugGrid": false,
   "ShowShadows": true,
   "SnapEnabled": true,
   "SnapGridSize": 10,
