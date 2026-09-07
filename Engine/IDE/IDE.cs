@@ -97,13 +97,18 @@ public class IDE : IDisposable
                     _focusedInGameIndex = -1;
 
                     // ── Enable freefly + preview mode for in-game navigation ──
+                    // (2D level scenes keep freefly OFF — see SyncLevelCamera.)
                     _viewport.PreviewMode = true;
-                    if (Bridge.Camera != null)
+                    if (Bridge.Camera != null && Bridge.ActiveTilemap == null)
                         Bridge.Camera.FlyMouseLook = true;
 
                     // ── Switch editor camera to the first Camera object in the scene ──
                     _lastInGameSceneName = Bridge.SelectedEditorScene;
                     SwitchToGameCamera();
+
+                    // 2D level scenes stay in ortho FRONT view (anchored to the map's
+                    // bottom-left) even in-game — re-anchor over any Camera marker.
+                    _levelCameraReframePending = Bridge.ActiveTilemap != null;
                 }
                 else
                 {
@@ -208,8 +213,9 @@ public class IDE : IDisposable
             _assetBrowser?.SetProjectRoot(Engine.Project.ProjectManager.ProjectRoot);
             // Auto-load sprite sheets
             _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
-            // Auto-load map
-            _mapEditor?.AutoLoadMap(Engine.Project.ProjectManager.ProjectRoot);
+            // 2D level maps live INSIDE each scene's .ing (Map2D object payload saved/restored
+            // by SceneManagerPanel). A scene only shows its level when the file contains one,
+            // so there is no project-wide map auto-load anymore.
         }
         else
         {
@@ -223,10 +229,136 @@ public class IDE : IDisposable
             Bridge.SelectedUIElement = null;
             Bridge.SelectedUIElements.Clear();
             Bridge.SelectedEditorObjects.Clear();
+            Bridge.ActiveTilemap = null;
             // Reset Asset Browser to default
             _assetBrowser?.SetProjectRoot(null);
-            // Clear sprite sheets
+            // Clear sprite sheets + map editor state
             _spriteEditor?.OnProjectChanged(null);
+            _mapEditor?.AutoLoadMap(null);
+        }
+    }
+
+    /// <summary>
+    /// When a level (visible Map2D object bound to the active tilemap) is shown in the
+    /// editor, switch the camera once to an orthographic FRONT view that is reset so the
+    /// map's bottom-left corner sits at the bottom-left of the viewport — a natural 2D
+    /// tile-editor framing. The camera is only moved on level transitions; afterwards the
+    /// user can pan/zoom freely. When the level is removed / a non-level scene is selected,
+    /// the previous perspective camera is restored.
+    /// </summary>
+    private void SyncLevelCamera()
+    {
+        var cam = Bridge.Camera;
+        if (cam == null) return;
+
+        // Find the level currently shown: a VISIBLE Map2D object in the active scene's
+        // manager that is bound to the active tilemap.
+        Visual.Tilemap2D? level = IsLevelShown() ? Bridge.ActiveTilemap : null;
+
+        if (level == null)
+        {
+            // No level shown — undo level mode if it was active.
+            if (_levelCameraApplied)
+            {
+                cam.IsOrthographic = _levelCameraSavedOrtho;
+                cam.OrthoSize = _levelCameraSavedOrthoSize;
+                cam.IsFlyMode = _levelCameraSavedFly;
+                cam.FlyMouseLook = _levelCameraSavedFlyLook;
+                cam.SetEditorViewTransform(
+                    _levelCameraSavedPos, _levelCameraSavedYaw, _levelCameraSavedPitch, cam.FoV);
+                _levelCameraApplied = false;
+                _levelCameraMap = null;
+                Console.WriteLine("[IDE] Level camera: restored previous view");
+            }
+            _levelCameraReframePending = false;
+            return;
+        }
+
+        // Already framed for this exact level — leave the user's pan/zoom alone,
+        // unless a reframe was requested (e.g. entering in-game mode over the level).
+        if (_levelCameraApplied && ReferenceEquals(_levelCameraMap, level) && !_levelCameraReframePending)
+        {
+            // Keep fly mode off every frame while the 2D view is active.
+            cam.IsFlyMode = false;
+            cam.FlyMouseLook = false;
+            return;
+        }
+
+        if (!_levelCameraApplied)
+        {
+            // Remember the current view so we can come back to it later.
+            _levelCameraSavedPos = cam.Position;
+            _levelCameraSavedYaw = cam.Yaw;
+            _levelCameraSavedPitch = cam.Pitch;
+            _levelCameraSavedOrtho = cam.IsOrthographic;
+            _levelCameraSavedOrthoSize = cam.OrthoSize;
+            _levelCameraSavedFly = cam.IsFlyMode;
+            _levelCameraSavedFlyLook = cam.FlyMouseLook;
+        }
+        _levelCameraReframePending = false;
+
+        // Frame the whole map in ortho, anchored so world (0,0) — the map's bottom-left
+        // corner — is at the bottom-left of the viewport. The map plane is upright at
+        // z = layer index, spanning x/y in [0, W*cell] × [0, H*cell].
+        float cell = level.TileSize * Visual.Tilemap2D.WorldScale;
+        float extentW = level.Width * cell;
+        float extentH = level.Height * cell;
+        int vw = Bridge.SceneTextureWidth;
+        int vh = Bridge.SceneTextureHeight;
+        float aspect = vw > 0 && vh > 0 ? (float)vw / vh : 16f / 9f;
+
+        // Half-height chosen so the whole map fits the viewport at the current aspect.
+        float margin = cell * 0.5f;
+        float halfH = MathF.Max(extentH, extentW / aspect) * 0.5f + margin;
+        float halfW = halfH * aspect;
+        float lookZ = MathF.Max(60f, extentW + extentH + halfW);
+
+        cam.IsOrthographic = true;
+        cam.OrthoSize = halfH;
+        cam.SetEditorViewTransform(new Vector3(halfW, halfH, lookZ), 180f, 0f, cam.FoV);
+
+        // 2D level mode has no fly navigation — yaw/pitch stay locked on the front view;
+        // users pan/zoom the ortho camera instead of flying around the map.
+        cam.IsFlyMode = false;
+        cam.FlyMouseLook = false;
+
+        _levelCameraApplied = true;
+        _levelCameraMap = level;
+        Console.WriteLine($"[IDE] Level camera: ortho front view for '{level.Name}' " +
+            $"({extentW:F0}x{extentH:F0} units, origin at bottom-left)");
+    }
+
+    /// <summary>True while a level is shown: a VISIBLE Map2D object bound to the active
+    /// tilemap exists in the current scene's object manager. Used to keep the in-game
+    /// camera in ortho/front and disable freefly for 2D scenes.</summary>
+    private bool IsLevelShown()
+    {
+        if (Bridge.ActiveTilemap == null || Bridge.EditorObjectManager == null) return false;
+        foreach (var o in Bridge.EditorObjectManager.Objects)
+        {
+            if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D
+                && o.IsVisible && ReferenceEquals(o.Map2dTilemap, Bridge.ActiveTilemap))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Persist all current editor data before the project is closed or the app
+    /// exits: sprite sheets + animation clips (Assets/Sprites), the active level's map
+    /// file (Assets/Maps) and the editor scenes (.ing, which also carries the level).
+    /// Ran BEFORE ProjectManager clears the project root.</summary>
+    private void PersistEditorData()
+    {
+        if (!Engine.Project.ProjectManager.IsProjectLoaded) return;
+        try
+        {
+            _spriteEditor?.SaveAllSheets();
+            _mapEditor?.SaveMap();
+            _sceneManagerPanel?.SaveAllScenes();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[IDE] PersistEditorData failed: {ex.Message}");
         }
     }
 
@@ -237,6 +369,21 @@ public class IDE : IDisposable
     /// <summary>Tracks the last in-game scene so we can switch camera when the user
     /// navigates to a different scene via in-game UI buttons.</summary>
     private string? _lastInGameSceneName = null;
+
+    // ── Auto ortho + Front camera for the 2D level editor ──
+    /// <summary>Whether the level camera (orthographic front view anchored to the map's
+    /// bottom-left corner) is currently applied.</summary>
+    private bool _levelCameraApplied;
+    /// <summary>Set when entering in-game mode over a level so the camera is re-anchored to
+    /// the ortho front/bottom-left view (SwitchToGameCamera may have moved it).</summary>
+    private bool _levelCameraReframePending;
+    /// <summary>The level the camera was framed for (re-frames when a different map loads).</summary>
+    private Visual.Tilemap2D? _levelCameraMap;
+    // Camera state saved when level mode started, so leaving the level restores the view.
+    private System.Numerics.Vector3 _levelCameraSavedPos;
+    private float _levelCameraSavedYaw, _levelCameraSavedPitch, _levelCameraSavedOrthoSize;
+    private bool _levelCameraSavedOrtho;
+    private bool _levelCameraSavedFly, _levelCameraSavedFlyLook;
 
     /// <summary>Switch the editor freefly camera to the first placed Camera object in the current scene.
     /// If no Camera object exists, shows a warning overlay for 5 seconds.
@@ -399,6 +546,10 @@ public class IDE : IDisposable
         if (ImGui.IsKeyReleased(ImGuiKey.F8))
             ToggleInGameMode();
 
+        // A level (Map2D) keeps the camera in orthographic FRONT view even while in-game:
+        // this must run for both editor frames and in-game frames (before the early return).
+        SyncLevelCamera();
+
         // ── In-Game Mode: render full-screen viewport with no ImGui chrome ──
         if (_inGameMode)
         {
@@ -438,6 +589,10 @@ public class IDE : IDisposable
                 Bridge.SelectedEditorObject = null;
             }
         }
+
+        // Map2D / tilemap renderers only belong in GameScene — rebind the active map to
+        // the current scene's object manager (or strip it from menu/loading scenes).
+        Bridge.EnforceMapObjectSceneRule();
 
         // ── Model > Add GLB Reference... file dialog + placement ──
         _glbDialog.Render();
@@ -512,6 +667,8 @@ public class IDE : IDisposable
                     ImGui.TextDisabled($"  {Engine.Project.ProjectManager.ProjectRoot}");
                     if (ImGui.MenuItem("Close Project"))
                     {
+                        // Persist everything before the project root is cleared.
+                        PersistEditorData();
                         Engine.Project.ProjectManager.CloseProject();
                         Console.WriteLine("[IDE] Project closed");
                     }
@@ -555,11 +712,15 @@ public class IDE : IDisposable
 
                 ImGui.Separator();
 
-                // Save (Save All)
+                // Save (Save All) — scenes (.ing incl. level) + sprite sheets/anim data
                 bool hasEditorScenes = Bridge.EditorScenes.Count > 0;
                 ImGui.BeginDisabled(!hasEditorScenes);
                 if (ImGui.MenuItem("Save", "Ctrl+S"))
+                {
+                    _spriteEditor?.SaveAllSheets();
+                    _mapEditor?.SaveMap();
                     _sceneManagerPanel.SaveAllScenes();
+                }
                 ImGui.EndDisabled();
 
                 // Save As...
@@ -571,6 +732,7 @@ public class IDE : IDisposable
                 if (ImGui.MenuItem("Exit"))
                 {
                     Console.WriteLine("Exiting via File > Exit");
+                    PersistEditorData();
                     nint exitWindow = Glfw.GetWindow();
                     if (exitWindow != nint.Zero)
                         Glfw.SetWindowShouldClose(exitWindow, 1);
@@ -1144,8 +1306,18 @@ public class IDE : IDisposable
         var cam = Bridge.Camera;
         if (cam != null)
         {
+            // 2D level scenes match edit mode: ortho/front, freefly OFF, cursor visible.
+            bool levelMode = IsLevelShown();
+            if (levelMode)
+            {
+                if (cam.FlyMouseLook)
+                {
+                    cam.FlyMouseLook = false;
+                    Mouse.ShowMouse(true);
+                }
+            }
             // ShowCursorInGame option overrides: always show cursor in-game mode
-            if (Bridge.ShowCursorInGame)
+            else if (Bridge.ShowCursorInGame)
             {
                 if (cam.FlyMouseLook)
                 {

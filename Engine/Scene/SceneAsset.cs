@@ -144,7 +144,12 @@ public class BackgroundObjectData
 public class EditorObjectData
 {
     public string Name { get; set; } = "EditorObject";
-    public string PrimitiveType { get; set; } = "Box"; // Box, Sphere, Plane, GlbReference
+    public string PrimitiveType { get; set; } = "Box"; // Box, Sphere, Plane, GlbReference, Map2D
+    /// <summary>Serialized tilemap payload — only used when PrimitiveType == Map2D.
+    /// Keeping the level inside the scene file means a scene only shows its level when
+    /// the .ing actually contains it (no blanket auto-load).</summary>
+    public Visual.Tilemap2DData? Tilemap { get; set; }
+    public bool TilemapShowGrid { get; set; } = true;
     /// <summary>GLB model path (only used when PrimitiveType == GlbReference). Stored relative to the exe.</summary>
     public string GlbFilePath { get; set; } = "";
     public float PosX { get; set; }

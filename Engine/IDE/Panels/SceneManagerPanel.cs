@@ -899,6 +899,8 @@ public class SceneManagerPanel
                     {
                         Name = obj.Name,
                         PrimitiveType = obj.PrimitiveType.ToString(),
+                        Tilemap = obj.PrimitiveType == EditorPrimitiveType.Map2D ? obj.Map2dTilemap?.ToData() : null,
+                        TilemapShowGrid = obj.Map2dShowGrid,
                         PosX = obj.Position.X,
                         PosY = obj.Position.Y,
                         PosZ = obj.Position.Z,
@@ -1067,6 +1069,23 @@ public class SceneManagerPanel
         }
         _bridge.EditorObjectManager = editorScene.ObjectManager;
         _bridge.SelectedEditorObject = null;
+
+        // The level shown by the Map Editor follows the selected scene: a GameScene that
+        // contains a Map2D object (saved in the .ing) provides the active tilemap; menu /
+        // loading scenes have none. Nothing is auto-created here.
+        Tilemap2D? sceneLevel = null;
+        if (editorScene.Type == IDEBridge.SceneType.GameScene && editorScene.ObjectManager != null)
+        {
+            foreach (var o in editorScene.ObjectManager.Objects)
+            {
+                if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)
+                {
+                    sceneLevel = o.Map2dTilemap;
+                    break;
+                }
+            }
+        }
+        _bridge.ActiveTilemap = sceneLevel;
 
         // Select the first visible child so wireframe/handles appear in the viewport
         _bridge.SelectedUIElements?.Clear();
@@ -1311,6 +1330,7 @@ public class SceneManagerPanel
                             "camera" => EditorPrimitiveType.Camera,
                             "light" => EditorPrimitiveType.Light,
                             "sky" => EditorPrimitiveType.Sky,
+                            "map2d" => EditorPrimitiveType.Map2D,
                             _ => EditorPrimitiveType.Box,
                         };
 
@@ -1477,6 +1497,23 @@ public class SceneManagerPanel
                         {
                             obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();
                             obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
+                        }
+
+                        // 2D Map (level): rebind the tilemap payload saved in the scene file.
+                        // A level is only shown for scenes that actually contain one.
+                        if (primType == EditorPrimitiveType.Map2D && objData.Tilemap != null)
+                        {
+                            var tilemap = Tilemap2D.FromData(objData.Tilemap);
+                            obj.Map2dTilemap = tilemap;
+                            obj.Map2dTilesetCols = tilemap.TilesetColumns;
+                            obj.Map2dTilesetRows = tilemap.TilesetRows;
+                            obj.Map2dLayerIndex = -1; // whole map (all visible layers)
+                            obj.Map2dShowGrid = objData.TilemapShowGrid;
+                            obj.Name = tilemap.Name;
+                            // The Map Editor's active map follows the first level found.
+                            if (sceneType == IDEBridge.SceneType.GameScene && _bridge.ActiveTilemap == null)
+                                _bridge.ActiveTilemap = tilemap;
+                            Console.WriteLine($"[SceneManagerPanel] Restored level '{tilemap.Name}' in scene '{sceneName}' ({tilemap.Width}x{tilemap.Height}, {tilemap.Layers.Count} layers)");
                         }
 
 

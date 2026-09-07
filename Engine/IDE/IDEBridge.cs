@@ -165,6 +165,35 @@ public class IDEBridge
     public bool ShowPaletteGrid { get; set; } = true;
     public Vector4 PaletteGridColor { get; set; } = new(1f, 1f, 1f, 0.25f);
 
+    // ── 2D Map scene ownership ──
+
+    /// <summary>
+    /// Map2D (tilemap) renderer objects are gameplay content, so they may only live in a
+    /// GameScene editor scene — never in a MainMenu/Loading scene. Call this whenever the
+    /// active editor scene changes (it is cheap, so running it every editor frame is fine):
+    /// any stray Map2D object in a non-GameScene is removed. A level is NEVER auto-created
+    /// here — it only appears when the scene actually contains a Map2D object (restored
+    /// from the .ing file or created by the Map Editor via New Map / Load / Add Layer).
+    /// </summary>
+    public void EnforceMapObjectSceneRule()
+    {
+        if (EditorObjectManager == null) return;
+
+        bool isGameScene = SelectedEditorScene != null
+            && EditorScenes.TryGetValue(SelectedEditorScene, out var editorScene)
+            && editorScene.Type == SceneType.GameScene;
+
+        if (isGameScene) return;
+
+        // Tilemaps belong to gameplay only — drop leftovers from menu/loading scenes.
+        var stray = new List<EditorObject>();
+        foreach (var o in EditorObjectManager.Objects)
+            if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D)
+                stray.Add(o);
+        foreach (var o in stray)
+            EditorObjectManager.Remove(o);
+    }
+
     // ── Editor Object Manager ──
     private EditorObjectManager? _editorObjectManager;
     /// <summary>Manages editor-placed 3D primitives (Plane, Box, Sphere, glb references).

@@ -155,7 +155,8 @@ public class SpriteSheet
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
             Name = f.Name, AnchorX = f.AnchorX, AnchorY = f.AnchorY,
             HitboxX = f.HitboxX, HitboxY = f.HitboxY,
-            HitboxW = f.HitboxW, HitboxH = f.HitboxH
+            HitboxW = f.HitboxW, HitboxH = f.HitboxH,
+            Tags = f.Tags?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? null
         }).ToList()
     };
 
@@ -178,7 +179,8 @@ public class SpriteSheet
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
             Name = f.Name, AnchorX = f.AnchorX, AnchorY = f.AnchorY,
             HitboxX = f.HitboxX, HitboxY = f.HitboxY,
-            HitboxW = f.HitboxW, HitboxH = f.HitboxH
+            HitboxW = f.HitboxW, HitboxH = f.HitboxH,
+            Tags = f.Tags != null ? new Dictionary<string, string>(f.Tags) : new()
         }).ToList()
     };
 }
@@ -235,4 +237,6 @@ public class SpriteFrameData
     public int HitboxY { get; set; }
     public int HitboxW { get; set; }
     public int HitboxH { get; set; }
+    /// <summary>Per-frame custom tags/events.</summary>
+    public Dictionary<string, string>? Tags { get; set; }
 }

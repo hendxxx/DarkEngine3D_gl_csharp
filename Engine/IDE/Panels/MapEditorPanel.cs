@@ -79,6 +79,10 @@ public class MapEditorPanel
     {
         if (!_visible) return;
 
+        // Adopt a level that came from the selected scene's .ing (restored Map2D object):
+        // keeps this panel's palette/layers in sync with the active GameScene tilemap.
+        SyncTilemapFromBridge();
+
         ImGui.SetNextWindowSize(new Vector2(350, 600), ImGuiCond.FirstUseEver);
         if (ImGui.Begin("Map Editor", ref _visible))
         {
@@ -290,6 +294,40 @@ public class MapEditorPanel
         }
     }
 
+    /// <summary>If the bridge's active tilemap changed externally (scene selection / .ing
+    /// restore / another panel), point this panel at it and refresh the tileset preview.
+    /// Never clears an existing panel tilemap when the bridge is null — the user may still
+    /// be mid-edit on a level while a menu scene is selected.</summary>
+    private void SyncTilemapFromBridge()
+    {
+        var active = _bridge.ActiveTilemap;
+        if (active == null || ReferenceEquals(active, ActiveTilemap)) return;
+
+        ActiveTilemap = active;
+        _selectedLayerIdx = ActiveTilemap.Layers.Count > 0 ? 0 : -1;
+        _selectedTileId = 0;
+        _hoveredTileX = -1;
+        _hoveredTileY = -1;
+
+        // Refresh tileset texture + grid from the tilemap's stored tileset path.
+        if (_tilesetTextureId != 0)
+        {
+            uint oldTex = _tilesetTextureId;
+            unsafe { GL.DeleteTextures(1, &oldTex); }
+        }
+        _tilesetTextureId = 0;
+        _tilesetCols = ActiveTilemap.TilesetColumns;
+        _tilesetRows = ActiveTilemap.TilesetRows;
+        if (!string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath) && File.Exists(ActiveTilemap.TilesetImagePath))
+            LoadTilesetTexture(ActiveTilemap.TilesetImagePath);
+        else
+        {
+            _tilesetImgW = 0;
+            _tilesetImgH = 0;
+        }
+        Console.WriteLine($"[MapEditor] Adopted level '{ActiveTilemap.Name}' ({ActiveTilemap.Width}x{ActiveTilemap.Height}, {ActiveTilemap.Layers.Count} layers)");
+    }
+
     private void RenderToolbar()
     {
         var tools = new[] { ("Paint", PaintTool.Paint), ("Erase", PaintTool.Erase),
@@ -320,6 +358,19 @@ public class MapEditorPanel
         _bridge.WorldGridColor = _worldGridColor;
         _bridge.ShowPaletteGrid = _showPaletteGrid;
         _bridge.PaletteGridColor = _paletteGridColor;
+
+        // "Show Grid" drives the Map2D tile grid in the 3D viewport: push the flag onto
+        // every Map2D EditorObject bound to the active tilemap so the toggle applies
+        // instantly (real-time) to the scene, not only to this panel's palette.
+        if (_bridge.EditorObjectManager != null && ActiveTilemap != null)
+        {
+            foreach (var o in _bridge.EditorObjectManager.Objects)
+            {
+                if (o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+                    && ReferenceEquals(o.Map2dTilemap, ActiveTilemap))
+                    o.Map2dShowGrid = _showGrid;
+            }
+        }
     }
 
     private void RenderLayers()
@@ -372,28 +423,11 @@ public class MapEditorPanel
                 Height = ActiveTilemap.Height
             };
             ActiveTilemap.Layers.Add(newLayer);
-            int newLayerIdx = ActiveTilemap.Layers.Count - 1;
-            _selectedLayerIdx = newLayerIdx;
-
-            // Create a Map2D EditorObject for this layer
-            if (_bridge.EditorObjectManager != null)
-            {
-                var mapObj = new Engine.Objects.EditorObject(
-                    Engine.Objects.EditorPrimitiveType.Map2D,
-                    $"{_newLayerName}");
-                mapObj.Map2dTilemap = ActiveTilemap;
-                mapObj.Map2dLayerIndex = newLayerIdx;  // Set to render only this layer
-                mapObj.Map2dTilesetCols = ActiveTilemap.TilesetColumns;
-                mapObj.Map2dTilesetRows = ActiveTilemap.TilesetRows;
-                // Position and scale to match tilemap
-                float worldW = ActiveTilemap.Width * ActiveTilemap.TileSize;
-                float worldH = ActiveTilemap.Height * ActiveTilemap.TileSize;
-                mapObj.Position = new System.Numerics.Vector3(-worldW * 0.5f, newLayerIdx * 0.01f, -worldH * 0.5f);
-                mapObj.Scale = new System.Numerics.Vector3(worldW, 1f, worldH);
-                mapObj.RotationEuler = new System.Numerics.Vector3(-90f, 0, 0);
-                _bridge.EditorObjectManager.Add(mapObj);
-                Console.WriteLine($"[MapEditor] Created Map2D EditorObject for layer {newLayerIdx}: '{_newLayerName}'");
-            }
+            _selectedLayerIdx = ActiveTilemap.Layers.Count - 1;
+            // No per-layer scene object is created (the single whole-map Map2D object renders
+            // every visible layer). If the map object was deleted from the scene earlier, this
+            // is also the natural "add it back" action.
+            EnsureMapSceneObject();
         }
         if (ActiveTilemap.Layers.Count > 0 && ImGui.Button("- Remove##tile"))
         {
@@ -621,6 +655,10 @@ public class MapEditorPanel
         int height = 20;
         int tileSize = 32;
 
+        // Only one level/map object may exist at a time — drop Map2D objects created for
+        // the previous tilemap (e.g. an auto-loaded map) before creating the new one.
+        RemoveAllSceneMapObjects();
+
         ActiveTilemap = new Tilemap2D(width, height, tileSize)
         {
             Name = "New Level"
@@ -645,6 +683,61 @@ public class MapEditorPanel
         }
 
         Console.WriteLine($"[MapEditor] Created new map: {width}x{height} tiles ({tileSize}px)");
+    }
+
+    /// <summary>Remove every Map2D (tilemap) EditorObject from the active manager and all
+    /// editor scene managers. Only one map object is ever wanted, so this runs whenever
+    /// New Map / Load replaces the active tilemap (prevents stacked duplicate "New Level").</summary>
+    private void RemoveAllSceneMapObjects()
+    {
+        RemoveMapObjectsFrom(_bridge.EditorObjectManager);
+        if (_bridge.EditorScenes != null)
+        {
+            foreach (var kvp in _bridge.EditorScenes)
+            {
+                if (kvp.Value.ObjectManager != null
+                    && !ReferenceEquals(kvp.Value.ObjectManager, _bridge.EditorObjectManager))
+                    RemoveMapObjectsFrom(kvp.Value.ObjectManager);
+            }
+        }
+    }
+
+    private static void RemoveMapObjectsFrom(Engine.Objects.EditorObjectManager? mgr)
+    {
+        if (mgr == null) return;
+        var maps = mgr.Objects
+            .Where(o => o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D)
+            .ToList();
+        foreach (var o in maps)
+            mgr.Remove(o);
+    }
+
+    /// <summary>Find an existing Map2D EditorObject bound to ActiveTilemap, or create one
+    /// so the loaded map renders (tiles + grid) in the 3D viewport. Map2D objects are
+    /// gameplay content and may only be added to a GameScene — never a MainMenu scene.</summary>
+    private void EnsureMapSceneObject()
+    {
+        if (ActiveTilemap == null || _bridge.EditorObjectManager == null) return;
+        if (!IsCurrentSceneGameScene())
+        {
+            Console.WriteLine("[MapEditor] Tilemap loaded — select/open the GameScene to render it (map objects only live in GameScene).");
+            return;
+        }
+
+        bool exists = _bridge.EditorObjectManager.Objects.Any(o =>
+            o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+            && ReferenceEquals(o.Map2dTilemap, ActiveTilemap));
+        if (exists) return;
+
+        var mapObj = _bridge.EditorObjectManager.AddPrimitive(
+            Engine.Objects.EditorPrimitiveType.Map2D, System.Numerics.Vector3.Zero);
+        mapObj.Name = ActiveTilemap.Name;
+        mapObj.Map2dTilemap = ActiveTilemap;
+        mapObj.Map2dTilesetCols = ActiveTilemap.TilesetColumns;
+        mapObj.Map2dTilesetRows = ActiveTilemap.TilesetRows;
+        mapObj.Map2dLayerIndex = -1;   // whole map (all visible layers)
+        mapObj.Map2dShowGrid = _showGrid;
+        Console.WriteLine($"[MapEditor] Created Map2D scene object for '{ActiveTilemap.Name}'");
     }
 
     private void ResizeMap()
@@ -756,9 +849,17 @@ public class MapEditorPanel
                 return;
             }
 
+            // Only one level/map object may exist at a time — drop Map2D objects bound to
+            // the previously loaded tilemap before swapping in the newly loaded one.
+            RemoveAllSceneMapObjects();
+
             ActiveTilemap = Tilemap2D.FromData(data.Tilemap);
             _bridge.ActiveTilemap = ActiveTilemap;
             _selectedLayerIdx = Math.Min(1, ActiveTilemap.Layers.Count - 1);
+
+            // Make sure a Map2D scene object renders this tilemap in the 3D viewport
+            // (grid included) right after loading — just like "New Map" does.
+            EnsureMapSceneObject();
 
             // Load parallax layers
             ParallaxLayers.Clear();

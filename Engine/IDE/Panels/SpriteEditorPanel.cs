@@ -1025,19 +1025,35 @@ public class SpriteEditorPanel
         return Path.Combine(dir, "sprites.sheets.json");
     }
 
+    /// <summary>Snapshot all editor state (sheets + clips + Animation Preview settings).
+    /// Used by every save path so Save / Save As... never drop data.</summary>
+    private SpriteSheetsSaveData CaptureSaveData()
+    {
+        var data = new SpriteSheetsSaveData
+        {
+            Sheets = SpriteSheets.Select(s => s.ToData()).ToList(),
+            AnimationClips = AnimationClips.Select(c => c.ToData()).ToList()
+        };
+        // Persist the Animation Preview range (Start/End), FPS and Loop so they come
+        // back exactly as the user left them after a reload.
+        if (SelectedSheet != null && SelectedSheet.FrameCount > 0)
+        {
+            data.PreviewStartFrame = Math.Clamp(_animStartFrame, 0, SelectedSheet.FrameCount - 1);
+            data.PreviewEndFrame = Math.Clamp(_animEndFrame, data.PreviewStartFrame, SelectedSheet.FrameCount - 1);
+            data.PreviewFps = Math.Clamp(_animFPS, 1f, 120f);
+            data.PreviewLoop = _animLoop;
+        }
+        return data;
+    }
+
     /// <summary>Save all sprite sheets to the default project location.</summary>
     public void SaveAllSheets()
     {
         string path = GetDefaultSavePath();
         try
         {
-            var data = new SpriteSheetsSaveData
-            {
-                Sheets = SpriteSheets.Select(s => s.ToData()).ToList(),
-                AnimationClips = AnimationClips.Select(c => c.ToData()).ToList()
-            };
             var opts = new JsonSerializerOptions { WriteIndented = true };
-            string json = JsonSerializer.Serialize(data, opts);
+            string json = JsonSerializer.Serialize(CaptureSaveData(), opts);
             File.WriteAllText(path, json);
             _lastSavePath = path;
             Console.WriteLine($"[SpriteEditor] Saved {SpriteSheets.Count} sheets + {AnimationClips.Count} clips to: {path}");
@@ -1061,15 +1077,11 @@ public class SpriteEditorPanel
             string path = _saveDialog.SelectedPath;
             try
             {
-                var data = new SpriteSheetsSaveData
-                {
-                    Sheets = SpriteSheets.Select(s => s.ToData()).ToList()
-                };
                 var opts = new JsonSerializerOptions { WriteIndented = true };
-                string json = JsonSerializer.Serialize(data, opts);
+                string json = JsonSerializer.Serialize(CaptureSaveData(), opts);
                 File.WriteAllText(path, json);
                 _lastSavePath = path;
-                Console.WriteLine($"[SpriteEditor] Saved {SpriteSheets.Count} sheets to: {path}");
+                Console.WriteLine($"[SpriteEditor] Saved {SpriteSheets.Count} sheets + {AnimationClips.Count} clips to: {path}");
             }
             catch (Exception ex)
             {
@@ -1136,6 +1148,16 @@ public class SpriteEditorPanel
             _selectedFrameIdx = -1;
             _selectedClipIdx = -1;
             if (SelectedSheet != null) LoadSheetSettings();
+
+            // Restore the last Animation Preview settings (Start/End/FPS/Loop).
+            if (data.PreviewStartFrame >= 0 && SelectedSheet != null)
+            {
+                _animStartFrame = Math.Clamp(data.PreviewStartFrame, 0, Math.Max(0, SelectedSheet.FrameCount - 1));
+                _animEndFrame = Math.Clamp(Math.Max(data.PreviewEndFrame, _animStartFrame),
+                    _animStartFrame, Math.Max(0, SelectedSheet.FrameCount - 1));
+                _animFPS = Math.Clamp(data.PreviewFps, 1f, 120f);
+                _animLoop = data.PreviewLoop;
+            }
             _lastLoadPath = path;
             Console.WriteLine($"[SpriteEditor] Loaded {SpriteSheets.Count} sheets + {AnimationClips.Count} clips from: {path}");
         }
@@ -1354,4 +1376,12 @@ public class SpriteSheetsSaveData
 {
     public List<SpriteSheetData> Sheets { get; set; } = new();
     public List<AnimationClip2DData> AnimationClips { get; set; } = new();
+
+    // ── Last-used Animation Preview settings (Start/End/FPS/Loop) ──
+    /// <summary>Saved so the preview range the user left is restored after a reload.
+    /// -1 = never saved (keep defaults).</summary>
+    public int PreviewStartFrame { get; set; } = -1;
+    public int PreviewEndFrame { get; set; } = -1;
+    public float PreviewFps { get; set; } = 12f;
+    public bool PreviewLoop { get; set; } = true;
 }

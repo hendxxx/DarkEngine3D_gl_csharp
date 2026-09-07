@@ -2921,7 +2921,22 @@ void main() {
         }
 
         BuildMap2DMesh();
-        var model = WorldMatrix;
+
+        // The map is drawn as ONE canonical upright plane at the world origin so it
+        // lines up exactly with the editor paint/hover math (Tilemap2D.WorldToGrid /
+        // GridToWorld operate on the XY plane at z = layer index). The object's own
+        // Position/Scale/Rotation are deliberately NOT applied: the mesh below is baked
+        // in world units (px × Tilemap2D.WorldScale) and layer stacking is an explicit
+        // world-Z offset (the layer index), matching the paint raycast plane.
+        int mapW = Map2dTilemap.Width;
+        int mapH = Map2dTilemap.Height;
+        int ts = Map2dTilemap.TileSize;
+        float cell = ts * Tilemap2D.WorldScale;
+        float extentW = mapW * cell;
+        float extentH = mapH * cell;
+        float layerZ = Map2dLayerIndex >= 0 ? (float)Map2dLayerIndex : 0f;
+        var model = Matrix4x4.CreateTranslation(0f, 0f, layerZ)
+                  * Matrix4x4.CreateRotationX(-MathF.PI / 2f);
 
         // Draw the tiles only when the map has some; the grid pass below still runs
         // for an empty map so "New Map" immediately shows the upright plane outline
@@ -2967,38 +2982,40 @@ void main() {
             }
         }
 
-        // ── Grid lines: world-space squares transformed with the object's model
-        //    matrix so they follow its position/rotation/scale. Drawn via the line
-        //    shader (with alpha) and depth test disabled so the grid always reads
-        //    over the tiles, like an editor overlay. ──
-        if (Map2dShowGrid)
+        // ── Tile grid: one square per tile, drawn in world space on the same upright
+        //    plane (and depth) the paint/hover highlight uses, so the grid is always
+        //    exactly under the mouse boxes. Depth test is disabled while drawing so the
+        //    grid reads over the tiles like an editor overlay. Drawn for the whole-map
+        //    object (layer -1) and for layer 0 so a freshly created map always shows it.
+        if (Map2dShowGrid && Map2dLayerIndex <= 0)
         {
-            int mapW = Map2dTilemap.Width;
-            int mapH = Map2dTilemap.Height;
-            int ts = Map2dTilemap.TileSize;
-            // Cell size matches the editor world grid (1 unit, see SceneManager
-            // RenderEditorGrid) so the map grid lines up with the viewport grid.
-            // The mesh is baked at WorldScale, so spans are width×height×ts×WorldScale.
-            const int gridStep = 1;
-            float extentW = mapW * ts * Tilemap2D.WorldScale;
-            float extentH = mapH * ts * Tilemap2D.WorldScale;
-            var gridVerts = new List<Vector3>();
-            for (float x = 0f; x <= extentW; x += gridStep)
+            var gridVerts = new List<Vector3>((mapW + mapH + 2) * 2);
+            for (int gx = 0; gx <= mapW; gx++)
             {
-                float px = x;
-                gridVerts.Add(Vector3.Transform(new Vector3(px, 0, 0), model));
-                gridVerts.Add(Vector3.Transform(new Vector3(px, 0, extentH), model));
+                float px = gx * cell;
+                gridVerts.Add(new Vector3(px, 0f, layerZ));
+                gridVerts.Add(new Vector3(px, extentH, layerZ));
             }
-            for (float y = 0f; y <= extentH; y += gridStep)
+            for (int gy = 0; gy <= mapH; gy++)
             {
-                float pz = y;
-                gridVerts.Add(Vector3.Transform(new Vector3(0, 0, pz), model));
-                gridVerts.Add(Vector3.Transform(new Vector3(extentW, 0, pz), model));
+                float py = gy * cell;
+                gridVerts.Add(new Vector3(0f, py, layerZ));
+                gridVerts.Add(new Vector3(extentW, py, layerZ));
             }
 
             bool depthEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
             GL.Disable(Const.GL_DEPTH_TEST);
-            Terrains.TerrainChunk.DrawLineSegments(gridVerts, new Vector3(0.6f, 0.65f, 0.7f), camera, 0.35f);
+            Terrains.TerrainChunk.DrawLineSegments(gridVerts, new Vector3(0.4f, 0.5f, 0.68f), camera, 0.5f);
+
+            // Outer border, brighter, so the map extent reads clearly.
+            var border = new List<Vector3>(8)
+            {
+                new(0f, 0f, layerZ), new(extentW, 0f, layerZ),
+                new(extentW, 0f, layerZ), new(extentW, extentH, layerZ),
+                new(extentW, extentH, layerZ), new(0f, extentH, layerZ),
+                new(0f, extentH, layerZ), new(0f, 0f, layerZ)
+            };
+            Terrains.TerrainChunk.DrawLineSegments(border, new Vector3(0.85f, 0.9f, 1f), camera, 0.8f);
             if (depthEnabled)
                 GL.Enable(Const.GL_DEPTH_TEST);
         }
