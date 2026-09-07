@@ -150,6 +150,10 @@ public class EditorObjectData
     /// the .ing actually contains it (no blanket auto-load).</summary>
     public Visual.Tilemap2DData? Tilemap { get; set; }
     public bool TilemapShowGrid { get; set; } = true;
+    public float TilemapGridColorR { get; set; } = 0.4f;   // 3D map grid overlay color
+    public float TilemapGridColorG { get; set; } = 0.5f;
+    public float TilemapGridColorB { get; set; } = 0.68f;
+    public float TilemapGridColorA { get; set; } = 0.5f;
     /// <summary>GLB model path (only used when PrimitiveType == GlbReference). Stored relative to the exe.</summary>
     public string GlbFilePath { get; set; } = "";
     public float PosX { get; set; }

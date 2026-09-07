@@ -901,6 +901,10 @@ public class SceneManagerPanel
                         PrimitiveType = obj.PrimitiveType.ToString(),
                         Tilemap = obj.PrimitiveType == EditorPrimitiveType.Map2D ? obj.Map2dTilemap?.ToData() : null,
                         TilemapShowGrid = obj.Map2dShowGrid,
+                        TilemapGridColorR = obj.Map2dGridColor.X,
+                        TilemapGridColorG = obj.Map2dGridColor.Y,
+                        TilemapGridColorB = obj.Map2dGridColor.Z,
+                        TilemapGridColorA = obj.Map2dGridColor.W,
                         PosX = obj.Position.X,
                         PosY = obj.Position.Y,
                         PosZ = obj.Position.Z,
@@ -1509,6 +1513,8 @@ public class SceneManagerPanel
                             obj.Map2dTilesetRows = tilemap.TilesetRows;
                             obj.Map2dLayerIndex = -1; // whole map (all visible layers)
                             obj.Map2dShowGrid = objData.TilemapShowGrid;
+                            obj.Map2dGridColor = new Vector4(objData.TilemapGridColorR, objData.TilemapGridColorG,
+                                objData.TilemapGridColorB, objData.TilemapGridColorA);
                             obj.Name = tilemap.Name;
                             // The Map Editor's active map follows the first level found.
                             if (sceneType == IDEBridge.SceneType.GameScene && _bridge.ActiveTilemap == null)

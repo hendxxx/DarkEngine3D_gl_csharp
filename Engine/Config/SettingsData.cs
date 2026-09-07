@@ -39,6 +39,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Font size for the viewport toolbar buttons (px).</summary>
         public float ToolbarFontSize { get; set; } = 14f;
 
+        // ── Map Editor grid/palette UI prefs (2D sidescroller editor). Persisted so
+        // the Map Editor comes back with the same Show Grid / grid colors / palette
+        // columns+cell after restarting or reopening the project. ──
+        public bool MapEditorShowGrid { get; set; } = true;
+        public float MapEditorGridColorR { get; set; } = 0.4f;   // 3D map grid lines
+        public float MapEditorGridColorG { get; set; } = 0.5f;
+        public float MapEditorGridColorB { get; set; } = 0.68f;
+        public float MapEditorGridColorA { get; set; } = 0.5f;
+        public bool MapEditorShowWorldGrid { get; set; } = true;
+        public float MapEditorWorldGridSize { get; set; } = 128f;
+        public float MapEditorWorldGridColorR { get; set; } = 1f;
+        public float MapEditorWorldGridColorG { get; set; } = 1f;
+        public float MapEditorWorldGridColorB { get; set; } = 1f;
+        public float MapEditorWorldGridColorA { get; set; } = 0.12f;
+        public bool MapEditorShowPaletteGrid { get; set; } = true;
+        public float MapEditorPaletteGridColorR { get; set; } = 1f;
+        public float MapEditorPaletteGridColorG { get; set; } = 1f;
+        public float MapEditorPaletteGridColorB { get; set; } = 1f;
+        public float MapEditorPaletteGridColorA { get; set; } = 0.25f;
+        public int MapEditorPaletteCols { get; set; } = 8;
+        public float MapEditorPaletteCell { get; set; } = 32f;
+
         // ── Transition defaults (persisted from TransitionPanel's "Apply Global Default") ──
         public int DefaultTransitionType { get; set; } = 0; // 0=Fade, 1=SlideLeft, 2=SlideRight
         public float DefaultTransitionDuration { get; set; } = 0.6f;

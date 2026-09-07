@@ -71,6 +71,89 @@ public class MapEditorPanel
     public MapEditorPanel(IDEBridge bridge)
     {
         _bridge = bridge;
+        LoadMapEditorPrefs();
+    }
+
+    /// <summary>Hook called when the project changes (open / close). Reloads the per-project
+    /// grid/palette preferences stored in settings.json.</summary>
+    public void OnProjectChanged(string? projectRoot)
+    {
+        if (!string.IsNullOrEmpty(projectRoot))
+            LoadMapEditorPrefs();
+    }
+
+    // ── Grid/palette preference persistence (per-project settings.json) ──
+    private bool _prefsLoaded = false;
+    private double _lastPrefsSaveTime = -10;
+
+    private void LoadMapEditorPrefs()
+    {
+        try
+        {
+            var s = DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Load();
+            _showGrid = s.MapEditorShowGrid;
+            _showWorldGrid = s.MapEditorShowWorldGrid;
+            _worldGridSize = s.MapEditorWorldGridSize;
+            _worldGridColor = new Vector4(s.MapEditorWorldGridColorR, s.MapEditorWorldGridColorG,
+                s.MapEditorWorldGridColorB, s.MapEditorWorldGridColorA);
+            _showPaletteGrid = s.MapEditorShowPaletteGrid;
+            _paletteGridColor = new Vector4(s.MapEditorPaletteGridColorR, s.MapEditorPaletteGridColorG,
+                s.MapEditorPaletteGridColorB, s.MapEditorPaletteGridColorA);
+            _gridColor = new Vector4(s.MapEditorGridColorR, s.MapEditorGridColorG,
+                s.MapEditorGridColorB, s.MapEditorGridColorA);
+            _paletteCols = Math.Max(1, s.MapEditorPaletteCols);
+            _paletteCellSize = Math.Clamp(s.MapEditorPaletteCell, 16f, 64f);
+            _prefsLoaded = true;
+            Console.WriteLine("[MapEditor] Loaded grid/palette prefs from settings.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MapEditor] Failed to load grid/palette prefs: {ex.Message}");
+        }
+    }
+
+    /// <summary>Write the current grid/palette UI values to settings.json so the panel
+    /// comes back the same after restart / project reopen. Called from Render() when a
+    /// control changed (throttled, so slider drags don't hammer the disk).</summary>
+    private void SaveMapEditorPrefs()
+    {
+        try
+        {
+            var s = DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Load();
+            s.MapEditorShowGrid = _showGrid;
+            s.MapEditorShowWorldGrid = _showWorldGrid;
+            s.MapEditorWorldGridSize = _worldGridSize;
+            s.MapEditorWorldGridColorR = _worldGridColor.X;
+            s.MapEditorWorldGridColorG = _worldGridColor.Y;
+            s.MapEditorWorldGridColorB = _worldGridColor.Z;
+            s.MapEditorWorldGridColorA = _worldGridColor.W;
+            s.MapEditorShowPaletteGrid = _showPaletteGrid;
+            s.MapEditorPaletteGridColorR = _paletteGridColor.X;
+            s.MapEditorPaletteGridColorG = _paletteGridColor.Y;
+            s.MapEditorPaletteGridColorB = _paletteGridColor.Z;
+            s.MapEditorPaletteGridColorA = _paletteGridColor.W;
+            s.MapEditorGridColorR = _gridColor.X;
+            s.MapEditorGridColorG = _gridColor.Y;
+            s.MapEditorGridColorB = _gridColor.Z;
+            s.MapEditorGridColorA = _gridColor.W;
+            s.MapEditorPaletteCols = _paletteCols;
+            s.MapEditorPaletteCell = _paletteCellSize;
+            DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Save(s);
+            _lastPrefsSaveTime = ImGui.GetTime();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MapEditor] Failed to save grid/palette prefs: {ex.Message}");
+        }
+    }
+
+    /// <summary>Persist prefs after a user edit, throttled to ~2 Hz so dragging a slider
+    /// or color picker doesn't write settings.json on every frame.</summary>
+    private void ThrottledPersistPrefs()
+    {
+        if (!_prefsLoaded) return;
+        if (ImGui.GetTime() - _lastPrefsSaveTime < 0.5) return;
+        SaveMapEditorPrefs();
     }
 
     public void ShowInMenu() => ImGui.MenuItem("Map Editor", null, ref _visible);
@@ -184,6 +267,13 @@ public class MapEditorPanel
             if (ImGui.Button("OK", new Vector2(120, 0)))
                 ImGui.CloseCurrentPopup();
             ImGui.EndPopup();
+        }
+
+        // Persist grid/palette prefs after user edits (throttled in the helper).
+        if (_gridPrefsDirty)
+        {
+            _gridPrefsDirty = false;
+            ThrottledPersistPrefs();
         }
     }
 
@@ -325,6 +415,22 @@ public class MapEditorPanel
             _tilesetImgW = 0;
             _tilesetImgH = 0;
         }
+
+        // Adopt the level's own saved grid state (Show Grid + grid color) from its Map2D
+        // scene object, so a level saved with the grid OFF doesn't get flipped back ON by
+        // this panel's defaults (the per-frame toolbar push below then keeps it in sync).
+        if (_bridge.EditorObjectManager != null)
+        {
+            var mapObj = _bridge.EditorObjectManager.Objects.FirstOrDefault(o =>
+                o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+                && ReferenceEquals(o.Map2dTilemap, ActiveTilemap));
+            if (mapObj != null)
+            {
+                _showGrid = mapObj.Map2dShowGrid;
+                _gridColor = mapObj.Map2dGridColor;
+            }
+        }
+
         Console.WriteLine($"[MapEditor] Adopted level '{ActiveTilemap.Name}' ({ActiveTilemap.Width}x{ActiveTilemap.Height}, {ActiveTilemap.Layers.Count} layers)");
     }
 
@@ -344,7 +450,8 @@ public class MapEditorPanel
         ImGui.NewLine();
 
         ImGui.SliderInt("Brush Size", ref _brushSize, 1, 10);
-        ImGui.Checkbox("Show Grid##toolbar", ref _showGrid);
+        if (ImGui.Checkbox("Show Grid##toolbar", ref _showGrid))
+            _gridPrefsDirty = true;
         ImGui.SameLine();
         ImGui.Checkbox("Show Collision##toolbar", ref _showCollisions);
 
@@ -359,8 +466,8 @@ public class MapEditorPanel
         _bridge.ShowPaletteGrid = _showPaletteGrid;
         _bridge.PaletteGridColor = _paletteGridColor;
 
-        // "Show Grid" drives the Map2D tile grid in the 3D viewport: push the flag onto
-        // every Map2D EditorObject bound to the active tilemap so the toggle applies
+        // "Show Grid" + "Grid Color" drive the Map2D tile grid in the 3D viewport: push
+        // them onto every Map2D EditorObject bound to the active tilemap so both apply
         // instantly (real-time) to the scene, not only to this panel's palette.
         if (_bridge.EditorObjectManager != null && ActiveTilemap != null)
         {
@@ -368,10 +475,17 @@ public class MapEditorPanel
             {
                 if (o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
                     && ReferenceEquals(o.Map2dTilemap, ActiveTilemap))
+                {
                     o.Map2dShowGrid = _showGrid;
+                    o.Map2dGridColor = _gridColor;
+                }
             }
         }
     }
+
+    // Prefs change tracker: set when a grid/palette UI control reports an edit; consumed
+    // once per frame by Render() → ThrottledPersistPrefs().
+    private bool _gridPrefsDirty = false;
 
     private void RenderLayers()
     {
@@ -601,20 +715,32 @@ public class MapEditorPanel
 
     private void RenderGridSettings()
     {
-        ImGui.Checkbox("Show Grid##gridsettings", ref _showGrid);
-        ImGui.ColorEdit4("Grid Color", ref _gridColor);
-        ImGui.InputInt("Palette Columns", ref _paletteCols);
-        ImGui.SliderFloat("Palette Cell", ref _paletteCellSize, 16f, 64f);
+        if (ImGui.Checkbox("Show Grid##gridsettings", ref _showGrid))
+            _gridPrefsDirty = true;
+        if (ImGui.ColorEdit4("Grid Color", ref _gridColor))
+            _gridPrefsDirty = true;
+        if (ImGui.InputInt("Palette Columns", ref _paletteCols))
+        {
+            _paletteCols = Math.Max(1, _paletteCols);
+            _gridPrefsDirty = true;
+        }
+        if (ImGui.SliderFloat("Palette Cell", ref _paletteCellSize, 16f, 64f))
+            _gridPrefsDirty = true;
 
         ImGui.Separator();
         ImGui.Text("Viewport Grid:");
-        ImGui.Checkbox("Show World Grid##vpgrid", ref _showWorldGrid);
-        ImGui.SliderFloat("Grid Size##vpgrid", ref _worldGridSize, 16f, 128f, "%.0f px");
-        ImGui.ColorEdit4("World Grid Color##vpgrid", ref _worldGridColor);
+        if (ImGui.Checkbox("Show World Grid##vpgrid", ref _showWorldGrid))
+            _gridPrefsDirty = true;
+        if (ImGui.SliderFloat("Grid Size##vpgrid", ref _worldGridSize, 16f, 128f, "%.0f px"))
+            _gridPrefsDirty = true;
+        if (ImGui.ColorEdit4("World Grid Color##vpgrid", ref _worldGridColor))
+            _gridPrefsDirty = true;
         ImGui.Separator();
         ImGui.TextWrapped("Tile Palette Grid:");
-        ImGui.Checkbox("Show Palette Grid##palgrid", ref _showPaletteGrid);
-        ImGui.ColorEdit4("Palette Grid Color##palgrid", ref _paletteGridColor);
+        if (ImGui.Checkbox("Show Palette Grid##palgrid", ref _showPaletteGrid))
+            _gridPrefsDirty = true;
+        if (ImGui.ColorEdit4("Palette Grid Color##palgrid", ref _paletteGridColor))
+            _gridPrefsDirty = true;
     }
 
     private void RenderCollisionSettings()
@@ -737,6 +863,7 @@ public class MapEditorPanel
         mapObj.Map2dTilesetRows = ActiveTilemap.TilesetRows;
         mapObj.Map2dLayerIndex = -1;   // whole map (all visible layers)
         mapObj.Map2dShowGrid = _showGrid;
+        mapObj.Map2dGridColor = _gridColor;
         Console.WriteLine($"[MapEditor] Created Map2D scene object for '{ActiveTilemap.Name}'");
     }
 

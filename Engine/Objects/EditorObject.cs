@@ -692,6 +692,9 @@ public unsafe class EditorObject
     public int Map2dTilesetRows { get; set; } = 8;
     /// <summary>Whether to show the grid overlay on the map.</summary>
     public bool Map2dShowGrid { get; set; } = true;
+    /// <summary>Grid overlay color (RGB = line color, A = line alpha). Used by
+    /// DrawMap2D so the Map Editor "Grid Color" picker really tints the 3D grid.</summary>
+    public Vector4 Map2dGridColor { get; set; } = new(0.4f, 0.5f, 0.68f, 0.5f);
     /// <summary>
     /// Which layer index this Map2D object renders (-1 = render all visible layers, >=0 = render single layer only).
     /// </summary>
@@ -3005,9 +3008,15 @@ void main() {
 
             bool depthEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
             GL.Disable(Const.GL_DEPTH_TEST);
-            Terrains.TerrainChunk.DrawLineSegments(gridVerts, new Vector3(0.4f, 0.5f, 0.68f), camera, 0.5f);
+            var gridRgb = new Vector3(Map2dGridColor.X, Map2dGridColor.Y, Map2dGridColor.Z);
+            float gridA = Math.Clamp(Map2dGridColor.W, 0.05f, 1f);
+            Terrains.TerrainChunk.DrawLineSegments(gridVerts, gridRgb, camera, gridA);
 
-            // Outer border, brighter, so the map extent reads clearly.
+            // Outer border: same hue pushed brighter so the map extent reads clearly.
+            var borderRgb = new Vector3(
+                MathF.Min(1f, gridRgb.X + 0.45f),
+                MathF.Min(1f, gridRgb.Y + 0.45f),
+                MathF.Min(1f, gridRgb.Z + 0.45f));
             var border = new List<Vector3>(8)
             {
                 new(0f, 0f, layerZ), new(extentW, 0f, layerZ),
@@ -3015,7 +3024,7 @@ void main() {
                 new(extentW, extentH, layerZ), new(0f, extentH, layerZ),
                 new(0f, extentH, layerZ), new(0f, 0f, layerZ)
             };
-            Terrains.TerrainChunk.DrawLineSegments(border, new Vector3(0.85f, 0.9f, 1f), camera, 0.8f);
+            Terrains.TerrainChunk.DrawLineSegments(border, borderRgb, camera, 0.8f);
             if (depthEnabled)
                 GL.Enable(Const.GL_DEPTH_TEST);
         }

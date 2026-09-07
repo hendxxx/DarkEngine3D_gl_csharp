@@ -211,8 +211,9 @@ public class IDE : IDisposable
             }
             // Update Asset Browser to project root
             _assetBrowser?.SetProjectRoot(Engine.Project.ProjectManager.ProjectRoot);
-            // Auto-load sprite sheets
+            // Auto-load sprite sheets + Map Editor grid/palette prefs
             _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
+            _mapEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
             // 2D level maps live INSIDE each scene's .ing (Map2D object payload saved/restored
             // by SceneManagerPanel). A scene only shows its level when the file contains one,
             // so there is no project-wide map auto-load anymore.
@@ -501,6 +502,13 @@ public class IDE : IDisposable
             _mapEditor = new MapEditorPanel(Bridge);
             _collisionEditor = new CollisionEditorPanel(Bridge);
             _ideSettings = new IDESettingsPanel(Bridge);
+
+            // Wire tilemap painting: viewport raycasts → panel paint/fill/pick handlers.
+            // (Declared on the bridge but this connection was never made — without it,
+            // clicking/dragging tiles in the viewport did nothing.)
+            Bridge.MapPaintAt = pos => _mapEditor.PaintAtWorldPosition(pos);
+            Bridge.MapFillAt = pos => _mapEditor.FillAtWorldPosition(pos);
+            Bridge.MapPickAt = pos => _mapEditor.PickAtWorldPosition(pos);
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;

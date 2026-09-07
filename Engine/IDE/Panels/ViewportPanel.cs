@@ -65,6 +65,8 @@ public unsafe class ViewportPanel
     private bool _mapPaintActive = false;
     // Show/hide the floating "▲ Views" menu + corner axis indicator.
     private bool _showViewsOverlay = true;
+    // Collapse the whole left tool toolbar strip to a single expand chip (edit mode).
+    private bool _leftToolbarCollapsed = false;
     // Post-popup suppress: after any popup/menu closes, suppress scene interactions
     // for a few frames so the click that closed the menu doesn't leak into the scene.
     private int _postPopupFrames = 0;
@@ -3613,9 +3615,12 @@ ImGui.SameLine();
                 cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
                     out Vector3 rayOrigin, out Vector3 rayDir);
 
-                // All Map2D layer planes are upright at z = layer index (base z=0,
-                // layer1 z=1, ...) — intersect the active layer's plane.
-                float layerZ = _bridge.ActiveTileLayer;
+                // The map is drawn as ONE canonical upright plane at world z=0 (the
+                // whole-map Map2D object, layer index -1) with every visible layer
+                // stacked in the same mesh — so intersect that plane, not the active
+                // layer index.  The chosen layer only decides WHICH TileLayer data the
+                // stamp writes into, never where the plane sits.
+                float layerZ = 0f;
                 if (MathF.Abs(rayDir.Z) > 0.0001f)
                 {
                     float t = (layerZ - rayOrigin.Z) / rayDir.Z;
@@ -4525,6 +4530,28 @@ ImGui.SameLine();
                     ImGui.SetTooltip(tooltip);
             }
             return clicked;
+        }
+
+        //  Collapsed state: only a single expand chip stays (reclaims the viewport edge).
+        if (_leftToolbarCollapsed)
+        {
+            if (ToolButton("☰ Tools", false, new Vector4(0.30f, 0.45f, 0.62f, 0.95f),
+                "Expand the full left toolbar (Move/Rotate/Scale/terrain tools)", out y))
+            {
+                _leftToolbarCollapsed = false;
+            }
+            _leftToolbarMin = new Vector2(x, GetViewportViewsButtonRect().max.Y + 6f);
+            _leftToolbarMax = new Vector2(x + btnW, y - gap + btnH);
+            return;
+        }
+
+        //  Collapse toggle (first control of the expanded strip, always at the top so
+        //  it can't scroll out of reach).  Clicking it collapses the whole toolbar to
+        //  the single "☰ Tools" chip above (reclaims the viewport edge for the scene).
+        if (ToolButton("☰ Collapse", false, new Vector4(0.30f, 0.45f, 0.62f, 0.95f),
+            "Collapse the left toolbar to a single ☰ Tools chip  great when painting tiles on a 2D map", out y))
+        {
+            _leftToolbarCollapsed = true;
         }
 
         //  Gizmo mode 
