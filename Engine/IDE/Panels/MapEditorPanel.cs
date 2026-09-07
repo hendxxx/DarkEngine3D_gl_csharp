@@ -478,6 +478,8 @@ public class MapEditorPanel
                 {
                     o.Map2dShowGrid = _showGrid;
                     o.Map2dGridColor = _gridColor;
+                    o.Map2dTilesetCols = _tilesetCols;
+                    o.Map2dTilesetRows = _tilesetRows;
                 }
             }
         }
