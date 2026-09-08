@@ -213,6 +213,26 @@ public class TerrainPbrLayerData
         c.EmissionPath = EmissionPath == null ? null : PathHelpers.Resolve(EmissionPath);
         return c;
     }
+}/// <summary>Runtime render data for one Map2D parallax layer. The Map Editor panel
+/// pushes these onto <see cref="EditorObject.Map2dParallaxLayers"/> each time a layer is
+/// added/edited; <see cref="DrawMap2D"/> draws each as an upright textured quad at a
+/// world Z offset derived from the layer's ZPosition (positive = in front of the grid,
+/// negative = behind it), matching the sidescroller depth convention.</summary>
+public class MapParallaxRenderLayer
+{
+    public string Name = "";
+    public string ImagePath = "";
+    public bool IsVisible = true;
+    /// <summary>Depth factor: world-Z offset in tile cells. &gt; 0 = in front of the
+    /// grid, &lt; 0 = behind it.</summary>
+    public float ZPosition;
+    public float Alpha = 1f;
+    public bool TileHorizontal = true;
+    /// <summary>GPU texture ID (owned/loaded by the Map Editor panel).</summary>
+    public uint TextureId;
+    /// <summary>Image size in pixels (for sizing the quad).</summary>
+    public int ImageWidth;
+    public int ImageHeight;
 }
 
 public unsafe class EditorObject
@@ -700,10 +720,31 @@ public unsafe class EditorObject
     /// Which layer index this Map2D object renders (-1 = render all visible layers, >=0 = render single layer only).
     /// </summary>
     public int Map2dLayerIndex { get; set; } = -1;
+    /// <summary>
+    /// The ACTIVE (selected) layer in the Map Editor. When >= 0, only that layer's tiles
+    /// are baked into the mesh; non-active layers are NOT rendered even if visible. When
+    /// -1 the editor falls back to Map2dLayerIndex (all visible layers) for older scenes.
+    /// Kept separate from Map2dLayerIndex so the canonical plane stays at z=0 (paint/hover
+    /// math) while the rendered layer follows the editor selection.
+    /// </summary>
+    public int Map2dActiveLayer { get; set; } = -1;
+    /// <summary>Show translucent collision helper boxes over tiles flagged for collision
+    /// (like Unreal's collision previews): one box per collision tile, sticking OUT of
+    /// the grid plane toward the viewer so it reads as a standable platform. Tiles whose
+    /// ID has no collision flag draw NO box.</summary>
+    public bool Map2dShowCollision { get; set; } = true;
+    /// <summary>RGBA color of the collision helper boxes (default: translucent green).</summary>
+    public Vector4 Map2dCollisionColor { get; set; } = new(0.25f, 0.85f, 0.45f, 0.35f);
+    /// <summary>Parallax background/foreground layers to render with this map. Each layer
+    /// is a textured upright plane offset in world Z by its Y position (positive = in
+    /// front of the grid, negative = behind it). Pushed from the Map Editor panel.</summary>
+    [JsonIgnore] public List<MapParallaxRenderLayer>? Map2dParallaxLayers { get; set; }
     /// <summary>Cached VAO/VBO for the tilemap mesh (rebuilt when tiles change).</summary>
     [JsonIgnore] private uint _map2dVAO, _map2dVBO;
     [JsonIgnore] private int _map2dVertCount = 0;
     [JsonIgnore] private string _map2dMeshCacheKey = "";
+    /// <summary>Scratch VAO/VBO used to stream parallax layer quads (created lazily).</summary>
+    [JsonIgnore] private uint _parallaxVAO, _parallaxVBO;
 
     // ── Shader uniform locations (cached for Draw overloads) ──
 #pragma warning disable CS0414
@@ -2781,6 +2822,12 @@ void main() {
         }
     }
 
+    /// <summary>Draw the parallax layers pushed from the Map Editor as upright textured
+    /// quads around the tile grid. Each layer's ZPosition maps to a world-Z offset:
+    /// &gt; 0 renders IN FRONT of the grid, &lt; 0 renders BEHIND it, 0 sits on the grid
+    /// plane itself. Layers are drawn back-to-front so alpha blending stacks correctly.
+    /// Must be called while extentW/extentH (map world size) are known — reuses the same
+    /// Map2D shader + vertex layout as the tile mesh.</summary>
     /// <summary>Build a VBO with one quad per non-empty tile, UV-mapped into the tileset grid.
     /// Vertices are in local space; the WorldMatrix positions/scales the whole mesh.
     /// If Map2dLayerIndex >= 0, render only that layer; if -1, render all visible layers.</summary>
@@ -2789,16 +2836,21 @@ void main() {
         var map = Map2dTilemap;
         if (map == null) return;
 
-        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}";
+        // Decide which layer(s) to bake. The ACTIVE editor layer wins: when it is set
+        // (>= 0) only that layer renders; otherwise fall back to the legacy all-visible
+        // behavior so old scenes still show every visible layer.
+        int renderLayer = Map2dActiveLayer >= 0 ? Map2dActiveLayer : Map2dLayerIndex;
 
-        // Include specific layer data in cache key
-        if (Map2dLayerIndex >= 0 && Map2dLayerIndex < map.Layers.Count)
+        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}|{Map2dActiveLayer}";
+
+        // Include the relevant layer data in cache key
+        if (renderLayer >= 0 && renderLayer < map.Layers.Count)
         {
-            var layer = map.Layers[Map2dLayerIndex];
+            var layer = map.Layers[renderLayer];
             for (int i = 0; i < map.Width * map.Height; i++)
                 cacheKey += $"|{layer.GetTile(i % map.Width, i / map.Width)}";
         }
-        else if (Map2dLayerIndex < 0)
+        else
         {
             foreach (var layer in map.Layers)
                 for (int i = 0; i < map.Width * map.Height; i++)
@@ -2820,9 +2872,9 @@ void main() {
 
         var verts = new List<Map2DVertex>();
 
-        // Determine which layers to iterate
-        var layersToRender = Map2dLayerIndex >= 0 && Map2dLayerIndex < map.Layers.Count
-            ? new[] { map.Layers[Map2dLayerIndex] }
+        // Determine which layers to iterate (active layer wins, else legacy all-visible)
+        var layersToRender = renderLayer >= 0 && renderLayer < map.Layers.Count
+            ? new[] { map.Layers[renderLayer] }
             : map.Layers.ToArray();
 
         foreach (var layer in layersToRender)
@@ -2984,6 +3036,211 @@ void main() {
                     GL.Enable(Const.GL_CULL_FACE);
                 GL.Disable(Const.GL_BLEND);
                 GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+        }
+
+        // ── Parallax layers: upright textured quads offset in world Z by their ZPosition
+        //    (positive = in front of the grid, negative = behind it). Drawn back-to-front
+        //    so depth + alpha blend stack correctly against the tile plane at Z = 0.
+        //    Bottom edge anchored at the grid bottom (world Y = 0); horizontally tiled
+        //    to cover the map extent when TileHorizontal is set. ──
+        if (Map2dParallaxLayers is { Count: > 0 })
+        {
+            bool pCull = GL.IsEnabled(Const.GL_CULL_FACE);
+            GL.Disable(Const.GL_CULL_FACE);
+
+            var sorted = Map2dParallaxLayers
+                .Where(l => l != null && l.IsVisible && !string.IsNullOrEmpty(l.ImagePath) && l.TextureId != 0)
+                .OrderBy(l => l.ZPosition) // farthest (most negative) first
+                .ToList();
+
+            if (sorted.Count > 0)
+            {
+                EnsureMap2DShader();
+                GL.UseProgram(_map2dShader);
+
+                // Parallax quads are baked directly in world space → identity model.
+                var ident = Matrix4x4.Identity;
+                GL.UniformMatrix4fv(_map2dLocModel, 1, false, &ident.M11);
+
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+                float px2world = Tilemap2D.WorldScale;
+                var pVerts = new List<Map2DVertex>(24);
+                foreach (var pl in sorted)
+                {
+                    float a = Math.Clamp(pl.Alpha, 0f, 1f);
+                    if (a <= 0.01f) continue;
+                    float w = MathF.Max(1f, pl.ImageWidth) * px2world;
+                    float h = MathF.Max(1f, pl.ImageHeight) * px2world;
+                    float z = pl.ZPosition * cell; // 1 ZPosition unit = one tile cell of depth
+
+                    int repeats = 1;
+                    if (pl.TileHorizontal && w > 0.01f && w < extentW)
+                        repeats = (int)MathF.Ceiling(extentW / w);
+
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, pl.TextureId);
+                    GL.Uniform1i(_map2dLocTex, 0);
+                    GL.Uniform4f(_map2dLocTint, 1f, 1f, 1f, a);
+
+                    pVerts.Clear();
+                    for (int r = 0; r < repeats; r++)
+                    {
+                        float x0 = r * w;
+                        float x1 = x0 + w;
+                        // Top vertex samples v=0: the image top row was uploaded first,
+                        // so v=0 IS the top — this keeps the picture upright.
+                        pVerts.Add(new Map2DVertex(x0, 0f, z, 0f, 1f, 1, 1, 1, 1));
+                        pVerts.Add(new Map2DVertex(x1, 0f, z, 1f, 1f, 1, 1, 1, 1));
+                        pVerts.Add(new Map2DVertex(x1, h, z, 1f, 0f, 1, 1, 1, 1));
+                        pVerts.Add(new Map2DVertex(x0, 0f, z, 0f, 1f, 1, 1, 1, 1));
+                        pVerts.Add(new Map2DVertex(x1, h, z, 1f, 0f, 1, 1, 1, 1));
+                        pVerts.Add(new Map2DVertex(x0, h, z, 0f, 0f, 1, 1, 1, 1));
+                    }
+
+                    if (_parallaxVAO == 0)
+                    {
+                        uint vao = 0, vbo = 0;
+                        GL.GenVertexArrays(1, &vao);
+                        GL.BindVertexArray(vao);
+                        GL.GenBuffers(1, &vbo);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                        GL.EnableVertexAttribArray(0);
+                        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+                        GL.EnableVertexAttribArray(1);
+                        GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+                        GL.EnableVertexAttribArray(2);
+                        GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+                        GL.BindVertexArray(0);
+                        _parallaxVAO = vao;
+                        _parallaxVBO = vbo;
+                    }
+
+                    fixed (Map2DVertex* p = pVerts.ToArray())
+                    {
+                        GL.BindVertexArray(_parallaxVAO);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _parallaxVBO);
+                        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(pVerts.Count * sizeof(Map2DVertex)), p, Const.GL_DYNAMIC_DRAW);
+                        GL.DrawArrays(Const.GL_TRIANGLES, 0, pVerts.Count);
+                        GL.BindVertexArray(0);
+                    }
+                }
+
+                // Restore the tile model matrix so later passes stay aligned.
+                GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+
+            if (pCull)
+                GL.Enable(Const.GL_CULL_FACE);
+        }
+
+        // ── Collision helper boxes: one translucent box per tile flagged for collision,
+        //    sticking OUT of the grid plane toward the viewer so the player can "stand"
+        //    on it (like Unreal's collision previews). A tile whose ID has NO collision
+        //    flag draws NO box. Uses the Map2D tint shader with the shared white texture.
+        if (Map2dShowCollision && Map2dTilemap != null)
+        {
+            var colLayer = Map2dActiveLayer >= 0 && Map2dActiveLayer < Map2dTilemap.Layers.Count
+                ? Map2dTilemap.Layers[Map2dActiveLayer]
+                : (Map2dTilemap.Layers.Count > 0 ? Map2dTilemap.Layers[0] : null);
+
+            if (colLayer != null && colLayer.CollisionTileIds.Count > 0)
+            {
+                EnsureMap2DShader();
+                if (_map2dShader != 0)
+                {
+                    EnsurePbrWhiteTex();
+
+                    GL.UseProgram(_map2dShader);
+                    var view = camera.GetViewMatrix();
+                    var proj = camera.GetProjectionMatrix();
+                    GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+                    GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, _pbrWhiteTex);
+                    GL.Uniform1i(_map2dLocTex, 0);
+                    GL.Uniform4f(_map2dLocTint, Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W);
+
+                    GL.Enable(Const.GL_BLEND);
+                    GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+                    bool cullCol = GL.IsEnabled(Const.GL_CULL_FACE);
+                    GL.Disable(Const.GL_CULL_FACE);
+
+                    // One thin quad per collision tile, popped slightly toward the camera
+                    // side (+Z out of the plane). Box faces away from grid → reads as a
+                    // solid platform the player stands on.
+                    var boxVerts = new List<Map2DVertex>(64);
+                    for (int ty = 0; ty < mapH; ty++)
+                    {
+                        for (int tx = 0; tx < mapW; tx++)
+                        {
+                            int tileId = colLayer.GetTile(tx, ty);
+                            if (tileId < 0 || !colLayer.TileHasCollision(tileId)) continue;
+
+                            float wx0 = tx * cell;
+                            float wx1 = wx0 + cell;
+                            // Row 0 = top row → world Y flipped (same as the tile mesh)
+                            float wy0 = (mapH - 1 - ty) * cell;
+                            float wy1 = wy0 + cell;
+
+                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0, 1, 1, 1, 1));
+                            boxVerts.Add(new Map2DVertex(wx1, wy0, 0f, 1, 0, 1, 1, 1, 1));
+                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1, 1, 1, 1, 1));
+                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0, 1, 1, 1, 1));
+                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1, 1, 1, 1, 1));
+                            boxVerts.Add(new Map2DVertex(wx0, wy1, 0f, 0, 1, 1, 1, 1, 1));
+                        }
+                    }
+
+                    if (boxVerts.Count > 0)
+                    {
+                        if (_parallaxVAO == 0)
+                        {
+                            uint vao = 0, vbo = 0;
+                            GL.GenVertexArrays(1, &vao);
+                            GL.BindVertexArray(vao);
+                            GL.GenBuffers(1, &vbo);
+                            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                            GL.EnableVertexAttribArray(0);
+                            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+                            GL.EnableVertexAttribArray(1);
+                            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+                            GL.EnableVertexAttribArray(2);
+                            GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+                            GL.BindVertexArray(0);
+                            _parallaxVAO = vao;
+                            _parallaxVBO = vbo;
+                        }
+
+                        // Pop the boxes slightly out of the plane (toward the default
+                        // editor camera) so they read in front of the tile art.
+                        var popModel = Matrix4x4.CreateTranslation(0f, 0f, layerZ + 0.02f)
+                                     * Matrix4x4.CreateRotationX(-MathF.PI / 2f);
+                        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &popModel.M11);
+
+                        fixed (Map2DVertex* p = boxVerts.ToArray())
+                        {
+                            GL.BindVertexArray(_parallaxVAO);
+                            GL.BindBuffer(Const.GL_ARRAY_BUFFER, _parallaxVBO);
+                            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(boxVerts.Count * sizeof(Map2DVertex)), p, Const.GL_DYNAMIC_DRAW);
+                            GL.DrawArrays(Const.GL_TRIANGLES, 0, boxVerts.Count);
+                            GL.BindVertexArray(0);
+                        }
+
+                        // Restore the tile model matrix so later passes stay aligned.
+                        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+                    }
+
+                    GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+                    GL.Disable(Const.GL_BLEND);
+                    if (cullCol)
+                        GL.Enable(Const.GL_CULL_FACE);
+                }
             }
         }
 

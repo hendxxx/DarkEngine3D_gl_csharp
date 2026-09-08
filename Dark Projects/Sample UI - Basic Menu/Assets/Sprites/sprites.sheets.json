@@ -25,7 +25,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 64,
@@ -38,7 +39,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 128,
@@ -51,7 +53,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 192,
@@ -64,7 +67,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         }
       ]
     },
@@ -93,7 +97,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -106,7 +111,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -119,7 +125,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -132,7 +139,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -145,7 +153,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -158,7 +167,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -171,7 +181,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -184,7 +195,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -197,7 +209,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -210,7 +223,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -223,7 +237,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -236,7 +251,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -249,7 +265,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -262,7 +279,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -275,7 +293,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -288,7 +307,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -301,7 +321,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -314,7 +335,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -327,7 +349,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -340,7 +363,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -353,7 +377,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -366,7 +391,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -379,7 +405,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -392,7 +419,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -405,7 +433,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -418,7 +447,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -431,7 +461,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -444,7 +475,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -457,7 +489,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -470,7 +503,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -483,7 +517,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -496,7 +531,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -509,7 +545,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -522,7 +559,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -535,7 +573,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -548,7 +587,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -561,7 +601,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -574,7 +615,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -587,7 +629,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -600,7 +643,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -613,7 +657,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -626,7 +671,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -639,7 +685,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -652,7 +699,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -665,7 +713,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -678,7 +727,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -691,7 +741,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -704,7 +755,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -717,7 +769,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -730,7 +783,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -743,7 +797,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -756,7 +811,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -769,7 +825,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -782,7 +839,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -795,7 +853,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -808,7 +867,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -821,7 +881,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -834,7 +895,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -847,7 +909,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -860,7 +923,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -873,7 +937,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -886,7 +951,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -899,7 +965,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -912,7 +979,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -925,7 +993,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -938,7 +1007,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -951,7 +1021,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -964,7 +1035,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -977,7 +1049,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -990,7 +1063,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         }
       ]
     },
@@ -1019,7 +1093,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -1032,7 +1107,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -1045,7 +1121,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -1058,7 +1135,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -1071,7 +1149,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -1084,7 +1163,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -1097,7 +1177,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -1110,7 +1191,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -1123,7 +1205,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -1136,7 +1219,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -1149,7 +1233,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -1162,7 +1247,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -1175,7 +1261,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -1188,7 +1275,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -1201,7 +1289,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -1214,7 +1303,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -1227,7 +1317,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -1240,7 +1331,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -1253,7 +1345,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -1266,7 +1359,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -1279,7 +1373,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -1292,7 +1387,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -1305,7 +1401,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -1318,7 +1415,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -1331,7 +1429,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -1344,7 +1443,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -1357,7 +1457,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -1370,7 +1471,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -1383,7 +1485,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -1396,7 +1499,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -1409,7 +1513,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -1422,7 +1527,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -1435,7 +1541,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -1448,7 +1555,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -1461,7 +1569,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -1474,7 +1583,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -1487,7 +1597,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -1500,7 +1611,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -1513,7 +1625,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -1526,7 +1639,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -1539,7 +1653,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -1552,7 +1667,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -1565,7 +1681,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -1578,7 +1695,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -1591,7 +1709,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -1604,7 +1723,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -1617,7 +1737,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -1630,7 +1751,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -1643,7 +1765,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -1656,7 +1779,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -1669,7 +1793,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -1682,7 +1807,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -1695,7 +1821,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -1708,7 +1835,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -1721,7 +1849,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -1734,7 +1863,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -1747,7 +1877,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -1760,7 +1891,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -1773,7 +1905,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -1786,7 +1919,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 4,
@@ -1799,7 +1933,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 84,
@@ -1812,7 +1947,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 164,
@@ -1825,7 +1961,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 244,
@@ -1838,7 +1975,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 324,
@@ -1851,7 +1989,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 404,
@@ -1864,7 +2003,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 484,
@@ -1877,7 +2017,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 564,
@@ -1890,7 +2031,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 644,
@@ -1903,7 +2045,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         },
         {
           "X": 724,
@@ -1916,7 +2059,8 @@
           "HitboxX": 0,
           "HitboxY": 0,
           "HitboxW": 0,
-          "HitboxH": 0
+          "HitboxH": 0,
+          "Tags": {}
         }
       ]
     }
@@ -1952,5 +2096,9 @@
       "SpeedMultiplier": 1,
       "Events": {}
     }
-  ]
+  ],
+  "PreviewStartFrame": 0,
+  "PreviewEndFrame": 0,
+  "PreviewFps": 12,
+  "PreviewLoop": true
 }

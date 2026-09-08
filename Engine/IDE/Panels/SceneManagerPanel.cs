@@ -1513,6 +1513,9 @@ public class SceneManagerPanel
                             obj.Map2dTilesetRows = tilemap.TilesetRows;
                             obj.Map2dTilesetFlipV = tilemap.TilesetFlipV;
                             obj.Map2dLayerIndex = -1; // whole map (all visible layers)
+                            // Render the first layer by default on load; the Map Editor panel
+                            // overrides this when the user selects another layer.
+                            obj.Map2dActiveLayer = tilemap.Layers.Count > 0 ? 0 : -1;
                             obj.Map2dShowGrid = objData.TilemapShowGrid;
                             obj.Map2dGridColor = new Vector4(objData.TilemapGridColorR, objData.TilemapGridColorG,
                                 objData.TilemapGridColorB, objData.TilemapGridColorA);

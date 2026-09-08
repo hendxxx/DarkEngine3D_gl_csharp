@@ -1,5 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
 using StbImageSharp;
@@ -240,6 +241,10 @@ public class MapEditorPanel
                 // ── Parallax Layers ──
                 if (ImGui.CollapsingHeader("Parallax Layers"))
                     RenderParallaxLayers();
+
+                // Keep the viewport Map2D object's parallax render list in sync so added/
+                // removed/re-ordered layers appear in the 3D grid immediately.
+                SyncParallaxToEditorObjects();
 
                 // ── Info ──
                 if (_hoveredTileX >= 0)
@@ -574,6 +579,8 @@ public class MapEditorPanel
         // "Show Grid" + "Grid Color" drive the Map2D tile grid in the 3D viewport: push
         // them onto every Map2D EditorObject bound to the active tilemap so both apply
         // instantly (real-time) to the scene, not only to this panel's palette.
+        // Also push the ACTIVE layer so the viewport renders ONLY the selected layer's
+        // tiles (non-active layers are hidden even when visible).
         if (_bridge.EditorObjectManager != null && ActiveTilemap != null)
         {
             foreach (var o in _bridge.EditorObjectManager.Objects)
@@ -586,6 +593,8 @@ public class MapEditorPanel
                     o.Map2dTilesetCols = _tilesetCols;
                     o.Map2dTilesetRows = _tilesetRows;
                     o.Map2dTilesetFlipV = _tilesetFlipV;
+                    o.Map2dActiveLayer = _selectedLayerIdx;
+                    o.Map2dShowCollision = _showCollisions;
                 }
             }
         }
@@ -594,6 +603,51 @@ public class MapEditorPanel
     // Prefs change tracker: set when a grid/palette UI control reports an edit; consumed
     // once per frame by Render() → ThrottledPersistPrefs().
     private bool _gridPrefsDirty = false;
+
+    /// <summary>Push the parallax layer list onto every Map2D EditorObject bound to the
+    /// active tilemap so the viewport renders each layer as an upright quad: ZPosition
+    /// &gt; 0 draws in FRONT of the grid, &lt; 0 draws BEHIND it. Textures are resolved
+    /// through the panel's texture cache (GetParallaxTexture) so images load on demand.</summary>
+    private void SyncParallaxToEditorObjects()
+    {
+        if (_bridge.EditorObjectManager == null) return;
+
+        List<MapParallaxRenderLayer>? renderLayers = null;
+        if (ActiveTilemap != null && ParallaxLayers.Count > 0)
+        {
+            renderLayers = new List<MapParallaxRenderLayer>(ParallaxLayers.Count);
+            foreach (var pl in ParallaxLayers)
+            {
+                if (pl == null) continue;
+                uint tex = 0;
+                if (!string.IsNullOrEmpty(pl.ImagePath) && File.Exists(pl.ImagePath))
+                    tex = GetParallaxTexture(pl.ImagePath);
+                renderLayers.Add(new MapParallaxRenderLayer
+                {
+                    Name = pl.Name,
+                    ImagePath = pl.ImagePath,
+                    IsVisible = pl.IsVisible,
+                    ZPosition = pl.ZPosition,
+                    Alpha = pl.Alpha,
+                    TileHorizontal = pl.TileHorizontal,
+                    TextureId = tex,
+                    ImageWidth = pl.ImageWidth,
+                    ImageHeight = pl.ImageHeight
+                });
+            }
+        }
+
+        foreach (var o in _bridge.EditorObjectManager.Objects)
+        {
+            if (o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D)
+            {
+                // Only bind to the object rendering the active tilemap (or any Map2D when
+                // no tilemap is active yet, so layers added first still show up).
+                if (ActiveTilemap == null || ReferenceEquals(o.Map2dTilemap, ActiveTilemap))
+                    o.Map2dParallaxLayers = renderLayers;
+            }
+        }
+    }
 
     /// <summary>Push the current tileset grid (Cols/Rows/FlipV) onto every Map2D EditorObject
     /// bound to the active tilemap, AND onto the tilemap object itself (Map2dTilemap). The
@@ -616,6 +670,22 @@ public class MapEditorPanel
                 o.Map2dTilesetCols = _tilesetCols;
                 o.Map2dTilesetRows = _tilesetRows;
                 o.Map2dTilesetFlipV = _tilesetFlipV;
+            }
+        }
+    }
+
+    /// <summary>Push the currently selected layer index onto every Map2D EditorObject bound
+    /// to the active tilemap so the viewport re-bakes its mesh to render only that layer.
+    /// Called whenever the user selects a different layer in the Layers list.</summary>
+    private void SyncActiveLayerToEditorObjects()
+    {
+        if (ActiveTilemap == null || _bridge.EditorObjectManager == null) return;
+        foreach (var o in _bridge.EditorObjectManager.Objects)
+        {
+            if (o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+                && ReferenceEquals(o.Map2dTilemap, ActiveTilemap))
+            {
+                o.Map2dActiveLayer = _selectedLayerIdx;
             }
         }
     }
@@ -645,7 +715,13 @@ public class MapEditorPanel
 
             // Layer name
             if (ImGui.Selectable($"{layer.Name}##{i}", isSelected, ImGuiSelectableFlags.None, new Vector2(150, 20)))
+            {
                 _selectedLayerIdx = i;
+                // Push the newly selected layer onto the Map2D object right away so the
+                // viewport re-bakes its mesh to render ONLY this layer (non-active layers
+                // stop rendering even when visible).
+                SyncActiveLayerToEditorObjects();
+            }
 
             ImGui.SameLine();
             ImGui.PushItemWidth(80);
@@ -1069,6 +1145,8 @@ public class MapEditorPanel
         mapObj.Map2dTilesetCols = ActiveTilemap.TilesetColumns;
         mapObj.Map2dTilesetRows = ActiveTilemap.TilesetRows;
         mapObj.Map2dLayerIndex = -1;   // whole map (all visible layers)
+        // Render only the currently selected layer in the viewport.
+        mapObj.Map2dActiveLayer = _selectedLayerIdx;
         // Grid state now lives on the tilemap itself (Tilemap2D.ShowGrid/GridColor) so it's
         // carried by both the standalone Assets/Maps/*.tilemap.json and the scene's .ing.
         // Fall back to the panel var only when the tilemap has no explicit grid state (old
@@ -1111,7 +1189,7 @@ public class MapEditorPanel
                     ImagePath = p.ImagePath,
                     IsVisible = p.IsVisible,
                     ScrollFactor = p.ScrollFactor,
-                    YPosition = p.YPosition,
+                    ZPosition = p.ZPosition,
                     Alpha = p.Alpha,
                     TileHorizontal = p.TileHorizontal
                 }).ToList()
@@ -1153,7 +1231,7 @@ public class MapEditorPanel
                         ImagePath = p.ImagePath,
                         IsVisible = p.IsVisible,
                         ScrollFactor = p.ScrollFactor,
-                        YPosition = p.YPosition,
+                        ZPosition = p.ZPosition,
                         Alpha = p.Alpha,
                         TileHorizontal = p.TileHorizontal
                     }).ToList()
@@ -1219,7 +1297,7 @@ public class MapEditorPanel
                         ImagePath = pld.ImagePath,
                         IsVisible = pld.IsVisible,
                         ScrollFactor = pld.ScrollFactor,
-                        YPosition = pld.YPosition,
+                        ZPosition = pld.ZPosition,
                         Alpha = pld.Alpha,
                         TileHorizontal = pld.TileHorizontal
                     };
@@ -1355,9 +1433,10 @@ public class MapEditorPanel
 
             ImGui.Text("0x = static, 0.5x = half speed, 1x = normal, 2x = double");
 
-            float yPos = sel.YPosition;
-            if (ImGui.SliderFloat("Y Position##plx", ref yPos, -1f, 1f))
-                sel.YPosition = yPos;
+            float zPos = sel.ZPosition;
+            if (ImGui.SliderFloat("Z Position (depth)##plx", ref zPos, -10f, 10f, "%.1f"))
+                sel.ZPosition = zPos;
+            ImGui.Text("< 0 = behind the grid, > 0 = in front of the grid");
 
             float alpha = sel.Alpha;
             if (ImGui.SliderFloat("Alpha##plx", ref alpha, 0f, 1f, "%.1f"))
@@ -1493,7 +1572,8 @@ public class ParallaxLayer
     public float ScrollFactor = 0.5f;
 
     /// <summary>Vertical position (-1 to 1, 0 = center).</summary>
-    public float YPosition = 0f;
+    /// <summary>Depth factor along world Z (tile cells). > 0 = in front of the grid, < 0 = behind it.</summary>
+    public float ZPosition = 0f;
 
     /// <summary>Layer opacity (0-1).</summary>
     public float Alpha = 1f;
@@ -1520,7 +1600,7 @@ public class ParallaxLayerData
     public string ImagePath { get; set; } = "";
     public bool IsVisible { get; set; } = true;
     public float ScrollFactor { get; set; } = 0.5f;
-    public float YPosition { get; set; }
+    public float ZPosition { get; set; }
     public float Alpha { get; set; } = 1f;
     public bool TileHorizontal { get; set; } = true;
 }
