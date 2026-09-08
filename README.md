@@ -18,6 +18,16 @@ OpenGL/C# game engine with ImGui-based IDE editor.
 - **Project System**: `.projing` project files, per-project settings, auto-load scenes
 - **Terrain**: Heightmap terrain with dynamic PBR layers, painting, sculpting
 - **Scene Management**: Multiple scenes (MainMenu, GameScene, Loading), transitions
+- **2D Game Support** (sidescroller, orthographic front view over the 3D viewport):
+  - **Sprite Editor** — auto-detect/interactive sprite sheet slicing, animation clips with FPS + zoom, drag-drop import, saved to `Assets/Sprites/sprites.sheets.json`
+  - **Map Editor** — tile painting (Paint/Erase/Fill/Pick + brush size) directly in the 3D viewport, multi-layers, marquee multi-select stamping, per-tile undo/redo (Ctrl+Z/Y)
+  - **Tilemap in 3D** — rendered as an upright textured plane at world origin; camera auto-switches to ortho front view (editor and in-game)
+  - **Parallax Backgrounds** — per-layer ScrollFactor/ZPosition/Alpha, aspect-preserving sizing, RepeatX/Y wrap, seamless scroll preview while panning, correct rendering in Play in Preview
+  - **Collision Flags** — per-tile collision with translucent box preview in viewport
+  - **Player Spawn** — draggable spawn marker; GameScene places the player at the map's spawn on scene enter
+  - **Per-Map Camera Start** — saved view restored on Play in Preview; ortho/front locked for 2D levels
+  - **Persistence** — maps saved to `Assets/Maps/*.tilemap.json` + scene `.ing`, autoloaded on project open; editor aids (grid/collision/spawn gizmos) auto-hidden in-game
+- **IDE Settings Panel** — VSync, MSAA antialiasing, debug grid, font sizes with instant apply
 
 ## Tech Stack
 

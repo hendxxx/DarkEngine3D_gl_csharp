@@ -83,7 +83,7 @@ ProjectRoot/
 |-------|---------|--------------|
 | **SceneView** | 3D viewport | Gizmo translate/rotate/scale, selection highlight, grid |
 | **Hierarchy** | Object tree | Add/delete/rename objects, drag reorder |
-| **Inspector** | Property editor | Context-sensitive per object type (see §2.3) |
+| **Inspector** | Property editor | Context-sensitive per object type (see §2.6) |
 | **AssetBrowser** | File browser | Drag-drop images/models to Inspector |
 | **Console** | Log output | Stdout/stderr capture |
 | **SceneManager** | Scene list | Add/remove/switch scenes, save/load, scene rename sync |
@@ -93,6 +93,10 @@ ProjectRoot/
 | **PbrPanel** | PBR material | Per-object texture slots + tuning (see §5) |
 | **RenderTime** | Performance | FPS, frame time, GPU timing |
 | **FramebufferViewer** | Debug | View any FBO texture |
+| **SpriteEditor** | 2D sprite sheets | Auto-detect frames, interactive slicing, animation clips, zoom, drag-drop import (see §2.4) |
+| **MapEditor** | 2D tilemap editor | Tile painting, layers, palette, collision flags, parallax layers (see §2.5) |
+| **CollisionEditor** | 2D collision shapes | Shape list + per-shape editing |
+| **IDESettings** | Editor settings | VSync, MSAA antialiasing, debug grid, font sizes — changes apply instantly |
 
 ### 2.2.1 UI Editor — Container & Selection Features
 
@@ -107,7 +111,42 @@ ProjectRoot/
 | **Marquee Selection** | Rubber-band selection for multiple UI elements |
 | **GroupMove with Undo** | Group drag records undo per-element for single Ctrl+Z restore |
 
-### 2.3 Inspector — Object Types
+### 2.4 Sprite Editor (2D)
+
+Panel for slicing sprite sheets and building 2D animation clips.
+
+| Feature | Description |
+|---------|-------------|
+| **Sheet Import** | File dialog or drag-drop image from Asset Browser |
+| **Auto-Detect Frames** | Guesses frame size/columns from image dimensions; preview grid overlays the sheet |
+| **Interactive Mode** | Click-drag on the sheet to define frame rect manually (no numeric input needed) |
+| **Zoom** | Independent zoom for sheet preview and animation preview (default 1x) |
+| **Animation Clips** | Create clip from frame range (Start/End), FPS control, play/stop preview |
+| **Frame Thumbnails** | Selected frame image shown in Frame Properties |
+| **Persistence** | All sheets + clips saved to `Assets/Sprites/sprites.sheets.json`, auto-loaded on project open |
+| **Play Integration** | Play in Preview loads the selected animation clip |
+
+### 2.5 Map Editor (2D Tilemap)
+
+Tilemap editor rendering into the 3D viewport as an upright textured plane (`EditorObject` type `Map2D`). The grid appears at world origin; camera auto-switches to orthographic front view.
+
+| Feature | Description |
+|---------|-------------|
+| **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise) |
+| **Tile Palette** | Auto-detected cols/rows from tileset image (read-only); multi-select (marquee) preserves block shape when stamping |
+| **Tools** | Paint, Erase (with brush size), Fill (flood), Pick — paint directly in the 3D viewport |
+| **Layers** | Multiple tile layers, visibility/lock per layer, all visible layers render (stacked in depth, tiny lift per layer) |
+| **Undo/Redo** | Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y over the 2D level (per-tile granularity) |
+| **Collision Flags** | Per-tile-id collision toggles; translucent boxes rendered sticking out of the plane (color via `Map2dCollisionColor`) |
+| **Parallax Layers** | Image layers behind/in front of the grid: ScrollFactor, ZPosition, Alpha (per-vertex tint), WidthPx/HeightPx (0 = proportional to image aspect), RepeatX/Y (GL_REPEAT), TopPx offset, TileHorizontal wrapping |
+| **Parallax Preview** | Panning the editor camera slides each layer by `-camX × ScrollFactor` (fractional UV phase = seamless wrap) |
+| **Grid Overlay** | Show/hide tile grid + grid color, real-time; auto-hidden in preview/in-game |
+| **Camera Start** | Per-map saved view; "Set Current View"/"Reset" in Grid Settings; Play in Preview restores it; auto-captured on first framing |
+| **Player Spawn** | Draggable cyan cross marker in viewport (or "Set at Hover"); GameScene places the player there on Enter (unless a save slot loads) |
+| **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles + parallax + spawn + camera start) and canonical scene `.ing`; autoload first map on project open |
+| **In-Game Parity** | Parallax layers/textures sync every frame in preview mode; startup `-load=` in-game re-anchors camera (lazy reframe when tilemap adopts late) |
+
+### 2.6 Inspector — Object Types
 
 **Box/Sphere/Plane**:
 - Transform: Position (XYZ), Rotation (Euler XYZ), Scale (XYZ)
@@ -136,6 +175,13 @@ ProjectRoot/
 - Model path, Position, Rotation, Scale
 - Cast Shadow toggle
 - PBR Maps + Tuning (same as primitives)
+
+**Map2D (2D Level)**:
+- Tilemap binding (auto-created from Map Editor "New Map" / scene `.ing` restore)
+- Tileset cols/rows + FlipV (read-only, auto-detected)
+- Show Grid + Grid Color, Show Collision + Collision Color
+- Grid Settings: camera start capture/reset, spawn info
+- Rendered as upright world-space plane; object transform intentionally not applied
 
 ---
 

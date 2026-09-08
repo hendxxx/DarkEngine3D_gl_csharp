@@ -7450,12 +7450,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.03183,
-        43.81875,
-        307.03183
+        85.48772,
+        45.80291,
+        313.14874
       ],
-      "editorCameraYaw": 180,
-      "editorCameraPitch": 0,
+      "editorCameraYaw": 283,
+      "editorCameraPitch": -86,
       "renderProperties": {
         "backgroundColor": [
           0.30033004,
