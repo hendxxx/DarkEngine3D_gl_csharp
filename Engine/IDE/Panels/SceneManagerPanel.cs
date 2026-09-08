@@ -1511,6 +1511,7 @@ public class SceneManagerPanel
                             obj.Map2dTilemap = tilemap;
                             obj.Map2dTilesetCols = tilemap.TilesetColumns;
                             obj.Map2dTilesetRows = tilemap.TilesetRows;
+                            obj.Map2dTilesetFlipV = tilemap.TilesetFlipV;
                             obj.Map2dLayerIndex = -1; // whole map (all visible layers)
                             obj.Map2dShowGrid = objData.TilemapShowGrid;
                             obj.Map2dGridColor = new Vector4(objData.TilemapGridColorR, objData.TilemapGridColorG,

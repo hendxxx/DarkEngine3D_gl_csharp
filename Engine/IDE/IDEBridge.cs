@@ -154,6 +154,7 @@ public class IDEBridge
     public uint TilesetTextureId { get; set; }
     public int TilesetCols { get; set; } = 8;
     public int TilesetRows { get; set; } = 8;
+    public bool TilesetFlipV { get; set; }
     public int TilesetImgW { get; set; }
     public int TilesetImgH { get; set; }
     public List<DarkEngine3D_gl_csharp.Engine.IDE.Panels.ParallaxLayer>? ParallaxLayers { get; set; }

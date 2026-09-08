@@ -63,6 +63,7 @@ public class MapEditorPanel
     private int _tilesetImgW, _tilesetImgH;
     private int _tilesetCols = 8;
     private int _tilesetRows = 8;
+    private bool _tilesetFlipV = false;
 
     // ── Undo ──
     private readonly Stack<(int layer, int x, int y, int oldTile, int newTile)> _undoStack = new();
@@ -160,11 +161,13 @@ public class MapEditorPanel
 
     public void Render()
     {
-        if (!_visible) return;
-
         // Adopt a level that came from the selected scene's .ing (restored Map2D object):
-        // keeps this panel's palette/layers in sync with the active GameScene tilemap.
+        // keeps this panel's palette/layers/grid in sync with the active GameScene tilemap.
+        // Must run even when the panel is collapsed so the checkbox state matches the
+        // actual EditorObject state loaded from the scene file.
         SyncTilemapFromBridge();
+
+        if (!_visible) return;
 
         ImGui.SetNextWindowSize(new Vector2(350, 600), ImGuiCond.FirstUseEver);
         if (ImGui.Begin("Map Editor", ref _visible))
@@ -307,14 +310,29 @@ public class MapEditorPanel
             }
 
             ImGui.PushItemWidth(80);
-            ImGui.InputInt("Cols", ref _tilesetCols);
+            if (ImGui.InputInt("Cols", ref _tilesetCols))
+            {
+                _tilesetCols = Math.Max(1, _tilesetCols);
+                ActiveTilemap.TilesetColumns = _tilesetCols;
+                _bridge.TilesetCols = _tilesetCols;
+                SyncTilesetToEditorObjects();
+            }
             ImGui.SameLine();
-            ImGui.InputInt("Rows", ref _tilesetRows);
+            if (ImGui.InputInt("Rows", ref _tilesetRows))
+            {
+                _tilesetRows = Math.Max(1, _tilesetRows);
+                ActiveTilemap.TilesetRows = _tilesetRows;
+                _bridge.TilesetRows = _tilesetRows;
+                SyncTilesetToEditorObjects();
+            }
+            ImGui.SameLine();
+            if (ImGui.Checkbox("FlipV", ref _tilesetFlipV))
+            {
+                ActiveTilemap.TilesetFlipV = _tilesetFlipV;
+                _bridge.TilesetFlipV = _tilesetFlipV;
+                SyncTilesetToEditorObjects();
+            }
             ImGui.PopItemWidth();
-            _tilesetCols = Math.Max(1, _tilesetCols);
-            _tilesetRows = Math.Max(1, _tilesetRows);
-            ActiveTilemap.TilesetColumns = _tilesetCols;
-            ActiveTilemap.TilesetRows = _tilesetRows;
         }
     }
 
@@ -362,17 +380,40 @@ public class MapEditorPanel
             ActiveTilemap!.TilesetImagePath = path;
             ActiveTilemap.TilesetTextureId = _tilesetTextureId;
 
-            // Auto-detect grid
+            // Auto-detect grid from the image ONLY when the loaded map predates the
+            // TilesetColumns/TilesetRows fields (i.e. still at the default 8x8). If the
+            // map already carries a saved non-default grid (e.g. 12x15), trust the saved
+            // value — the user may have set a custom grid that doesn't evenly divide the
+            // image. The panel vars (_tilesetCols/Rows/FlipV) always follow the tilemap's
+            // saved values; the image-derived values are used only to fix stale 8x8 maps.
             int tileSize = ActiveTilemap.TileSize;
-            _tilesetCols = Math.Max(1, _tilesetImgW / tileSize);
-            _tilesetRows = Math.Max(1, _tilesetImgH / tileSize);
-            ActiveTilemap.TilesetColumns = _tilesetCols;
-            ActiveTilemap.TilesetRows = _tilesetRows;
+            int imgCols = Math.Max(1, _tilesetImgW / tileSize);
+            int imgRows = Math.Max(1, _tilesetImgH / tileSize);
+            if (ActiveTilemap.TilesetColumns == 8 && ActiveTilemap.TilesetRows == 8)
+            {
+                ActiveTilemap.TilesetColumns = imgCols;
+                ActiveTilemap.TilesetRows = imgRows;
+            }
+            // The panel vars must reflect what's actually saved on the tilemap, not the
+            // image-derived guess. Sync them AFTER the possible backfill above so they're
+            // correct in both cases (stale 8x8 fixed, or non-default preserved).
+            _tilesetCols = ActiveTilemap.TilesetColumns;
+            _tilesetRows = ActiveTilemap.TilesetRows;
+            // TilesetFlipV is new — old maps will have it default to false. Keep it false
+            // here ONLY if the tilemap still has the default (i.e. was saved before this
+            // field existed). If the JSON already carries true, preserve it.
+            if (ActiveTilemap.TilesetFlipV == false && ActiveTilemap.TilesetColumns == 8 && ActiveTilemap.TilesetRows == 8)
+            {
+                // This is a pre-FlipV map; ensure false.
+                ActiveTilemap.TilesetFlipV = false;
+            }
+            _tilesetFlipV = ActiveTilemap.TilesetFlipV;
 
             // Sync to bridge for viewport rendering
             _bridge.TilesetTextureId = _tilesetTextureId;
             _bridge.TilesetCols = _tilesetCols;
             _bridge.TilesetRows = _tilesetRows;
+            _bridge.TilesetFlipV = _tilesetFlipV;
             _bridge.TilesetImgW = _tilesetImgW;
             _bridge.TilesetImgH = _tilesetImgH;
 
@@ -406,19 +447,29 @@ public class MapEditorPanel
             unsafe { GL.DeleteTextures(1, &oldTex); }
         }
         _tilesetTextureId = 0;
-        _tilesetCols = ActiveTilemap.TilesetColumns;
-        _tilesetRows = ActiveTilemap.TilesetRows;
+        // LoadTilesetTexture now reads/writes _tilesetCols/Rows/FlipV from the tilemap's
+        // saved values (backfilling only when 8x8), so we don't set them here — doing so
+        // would be overwritten by LoadTilesetTexture anyway.
         if (!string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath) && File.Exists(ActiveTilemap.TilesetImagePath))
+        {
             LoadTilesetTexture(ActiveTilemap.TilesetImagePath);
+        }
         else
         {
             _tilesetImgW = 0;
             _tilesetImgH = 0;
         }
 
-        // Adopt the level's own saved grid state (Show Grid + grid color) from its Map2D
-        // scene object, so a level saved with the grid OFF doesn't get flipped back ON by
-        // this panel's defaults (the per-frame toolbar push below then keeps it in sync).
+        // Adopt the level's own saved grid state (Show Grid + grid color) from the
+        // tilemap itself (Tilemap2D.ShowGrid/GridColor). The grid state now lives on the
+        // tilemap so it's carried by both the standalone Assets/Maps/*.tilemap.json and
+        // the scene's .ing (via EditorObjectData.Tilemap). Fall back to the EditorObject
+        // only for compatibility with maps saved before this field existed.
+        if (ActiveTilemap != null)
+        {
+            _showGrid = ActiveTilemap.ShowGrid;
+            _gridColor = ActiveTilemap.GridColor;
+        }
         if (_bridge.EditorObjectManager != null)
         {
             var mapObj = _bridge.EditorObjectManager.Objects.FirstOrDefault(o =>
@@ -426,8 +477,13 @@ public class MapEditorPanel
                 && ReferenceEquals(o.Map2dTilemap, ActiveTilemap));
             if (mapObj != null)
             {
-                _showGrid = mapObj.Map2dShowGrid;
-                _gridColor = mapObj.Map2dGridColor;
+                // Keep the EditorObject in sync with the tilemap (so Save All serializes
+                // the correct state). Only override if the tilemap has an explicit value.
+                if (mapObj.Map2dShowGrid != _showGrid || mapObj.Map2dGridColor != _gridColor)
+                {
+                    mapObj.Map2dShowGrid = _showGrid;
+                    mapObj.Map2dGridColor = _gridColor;
+                }
             }
         }
 
@@ -480,6 +536,7 @@ public class MapEditorPanel
                     o.Map2dGridColor = _gridColor;
                     o.Map2dTilesetCols = _tilesetCols;
                     o.Map2dTilesetRows = _tilesetRows;
+                    o.Map2dTilesetFlipV = _tilesetFlipV;
                 }
             }
         }
@@ -488,6 +545,31 @@ public class MapEditorPanel
     // Prefs change tracker: set when a grid/palette UI control reports an edit; consumed
     // once per frame by Render() → ThrottledPersistPrefs().
     private bool _gridPrefsDirty = false;
+
+    /// <summary>Push the current tileset grid (Cols/Rows/FlipV) onto every Map2D EditorObject
+    /// bound to the active tilemap, AND onto the tilemap object itself (Map2dTilemap). The
+    /// latter is what Save All serializes into the scene's .ing, so this bridges the gap
+    /// between the panel's live UI state and the on-disk scene file.</summary>
+    private void SyncTilesetToEditorObjects()
+    {
+        if (ActiveTilemap == null || _bridge.EditorObjectManager == null) return;
+        foreach (var o in _bridge.EditorObjectManager.Objects)
+        {
+            if (o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+                && ReferenceEquals(o.Map2dTilemap, ActiveTilemap))
+            {
+                if (o.Map2dTilemap != null)
+                {
+                    o.Map2dTilemap.TilesetColumns = _tilesetCols;
+                    o.Map2dTilemap.TilesetRows = _tilesetRows;
+                    o.Map2dTilemap.TilesetFlipV = _tilesetFlipV;
+                }
+                o.Map2dTilesetCols = _tilesetCols;
+                o.Map2dTilesetRows = _tilesetRows;
+                o.Map2dTilesetFlipV = _tilesetFlipV;
+            }
+        }
+    }
 
     private void RenderLayers()
     {
@@ -864,8 +946,14 @@ public class MapEditorPanel
         mapObj.Map2dTilesetCols = ActiveTilemap.TilesetColumns;
         mapObj.Map2dTilesetRows = ActiveTilemap.TilesetRows;
         mapObj.Map2dLayerIndex = -1;   // whole map (all visible layers)
-        mapObj.Map2dShowGrid = _showGrid;
-        mapObj.Map2dGridColor = _gridColor;
+        // Grid state now lives on the tilemap itself (Tilemap2D.ShowGrid/GridColor) so it's
+        // carried by both the standalone Assets/Maps/*.tilemap.json and the scene's .ing.
+        // Fall back to the panel var only when the tilemap has no explicit grid state (old
+        // maps saved before this field existed).
+        mapObj.Map2dShowGrid = ActiveTilemap.ShowGrid;
+        mapObj.Map2dGridColor = ActiveTilemap.GridColor;
+        _showGrid = ActiveTilemap.ShowGrid;
+        _gridColor = ActiveTilemap.GridColor;
         Console.WriteLine($"[MapEditor] Created Map2D scene object for '{ActiveTilemap.Name}'");
     }
 
@@ -909,6 +997,12 @@ public class MapEditorPanel
             string json = JsonSerializer.Serialize(data, opts);
             File.WriteAllText(path, json);
             Console.WriteLine($"[MapEditor] Saved map to: {path}");
+        Console.WriteLine($"[MapEditor] Save snapshot -> Cols={ActiveTilemap.TilesetColumns}, Rows={ActiveTilemap.TilesetRows}, FlipV={ActiveTilemap.TilesetFlipV}, ShowGrid={ActiveTilemap.ShowGrid}, GridColor={ActiveTilemap.GridColor}, path='{path}'");
+
+        // Also persist the tileset grid into the scene's .ing so project reload picks up the
+        // edited Cols/Rows/FlipV. The standalone Assets/Maps/*.tilemap.json is a convenience
+        // export; the canonical storage for the level is the scene file.
+        try { _bridge.SaveAllScenes?.Invoke(); } catch { }
         }
         catch (Exception ex)
         {
@@ -1018,6 +1112,8 @@ public class MapEditorPanel
                 LoadTilesetTexture(ActiveTilemap.TilesetImagePath);
 
             Console.WriteLine($"[MapEditor] Loaded map from: {path} ({ActiveTilemap.Width}x{ActiveTilemap.Height}, {ActiveTilemap.Layers.Count} layers)");
+            Console.WriteLine($"[MapEditor] Load snapshot <- Cols={ActiveTilemap.TilesetColumns}, Rows={ActiveTilemap.TilesetRows}, FlipV={ActiveTilemap.TilesetFlipV}, ShowGrid={ActiveTilemap.ShowGrid}, GridColor={ActiveTilemap.GridColor}, tileset='{ActiveTilemap.TilesetImagePath}', json_exists={File.Exists(path)}");
+            Console.WriteLine($"[MapEditor] Load JSON content (first 300 chars): {json.Substring(0, Math.Min(300, json.Length))}");
         }
         catch (Exception ex)
         {
@@ -1044,6 +1140,7 @@ public class MapEditorPanel
         {
             LoadMapFromFile(files[0]);
             Console.WriteLine($"[MapEditor] Auto-loaded map: {files[0]}");
+            Console.WriteLine($"[MapEditor] AutoLoad snapshot <- Cols={ActiveTilemap.TilesetColumns}, Rows={ActiveTilemap.TilesetRows}, FlipV={ActiveTilemap.TilesetFlipV}");
         }
     }
 

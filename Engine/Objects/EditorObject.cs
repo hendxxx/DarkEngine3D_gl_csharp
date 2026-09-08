@@ -690,6 +690,7 @@ public unsafe class EditorObject
     /// <summary>Tileset grid layout.</summary>
     public int Map2dTilesetCols { get; set; } = 8;
     public int Map2dTilesetRows { get; set; } = 8;
+    public bool Map2dTilesetFlipV { get; set; } = false;
     /// <summary>Whether to show the grid overlay on the map.</summary>
     public bool Map2dShowGrid { get; set; } = true;
     /// <summary>Grid overlay color (RGB = line color, A = line alpha). Used by
@@ -2838,10 +2839,11 @@ void main() {
                     int tr = tileId / tsCols;
                     if (tr >= tsRows) continue;
 
+                    float vFlip = Map2dTilesetFlipV ? -1f : 1f;
                     float u0 = tc * tileUW;
-                    float v0 = tr * tileVH;
+                    float v0 = (tr + (vFlip < 0f ? 0f : 1f)) * tileVH * vFlip;
                     float u1 = u0 + tileUW;
-                    float v1 = v0 + tileVH;
+                    float v1 = (tr + (vFlip < 0f ? 1f : 0f)) * tileVH * vFlip;
 
                     // Geometry is baked at Tilemap2D.WorldScale (1/10) so the upright
                     // plane is width×height×tileSize×0.1 world units (matches the editor

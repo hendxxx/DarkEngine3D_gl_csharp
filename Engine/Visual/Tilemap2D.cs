@@ -24,6 +24,11 @@ public class Tilemap2D
     public uint TilesetTextureId;
     public int TilesetColumns = 8;
     public int TilesetRows = 8;
+    public bool TilesetFlipV = false;
+
+    // ── Grid display (per-tilemap, saved in the standalone .tilemap.json) ──
+    public bool ShowGrid = true;
+    public Vector4 GridColor = new(1f, 1f, 1f, 0.12f);
 
     // ── World offset ──
     public Vector2 Offset; // Position of tilemap origin in world space
@@ -172,8 +177,14 @@ public class Tilemap2D
         TilesetImagePath = TilesetImagePath,
         TilesetColumns = TilesetColumns,
         TilesetRows = TilesetRows,
+        TilesetFlipV = TilesetFlipV,
         OffsetX = Offset.X,
         OffsetY = Offset.Y,
+        ShowGrid = ShowGrid,
+        GridColorR = GridColor.X,
+        GridColorG = GridColor.Y,
+        GridColorB = GridColor.Z,
+        GridColorA = GridColor.W,
         Layers = Layers.Select(l => l.ToData()).ToList()
     };
 
@@ -188,7 +199,10 @@ public class Tilemap2D
             TilesetImagePath = data.TilesetImagePath,
             TilesetColumns = data.TilesetColumns,
             TilesetRows = data.TilesetRows,
+            TilesetFlipV = data.TilesetFlipV,
             Offset = new Vector2(data.OffsetX, data.OffsetY),
+            ShowGrid = data.ShowGrid,
+            GridColor = new Vector4(data.GridColorR, data.GridColorG, data.GridColorB, data.GridColorA),
             Layers = data.Layers.Select(l => TileLayer.FromData(l)).ToList()
         };
         return map;
@@ -298,8 +312,14 @@ public class Tilemap2DData
     public string TilesetImagePath { get; set; } = "";
     public int TilesetColumns { get; set; } = 8;
     public int TilesetRows { get; set; } = 8;
+    public bool TilesetFlipV { get; set; } = false;
     public float OffsetX { get; set; }
     public float OffsetY { get; set; }
+    public bool ShowGrid { get; set; } = true;
+    public float GridColorR { get; set; } = 1f;
+    public float GridColorG { get; set; } = 1f;
+    public float GridColorB { get; set; } = 1f;
+    public float GridColorA { get; set; } = 0.12f;
     public List<TileLayerData> Layers { get; set; } = new();
 }
 
