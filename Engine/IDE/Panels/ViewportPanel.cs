@@ -3658,24 +3658,114 @@ ImGui.SameLine();
                             hdl.AddQuad(hs0, hs1, hs2, hs3, hLine, 2f);
 
                             int tool = _bridge.MapPaintTool;
+                            int selectedCount = _bridge.TilePaletteSelectionCount;
                             bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+                            bool leftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+                            bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+                            bool rightClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Right);
 
-                            if (leftDown)
+                            // ── Tile palette: paint on Left-click, drag-to-select on Right-click ──
+                            if (selectedCount <= 1)
                             {
-                                if (tool == 0 || tool == 1) // Paint / Erase (drag-friendly)
-                                    _bridge.MapPaintAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                // Single-tile palette mode: Left-click stamps 1 tile (existing behavior).
+                                if (leftDown)
+                                {
+                                    if (tool == 0 || tool == 1) // Paint / Erase (drag-friendly)
+                                        _bridge.MapPaintAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                }
+                                if (leftClicked)
+                                {
+                                    if (tool == 2)
+                                        _bridge.MapFillAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                    else if (tool == 3)
+                                        _bridge.MapPickAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                    _mapPaintActive = true;
+                                }
+                                if (leftReleased)
+                                    _mapPaintActive = false;
                             }
-                            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                            else
                             {
-                                if (tool == 2)
-                                    _bridge.MapFillAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                // Multi-tile palette mode: stamp the selected palette REGION as a
+                                // rectangle (e.g. a 5x3 block stays a 5x3 block in the grid), matching
+                                // the shape the user dragged in the Tile Palette.
+                                int selW = Math.Max(1, _bridge.TilePaletteSelW);
+                                int selH = Math.Max(1, _bridge.TilePaletteSelH);
+                                int maxW = Math.Min(selW, map.Width - gx);
+                                int maxH = Math.Min(selH, map.Height - gy);
+                                int[] grid = _bridge.TilePaletteSelectedTiles.ToArray();
+
+                                // Preview the selected region footprint whenever the cursor hovers
+                                // the map (yellow outline), so the user sees what will be stamped.
+                                // Grid rows grow DOWNWARD from the clicked tile (row gy+1 is below
+                                // gy), and palette row 0 is the TOP row of the selection, so palette
+                                // row r maps to grid row gy + r.
+                                if (tool == 0 || tool == 1)
+                                {
+                                    for (int row = 0; row < maxH; row++)
+                                    {
+                                        for (int col = 0; col < maxW; col++)
+                                        {
+                                            var qA = map.GridToWorld(gx + col, gy + row - 1);
+                                            var qB = map.GridToWorld(gx + col + 1, gy + row - 1);
+                                            var qC = map.GridToWorld(gx + col + 1, gy + row);
+                                            var qD = map.GridToWorld(gx + col, gy + row);
+                                            var qp0 = TransformGizmo.ProjectToScreen(cam, new Vector3(qA.X, qA.Y, layerZ), vpw, vph);
+                                            var qp1 = TransformGizmo.ProjectToScreen(cam, new Vector3(qB.X, qB.Y, layerZ), vpw, vph);
+                                            var qp2 = TransformGizmo.ProjectToScreen(cam, new Vector3(qC.X, qC.Y, layerZ), vpw, vph);
+                                            var qp3 = TransformGizmo.ProjectToScreen(cam, new Vector3(qD.X, qD.Y, layerZ), vpw, vph);
+                                            var qs0 = SceneToScreen(qp0.X, vph - qp0.Y);
+                                            var qs1 = SceneToScreen(qp1.X, vph - qp1.Y);
+                                            var qs2 = SceneToScreen(qp2.X, vph - qp2.Y);
+                                            var qs3 = SceneToScreen(qp3.X, vph - qp3.Y);
+                                            hdl.AddQuadFilled(qs0, qs1, qs2, qs3, hFill);
+                                            hdl.AddQuad(qs0, qs1, qs2, qs3, hLine, 2f);
+                                        }
+                                    }
+                                }
+                                else if (tool == 2)
+                                {
+                                    if (leftClicked)
+                                        _bridge.MapFillAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                }
                                 else if (tool == 3)
-                                    _bridge.MapPickAt?.Invoke(new Vector2(hit.X, hit.Y));
-                                _mapPaintActive = true;
+                                {
+                                    if (leftClicked)
+                                        _bridge.MapPickAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                }
+
+                                // Paint the whole selected region on CLICK only (no drag painting).
+                                // The clicked tile is the TOP-LEFT of the stamp: palette row 0 (top)
+                                // lands on grid row gy and the block extends downward (gy + row).
+                                if (leftClicked && (tool == 0 || tool == 1))
+                                {
+                                    for (int row = 0; row < maxH; row++)
+                                    {
+                                        for (int col = 0; col < maxW; col++)
+                                        {
+                                            int idx = row * selW + col;
+                                            if (idx < 0 || idx >= grid.Length) continue;
+                                            int tid = grid[idx];
+                                            if (tool == 0)
+                                            {
+                                                if (tid >= 0)
+                                                    map.SetTile(_bridge.ActiveTileLayer, gx + col, gy + row, tid);
+                                            }
+                                            else
+                                            {
+                                                map.SetTile(_bridge.ActiveTileLayer, gx + col, gy + row, -1);
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
-                            // Consume the click so it doesn't also select/deselect objects.
-                            _bridge.IsViewportClicked = false;
+                            bool consumingClick = false;
+                            if (selectedCount > 1 && leftClicked)
+                                consumingClick = true;
+
+                            if (consumingClick)
+                                _bridge.IsViewportClicked = false;
                         }
                     }
                 }
@@ -3692,6 +3782,10 @@ ImGui.SameLine();
             if (!_previewMode && hasSceneTexture && _bridge.EditorObjectManager != null
                 && _bridge.Camera != null && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
+                // Skip the marquee when we're in multi-tile palette mode and the right button is held
+                // (right-click drag is reserved for tile grid tile-selection rectangle).
+                bool inMultiTileMode = _bridge.TilePaletteSelectionCount > 1;
+                bool rightHeld = ImGui.IsMouseDown(ImGuiMouseButton.Right);
                 bool leftPressedNow = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
                 bool leftDownNow = ImGui.IsMouseDown(ImGuiMouseButton.Left);
                 bool leftReleasedNow = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
@@ -3998,7 +4092,6 @@ ImGui.SameLine();
                     }
                 }
             }
-
         }
         else
         {

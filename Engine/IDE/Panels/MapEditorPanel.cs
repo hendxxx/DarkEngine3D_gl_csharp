@@ -30,8 +30,12 @@ public class MapEditorPanel
     private int _selectedLayerIdx = -1;
     private string _newLayerName = "New Layer";
 
-    // ── Tile selection ──
+    // ── Tile selection (shift+click toggle + left-drag marquee rectangle) ──
     private int _selectedTileId = 0;
+    private readonly Dictionary<int, byte> _selectedTileIds = new();
+    private Vector2? _paletteDragStart;
+    private Vector2 _paletteDragCurrent;
+    private bool _paletteDragActive;
     private int _hoveredTileX = -1, _hoveredTileY = -1;
 
     // ── Grid settings ──
@@ -513,7 +517,52 @@ public class MapEditorPanel
 
         // Sync to bridge for viewport painting + world grid
         _bridge.MapPaintTool = (int)_currentTool;
-        _bridge.SelectedTileId = _selectedTileId;
+        // Push multi-selection onto the bridge so viewport painting can use the full
+        // selected tile set, preserving the dragged block's SHAPE (width x height in
+        // palette grid cells, row-major with row 0 = top row). A rectangular drag keeps
+        // its rectangle in the map grid; scattered shift-clicks fall back to a 1xN run.
+        if (_selectedTileIds.Count == 0)
+        {
+            _bridge.TilePaletteSelectionCount = 0;
+            _bridge.TilePaletteSelectedTiles.Clear();
+            _bridge.TilePaletteSelW = 1;
+            _bridge.TilePaletteSelH = 1;
+        }
+        else
+        {
+            _bridge.TilePaletteSelectionCount = _selectedTileIds.Count;
+
+            // Compute the bounding box of the selection in palette grid coords
+            // (col = id % _paletteCols, row = id / _paletteCols).
+            int minCol = int.MaxValue, maxCol = int.MinValue;
+            int minRow = int.MaxValue, maxRow = int.MinValue;
+            foreach (var id in _selectedTileIds.Keys)
+            {
+                int c = id % _paletteCols;
+                int r = id / _paletteCols;
+                if (c < minCol) minCol = c;
+                if (c > maxCol) maxCol = c;
+                if (r < minRow) minRow = r;
+                if (r > maxRow) maxRow = r;
+            }
+            int selW = maxCol - minCol + 1;
+            int selH = maxRow - minRow + 1;
+
+            // Build a row-major grid over the bounding box; cells the user did NOT
+            // select are stamped as empty (-1) so scattered picks don't fill the gaps.
+            _bridge.TilePaletteSelectedTiles.Clear();
+            for (int r = minRow; r <= maxRow; r++)
+            {
+                for (int c = minCol; c <= maxCol; c++)
+                {
+                    int id = r * _paletteCols + c;
+                    _bridge.TilePaletteSelectedTiles.Add(_selectedTileIds.ContainsKey(id) ? id : -1);
+                }
+            }
+            _bridge.TilePaletteSelW = selW;
+            _bridge.TilePaletteSelH = selH;
+        }
+        _bridge.SelectedTileId = _selectedTileIds.Count == 1 ? _selectedTileIds.Keys.First() : _selectedTileId;
         _bridge.ActiveTileLayer = _selectedLayerIdx;
         _bridge.BrushSize = _brushSize;
         _bridge.ShowWorldGrid = _showWorldGrid;
@@ -766,16 +815,38 @@ public class MapEditorPanel
                         ImGui.ColorConvertFloat4ToU32(Vector4.One), label);
                 }
 
-                // Selection border
+                // Selection border(s)
                 if (isSelected)
                     drawList.AddRect(new Vector2(x, y), new Vector2(x + _paletteCellSize, y + _paletteCellSize),
                         ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 0f, 1f)), 0f, 0, 2f);
+                else if (_selectedTileIds.ContainsKey(tileId))
+                    drawList.AddRect(new Vector2(x, y), new Vector2(x + _paletteCellSize, y + _paletteCellSize),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.4f, 0f, 1f)), 0f, 0, 2f);
 
-                // Click
+                // Selection update: plain click starts a marquee drag (rectangle select),
+                // shift+click toggles a single tile into the multi-select.
                 ImGui.SetCursorScreenPos(new Vector2(x, y));
                 ImGui.InvisibleButton($"##tile_{tileId}", new Vector2(_paletteCellSize, _paletteCellSize));
-                if (ImGui.IsItemClicked())
-                    _selectedTileId = tileId;
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+                {
+                    if (ImGui.GetIO().KeyShift)
+                    {
+                        if (_selectedTileIds.ContainsKey(tileId))
+                            _selectedTileIds.Remove(tileId);
+                        else
+                            _selectedTileIds[tileId] = 1;
+                        _selectedTileId = tileId;
+                    }
+                    else
+                    {
+                        _selectedTileIds.Clear();
+                        _selectedTileIds[tileId] = 1;
+                        _selectedTileId = tileId;
+                        _paletteDragStart = ImGui.GetMousePos();
+                        _paletteDragCurrent = _paletteDragStart.Value;
+                        _paletteDragActive = false;
+                    }
+                }
             }
         }
 
@@ -793,8 +864,60 @@ public class MapEditorPanel
                                  gridCol, 1f);
         }
 
+        // ── Left-drag marquee rectangle select ──
+        if (_paletteDragStart != null)
+        {
+            _paletteDragCurrent = ImGui.GetMousePos();
+            if (Vector2.Distance(_paletteDragCurrent, _paletteDragStart.Value) > 4f)
+                _paletteDragActive = true;
+
+            if (_paletteDragActive)
+            {
+                // Marquee rect in palette space
+                var rMin = new Vector2(
+                    MathF.Min(_paletteDragStart.Value.X, _paletteDragCurrent.X),
+                    MathF.Min(_paletteDragStart.Value.Y, _paletteDragCurrent.Y));
+                var rMax = new Vector2(
+                    MathF.Max(_paletteDragStart.Value.X, _paletteDragCurrent.X),
+                    MathF.Max(_paletteDragStart.Value.Y, _paletteDragCurrent.Y));
+
+                // Live-preview: select every tile intersecting the rect while dragging.
+                _selectedTileIds.Clear();
+                for (int r = 0; r < rows; r++)
+                {
+                    for (int c = 0; c < cols; c++)
+                    {
+                        int tileId = r * cols + c;
+                        if (tileId >= totalTiles) break;
+                        var tMin = new Vector2(cursorPos.X + c * _paletteCellSize, cursorPos.Y + r * _paletteCellSize);
+                        var tMax = tMin + new Vector2(_paletteCellSize, _paletteCellSize);
+                        if (tMax.X >= rMin.X && tMin.X <= rMax.X && tMax.Y >= rMin.Y && tMin.Y <= rMax.Y)
+                            _selectedTileIds[tileId] = 1;
+                    }
+                }
+                if (_selectedTileIds.Count > 0)
+                    _selectedTileId = _selectedTileIds.Keys.Min();
+
+                // Draw the marquee rectangle on top of the palette.
+                drawList.AddRectFilled(rMin, rMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 0f, 0.12f)));
+                drawList.AddRect(rMin, rMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 0f, 0.9f)), 0f, 0, 1.5f);
+            }
+
+            // Release: commit the selection and end the drag.
+            if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+            {
+                _paletteDragStart = null;
+                _paletteDragActive = false;
+            }
+        }
+
         ImGui.SetCursorScreenPos(new Vector2(cursorPos.X, cursorPos.Y + rows * _paletteCellSize + 4f));
-        ImGui.Text($"Selected: {_selectedTileId}");
+        string selTxt = _selectedTileIds.Count == 0
+            ? "Selected: none"
+            : _selectedTileIds.Count == 1
+                ? $"Selected: {_selectedTileIds.Keys.First()}"
+                : $"Selected: {_selectedTileIds.Count} tiles (drag to paint)";
+        ImGui.Text(selTxt);
     }
 
     private void RenderGridSettings()

@@ -145,6 +145,12 @@ public class IDEBridge
     public Tilemap2D? ActiveTilemap { get; set; }
     public int ActiveTileLayer { get; set; } = 1;
     public int SelectedTileId { get; set; } = 0;
+    public int TilePaletteSelectionCount { get; set; } = 0;
+    public List<int> TilePaletteSelectedTiles { get; set; } = new();
+    // Width/height of the selected palette REGION (row-major grid in TilePaletteSelectedTiles,
+    // row 0 = top row). Keeps a dragged block's shape when stamped into the grid.
+    public int TilePaletteSelW { get; set; } = 1;
+    public int TilePaletteSelH { get; set; } = 1;
     public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick
     public int BrushSize { get; set; } = 1;
     // Tilemap painting hooks (wired by IDE.cs to MapEditorPanel).
