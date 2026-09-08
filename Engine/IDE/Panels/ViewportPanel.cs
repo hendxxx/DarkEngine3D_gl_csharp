@@ -3760,6 +3760,14 @@ ImGui.SameLine();
                             bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
                             bool leftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
                             bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+
+                            // Ctrl+Z / Ctrl+Y over the 2D level → tile paint undo/redo
+                            // (map tools have no menu entry; keyboard is the only path).
+                            if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
+                                _bridge.MapUndo?.Invoke();
+                            if (ImGui.GetIO().KeyCtrl && (ImGui.IsKeyPressed(ImGuiKey.Y, false) ||
+                                (ImGui.GetIO().KeyShift && ImGui.IsKeyPressed(ImGuiKey.Z, false))))
+                                _bridge.MapRedo?.Invoke();
                             bool rightClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Right);
 
                             // ── Tile palette: paint on Left-click, drag-to-select on Right-click ──

@@ -24,7 +24,7 @@ public class MapEditorPanel
     public Tilemap2D? ActiveTilemap;
 
     // ── Tool modes ──
-    private enum PaintTool { Paint, Erase, Fill, Pick, RectSelect }
+    private enum PaintTool { Paint, Erase, Fill, Pick }
     private PaintTool _currentTool = PaintTool.Paint;
 
     // ── Layer management ──
@@ -369,7 +369,6 @@ public class MapEditorPanel
             {
                 _tilesetCols = Math.Max(1, _tilesetCols);
                 ActiveTilemap.TilesetColumns = _tilesetCols;
-                _bridge.TilesetCols = _tilesetCols;
                 SyncTilesetToEditorObjects();
             }
             ImGui.SameLine();
@@ -377,14 +376,12 @@ public class MapEditorPanel
             {
                 _tilesetRows = Math.Max(1, _tilesetRows);
                 ActiveTilemap.TilesetRows = _tilesetRows;
-                _bridge.TilesetRows = _tilesetRows;
                 SyncTilesetToEditorObjects();
             }
             ImGui.SameLine();
             if (ImGui.Checkbox("FlipV", ref _tilesetFlipV))
             {
                 ActiveTilemap.TilesetFlipV = _tilesetFlipV;
-                _bridge.TilesetFlipV = _tilesetFlipV;
                 SyncTilesetToEditorObjects();
             }
             ImGui.PopItemWidth();
@@ -463,14 +460,6 @@ public class MapEditorPanel
                 ActiveTilemap.TilesetFlipV = false;
             }
             _tilesetFlipV = ActiveTilemap.TilesetFlipV;
-
-            // Sync to bridge for viewport rendering
-            _bridge.TilesetTextureId = _tilesetTextureId;
-            _bridge.TilesetCols = _tilesetCols;
-            _bridge.TilesetRows = _tilesetRows;
-            _bridge.TilesetFlipV = _tilesetFlipV;
-            _bridge.TilesetImgW = _tilesetImgW;
-            _bridge.TilesetImgH = _tilesetImgH;
 
             Console.WriteLine($"[MapEditor] Loaded tileset: {path} ({_tilesetImgW}x{_tilesetImgH}, {_tilesetCols}x{_tilesetRows} tiles)");
         }
@@ -554,7 +543,6 @@ public class MapEditorPanel
                     LoadParallaxTexture(layer.ImagePath, layer);
             }
         }
-        _bridge.ParallaxLayers = ParallaxLayers.Count > 0 ? ParallaxLayers : null;
         _selectedParallaxIdx = ParallaxLayers.Count > 0 ? 0 : -1;
         if (_bridge.EditorObjectManager != null)
         {
@@ -597,7 +585,7 @@ public class MapEditorPanel
         ImGui.SameLine();
         ImGui.Checkbox("Show Collision##toolbar", ref _showCollisions);
 
-        // Sync to bridge for viewport painting + world grid
+        // Sync to bridge for viewport painting
         _bridge.MapPaintTool = (int)_currentTool;
         // Push multi-selection onto the bridge so viewport painting can use the full
         // selected tile set, preserving the dragged block's SHAPE (width x height in
@@ -646,12 +634,6 @@ public class MapEditorPanel
         }
         _bridge.SelectedTileId = _selectedTileIds.Count == 1 ? _selectedTileIds.Keys.First() : _selectedTileId;
         _bridge.ActiveTileLayer = _selectedLayerIdx;
-        _bridge.BrushSize = _brushSize;
-        _bridge.ShowWorldGrid = _showWorldGrid;
-        _bridge.WorldGridSize = _worldGridSize;
-        _bridge.WorldGridColor = _worldGridColor;
-        _bridge.ShowPaletteGrid = _showPaletteGrid;
-        _bridge.PaletteGridColor = _paletteGridColor;
 
         // "Show Grid" + "Grid Color" drive the Map2D tile grid in the 3D viewport: push
         // them onto every Map2D EditorObject bound to the active tilemap so both apply
@@ -1150,11 +1132,8 @@ public class MapEditorPanel
 
         ImGui.Separator();
         ImGui.Text("Viewport Grid:");
+        ImGui.Text("Viewport Grid:");
         if (ImGui.Checkbox("Show World Grid##vpgrid", ref _showWorldGrid))
-            _gridPrefsDirty = true;
-        if (ImGui.SliderFloat("Grid Size##vpgrid", ref _worldGridSize, 16f, 128f, "%.0f px"))
-            _gridPrefsDirty = true;
-        if (ImGui.ColorEdit4("World Grid Color##vpgrid", ref _worldGridColor))
             _gridPrefsDirty = true;
         ImGui.Separator();
         ImGui.TextWrapped("Tile Palette Grid:");
@@ -1435,7 +1414,6 @@ public class MapEditorPanel
                     if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(layer.ImagePath))
                         LoadParallaxTexture(layer.ImagePath, layer);
                 }
-                _bridge.ParallaxLayers = ParallaxLayers;
             }
 
             // Load tileset texture if available
@@ -1458,7 +1436,6 @@ public class MapEditorPanel
         ActiveTilemap = null;
         ParallaxLayers.Clear();
         _bridge.ActiveTilemap = null;
-        _bridge.ParallaxLayers = null;
 
         if (string.IsNullOrEmpty(projectRoot)) return;
 
@@ -1493,7 +1470,6 @@ public class MapEditorPanel
             ScrollFactor = Math.Max(0.1f, 1f - ParallaxLayers.Count * 0.2f)
         };
         ParallaxLayers.Add(layer);
-        _bridge.ParallaxLayers = ParallaxLayers;
         _selectedParallaxIdx = ParallaxLayers.Count - 1;
         Console.WriteLine($"[MapEditor] Added parallax layer: {layer.Name} (scroll: {layer.ScrollFactor}x)");
     }
@@ -1688,6 +1664,30 @@ public class MapEditorPanel
         if (_parallaxTextures.TryGetValue(path, out uint tex)) return tex;
         LoadParallaxTexture(path);
         return _parallaxTextures.TryGetValue(path, out tex) ? tex : 0;
+    }
+
+    /// <summary>Whether a tilemap is loaded (drives viewport undo/redo shortcuts).</summary>
+    public bool HasActiveTilemap => ActiveTilemap != null;
+
+    /// <summary>Undo the last tile paint/erase stroke (single-tile granularity).
+    /// Rebuilds the mesh via the tilemap dirty → cache-key path.</summary>
+    public void UndoTilePaint()
+    {
+        if (ActiveTilemap == null || _undoStack.Count == 0) return;
+        var (layer, x, y, oldTile, _) = _undoStack.Pop();
+        ActiveTilemap.SetTile(layer, x, y, oldTile);
+        _redoStack.Push((layer, x, y, oldTile, ActiveTilemap.GetTile(layer, x, y)));
+        Console.WriteLine($"[MapEditor] Undo tile ({x},{y}) → {oldTile}");
+    }
+
+    /// <summary>Redo the last undone tile paint/erase stroke.</summary>
+    public void RedoTilePaint()
+    {
+        if (ActiveTilemap == null || _redoStack.Count == 0) return;
+        var (layer, x, y, _, newTile) = _redoStack.Pop();
+        ActiveTilemap.SetTile(layer, x, y, newTile);
+        _undoStack.Push((layer, x, y, ActiveTilemap.GetTile(layer, x, y), newTile));
+        Console.WriteLine($"[MapEditor] Redo tile ({x},{y}) → {newTile}");
     }
 
     /// <summary>

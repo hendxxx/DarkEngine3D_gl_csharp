@@ -2786,7 +2786,7 @@ public unsafe class EditorObject
 
     // Dedicated shader for Map2D (simple textured quad with per-vertex alpha)
     private static uint _map2dShader;
-    private static int _map2dLocView, _map2dLocProj, _map2dLocModel, _map2dLocTex, _map2dLocTint;
+    private static int _map2dLocView, _map2dLocProj, _map2dLocModel, _map2dLocTex;
 
     private static unsafe void EnsureMap2DShader()
     {
@@ -2837,7 +2837,6 @@ void main() {
         _map2dLocProj = GL.GetUniformLocation(_map2dShader, "projection");
         _map2dLocModel = GL.GetUniformLocation(_map2dShader, "model");
         _map2dLocTex = GL.GetUniformLocation(_map2dShader, "tex");
-        _map2dLocTint = GL.GetUniformLocation(_map2dShader, "tint");
     }
 
     private struct Map2DVertex
@@ -3042,7 +3041,6 @@ void main() {
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
                 GL.Uniform1i(_map2dLocTex, 0);
-                GL.Uniform4f(_map2dLocTint, 1f, 1f, 1f, 1f);
 
                 GL.Enable(Const.GL_BLEND);
                 GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
@@ -3168,7 +3166,6 @@ void main() {
                     if (uvRepeatY > 0)
                         GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
                     GL.Uniform1i(_map2dLocTex, 0);
-                    GL.Uniform4f(_map2dLocTint, 1f, 1f, 1f, a);
 
                     // Horizontal scroll preview, RELATIVE to the layer's home position:
                     // the home offset (-camX × ScrollFactor) is what makes layers slide
@@ -3307,7 +3304,8 @@ void main() {
                     GL.ActiveTexture(Const.GL_TEXTURE0);
                     GL.BindTexture(Const.GL_TEXTURE_2D, _pbrWhiteTex);
                     GL.Uniform1i(_map2dLocTex, 0);
-                    GL.Uniform4f(_map2dLocTint, Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W);
+                    // NOTE: the map2d shader has no "tint" uniform — color reaches the
+                    // GPU only via the per-vertex tint attribute (baked below).
 
                     GL.Enable(Const.GL_BLEND);
                     GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
@@ -3332,12 +3330,18 @@ void main() {
                             float wy0 = (mapH - 1 - ty) * cell;
                             float wy1 = wy0 + cell;
 
-                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0, 1, 1, 1, 1));
-                            boxVerts.Add(new Map2DVertex(wx1, wy0, 0f, 1, 0, 1, 1, 1, 1));
-                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1, 1, 1, 1, 1));
-                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0, 1, 1, 1, 1));
-                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1, 1, 1, 1, 1));
-                            boxVerts.Add(new Map2DVertex(wx0, wy1, 0f, 0, 1, 1, 1, 1, 1));
+                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0,
+                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
+                            boxVerts.Add(new Map2DVertex(wx1, wy0, 0f, 1, 0,
+                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
+                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1,
+                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
+                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0,
+                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
+                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1,
+                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
+                            boxVerts.Add(new Map2DVertex(wx0, wy1, 0f, 0, 1,
+                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
                         }
                     }
 

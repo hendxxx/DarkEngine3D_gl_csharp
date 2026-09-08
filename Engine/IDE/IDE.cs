@@ -562,6 +562,9 @@ public class IDE : IDisposable
             Bridge.MapPaintAt = pos => _mapEditor.PaintAtWorldPosition(pos);
             Bridge.MapFillAt = pos => _mapEditor.FillAtWorldPosition(pos);
             Bridge.MapPickAt = pos => _mapEditor.PickAtWorldPosition(pos);
+            Bridge.MapUndo = () => _mapEditor.UndoTilePaint();
+            Bridge.MapRedo = () => _mapEditor.RedoTilePaint();
+            Bridge.MapHasLevel = () => _mapEditor.HasActiveTilemap;
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;

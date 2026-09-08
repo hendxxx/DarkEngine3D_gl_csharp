@@ -171,25 +171,17 @@ public class IDEBridge
     public int TilePaletteSelW { get; set; } = 1;
     public int TilePaletteSelH { get; set; } = 1;
     public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick
-    public int BrushSize { get; set; } = 1;
     // Tilemap painting hooks (wired by IDE.cs to MapEditorPanel).
     public Action<Vector2>? MapPaintAt { get; set; }
     public Action<Vector2>? MapFillAt { get; set; }
     public Action<Vector2>? MapPickAt { get; set; }
-    public uint TilesetTextureId { get; set; }
-    public int TilesetCols { get; set; } = 8;
-    public int TilesetRows { get; set; } = 8;
-    public bool TilesetFlipV { get; set; }
-    public int TilesetImgW { get; set; }
-    public int TilesetImgH { get; set; }
-    public List<DarkEngine3D_gl_csharp.Engine.IDE.Panels.ParallaxLayer>? ParallaxLayers { get; set; }
+    /// <summary>Tile paint/erase undo-redo (wired to MapEditorPanel.UndoTilePaint/Redo).</summary>
+    public Action? MapUndo { get; set; }
+    public Action? MapRedo { get; set; }
+    /// <summary>True while the Map Editor has a tilemap loaded (drives map-tool shortcuts).</summary>
+    public Func<bool>? MapHasLevel { get; set; }
 
     // ── Map Editor grid settings (synced to ViewportPanel) ──
-    public bool ShowWorldGrid { get; set; } = true;
-    public float WorldGridSize { get; set; } = 128f;
-    public Vector4 WorldGridColor { get; set; } = new(1f, 1f, 1f, 0.12f);
-    public bool ShowPaletteGrid { get; set; } = true;
-    public Vector4 PaletteGridColor { get; set; } = new(1f, 1f, 1f, 0.25f);
 
     // ── 2D Map scene ownership ──
 
