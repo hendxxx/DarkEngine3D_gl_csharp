@@ -228,11 +228,30 @@ public class MapParallaxRenderLayer
     public float ZPosition;
     public float Alpha = 1f;
     public bool TileHorizontal = true;
+    /// <summary>Scroll speed multiplier for the parallax preview: while the editor
+    /// camera pans, each layer slides horizontally by -camX × ScrollFactor — the same
+    /// rule the runtime background uses — so the depth illusion is visible while editing.
+    /// 0 = static, 1 = locked to the camera, 0.5 = half speed.</summary>
+    public float ScrollFactor = 0.5f;
     /// <summary>GPU texture ID (owned/loaded by the Map Editor panel).</summary>
     public uint TextureId;
-    /// <summary>Image size in pixels (for sizing the quad).</summary>
+    /// <summary>Image size in pixels (natural texture size, used for auto sizing).</summary>
     public int ImageWidth;
     public int ImageHeight;
+    /// <summary>Quad width in pixels. 0 = auto: follow the map grid width.</summary>
+    public float WidthPx;
+    /// <summary>Quad height in pixels. 0 = auto: follow the map grid height.</summary>
+    public float HeightPx;
+    /// <summary>Horizontal texture repeats across the quad. 0 = auto (image shown once
+    /// per natural size; TileHorizontal still extends tiling across the grid).</summary>
+    public int RepeatX;
+    /// <summary>Vertical texture repeats across the quad. 0 = auto.</summary>
+    public int RepeatY;
+    /// <summary>Left offset in pixels from the grid's left edge (negative = extend left).</summary>
+    public float LeftPx;
+    /// <summary>Top offset in pixels pushing the quad's top edge DOWN from the grid's top
+    /// edge (0 = flush with grid top; negative = extend above the grid).</summary>
+    public float TopPx;
 }
 
 public unsafe class EditorObject
@@ -712,7 +731,20 @@ public unsafe class EditorObject
     public int Map2dTilesetRows { get; set; } = 8;
     public bool Map2dTilesetFlipV { get; set; } = false;
     /// <summary>Whether to show the grid overlay on the map.</summary>
-    public bool Map2dShowGrid { get; set; } = true;
+    /// <summary>Show the tile grid overlay (editor-only aid). Automatically suppressed
+    /// while the IDE is in Play-in-Preview / in-game mode so the running game renders
+    /// clean without editor grid lines.</summary>
+    public bool Map2dShowGrid
+    {
+        get => _map2dShowGrid && !Editor2DAidsHidden;
+        set => _map2dShowGrid = value;
+    }
+    private bool _map2dShowGrid = true;
+
+    /// <summary>True while the IDE is in Play-in-Preview / in-game mode. Hides all
+    /// editor-only 2D aids (tile grid overlay, collision helper boxes) so the running
+    /// game renders clean. Toggled by the IDE's InGameMode setter.</summary>
+    public static bool Editor2DAidsHidden { get; set; }
     /// <summary>Grid overlay color (RGB = line color, A = line alpha). Used by
     /// DrawMap2D so the Map Editor "Grid Color" picker really tints the 3D grid.</summary>
     public Vector4 Map2dGridColor { get; set; } = new(0.4f, 0.5f, 0.68f, 0.5f);
@@ -2830,31 +2862,27 @@ void main() {
     /// Map2D shader + vertex layout as the tile mesh.</summary>
     /// <summary>Build a VBO with one quad per non-empty tile, UV-mapped into the tileset grid.
     /// Vertices are in local space; the WorldMatrix positions/scales the whole mesh.
-    /// If Map2dLayerIndex >= 0, render only that layer; if -1, render all visible layers.</summary>
+    /// Renders ALL visible layers at once (layered in world Z by index so upper layers
+    /// draw over lower ones) — the Map Editor's "active layer" only controls painting.
+    /// Layer visibility comes from TileLayer.IsVisible, so a visible layer always shows.</summary>
     private unsafe void BuildMap2DMesh()
     {
         var map = Map2dTilemap;
         if (map == null) return;
 
-        // Decide which layer(s) to bake. The ACTIVE editor layer wins: when it is set
-        // (>= 0) only that layer renders; otherwise fall back to the legacy all-visible
-        // behavior so old scenes still show every visible layer.
-        int renderLayer = Map2dActiveLayer >= 0 ? Map2dActiveLayer : Map2dLayerIndex;
-
-        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}|{Map2dActiveLayer}";
-
-        // Include the relevant layer data in cache key
-        if (renderLayer >= 0 && renderLayer < map.Layers.Count)
+        // Render EVERY visible layer in one mesh. Layer visibility is respected
+        // (IsVisible=false layers are skipped), so a visible layer always renders.
+        // Upper layers must draw OVER lower ones: all layers bake coplanar at world
+        // z=0, so each layer gets a tiny local-Y lift (local Y maps to world depth
+        // through the -90° X rotation) — enough to win the depth test without any
+        // visible offset.
+        const float layerLiftStep = 0.01f; // world depth units between stacked layers
+        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}";
+        foreach (var l in map.Layers)
         {
-            var layer = map.Layers[renderLayer];
+            cacheKey += $"|{l.IsVisible}|{l.Opacity}";
             for (int i = 0; i < map.Width * map.Height; i++)
-                cacheKey += $"|{layer.GetTile(i % map.Width, i / map.Width)}";
-        }
-        else
-        {
-            foreach (var layer in map.Layers)
-                for (int i = 0; i < map.Width * map.Height; i++)
-                    cacheKey += $"|{layer.GetTile(i % map.Width, i / map.Width)}";
+                cacheKey += $"|{l.GetTile(i % map.Width, i / map.Width)}";
         }
 
         if (_map2dMeshCacheKey == cacheKey && _map2dVAO != 0) return;
@@ -2872,14 +2900,13 @@ void main() {
 
         var verts = new List<Map2DVertex>();
 
-        // Determine which layers to iterate (active layer wins, else legacy all-visible)
-        var layersToRender = renderLayer >= 0 && renderLayer < map.Layers.Count
-            ? new[] { map.Layers[renderLayer] }
-            : map.Layers.ToArray();
-
-        foreach (var layer in layersToRender)
+        // Bake every visible layer; deeper layers get a slightly smaller world-Z so
+        // upper layers composite over them (Z-fighting-free ordering).
+        for (int li = 0; li < map.Layers.Count; li++)
         {
+            var layer = map.Layers[li];
             if (!layer.IsVisible) continue;
+            float liftY = -li * layerLiftStep; // higher layer index → closer to the front camera
             for (int ty = 0; ty < mapH; ty++)
             {
                 for (int tx = 0; tx < mapW; tx++)
@@ -2897,9 +2924,6 @@ void main() {
                     float u1 = u0 + tileUW;
                     float v1 = (tr + (vFlip < 0f ? 1f : 0f)) * tileVH * vFlip;
 
-                    // Geometry is baked at Tilemap2D.WorldScale (1/10) so the upright
-                    // plane is width×height×tileSize×0.1 world units (matches the editor
-                    // viewport scale); GridToWorld uses the same mapping.
                     float worldTs = map.TileSize * Tilemap2D.WorldScale;
                     float x0 = tx * worldTs;
                     float x1 = x0 + worldTs;
@@ -2909,13 +2933,13 @@ void main() {
                     float z1 = z0 + worldTs;
                     float a = layer.Opacity;
 
-                    verts.Add(new Map2DVertex(x0, 0, z0, u0, v0, 1, 1, 1, a));
-                    verts.Add(new Map2DVertex(x1, 0, z0, u1, v0, 1, 1, 1, a));
-                    verts.Add(new Map2DVertex(x1, 0, z1, u1, v1, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x0, liftY, z0, u0, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, liftY, z0, u1, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, liftY, z1, u1, v1, 1, 1, 1, a));
 
-                    verts.Add(new Map2DVertex(x0, 0, z0, u0, v0, 1, 1, 1, a));
-                    verts.Add(new Map2DVertex(x1, 0, z1, u1, v1, 1, 1, 1, a));
-                    verts.Add(new Map2DVertex(x0, 0, z1, u0, v1, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x0, liftY, z0, u0, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, liftY, z1, u1, v1, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x0, liftY, z1, u0, v1, 1, 1, 1, a));
                 }
             }
         }
@@ -3059,6 +3083,13 @@ void main() {
                 EnsureMap2DShader();
                 GL.UseProgram(_map2dShader);
 
+                // ── Parallax scroll preview ──
+                // Plain absolute camera X: offset = -camX × ScrollFactor. No anchor —
+                // the home offset is divided into a fractional UV phase (seamless via
+                // GL_REPEAT) plus whole-width copies, so layers stay glued to their
+                // Left/Top position while panning still previews the depth illusion.
+                float camX = camera.Position.X;
+
                 // Parallax quads are baked directly in world space → identity model.
                 var ident = Matrix4x4.Identity;
                 GL.UniformMatrix4fv(_map2dLocModel, 1, false, &ident.M11);
@@ -3072,32 +3103,138 @@ void main() {
                 {
                     float a = Math.Clamp(pl.Alpha, 0f, 1f);
                     if (a <= 0.01f) continue;
-                    float w = MathF.Max(1f, pl.ImageWidth) * px2world;
-                    float h = MathF.Max(1f, pl.ImageHeight) * px2world;
-                    float z = pl.ZPosition * cell; // 1 ZPosition unit = one tile cell of depth
 
-                    int repeats = 1;
-                    if (pl.TileHorizontal && w > 0.01f && w < extentW)
-                        repeats = (int)MathF.Ceiling(extentW / w);
+                    // Quad size: default = the GRID extent (user rule), regardless of the
+                    // image's natural size — WidthPx/HeightPx only override when > 0.
+                    // An unset axis never falls back to the raw image size, which is what
+                    // made layers render huge/misaligned before.
+                    //
+                    // Aspect-ratio preservation: when exactly ONE axis is set, the other
+                    // axis scales from the image's natural aspect ratio (relative to the
+                    // set axis) instead of stretching to the grid. Setting BOTH axes
+                    // always stretches exactly as specified; setting NEITHER uses the
+                    // grid extent.
+                    bool wSet = pl.WidthPx > 0.5f;
+                    bool hSet = pl.HeightPx > 0.5f;
+                    float w, h;
+                    if (wSet && hSet)
+                    {
+                        w = pl.WidthPx * px2world;
+                        h = pl.HeightPx * px2world;
+                    }
+                    else if (wSet)
+                    {
+                        // Only width set → height keeps the image aspect ratio.
+                        w = pl.WidthPx * px2world;
+                        float imgAspect = pl.ImageHeight > 0 && pl.ImageWidth > 0
+                            ? (float)pl.ImageHeight / pl.ImageWidth : 1f;
+                        h = w * imgAspect;
+                    }
+                    else if (hSet)
+                    {
+                        // Only height set → width keeps the image aspect ratio.
+                        h = pl.HeightPx * px2world;
+                        float imgAspect = pl.ImageWidth > 0 && pl.ImageHeight > 0
+                            ? (float)pl.ImageWidth / pl.ImageHeight : 1f;
+                        w = h * imgAspect;
+                    }
+                    else
+                    {
+                        // Neither set → proportional to the image's ORIGINAL aspect ratio:
+                        // height fits the grid height, width follows the image ratio (so
+                        // panoramas stay wide, tall skies stay tall — never stretched to
+                        // the grid). Falls back to the grid extent only when the image
+                        // dimensions are unknown.
+                        h = extentH;
+                        w = pl.ImageWidth > 0 && pl.ImageHeight > 0
+                            ? h * ((float)pl.ImageWidth / pl.ImageHeight)
+                            : extentW;
+                    }
+                    w = MathF.Max(1f, w);
+                    h = MathF.Max(1f, h);
+                    float z = pl.ZPosition * cell; // 1 ZPosition unit = one tile cell of depth
+                    // Texture repeats across the quad. RepeatX/Y = explicit UV repeats
+                    // (requires GL_REPEAT wrapping — parallax textures use it for S).
+                    // 0 = auto: one natural copy; TileHorizontal still tiles whole copies
+                    // across the grid width.
+                    int uvRepeatX = Math.Max(0, pl.RepeatX);
+                    int uvRepeatY = Math.Max(0, pl.RepeatY);
 
                     GL.ActiveTexture(Const.GL_TEXTURE0);
                     GL.BindTexture(Const.GL_TEXTURE_2D, pl.TextureId);
+                    // Stretch wrap mode when explicit repeats are used so UV &gt; 1 wraps.
+                    if (uvRepeatX > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
+                    if (uvRepeatY > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
                     GL.Uniform1i(_map2dLocTex, 0);
                     GL.Uniform4f(_map2dLocTint, 1f, 1f, 1f, a);
 
-                    pVerts.Clear();
-                    for (int r = 0; r < repeats; r++)
+                    // Horizontal scroll preview, RELATIVE to the layer's home position:
+                    // the home offset (-camX × ScrollFactor) is what makes layers slide
+                    // at different speeds; subtracting the fractional part keeps the
+                    // visible texture anchored (no surprise half-screen jumps at load —
+                    // the previous absolute offset made scrolled layers look broken).
+                    float uPhase = 0f;
+                    float xShift = 0f;
+                    if (pl.ScrollFactor != 0f && w > 0.01f)
                     {
-                        float x0 = r * w;
+                        float scrollWorld = -camX * pl.ScrollFactor;
+                        float frac = (scrollWorld / w) % 1f;
+                        if (frac < 0f) frac += 1f;
+                        uPhase = frac;
+                        xShift = scrollWorld - frac * w; // whole widths back → home pos
+                    }
+
+                    // Static offsets: Left DISABLED (pinned to grid left edge); Top is
+                    // ACTIVE — the quad is TOP-anchored at the grid's top edge
+                    // (world Y = extentH) and TopPx pushes it DOWN (negative TopPx
+                    // extends above the grid, e.g. for tall skies).
+                    float leftWorld = 0f;
+                    float topY = extentH - pl.TopPx * px2world;
+
+                    // Copy range: cover the grid extent AND the camera neighborhood so
+                    // panning (any scroll factor) never reveals the quads' edges.
+                    int rStart, rEnd;
+                    if (pl.TileHorizontal && w > 0.01f)
+                    {
+                        float leftNeeded = MathF.Min(0f, camX - extentW);
+                        float rightNeeded = MathF.Max(extentW, camX + extentW);
+                        rStart = (int)MathF.Floor((leftNeeded - xShift - leftWorld) / w);
+                        rEnd = (int)MathF.Ceiling((rightNeeded - xShift - leftWorld) / w);
+                    }
+                    // (leftNeeded/rightNeeded still use ABSOLUTE camX — only the layer
+                    // offset is relative — so coverage math stays in the same space the
+                    // camera actually renders.)
+                    else
+                    {
+                        rStart = 0;
+                        rEnd = 0;
+                    }
+
+                    pVerts.Clear();
+                    for (int r = rStart; r <= rEnd; r++)
+                    {
+                        float x0 = r * w + xShift + leftWorld;
                         float x1 = x0 + w;
+                        float yTop = topY;
+                        float yBot = topY - h;
+                        // UV spans (uvRepeat + phase) so RepeatX and the scroll wrap
+                        // combine; 0 keeps one natural copy per quad.
+                        float u0 = -uPhase * (uvRepeatX > 0 ? uvRepeatX : 1f);
+                        float u1 = u0 + (uvRepeatX > 0 ? uvRepeatX : 1f);
+                        float v1 = uvRepeatY > 0 ? uvRepeatY : 1f;
                         // Top vertex samples v=0: the image top row was uploaded first,
                         // so v=0 IS the top — this keeps the picture upright.
-                        pVerts.Add(new Map2DVertex(x0, 0f, z, 0f, 1f, 1, 1, 1, 1));
-                        pVerts.Add(new Map2DVertex(x1, 0f, z, 1f, 1f, 1, 1, 1, 1));
-                        pVerts.Add(new Map2DVertex(x1, h, z, 1f, 0f, 1, 1, 1, 1));
-                        pVerts.Add(new Map2DVertex(x0, 0f, z, 0f, 1f, 1, 1, 1, 1));
-                        pVerts.Add(new Map2DVertex(x1, h, z, 1f, 0f, 1, 1, 1, 1));
-                        pVerts.Add(new Map2DVertex(x0, h, z, 0f, 0f, 1, 1, 1, 1));
+                        // Vertex alpha carries the layer opacity — the shader multiplies
+                        // the per-vertex tint (the "tint" uniform has no location in this
+                        // shader, so per-vertex is the only channel that reaches the GPU).
+                        pVerts.Add(new Map2DVertex(x0, yBot, z, u0, v1, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x1, yBot, z, u1, v1, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x1, yTop, z, u1, 0f, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x0, yBot, z, u0, v1, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x1, yTop, z, u1, 0f, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x0, yTop, z, u0, 0f, 1, 1, 1, a));
                     }
 
                     if (_parallaxVAO == 0)
@@ -3126,6 +3263,13 @@ void main() {
                         GL.DrawArrays(Const.GL_TRIANGLES, 0, pVerts.Count);
                         GL.BindVertexArray(0);
                     }
+
+                    // Restore default wrap so other passes (tileset uses CLAMP) are
+                    // unaffected by the repeat settings above.
+                    if (uvRepeatX > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                    if (uvRepeatY > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
                 }
 
                 // Restore the tile model matrix so later passes stay aligned.
@@ -3141,7 +3285,7 @@ void main() {
         //    sticking OUT of the grid plane toward the viewer so the player can "stand"
         //    on it (like Unreal's collision previews). A tile whose ID has NO collision
         //    flag draws NO box. Uses the Map2D tint shader with the shared white texture.
-        if (Map2dShowCollision && Map2dTilemap != null)
+        if (Map2dShowCollision && !Editor2DAidsHidden && Map2dTilemap != null)
         {
             var colLayer = Map2dActiveLayer >= 0 && Map2dActiveLayer < Map2dTilemap.Layers.Count
                 ? Map2dTilemap.Layers[Map2dActiveLayer]
@@ -3249,7 +3393,7 @@ void main() {
         //    exactly under the mouse boxes. Depth test is disabled while drawing so the
         //    grid reads over the tiles like an editor overlay. Drawn for the whole-map
         //    object (layer -1) and for layer 0 so a freshly created map always shows it.
-        if (Map2dShowGrid && Map2dLayerIndex <= 0)
+        if (Map2dShowGrid && !Editor2DAidsHidden && Map2dLayerIndex <= 0)
         {
             var gridVerts = new List<Vector3>((mapW + mapH + 2) * 2);
             for (int gx = 0; gx <= mapW; gx++)
@@ -3285,6 +3429,27 @@ void main() {
             };
             Terrains.TerrainChunk.DrawLineSegments(border, borderRgb, camera, 0.8f);
             if (depthEnabled)
+                GL.Enable(Const.GL_DEPTH_TEST);
+        }
+
+        // ── Player spawn marker: a small cyan cross + box ring at the map's spawn point
+        //    (editor aid — hidden in-game). Y here is height above the map's bottom
+        //    edge, matching Tilemap2D.PlayerSpawn. ──
+        if (Map2dTilemap.HasPlayerSpawn && !Editor2DAidsHidden)
+        {
+            var sp = Map2dTilemap.PlayerSpawn;
+            float sx = Math.Clamp(sp.X, 0f, extentW);
+            float sy = Math.Clamp(sp.Y, 0f, extentH);
+            float arm = cell * 0.4f;
+            var spVerts = new List<Vector3>
+            {
+                new(sx - arm, sy, layerZ), new(sx + arm, sy, layerZ),
+                new(sx, sy - arm, layerZ), new(sx, sy + arm, layerZ)
+            };
+            bool depthSp = GL.IsEnabled(Const.GL_DEPTH_TEST);
+            GL.Disable(Const.GL_DEPTH_TEST);
+            Terrains.TerrainChunk.DrawLineSegments(spVerts, new Vector3(0.2f, 0.95f, 1f), camera, 0.95f);
+            if (depthSp)
                 GL.Enable(Const.GL_DEPTH_TEST);
         }
 

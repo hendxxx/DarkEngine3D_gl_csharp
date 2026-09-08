@@ -601,6 +601,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
 
+            // ── Per-map player spawn: place the character at the spawn point saved in
+            // the Map Editor (TryGetPlayerSpawn returns the upright world position).
+            // Skipped when a save slot just loaded (the save's own position wins) and
+            // when no spawn was placed (default origin/terrain behavior is kept). ──
+            if (PendingLoadSlot < 0 && _sceneManager.Bridge?.TryGetPlayerSpawn(out Vector3 spawnPos) == true
+                && _objectManager?.PlayerAgent != null && _objectManager.PlayerObject != null)
+            {
+                _objectManager.PlayerAgent.Position = spawnPos;
+                _objectManager.PlayerObject.Position = spawnPos;
+                Console.WriteLine($"[GameScene] Player spawned at map spawn point ({spawnPos.X:F1}, {spawnPos.Y:F1})");
+            }
+
             // ── Scene starts blank! No .ing file is loaded automatically. ──
             // User can create UI via the IDE SceneDetail panel (+ Add button),
             // or use the "↻ Reload" button to load from a previously saved .ing file.

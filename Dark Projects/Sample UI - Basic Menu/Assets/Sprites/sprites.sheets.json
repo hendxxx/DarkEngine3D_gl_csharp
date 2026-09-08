@@ -2098,7 +2098,7 @@
     }
   ],
   "PreviewStartFrame": 0,
-  "PreviewEndFrame": 0,
+  "PreviewEndFrame": 3,
   "PreviewFps": 12,
   "PreviewLoop": true
 }

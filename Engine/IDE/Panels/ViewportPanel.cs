@@ -63,6 +63,12 @@ public unsafe class ViewportPanel
     private bool _marqueeActive = false;
     // Tilemap paint stroke in progress (suppresses marquee/select while painting).
     private bool _mapPaintActive = false;
+    /// <summary>True while the user is dragging the player spawn marker in the viewport.
+    /// While active, mouse movement repositions the active map's spawn point and paint/
+    /// marquee interactions are suppressed.</summary>
+    private bool _spawnDragActive = false;
+    /// <summary>True while the cursor hovers the spawn marker (cursor + click priority).</summary>
+    private bool _spawnHover = false;
     // Show/hide the floating "▲ Views" menu + corner axis indicator.
     private bool _showViewsOverlay = true;
     // Collapse the whole left tool toolbar strip to a single expand chip (edit mode).
@@ -2239,6 +2245,93 @@ public unsafe class ViewportPanel
         return best;
     }
 
+    /// <summary>Is the player spawn marker under the mouse? Projects the active map's
+    /// spawn point to screen space and checks a grab-radius tolerance. The marker can be
+    /// grabbed regardless of which Map Editor tool is selected — placing it should never
+    /// require switching tools. Returns false when no spawn/marker is on screen.</summary>
+    private bool SpawnMarkerAtMouse()
+    {
+        if (_spawnDragActive) return true;
+        var map = _bridge.ActiveTilemap;
+        var cam = _bridge.Camera;
+        if (map == null || cam == null || !map.HasPlayerSpawn) return false;
+        if (_bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0) return false;
+        if (_bridge.ViewportMouseX < 0f || _bridge.ViewportMouseY < 0f) return false;
+
+        int vpw = _bridge.SceneTextureWidth;
+        int vph = _bridge.SceneTextureHeight;
+        float glY = vph - _bridge.ViewportMouseY;
+        var mouse = new Vector2(_bridge.ViewportMouseX, glY);
+
+        var sp = new Vector3(map.PlayerSpawn.X, map.PlayerSpawn.Y, 0f);
+        var p = TransformGizmo.ProjectToScreen(cam, sp, vpw, vph);
+        if (p.X < -40f || p.X > vpw + 40f || p.Y < -40f || p.Y > vph + 40f) return false;
+
+        // Same Y-flip as the hover-highlight path: project returns GL-style Y-up.
+        var screen = SceneToScreen(p.X, vph - p.Y);
+        return Vector2.Distance(screen, new Vector2(_bridge.ViewportMouseX, _bridge.ViewportMouseY)) < 14f;
+    }
+
+    /// <summary>Handle the full grab → drag → release cycle of the player spawn marker.
+    /// Called once per editor frame BEFORE paint/marquee handling so a spawn drag never
+    /// stamps tiles or changes the selection. While dragging, the spawn follows the
+    /// mouse ray's intersection with the map plane (free positioning, clamped to the
+    /// map extent + one tile margin outside).</summary>
+    private void UpdateSpawnMarkerDrag()
+    {
+        var map = _bridge.ActiveTilemap;
+        var cam = _bridge.Camera;
+        if (map == null || cam == null) { _spawnDragActive = false; _spawnHover = false; return; }
+        if (_previewMode || _bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0
+            || _bridge.ViewportMouseX < 0f || _bridge.ViewportMouseY < 0f
+            || IsMouseOverLeftToolbar() || IsMouseOverViewportViewsButton())
+        {
+            _spawnHover = false;
+            return;
+        }
+
+        _spawnHover = SpawnMarkerAtMouse();
+
+        // Cursor feedback: hand while hovering the marker, grabbing while dragging.
+        if (_spawnDragActive)
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        else if (_spawnHover)
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+
+        // Grab: left-click on the marker starts a drag (works with ANY paint tool —
+        // grabbing the marker always wins over stamping so placement is unambiguous).
+        if (!_spawnDragActive && _spawnHover && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+            _spawnDragActive = true;
+
+        if (_spawnDragActive)
+        {
+            int vpw = _bridge.SceneTextureWidth;
+            int vph = _bridge.SceneTextureHeight;
+            float glMouseY = vph - _bridge.ViewportMouseY;
+            cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
+                out Vector3 rayOrigin, out Vector3 rayDir);
+
+            if (MathF.Abs(rayDir.Z) > 0.0001f)
+            {
+                float t = (0f - rayOrigin.Z) / rayDir.Z;
+                if (t > 0f)
+                {
+                    var hit = rayOrigin + rayDir * t;
+                    // Free positioning with a small margin outside the map so users can
+                    // drop the spawn just past an edge (clamped inside the gizmo draw).
+                    float margin = map.TileSize * Tilemap2D.WorldScale;
+                    float x = Math.Clamp(hit.X, -margin, map.Width * map.TileSize * Tilemap2D.WorldScale + margin);
+                    float y = Math.Clamp(hit.Y, -margin, map.Height * map.TileSize * Tilemap2D.WorldScale + margin);
+                    map.PlayerSpawn = new Vector2(x, y);
+                    map.HasPlayerSpawn = true;
+                }
+            }
+
+            if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+                _spawnDragActive = false;
+        }
+    }
+
     /// <summary>Select every editor object whose projected screen position falls inside
     /// the marquee rectangle (scene coords, Y-down). Shift/Ctrl held at release ADDS the
     /// marquee result to the current selection; otherwise the selection is replaced.</summary>
@@ -3595,13 +3688,18 @@ ImGui.SameLine();
                 }
             }
 
+            //  Player spawn marker drag: runs BEFORE tilemap paint so grabbing the
+            //  marker never stamps tiles and the drag follows the cursor every frame.
+            UpdateSpawnMarkerDrag();
+
             //  Tilemap paint: raycast the cursor onto the active layer's vertical
             //  Map2D plane (z = ActiveTileLayer) and stamp tiles. Runs before the
             //  marquee/select/gizmo so a paint stroke never changes the selection;
             //  clicks that miss the map fall through to normal object selection.
             //  Only active when a visible Map2D object actually renders the map —
             //  no map object, no yellow hover highlight, no click consumption.
-            if (!_previewMode && _bridge.ActiveTilemap != null && _bridge.Camera != null
+            //  Suppressed while dragging the spawn marker (the grab owns the click).
+            if (!_previewMode && !_spawnDragActive && _bridge.ActiveTilemap != null && _bridge.Camera != null
                 && _bridge.EditorObjectManager != null && mouseOverImage && HasVisibleMapObject()
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
                 && hasSceneTexture && _dragMode == DragMode.None
@@ -3795,6 +3893,7 @@ ImGui.SameLine();
                 // painting with the terrain brush.
                 if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
                     && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
+                    && !_spawnDragActive && !_spawnHover
                     && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null
                     && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar())
                 {

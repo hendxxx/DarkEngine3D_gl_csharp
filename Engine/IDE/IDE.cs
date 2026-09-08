@@ -92,6 +92,9 @@ public class IDE : IDisposable
                         _sceneManagerPanel.SelectEditorScenePublic(previousScene);
                     }
                     Bridge.InGameActive = true;
+                    // Hide editor-only 2D aids (tile grid overlay, collision boxes) so
+                    // the running game renders clean.
+                    Engine.Objects.EditorObject.Editor2DAidsHidden = true;
                     _viewport.SetFullscreen(true);
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
@@ -114,6 +117,8 @@ public class IDE : IDisposable
                 {
                     // Reset fullscreen mode when exiting in-game mode
                     Bridge.InGameActive = false;
+                    // Restore editor-only 2D aids (tile grid overlay, collision boxes).
+                    Engine.Objects.EditorObject.Editor2DAidsHidden = false;
                     _viewport.SetFullscreen(false);
                     _viewport.PreviewMode = false;
                     if (Bridge.Camera != null)
@@ -147,6 +152,8 @@ public class IDE : IDisposable
 
         // Set in-game mode directly — skip save, just set flags
         _inGameMode = true;
+        // Hide editor-only 2D aids (tile grid overlay, collision boxes).
+        Engine.Objects.EditorObject.Editor2DAidsHidden = true;
         _viewport.SetFullscreen(true);
         _focusedInGameElement = null;
         _focusedInGameIndex = -1;
@@ -159,6 +166,13 @@ public class IDE : IDisposable
         // ── Switch editor camera to the first Camera object in the scene ──
         _lastInGameSceneName = Bridge.SelectedEditorScene;
         SwitchToGameCamera();
+
+        // 2D level scenes need the ortho front re-anchor, exactly like F8 in-game entry.
+        // The tilemap may not be adopted until the first frames run (scene load is async
+        // through LoadingScene), so also set the flag lazily in SyncLevelCamera when the
+        // level first appears with no camera applied yet.
+        _levelCameraReframePending = Bridge.ActiveTilemap != null;
+        _levelCameraApplied = false;
 
         Console.WriteLine($"[IDE] Startup in-game mode active ({Bridge.EditorScenes.Count} scene(s) from '{loadPath}')");
     }
@@ -295,12 +309,38 @@ public class IDE : IDisposable
             _levelCameraSavedOrthoSize = cam.OrthoSize;
             _levelCameraSavedFly = cam.IsFlyMode;
             _levelCameraSavedFlyLook = cam.FlyMouseLook;
+
+            // A level appearing for the first time while ALREADY in-game (startup load:
+            // the tilemap is adopted asynchronously after EnterInGameModeFromStartup ran)
+            // must still get the in-game re-anchor — otherwise the camera stays at the
+            // scene's default perspective view and the level renders framed wrong.
+            if (_inGameMode)
+                _levelCameraReframePending = true;
         }
+        // Consume the pending flag BEFORE the branch below clears it, and remember why
+        // we're framing: entering in-game restores the map's saved camera start, while
+        // first-show in the editor keeps the default bottom-left framing.
+        bool framingForInGame = _levelCameraReframePending;
         _levelCameraReframePending = false;
 
-        // Frame the whole map in ortho, anchored so world (0,0) — the map's bottom-left
-        // corner — is at the bottom-left of the viewport. The map plane is upright at
-        // z = layer index, spanning x/y in [0, W*cell] × [0, H*cell].
+        // Play in Preview / in-game re-entry: restore the map's SAVED camera start so
+        // previewing begins from the same anchored view as when it was captured.
+        if (level.HasCameraStart && framingForInGame)
+        {
+            cam.IsOrthographic = true;
+            cam.OrthoSize = level.CameraStartOrthoSize > 0f ? level.CameraStartOrthoSize : cam.OrthoSize;
+            cam.SetEditorViewTransform(level.CameraStartPos, level.CameraStartYaw, level.CameraStartPitch, cam.FoV);
+            cam.IsFlyMode = false;
+            cam.FlyMouseLook = false;
+            _levelCameraApplied = true;
+            _levelCameraMap = level;
+            Console.WriteLine($"[IDE] Level camera: restored saved camera start for '{level.Name}'");
+            return;
+        }
+
+        // No saved start yet — frame the whole map in ortho, anchored so world (0,0) —
+        // the map's bottom-left corner — is at the bottom-left of the viewport. The map
+        // plane is upright at z = layer index, spanning x/y in [0, W*cell] × [0, H*cell].
         float cell = level.TileSize * Visual.Tilemap2D.WorldScale;
         float extentW = level.Width * cell;
         float extentH = level.Height * cell;
@@ -325,6 +365,19 @@ public class IDE : IDisposable
 
         _levelCameraApplied = true;
         _levelCameraMap = level;
+
+        // Remember this framing as the map's camera start if none saved yet — Play in
+        // Preview then begins exactly where the level view is anchored. A user-captured
+        // start (Map Editor → Set Camera Start) is never overwritten by auto-framing.
+        if (!level.HasCameraStart)
+        {
+            level.CameraStartPos = cam.Position;
+            level.CameraStartYaw = cam.Yaw;
+            level.CameraStartPitch = cam.Pitch;
+            level.CameraStartOrthoSize = cam.OrthoSize;
+            level.HasCameraStart = true;
+        }
+
         Console.WriteLine($"[IDE] Level camera: ortho front view for '{level.Name}' " +
             $"({extentW:F0}x{extentH:F0} units, origin at bottom-left)");
     }
@@ -557,6 +610,11 @@ public class IDE : IDisposable
         // A level (Map2D) keeps the camera in orthographic FRONT view even while in-game:
         // this must run for both editor frames and in-game frames (before the early return).
         SyncLevelCamera();
+
+        // In-game/preview frames skip the panel Render()s below — keep the Map Editor's
+        // tilemap adoption + parallax layer/texture sync running so parallax renders
+        // correctly in Play in Preview (textures load on first use here too).
+        _mapEditor?.SyncForGameplay();
 
         // ── In-Game Mode: render full-screen viewport with no ImGui chrome ──
         if (_inGameMode)

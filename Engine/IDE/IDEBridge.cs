@@ -105,6 +105,25 @@ public class IDEBridge
 
     // ── F9 toggle — when false, game input is blocked ──
     public bool InGameActive { get; set; }
+
+    /// <summary>Get the player spawn point for the active map, if one was placed in the
+    /// Map Editor. Returns false when no map is active or no spawn was set — gameplay
+    /// should fall back to its default spawn behavior in that case. The returned world
+    /// position is upright (x horizontal, y height above the map's bottom edge, z = 0),
+    /// matching the 2D level plane orientation.</summary>
+    public bool TryGetPlayerSpawn(out System.Numerics.Vector3 worldPos)
+    {
+        worldPos = default;
+        if (ActiveTilemap == null || !ActiveTilemap.HasPlayerSpawn) return false;
+        worldPos = new System.Numerics.Vector3(
+            ActiveTilemap.PlayerSpawn.X, ActiveTilemap.PlayerSpawn.Y, 0f);
+        return true;
+    }
+
+    /// <summary>Get the player spawn point for the active map, if one was placed in the
+    /// Map Editor. Returns false when no map is active or no spawn was set — gameplay
+    /// should fall back to its default spawn behavior in that case.</summary>
+    /// <param name=
     // ── Preview mode (F5) — hides editor gizmos/helpers without changing camera behavior ──
     public bool IsPreviewMode { get; set; }
     // ── In-game option: when true, mouse cursor stays visible during in-game mode ──

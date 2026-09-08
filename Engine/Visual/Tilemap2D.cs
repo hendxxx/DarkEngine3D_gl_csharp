@@ -30,6 +30,33 @@ public class Tilemap2D
     public bool ShowGrid = true;
     public Vector4 GridColor = new(1f, 1f, 1f, 0.12f);
 
+    /// <summary>Parallax layer definitions carried with the map. The Map Editor panel
+    /// syncs its live layer list here so both the standalone Assets/Maps/*.tilemap.json
+    /// AND the scene's .ing (via EditorObjectData.Tilemap) round-trip the parallax setup.</summary>
+    public List<TilemapParallaxLayerData> ParallaxLayers = new();
+
+    // ── Camera start (per-map) ──
+    /// <summary>Editor camera position saved as this map's Play-in-Preview start view.
+    /// Captured from the ortho level view (or "Set Camera Start" in the Map Editor) and
+    /// restored when entering in-game mode, so previewing begins exactly where the
+    /// level view was anchored. Saved with the map/scene files.</summary>
+    public Vector3 CameraStartPos = Vector3.Zero;
+    public float CameraStartYaw;
+    public float CameraStartPitch;
+    public float CameraStartOrthoSize;
+    /// <summary>Whether a camera start has been saved for this map. When false, the
+    /// default bottom-left ortho framing is used instead.</summary>
+    public bool HasCameraStart;
+
+    // ── Player spawn (per-map) ──
+    /// <summary>Player spawn point in world units (x = horizontal, y = height above the
+    /// map bottom edge). Set from the Map Editor (uses the last hovered tile) and used
+    /// by gameplay logic as the character's start position. Saved with the map/scene.</summary>
+    public Vector2 PlayerSpawn = Vector2.Zero;
+    /// <summary>Whether a spawn point has been placed on this map. When false, gameplay
+    /// should fall back to its own default spawn behavior.</summary>
+    public bool HasPlayerSpawn;
+
     // ── World offset ──
     public Vector2 Offset; // Position of tilemap origin in world space
 
@@ -185,6 +212,17 @@ public class Tilemap2D
         GridColorG = GridColor.Y,
         GridColorB = GridColor.Z,
         GridColorA = GridColor.W,
+        ParallaxLayers = ParallaxLayers.ToList(),
+        CameraStartX = CameraStartPos.X,
+        CameraStartY = CameraStartPos.Y,
+        CameraStartZ = CameraStartPos.Z,
+        CameraStartYaw = CameraStartYaw,
+        CameraStartPitch = CameraStartPitch,
+        CameraStartOrthoSize = CameraStartOrthoSize,
+        HasCameraStart = HasCameraStart,
+        SpawnX = PlayerSpawn.X,
+        SpawnY = PlayerSpawn.Y,
+        HasPlayerSpawn = HasPlayerSpawn,
         Layers = Layers.Select(l => l.ToData()).ToList()
     };
 
@@ -203,6 +241,14 @@ public class Tilemap2D
             Offset = new Vector2(data.OffsetX, data.OffsetY),
             ShowGrid = data.ShowGrid,
             GridColor = new Vector4(data.GridColorR, data.GridColorG, data.GridColorB, data.GridColorA),
+            ParallaxLayers = data.ParallaxLayers ?? new(),
+            CameraStartPos = new Vector3(data.CameraStartX, data.CameraStartY, data.CameraStartZ),
+            CameraStartYaw = data.CameraStartYaw,
+            CameraStartPitch = data.CameraStartPitch,
+            CameraStartOrthoSize = data.CameraStartOrthoSize,
+            HasCameraStart = data.HasCameraStart,
+            PlayerSpawn = new Vector2(data.SpawnX, data.SpawnY),
+            HasPlayerSpawn = data.HasPlayerSpawn,
             Layers = data.Layers.Select(l => TileLayer.FromData(l)).ToList()
         };
         return map;
@@ -320,7 +366,48 @@ public class Tilemap2DData
     public float GridColorG { get; set; } = 1f;
     public float GridColorB { get; set; } = 1f;
     public float GridColorA { get; set; } = 0.12f;
+    /// <summary>Parallax layers carried inside the map payload so scene files persist them.</summary>
+    public List<TilemapParallaxLayerData>? ParallaxLayers { get; set; }
+    // ── Per-map camera start (Play-in-Preview anchor) ──
+    public float CameraStartX { get; set; }
+    public float CameraStartY { get; set; }
+    public float CameraStartZ { get; set; }
+    public float CameraStartYaw { get; set; }
+    public float CameraStartPitch { get; set; }
+    public float CameraStartOrthoSize { get; set; }
+    public bool HasCameraStart { get; set; }
+    // ── Per-map player spawn ──
+    public float SpawnX { get; set; }
+    public float SpawnY { get; set; }
+    public bool HasPlayerSpawn { get; set; }
     public List<TileLayerData> Layers { get; set; } = new();
+}
+
+/// <summary>Serializable parallax layer definition stored with the tilemap — used by both
+/// the standalone Assets/Maps/*.tilemap.json (MapSaveData) and the scene's .ing file
+/// (EditorObjectData.Tilemap), so parallax survives project reloads.</summary>
+public class TilemapParallaxLayerData
+{
+    public string Name { get; set; } = "";
+    public string ImagePath { get; set; } = "";
+    public bool IsVisible { get; set; } = true;
+    public float ScrollFactor { get; set; } = 0.5f;
+    public float ZPosition { get; set; }
+    public float Alpha { get; set; } = 1f;
+    public bool TileHorizontal { get; set; } = true;
+    /// <summary>Quad width in pixels. 0 = auto (follows the grid width).</summary>
+    public float WidthPx { get; set; }
+    /// <summary>Quad height in pixels. 0 = auto (follows the grid height).</summary>
+    public float HeightPx { get; set; }
+    /// <summary>Horizontal texture repeats across the quad. 0 = auto (natural image size).</summary>
+    public int RepeatX { get; set; }
+    /// <summary>Vertical texture repeats across the quad. 0 = auto (natural image size).</summary>
+    public int RepeatY { get; set; }
+    /// <summary>Left offset in pixels from the grid's left edge (negative = extend left).</summary>
+    public float LeftPx { get; set; }
+    /// <summary>Top offset in pixels pushing the quad's top edge DOWN from the grid's top
+    /// edge (0 = flush with grid top; negative = extend above the grid).</summary>
+    public float TopPx { get; set; }
 }
 
 public class TileLayerData

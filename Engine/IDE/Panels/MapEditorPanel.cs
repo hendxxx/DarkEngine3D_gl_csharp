@@ -162,6 +162,16 @@ public class MapEditorPanel
         SaveMapEditorPrefs();
     }
 
+    /// <summary>Keep tilemap adoption + parallax render layers fresh for in-game/preview
+    /// rendering. IDE.Render() skips panel Render() in in-game mode, so this public hook
+    /// is called there instead — without it, Map2D objects never receive their parallax
+    /// layers/textures and parallax silently disappears in Play in Preview.</summary>
+    public void SyncForGameplay()
+    {
+        SyncTilemapFromBridge();
+        SyncParallaxToEditorObjects();
+    }
+
     public void ShowInMenu() => ImGui.MenuItem("Map Editor", null, ref _visible);
 
     public void Render()
@@ -171,6 +181,11 @@ public class MapEditorPanel
         // Must run even when the panel is collapsed so the checkbox state matches the
         // actual EditorObject state loaded from the scene file.
         SyncTilemapFromBridge();
+
+        // Keep the viewport parallax render list fresh every frame (even while the panel
+        // is hidden) so layers restored from a saved scene render immediately without
+        // needing to open the Map Editor first.
+        SyncParallaxToEditorObjects();
 
         if (!_visible) return;
 
@@ -245,6 +260,37 @@ public class MapEditorPanel
                 // Keep the viewport Map2D object's parallax render list in sync so added/
                 // removed/re-ordered layers appear in the 3D grid immediately.
                 SyncParallaxToEditorObjects();
+
+                // ── Player Spawn ──
+                ImGui.Separator();
+                ImGui.Text("Player Spawn:");
+                if (ImGui.Button("Set at Hover##spawn"))
+                {
+                    if (_hoveredTileX >= 0 && _hoveredTileY >= 0)
+                    {
+                        // Center of the hovered tile, in world px (x horizontal,
+                        // y height above the map's bottom edge).
+                        float ws = ActiveTilemap.TileSize;
+                        ActiveTilemap.PlayerSpawn = new Vector2(
+                            (_hoveredTileX + 0.5f) * ws,
+                            (ActiveTilemap.Height - 1 - _hoveredTileY + 0.5f) * ws);
+                        ActiveTilemap.HasPlayerSpawn = true;
+                        Console.WriteLine($"[MapEditor] Player spawn set to tile ({_hoveredTileX}, {_hoveredTileY})");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[MapEditor] Hover a tile in the viewport first, then click 'Set at Hover'.");
+                    }
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Reset##spawn") && ActiveTilemap.HasPlayerSpawn)
+                {
+                    ActiveTilemap.HasPlayerSpawn = false;
+                    Console.WriteLine("[MapEditor] Player spawn cleared");
+                }
+                ImGui.TextDisabled(ActiveTilemap.HasPlayerSpawn
+                    ? $"spawn: ({ActiveTilemap.PlayerSpawn.X:F0}, {ActiveTilemap.PlayerSpawn.Y:F0}) px"
+                    : "not set — gameplay uses its default spawn");
 
                 // ── Info ──
                 if (_hoveredTileX >= 0)
@@ -479,6 +525,37 @@ public class MapEditorPanel
             _showGrid = ActiveTilemap.ShowGrid;
             _gridColor = ActiveTilemap.GridColor;
         }
+
+        // Adopt the parallax layers carried inside the tilemap payload (restored from
+        // the scene .ing or standalone map file) into the panel UI + texture cache.
+        ParallaxLayers.Clear();
+        if (ActiveTilemap?.ParallaxLayers is { Count: > 0 })
+        {
+            foreach (var pld in ActiveTilemap.ParallaxLayers)
+            {
+                var layer = new ParallaxLayer
+                {
+                    Name = pld.Name,
+                    ImagePath = pld.ImagePath,
+                    IsVisible = pld.IsVisible,
+                    ScrollFactor = pld.ScrollFactor,
+                    ZPosition = pld.ZPosition,
+                    Alpha = pld.Alpha,
+                    TileHorizontal = pld.TileHorizontal,
+                    WidthPx = pld.WidthPx,
+                    HeightPx = pld.HeightPx,
+                    RepeatX = pld.RepeatX,
+                    RepeatY = pld.RepeatY,
+                    LeftPx = pld.LeftPx,
+                    TopPx = pld.TopPx
+                };
+                ParallaxLayers.Add(layer);
+                if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(layer.ImagePath))
+                    LoadParallaxTexture(layer.ImagePath, layer);
+            }
+        }
+        _bridge.ParallaxLayers = ParallaxLayers.Count > 0 ? ParallaxLayers : null;
+        _selectedParallaxIdx = ParallaxLayers.Count > 0 ? 0 : -1;
         if (_bridge.EditorObjectManager != null)
         {
             var mapObj = _bridge.EditorObjectManager.Objects.FirstOrDefault(o =>
@@ -607,9 +684,32 @@ public class MapEditorPanel
     /// <summary>Push the parallax layer list onto every Map2D EditorObject bound to the
     /// active tilemap so the viewport renders each layer as an upright quad: ZPosition
     /// &gt; 0 draws in FRONT of the grid, &lt; 0 draws BEHIND it. Textures are resolved
-    /// through the panel's texture cache (GetParallaxTexture) so images load on demand.</summary>
+    /// through the panel's texture cache (GetParallaxTexture) so images load on demand.
+    /// Also writes the layer list back into the tilemap payload (Tilemap2D.ParallaxLayers)
+    /// so Save persists the full setup in the standalone map file AND the scene .ing.</summary>
     private void SyncParallaxToEditorObjects()
     {
+        // Mirror the live UI list into the tilemap payload for save/load round-trips.
+        if (ActiveTilemap != null)
+        {
+            ActiveTilemap.ParallaxLayers = ParallaxLayers.Select(p => new TilemapParallaxLayerData
+            {
+                Name = p.Name,
+                ImagePath = p.ImagePath,
+                IsVisible = p.IsVisible,
+                ScrollFactor = p.ScrollFactor,
+                ZPosition = p.ZPosition,
+                Alpha = p.Alpha,
+                TileHorizontal = p.TileHorizontal,
+                WidthPx = p.WidthPx,
+                HeightPx = p.HeightPx,
+                RepeatX = p.RepeatX,
+                RepeatY = p.RepeatY,
+                LeftPx = p.LeftPx,
+                TopPx = p.TopPx
+            }).ToList();
+        }
+
         if (_bridge.EditorObjectManager == null) return;
 
         List<MapParallaxRenderLayer>? renderLayers = null;
@@ -630,9 +730,16 @@ public class MapEditorPanel
                     ZPosition = pl.ZPosition,
                     Alpha = pl.Alpha,
                     TileHorizontal = pl.TileHorizontal,
+                    ScrollFactor = pl.ScrollFactor,
                     TextureId = tex,
                     ImageWidth = pl.ImageWidth,
-                    ImageHeight = pl.ImageHeight
+                    ImageHeight = pl.ImageHeight,
+                    WidthPx = pl.WidthPx,
+                    HeightPx = pl.HeightPx,
+                    RepeatX = pl.RepeatX,
+                    RepeatY = pl.RepeatY,
+                    LeftPx = pl.LeftPx,
+                    TopPx = pl.TopPx
                 });
             }
         }
@@ -699,7 +806,9 @@ public class MapEditorPanel
             var layer = ActiveTilemap.Layers[i];
             bool isSelected = i == _selectedLayerIdx;
 
-            ImGui.PushID(i);
+            // "tl" prefix scopes these IDs away from the Parallax Layers list — both
+            // use PushID(i) + "##vis" and otherwise collide when both are visible.
+            ImGui.PushID($"tl{i}");
 
             // Visibility toggle
             bool vis = layer.IsVisible;
@@ -998,6 +1107,35 @@ public class MapEditorPanel
 
     private void RenderGridSettings()
     {
+        // ── Per-map camera start (Play-in-Preview anchor) ──
+        ImGui.Text("Camera Start:");
+        if (ActiveTilemap != null)
+        {
+            if (ImGui.Button("Set Current View##camstart"))
+            {
+                var cam = _bridge.Camera;
+                if (cam != null)
+                {
+                    ActiveTilemap.CameraStartPos = cam.Position;
+                    ActiveTilemap.CameraStartYaw = cam.Yaw;
+                    ActiveTilemap.CameraStartPitch = cam.Pitch;
+                    ActiveTilemap.CameraStartOrthoSize = cam.OrthoSize;
+                    ActiveTilemap.HasCameraStart = true;
+                    Console.WriteLine($"[MapEditor] Camera start saved for '{ActiveTilemap.Name}'");
+                }
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Reset##camstart"))
+            {
+                ActiveTilemap.HasCameraStart = false;
+                Console.WriteLine($"[MapEditor] Camera start cleared — default bottom-left framing returns");
+            }
+            ImGui.TextDisabled(ActiveTilemap.HasCameraStart
+                ? "saved — Play in Preview starts here"
+                : "not set — uses default bottom-left framing");
+        }
+
+        ImGui.Separator();
         if (ImGui.Checkbox("Show Grid##gridsettings", ref _showGrid))
             _gridPrefsDirty = true;
         if (ImGui.ColorEdit4("Grid Color", ref _gridColor))
@@ -1180,24 +1318,14 @@ public class MapEditorPanel
         string path = GetDefaultSavePath();
         try
         {
-            var data = new MapSaveData
-            {
-                Tilemap = ActiveTilemap.ToData(),
-                ParallaxLayers = ParallaxLayers.Select(p => new ParallaxLayerData
-                {
-                    Name = p.Name,
-                    ImagePath = p.ImagePath,
-                    IsVisible = p.IsVisible,
-                    ScrollFactor = p.ScrollFactor,
-                    ZPosition = p.ZPosition,
-                    Alpha = p.Alpha,
-                    TileHorizontal = p.TileHorizontal
-                }).ToList()
-            };
+            // Sync live parallax UI state into the tilemap payload first so the whole
+            // setup (tiles + parallax) round-trips through Tilemap2DData.
+            SyncParallaxToEditorObjects();
+            var data = new MapSaveData { Tilemap = ActiveTilemap.ToData() };
             var opts = new JsonSerializerOptions { WriteIndented = true };
             string json = JsonSerializer.Serialize(data, opts);
             File.WriteAllText(path, json);
-            Console.WriteLine($"[MapEditor] Saved map to: {path}");
+            Console.WriteLine($"[MapEditor] Saved map to: {path} (parallax layers: {ActiveTilemap.ParallaxLayers.Count})");
         Console.WriteLine($"[MapEditor] Save snapshot -> Cols={ActiveTilemap.TilesetColumns}, Rows={ActiveTilemap.TilesetRows}, FlipV={ActiveTilemap.TilesetFlipV}, ShowGrid={ActiveTilemap.ShowGrid}, GridColor={ActiveTilemap.GridColor}, path='{path}'");
 
         // Also persist the tileset grid into the scene's .ing so project reload picks up the
@@ -1222,24 +1350,12 @@ public class MapEditorPanel
         {
             try
             {
-                var data = new MapSaveData
-                {
-                    Tilemap = ActiveTilemap.ToData(),
-                    ParallaxLayers = ParallaxLayers.Select(p => new ParallaxLayerData
-                    {
-                        Name = p.Name,
-                        ImagePath = p.ImagePath,
-                        IsVisible = p.IsVisible,
-                        ScrollFactor = p.ScrollFactor,
-                        ZPosition = p.ZPosition,
-                        Alpha = p.Alpha,
-                        TileHorizontal = p.TileHorizontal
-                    }).ToList()
-                };
+                SyncParallaxToEditorObjects();
+                var data = new MapSaveData { Tilemap = ActiveTilemap.ToData() };
                 var opts = new JsonSerializerOptions { WriteIndented = true };
                 string json = JsonSerializer.Serialize(data, opts);
                 File.WriteAllText(_saveDialog.SelectedPath, json);
-                Console.WriteLine($"[MapEditor] Saved map to: {_saveDialog.SelectedPath}");
+                Console.WriteLine($"[MapEditor] Saved map to: {_saveDialog.SelectedPath} (parallax layers: {ActiveTilemap.ParallaxLayers.Count})");
             }
             catch (Exception ex)
             {
@@ -1285,11 +1401,19 @@ public class MapEditorPanel
             // (grid included) right after loading — just like "New Map" does.
             EnsureMapSceneObject();
 
-            // Load parallax layers
+            // Load parallax layers — canonical source is the tilemap payload
+            // (Tilemap2DData.ParallaxLayers); fall back to the legacy top-level list.
             ParallaxLayers.Clear();
-            if (data.ParallaxLayers != null)
+            var plxSource = data.Tilemap.ParallaxLayers ?? data.ParallaxLayers?.Select(p => new TilemapParallaxLayerData
             {
-                foreach (var pld in data.ParallaxLayers)
+                Name = p.Name, ImagePath = p.ImagePath, IsVisible = p.IsVisible,
+                ScrollFactor = p.ScrollFactor, ZPosition = p.ZPosition, Alpha = p.Alpha,
+                TileHorizontal = p.TileHorizontal, WidthPx = p.WidthPx, HeightPx = p.HeightPx,
+                RepeatX = p.RepeatX, RepeatY = p.RepeatY
+            }).ToList();
+            if (plxSource != null)
+            {
+                foreach (var pld in plxSource)
                 {
                     var layer = new ParallaxLayer
                     {
@@ -1299,7 +1423,13 @@ public class MapEditorPanel
                         ScrollFactor = pld.ScrollFactor,
                         ZPosition = pld.ZPosition,
                         Alpha = pld.Alpha,
-                        TileHorizontal = pld.TileHorizontal
+                        TileHorizontal = pld.TileHorizontal,
+                        WidthPx = pld.WidthPx,
+                        HeightPx = pld.HeightPx,
+                        RepeatX = pld.RepeatX,
+                        RepeatY = pld.RepeatY,
+                        LeftPx = pld.LeftPx,
+                        TopPx = pld.TopPx
                     };
                     ParallaxLayers.Add(layer);
                     if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(layer.ImagePath))
@@ -1350,6 +1480,10 @@ public class MapEditorPanel
     private int _selectedParallaxIdx = -1;
     private readonly ImGuiFileDialog _parallaxDialog = new();
     private readonly Dictionary<string, uint> _parallaxTextures = new();
+    /// <summary>Image dimensions per loaded parallax path — survives texture-cache hits
+    /// so layer ImageWidth/Height can always be backfilled (proportional sizing needs
+    /// them even when the texture itself was already on the GPU).</summary>
+    private readonly Dictionary<string, (int w, int h)> _parallaxImageDims = new();
 
     public void AddParallaxLayer()
     {
@@ -1386,7 +1520,9 @@ public class MapEditorPanel
         {
             var layer = ParallaxLayers[i];
             bool isSelected = i == _selectedParallaxIdx;
-            ImGui.PushID(i);
+            // "plx" prefix scopes these IDs away from the tile Layers list — both
+            // use PushID(i) + "##vis" and otherwise collide when both are visible.
+            ImGui.PushID($"plx{i}");
 
             // Visibility toggle
             bool vis = layer.IsVisible;
@@ -1442,12 +1578,48 @@ public class MapEditorPanel
             if (ImGui.SliderFloat("Alpha##plx", ref alpha, 0f, 1f, "%.1f"))
                 sel.Alpha = alpha;
 
+            // ── Size: Width/Height in pixels. 0 = auto (follows the map grid size). ──
+            float wPx = sel.WidthPx;
+            if (ImGui.DragFloat("Width (px)##plx", ref wPx, 8f, 0f, 100000f, "%.0f"))
+                sel.WidthPx = MathF.Max(0f, wPx);
+            ImGui.TextDisabled("0 = follow grid width");
+
+            float hPx = sel.HeightPx;
+            if (ImGui.DragFloat("Height (px)##plx", ref hPx, 8f, 0f, 100000f, "%.0f"))
+                sel.HeightPx = MathF.Max(0f, hPx);
+            ImGui.TextDisabled("0 = follow grid height");
+
+            // ── Texture repeats across the quad (0 = auto, natural size). ──
+            int repX = sel.RepeatX;
+            if (ImGui.InputInt("Repeat X##plx", ref repX))
+                sel.RepeatX = Math.Max(0, repX);
+            ImGui.SameLine();
+            int repY = sel.RepeatY;
+            if (ImGui.InputInt("Repeat Y##plx", ref repY))
+                sel.RepeatY = Math.Max(0, repY);
+            ImGui.TextDisabled("0 = auto (natural size); > 0 tiles the texture");
+
+            // ── Position: Left/Top offsets in pixels from the grid's top-left corner. ──
+            float leftPx = sel.LeftPx;
+            if (ImGui.DragFloat("Left (px)##plx", ref leftPx, 1f, -100000f, 100000f, "%.0f"))
+                sel.LeftPx = leftPx;
+            ImGui.TextDisabled("0 = flush with grid left; negative = extend left");
+
+            float topPx = sel.TopPx;
+            if (ImGui.DragFloat("Top (px)##plx", ref topPx, 1f, -100000f, 100000f, "%.0f"))
+                sel.TopPx = topPx;
+            ImGui.TextDisabled("0 = flush with grid top; negative = extend above grid");
+
             // Load image
             if (ImGui.Button("Load Image##plx"))
                 _parallaxDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Parallax Image");
 
             if (!string.IsNullOrEmpty(sel.ImagePath))
+            {
+                ImGui.SameLine();
                 ImGui.TextDisabled(Path.GetFileName(sel.ImagePath));
+                ImGui.TextDisabled($"image: {sel.ImageWidth}x{sel.ImageHeight}px");
+            }
         }
     }
 
@@ -1465,7 +1637,19 @@ public class MapEditorPanel
 
     private unsafe void LoadParallaxTexture(string path, ParallaxLayer? layer = null)
     {
-        if (_parallaxTextures.ContainsKey(path)) return;
+        // Cache hit: the texture exists but the layer may still be missing its image
+        // dimensions (early return used to skip the dims — leaving ImageWidth/Height 0,
+        // which made the proportional sizing fall back to stretch-to-grid, i.e. the
+        // parallax rendered stretched in-game). Backfill dims from the dims cache.
+        if (_parallaxTextures.ContainsKey(path))
+        {
+            if (layer != null && layer.ImageWidth == 0 && _parallaxImageDims.TryGetValue(path, out var dims))
+            {
+                layer.ImageWidth = dims.w;
+                layer.ImageHeight = dims.h;
+            }
+            return;
+        }
         try
         {
             using var stream = File.OpenRead(path);
@@ -1485,6 +1669,7 @@ public class MapEditorPanel
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
             _parallaxTextures[path] = texId;
+            _parallaxImageDims[path] = (image.Width, image.Height);
             if (layer != null)
             {
                 layer.ImageWidth = image.Width;
@@ -1584,6 +1769,21 @@ public class ParallaxLayer
     /// <summary>Image dimensions (set when loaded).</summary>
     public int ImageWidth;
     public int ImageHeight;
+
+    /// <summary>Quad width in pixels. 0 = auto: follow the map grid width.</summary>
+    public float WidthPx;
+    /// <summary>Quad height in pixels. 0 = auto: follow the map grid height.</summary>
+    public float HeightPx;
+    /// <summary>Horizontal texture repeats across the quad. 0 = auto.</summary>
+    public int RepeatX;
+    /// <summary>Vertical texture repeats across the quad. 0 = auto.</summary>
+    public int RepeatY;
+
+    /// <summary>Left offset in pixels from the grid's left edge. 0 = flush with grid left.</summary>
+    public float LeftPx;
+    /// <summary>Top offset in pixels pushing the quad's top edge DOWN from the grid's
+    /// top edge. 0 = flush with grid top, negative = extend above the grid.</summary>
+    public float TopPx;
 }
 
 /// <summary>Top-level save data for a tilemap + parallax layers.</summary>
@@ -1593,7 +1793,9 @@ public class MapSaveData
     public List<ParallaxLayerData>? ParallaxLayers { get; set; }
 }
 
-/// <summary>Serializable parallax layer data.</summary>
+/// <summary>Serializable parallax layer data (standalone .tilemap.json export).
+/// Note: the canonical storage is TilemapParallaxLayerData inside Tilemap2DData —
+/// this DTO is kept for the legacy MapSaveData export shape.</summary>
 public class ParallaxLayerData
 {
     public string Name { get; set; } = "";
@@ -1603,4 +1805,10 @@ public class ParallaxLayerData
     public float ZPosition { get; set; }
     public float Alpha { get; set; } = 1f;
     public bool TileHorizontal { get; set; } = true;
+    public float WidthPx { get; set; }
+    public float HeightPx { get; set; }
+    public int RepeatX { get; set; }
+    public int RepeatY { get; set; }
+    public float LeftPx { get; set; }
+    public float TopPx { get; set; }
 }

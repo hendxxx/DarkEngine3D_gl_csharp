@@ -4,7 +4,7 @@
     "Width": 50,
     "Height": 20,
     "TileSize": 32,
-    "TilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+    "TilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
     "TilesetColumns": 25,
     "TilesetRows": 25,
     "TilesetFlipV": false,
@@ -2043,10 +2043,10 @@
   "ParallaxLayers": [
     {
       "Name": "Parallax 0",
-      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\Background.png",
+      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
       "IsVisible": true,
       "ScrollFactor": 1,
-      "ZPosition": -1.1,
+      "ZPosition": -0.2,
       "Alpha": 1,
       "TileHorizontal": true
     }
