@@ -134,10 +134,10 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 |---------|-------------|
 | **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise) |
 | **Tile Palette** | Auto-detected cols/rows from tileset image (read-only); multi-select (marquee) preserves block shape when stamping |
-| **Tools** | Paint, Erase (with brush size), Fill (flood), Pick — paint directly in the 3D viewport |
+| **Tools** | Paint, Erase (with brush size), Fill (flood), Pick (default), Collision — paint directly in the 3D viewport |
 | **Layers** | Multiple tile layers, visibility/lock per layer, all visible layers render (stacked in depth, tiny lift per layer) |
 | **Undo/Redo** | Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y over the 2D level (per-tile granularity) |
-| **Collision Flags** | Per-tile-id collision toggles; translucent boxes rendered sticking out of the plane (color via `Map2dCollisionColor`) |
+| **Collision Flags** | Per-tile-id collision toggles; dedicated Collision paint tool (click/drag toggles, hover preview shows add vs remove); full 3D translucent boxes with bright edges CENTERED on the tile; per-layer `CollisionTileIds` persist in the tilemap json; Show Collision checkbox persisted in settings |
 | **Parallax Layers** | Image layers behind/in front of the grid: ScrollFactor, ZPosition, Alpha (per-vertex tint), WidthPx/HeightPx (0 = proportional to image aspect), RepeatX/Y (GL_REPEAT), TopPx offset, TileHorizontal wrapping |
 | **Parallax Preview** | Panning the editor camera slides each layer by `-camX × ScrollFactor` (fractional UV phase = seamless wrap) |
 | **Grid Overlay** | Show/hide tile grid + grid color, real-time; auto-hidden in preview/in-game |
@@ -146,7 +146,26 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 | **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles + parallax + spawn + camera start) and canonical scene `.ing`; autoload first map on project open |
 | **In-Game Parity** | Parallax layers/textures sync every frame in preview mode; startup `-load=` in-game re-anchors camera (lazy reframe when tilemap adopts late) |
 
-### 2.6 Inspector — Object Types
+### 2.6 Player2D System (2D Character)
+
+Player character object with capsule collider + animated sprite, spawned from a Start marker.
+
+| Feature | Description |
+|---------|-------------|
+| **Player 2D Object** | `EditorPrimitiveType.Player2D` — added from the Hierarchy toolbar or Add-element dropdown (🏃 icon) |
+| **Capsule Collider** | Feet-anchored capsule (Position.Y = capsule bottom), radius/height/visibility tunable in Inspector; rendered as a world-upright blue outline in edit mode (hidden in-game via `Editor2DAidsHidden`) |
+| **Animated Sprite** | Sprite Sheet + Animation Clip pickers (from the Sprite Editor via the static `IDEBridge` registry, refreshed every frame in all modes); clip FPS/loop/reverse/speed respected; animation previews live in edit mode |
+| **Sprite UV** | Frame UVs converted (`v' = 1 − v_raw`) for the top-row-first texture upload — sprite stands upright |
+| **Start Object** | `EditorPrimitiveType.Start2D` (🚩 arrow marker) — the spawn point; Player2D teleports there (velocity + anim clock reset) when in-game mode begins |
+| **Deferred Spawn** | `EditorObject.Player2DSpawnPending` static flag set on in-game entry; consumed by `Player2DSystem.Update` on the first frame AFTER the .ing reload re-creates objects |
+| **Physics** | `Player2DSystem` — gravity (tunable per-player) + capsule-AABB vs collision-tile resolution (ground/ceiling on the active layer); runs only in preview/in-game |
+| **Persistence** | Sheet/clip/height/capsule/gravity saved in the scene `.ing` via `EditorObjectData` |
+
+### 2.7 Gizmo Z-Order
+
+The transform gizmo is ALWAYS frontmost: 2D overlays (tile grid, hover highlight, collision box edges) draw with depth test disabled and would paint over an earlier gizmo, so the depth buffer is cleared after `EditorObjectManager.Draw()` and before `gizmo.Render()` in both the editor (no-scene) and in-scene render paths.
+
+### 2.8 Inspector — Object Types
 
 **Box/Sphere/Plane**:
 - Transform: Position (XYZ), Rotation (Euler XYZ), Scale (XYZ)
@@ -183,6 +202,11 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 - Grid Settings: camera start capture/reset, spawn info
 - Rendered as upright world-space plane; object transform intentionally not applied
 
+**Player 2D**:
+- Sprite Sheet + Animation Clip combos (auto-select first item; clip summary shown when resolvable)
+- Sprite Height, Capsule Radius/Height, Show Capsule, Gravity
+- Selection shows via line gizmos (no stencil outline — no solid mesh)
+
 ---
 
 ## 3. Scene System (Save/Load)
@@ -212,7 +236,10 @@ Scene files use `.ing` extension — **JSON** format with `.ing` extension.
 ```json
 {
   "Name": "Box1",
-  "PrimitiveType": "Box|Sphere|Plane|Camera|Light|Sky|GlbReference",
+  "PrimitiveType": "Box|Sphere|Plane|Camera|Light|Sky|GlbReference|Map2D|Player2D|Start2D",
+  "Player2DSpriteSheet": "", "Player2DAnimationClip": "",
+  "Player2DHeight": 2.0, "Player2DCapsuleRadius": 0.35, "Player2DCapsuleHeight": 1.8,
+  "Player2DShowCapsule": true, "Player2DGravity": 25.0,
   "GlbFilePath": "",
   "PosX": 0, "PosY": 0, "PosZ": 0,
   "RotX": 0, "RotY": 0, "RotZ": 0,

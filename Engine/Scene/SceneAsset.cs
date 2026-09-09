@@ -171,6 +171,15 @@ public class EditorObjectData
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
 
+    // ── Player2D (animated sprite + capsule collider) ──
+    public string Player2DSpriteSheet { get; set; } = "";
+    public string Player2DAnimationClip { get; set; } = "";
+    public float Player2DHeight { get; set; } = 2f;
+    public float Player2DCapsuleRadius { get; set; } = 0.35f;
+    public float Player2DCapsuleHeight { get; set; } = 1.8f;
+    public bool Player2DShowCapsule { get; set; } = true;
+    public float Player2DGravity { get; set; } = 25f;
+
     // ── Type-specific properties (Camera / Light / Sky) ──
     /// <summary>Vertical FOV in degrees (Camera).</summary>
     public float CameraFov { get; set; } = 60f;

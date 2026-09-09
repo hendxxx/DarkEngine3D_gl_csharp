@@ -25,7 +25,7 @@ public class MapEditorPanel
 
     // ── Tool modes ──
     private enum PaintTool { Paint, Erase, Fill, Pick, Collision }
-    private PaintTool _currentTool = PaintTool.Paint;
+    private PaintTool _currentTool = PaintTool.Pick;
 
     // ── Layer management ──
     private int _selectedLayerIdx = -1;

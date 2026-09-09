@@ -21,6 +21,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private int _lightCounter = 1;
         private int _skyCounter = 1;
         private int _map2dCounter = 1;
+        private int _player2dCounter = 1;
+        private int _start2dCounter = 1;
         private readonly uint _shaderProgram;
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
@@ -142,6 +144,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 EditorPrimitiveType.Light => $"light{_lightCounter++}",
                 EditorPrimitiveType.Sky => $"sky{_skyCounter++}",
                 EditorPrimitiveType.Map2D => $"map2d{_map2dCounter++}",
+                EditorPrimitiveType.Player2D => $"player{_player2dCounter++}",
+                EditorPrimitiveType.Start2D => $"start{_start2dCounter++}",
                 _ => $"object{_boxCounter++}",
             };
         }
@@ -165,6 +169,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         case EditorPrimitiveType.Light:     if (num >= _lightCounter) _lightCounter = num + 1; break;
                         case EditorPrimitiveType.Sky:       if (num >= _skyCounter) _skyCounter = num + 1; break;
                         case EditorPrimitiveType.Map2D:     if (num >= _map2dCounter) _map2dCounter = num + 1; break;
+                        case EditorPrimitiveType.Player2D:  if (num >= _player2dCounter) _player2dCounter = num + 1; break;
+                        case EditorPrimitiveType.Start2D:   if (num >= _start2dCounter) _start2dCounter = num + 1; break;
                     }
                 }
             }
@@ -188,7 +194,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                        : type == EditorPrimitiveType.Plane ? new Vector3(100f, 0.05f, 100f)
                        : type == EditorPrimitiveType.Camera ? new Vector3(0.5f, 0.4f, 0.6f)
                        : type == EditorPrimitiveType.Map2D ? new Vector3(1600f, 1f, 640f)
-                       : Vector3.One, // Box / Light / Sky
+                       : Vector3.One, // Box / Light / Sky / Player2D / Start2D
                 Color = type switch
                 {
                     EditorPrimitiveType.Plane => new Vector3(0.3f, 0.7f, 0.3f),
@@ -478,6 +484,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ── GLB reference models (gltf shader — PBR + CSM shadow reception) ──
             DrawGlbReferences(camera, light, csm);
 
+            // ── Player2D animated sprites (own shader pass, world-space quad) ──
+            foreach (var obj in _objects)
+            {
+                if (obj is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D })
+                    obj.DrawPlayer2D(camera);
+            }
+
             // ── Editor gizmos for special marker types (drawn after the solid objects so
             // the wireframe lines always render on top; depth test is disabled internally
             // so they show through terrain): real-camera frustum for cameras, a direction
@@ -488,7 +501,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 // Camera/Light/Sky markers are 2D billboard icons (always face the camera)
                 // Hidden in preview/in-game mode via showEditorGizmos flag.
-                if (showEditorGizmos && (obj.PrimitiveType == EditorPrimitiveType.Camera ||
+                // Player2D capsule + Start2D spawn arrow stay visible in-game too (they
+                // are gameplay aids, and Draw2DMarker internally skips when hidden).
+                if (obj.PrimitiveType == EditorPrimitiveType.Player2D ||
+                    obj.PrimitiveType == EditorPrimitiveType.Start2D)
+                {
+                    if (showEditorGizmos || !EditorObject.Editor2DAidsHidden)
+                        obj.Draw2DMarker(camera);
+                }
+                else if (showEditorGizmos && (obj.PrimitiveType == EditorPrimitiveType.Camera ||
                     obj.PrimitiveType == EditorPrimitiveType.Light ||
                     obj.PrimitiveType == EditorPrimitiveType.Sky))
                 {

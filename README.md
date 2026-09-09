@@ -23,8 +23,12 @@ OpenGL/C# game engine with ImGui-based IDE editor.
   - **Map Editor** — tile painting (Paint/Erase/Fill/Pick + brush size) directly in the 3D viewport, multi-layers, marquee multi-select stamping, per-tile undo/redo (Ctrl+Z/Y)
   - **Tilemap in 3D** — rendered as an upright textured plane at world origin; camera auto-switches to ortho front view (editor and in-game)
   - **Parallax Backgrounds** — per-layer ScrollFactor/ZPosition/Alpha, aspect-preserving sizing, RepeatX/Y wrap, seamless scroll preview while panning, correct rendering in Play in Preview
-  - **Collision Flags** — per-tile collision with translucent box preview in viewport
+  - **Collision Flags** — per-tile collision with dedicated Collision paint tool; full 3D translucent boxes with bright edges centered on the tile; per-layer collision IDs persisted
+  - **Player 2D** — capsule-collider character with animated sprite from the Sprite Editor (sheet + clip pickers, FPS/loop/speed respected), sprite previews live in edit mode
+  - **Start Marker** — player spawn point; Player2D spawns there in preview/in-game
+  - **Player Physics** — gravity + capsule-vs-collision-tile resolution (ground/ceiling) active in preview/in-game only
   - **Player Spawn** — draggable spawn marker; GameScene places the player at the map's spawn on scene enter
+  - **Gizmo Frontmost** — transform gizmo always renders above the 2D grid/overlays
   - **Per-Map Camera Start** — saved view restored on Play in Preview; ortho/front locked for 2D levels
   - **Persistence** — maps saved to `Assets/Maps/*.tilemap.json` + scene `.ing`, autoloaded on project open; editor aids (grid/collision/spawn gizmos) auto-hidden in-game
 - **IDE Settings Panel** — VSync, MSAA antialiasing, debug grid, font sizes with instant apply

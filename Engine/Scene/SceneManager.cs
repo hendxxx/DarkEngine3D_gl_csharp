@@ -306,7 +306,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 // IDE always active — keep update running
                 if (_ide != null)
+                {
                     _ide.Update(dt);
+
+                    // ── No active scene (editor/preview mode): run Player2D physics in
+                    // preview so capsules land on collision tiles before Play. ──
+                    var bridgeP2d = _ide.Bridge;
+                    if (_currentScene == null && bridgeP2d != null && bridgeP2d.IsPreviewMode)
+                        Visual.Player2DSystem.Update(bridgeP2d.EditorObjectManager, bridgeP2d.ActiveTilemap, dt);
+                }
 
                 // ── Advance transition animation each frame ──
                 _transitionManager.Update(dt);
@@ -385,6 +393,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         {
                             int vpW = br.SceneTextureWidth > 0 ? br.SceneTextureWidth : Glfw.WindowWidth;
                             int vpH = br.SceneTextureHeight > 0 ? br.SceneTextureHeight : Glfw.WindowHeight;
+
+                            // ── Z-order: 2D map grid overlays draw with depth test disabled,
+                            // so they'd paint over the gizmo. Clear depth so the gizmo is
+                            // ALWAYS the frontmost element in the viewport. ──
+                            GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
 
                             // ── Render ONE gizmo at the selection center (group average for
                             // multi-select) — a single gizmo drives the whole selection.
@@ -574,6 +587,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             ? bridge.SelectionHighlights.EditorObject : null;
                         bool showGizmos = !(bridge?.IsPreviewMode ?? false);
                         editorObjMgr.Draw(_editorCamera, _editorLights, _editorCsm, wireCol, bridge.SelectedEditorObjects, showEditorGizmos: showGizmos);
+
+                        // ── Z-order: the 2D map grid overlays disable depth test while they
+                        // draw, so they would paint OVER a gizmo drawn earlier. Clear the
+                        // depth buffer now so the transform gizmo below (drawn after this)
+                        // always renders in FRONT of the 2D grid / tile tiles. ──
+                        GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
                     }
 
                     // ── Render ONE gizmo at the selection center (group average for

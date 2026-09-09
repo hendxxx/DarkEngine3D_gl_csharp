@@ -92,8 +92,17 @@ public class SpriteEditorPanel
 
     public void ShowInMenu() => ImGui.MenuItem("Sprite Editor", null, ref _visible);
 
+    /// <summary>Public one-liner for IDE in-game mode (panel Render() is skipped there):
+    /// refresh the static sheet/clip registry so Player2D keeps animating in-game.</summary>
+    public void SyncRegistry()
+        => IDEBridge.SyncSpriteRegistry(SpriteSheets, _previewTextures, AnimationClips);
+
     public void Render()
     {
+        // Keep the static sprite registry fresh even when the panel is hidden, so
+        // Player2D objects keep resolving their sheet/clip + live texture in-game.
+        SyncRegistry();
+
         if (!_visible) return;
 
         ImGui.SetNextWindowSize(new Vector2(500, 600), ImGuiCond.FirstUseEver);

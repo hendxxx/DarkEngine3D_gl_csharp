@@ -941,6 +941,13 @@ public class SceneManagerPanel
                         ShowLightGizmo = obj.ShowLightGizmo,
                         ShowSkyGizmo = obj.ShowSkyGizmo,
                         SkySettings = obj.SkySettings,
+                        Player2DSpriteSheet = obj.Player2DSpriteSheet,
+                        Player2DAnimationClip = obj.Player2DAnimationClip,
+                        Player2DHeight = obj.Player2DHeight,
+                        Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
+                        Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
+                        Player2DShowCapsule = obj.Player2DShowCapsule,
+                        Player2DGravity = obj.Player2DGravity,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z,
@@ -1335,6 +1342,8 @@ public class SceneManagerPanel
                             "light" => EditorPrimitiveType.Light,
                             "sky" => EditorPrimitiveType.Sky,
                             "map2d" => EditorPrimitiveType.Map2D,
+                            "player2d" => EditorPrimitiveType.Player2D,
+                            "start2d" => EditorPrimitiveType.Start2D,
                             _ => EditorPrimitiveType.Box,
                         };
 
@@ -1497,6 +1506,15 @@ public class SceneManagerPanel
                         // Dynamic terrain layers + slope
                         if (objData.TerrainLayerList is { Count: > 0 } savedLayers)
                             obj.TerrainLayerList = savedLayers.Select(l => l.Clone().WithResolvedPaths()).ToList();
+
+                        // ── Player2D: restore sprite animation + capsule settings ──
+                        obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
+                        obj.Player2DAnimationClip = objData.Player2DAnimationClip;
+                        obj.Player2DHeight = objData.Player2DHeight;
+                        obj.Player2DCapsuleRadius = objData.Player2DCapsuleRadius;
+                        obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
+                        obj.Player2DShowCapsule = objData.Player2DShowCapsule;
+                        obj.Player2DGravity = objData.Player2DGravity;
                         if (objData.TerrainSlopeLayer != null)
                         {
                             obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();

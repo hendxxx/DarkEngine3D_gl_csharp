@@ -1598,6 +1598,10 @@ public class InspectorPanel
             ImGui.Separator();
         }
 
+        // ── Player2D: sprite animation + capsule + physics ──
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Player2D)
+            RenderPlayer2DInspector(editorObj);
+
         //  Transform 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
         {
@@ -2410,6 +2414,105 @@ public class InspectorPanel
             if (ImGui.Checkbox("Cast Shadow", ref shadow))
                 editorObj.CastShadow = shadow;
         }
+    }
+
+    /// <summary>Player2D settings: sprite sheet + animation clip pickers (from the
+    /// Sprite Editor), sprite size, capsule collider tuning, and gameplay physics
+    /// (gravity). Sheet/clip lists come from the IDEBridge static sprite registry.</summary>
+    private void RenderPlayer2DInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Player 2D", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var sheets = IDEBridge.GetSpriteSheetNames();
+        var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+
+        // ── Sprite Sheet combo (auto-select index 0 — dropdown rule) ──
+        string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : ["(no sheets — import in Sprite Editor)"];
+        int sheetIdx = 0;
+        for (int i = 0; i < sheetArr.Length; i++)
+            if (sheetArr[i] == editorObj.Player2DSpriteSheet) { sheetIdx = i; break; }
+        bool sheetMissing = sheetIdx == 0 && editorObj.Player2DSpriteSheet != sheetArr[0] && sheets.Count > 0;
+        if (sheetMissing) { /* stored name not in list — keep showing stored name */ }
+        if (ImGui.BeginCombo("Sprite Sheet", sheets.Count == 0 ? sheetArr[0]
+            : (sheetIdx > 0 ? sheetArr[sheetIdx] : (string.IsNullOrEmpty(editorObj.Player2DSpriteSheet) ? sheetArr[0] : editorObj.Player2DSpriteSheet))))
+        {
+            for (int i = 0; i < sheetArr.Length; i++)
+            {
+                if (sheets.Count == 0) break;
+                bool sel = i == sheetIdx;
+                if (ImGui.Selectable(sheetArr[i], sel))
+                {
+                    editorObj.Player2DSpriteSheet = sheetArr[i];
+                    // Auto-select the first clip of the new sheet (dropdown rule).
+                    var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+                    editorObj.Player2DAnimationClip = newClips.Count > 0 ? newClips[0] : "";
+                    editorObj.Player2DAnimTime = 0;
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Sprite sheet imported in the Sprite Editor panel");
+
+        // ── Animation Clip combo (auto-select index 0 when empty/sheet changed) ──
+        string[] clipArr = clips.Count > 0 ? clips.ToArray() : ["(no clips — create in Sprite Editor)"];
+        int clipIdx = 0;
+        for (int i = 0; i < clipArr.Length; i++)
+            if (clipArr[i] == editorObj.Player2DAnimationClip) { clipIdx = i; break; }
+        if (ImGui.BeginCombo("Animation Clip", clips.Count == 0 ? clipArr[0]
+            : (clipIdx > 0 ? clipArr[clipIdx] : (string.IsNullOrEmpty(editorObj.Player2DAnimationClip) ? clipArr[0] : editorObj.Player2DAnimationClip))))
+        {
+            for (int i = 0; i < clipArr.Length; i++)
+            {
+                if (clips.Count == 0) break;
+                bool sel = i == clipIdx;
+                if (ImGui.Selectable(clipArr[i], sel))
+                {
+                    editorObj.Player2DAnimationClip = clipArr[i];
+                    editorObj.Player2DAnimTime = 0;
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings)");
+
+        // Show clip summary when resolvable.
+        if (editorObj.TryGetPlayer2DClip(out var _, out var clipInfo) && clipInfo != null)
+        {
+            ImGui.TextDisabled($"{clipInfo.FrameIndices.Count} frames @ {clipInfo.FPS * clipInfo.SpeedMultiplier:0.#} fps, {(clipInfo.Loop ? "loop" : "once")}{(clipInfo.Reverse ? ", reverse" : "")}");
+        }
+        else if (!string.IsNullOrEmpty(editorObj.Player2DSpriteSheet))
+        {
+            ImGui.TextColored(new Vector4(1f, 0.5f, 0.3f, 1f), "Sheet/clip not found — check Sprite Editor");
+        }
+
+        ImGui.Separator();
+
+        // ── Sprite sizing ──
+        float h = editorObj.Player2DHeight;
+        if (ImGui.DragFloat("Sprite Height", ref h, 0.05f, 0.1f, 50f, "%.2f"))
+            editorObj.Player2DHeight = MathF.Max(0.1f, h);
+
+        // ── Capsule collider ──
+        float r = editorObj.Player2DCapsuleRadius;
+        if (ImGui.DragFloat("Capsule Radius", ref r, 0.01f, 0.05f, 5f, "%.2f"))
+            editorObj.Player2DCapsuleRadius = MathF.Max(0.05f, r);
+
+        float ch = editorObj.Player2DCapsuleHeight;
+        if (ImGui.DragFloat("Capsule Height", ref ch, 0.05f, 0.1f, 50f, "%.2f"))
+            editorObj.Player2DCapsuleHeight = MathF.Max(0.2f, ch);
+
+        bool showCap = editorObj.Player2DShowCapsule;
+        if (ImGui.Checkbox("Show Capsule##player", ref showCap))
+            editorObj.Player2DShowCapsule = showCap;
+
+        // ── Gameplay physics ──
+        float g = editorObj.Player2DGravity;
+        if (ImGui.DragFloat("Gravity", ref g, 0.5f, 0f, 100f, "%.1f"))
+            editorObj.Player2DGravity = MathF.Max(0f, g);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Downward acceleration (units/s²) applied in preview/in-game against collision tiles");
     }
 
     /// <summary>Render the advanced terrain settings for a Plane object: heightmap,

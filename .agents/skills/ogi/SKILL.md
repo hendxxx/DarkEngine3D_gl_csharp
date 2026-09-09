@@ -87,6 +87,21 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **2D Persistence**: Sprite sheets → `Assets/Sprites/sprites.sheets.json` (autoload saat project open); maps → `Assets/Maps/{Name}.tilemap.json` (autoload map pertama) + canonical di scene `.ing` via `TilemapShowGrid`/`Tilemap` payload.
 - **In-Game 2D Mode**: `RenderInGameMode` memaksa ortho/front + freefly OFF untuk level 2D (`IsLevelShown()`), cursor visible, ESC hanya untuk GameScene containers.
 
+## Player2D System Rules:
+- **Player2D Object**: `EditorObject` dengan `PrimitiveType.Player2D` — kapsul collision (feet-anchored: `Position.Y` = dasar kapsul, sama dengan anchor sprite quad) + sprite animasi dari Sprite Editor. Start2D = marker spawn (🚩); Player2D diteleport ke Start2D saat in-game.
+- **Sprite Registry**: `IDEBridge.SyncSpriteRegistry()` (static) — di-refresh dari `SpriteEditorPanel.SyncRegistry()` setiap frame DI SEMUA mode. In-game mode skip panel Render(), jadi IDE.Render() memanggil `_spriteEditor.SyncRegistry()` setelah `_mapEditor.SyncForGameplay()` — tanpa ini sprite player tidak resolve saat in-game (registry basi).
+- **Animation Clock**: ADVANCE DI `DrawPlayer2D` SAJA (satu sumber kebenaran, jalan di edit mode juga supaya animasi live di viewport). JANGAN tick `Player2DAnimTime` di Player2DSystem.Update juga — clock dobel = animasi 2× lebih cepat.
+- **UV Orientation**: `SpriteSheet.GetFrameUV` return UV dengan asumsi upload flipped (v=0=bawah gambar), tapi texture di-upload top-row-first (v=0=ATAS). Player quad wajib konversi `v' = 1 − v_raw` — vertex bawah pakai v frame bawah, vertex atas pakai v frame atas; tanpa ini sprite terbalik.
+- **Capsule Rendering**: `DrawPlayer2DCapsule` world-upright (bukan billboard) supaya match physics AABB; `Player2DShowCapsule` (edit mode saja, hidden via `Editor2DAidsHidden`).
+- **Deferred Spawn**: `EditorObject.Player2DSpawnPending` (static) — di-set saat in-game mode mulai + GameScene.Enter(); DIKONSUMSI oleh `Player2DSystem.Update` frame pertama (setelah .ing reload selesai re-create objek). Spawn langsung di Enter() akan ditimpa reload — jangan lakukan.
+- **Player2D Physics**: `Player2DSystem.Update(manager, map, dt)` — gravity + resolve kapsul AABB vs collision tiles layer aktif (`CollisionTileIds`); resolve Y dulu (ground/ceiling), velocity di-nol-kan saat grounded. Dipanggil dari GameScene.Update saat `InGameActive || IsPreviewMode`, dan SceneManager loop saat preview no-scene.
+- **Serialization**: Player2D fields (`Player2DSpriteSheet/AnimationClip/Height/CapsuleRadius/CapsuleHeight/ShowCapsule/Gravity`) persist via `EditorObjectData` — save & load harus simetris.
+- **Selection Outline**: `DrawOutlineStencil`/`DrawOutline` early-return untuk Player2D/Start2D (tidak punya solid mesh — selection lewat line gizmo).
+
+## Map Editor Tool Defaults:
+- **Default Tool = Pick**: `_currentTool` mulai dari `PaintTool.Pick` — viewport klik tidak sengaja tidak menge-paint. Tools: Paint, Erase, Fill, Pick, Collision.
+- **Gizmo Z-Order**: Overlay 2D (grid tiles, hover highlight, collision box edges) menggambar dengan depth test OFF — mereka akan menimpa gizmo. Solusi: `GL.Clear(GL_DEPTH_BUFFER_BIT)` setelah `editorObjMgr.Draw()` sebelum `gizmo.Render()` (kedua jalur: no-scene editor DAN in-scene). Gizmo harus SELALU paling depan.
+
 ## Scene Management Rules:
 - **SceneEntry**: `record SceneEntry(Name, Description, HasInitializedEntry, Type, ...)` — stored in `AvailableScenesInternal`.
 - **EditorScene**: `record EditorScene(Name, Type, Root)` — stored in `EditorScenes` dictionary keyed by scene name.

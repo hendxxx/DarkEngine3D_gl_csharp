@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
+using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
@@ -21,7 +22,12 @@ public enum EditorPrimitiveType
     Camera,
     Light,
     Sky,
-    Map2D
+    Map2D,
+    /// <summary>2D player character: capsule collider + animated sprite from a
+    /// sprite-sheet clip. Spawned at the Start2D object's position in-game.</summary>
+    Player2D,
+    /// <summary>Player spawn marker. In preview/in-game the Player2D is placed here.</summary>
+    Start2D
 }
 
 /// <summary>
@@ -270,6 +276,34 @@ public unsafe class EditorObject
     public string? TexturePath { get; set; } = null;
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
+
+    // ── Player2D: sprite animation + capsule collider ──
+    /// <summary>Sprite sheet name (from Sprite Editor) driving the player sprite.</summary>
+    public string Player2DSpriteSheet { get; set; } = "";
+    /// <summary>Animation clip name (from Sprite Editor) played on the player sprite.
+    /// Clip carries its own FPS/loop/reverse/speed settings.</summary>
+    public string Player2DAnimationClip { get; set; } = "";
+    /// <summary>Sprite height in world units. Width derives from the sheet's frame aspect.</summary>
+    public float Player2DHeight { get; set; } = 2f;
+    /// <summary>Capsule collider radius in world units.</summary>
+    public float Player2DCapsuleRadius { get; set; } = 0.35f;
+    /// <summary>Capsule collider total height in world units.</summary>
+    public float Player2DCapsuleHeight { get; set; } = 1.8f;
+    /// <summary>Render the capsule outline (edit mode only — hidden in-game).</summary>
+    public bool Player2DShowCapsule { get; set; } = true;
+    /// <summary>Gravity acceleration (world units/s²) applied in preview/in-game.</summary>
+    public float Player2DGravity { get; set; } = 25f;
+    /// <summary>Runtime animation clock (seconds since play started). Editor ticks it too
+    /// so the idle animation previews live in the viewport.</summary>
+    public float Player2DAnimTime { get; set; }
+    /// <summary>Runtime physics velocity (Y only — sidescroller).</summary>
+    public float Player2DVelocityY { get; set; }
+    /// <summary>True when standing on a collision tile this frame (grounded).</summary>
+    public bool Player2DGrounded { get; set; }
+    /// <summary>Static: request all Player2D objects to respawn at their Start2D marker
+    /// on the NEXT update (set when in-game mode begins — objects may be re-created
+    /// asynchronously by the .ing reload that follows, so spawning must be deferred).</summary>
+    public static bool Player2DSpawnPending { get; set; }
 
     // ── PBR material (Box/Sphere/flat-plane) — dedicated PBR shader with 7 optional
     //    maps + tuning. Every map is optional: missing maps keep neutral defaults
@@ -799,6 +833,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Plane => new Vector3(500f, 0.05f, 500f),
             EditorPrimitiveType.Camera => new Vector3(0.5f, 0.4f, 0.6f),
             EditorPrimitiveType.Map2D => new Vector3(1f, 1f, 1f),
+            EditorPrimitiveType.Player2D => new Vector3(1f, 2f, 1f),
             _ => Vector3.One,
         };
         Color = type switch
@@ -811,6 +846,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Light => new Vector3(1.0f, 0.85f, 0.3f),
             EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
             EditorPrimitiveType.Map2D => new Vector3(0.8f, 0.8f, 0.9f),
+            EditorPrimitiveType.Player2D => new Vector3(0.2f, 0.9f, 0.4f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
     }
@@ -1001,6 +1037,11 @@ public unsafe class EditorObject
                 EditorPrimitiveType.GlbReference => new AABB(
                     new Vector3(-0.5f, -0.5f, -0.5f),
                     new Vector3( 0.5f,  0.5f,  0.5f)),
+                // Player2D/Start2D: feet-anchored capsule AABB — Position.Y is the
+                // capsule BOTTOM (matches DrawPlayer2DCapsule + Player2DSystem).
+                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D => new AABB(
+                    new Vector3(-Player2DCapsuleRadius, 0f, -Player2DCapsuleRadius),
+                    new Vector3( Player2DCapsuleRadius, Player2DCapsuleHeight,  Player2DCapsuleRadius)),
                 _ => new AABB(
                     new Vector3(-0.5f, -0.5f, -0.5f),
                     new Vector3( 0.5f,  0.5f,  0.5f)),
@@ -1170,6 +1211,15 @@ public unsafe class EditorObject
             case EditorPrimitiveType.Map2D:
             {
                 // Map2D builds a custom quad mesh; tileset texture loaded separately.
+                _vertexCache = null;
+                break;
+            }
+            case EditorPrimitiveType.Player2D:
+            case EditorPrimitiveType.Start2D:
+            {
+                // Player/Start markers have no solid mesh — the player renders as an
+                // animated sprite quad (DrawPlayer2D) and both draw gizmo outlines
+                // via Draw2DMarker. Keep _object3D null.
                 _vertexCache = null;
                 break;
             }
@@ -2271,7 +2321,8 @@ public unsafe class EditorObject
     public unsafe void Draw2DMarker(Camera camera)
     {
         if (!IsVisible || (PrimitiveType != EditorPrimitiveType.Camera
-            && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky)) return;
+            && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky
+            && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D)) return;
 
         // Derive a camera-facing basis from Front (Right/Up fields can be stale in fly
         // mode). Same upRef fallback as the light/sky gizmos so the icon always faces you.
@@ -2303,6 +2354,23 @@ public unsafe class EditorObject
                 float c = MathF.Cos(a), s = MathF.Sin(a);
                 Line(P(c * 0.8f, s * 0.8f), P(c * 1.25f, s * 1.25f));
             }
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Player2D)
+        {
+            // Player icon: capsule outline (body) — matches the collider shape.
+            // The capsule is drawn world-upright (not billboarded) so its orientation
+            // matches the physics capsule exactly.
+            DrawPlayer2DCapsule(camera, new Vector3(0.2f, 0.95f, 1f), 0.95f);
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Start2D)
+        {
+            // Start icon: downward arrow into a ground line ("player spawns here").
+            Line(P(-0.7f, -0.5f), P(0.7f, -0.5f));   // ground
+            Line(P(0f, 0.8f), P(0f, 0.15f));         // arrow shaft
+            Line(P(-0.35f, 0.3f), P(0f, 0.15f));     // arrow head left
+            Line(P(0.35f, 0.3f), P(0f, 0.15f));      // arrow head right
+            Line(P(-0.35f, -0.35f), P(-0.35f, -0.5f)); // spawn bracket left
+            Line(P(0.35f, -0.35f), P(0.35f, -0.5f));   // spawn bracket right
         }
         else if (PrimitiveType == EditorPrimitiveType.Camera)
         {
@@ -2360,6 +2428,165 @@ public unsafe class EditorObject
         }
 
         DrawEditorLines(verts, camera);
+    }
+
+    /// <summary>Draw the Player2D capsule outline world-upright (NOT billboarded) so it
+    /// exactly matches the physics capsule: two semicircle caps + two side lines.
+    /// The capsule is FEET-ANCHORED: Position.Y is the capsule bottom (same anchor as
+    /// the sprite quad), matching Player2DSystem's AABB. Spawn places the feet.</summary>
+    private void DrawPlayer2DCapsule(Camera camera, Vector3 lineColor, float alpha)
+    {
+        float r = Player2DCapsuleRadius;
+        float halfH = Player2DCapsuleHeight * 0.5f;
+        float baseY = Position.Y;
+        // Cap center: capsule height includes the caps.
+        float cy = MathF.Max(0f, halfH - r);
+        if (cy > halfH) cy = halfH;
+
+        var verts = new List<Vector3>(64);
+        const int segs = 12;
+        // Top cap: 180°
+        var prev = new Vector3(Position.X, baseY + 2 * cy + r, Position.Z);
+        for (int i = 1; i <= segs; i++)
+        {
+            float a = i * MathF.PI / segs; // 0..PI (right → left over the top)
+            var cur = new Vector3(Position.X + MathF.Cos(a) * r, baseY + 2 * cy + MathF.Sin(a) * r, Position.Z);
+            verts.Add(prev); verts.Add(cur); prev = cur;
+        }
+        // Bottom cap: 180°
+        prev = new Vector3(Position.X, baseY + r, Position.Z);
+        for (int i = 1; i <= segs; i++)
+        {
+            float a = MathF.PI + i * MathF.PI / segs; // PI..2PI (left → right under the bottom)
+            var cur = new Vector3(Position.X + MathF.Cos(a) * r, baseY + r - MathF.Sin(a) * r, Position.Z);
+            verts.Add(prev); verts.Add(cur); prev = cur;
+        }
+        // Side lines
+        verts.Add(new Vector3(Position.X + r, baseY + r, Position.Z));
+        verts.Add(new Vector3(Position.X + r, baseY + 2 * cy, Position.Z));
+        verts.Add(new Vector3(Position.X - r, baseY + r, Position.Z));
+        verts.Add(new Vector3(Position.X - r, baseY + 2 * cy, Position.Z));
+
+        bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+        GL.Disable(Const.GL_DEPTH_TEST);
+        Terrains.TerrainChunk.DrawLineSegments(verts, lineColor, camera, alpha);
+        if (depth) GL.Enable(Const.GL_DEPTH_TEST);
+    }
+
+    // ── Player2D sprite rendering (animated sheet frame on an upright quad) ──
+    private uint _player2dVAO, _player2dVBO;
+
+    /// <summary>Look up the Sprite Editor's sheet+clip by name via the IDEBridge static
+    /// registry (set every frame by SpriteEditorPanel.SyncToBridge). Returns false when
+    /// the sheet/clip no longer exists.</summary>
+    public bool TryGetPlayer2DClip(out SpriteSheet? sheet, out AnimationClip2D? clip)
+    {
+        sheet = null; clip = null;
+        return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
+    }
+
+    /// <summary>Advance the animation clock and draw the player as an upright textured
+    /// quad showing the current clip frame. Works in edit mode (preview) and in-game.
+    /// Called from Draw() after the Map2D branch so the player draws over the level.</summary>
+    public unsafe void DrawPlayer2D(Camera camera)
+    {
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
+        if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+
+        // Resolve the sheet image + grid. The bridge's registry carries a live texture.
+        if (!IDEBridge.TryGetSpriteSheetTexture(Player2DSpriteSheet, out uint texId, out int imgW, out int imgH))
+            return;
+        if (texId == 0 || imgW <= 0 || imgH <= 0) return;
+
+        // Advance the animation clock HERE (once per frame per player) — this is the
+        // single source of truth so the sprite animates in edit mode too.
+        Player2DAnimTime += Glfw.GetDeltaTime();
+
+        int frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+        // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
+        // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. vTop = frame top
+        // (small v'), vBot = frame bottom (large v') — then map bottom-vertex→vBot,
+        // top-vertex→vTop so the sprite stands upright.
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svTop = 1f - uvMinRaw.Y;
+        float svBot = 1f - uvMaxRaw.Y;
+
+        // Quad size: Player2DHeight tall, width follows the frame aspect.
+        float frameAspect = sheet.FrameHeight > 0 ? (float)sheet.FrameWidth / sheet.FrameHeight : 1f;
+        float h = Player2DHeight;
+        float w = h * frameAspect;
+        // Feet on the object position (spawn anchors at the capsule bottom).
+        float x0 = Position.X - w * 0.5f, x1 = Position.X + w * 0.5f;
+        float y0 = Position.Y, y1 = Position.Y + h;
+        float z = Position.Z + 0.05f; // slightly in front of the grid
+
+        EnsureMap2DShader();
+        if (_map2dShader == 0) return;
+
+        GL.UseProgram(_map2dShader);
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+        GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+        GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+        var identity = Matrix4x4.Identity;
+        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
+
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+        GL.Uniform1i(_map2dLocTex, 0);
+        GL.Enable(Const.GL_BLEND);
+        GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+        bool cull = GL.IsEnabled(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_CULL_FACE);
+        bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+
+        // Two triangles in WORLD space (identity model): pos(3) uv(2) tint(4).
+        float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
+        var verts = stackalloc Map2DVertex[6]
+        {
+            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
+            new(x1, y0, z, su1, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
+            new(x0, y1, z, su0, svTop, tR, tG, tB, tA),
+        };
+
+        if (_player2dVAO == 0)
+        {
+            uint vao = 0, vbo = 0;
+            GL.GenVertexArrays(1, &vao);
+            GL.BindVertexArray(vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+            GL.BindVertexArray(0);
+            _player2dVAO = vao; _player2dVBO = vbo;
+        }
+
+        GL.BindVertexArray(_player2dVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
+        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+        GL.BindVertexArray(0);
+
+        if (depth) GL.Enable(Const.GL_DEPTH_TEST);
+        if (cull) GL.Enable(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_BLEND);
+        GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+        // Collider overlay in edit mode (hidden in-game via Editor2DAidsHidden).
+        if (Player2DShowCapsule && !Editor2DAidsHidden)
+            DrawPlayer2DCapsule(camera, new Vector3(0.2f, 0.95f, 1f), 0.9f);
+
+        // Restore main shader.
+        GL.UseProgram(Shader.GetShaderProgram());
     }
 
     /// <summary>
@@ -2448,6 +2675,10 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
+        // Player2D/Start2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D)
+            return;
+
         // ── GLB reference: draw the model's own meshes into the stencil mask. ──
         if (PrimitiveType == EditorPrimitiveType.GlbReference)
         {
@@ -2500,6 +2731,10 @@ public unsafe class EditorObject
     public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
     {
         if (!IsVisible) return;
+
+        // Player2D/Start2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D)
+            return;
 
         // ── GLB reference: inverted-hull outline over the model's meshes. ──
         if (PrimitiveType == EditorPrimitiveType.GlbReference)
@@ -2890,6 +3125,8 @@ void main() {
 
         if (_map2dVAO != 0) { uint v = _map2dVAO; GL.DeleteVertexArrays(1, &v); _map2dVAO = 0; }
         if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
+        if (_player2dVAO != 0) { uint v = _player2dVAO; GL.DeleteVertexArrays(1, &v); _player2dVAO = 0; }
+        if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
 
         int mapW = map.Width;
         int mapH = map.Height;
@@ -3523,6 +3760,8 @@ void main() {
         }
         if (_map2dVAO != 0) { uint v = _map2dVAO; GL.DeleteVertexArrays(1, &v); _map2dVAO = 0; }
         if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
+        if (_player2dVAO != 0) { uint v = _player2dVAO; GL.DeleteVertexArrays(1, &v); _player2dVAO = 0; }
+        if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
         _terrainMesh?.Dispose();
         _terrainMesh = null;
         DisposePbrTextures();

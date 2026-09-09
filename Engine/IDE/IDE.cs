@@ -112,6 +112,10 @@ public class IDE : IDisposable
                     // 2D level scenes stay in ortho FRONT view (anchored to the map's
                     // bottom-left) even in-game — re-anchor over any Camera marker.
                     _levelCameraReframePending = Bridge.ActiveTilemap != null;
+
+                    // ── Player2D: spawn at the Start2D marker on the first update frame —
+                    // deferred because the .ing reload above re-creates objects async. ──
+                    Engine.Objects.EditorObject.Player2DSpawnPending = true;
                 }
                 else
                 {
@@ -619,6 +623,9 @@ public class IDE : IDisposable
         // tilemap adoption + parallax layer/texture sync running so parallax renders
         // correctly in Play in Preview (textures load on first use here too).
         _mapEditor?.SyncForGameplay();
+        // Keep the sprite-sheet/clip registry fresh in in-game mode too (Player2D
+        // resolves its animated sprite through it — a stale registry = frozen sprite).
+        _spriteEditor?.SyncRegistry();
 
         // ── In-Game Mode: render full-screen viewport with no ImGui chrome ──
         if (_inGameMode)

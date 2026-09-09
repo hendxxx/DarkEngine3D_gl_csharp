@@ -613,6 +613,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 Console.WriteLine($"[GameScene] Player spawned at map spawn point ({spawnPos.X:F1}, {spawnPos.Y:F1})");
             }
 
+            // ── Player2D spawn: handled by Player2DSystem on the first update frame via
+            // the Player2DSpawnPending flag (set when in-game mode begins — spawning here
+            // would be overwritten by the async .ing object reload that follows Enter()).
+            Objects.EditorObject.Player2DSpawnPending = true;
+
             // ── Scene starts blank! No .ing file is loaded automatically. ──
             // User can create UI via the IDE SceneDetail panel (+ Add button),
             // or use the "↻ Reload" button to load from a previously saved .ing file.
@@ -806,6 +811,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             if (_objectManager != null)
             {
+                // 3.9 Player2D objects: animation clocks + capsule-vs-tile physics when
+                // running (preview/in-game) — inert in pure edit mode.
+                var bridgeGS = _sceneManager.Bridge;
+                if (bridgeGS != null && (bridgeGS.InGameActive || bridgeGS.IsPreviewMode))
+                    Visual.Player2DSystem.Update(bridgeGS.EditorObjectManager, bridgeGS.ActiveTilemap, deltaTime);
+
                 // 4. Update agents (AI, physics, animations) — always runs
                 _objectManager.Update(deltaTime);
 

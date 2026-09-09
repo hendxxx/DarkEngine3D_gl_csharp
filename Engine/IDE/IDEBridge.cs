@@ -111,6 +111,59 @@ public class IDEBridge
     // ── F9 toggle — when false, game input is blocked ──
     public bool InGameActive { get; set; }
 
+    // ── Static sprite-clip registry: lets engine-side objects (Player2D EditorObject)
+    // resolve the Sprite Editor's sheets/clips by name without a panel reference.
+    // Refreshed every frame by SpriteEditorPanel.Render (cheap dictionary fill).
+    private static readonly Dictionary<string, (SpriteSheet sheet, uint texId, int imgW, int imgH)> _spriteSheets = new();
+    private static readonly Dictionary<(string sheet, string clip), AnimationClip2D> _spriteClips = new();
+
+    /// <summary>Replace the static registry contents (called by SpriteEditorPanel every
+    /// frame with its live sheet/clip lists + preview textures).</summary>
+    public static void SyncSpriteRegistry(
+        IEnumerable<SpriteSheet> sheets, Dictionary<string, uint> textures,
+        IEnumerable<AnimationClip2D> clips)
+    {
+        _spriteSheets.Clear();
+        foreach (var s in sheets)
+        {
+            textures.TryGetValue(s.ImagePath, out uint tex);
+            _spriteSheets[s.Name] = (s, tex, s.ImageWidth, s.ImageHeight);
+        }
+        _spriteClips.Clear();
+        foreach (var c in clips)
+            _spriteClips[(c.SpriteSheetName, c.Name)] = c;
+    }
+
+    public static bool TryGetSpriteSheetTexture(string sheetName, out uint texId, out int imgW, out int imgH)
+    {
+        texId = 0; imgW = 0; imgH = 0;
+        if (sheetName != null && _spriteSheets.TryGetValue(sheetName, out var entry))
+        {
+            texId = entry.texId; imgW = entry.imgW; imgH = entry.imgH;
+            return true;
+        }
+        return false;
+    }
+
+    public static List<string> GetSpriteSheetNames()
+        => _spriteSheets.Keys.OrderBy(k => k).ToList();
+
+    public static List<string> GetClipNames(string sheetName)
+        => _spriteClips.Where(kv => kv.Key.sheet == sheetName).Select(kv => kv.Value.Name).OrderBy(n => n).ToList();
+
+    public static bool TryGetSpriteClip(string sheetName, string clipName, out SpriteSheet? sheet, out AnimationClip2D? clip)
+    {
+        sheet = null; clip = null;
+        if (_spriteClips.TryGetValue((sheetName, clipName), out var c))
+        {
+            clip = c;
+            if (_spriteSheets.TryGetValue(sheetName, out var entry))
+                sheet = entry.sheet;
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>Get the player spawn point for the active map, if one was placed in the
     /// Map Editor. Returns false when no map is active or no spawn was set — gameplay
     /// should fall back to its default spawn behavior in that case. The returned world
