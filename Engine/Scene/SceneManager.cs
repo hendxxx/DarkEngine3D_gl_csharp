@@ -313,7 +313,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // preview so capsules land on collision tiles before Play. ──
                     var bridgeP2d = _ide.Bridge;
                     if (_currentScene == null && bridgeP2d != null && bridgeP2d.IsPreviewMode)
-                        Visual.Player2DSystem.Update(bridgeP2d.EditorObjectManager, bridgeP2d.ActiveTilemap, dt);
+                        Visual.Player2DSystem.Update(bridgeP2d.EditorObjectManager, bridgeP2d.ActiveTilemap, dt, bridgeP2d);
                 }
 
                 // ── Advance transition animation each frame ──

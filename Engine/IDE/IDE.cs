@@ -123,6 +123,9 @@ public class IDE : IDisposable
                     Bridge.InGameActive = false;
                     // Restore editor-only 2D aids (tile grid overlay, collision boxes).
                     Engine.Objects.EditorObject.Editor2DAidsHidden = false;
+                    // Return players to their Start2D marker — physics may have moved
+                    // them anywhere during play; edit mode shows the spawn point again.
+                    Bridge.ResetPlayersToStart2D();
                     _viewport.SetFullscreen(false);
                     _viewport.PreviewMode = false;
                     if (Bridge.Camera != null)

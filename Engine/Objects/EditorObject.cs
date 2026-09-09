@@ -2437,35 +2437,37 @@ public unsafe class EditorObject
     private void DrawPlayer2DCapsule(Camera camera, Vector3 lineColor, float alpha)
     {
         float r = Player2DCapsuleRadius;
-        float halfH = Player2DCapsuleHeight * 0.5f;
+        float H = Player2DCapsuleHeight;
         float baseY = Position.Y;
-        // Cap center: capsule height includes the caps.
-        float cy = MathF.Max(0f, halfH - r);
-        if (cy > halfH) cy = halfH;
+        // Cap centers: bottom cap at baseY + r, top cap at baseY + H - r. The straight
+        // cylinder wall spans between the two centers; the semicircle caps bulge OUTWARD
+        // (down at the feet, up at the head). Clamp for the degenerate H < 2r pill.
+        float cBot = baseY + r;
+        float cTop = baseY + MathF.Max(H - r, r);
 
         var verts = new List<Vector3>(64);
         const int segs = 12;
-        // Top cap: 180°
-        var prev = new Vector3(Position.X, baseY + 2 * cy + r, Position.Z);
+        // Top cap: 180° bulging UP (sin 0..PI is positive).
+        var prev = new Vector3(Position.X + r, cTop, Position.Z);
         for (int i = 1; i <= segs; i++)
         {
             float a = i * MathF.PI / segs; // 0..PI (right → left over the top)
-            var cur = new Vector3(Position.X + MathF.Cos(a) * r, baseY + 2 * cy + MathF.Sin(a) * r, Position.Z);
+            var cur = new Vector3(Position.X + MathF.Cos(a) * r, cTop + MathF.Sin(a) * r, Position.Z);
             verts.Add(prev); verts.Add(cur); prev = cur;
         }
-        // Bottom cap: 180°
-        prev = new Vector3(Position.X, baseY + r, Position.Z);
+        // Bottom cap: 180° bulging DOWN (sin PI..2PI is negative).
+        prev = new Vector3(Position.X - r, cBot, Position.Z);
         for (int i = 1; i <= segs; i++)
         {
             float a = MathF.PI + i * MathF.PI / segs; // PI..2PI (left → right under the bottom)
-            var cur = new Vector3(Position.X + MathF.Cos(a) * r, baseY + r - MathF.Sin(a) * r, Position.Z);
+            var cur = new Vector3(Position.X + MathF.Cos(a) * r, cBot + MathF.Sin(a) * r, Position.Z);
             verts.Add(prev); verts.Add(cur); prev = cur;
         }
-        // Side lines
-        verts.Add(new Vector3(Position.X + r, baseY + r, Position.Z));
-        verts.Add(new Vector3(Position.X + r, baseY + 2 * cy, Position.Z));
-        verts.Add(new Vector3(Position.X - r, baseY + r, Position.Z));
-        verts.Add(new Vector3(Position.X - r, baseY + 2 * cy, Position.Z));
+        // Cylinder side lines connect the cap centers at x = ±r.
+        verts.Add(new Vector3(Position.X - r, cBot, Position.Z));
+        verts.Add(new Vector3(Position.X - r, cTop, Position.Z));
+        verts.Add(new Vector3(Position.X + r, cBot, Position.Z));
+        verts.Add(new Vector3(Position.X + r, cTop, Position.Z));
 
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
         GL.Disable(Const.GL_DEPTH_TEST);
@@ -2505,12 +2507,15 @@ public unsafe class EditorObject
         int frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
         var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
         // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
-        // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. vTop = frame top
-        // (small v'), vBot = frame bottom (large v') — then map bottom-vertex→vBot,
-        // top-vertex→vTop so the sprite stands upright.
+        // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. Raw uvMin.Y is the
+        // frame BOTTOM (small raw v = lower in the flipped convention) → after the
+        // 1-v conversion it becomes the LARGER GL v, so:
+        //   frame bottom → svBot (mapped to the quad's bottom vertex)
+        //   frame top    → svTop (mapped to the quad's top vertex)
+        // Crossing these two makes the sprite render upside down.
         float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
-        float svTop = 1f - uvMinRaw.Y;
-        float svBot = 1f - uvMaxRaw.Y;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
 
         // Quad size: Player2DHeight tall, width follows the frame aspect.
         float frameAspect = sheet.FrameHeight > 0 ? (float)sheet.FrameWidth / sheet.FrameHeight : 1f;

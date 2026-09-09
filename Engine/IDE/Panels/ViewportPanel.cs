@@ -1721,6 +1721,8 @@ public unsafe class ViewportPanel
             _previewMode = false;
             _bridge.IsPreviewMode = false;
             ResetSceneOverlays();
+            // Return players to their Start2D marker before showing the editor again.
+            _bridge.ResetPlayersToStart2D();
             _bridge.TerrainBrushActive = false;
             _bridge.TerrainBrushMode = 0;
             _bridge.GizmoMode = 0;
@@ -1735,6 +1737,8 @@ public unsafe class ViewportPanel
         {
             Console.WriteLine("[Viewport] exit → back to edit mode");
             _bridge.InGameActive = false;
+            // Return players to their Start2D marker before showing the editor again.
+            _bridge.ResetPlayersToStart2D();
             if (_bridge.SceneRoot != null)
             {
                 foreach (var child in _bridge.SceneRoot.Children)
@@ -2763,6 +2767,8 @@ ImGui.SameLine();
                     _previewMode = false;
                     _bridge.IsPreviewMode = false;
                     ResetSceneOverlays();
+                    // Return players to their Start2D marker before showing the editor again.
+                    _bridge.ResetPlayersToStart2D();
                     // Reset all edit-mode actions to default/off
                     _bridge.TerrainBrushActive = false;
                     _bridge.TerrainBrushMode = 0;

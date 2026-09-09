@@ -272,6 +272,32 @@ public class IDEBridge
             EditorObjectManager.Remove(o);
     }
 
+    /// <summary>Teleport every Player2D object back to the first visible Start2D marker
+    /// (feet anchor), zeroing velocity + animation clock. Called when returning to edit
+    /// mode from preview/in-game so the editor shows players at their spawn point, not
+    /// wherever physics left them. No-op when no Start2D marker exists.</summary>
+    public void ResetPlayersToStart2D()
+    {
+        var mgr = EditorObjectManager;
+        if (mgr == null) return;
+
+        EditorObject? start2d = null;
+        foreach (var o in mgr.Objects)
+        {
+            if (o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Start2D }) { start2d = o; break; }
+        }
+        if (start2d == null) return;
+
+        foreach (var o in mgr.Objects)
+        {
+            if (o is not { PrimitiveType: EditorPrimitiveType.Player2D }) continue;
+            o.Position = start2d.Position;
+            o.Player2DVelocityY = 0f;
+            o.Player2DAnimTime = 0f;
+            Console.WriteLine($"[Bridge] Player2D reset to Start ({o.Position.X:F1}, {o.Position.Y:F1})");
+        }
+    }
+
     // ── Editor Object Manager ──
     private EditorObjectManager? _editorObjectManager;
     /// <summary>Manages editor-placed 3D primitives (Plane, Box, Sphere, glb references).
