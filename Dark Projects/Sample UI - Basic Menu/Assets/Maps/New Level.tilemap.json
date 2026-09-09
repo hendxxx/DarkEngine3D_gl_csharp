@@ -4,7 +4,7 @@
     "Width": 50,
     "Height": 20,
     "TileSize": 32,
-    "TilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+    "TilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
     "TilesetColumns": 25,
     "TilesetRows": 25,
     "TilesetFlipV": false,
@@ -15,9 +15,52 @@
     "GridColorG": 1,
     "GridColorB": 1,
     "GridColorA": 0.12,
+    "ParallaxLayers": [
+      {
+        "Name": "Parallax 0",
+        "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+        "IsVisible": true,
+        "ScrollFactor": 1,
+        "ZPosition": -2,
+        "Alpha": 1,
+        "TileHorizontal": true,
+        "WidthPx": 0,
+        "HeightPx": 0,
+        "RepeatX": 0,
+        "RepeatY": 0,
+        "LeftPx": 0,
+        "TopPx": 0
+      },
+      {
+        "Name": "Parallax 1",
+        "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+        "IsVisible": true,
+        "ScrollFactor": 0.85,
+        "ZPosition": -1,
+        "Alpha": 1,
+        "TileHorizontal": true,
+        "WidthPx": 0,
+        "HeightPx": 0,
+        "RepeatX": 0,
+        "RepeatY": 0,
+        "LeftPx": 0,
+        "TopPx": 0
+      }
+    ],
+    "CameraStartX": 83.03183,
+    "CameraStartY": 43.81875,
+    "CameraStartZ": 307.03183,
+    "CameraStartYaw": 180,
+    "CameraStartPitch": 0,
+    "CameraStartOrthoSize": 43.81875,
+    "HasCameraStart": true,
+    "SpawnX": 0,
+    "SpawnY": 0,
+    "HasPlayerSpawn": false,
     "Layers": [
       {
         "Name": "Base",
+        "LayerType": "2D",
         "IsVisible": true,
         "IsLocked": false,
         "Opacity": 1,
@@ -924,7 +967,7 @@
           -1,
           -1,
           -1,
-          0,
+          1,
           1,
           2,
           3,
@@ -970,11 +1013,11 @@
           1,
           1,
           1,
-          1,
-          1,
-          1,
-          4,
-          25,
+          456,
+          457,
+          458,
+          459,
+          26,
           26,
           26,
           26,
@@ -1008,7 +1051,6 @@
           231,
           232,
           233,
-          234,
           26,
           26,
           26,
@@ -1021,14 +1063,18 @@
           26,
           26,
           26,
-          26,
-          26,
-          29
+          481,
+          482,
+          483,
+          484
         ],
-        "CollisionTileIds": []
+        "CollisionTileIds": [
+          26
+        ]
       },
       {
-        "Name": "DetailBase1",
+        "Name": "Detail Base 1",
+        "LayerType": "2D",
         "IsVisible": true,
         "IsLocked": false,
         "Opacity": 1,
@@ -1925,9 +1971,8 @@
           -1,
           -1,
           -1,
-          -1,
-          -1,
-          -1,
+          391,
+          392,
           -1,
           391,
           392,
@@ -1976,8 +2021,8 @@
           -1,
           -1,
           -1,
-          -1,
-          -1,
+          416,
+          417,
           -1,
           416,
           417,
@@ -2034,21 +2079,18 @@
           -1,
           -1,
           -1,
+          -1,
           -1
         ],
-        "CollisionTileIds": []
+        "CollisionTileIds": [
+          26,
+          25,
+          29,
+          27,
+          28
+        ]
       }
     ]
   },
-  "ParallaxLayers": [
-    {
-      "Name": "Parallax 0",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
-      "IsVisible": true,
-      "ScrollFactor": 1,
-      "ZPosition": -0.2,
-      "Alpha": 1,
-      "TileHorizontal": true
-    }
-  ]
+  "ParallaxLayers": null
 }

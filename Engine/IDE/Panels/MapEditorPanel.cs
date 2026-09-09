@@ -24,7 +24,7 @@ public class MapEditorPanel
     public Tilemap2D? ActiveTilemap;
 
     // ── Tool modes ──
-    private enum PaintTool { Paint, Erase, Fill, Pick }
+    private enum PaintTool { Paint, Erase, Fill, Pick, Collision }
     private PaintTool _currentTool = PaintTool.Paint;
 
     // ── Layer management ──
@@ -98,6 +98,7 @@ public class MapEditorPanel
         {
             var s = DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Load();
             _showGrid = s.MapEditorShowGrid;
+            _showCollisions = s.MapEditorShowCollision;
             _showWorldGrid = s.MapEditorShowWorldGrid;
             _worldGridSize = s.MapEditorWorldGridSize;
             _worldGridColor = new Vector4(s.MapEditorWorldGridColorR, s.MapEditorWorldGridColorG,
@@ -127,6 +128,7 @@ public class MapEditorPanel
         {
             var s = DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Load();
             s.MapEditorShowGrid = _showGrid;
+            s.MapEditorShowCollision = _showCollisions;
             s.MapEditorShowWorldGrid = _showWorldGrid;
             s.MapEditorWorldGridSize = _worldGridSize;
             s.MapEditorWorldGridColorR = _worldGridColor.X;
@@ -551,6 +553,9 @@ public class MapEditorPanel
                 && ReferenceEquals(o.Map2dTilemap, ActiveTilemap));
             if (mapObj != null)
             {
+                // Show Collision checkbox follows the object's persisted state so a
+                // scene saved with boxes ON reopens with boxes ON (not forced off).
+                _showCollisions = mapObj.Map2dShowCollision;
                 // Keep the EditorObject in sync with the tilemap (so Save All serializes
                 // the correct state). Only override if the tilemap has an explicit value.
                 if (mapObj.Map2dShowGrid != _showGrid || mapObj.Map2dGridColor != _gridColor)
@@ -567,7 +572,8 @@ public class MapEditorPanel
     private void RenderToolbar()
     {
         var tools = new[] { ("Paint", PaintTool.Paint), ("Erase", PaintTool.Erase),
-                           ("Fill", PaintTool.Fill), ("Pick", PaintTool.Pick) };
+                           ("Fill", PaintTool.Fill), ("Pick", PaintTool.Pick),
+                           ("Collision", PaintTool.Collision) };
         foreach (var (label, tool) in tools)
         {
             bool isActive = _currentTool == tool;
@@ -583,7 +589,8 @@ public class MapEditorPanel
         if (ImGui.Checkbox("Show Grid##toolbar", ref _showGrid))
             _gridPrefsDirty = true;
         ImGui.SameLine();
-        ImGui.Checkbox("Show Collision##toolbar", ref _showCollisions);
+        if (ImGui.Checkbox("Show Collision##toolbar", ref _showCollisions))
+            _gridPrefsDirty = true;
 
         // Sync to bridge for viewport painting
         _bridge.MapPaintTool = (int)_currentTool;
@@ -804,6 +811,18 @@ public class MapEditorPanel
                 layer.IsLocked = locked;
             ImGui.SameLine();
 
+            // Type badge: "2D"/"3D" chip in front of the layer name (read-only — new
+            // layers are created as 2D; the badge makes the layer kind visible).
+            bool is3D = layer.LayerType == "3D";
+            ImGui.PushStyleColor(ImGuiCol.Text, is3D
+                ? new Vector4(0.55f, 0.75f, 1f, 1f)
+                : new Vector4(0.55f, 0.9f, 0.6f, 1f));
+            ImGui.TextUnformatted(is3D ? "3D" : "2D");
+            ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Layer type: {layer.LayerType} (new layers are created as 2D)");
+            ImGui.SameLine();
+
             // Layer name
             if (ImGui.Selectable($"{layer.Name}##{i}", isSelected, ImGuiSelectableFlags.None, new Vector2(150, 20)))
             {
@@ -829,10 +848,11 @@ public class MapEditorPanel
         ImGui.SameLine();
         if (ImGui.Button("+ Add Layer##tile"))
         {
-            // Add new layer to tilemap data
+            // Add new layer to tilemap data — new tile layers are always type "2D".
             var newLayer = new TileLayer
             {
                 Name = _newLayerName,
+                LayerType = "2D",
                 Width = ActiveTilemap.Width,
                 Height = ActiveTilemap.Height
             };
@@ -989,6 +1009,21 @@ public class MapEditorPanel
                 else if (_selectedTileIds.ContainsKey(tileId))
                     drawList.AddRect(new Vector2(x, y), new Vector2(x + _paletteCellSize, y + _paletteCellSize),
                         ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.4f, 0f, 1f)), 0f, 0, 2f);
+
+                // Collision symbol: red badge on tiles flagged for collision so the
+                // palette itself shows which tile IDs block the player.
+                if (ActiveTilemap.ActiveLayer.TileHasCollision(tileId))
+                {
+                    float badge = _paletteCellSize * 0.22f;
+                    var cMin = new Vector2(x + _paletteCellSize - badge - 2f, y + 2f);
+                    var cMax = new Vector2(x + _paletteCellSize - 2f, y + badge + 2f);
+                    drawList.AddCircleFilled(
+                        new Vector2((cMin.X + cMax.X) * 0.5f, (cMin.Y + cMax.Y) * 0.5f),
+                        badge * 0.5f, ImGui.ColorConvertFloat4ToU32(new Vector4(0.9f, 0.15f, 0.15f, 0.95f)));
+                    drawList.AddCircle(
+                        new Vector2((cMin.X + cMax.X) * 0.5f, (cMin.Y + cMax.Y) * 0.5f),
+                        badge * 0.5f, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.8f, 0.8f, 0.9f)), 0, 1.2f);
+                }
 
                 // Selection update: plain click starts a marquee drag (rectangle select),
                 // shift+click toggles a single tile into the multi-select.
@@ -1148,16 +1183,31 @@ public class MapEditorPanel
         if (ActiveTilemap == null) return;
 
         ImGui.Text("Tiles with Collision:");
-        ImGui.TextDisabled("(Click tiles in palette, then toggle collision)");
+        ImGui.TextDisabled("(Or use the Collision tool: click/drag tiles in the viewport)");
 
-        bool hasCollision = ActiveTilemap.ActiveLayer.TileHasCollision(_selectedTileId);
-        if (ImGui.Checkbox($"Tile {_selectedTileId} has collision", ref hasCollision))
+        // Multi-selection aware: toggle applies to ALL selected palette tiles.
+        var targetIds = _selectedTileIds.Count > 0
+            ? _selectedTileIds.Keys.ToList()
+            : [_selectedTileId];
+
+        bool allHave = targetIds.All(id => ActiveTilemap.ActiveLayer.TileHasCollision(id));
+        string label = targetIds.Count == 1
+            ? $"Tile {targetIds[0]} has collision"
+            : $"All {targetIds.Count} selected tiles have collision";
+        if (ImGui.Checkbox(label, ref allHave))
         {
-            if (hasCollision)
-                ActiveTilemap.ActiveLayer.CollisionTileIds.Add(_selectedTileId);
-            else
-                ActiveTilemap.ActiveLayer.CollisionTileIds.Remove(_selectedTileId);
+            foreach (int id in targetIds)
+            {
+                if (allHave)
+                    ActiveTilemap.ActiveLayer.CollisionTileIds.Add(id);
+                else
+                    ActiveTilemap.ActiveLayer.CollisionTileIds.Remove(id);
+            }
         }
+
+        // Quick summary of how many distinct tile IDs currently collide.
+        int count = ActiveTilemap.ActiveLayer.CollisionTileIds.Count;
+        ImGui.TextDisabled($"{count} tile ID(s) flagged for collision on this layer");
     }
 
     private bool IsCurrentSceneGameScene()
@@ -1701,6 +1751,32 @@ public class MapEditorPanel
         if (layer.IsLocked) return;
 
         var (gx, gy) = ActiveTilemap.WorldToGrid(worldPos);
+
+        // ── Collision tool: click/drag toggles collision on the tile ID under the
+        // cursor (first stroke sample decides add vs remove, so dragging over a run
+        // of mixed tiles applies ONE consistent operation instead of flip-flopping).
+        if (_currentTool == PaintTool.Collision)
+        {
+            if (!_collisionStrokeActive)
+            {
+                int tileAt = ActiveTilemap.GetTile(_selectedLayerIdx, gx, gy);
+                _collisionStrokeAdd = tileAt < 0
+                    ? true // empty cell → add collision for the selected tile ID
+                    : !layer.TileHasCollision(tileAt);
+                _collisionStrokeActive = true;
+            }
+
+            int targetId = ActiveTilemap.GetTile(_selectedLayerIdx, gx, gy);
+            if (targetId < 0) targetId = _selectedTileId; // empty cell → stamp on selection
+
+            bool changed = _collisionStrokeAdd
+                ? layer.CollisionTileIds.Add(targetId)
+                : layer.CollisionTileIds.Remove(targetId);
+            if (changed)
+                Console.WriteLine($"[MapEditor] Collision {(_collisionStrokeAdd ? "ON" : "OFF")} for tile {targetId}");
+            return;
+        }
+
         int tileId = _currentTool == PaintTool.Erase ? -1 : _selectedTileId;
 
         // Apply brush size
@@ -1741,6 +1817,15 @@ public class MapEditorPanel
         int tileId = ActiveTilemap.GetTile(_selectedLayerIdx, gx, gy);
         if (tileId >= 0) _selectedTileId = tileId;
     }
+
+    // Collision-tool stroke state: the FIRST cell clicked decides add-vs-remove so a
+    // drag paints one consistent operation across the whole stroke.
+    private bool _collisionStrokeActive;
+    private bool _collisionStrokeAdd = true;
+
+    /// <summary>Called by ViewportPanel when the mouse is released — ends a collision
+    /// stroke so the next click re-evaluates add vs remove.</summary>
+    public void EndCollisionStroke() => _collisionStrokeActive = false;
 }
 
 /// <summary>

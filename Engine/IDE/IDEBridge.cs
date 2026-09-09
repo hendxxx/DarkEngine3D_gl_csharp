@@ -52,6 +52,11 @@ public class IDEBridge
     public IReadOnlyList<UIButtonData>? SceneUIButtons { get; set; }
     /// <summary>The invisible scene-root container that holds all top-level UI elements.</summary>
     public UIElement? SceneRoot { get; set; }
+    /// <summary>True while a visible overlay (first visible root Container) is shown.
+    /// Modal behavior: the game world (movement, camera freefly, viewport picking) is
+    /// blocked and only elements inside the overlay accept input — the background is
+    /// visible but inert until the overlay closes.</summary>
+    public bool IsOverlayVisible { get; set; }
     /// <summary>Root-level UI elements in the current scene, for hierarchy display (children of SceneRoot).</summary>
     public IReadOnlyList<UIElement>? SceneRootElements { get; set; }
 
@@ -175,6 +180,8 @@ public class IDEBridge
     public Action<Vector2>? MapPaintAt { get; set; }
     public Action<Vector2>? MapFillAt { get; set; }
     public Action<Vector2>? MapPickAt { get; set; }
+    /// <summary>Ends the in-progress collision-toggle stroke (Collision tool).</summary>
+    public Action? MapEndCollisionStroke { get; set; }
     /// <summary>Tile paint/erase undo-redo (wired to MapEditorPanel.UndoTilePaint/Redo).</summary>
     public Action? MapUndo { get; set; }
     public Action? MapRedo { get; set; }

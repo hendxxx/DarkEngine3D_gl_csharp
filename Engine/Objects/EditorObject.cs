@@ -760,10 +760,11 @@ public unsafe class EditorObject
     /// math) while the rendered layer follows the editor selection.
     /// </summary>
     public int Map2dActiveLayer { get; set; } = -1;
-    /// <summary>Show translucent collision helper boxes over tiles flagged for collision
-    /// (like Unreal's collision previews): one box per collision tile, sticking OUT of
-    /// the grid plane toward the viewer so it reads as a standable platform. Tiles whose
-    /// ID has no collision flag draw NO box.</summary>
+    /// <summary>Show FULL 3D collision helper boxes over tiles flagged for collision
+    /// (like Unreal's collision previews): one shaded box with bright edges per
+    /// collision tile, sticking OUT of the grid plane toward the viewer so the player
+    /// can "stand" on it. A tile whose ID has NO collision flag draws NO box —
+    /// no box = no collision.</summary>
     public bool Map2dShowCollision { get; set; } = true;
     /// <summary>RGBA color of the collision helper boxes (default: translucent green).</summary>
     public Vector4 Map2dCollisionColor { get; set; } = new(0.25f, 0.85f, 0.45f, 0.35f);
@@ -3313,10 +3314,32 @@ void main() {
                     bool cullCol = GL.IsEnabled(Const.GL_CULL_FACE);
                     GL.Disable(Const.GL_CULL_FACE);
 
-                    // One thin quad per collision tile, popped slightly toward the camera
-                    // side (+Z out of the plane). Box faces away from grid → reads as a
-                    // solid platform the player stands on.
-                    var boxVerts = new List<Map2DVertex>(64);
+                    // One FULL 3D box per collision tile: translucent shaded faces +
+                    // bright edges so the collision volume reads from any angle (like
+                    // Unreal's collision previews). The box is CENTERED on the grid
+                    // plane — the 2D tile sits exactly in the middle of the box, half
+                    // the depth in front of the plane, half behind it. Local -Y maps
+                    // to world +Z through the -90° X rotation. Vertices stay in the
+                    // plane's local space so the same translate+rotate model matrix as
+                    // the tile mesh positions them.
+                    float boxDepth = cell * 0.5f;
+                    float halfDepth = boxDepth * 0.5f;
+                    float cR = Map2dCollisionColor.X, cG = Map2dCollisionColor.Y, cB = Map2dCollisionColor.Z;
+                    float cA = Math.Clamp(Map2dCollisionColor.W, 0.05f, 1f);
+                    var boxVerts = new List<Map2DVertex>(36 * 16);
+                    var edgeVerts = new List<Vector3>(24 * 16);
+
+                    void ColFace(float m, float ax, float ay, float az, float bx, float by, float bz,
+                                 float cx, float cy, float cz, float dx, float dy, float dz)
+                    {
+                        boxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(bx, by, bz, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(dx, dy, dz, 0, 0, cR * m, cG * m, cB * m, cA));
+                    }
+
                     for (int ty = 0; ty < mapH; ty++)
                     {
                         for (int tx = 0; tx < mapW; tx++)
@@ -3329,19 +3352,31 @@ void main() {
                             // Row 0 = top row → world Y flipped (same as the tile mesh)
                             float wy0 = (mapH - 1 - ty) * cell;
                             float wy1 = wy0 + cell;
+                            float yN = -halfDepth; // near face → world +Z (in front of grid)
+                            float yF = +halfDepth; // far face → world -Z (behind grid) — tile centered
 
-                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0,
-                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
-                            boxVerts.Add(new Map2DVertex(wx1, wy0, 0f, 1, 0,
-                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
-                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1,
-                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
-                            boxVerts.Add(new Map2DVertex(wx0, wy0, 0f, 0, 0,
-                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
-                            boxVerts.Add(new Map2DVertex(wx1, wy1, 0f, 1, 1,
-                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
-                            boxVerts.Add(new Map2DVertex(wx0, wy1, 0f, 0, 1,
-                                Map2dCollisionColor.X, Map2dCollisionColor.Y, Map2dCollisionColor.Z, Map2dCollisionColor.W));
+                            // 6 shaded faces (top brightest, sides dimmer → 3D depth cue)
+                            ColFace(1.25f, wx0, yN, wy1, wx1, yN, wy1, wx1, yF, wy1, wx0, yF, wy1); // top
+                            ColFace(0.55f, wx0, yN, wy0, wx1, yN, wy0, wx1, yF, wy0, wx0, yF, wy0); // bottom
+                            ColFace(0.80f, wx0, yN, wy0, wx0, yN, wy1, wx0, yF, wy1, wx0, yF, wy0); // left
+                            ColFace(0.80f, wx1, yN, wy0, wx1, yN, wy1, wx1, yF, wy1, wx1, yF, wy0); // right
+                            ColFace(1.00f, wx0, yN, wy0, wx1, yN, wy0, wx1, yN, wy1, wx0, yN, wy1); // near
+                            ColFace(0.45f, wx0, yF, wy0, wx1, yF, wy0, wx1, yF, wy1, wx0, yF, wy1); // far
+
+                            // 12 world-space edges (bright outline, drawn after the faces)
+                            float zF = layerZ - halfDepth, zN = layerZ + halfDepth;
+                            edgeVerts.Add(new Vector3(wx0, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy0, zF));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy1, zF));
+                            edgeVerts.Add(new Vector3(wx1, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy1, zF));
+                            edgeVerts.Add(new Vector3(wx0, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy0, zF));
+                            edgeVerts.Add(new Vector3(wx0, wy0, zN)); edgeVerts.Add(new Vector3(wx1, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zN)); edgeVerts.Add(new Vector3(wx1, wy1, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy1, zN)); edgeVerts.Add(new Vector3(wx0, wy1, zN));
+                            edgeVerts.Add(new Vector3(wx0, wy1, zN)); edgeVerts.Add(new Vector3(wx0, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx0, wy0, zF)); edgeVerts.Add(new Vector3(wx0, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy1, zF)); edgeVerts.Add(new Vector3(wx1, wy1, zN));
+                            edgeVerts.Add(new Vector3(wx0, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy1, zN));
                         }
                     }
 
@@ -3365,11 +3400,9 @@ void main() {
                             _parallaxVBO = vbo;
                         }
 
-                        // Pop the boxes slightly out of the plane (toward the default
-                        // editor camera) so they read in front of the tile art.
-                        var popModel = Matrix4x4.CreateTranslation(0f, 0f, layerZ + 0.02f)
-                                     * Matrix4x4.CreateRotationX(-MathF.PI / 2f);
-                        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &popModel.M11);
+                        // Boxes are baked in the plane's local space → the same
+                        // translate+rotate model matrix as the tile mesh positions them.
+                        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
 
                         fixed (Map2DVertex* p = boxVerts.ToArray())
                         {
@@ -3378,6 +3411,17 @@ void main() {
                             GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(boxVerts.Count * sizeof(Map2DVertex)), p, Const.GL_DYNAMIC_DRAW);
                             GL.DrawArrays(Const.GL_TRIANGLES, 0, boxVerts.Count);
                             GL.BindVertexArray(0);
+                        }
+
+                        // Bright edges: solid lines over the translucent faces so each
+                        // box outline is clearly visible from any camera angle.
+                        if (edgeVerts.Count > 0)
+                        {
+                            var edgeCol = new Vector3(
+                                MathF.Min(1f, cR * 1.5f + 0.2f),
+                                MathF.Min(1f, cG * 1.5f + 0.2f),
+                                MathF.Min(1f, cB * 1.5f + 0.2f));
+                            Terrains.TerrainChunk.DrawLineSegments(edgeVerts, edgeCol, camera, 0.95f);
                         }
 
                         // Restore the tile model matrix so later passes stay aligned.

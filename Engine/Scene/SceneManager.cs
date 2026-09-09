@@ -259,7 +259,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_currentScene == null && _ide != null && _ide.IsActive)
                 {
                     var bridge = _ide.Bridge;
-                    if (bridge != null && bridge.IsViewportFocused)
+                    // Modal overlay visible → camera input frozen (background stays inert).
+                    if (bridge != null && bridge.IsViewportFocused && !bridge.IsOverlayVisible)
                     {
                         // Ensure editor camera exists
                         if (_editorCamera == null)

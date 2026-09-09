@@ -261,6 +261,12 @@ public class Tilemap2D
 public class TileLayer
 {
     public string Name = "Layer";
+
+    /// <summary>Layer kind: "2D" (tile layer, the default for layers added in the Map
+    /// Editor) or "3D" (reserved for 3D content layers). Persisted with the map so the
+    /// type survives save/load round-trips.</summary>
+    public string LayerType = "2D";
+
     public bool IsVisible = true;
     public bool IsLocked;
     public float Opacity = 1f;
@@ -321,6 +327,7 @@ public class TileLayer
     public TileLayerData ToData() => new()
     {
         Name = Name,
+        LayerType = LayerType,
         IsVisible = IsVisible,
         IsLocked = IsLocked,
         Opacity = Opacity,
@@ -335,6 +342,7 @@ public class TileLayer
         var layer = new TileLayer
         {
             Name = data.Name,
+            LayerType = string.IsNullOrEmpty(data.LayerType) ? "2D" : data.LayerType,
             IsVisible = data.IsVisible,
             IsLocked = data.IsLocked,
             Opacity = data.Opacity,
@@ -413,6 +421,8 @@ public class TilemapParallaxLayerData
 public class TileLayerData
 {
     public string Name { get; set; } = "Layer";
+    /// <summary>"2D" (tile layer) or "3D" (reserved). New layers default to "2D".</summary>
+    public string LayerType { get; set; } = "2D";
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; }
     public float Opacity { get; set; } = 1f;

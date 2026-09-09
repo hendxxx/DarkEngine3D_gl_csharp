@@ -43,6 +43,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // the Map Editor comes back with the same Show Grid / grid colors / palette
         // columns+cell after restarting or reopening the project. ──
         public bool MapEditorShowGrid { get; set; } = true;
+        public bool MapEditorShowCollision { get; set; } = true;
         public float MapEditorGridColorR { get; set; } = 0.4f;   // 3D map grid lines
         public float MapEditorGridColorG { get; set; } = 0.5f;
         public float MapEditorGridColorB { get; set; } = 0.68f;

@@ -847,6 +847,7 @@ public class HierarchyPanel
                             EditorPrimitiveType.Camera => "",
                             EditorPrimitiveType.Light => "☀",
                             EditorPrimitiveType.Sky => "☁",
+                            EditorPrimitiveType.Map2D => "🗺",
                             _ => "",
                         };
 
@@ -947,6 +948,7 @@ public class HierarchyPanel
                         EditorPrimitiveType.Camera => "",
                         EditorPrimitiveType.Light => "☀",
                         EditorPrimitiveType.Sky => "☁",
+                        EditorPrimitiveType.Map2D => "🗺",
                         _ => "",
                     };
                     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth;

@@ -426,8 +426,9 @@ public unsafe class MainMenuScene : IScene
         if (!ingameActive)
         {
             // ── IDE mode: free-fly camera (WASD + mouse look) when viewport is focused ──
+            // A visible overlay is modal → camera input frozen while it's up.
             var ideBridge = _sceneManager.Bridge;
-            if (ideBridge != null && ideBridge.IsViewportFocused)
+            if (ideBridge != null && ideBridge.IsViewportFocused && !ideBridge.IsOverlayVisible)
             {
                 _camera.SetCameraFlyMode(window, _deltaTime, true);
             }

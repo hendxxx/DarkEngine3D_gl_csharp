@@ -207,6 +207,26 @@ public unsafe class ViewportPanel
     /// keyboardActivate signals that Enter/Space was pressed for the focused element.</summary>
     private void DrawEditorUIPreview(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements, Vector2 mouseScreen, bool leftClicked, bool isPreview = false, bool isMouseDown = false, UIElement? focusedElement = null, bool keyboardActivate = false, float scrollOffsetY = 0f, Vector4? clipBounds = null)
     {
+        // Publish overlay state EVERY frame (before any element processing): a visible
+        // root-level Container is a modal overlay — the game world (camera freefly,
+        // picking, painting) must freeze while it's up. IsBlockedByOverlay keeps the
+        // same flag fresh for the editor path below.
+        _bridge.IsOverlayVisible = false;
+        if (_bridge.SceneRoot != null)
+        {
+            foreach (var child in _bridge.SceneRoot.Children)
+            {
+                if (child.IsVisible && child.Type == UIElementType.Container)
+                {
+                    _bridge.IsOverlayVisible = true;
+                    break;
+                }
+            }
+        }
+        // Also treat the root itself as an overlay when the whole scene is one Container.
+        if (!_bridge.IsOverlayVisible && _bridge.SceneRoot != null
+            && _bridge.SceneRoot.IsVisible && _bridge.SceneRoot.Type == UIElementType.Container)
+            _bridge.IsOverlayVisible = true;
         // Close dropdown if clicking outside of it (check full scene tree, not just current list)
         if (_openDropdown != null && leftClicked)
         {
@@ -1996,7 +2016,7 @@ public unsafe class ViewportPanel
     /// Elements outside the overlay are blocked; elements inside (or the overlay itself) are not.</summary>
     private bool IsBlockedByOverlay(UIElement elem)
     {
-        if (_bridge.SceneRoot == null) return false;
+        if (_bridge.SceneRoot == null) { _bridge.IsOverlayVisible = false; return false; }
 
         // Find the first visible overlay (Container) at root level
         UIElement? activeOverlay = null;
@@ -2008,6 +2028,10 @@ public unsafe class ViewportPanel
                 break;
             }
         }
+
+        // Publish overlay state for the rest of the engine: while an overlay is up,
+        // the game world is modal (no camera freefly, no world picking/painting).
+        _bridge.IsOverlayVisible = activeOverlay != null;
 
         if (activeOverlay == null) return false; // no overlay open
         if (elem == activeOverlay) return false;  // the overlay itself is clickable
@@ -3405,6 +3429,10 @@ ImGui.SameLine();
             bool mouseOverImage = viewportMouseScreen.X >= _imageMin.X && viewportMouseScreen.X <= _imageMax.X &&
                                   viewportMouseScreen.Y >= _imageMin.Y && viewportMouseScreen.Y <= _imageMax.Y;
 
+            // Modal overlay: a visible root-level Container owns ALL input — the 3D
+            // world behind it (picking, painting, sculpting, gizmo, marquee) is inert.
+            bool worldInputBlocked = _bridge.IsOverlayVisible;
+
             if (mouseOverImage)
             {
                 float relX = viewportMouseScreen.X - _imageMin.X;
@@ -3431,7 +3459,7 @@ ImGui.SameLine();
                 // suppressInput is computed above (before mouseOverImage block).
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
                     && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar()
-                    && SkySunHandleAtMouse() == null && !suppressInput)
+                    && SkySunHandleAtMouse() == null && !suppressInput && !worldInputBlocked)
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
@@ -3442,7 +3470,7 @@ ImGui.SameLine();
                 // Skipped when any popup/menu is open or just closed (modal mode).
                 if (hasSceneTexture && ImGui.IsItemClicked(ImGuiMouseButton.Middle) && !_previewMode && _bridge.Camera != null
                     && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
-                    && !suppressInput)
+                    && !suppressInput && !worldInputBlocked)
                 {
                     // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
                     float midClickY = _bridge.SceneTextureHeight - sceneV * _bridge.SceneTextureHeight;
@@ -3500,7 +3528,7 @@ ImGui.SameLine();
             if (!_previewMode && _bridge.TerrainBrushActive && hasSceneTexture
                 && _bridge.EditorObjectManager != null && _bridge.Camera != null
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
-                && !suppressInput && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
+                && !suppressInput && !worldInputBlocked && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
             {
                 var cam = _bridge.Camera;
                 var mgr = _bridge.EditorObjectManager;
@@ -3703,7 +3731,7 @@ ImGui.SameLine();
                 && _bridge.EditorObjectManager != null && mouseOverImage && HasVisibleMapObject()
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
                 && hasSceneTexture && _dragMode == DragMode.None
-                && !suppressInput && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
+                && !suppressInput && !worldInputBlocked && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
             {
                 var cam = _bridge.Camera;
                 int vpw = _bridge.SceneTextureWidth;
@@ -3760,6 +3788,34 @@ ImGui.SameLine();
                             bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
                             bool leftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
                             bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+
+                            // ── Collision tool (tool 4): click/drag toggles collision on the
+                            // tile(s) under the cursor; ignore palette multi-select stamping.
+                            if (tool == 4)
+                            {
+                                if (leftDown || leftClicked)
+                                    _bridge.MapPaintAt?.Invoke(new Vector2(hit.X, hit.Y));
+                                if (leftReleased)
+                                    _bridge.MapEndCollisionStroke?.Invoke();
+
+                                // Red fill on hovered collision tiles, hollow on non-collision
+                                // (shows what this stroke would ADD vs REMOVE).
+                                int hTile = map.GetTile(_bridge.ActiveTileLayer, gx, gy);
+                                bool hCol = hTile >= 0 && map.ActiveLayer.TileHasCollision(hTile);
+                                var eMin = hs3; var eMax = hs1;
+                                uint eFill = ImGui.ColorConvertFloat4ToU32(hCol
+                                    ? new Vector4(1f, 0.1f, 0.1f, 0.35f)
+                                    : new Vector4(1f, 0.1f, 0.1f, 0.08f));
+                                uint eLine = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.2f, 0.2f, 0.95f));
+                                hdl.AddRectFilled(eMin, eMax, eFill);
+                                hdl.AddQuad(hs0, hs1, hs2, hs3, eLine, 2f);
+
+                                if (leftClicked)
+                                    _bridge.IsViewportClicked = false;
+                                // Fall through with tool forced out of paint modes so the
+                                // regular paint paths below do nothing.
+                                tool = -1;
+                            }
 
                             // Ctrl+Z / Ctrl+Y over the 2D level → tile paint undo/redo
                             // (map tools have no menu entry; keyboard is the only path).
@@ -3903,7 +3959,8 @@ ImGui.SameLine();
                     && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
                     && !_spawnDragActive && !_spawnHover
                     && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null
-                    && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar())
+                    && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar()
+                    && !worldInputBlocked)
                 {
                     _marqueeStart = new Vector2(_bridge.ViewportMouseX, _bridge.ViewportMouseY);
                     _marqueeCurrent = _marqueeStart.Value;
@@ -4126,7 +4183,8 @@ ImGui.SameLine();
                 && _bridge.SelectedEditorObject != null && mouseOverImage
                 && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
                 && _skySunDragObj == null && SkySunHandleAtMouse() == null
-                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                && !worldInputBlocked)
             {
                 var cam = _bridge.Camera;
                 var gizmo = _bridge.EditorGizmo;

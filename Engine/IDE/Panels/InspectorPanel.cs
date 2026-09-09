@@ -1587,6 +1587,7 @@ public class InspectorPanel
                 EditorPrimitiveType.Camera => "Camera",
                 EditorPrimitiveType.Light => "Light",
                 EditorPrimitiveType.Sky => "Sky",
+                EditorPrimitiveType.Map2D => "Map2D (Tilemap)",
                 _ => "Unknown"
             };
             ImGui.Text($"Type: {typeStr}");

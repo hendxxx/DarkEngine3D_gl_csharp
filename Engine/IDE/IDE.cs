@@ -562,6 +562,7 @@ public class IDE : IDisposable
             Bridge.MapPaintAt = pos => _mapEditor.PaintAtWorldPosition(pos);
             Bridge.MapFillAt = pos => _mapEditor.FillAtWorldPosition(pos);
             Bridge.MapPickAt = pos => _mapEditor.PickAtWorldPosition(pos);
+            Bridge.MapEndCollisionStroke = () => _mapEditor.EndCollisionStroke();
             Bridge.MapUndo = () => _mapEditor.UndoTilePaint();
             Bridge.MapRedo = () => _mapEditor.RedoTilePaint();
             Bridge.MapHasLevel = () => _mapEditor.HasActiveTilemap;
@@ -1376,14 +1377,18 @@ public class IDE : IDisposable
         if (cam != null)
         {
             // 2D level scenes match edit mode: ortho/front, freefly OFF, cursor visible.
+            // A visible overlay is modal: freefly stays off while it's up (the overlay
+            // owns the cursor; camera must not spin/drift behind it).
             bool levelMode = IsLevelShown();
-            if (levelMode)
+            bool overlayModal = Bridge.IsOverlayVisible;
+            if (levelMode || overlayModal)
             {
-                if (cam.FlyMouseLook)
+                if (cam.FlyMouseLook || cam.IsFlyMode)
                 {
                     cam.FlyMouseLook = false;
-                    Mouse.ShowMouse(true);
+                    cam.IsFlyMode = false;
                 }
+                Mouse.ShowMouse(true);
             }
             // ShowCursorInGame option overrides: always show cursor in-game mode
             else if (Bridge.ShowCursorInGame)
