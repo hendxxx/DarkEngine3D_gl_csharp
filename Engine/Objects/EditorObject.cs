@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using ImGuiNET;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
@@ -2610,16 +2611,32 @@ public unsafe class EditorObject
     /// frame so the character switches action smoothly without user input. Actions that
     /// don't bind a key are locomotion candidates; user-bound actions (Attack/J/...)
     /// are only started by their key or by priority-gated events (Jump on takeoff).
+    /// 
+    /// When a key-bound action is active and its key is released, the action is cleared so
+    /// locomotion can take over (e.g. Run bound to J: hold J = Run, release J = Idle/Walk).
+    /// Pass <paramref name="keyStillHeld"/> = true when the bound key is currently down.
     /// Returns true when the action changed this frame.</summary>
-    public bool ResolveLocomotionAction()
+    public bool ResolveLocomotionAction(bool keyStillHeld)
     {
-        // Only auto-switch when no user-bound action is currently playing (those are
-        // priority-gated and must not be hijacked by locomotion).
+        // If a key-bound action is currently active, check whether its key is still
+        // held. If released (and the action is loopable), let locomotion take over.
+        // Non-loop key-bound actions release on their own via the action-clock check in
+        // DrawPlayer2D; here we only handle the loop case (e.g. Run bound to J while held).
         if (!string.IsNullOrEmpty(Player2DCurrentAction))
         {
             var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
             if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
-                return false; // a user-bound action is active — don't override it
+            {
+                if (!keyStillHeld && cur.Loop)
+                {
+                    // Key released while a looping key-bound action was active — fall back
+                    // to locomotion. Clears the action; the next frame's locomotion switch
+                    // will pick Idle/Walk/Run based on state.
+                    Player2DCurrentAction = "";
+                    Player2DActionTime = 0f;
+                }
+                return false; // don't override a key-bound action (held or not)
+            }
         }
 
         bool moving = MathF.Abs(Player2DVelocityX) > 0.1f;
@@ -2648,8 +2665,15 @@ public unsafe class EditorObject
                 act.Clip = Player2DAnimationClip;
         }
 
+        // When switching between actions that share the same clip (e.g. Idle↔Walk↔Run
+        // all using the player's base clip), keep the action clock running so the frame
+        // doesn't snap back to 0 — that snap is the "blink" on transition. Only reset the
+        // clock when the clip actually changes (different action clip) or when entering a
+        // new non-locomotion action (Jump/Fall/custom).
+        bool sameClip = act.Clip == Player2DAnimationClip || (string.IsNullOrEmpty(act.Clip) && string.IsNullOrEmpty(Player2DAnimationClip));
         Player2DCurrentAction = desired;
-        Player2DActionTime = 0f;
+        if (!sameClip)
+            Player2DActionTime = 0f;
         return true;
     }
 
@@ -2667,13 +2691,37 @@ public unsafe class EditorObject
         // doesn't skip while actions fire.
         // Auto-switch locomotion action (idle/walk/run/jump/fall) to match current state;
         // pick up before resolving the clip so the action's auto-filled clip is used.
-        ResolveLocomotionAction();
+        // In edit mode we can check the key directly.
+        bool keyHeld = false;
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
+            {
+                if (Enum.TryParse<ImGuiKey>(cur.KeyBinding, out var k) && k != ImGuiKey.None)
+                    keyHeld = ImGui.IsKeyDown(k);
+            }
+        }
+        ResolveLocomotionAction(keyHeld);
 
         var actionClip = GetActiveActionClip(out var activeAction);
         bool actionActive = actionClip != null;
         if (actionClip != null)
         {
-            Player2DActionTime += Glfw.GetDeltaTime();
+            // Advance the clock: use the player's base clock (Player2DAnimTime) when the
+            // action is showing the player's own clip (fallback case — e.g. Run bound to J
+            // but Run has no resolvable clip, so it shows the player's walk/idle animation).
+            // Otherwise advance the action's own clock (Player2DActionTime) for actions with
+            // their own resolvable clip.
+            bool actionHasOwnResolvableClip = activeAction != null
+                && !string.IsNullOrEmpty(activeAction.SpriteSheet)
+                && activeAction.SpriteSheet != Player2DSpriteSheet
+                && !string.IsNullOrEmpty(activeAction.Clip)
+                && activeAction.Clip != Player2DAnimationClip;
+            if (!actionHasOwnResolvableClip)
+                Player2DAnimTime += Glfw.GetDeltaTime();
+            else
+                Player2DActionTime += Glfw.GetDeltaTime();
             // Non-looping actions release when finished (state machine drops to locomotion).
             if (activeAction != null && !activeAction.Loop && Player2DActionTime >= actionClip.Duration)
                 Player2DCurrentAction = "";
@@ -2805,7 +2853,11 @@ public unsafe class EditorObject
     /// <summary>Resolve the animation clip for the currently-playing action (priority
     /// system), or null when the base locomotion clip should play. The matched action is
     /// returned via <paramref name="action"/> (for its Loop flag — the shared clip object
-    /// is never mutated).</summary>
+    /// is never mutated).
+    /// 
+    /// Resolution order: (1) action's own sheet+clip if resolvable; (2) action's clip name
+    /// looked up in the PLAYER's sheet (so Walk/Run can share the player's clip even when
+    /// their Sheet field points elsewhere); (3) fall back to the player's base clip.</summary>
     private AnimationClip2D? GetActiveActionClip(out Player2DAction? action)
     {
         action = null;
@@ -2814,13 +2866,37 @@ public unsafe class EditorObject
         var act = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
         if (act == null) { Player2DCurrentAction = ""; return null; }
 
-        string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? Player2DSpriteSheet : act.SpriteSheet;
-        string clipName = string.IsNullOrEmpty(act.Clip) ? Player2DAnimationClip : act.Clip;
+        string playerSheet = Player2DSpriteSheet;
+        string playerClip = Player2DAnimationClip;
+
+        // (1) Action's own sheet + clip.
+        string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? playerSheet : act.SpriteSheet;
+        string clipName = string.IsNullOrEmpty(act.Clip) ? playerClip : act.Clip;
         if (IDEBridge.TryGetSpriteClip(sheetName, clipName, out var sheet, out var clip) && clip != null)
         {
             action = act;
             return clip;
         }
+
+        // (2) Action's clip name in the PLAYER's sheet — lets Walk/Run share the player's
+        //     clip even when their Sheet field points at a different (possibly missing) sheet.
+        if (!string.IsNullOrEmpty(act.Clip) && act.Clip != playerClip
+            && IDEBridge.TryGetSpriteClip(playerSheet, act.Clip, out _, out clip) && clip != null)
+        {
+            action = act;
+            return clip;
+        }
+
+        // (3) Player's base clip as last resort. When the action's own clip can't be
+        // resolved at all (missing sheet or clip name), fall back to the player's current
+        // clip so the action still animates (e.g. Run bound to J shows the player's walk/
+        // idle clip if Run doesn't have its own resolvable clip).
+        if (IDEBridge.TryGetSpriteClip(playerSheet, playerClip, out _, out clip) && clip != null)
+        {
+            action = act;
+            return clip;
+        }
+
         return null;
     }
 

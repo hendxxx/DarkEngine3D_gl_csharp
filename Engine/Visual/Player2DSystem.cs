@@ -123,22 +123,30 @@ public static class Player2DSystem
                 player.TryStartAction("Jump");
             }
 
-            // Auto-resolve locomotion action (idle/walk/run) to match current state.
-            // Idle when grounded+still, Walk/Run by velocity. In-game: only do this when
-            // no user-bound action is active (TryStartAction respects priority).
-            player.ResolveLocomotionAction();
-            // W/S override gravity while held (fly-style vertical movement).
-            if (upHeld && !downHeld) player.Player2DVelocityY = walkSpeed;
-            else if (downHeld && !upHeld) player.Player2DVelocityY = -walkSpeed;
-
             // ── User-bound action keys (Inspector: Attack = J, Block = K, ...) ──
+            // Track whether the bound key for the currently active action is still held —
+            // used by ResolveLocomotionAction to release the action when the key goes up.
+            bool currentActionKeyHeld = false;
             foreach (var act in player.Actions)
             {
                 if (string.IsNullOrWhiteSpace(act.KeyBinding) || act.KeyBinding == "None") continue;
-                if (Enum.TryParse<ImGuiKey>(act.KeyBinding, out var k) && k != ImGuiKey.None
-                    && ImGui.IsKeyPressed(k))
-                    player.TryStartAction(act.Name);
+                if (Enum.TryParse<ImGuiKey>(act.KeyBinding, out var k) && k != ImGuiKey.None)
+                {
+                    if (ImGui.IsKeyPressed(k))
+                        player.TryStartAction(act.Name);
+                    if (act.Name == player.Player2DCurrentAction)
+                        currentActionKeyHeld = ImGui.IsKeyDown(k);
+                }
             }
+
+            // Auto-resolve locomotion action (idle/walk/run) to match current state.
+            // Idle when grounded+still, Walk/Run by velocity. Pass whether the currently
+            // active key-bound action's key is still held — if released, locomotion takes
+            // over (e.g. Run bound to J: hold = Run, release = back to Idle/Walk).
+            player.ResolveLocomotionAction(currentActionKeyHeld);
+            // W/S override gravity while held (fly-style vertical movement).
+            if (upHeld && !downHeld) player.Player2DVelocityY = walkSpeed;
+            else if (downHeld && !upHeld) player.Player2DVelocityY = -walkSpeed;
 
             var pos = player.Position;
             float r = player.Player2DCapsuleRadius;
