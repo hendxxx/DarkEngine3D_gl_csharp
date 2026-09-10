@@ -12,12 +12,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual;
 /// Minimal capsule-vs-tile physics for Player2D objects in preview/in-game.
 /// Applies gravity to every Player2D EditorObject, then resolves the player's
 /// feet-anchored capsule AABB against the active tilemap's collision tiles
-/// (CollisionTileIds) using swept-axis resolution: move Y, resolve Y (ground/
-/// ceiling), then move X, resolve X (walls). Visible Box objects in the scene
+/// (CollisionTileIds) using swept-axis resolution: move X, resolve X (walls),
+/// then move Y, resolve Y (ground/ceiling). Visible Box objects in the scene
 /// also act as solid AABB colliders (capsule vs box): land on top, bump the
 /// ceiling, get pushed out sideways. Runs ONLY in preview/in-game — Update is
-/// called exclusively from those modes. Grounded players can be moved
-/// horizontally with the editor fly keys (a full input controller comes later).
+/// called exclusively from those modes.
+///
+/// Grid mapping: the renderer bakes grid row `ty` at world Y
+/// [(mapH-1-ty)*cell, (mapH-ty)*cell] — row 0 is the TOP of the map. All tile
+/// lookups here therefore convert world Y → grid row with the same flip:
+/// ty = floor((mapH*cell - worldY - ε) / cell), so a player standing on a tile
+/// painted as solid is supported by exactly that tile.
 /// </summary>
 public static class Player2DSystem
 {
@@ -60,16 +65,17 @@ public static class Player2DSystem
             if (half.X <= 0f || half.Y <= 0f || half.Z <= 0f) continue;
             boxes.Add((b.Position - half, b.Position + half));
         }
-        // Debug: log every active box collider whenever Player2DSystem runs (edit,
-        // preview, or in-game), so you can verify the collider list and positions.
-        if (bridge != null)
+
+        float cell = map.TileSize * Tilemap2D.WorldScale;
+        if (cell <= 0f) return;
+
+        // Collision layers — resolve against EVERY layer that carries collision IDs,
+        // not just the palette-selected ActiveLayer (which may be a paint-only layer).
+        var collisionLayers = new List<(TileLayer layer, int idx)>();
+        for (int i = 0; i < map.Layers.Count; i++)
         {
-            foreach (var box in boxes)
-            {
-                var bmin = box.min;
-                var bmax = box.max;
-                Console.WriteLine($"[BoxDebug] box min({bmin.X:F2},{bmin.Y:F2},{bmin.Z:F2}) max({bmax.X:F2},{bmax.Y:F2},{bmax.Z:F2}) (preview={bridge.IsPreviewMode}, ingame={bridge.InGameActive})");
-            }
+            var l = map.Layers[i];
+            if (l != null && l.CollisionTileIds.Count > 0) collisionLayers.Add((l, i));
         }
 
         foreach (var player in manager.Objects)
@@ -90,118 +96,182 @@ public static class Player2DSystem
             float velX = 0f;
             if (left && !right) velX = -playerSpeed;
             else if (right && !left) velX = playerSpeed;
-            else if ((left || right) && (player.Player2DGrounded || player.Player2DVelocityY > -2f))
-            {
-                // slight lateral nudge when on ground to keep player responsive.
-                velX = left ? -playerSpeed * 0.6f : playerSpeed * 0.6f;
-            }
             if (jump && player.Player2DGrounded)
             {
                 player.Player2DVelocityY = 8f;
                 player.Player2DGrounded = false;
             }
-            var pos = player.Position;
-            pos.X += velX * dt;
 
-            // ── Physics: capsule AABB (feet-anchored) vs collision tiles ──
+            var pos = player.Position;
             float r = player.Player2DCapsuleRadius;
             float height = player.Player2DCapsuleHeight;
-
-            // Velocity integration (Y only — sidescroller).
-            player.Player2DVelocityY -= player.Player2DGravity * dt;
-            float newY = pos.Y + player.Player2DVelocityY * dt;
-
-            var aabb = new Vector4(pos.X - r, newY, pos.X + r, newY + height); // minX, minY, maxX, maxY
-
-            bool grounded = false;
             float capZMin = pos.Z - r, capZMax = pos.Z + r;
-            // Resolve against EVERY collision layer of the tilemap, not just the palette-
-            // selected ActiveLayer (Map Editor palette selection has no collision tiles).
-            var collisionLayers = new List<TileLayer>();
-            foreach (var layer in map.Layers)
-                if (layer != null && layer.CollisionTileIds.Count > 0)
-                    collisionLayers.Add(layer);
-            Console.WriteLine($"[Player2D] player {player.Name}: pos=({pos.X:F2},{pos.Y:F2},{pos.Z:F2}) velY={player.Player2DVelocityY:F3} height={height:F2} r={r:F2}");
-            Console.WriteLine($"[Player2D] capsule aabb(Y range)=[{aabb.Y:F2}, {aabb.W:F2}] cell={map.TileSize * Tilemap2D.WorldScale:F3} gy0={MathF.Floor(aabb.Y/(map.TileSize*Tilemap2D.WorldScale)):F0} gy1={MathF.Floor((aabb.W-0.001f)/(map.TileSize*Tilemap2D.WorldScale)):F0}");
-            Console.WriteLine($"[Player2D] collisionLayers.Count={collisionLayers.Count}");
-            if (collisionLayers.Count > 0)
+
+            // ════════════════════════════════════════════════════════════
+            // STEP 1 — Move X, resolve X (walls) via swept AABB.
+            // ════════════════════════════════════════════════════════════
+            float newX = pos.X + velX * dt;
+
+            // Vertical span covered during the X sweep (Y is unchanged here).
+            // World +Y maps to DECREASING grid row, so the feet are the LARGER row
+            // index and the head the SMALLER — iterate yHeadRow..yFeetRow.
+            float yBot = pos.Y;
+            float yTop = pos.Y + height;
+            int yFeetRow = WorldRowFloor(map, yBot + 0.001f, cell);
+            int yHeadRow = WorldRowFloor(map, yTop - 0.001f, cell);
+
+            foreach (var (collisionLayer, layerIdx) in collisionLayers)
             {
-                float cell = map.TileSize * Tilemap2D.WorldScale;
-
-                // ── Vertical resolve ──
-                // Swept AABB from previous feet (pos.Y) to new feet (newY).
-                // The capsule covers Y in [min(feetOld,feetNew), max(headOld,headNew)].
-                float feetOld = pos.Y, feetNew = newY;
-                float headOld = pos.Y + height, headNew = newY + height;
-                float yMin = MathF.Min(feetOld, feetNew);
-                float yMax = MathF.Max(headOld, headNew);
-                int gy0 = (int)MathF.Floor(yMin / cell);
-                int gy1 = (int)MathF.Floor((yMax - 0.001f) / cell);
-                int gx0 = (int)MathF.Floor(aabb.X / cell);
-                int gx1 = (int)MathF.Floor((aabb.Z - 0.001f) / cell);
-
-                foreach (var collisionLayer in collisionLayers)
+                if (velX > 0f)
                 {
-                    var layerIdx = map.Layers.IndexOf(collisionLayer);
-                    Console.WriteLine($"[Player2D]  layer={collisionLayer.Name}(idx={layerIdx}) velY<=0? {player.Player2DVelocityY<=0} sweepY=[{gy0},{gy1}] checkX=[{gx0},{gx1}] prevY={pos.Y:F2} newY={newY:F2}");
-                    if (player.Player2DVelocityY <= 0f)
+                    // Right wall: the capsule's right edge enters column gxEdge —
+                    // push back to that column's LEFT face.
+                    int gxEdge = WorldColFloor(map, newX + r, cell);
+                    for (int gy = yHeadRow; gy <= yFeetRow; gy++)
                     {
-                        // Falling: find the highest solid tile top under the capsule feet.
-                        int gyFeet = gy0;
-                        for (int gx = gx0; gx <= gx1; gx++)
+                        if (IsSolid(map, collisionLayer, layerIdx, gxEdge, gy))
                         {
-                            bool solid = IsSolid(map, collisionLayer, gx, gyFeet);
-                            Console.WriteLine($"[Player2D]    fall gx={gx} gyFeet={gyFeet} tile={map.GetTile(layerIdx, gx, gyFeet)} solid={solid}");
-                            if (solid)
-                            {
-                                newY = (gyFeet + 1) * cell;
-                                player.Player2DVelocityY = 0f;
-                                grounded = true;
-                                Console.WriteLine($"[Player2D]    >>> landed on tile at Y={newY:F2} (grounded)");
-                                goto tileVertResolved;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Rising: ceiling check at the capsule head.
-                        int gyHead = gy1;
-                        for (int gx = gx0; gx <= gx1; gx++)
-                        {
-                            bool solid = IsSolid(map, collisionLayer, gx, gyHead);
-                            Console.WriteLine($"[Player2D]    rise gx={gx} gyHead={gyHead} tile={map.GetTile(layerIdx, gx, gyHead)} solid={solid}");
-                            if (solid)
-                            {
-                                newY = gyHead * cell - height;
-                                player.Player2DVelocityY = 0f;
-                                Console.WriteLine($"[Player2D]    >>> ceiling bump at Y={newY:F2}");
-                                goto tileVertResolved;
-                            }
+                            newX = TileWorldMinX(gxEdge, cell) - r - SkinWidth;
+                            break;
                         }
                     }
                 }
-                tileVertResolved: ;
+                else if (velX < 0f)
+                {
+                    // Left wall: the capsule's left edge enters column gxEdge —
+                    // push back to that column's RIGHT face.
+                    int gxEdge = WorldColFloor(map, newX - r, cell);
+                    for (int gy = yHeadRow; gy <= yFeetRow; gy++)
+                    {
+                        if (IsSolid(map, collisionLayer, layerIdx, gxEdge, gy))
+                        {
+                            newX = TileWorldMaxX(gxEdge, cell) + r + SkinWidth;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Box walls along X (same pass, least-penetration style push kept from
+            // the original behavior but applied to the swept position).
+            foreach (var (bmin, bmax) in boxes)
+            {
+                bool overlapZ = capZMax > bmin.Z && capZMin < bmax.Z;
+                bool overlapY = yTop > bmin.Y + 0.001f && yBot < bmax.Y - 0.001f;
+                if (!overlapZ || !overlapY) continue;
+
+                if (newX + r > bmin.X && newX - r < bmax.X)
+                {
+                    float pushLeft = bmin.X - (newX + r);   // negative: eject to the left
+                    float pushRight = bmax.X - (newX - r);  // positive: eject to the right
+                    newX += MathF.Abs(pushLeft) < MathF.Abs(pushRight) ? pushLeft : pushRight;
+                }
+            }
+
+            pos.X = newX;
+
+            // ════════════════════════════════════════════════════════
+            // STEP 2 — Gravity + move Y, resolve Y (ground/ceiling).
+            // ════════════════════════════════════════════════════════
+            player.Player2DVelocityY -= player.Player2DGravity * dt;
+            float newY = pos.Y + player.Player2DVelocityY * dt;
+
+            // Horizontal span of the capsule after the X resolve — used for the
+            // tile column range of every vertical probe.
+            int gx0 = WorldColFloor(map, pos.X - r + 0.001f, cell);
+            int gx1 = WorldColFloor(map, pos.X + r - 0.001f, cell);
+
+            bool grounded = false;
+
+            if (player.Player2DVelocityY <= 0f)
+            {
+                // ── Falling: swept feet probe from old feet to new feet ──
+                // Check every row the feet cross (topmost solid wins) plus the row
+                // the new feet rest in, so tunneling can't slip through a tile.
+                int rowFeetNew = WorldRowFloor(map, newY, cell);
+                int rowFeetOld = WorldRowFloor(map, pos.Y, cell);
+                int rowTop = Math.Min(rowFeetOld, rowFeetNew); // smallest index = highest band
+                int rowBottom = Math.Max(rowFeetOld, rowFeetNew);
+                // Cross rows in the order the feet pass them: highest band first.
+                for (int gy = rowTop; gy <= rowBottom; gy++)
+                {
+                    bool solid = false;
+                    foreach (var (collisionLayer, layerIdx) in collisionLayers)
+                    {
+                        for (int gx = gx0; gx <= gx1; gx++)
+                        {
+                            if (IsSolid(map, collisionLayer, layerIdx, gx, gy))
+                            {
+                                solid = true;
+                                break;
+                            }
+                        }
+                        if (solid) break;
+                    }
+                    if (!solid) continue;
+
+                    float tileTop = TileWorldMaxY(map, gy, cell);
+                    if (pos.Y >= tileTop - 0.01f)
+                    {
+                        // Came from above → land on top of this tile.
+                        newY = tileTop;
+                        player.Player2DVelocityY = 0f;
+                        grounded = true;
+                        break;
+                    }
+                    // Feet started inside/below this band's top edge → not a landing
+                    // surface; keep checking lower rows.
+                }
             }
             else
             {
-                Console.WriteLine($"[Player2D]  NO COLLISION LAYERS on this tilemap!");
+                // ── Rising: swept head probe from old head to new head ──
+                int rowHeadNew = WorldRowFloor(map, newY + height, cell);
+                int rowHeadOld = WorldRowFloor(map, pos.Y + height, cell);
+                int rowTop = Math.Min(rowHeadOld, rowHeadNew);
+                int rowBottom = Math.Max(rowHeadOld, rowHeadNew);
+                // Cross rows in the order the head passes them: lowest band first.
+                for (int gy = rowBottom; gy >= rowTop; gy--)
+                {
+                    bool solid = false;
+                    foreach (var (collisionLayer, layerIdx) in collisionLayers)
+                    {
+                        for (int gx = gx0; gx <= gx1; gx++)
+                        {
+                            if (IsSolid(map, collisionLayer, layerIdx, gx, gy))
+                            {
+                                solid = true;
+                                break;
+                            }
+                        }
+                        if (solid) break;
+                    }
+                    if (!solid) continue;
+
+                    float tileBottom = TileWorldMinY(map, gy, cell);
+                    if (pos.Y + height <= tileBottom + 0.01f)
+                    {
+                        // Came from below → bump the ceiling.
+                        newY = tileBottom - height;
+                        player.Player2DVelocityY = 0f;
+                        break;
+                    }
+                    // Head started above this band's bottom edge → not a ceiling here;
+                    // keep checking higher rows.
+                }
             }
 
             // ── Box vertical resolve: land on top / bump ceiling ──
             // Same swept logic as tiles but against scene Box AABBs. Requires the
-            // capsule to overlap the box in X/Z, and the previous position to have been
-            // OUTSIDE the box along the movement axis (so walking into a side doesn't
-            // teleport the player onto the top — the horizontal pass handles that).
+            // capsule to overlap the box in X/Z, and the previous position to have
+            // been OUTSIDE the box along the movement axis (so walking into a side
+            // doesn't teleport the player onto the top — the X pass handles that).
             foreach (var (bmin, bmax) in boxes)
             {
                 bool overlapXZ = pos.X + r > bmin.X && pos.X - r < bmax.X
                     && capZMax > bmin.Z && capZMin < bmax.Z;
-                if (!overlapXZ)
-                {
-                    Console.WriteLine($"[Player2D] box bmin=({bmin.X:F2},{bmin.Y:F2},{bmin.Z:F2}) bmax=({bmax.X:F2},{bmax.Y:F2},{bmax.Z:F2}) dxOverlap? {pos.X+r>bmin.X && pos.X-r<bmax.X} dzOverlap? {capZMax>bmin.Z && capZMin<bmax.Z}  -> skip (no X/Z overlap)");
-                    continue;
-                }
-                Console.WriteLine($"[Player2D] box bmin=({bmin.X:F2},{bmin.Y:F2},{bmin.Z:F2}) bmax=({bmax.X:F2},{bmax.Y:F2},{bmax.Z:F2}) OVERLAP_XZ");
+                if (!overlapXZ) continue;
+
                 if (player.Player2DVelocityY <= 0f)
                 {
                     // Falling: feet crossed the box top surface this frame.
@@ -210,11 +280,6 @@ public static class Player2DSystem
                         newY = bmax.Y;
                         player.Player2DVelocityY = 0f;
                         grounded = true;
-                        Console.WriteLine($"[Player2D] >>> landed on box top at Y={newY:F2} (grounded)");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[Player2D]  box-top not met: newY={newY:F2} in?({newY < bmax.Y && newY > bmin.Y}) posY>=bmaxY? {pos.Y >= bmax.Y - 0.01f}");
                     }
                 }
                 else
@@ -224,41 +289,52 @@ public static class Player2DSystem
                     {
                         newY = bmin.Y - height;
                         player.Player2DVelocityY = 0f;
-                        Console.WriteLine($"[Player2D] >>> hit box ceiling at Y={newY:F2}");
                     }
                 }
             }
 
             pos.Y = newY;
-
-            // ── Box horizontal resolve: push out of side walls (least penetration) ──
-            // Strict Y margins so standing exactly on a box top / under a ceiling does
-            // not count as a side hit.
-            foreach (var (bmin, bmax) in boxes)
-            {
-                bool overlapZ = capZMax > bmin.Z && capZMin < bmax.Z;
-                bool overlapY = pos.Y + height > bmin.Y + 0.001f && pos.Y < bmax.Y - 0.001f;
-                if (!overlapZ || !overlapY) continue;
-
-                if (pos.X + r > bmin.X && pos.X - r < bmax.X)
-                {
-                    float pushLeft = bmin.X - (pos.X + r);   // negative: eject to the left
-                    float pushRight = bmax.X - (pos.X - r);  // positive: eject to the right
-                    pos.X += MathF.Abs(pushLeft) < MathF.Abs(pushRight) ? pushLeft : pushRight;
-                    Console.WriteLine($"[Player2D] horizontal push box=({bmin.X:F2},{bmin.Y:F2},{bmin.Z:F2})-({bmax.X:F2},{bmax.Y:F2},{bmax.Z:F2}) push={(MathF.Abs(pushLeft) < MathF.Abs(pushRight)?pushLeft:pushRight):F3}");
-                }
-            }
-
             player.Player2DGrounded = grounded;
             player.Position = pos;
-            Console.WriteLine($"[Player2D] END  newPos=({pos.X:F2},{pos.Y:F2},{pos.Z:F2}) grounded={grounded} velY={player.Player2DVelocityY:F3}");
         }
     }
 
-    private static bool IsSolid(Tilemap2D map, TileLayer layer, int gx, int gy)
+    // ── Grid ↔ world mapping helpers ────────────────────────────────────
+    // Renderer convention (EditorObject tile bake + collision preview boxes):
+    //   grid row ty occupies world Y in [(mapH-1-ty)*cell, (mapH-ty)*cell],
+    //   grid col tx occupies world X in [tx*cell, (tx+1)*cell].
+    // World origin (0,0) is the BOTTOM-LEFT of the map's bottom row.
+
+    /// <summary>World X → grid column under the renderer's [tx*cell, (tx+1)*cell) mapping.</summary>
+    private static int WorldColFloor(Tilemap2D map, float worldX, float cell)
+        => (int)MathF.Floor(worldX / cell);
+
+    /// <summary>World Y → grid row: inverted so world +Y maps to DECREASING row index.</summary>
+    private static int WorldRowFloor(Tilemap2D map, float worldY, float cell)
+        => (int)MathF.Floor((map.Height * cell - worldY) / cell);
+
+    /// <summary>World-space left edge of a tile column.</summary>
+    private static float TileWorldMinX(int gx, float cell) => gx * cell;
+
+    /// <summary>World-space right edge of a tile column.</summary>
+    private static float TileWorldMaxX(int gx, float cell) => (gx + 1) * cell;
+
+    /// <summary>World-space bottom edge of a tile row (row 0 = top of the map).</summary>
+    private static float TileWorldMinY(Tilemap2D map, int gy, float cell)
+        => (map.Height - 1 - gy) * cell;
+
+    /// <summary>World-space top edge of a tile row (row 0 = top of the map).</summary>
+    private static float TileWorldMaxY(Tilemap2D map, int gy, float cell)
+        => (map.Height - gy) * cell;
+
+    /// <summary>Skin width kept between the capsule and a resolved surface so the
+    /// AABB never exactly touches the tile edge (prevents re-collision jitter).</summary>
+    private const float SkinWidth = 0.001f;
+
+    private static bool IsSolid(Tilemap2D map, TileLayer layer, int layerIdx, int gx, int gy)
     {
         if (gx < 0 || gy < 0 || gx >= map.Width || gy >= map.Height) return false;
-        int tile = map.GetTile(map.Layers.IndexOf(layer), gx, gy);
+        int tile = map.GetTile(layerIdx, gx, gy);
         return tile >= 0 && layer.TileHasCollision(tile);
     }
 }
