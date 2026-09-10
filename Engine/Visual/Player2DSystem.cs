@@ -351,25 +351,66 @@ public static class Player2DSystem
                 o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.CameraStart2D });
             var cam = bridge.Camera;
 
-            // Session entry: snap to the Camera Start Point (center on it) and apply
-            // its zoom (Scale.Y), or fall back to snapping above the player.
+            // Session entry: frame the map so the grid origin (0,0) sits at the
+            // bottom-left of the viewport. The ortho camera's Position is the VIEW
+            // CENTER, so we offset it by (±halfView) to put (0,0) at the corner.
             if (!Objects.EditorObject.CameraFollowInitialized)
             {
                 Objects.EditorObject.CameraFollowInitialized = true;
-                float startZoom = camStart != null && camStart.Scale.Y > 0.1f ? camStart.Scale.Y : 0f;
-                Vector3 anchor;
-                if (camStart != null)
-                    anchor = camStart.Position;
-                else if (first != null)
-                    anchor = new Vector3(first.Position.X, first.Position.Y + first.Player2DCapsuleHeight * 0.5f, 0f);
-                else
-                    anchor = cam.Position;
-                // The 2D front view keeps the current yaw/pitch (SyncLevelCamera already
-                // forced ortho + front) — we only move Position and apply the start zoom.
                 cam.IsOrthographic = true;
-                if (startZoom > 0.1f)
-                    cam.OrthoSize = MathF.Max(1f, map.Height * PxToWorld(map) * 0.5f / startZoom);
-                cam.Position = new Vector3(anchor.X, anchor.Y, cam.Position.Z);
+
+                // Vertical framing: choose an ortho half-height so the map's bottom
+                // (world Y = 0) is at the bottom edge of the view. Use at least the
+                // full map height so nothing is cut off; a zoom factor can shrink it
+                // when a CameraStart2D marker requests a tighter view.
+                float mapHWorld = map.Height * PxToWorld(map);
+                float startZoom = camStart != null && camStart.Scale.Y > 0.1f ? camStart.Scale.Y : 1f;
+                float halfH = MathF.Max(mapHWorld * 0.5f, 1f) / startZoom;
+                cam.OrthoSize = MathF.Max(0.5f, halfH);
+
+                // Horizontal: match the view width to the window aspect so (0,0)
+                // stays flush at the left edge.
+                float halfW = halfH * cam.GetAspect();
+
+                // View center that puts world (0,0) at the bottom-left corner:
+                //   center.X = 0 + halfW   (left edge of view = world 0)
+                //   center.Y = 0 + halfH   (bottom edge of view = world 0)
+                Vector3 cornerAnchor = new Vector3(halfW, halfH, 0f);
+
+                // If a Camera Start marker exists, center the view on it (still
+                // keeping (0,0) visible at the corner when the map is wider than the
+                // view). Otherwise center on the first player so they start in-frame.
+                Vector3 center;
+                if (camStart != null)
+                {
+                    center = camStart.Position;
+                    // Re-derive half extents from the marker zoom so the start view is
+                    // consistent with the marker's requested tightness.
+                    halfH = MathF.Max(mapHWorld * 0.5f, 1f) / startZoom;
+                    halfW = halfH * cam.GetAspect();
+                    cam.OrthoSize = MathF.Max(0.5f, halfH);
+                    // Still anchor (0,0) at the corner: shift center so left/bottom = 0.
+                    center.X = MathF.Max(halfW, camStart.Position.X);
+                    center.Y = MathF.Max(halfH, camStart.Position.Y);
+                }
+                else if (first != null)
+                    center = new Vector3(first.Position.X, first.Position.Y + first.Player2DCapsuleHeight * 0.35f, 0f);
+                else
+                    center = new Vector3(halfW, halfH, 0f);
+
+                // Frame the view so (0,0) is at the bottom-left corner, then apply the
+                // user's view offset on top. The offset shifts the camera position, but
+                // we re-clamp the bottom-left corner back to (0,0) so the offset only
+                // moves the framed content within the viewport — positive Y lifts the
+                // view (content slides down), positive X shifts right (content slides left).
+                Vector3 viewCenter = new Vector3(center.X, center.Y, cam.Position.Z);
+                // Apply offset to the camera (shifts the whole framed area).
+                viewCenter += cam.ViewOffset;
+                // Re-pin the bottom-left corner to world (0,0): the view's bottom-left
+                // is (viewCenter - (halfW, halfH)), so enforce that >= (0,0).
+                viewCenter.X = MathF.Max(viewCenter.X, halfW);
+                viewCenter.Y = MathF.Max(viewCenter.Y, halfH);
+                cam.Position = viewCenter;
             }
             else if (first != null)
             {
@@ -380,9 +421,8 @@ public static class Player2DSystem
                 float returnSpeed = MathF.Max(0.1f, first.CameraReturnSpeed);
                 float lookAhead = first.CameraLookAhead * PxToWorld(map);
 
-                // Target: player chest, offset by look-ahead toward the facing direction
-                // (look-ahead eases in so direction flips don't snap the camera).
-                var target = first.Position + new Vector3(0f, first.Player2DCapsuleHeight * 0.5f, 0f);
+                // Target: player lower-body (feet + a little), offset by look-ahead.
+                var target = first.Position + new Vector3(0f, first.Player2DCapsuleHeight * 0.35f, 0f);
                 var camPos = cam.Position;
 
                 // ── Horizontal: dead zone around the camera axis, then smooth follow ──
@@ -396,32 +436,39 @@ public static class Player2DSystem
                 float dy = desiredY - camPos.Y;
                 if (dy > 0f)
                 {
-                    // Player above the camera anchor: only chase beyond the threshold.
                     if (dy > vThreshold + deadH * 0.5f)
                         camPos.Y += (dy - vThreshold - deadH * 0.5f) * MathF.Min(1f, followSpeed * dt);
                 }
                 else
                 {
-                    // Player below the anchor: return toward them gently (return speed).
                     if (MathF.Abs(dy) > deadH * 0.5f)
                         camPos.Y += (dy + MathF.Sign(dy) * deadH * 0.5f) * MathF.Min(1f, returnSpeed * dt);
                 }
 
-                // ── World boundary: clamp the view inside the map's painted extent ──
+                // ── World boundary: clamp the view inside the map's painted extent.
+                // The bottom/left corner of the view is (camPos - halfExtent); keep it
+                // at or above world (0,0) so the grid origin never leaves the viewport.
                 ComputeWorldBounds(map, out float worldL, out float worldR, out float worldB, out float worldT);
-                // Ortho half-extents in world units (OrthoSize = vertical half-height).
                 float halfH = cam.OrthoSize;
                 float halfW = halfH * cam.GetAspect();
                 if (worldR - worldL > halfW * 2f)
-                    camPos.X = Math.Clamp(camPos.X, worldL + halfW, worldR - halfW);
+                    camPos.X = MathF.Max(halfW, MathF.Min(worldR - halfW, camPos.X));
                 else
-                    camPos.X = (worldL + worldR) * 0.5f;
+                    camPos.X = MathF.Max(halfW, (worldL + worldR) * 0.5f);
                 if (worldT - worldB > halfH * 2f)
-                    camPos.Y = Math.Clamp(camPos.Y, worldB + halfH, worldT - halfH);
+                    camPos.Y = MathF.Max(halfH, MathF.Min(worldT - halfH, camPos.Y));
                 else
-                    camPos.Y = (worldB + worldT) * 0.5f;
+                    camPos.Y = MathF.Max(halfH, (worldB + worldT) * 0.5f);
 
                 cam.Position = new Vector3(camPos.X, camPos.Y, cam.Position.Z);
+
+                // Apply the user's view offset, then re-pin the bottom-left corner to
+                // world (0,0) so the offset only shifts content within the frame.
+                var vOff = cam.ViewOffset;
+                cam.Position += vOff;
+                // Re-clamp: bottom-left of view = (camPos - (halfW, halfH)) must be >= (0,0).
+                cam.Position.X = MathF.Max(cam.Position.X, halfW);
+                cam.Position.Y = MathF.Max(cam.Position.Y, halfH);
             }
         }
     }

@@ -1732,6 +1732,21 @@ public class InspectorPanel
             if (ImGui.DragFloat("Far Clip", ref far, 1f, 10f, 5000f, "%.0f"))
                 editorObj.CameraFar = far;
 
+            // ── 2D view offset (nudge the ortho framing without moving the follow anchor) ──
+            ImGui.TextDisabled("View Offset (2D ortho only — default 0,0,0)");
+            {
+                var off = editorObj.CameraViewOffset;
+                if (ImGui.DragFloat3("Offset", ref off, 0.1f, -500f, 500f, "%.2f"))
+                    editorObj.CameraViewOffset = off;
+                if (ImGui.IsItemHovered() && editorObj.CameraViewOffset == Vector3.Zero)
+                    ImGui.SetTooltip("Nudge the 2D viewport position. Added after the camera follow/frame math.");
+                if (ImGui.SmallButton("Reset Offset"))
+                {
+                    editorObj.CameraViewOffset = new Vector3(0, 0, 0);
+                    ImGui.SetItemDefaultFocus();
+                }
+            }
+
             bool showFrustum = editorObj.ShowFrustum;
             if (ImGui.Checkbox("Show Frustum", ref showFrustum))
                 editorObj.ShowFrustum = showFrustum;

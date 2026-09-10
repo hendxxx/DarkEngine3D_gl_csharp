@@ -961,6 +961,7 @@ public class SceneManagerPanel
                         CameraVerticalThreshold = obj.CameraVerticalThreshold,
                         CameraReturnSpeed = obj.CameraReturnSpeed,
                         CameraLookAhead = obj.CameraLookAhead,
+                        CameraViewOffset = obj.CameraViewOffset,
                         Actions = obj.Actions.Count > 0
                             ? obj.Actions.Select(a => new Player2DActionData
                             {
@@ -1549,6 +1550,7 @@ public class SceneManagerPanel
                         obj.CameraVerticalThreshold = objData.CameraVerticalThreshold;
                         obj.CameraReturnSpeed = objData.CameraReturnSpeed;
                         obj.CameraLookAhead = objData.CameraLookAhead;
+                        obj.CameraViewOffset = objData.CameraViewOffset;
                         if (objData.Actions is { Count: > 0 } savedActions)
                             obj.Actions = savedActions.Select(a => new Player2DAction
                             {

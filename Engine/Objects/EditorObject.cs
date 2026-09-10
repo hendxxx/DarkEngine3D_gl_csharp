@@ -358,6 +358,9 @@ public unsafe class EditorObject
     public float CameraReturnSpeed { get; set; } = 3f;
     /// <summary>Look-ahead distance in px toward the movement direction.</summary>
     public float CameraLookAhead { get; set; } = 150f;
+    /// <summary>Optional per-camera 2D view offset (added after the follow/frame math).
+    /// Default (0,0,0) = no offset. Lets the user nudge the ortho viewport position.</summary>
+    public Vector3 CameraViewOffset { get; set; } = new(0, 0, 0);
 
     // ── Animation action system ──
     /// <summary>User-defined animation actions (Idle/Walk/... + custom). Persisted with the object.</summary>

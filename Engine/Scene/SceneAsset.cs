@@ -194,6 +194,8 @@ public class EditorObjectData
     public float CameraVerticalThreshold { get; set; } = 64f;
     public float CameraReturnSpeed { get; set; } = 3f;
     public float CameraLookAhead { get; set; } = 150f;
+    /// <summary>Optional per-camera 2D view offset (persisted with the object).</summary>
+    public Vector3 CameraViewOffset { get; set; } = new(0, 0, 0);
     /// <summary>Animation actions (name + sheet/clip + key binding + priority). Persisted
     /// via the object data so designer-built action sets survive reloads.</summary>
     public List<Player2DActionData>? Actions { get; set; }
