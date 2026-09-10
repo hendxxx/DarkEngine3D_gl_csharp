@@ -330,20 +330,26 @@ public unsafe class EditorObject
     public bool Player2DGrounded { get; set; }
 
     // ── Movement tuning (all live in the Inspector, used by Player2DSystem) ──
-    /// <summary>Horizontal walk speed (world units/s).</summary>
-    public float Player2DMoveSpeed { get; set; } = 5f;
+    /// <summary>Horizontal walk speed (world units/s). Sensible platformer default ≈ 1 tile/s.
+    /// Raise Run Speed for a faster sprint (LeftShift).</summary>
+    public float Player2DMoveSpeed { get; set; } = 8f;
     /// <summary>Horizontal run speed (world units/s) — used while LeftShift is held.</summary>
-    public float Player2DRunSpeed { get; set; } = 9f;
-    /// <summary>Initial upward velocity on jump (world units/s).</summary>
-    public float Player2DJumpForce { get; set; } = 11f;
+    public float Player2DRunSpeed { get; set; } = 14f;
+    /// <summary>Initial upward velocity on jump (world units/s). Keep modest so airtime is snappy.
+    /// With the default gravity (25) this gives ≈ 0.9s to apex then fall — raise Gravity if
+    /// you want even shorter airtime.</summary>
+    public float Player2DJumpForce { get; set; } = 9f;
     /// <summary>Multiplier on Player2DGravity.</summary>
-    public float Player2DGravityScale { get; set; } = 1f;
-    /// <summary>Ground horizontal acceleration (world units/s²).</summary>
-    public float Player2DAcceleration { get; set; } = 60f;
-    /// <summary>Ground horizontal deceleration when no input (world units/s²).</summary>
-    public float Player2DDeceleration { get; set; } = 80f;
-    /// <summary>0..1 — how much of ground acceleration applies while airborne.</summary>
-    public float Player2DAirControl { get; set; } = 0.65f;
+    public float Player2DGravityScale { get; set; } = 1.6f;
+    /// <summary>Ground horizontal acceleration (world units/s²). High values give immediate,
+    /// non-slippery response (no ice-skating).</summary>
+    public float Player2DAcceleration { get; set; } = 200f;
+    /// <summary>Ground horizontal deceleration when no input (world units/s²). Keep ≥
+    /// Acceleration so stopping is as snappy as starting.</summary>
+    public float Player2DDeceleration { get; set; } = 220f;
+    /// <summary>0..1 — how much of ground acceleration applies while airborne.
+    /// Low values = no mid-air steering (classic platformer feel).</summary>
+    public float Player2DAirControl { get; set; } = 0.25f;
 
     // ── Camera-follow tuning (used by the Player2DSystem camera follow) ──
     /// <summary>How fast the camera catches the target (higher = snappier).</summary>
@@ -2599,6 +2605,54 @@ public unsafe class EditorObject
         return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
     }
 
+    /// <summary>Auto-select the locomotion action that matches the current state (idle when
+    /// grounded+still, walk/run by velocity, jump/fall by vertical state). Called every
+    /// frame so the character switches action smoothly without user input. Actions that
+    /// don't bind a key are locomotion candidates; user-bound actions (Attack/J/...)
+    /// are only started by their key or by priority-gated events (Jump on takeoff).
+    /// Returns true when the action changed this frame.</summary>
+    public bool ResolveLocomotionAction()
+    {
+        // Only auto-switch when no user-bound action is currently playing (those are
+        // priority-gated and must not be hijacked by locomotion).
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
+                return false; // a user-bound action is active — don't override it
+        }
+
+        bool moving = MathF.Abs(Player2DVelocityX) > 0.1f;
+        bool grounded = Player2DGrounded;
+        string desired = "";
+        if (!grounded && Player2DVelocityY < -0.5f)
+            desired = "Fall";
+        else if (!grounded)
+            desired = "Jump";
+        else if (moving)
+            desired = Player2DVelocityX > 0 ? "Run" : "Walk";
+        else
+            desired = "Idle";
+
+        if (desired == Player2DCurrentAction) return false;
+        var act = Actions.FirstOrDefault(a => a.Name == desired);
+        if (act == null) return false;
+
+        // Auto-fill the action's clip from the player's current clip when the sheet
+        // matches (designer-friendly: one sheet, one clip name per action).
+        if (string.IsNullOrEmpty(act.SpriteSheet) || act.SpriteSheet == Player2DSpriteSheet)
+        {
+            if (string.IsNullOrEmpty(act.SpriteSheet))
+                act.SpriteSheet = Player2DSpriteSheet;
+            if (string.IsNullOrEmpty(act.Clip))
+                act.Clip = Player2DAnimationClip;
+        }
+
+        Player2DCurrentAction = desired;
+        Player2DActionTime = 0f;
+        return true;
+    }
+
     /// <summary>Advance the animation clock and draw the player as an upright textured
     /// quad showing the current clip frame. Works in edit mode (preview) and in-game.
     /// Called from Draw() after the Map2D branch so the player draws over the level.</summary>
@@ -2611,6 +2665,10 @@ public unsafe class EditorObject
         // DrawPlayer2D still owns the clock (single source of truth) — but when an action is
         // playing we keep its clock separate (Player2DActionTime) so the base idle clock
         // doesn't skip while actions fire.
+        // Auto-switch locomotion action (idle/walk/run/jump/fall) to match current state;
+        // pick up before resolving the clip so the action's auto-filled clip is used.
+        ResolveLocomotionAction();
+
         var actionClip = GetActiveActionClip(out var activeAction);
         bool actionActive = actionClip != null;
         if (actionClip != null)

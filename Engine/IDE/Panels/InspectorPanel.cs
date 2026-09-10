@@ -2565,6 +2565,36 @@ public class InspectorPanel
             float air = editorObj.Player2DAirControl;
             if (ImGui.SliderFloat("Air Control", ref air, 0f, 1f, "%.2f"))
                 editorObj.Player2DAirControl = air;
+
+            // Quick-preset the whole movement block to a snappy, non-floaty platformer feel.
+            // Run, Acceleration and Deceleration scale linearly with the current Move Speed so
+            // the suggestion stays tuned at any horizontal speed. Jump Force and Gravity Scale
+            // also grow with Move Speed but stay in a gentle ratio so a fast character jumps a
+            // bit higher without getting floaty: at Move 10 you get a normal 9-unit hop with
+            // gravity 1.6×, at Move 50 you get a stronger ~15-unit hop with gravity 2×, and at
+            // Move 100 you get ~18 with gravity 2.3×. Air Control stays low so mid-air steering
+            // stays minimal.
+            if (ImGui.SmallButton("Suggest Platformer Defaults"))
+            {
+                float ms = MathF.Max(0.1f, editorObj.Player2DMoveSpeed);
+                editorObj.Player2DRunSpeed = ms * 1.75f;
+                float jumpBase = 9f, gravBase = 1.6f, refMs = 8f;
+                float ratio = ms / refMs;
+                // Jump force stays near baseline and only rises very gently with move speed —
+                // a fast character does NOT get towering jumps (that feels floaty). Gravity
+                // scale rises faster so the arc stays tight: at Move 50 the jump is ~11 with
+                // gravity 2.6× (effective 156), airtime ≈ 0.3s — snappy, not floaty.
+                editorObj.Player2DJumpForce = MathF.Max(8f, jumpBase + (ms - refMs) * 0.12f);
+                editorObj.Player2DGravity = 60f;
+                editorObj.Player2DGravityScale = MathF.Max(1.4f, gravBase + (ms - refMs) * 0.028f);
+                editorObj.Player2DAcceleration = ms * 25f;
+                editorObj.Player2DDeceleration = ms * 27.5f;
+                editorObj.Player2DAirControl = 0.25f;
+                ImGui.SetItemDefaultFocus();
+            }
+            ImGui.SameLine();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Snaps Run/Accel/Decel/Jump/GravityScale to a platformer ratio based on the current Move Speed (jump & gravity grow gently, not sqrt); AirControl stays low so mid-air steering stays minimal");
         }
 
         // ── Camera follow tuning ──

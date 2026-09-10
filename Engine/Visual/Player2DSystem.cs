@@ -122,6 +122,11 @@ public static class Player2DSystem
                 // Jump action fires automatically (priority-gated).
                 player.TryStartAction("Jump");
             }
+
+            // Auto-resolve locomotion action (idle/walk/run) to match current state.
+            // Idle when grounded+still, Walk/Run by velocity. In-game: only do this when
+            // no user-bound action is active (TryStartAction respects priority).
+            player.ResolveLocomotionAction();
             // W/S override gravity while held (fly-style vertical movement).
             if (upHeld && !downHeld) player.Player2DVelocityY = walkSpeed;
             else if (downHeld && !upHeld) player.Player2DVelocityY = -walkSpeed;
