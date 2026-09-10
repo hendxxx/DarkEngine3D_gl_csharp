@@ -86,11 +86,15 @@ public static class Player2DSystem
             // NOTE: the animation clock advances inside DrawPlayer2D (single source of
             // truth) — updating it here too would double the playback speed.
 
-            // ── Input-driven horizontal movement + jump (preview/in-game only) ──
-            // Arrow keys or A/D move horizontally; Space/Up/LeftShift jump when grounded.
+            // ── Input-driven movement + jump (preview/in-game only) ──
+            // WASD/Arrows move horizontally AND vertically (W = up, S = down);
+            // Space/Up/LeftShift jumps when grounded. Vertical W/S is applied as a
+            // direct velocity override so gravity doesn't fight the input.
             float playerSpeed = 4f;
             bool left = ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow);
             bool right = ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow);
+            bool upHeld = ImGui.IsKeyDown(ImGuiKey.W);
+            bool downHeld = ImGui.IsKeyDown(ImGuiKey.S);
             bool jump = ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow)
                 || ImGui.IsKeyPressed(ImGuiKey.LeftShift);
             float velX = 0f;
@@ -101,6 +105,9 @@ public static class Player2DSystem
                 player.Player2DVelocityY = 8f;
                 player.Player2DGrounded = false;
             }
+            // W/S override gravity while held (fly-style vertical movement).
+            if (upHeld && !downHeld) player.Player2DVelocityY = playerSpeed;
+            else if (downHeld && !upHeld) player.Player2DVelocityY = -playerSpeed;
 
             var pos = player.Position;
             float r = player.Player2DCapsuleRadius;
@@ -296,6 +303,23 @@ public static class Player2DSystem
             pos.Y = newY;
             player.Player2DGrounded = grounded;
             player.Position = pos;
+        }
+        // Camera-follow: after every player has been resolved, pan the editor camera
+        // (ortho front view) so the first player stays centered. Only moves the CAMERA
+        // — objects are never shifted. The Z position is preserved so the ortho view
+        // plane doesn't drift toward/away from the grid.
+        if (bridge?.Camera != null)
+        {
+            var first = manager.Objects.FirstOrDefault(o =>
+                o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Player2D });
+            if (first != null)
+            {
+                var cam = bridge.Camera;
+                cam.Position = new Vector3(
+                    first.Position.X,
+                    first.Position.Y + first.Player2DCapsuleHeight * 0.5f,
+                    cam.Position.Z);
+            }
         }
     }
 

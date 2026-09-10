@@ -104,6 +104,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// Toggled by the "Fly" button in the viewport toolbar.</summary>
         public bool FlyMouseLook = false;
 
+        /// <summary>When true, fly-mode WASD movement (and scroll dolly) is suppressed so
+        /// external logic owns the camera position — e.g. 2D level mode where the camera
+        /// is panned/zoomed with right-drag/scroll and follows the Player2D during
+        /// preview/in-game. Rotation (✈ fly look) and RMB pan stay unaffected.</summary>
+        public bool LockTranslation = false;
+
         /// <summary>Editor viewport camera presets (perspective + orthographic-style side views).
         /// Applied by the "Views" button in the viewport toolbar.</summary>
         public enum EditorViewPreset
@@ -431,40 +437,41 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
                                 Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
 
-                // ── Mouse look: active when the ✈ Fly toggle is ON (and CTRL not held) OR while
-                // the Right Mouse Button is held in the viewport. The RMB hold is a temporary
-                // freefly-style look — it never flips FlyMouseLook/FlyMode, so releasing the button
-                // returns to normal editing and the ✈ button state stays untouched.
+                // ── Right-drag pan + Fly mouse-look ──
+                // Right-drag ALWAYS pans the camera in the view plane (screen X → camera
+                // Right, screen Y → camera Up) — it never rotates the view and never moves
+                // any object. The ✈ Fly toggle is the only way to rotate/look around.
                 bool rightLook = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT);
-                if (!ctrlHeld && (FlyMouseLook || rightLook))
+                if (!ctrlHeld && rightLook)
                 {
-                    // In orthographic mode a plain right-drag PANS the camera in the view
-                    // plane (screen X → camera Right, screen Y → camera Up) instead of
-                    // rotating, like standard ortho editors. Explicit Fly look (✈ toggle)
-                    // still rotates so the ortho viewing angle stays adjustable.
-                    if (IsOrthographic && rightLook && !FlyMouseLook)
-                    {
-                        // Pan speed scales with the ortho volume: dragging across the
-                        // whole viewport pans roughly one view height.
-                        float panK = OrthoSize * 0.002f;
-                        Position += (Right * -Mouse.DeltaX + Up * Mouse.DeltaY) * panK;
-                    }
-                    else
-                    {
-                        // Use configurable sensitivity from CameraConfig
-                        float sens = Config.CameraConfig.FlyMouseSensitivity;
-                        smoothYaw -= Mouse.DeltaX * sens;
-                        smoothPitch -= Mouse.DeltaY * sens;
-                        smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
+                    // Pan speed scales with the view volume so the drag feels 1:1 with the
+                    // cursor: ortho pans roughly one view height across the viewport.
+                    float panK = IsOrthographic ? OrthoSize * 0.002f : (Position - Vector3.Zero).Length() * 0.0015f;
+                    Position += (Right * -Mouse.DeltaX + Up * Mouse.DeltaY) * panK;
 
-                        if (!_mouseLookWasActive)
-                        {
-                            Mouse.ShowMouse(false);
-                            // GLFW re-centers the hidden cursor (disabled mode) — drop the stale
-                            // delta so the camera doesn't snap on the first look frame.
-                            Mouse.ResetState();
-                            _mouseLookWasActive = true;
-                        }
+                    // Cancel a fly mouse-look in progress so the pan cleanly takes over.
+                    if (_mouseLookWasActive)
+                    {
+                        Mouse.ShowMouse(true);
+                        Mouse.ResetState();
+                        _mouseLookWasActive = false;
+                    }
+                }
+                else if (!ctrlHeld && FlyMouseLook)
+                {
+                    // Use configurable sensitivity from CameraConfig
+                    float sens = Config.CameraConfig.FlyMouseSensitivity;
+                    smoothYaw -= Mouse.DeltaX * sens;
+                    smoothPitch -= Mouse.DeltaY * sens;
+                    smoothPitch = Math.Clamp(smoothPitch, -89f, 89f);
+
+                    if (!_mouseLookWasActive)
+                    {
+                        Mouse.ShowMouse(false);
+                        // GLFW re-centers the hidden cursor (disabled mode) — drop the stale
+                        // delta so the camera doesn't snap on the first look frame.
+                        Mouse.ResetState();
+                        _mouseLookWasActive = true;
                     }
                 }
                 else
@@ -483,24 +490,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // ── Update vectors BEFORE movement so Front/Right are correct ──
                 UpdateCameraVectorsFly();
 
-                // Movement (WASD + scroll) — suppressed while CTRL is held (editor shortcuts)
+                // Movement (WASD + scroll) — suppressed while CTRL is held (editor shortcuts).
+                // WASD translation is additionally suppressed while LockTranslation is set
+                // (2D level mode: the camera follows the Player2D and is panned with
+                // right-drag instead). Scroll zoom stays available in both cases.
                 if (!ctrlHeld)
                 {
-                    Vector3 move = Vector3.Zero;
+                    if (!LockTranslation)
+                    {
+                        Vector3 move = Vector3.Zero;
 
-                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
-                        move += Front;
-                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
-                        move -= Front;
-                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
-                        move -= Right;
-                    if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
-                        move += Right;
+                        if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W))
+                            move += Front;
+                        if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S))
+                            move -= Front;
+                        if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A))
+                            move -= Right;
+                        if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D))
+                            move += Right;
 
-                    if (move.LengthSquared() > 0)
-                        move = Vector3.Normalize(move);
+                        if (move.LengthSquared() > 0)
+                            move = Vector3.Normalize(move);
 
-                    Position += move * FlySpeed * dt;
+                        Position += move * FlySpeed * dt;
+                    }
 
                     // Scroll wheel for zoom. In perspective this dollies the camera
                     // along Front (its own FlyZoomSpeed keeps zooming responsive even

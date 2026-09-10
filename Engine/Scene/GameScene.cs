@@ -811,12 +811,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             if (_objectManager != null)
             {
-                // 3.9 Player2D objects: animation clocks + capsule-vs-tile physics when
-                // running (preview/in-game) — inert in pure edit mode.
-                var bridgeGS = _sceneManager.Bridge;
-                if (bridgeGS != null && (bridgeGS.InGameActive || bridgeGS.IsPreviewMode))
-                    Visual.Player2DSystem.Update(bridgeGS.EditorObjectManager, bridgeGS.ActiveTilemap, deltaTime, bridgeGS);
-
                 // 4. Update agents (AI, physics, animations) — always runs
                 _objectManager.Update(deltaTime);
 

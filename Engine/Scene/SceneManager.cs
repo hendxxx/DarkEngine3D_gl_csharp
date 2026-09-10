@@ -309,10 +309,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     _ide.Update(dt);
 
-                    // ── No active scene (editor/preview mode): run Player2D physics in
-                    // preview so capsules land on collision tiles before Play. ──
+                    // ── Player2D physics for editor objects — runs in preview mode (F7)
+                    // AND in-game mode (F8), regardless of whether an IScene is active.
+                    // Single central call site: GameScene no longer runs its own update,
+                    // so this must also cover sessions where a scene (e.g. GameScene)
+                    // is loaded while editor Player2D objects exist. ──
                     var bridgeP2d = _ide.Bridge;
-                    if (_currentScene == null && bridgeP2d != null && bridgeP2d.IsPreviewMode)
+                    if (bridgeP2d != null && (bridgeP2d.InGameActive || bridgeP2d.IsPreviewMode))
                         Visual.Player2DSystem.Update(bridgeP2d.EditorObjectManager, bridgeP2d.ActiveTilemap, dt, bridgeP2d);
                 }
 

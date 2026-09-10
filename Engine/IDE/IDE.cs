@@ -286,6 +286,7 @@ public class IDE : IDisposable
                 cam.OrthoSize = _levelCameraSavedOrthoSize;
                 cam.IsFlyMode = _levelCameraSavedFly;
                 cam.FlyMouseLook = _levelCameraSavedFlyLook;
+                cam.LockTranslation = false;
                 cam.SetEditorViewTransform(
                     _levelCameraSavedPos, _levelCameraSavedYaw, _levelCameraSavedPitch, cam.FoV);
                 _levelCameraApplied = false;
@@ -303,6 +304,9 @@ public class IDE : IDisposable
             // Keep fly mode off every frame while the 2D view is active.
             cam.IsFlyMode = false;
             cam.FlyMouseLook = false;
+            // Keep fly WASD off too — the camera is owned by pan/zoom in edit mode and
+            // by the Player2D camera-follow in preview/in-game (Player2DSystem.Update).
+            cam.LockTranslation = true;
             return;
         }
 
@@ -339,6 +343,7 @@ public class IDE : IDisposable
             cam.SetEditorViewTransform(level.CameraStartPos, level.CameraStartYaw, level.CameraStartPitch, cam.FoV);
             cam.IsFlyMode = false;
             cam.FlyMouseLook = false;
+            cam.LockTranslation = true;
             _levelCameraApplied = true;
             _levelCameraMap = level;
             Console.WriteLine($"[IDE] Level camera: restored saved camera start for '{level.Name}'");
@@ -369,6 +374,7 @@ public class IDE : IDisposable
         // users pan/zoom the ortho camera instead of flying around the map.
         cam.IsFlyMode = false;
         cam.FlyMouseLook = false;
+        cam.LockTranslation = true;
 
         _levelCameraApplied = true;
         _levelCameraMap = level;
