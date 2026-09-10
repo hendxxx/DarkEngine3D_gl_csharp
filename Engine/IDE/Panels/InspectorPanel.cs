@@ -2448,6 +2448,12 @@ public class InspectorPanel
                     var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
                     editorObj.Player2DAnimationClip = newClips.Count > 0 ? newClips[0] : "";
                     editorObj.Player2DAnimTime = 0;
+                    // Keep default locomotion actions bound to the same sheet.
+                    foreach (var act in editorObj.Actions)
+                    {
+                        if (string.IsNullOrEmpty(act.SpriteSheet))
+                            act.Clip = editorObj.Player2DAnimationClip;
+                    }
                 }
                 if (sel) ImGui.SetItemDefaultFocus();
             }
@@ -2513,6 +2519,183 @@ public class InspectorPanel
         if (ImGui.DragFloat("Gravity", ref g, 0.5f, 0f, 100f, "%.1f"))
             editorObj.Player2DGravity = MathF.Max(0f, g);
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Downward acceleration (units/s²) applied in preview/in-game against collision tiles");
+
+        // ── Movement tuning ──
+        if (ImGui.CollapsingHeader("Movement", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            float mv = editorObj.Player2DMoveSpeed;
+            if (ImGui.DragFloat("Move Speed", ref mv, 0.1f, 0.1f, 100f, "%.1f"))
+                editorObj.Player2DMoveSpeed = MathF.Max(0.1f, mv);
+
+            float rv = editorObj.Player2DRunSpeed;
+            if (ImGui.DragFloat("Run Speed", ref rv, 0.1f, 0.1f, 200f, "%.1f"))
+                editorObj.Player2DRunSpeed = MathF.Max(0.1f, rv);
+
+            float jf = editorObj.Player2DJumpForce;
+            if (ImGui.DragFloat("Jump Force", ref jf, 0.1f, 0.1f, 100f, "%.1f"))
+                editorObj.Player2DJumpForce = MathF.Max(0.1f, jf);
+
+            float gs = editorObj.Player2DGravityScale;
+            if (ImGui.DragFloat("Gravity Scale", ref gs, 0.05f, 0f, 10f, "%.2f"))
+                editorObj.Player2DGravityScale = MathF.Max(0f, gs);
+
+            float ac = editorObj.Player2DAcceleration;
+            if (ImGui.DragFloat("Acceleration", ref ac, 1f, 0f, 500f, "%.0f"))
+                editorObj.Player2DAcceleration = MathF.Max(0f, ac);
+
+            float dc = editorObj.Player2DDeceleration;
+            if (ImGui.DragFloat("Deceleration", ref dc, 1f, 0f, 500f, "%.0f"))
+                editorObj.Player2DDeceleration = MathF.Max(0f, dc);
+
+            float air = editorObj.Player2DAirControl;
+            if (ImGui.SliderFloat("Air Control", ref air, 0f, 1f, "%.2f"))
+                editorObj.Player2DAirControl = air;
+        }
+
+        // ── Camera follow tuning ──
+        if (ImGui.CollapsingHeader("Camera Follow"))
+        {
+            float fs = editorObj.CameraFollowSpeed;
+            if (ImGui.SliderFloat("Follow Speed", ref fs, 0.5f, 30f, "%.1f"))
+                editorObj.CameraFollowSpeed = fs;
+
+            float dzW = editorObj.CameraDeadZoneWidth;
+            if (ImGui.DragFloat("Dead Zone Width", ref dzW, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraDeadZoneWidth = MathF.Max(0f, dzW);
+
+            float dzH = editorObj.CameraDeadZoneHeight;
+            if (ImGui.DragFloat("Dead Zone Height", ref dzH, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraDeadZoneHeight = MathF.Max(0f, dzH);
+
+            float vt = editorObj.CameraVerticalThreshold;
+            if (ImGui.DragFloat("Vertical Threshold", ref vt, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraVerticalThreshold = MathF.Max(0f, vt);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Camera rises only when the player climbs above this height (small jumps don't move the camera)");
+
+            float rs = editorObj.CameraReturnSpeed;
+            if (ImGui.SliderFloat("Return To Player Speed", ref rs, 0.5f, 20f, "%.1f"))
+                editorObj.CameraReturnSpeed = rs;
+
+            float la = editorObj.CameraLookAhead;
+            if (ImGui.DragFloat("Look Ahead", ref la, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraLookAhead = MathF.Max(0f, la);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Camera looks ahead in the movement direction so obstacles appear earlier");
+        }
+
+        // ── Animation actions ──
+        RenderPlayer2DActionsInspector(editorObj);
+    }
+
+    /// <summary>Animation action editor: add/rename/remove actions, assign sheet + clip,
+    /// keyboard binding and priority. The same list drives Player2DSystem in-game.</summary>
+    private void RenderPlayer2DActionsInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Animation Actions"))
+            return;
+
+        editorObj.EnsureDefaultActions();
+        var sheets = IDEBridge.GetSpriteSheetNames();
+
+        ImGui.TextDisabled("Bind keys + clips; higher priority interrupts lower (Dead=100 cancels all)");
+
+        int removeIdx = -1;
+        for (int i = 0; i < editorObj.Actions.Count; i++)
+        {
+            var act = editorObj.Actions[i];
+            ImGui.PushID($"p2dact{i}");
+            if (ImGui.TreeNodeEx($"{act.Name}", ImGuiTreeNodeFlags.FramePadding))
+            {
+                string name = act.Name;
+                if (ImGui.InputText("Action Name", ref name, 64))
+                    act.Name = name;
+
+                // Sheet dropdown (auto-select first — dropdown rule)
+                string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : [""];
+                int sheetIdx = 0;
+                for (int s = 0; s < sheetArr.Length; s++)
+                    if (sheetArr[s] == act.SpriteSheet) { sheetIdx = s; break; }
+                if (ImGui.BeginCombo("Sheet", sheetArr[sheetIdx]))
+                {
+                    for (int s = 0; s < sheetArr.Length; s++)
+                    {
+                        bool sel = s == sheetIdx;
+                        if (ImGui.Selectable(sheetArr[s], sel))
+                        {
+                            act.SpriteSheet = sheetArr[s];
+                            var clipNames = IDEBridge.GetClipNames(act.SpriteSheet);
+                            act.Clip = clipNames.Count > 0 ? clipNames[0] : "";
+                        }
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+
+                // Clip dropdown (resolves against the action's sheet or the player's sheet)
+                var clips = IDEBridge.GetClipNames(string.IsNullOrEmpty(act.SpriteSheet)
+                    ? editorObj.Player2DSpriteSheet : act.SpriteSheet);
+                string[] clipArr = clips.Count > 0 ? clips.ToArray() : [""];
+                int clipIdx = 0;
+                for (int c = 0; c < clipArr.Length; c++)
+                    if (clipArr[c] == act.Clip) { clipIdx = c; break; }
+                if (ImGui.BeginCombo("Clip", clipArr[clipIdx]))
+                {
+                    for (int c = 0; c < clipArr.Length; c++)
+                    {
+                        bool sel = c == clipIdx;
+                        if (ImGui.Selectable(clipArr[c], sel))
+                            act.Clip = clipArr[c];
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+
+                bool loop = act.Loop;
+                if (ImGui.Checkbox("Loop", ref loop))
+                    act.Loop = loop;
+
+                int prio = act.Priority;
+                if (ImGui.InputInt("Priority", ref prio))
+                    act.Priority = prio;
+
+                // Keyboard binding: pick from common keys
+                string[] keys = ["None", "J", "K", "L", "U", "I", "O", "E", "F", "Q", "R", "T", "Z", "X", "C", "V", "B", "N", "M"];
+                int keyIdx = 0;
+                for (int k = 0; k < keys.Length; k++)
+                    if (keys[k] == act.KeyBinding) { keyIdx = k; break; }
+                if (ImGui.BeginCombo("Key", act.KeyBinding))
+                {
+                    for (int k = 0; k < keys.Length; k++)
+                    {
+                        bool sel = k == keyIdx;
+                        if (ImGui.Selectable(keys[k], sel))
+                            act.KeyBinding = keys[k];
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }                    ImGui.EndCombo();
+                }
+
+                if (ImGui.SmallButton("Test"))
+                    editorObj.TryStartAction(act.Name);
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Remove"))                    removeIdx = i;
+                ImGui.TreePop();
+            }
+            ImGui.PopID();
+        }
+
+        if (removeIdx >= 0)
+            editorObj.Actions.RemoveAt(removeIdx);
+
+        if (ImGui.Button("[+] Add Action"))
+        {
+            int n = editorObj.Actions.Count + 1;
+            editorObj.Actions.Add(new Player2DAction
+            {
+                Name = $"Action{n}",
+                SpriteSheet = editorObj.Player2DSpriteSheet,
+                Clip = editorObj.Player2DAnimationClip,
+                Priority = 5,
+            });
+        }
     }
 
     /// <summary>Render the advanced terrain settings for a Plane object: heightmap,

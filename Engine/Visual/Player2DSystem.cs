@@ -39,6 +39,8 @@ public static class Player2DSystem
         if (Objects.EditorObject.Player2DSpawnPending)
         {
             Objects.EditorObject.Player2DSpawnPending = false;
+            // New play session: the follow camera must re-snap to its start point.
+            Objects.EditorObject.CameraFollowInitialized = false;
             var start2d = manager.Objects.FirstOrDefault(o =>
                 o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D });
             if (start2d != null)
@@ -87,27 +89,51 @@ public static class Player2DSystem
             // truth) — updating it here too would double the playback speed.
 
             // ── Input-driven movement + jump (preview/in-game only) ──
-            // WASD/Arrows move horizontally AND vertically (W = up, S = down);
-            // Space/Up/LeftShift jumps when grounded. Vertical W/S is applied as a
-            // direct velocity override so gravity doesn't fight the input.
-            float playerSpeed = 4f;
+            // A/D or Left/Right move horizontally with acceleration/deceleration;
+            // LeftShift runs (RunSpeed); Space/Up jumps when grounded; W/S fly-style
+            // vertical movement retained as a debug convenience.
+            float walkSpeed = MathF.Max(0.1f, player.Player2DMoveSpeed);
+            float runSpeed = MathF.Max(walkSpeed, player.Player2DRunSpeed);
             bool left = ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow);
             bool right = ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow);
             bool upHeld = ImGui.IsKeyDown(ImGuiKey.W);
             bool downHeld = ImGui.IsKeyDown(ImGuiKey.S);
-            bool jump = ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow)
-                || ImGui.IsKeyPressed(ImGuiKey.LeftShift);
-            float velX = 0f;
-            if (left && !right) velX = -playerSpeed;
-            else if (right && !left) velX = playerSpeed;
+            bool runHeld = ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift);
+            bool jump = ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow);
+            float targetVx = 0f;
+            if (left && !right) targetVx = -(runHeld ? runSpeed : walkSpeed);
+            else if (right && !left) targetVx = runHeld ? runSpeed : walkSpeed;
+
+            // Accelerate/decelerate toward the target (air control scales acceleration).
+            float accel = player.Player2DAcceleration;
+            if (!player.Player2DGrounded) accel *= Math.Clamp(player.Player2DAirControl, 0f, 1f);
+            if (targetVx == 0f) accel = player.Player2DDeceleration;
+            float velX = player.Player2DVelocityX;
+            if (velX < targetVx) velX = MathF.Min(targetVx, velX + accel * dt);
+            else if (velX > targetVx) velX = MathF.Max(targetVx, velX - accel * dt);
+            player.Player2DVelocityX = velX;
+            if (velX > 0.05f) player.Player2DFacing = 1f;
+            else if (velX < -0.05f) player.Player2DFacing = -1f;
+
             if (jump && player.Player2DGrounded)
             {
-                player.Player2DVelocityY = 8f;
+                player.Player2DVelocityY = MathF.Max(1f, player.Player2DJumpForce);
                 player.Player2DGrounded = false;
+                // Jump action fires automatically (priority-gated).
+                player.TryStartAction("Jump");
             }
             // W/S override gravity while held (fly-style vertical movement).
-            if (upHeld && !downHeld) player.Player2DVelocityY = playerSpeed;
-            else if (downHeld && !upHeld) player.Player2DVelocityY = -playerSpeed;
+            if (upHeld && !downHeld) player.Player2DVelocityY = walkSpeed;
+            else if (downHeld && !upHeld) player.Player2DVelocityY = -walkSpeed;
+
+            // ── User-bound action keys (Inspector: Attack = J, Block = K, ...) ──
+            foreach (var act in player.Actions)
+            {
+                if (string.IsNullOrWhiteSpace(act.KeyBinding) || act.KeyBinding == "None") continue;
+                if (Enum.TryParse<ImGuiKey>(act.KeyBinding, out var k) && k != ImGuiKey.None
+                    && ImGui.IsKeyPressed(k))
+                    player.TryStartAction(act.Name);
+            }
 
             var pos = player.Position;
             float r = player.Player2DCapsuleRadius;
@@ -180,7 +206,14 @@ public static class Player2DSystem
             // ════════════════════════════════════════════════════════
             // STEP 2 — Gravity + move Y, resolve Y (ground/ceiling).
             // ════════════════════════════════════════════════════════
-            player.Player2DVelocityY -= player.Player2DGravity * dt;
+            player.Player2DVelocityY -= player.Player2DGravity * MathF.Max(0f, player.Player2DGravityScale) * dt;
+            // Fall action while airborne and descending (auto-released on landing by action loop rules).
+            if (player.Player2DVelocityY < -0.5f && !player.Player2DGrounded)
+            {
+                var fallAct = player.Actions.FirstOrDefault(a => a.Name == "Fall");
+                if (fallAct != null && player.Player2DCurrentAction == "")
+                    player.TryStartAction("Fall");
+            }
             float newY = pos.Y + player.Player2DVelocityY * dt;
 
             // Horizontal span of the capsule after the X resolve — used for the
@@ -304,23 +337,125 @@ public static class Player2DSystem
             player.Player2DGrounded = grounded;
             player.Position = pos;
         }
-        // Camera-follow: after every player has been resolved, pan the editor camera
-        // (ortho front view) so the first player stays centered. Only moves the CAMERA
-        // — objects are never shifted. The Z position is preserved so the ortho view
-        // plane doesn't drift toward/away from the grid.
+        // ── Platformer camera follow ──
+        // Smooth follow (FollowSpeed), dead zone (DeadZoneWidth/Height), vertical
+        // threshold (camera rises only above VerticalThreshold px, returns with
+        // ReturnSpeed), look-ahead (LookAhead px toward the facing), world boundary
+        // (clamped to the map's painted-tile extent), Camera Start Point (position +
+        // zoom) honored on entry. Runs ONLY in preview/in-game.
         if (bridge?.Camera != null)
         {
             var first = manager.Objects.FirstOrDefault(o =>
                 o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Player2D });
-            if (first != null)
+            var camStart = manager.Objects.FirstOrDefault(o =>
+                o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.CameraStart2D });
+            var cam = bridge.Camera;
+
+            // Session entry: snap to the Camera Start Point (center on it) and apply
+            // its zoom (Scale.Y), or fall back to snapping above the player.
+            if (!Objects.EditorObject.CameraFollowInitialized)
             {
-                var cam = bridge.Camera;
-                cam.Position = new Vector3(
-                    first.Position.X,
-                    first.Position.Y + first.Player2DCapsuleHeight * 0.5f,
-                    cam.Position.Z);
+                Objects.EditorObject.CameraFollowInitialized = true;
+                float startZoom = camStart != null && camStart.Scale.Y > 0.1f ? camStart.Scale.Y : 0f;
+                Vector3 anchor;
+                if (camStart != null)
+                    anchor = camStart.Position;
+                else if (first != null)
+                    anchor = new Vector3(first.Position.X, first.Position.Y + first.Player2DCapsuleHeight * 0.5f, 0f);
+                else
+                    anchor = cam.Position;
+                // The 2D front view keeps the current yaw/pitch (SyncLevelCamera already
+                // forced ortho + front) — we only move Position and apply the start zoom.
+                cam.IsOrthographic = true;
+                if (startZoom > 0.1f)
+                    cam.OrthoSize = MathF.Max(1f, map.Height * PxToWorld(map) * 0.5f / startZoom);
+                cam.Position = new Vector3(anchor.X, anchor.Y, cam.Position.Z);
+            }
+            else if (first != null)
+            {
+                float followSpeed = MathF.Max(0.1f, first.CameraFollowSpeed);
+                float deadW = MathF.Max(0f, first.CameraDeadZoneWidth) * PxToWorld(map);
+                float deadH = MathF.Max(0f, first.CameraDeadZoneHeight) * PxToWorld(map);
+                float vThreshold = MathF.Max(0f, first.CameraVerticalThreshold) * PxToWorld(map);
+                float returnSpeed = MathF.Max(0.1f, first.CameraReturnSpeed);
+                float lookAhead = first.CameraLookAhead * PxToWorld(map);
+
+                // Target: player chest, offset by look-ahead toward the facing direction
+                // (look-ahead eases in so direction flips don't snap the camera).
+                var target = first.Position + new Vector3(0f, first.Player2DCapsuleHeight * 0.5f, 0f);
+                var camPos = cam.Position;
+
+                // ── Horizontal: dead zone around the camera axis, then smooth follow ──
+                float desiredX = target.X + first.Player2DFacing * lookAhead;
+                float dx = desiredX - camPos.X;
+                if (MathF.Abs(dx) > deadW * 0.5f)
+                    camPos.X += (dx - MathF.Sign(dx) * deadW * 0.5f) * MathF.Min(1f, followSpeed * dt);
+
+                // ── Vertical: threshold-gated rise, gentle return, dead zone band ──
+                float desiredY = target.Y;
+                float dy = desiredY - camPos.Y;
+                if (dy > 0f)
+                {
+                    // Player above the camera anchor: only chase beyond the threshold.
+                    if (dy > vThreshold + deadH * 0.5f)
+                        camPos.Y += (dy - vThreshold - deadH * 0.5f) * MathF.Min(1f, followSpeed * dt);
+                }
+                else
+                {
+                    // Player below the anchor: return toward them gently (return speed).
+                    if (MathF.Abs(dy) > deadH * 0.5f)
+                        camPos.Y += (dy + MathF.Sign(dy) * deadH * 0.5f) * MathF.Min(1f, returnSpeed * dt);
+                }
+
+                // ── World boundary: clamp the view inside the map's painted extent ──
+                ComputeWorldBounds(map, out float worldL, out float worldR, out float worldB, out float worldT);
+                // Ortho half-extents in world units (OrthoSize = vertical half-height).
+                float halfH = cam.OrthoSize;
+                float halfW = halfH * cam.GetAspect();
+                if (worldR - worldL > halfW * 2f)
+                    camPos.X = Math.Clamp(camPos.X, worldL + halfW, worldR - halfW);
+                else
+                    camPos.X = (worldL + worldR) * 0.5f;
+                if (worldT - worldB > halfH * 2f)
+                    camPos.Y = Math.Clamp(camPos.Y, worldB + halfH, worldT - halfH);
+                else
+                    camPos.Y = (worldB + worldT) * 0.5f;
+
+                cam.Position = new Vector3(camPos.X, camPos.Y, cam.Position.Z);
             }
         }
+    }
+
+    /// <summary>Px → world conversion (the map grid uses TileSize × WorldScale).</summary>
+    private static float PxToWorld(Tilemap2D map) => map.TileSize * Tilemap2D.WorldScale;
+
+    /// <summary>Compute the world-space bounds of the PAINTED tiles (the valid play area).
+    /// Empty maps fall back to the full grid extent. Bounds: left/right in X, bottom/top in Y.</summary>
+    private static void ComputeWorldBounds(Tilemap2D map, out float left, out float right,
+        out float bottom, out float top)
+    {
+        float cell = PxToWorld(map);
+        int minGx = int.MaxValue, maxGx = int.MinValue, minGy = int.MaxValue, maxGy = int.MinValue;
+        foreach (var layer in map.Layers)
+        {
+            if (layer == null) continue;
+            for (int ty = 0; ty < map.Height; ty++)
+                for (int tx = 0; tx < map.Width; tx++)
+                    if (layer.GetTile(tx, ty) >= 0)
+                    {
+                        if (tx < minGx) minGx = tx;
+                        if (tx > maxGx) maxGx = tx;
+                        if (ty < minGy) minGy = ty;
+                        if (ty > maxGy) maxGy = ty;
+                    }
+        }
+        if (minGx == int.MaxValue) { minGx = 0; maxGx = map.Width - 1; minGy = 0; maxGy = map.Height - 1; }
+
+        left = minGx * cell;
+        right = (maxGx + 1) * cell;
+        // Renderer convention: grid row ty spans world Y [(H-1-ty)*cell, (H-ty)*cell].
+        top = (map.Height - minGy) * cell;
+        bottom = (map.Height - 1 - maxGy) * cell;
     }
 
     // ── Grid ↔ world mapping helpers ────────────────────────────────────

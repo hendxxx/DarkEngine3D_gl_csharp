@@ -179,6 +179,24 @@ public class EditorObjectData
     public float Player2DCapsuleHeight { get; set; } = 1.8f;
     public bool Player2DShowCapsule { get; set; } = true;
     public float Player2DGravity { get; set; } = 25f;
+    // ── Player2D movement tuning (Inspector-editable, used by Player2DSystem) ──
+    public float Player2DMoveSpeed { get; set; } = 5f;
+    public float Player2DRunSpeed { get; set; } = 9f;
+    public float Player2DJumpForce { get; set; } = 11f;
+    public float Player2DGravityScale { get; set; } = 1f;
+    public float Player2DAcceleration { get; set; } = 60f;
+    public float Player2DDeceleration { get; set; } = 80f;
+    public float Player2DAirControl { get; set; } = 0.65f;
+    // ── Player2D camera-follow tuning ──
+    public float CameraFollowSpeed { get; set; } = 6f;
+    public float CameraDeadZoneWidth { get; set; } = 96f;
+    public float CameraDeadZoneHeight { get; set; } = 64f;
+    public float CameraVerticalThreshold { get; set; } = 64f;
+    public float CameraReturnSpeed { get; set; } = 3f;
+    public float CameraLookAhead { get; set; } = 150f;
+    /// <summary>Animation actions (name + sheet/clip + key binding + priority). Persisted
+    /// via the object data so designer-built action sets survive reloads.</summary>
+    public List<Player2DActionData>? Actions { get; set; }
 
     // ── Type-specific properties (Camera / Light / Sky) ──
     /// <summary>Vertical FOV in degrees (Camera).</summary>
@@ -425,4 +443,15 @@ public class SceneManifest
     public float? EditorCameraYaw { get; set; }
     /// <summary>Legacy global editor camera pitch (degrees).</summary>
     public float? EditorCameraPitch { get; set; }
+}
+
+/// <summary>Serializable form of <see cref="Player2DAction"/> (animation action binding).</summary>
+public class Player2DActionData
+{
+    public string Name { get; set; } = "";
+    public string SpriteSheet { get; set; } = "";
+    public string Clip { get; set; } = "";
+    public bool Loop { get; set; } = true;
+    public int Priority { get; set; } = 5;
+    public string KeyBinding { get; set; } = "None";
 }

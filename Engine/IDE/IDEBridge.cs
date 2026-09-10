@@ -293,7 +293,10 @@ public class IDEBridge
             if (o is not { PrimitiveType: EditorPrimitiveType.Player2D }) continue;
             o.Position = start2d.Position;
             o.Player2DVelocityY = 0f;
+            o.Player2DVelocityX = 0f;
             o.Player2DAnimTime = 0f;
+            o.Player2DActionTime = 0f;
+            o.Player2DCurrentAction = "";
             Console.WriteLine($"[Bridge] Player2D reset to Start ({o.Position.X:F1}, {o.Position.Y:F1})");
         }
     }

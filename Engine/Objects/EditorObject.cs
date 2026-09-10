@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
@@ -9,6 +10,26 @@ using DarkEngine3D_gl_csharp.Engine.Inputs;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects;
+
+/// <summary>
+/// A user-defined animation action for Player2D (Idle/Walk/Run/... + custom).
+/// Binds an action name to a sprite-sheet clip, a keyboard key, and a priority —
+/// higher-priority actions interrupt lower ones; Dead (100) cancels everything.
+/// </summary>
+public class Player2DAction
+{
+    public string Name { get; set; } = "";
+    /// <summary>Sprite sheet name from the Sprite Editor registry ("" = player's sheet).</summary>
+    public string SpriteSheet { get; set; } = "";
+    /// <summary>Animation clip name within the sheet.</summary>
+    public string Clip { get; set; } = "";
+    public bool Loop { get; set; } = true;
+    /// <summary>Priority — a playing action can only be replaced by equal/higher priority.
+    /// Dead = 100 cancels everything; Walk = 5 is interrupted by Attack/Skills.</summary>
+    public int Priority { get; set; } = 5;
+    /// <summary>Keyboard binding (ImGuiKey name, e.g. "J", "None" = not bound).</summary>
+    public string KeyBinding { get; set; } = "None";
+}
 
 /// <summary>
 /// Type of editor-placed 3D primitive.
@@ -27,7 +48,10 @@ public enum EditorPrimitiveType
     /// sprite-sheet clip. Spawned at the Start2D object's position in-game.</summary>
     Player2D,
     /// <summary>Player spawn marker. In preview/in-game the Player2D is placed here.</summary>
-    Start2D
+    Start2D,
+    /// <summary>Camera start marker for 2D levels: preview/in-game cameras begin here
+    /// (position = camera center, Scale.Y>0 marker field CameraStartZoom = ortho zoom).</summary>
+    CameraStart2D
 }
 
 /// <summary>
@@ -298,12 +322,67 @@ public unsafe class EditorObject
     public float Player2DAnimTime { get; set; }
     /// <summary>Runtime physics velocity (Y only — sidescroller).</summary>
     public float Player2DVelocityY { get; set; }
+    /// <summary>Current horizontal velocity (world units/s) — drives facing + walk/run anims.</summary>
+    public float Player2DVelocityX { get; set; }
+    /// <summary>Facing: 1 = right, -1 = left. Flipped automatically from Player2DVelocityX.</summary>
+    public float Player2DFacing { get; set; } = 1f;
     /// <summary>True when standing on a collision tile this frame (grounded).</summary>
     public bool Player2DGrounded { get; set; }
+
+    // ── Movement tuning (all live in the Inspector, used by Player2DSystem) ──
+    /// <summary>Horizontal walk speed (world units/s).</summary>
+    public float Player2DMoveSpeed { get; set; } = 5f;
+    /// <summary>Horizontal run speed (world units/s) — used while LeftShift is held.</summary>
+    public float Player2DRunSpeed { get; set; } = 9f;
+    /// <summary>Initial upward velocity on jump (world units/s).</summary>
+    public float Player2DJumpForce { get; set; } = 11f;
+    /// <summary>Multiplier on Player2DGravity.</summary>
+    public float Player2DGravityScale { get; set; } = 1f;
+    /// <summary>Ground horizontal acceleration (world units/s²).</summary>
+    public float Player2DAcceleration { get; set; } = 60f;
+    /// <summary>Ground horizontal deceleration when no input (world units/s²).</summary>
+    public float Player2DDeceleration { get; set; } = 80f;
+    /// <summary>0..1 — how much of ground acceleration applies while airborne.</summary>
+    public float Player2DAirControl { get; set; } = 0.65f;
+
+    // ── Camera-follow tuning (used by the Player2DSystem camera follow) ──
+    /// <summary>How fast the camera catches the target (higher = snappier).</summary>
+    public float CameraFollowSpeed { get; set; } = 6f;
+    /// <summary>Dead zone width in px — camera doesn't move while the player is inside it.</summary>
+    public float CameraDeadZoneWidth { get; set; } = 96f;
+    /// <summary>Dead zone height in px.</summary>
+    public float CameraDeadZoneHeight { get; set; } = 64f;
+    /// <summary>Camera rises only when the player climbs above this many px from the anchor.</summary>
+    public float CameraVerticalThreshold { get; set; } = 64f;
+    /// <summary>How fast the camera returns down to the player after a high climb.</summary>
+    public float CameraReturnSpeed { get; set; } = 3f;
+    /// <summary>Look-ahead distance in px toward the movement direction.</summary>
+    public float CameraLookAhead { get; set; } = 150f;
+
+    // ── Animation action system ──
+    /// <summary>User-defined animation actions (Idle/Walk/... + custom). Persisted with the object.</summary>
+    public List<Player2DAction> Actions { get; set; } = new();
+    /// <summary>Currently playing action name ("" = base locomotion).</summary>
+    public string Player2DCurrentAction { get; set; } = "";
+    /// <summary>Time inside the current action (reset on action change).</summary>
+    public float Player2DActionTime { get; set; }
     /// <summary>Static: request all Player2D objects to respawn at their Start2D marker
     /// on the NEXT update (set when in-game mode begins — objects may be re-created
     /// asynchronously by the .ing reload that follows, so spawning must be deferred).</summary>
     public static bool Player2DSpawnPending { get; set; }
+
+    /// <summary>Static camera-follow state: true once the follow camera snapped to its
+    /// start point for this play session (prevents a lerp swoop from the editor view).</summary>
+    public static bool CameraFollowInitialized { get; set; }
+
+    /// <summary>Ensure the default locomotion actions exist (Idle/Walk/Run/Jump/Fall).</summary>
+    public void EnsureDefaultActions()
+    {
+        if (Actions.Count > 0) return;
+        string[] defaults = ["Idle", "Walk", "Run", "Jump", "Fall"];
+        foreach (var n in defaults)
+            Actions.Add(new Player2DAction { Name = n, SpriteSheet = Player2DSpriteSheet, Clip = Player2DAnimationClip });
+    }
 
     // ── PBR material (Box/Sphere/flat-plane) — dedicated PBR shader with 7 optional
     //    maps + tuning. Every map is optional: missing maps keep neutral defaults
@@ -847,6 +926,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
             EditorPrimitiveType.Map2D => new Vector3(0.8f, 0.8f, 0.9f),
             EditorPrimitiveType.Player2D => new Vector3(0.2f, 0.9f, 0.4f),
+            EditorPrimitiveType.CameraStart2D => new Vector3(0.25f, 0.85f, 1f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
     }
@@ -1039,7 +1119,7 @@ public unsafe class EditorObject
                     new Vector3( 0.5f,  0.5f,  0.5f)),
                 // Player2D/Start2D: feet-anchored capsule AABB — Position.Y is the
                 // capsule BOTTOM (matches DrawPlayer2DCapsule + Player2DSystem).
-                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D => new AABB(
+                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D or EditorPrimitiveType.CameraStart2D => new AABB(
                     new Vector3(-Player2DCapsuleRadius, 0f, -Player2DCapsuleRadius),
                     new Vector3( Player2DCapsuleRadius, Player2DCapsuleHeight,  Player2DCapsuleRadius)),
                 _ => new AABB(
@@ -2322,7 +2402,8 @@ public unsafe class EditorObject
     {
         if (!IsVisible || (PrimitiveType != EditorPrimitiveType.Camera
             && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky
-            && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D)) return;
+            && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D
+            && PrimitiveType != EditorPrimitiveType.CameraStart2D)) return;
 
         // Derive a camera-facing basis from Front (Right/Up fields can be stale in fly
         // mode). Same upRef fallback as the light/sky gizmos so the icon always faces you.
@@ -2371,6 +2452,34 @@ public unsafe class EditorObject
             Line(P(0.35f, 0.3f), P(0f, 0.15f));      // arrow head right
             Line(P(-0.35f, -0.35f), P(-0.35f, -0.5f)); // spawn bracket left
             Line(P(0.35f, -0.35f), P(0.35f, -0.5f));   // spawn bracket right
+        }
+        else if (PrimitiveType == EditorPrimitiveType.CameraStart2D)
+        {
+            // Camera start icon: eye glyph (lens circle + pupil + view rays).
+            const int eyeSegs = 16;
+            var eprev = P(MathF.Cos(0f), MathF.Sin(0f));
+            for (int i = 1; i <= eyeSegs; i++)
+            {
+                float a = i * MathF.PI * 2f / eyeSegs;
+                var ecur = P(MathF.Cos(a), MathF.Sin(a));
+                Line(eprev, ecur);
+                eprev = ecur;
+            }
+            const int pupilSegs = 10;
+            var pprev = P(0.3f * MathF.Cos(0f), 0.3f * MathF.Sin(0f));
+            for (int i = 1; i <= pupilSegs; i++)
+            {
+                float a = i * MathF.PI * 2f / pupilSegs;
+                var pcur = P(0.3f * MathF.Cos(a), 0.3f * MathF.Sin(a));
+                Line(pprev, pcur);
+                pprev = pcur;
+            }
+            // View rays: left + right
+            Line(P(-1.3f, 0f), P(-0.85f, 0f));
+            Line(P(0.85f, 0f), P(1.3f, 0f));
+            // Ground dashes under the icon
+            Line(P(-0.6f, -1.1f), P(-0.2f, -1.1f));
+            Line(P(0.2f, -1.1f), P(0.6f, -1.1f));
         }
         else if (PrimitiveType == EditorPrimitiveType.Camera)
         {
@@ -2495,16 +2604,49 @@ public unsafe class EditorObject
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
         if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return;
 
+        // ── Animation action system: a bound action with an own clip overrides the base clip. ──
+        // DrawPlayer2D still owns the clock (single source of truth) — but when an action is
+        // playing we keep its clock separate (Player2DActionTime) so the base idle clock
+        // doesn't skip while actions fire.
+        var actionClip = GetActiveActionClip(out var activeAction);
+        bool actionActive = actionClip != null;
+        if (actionClip != null)
+        {
+            Player2DActionTime += Glfw.GetDeltaTime();
+            // Non-looping actions release when finished (state machine drops to locomotion).
+            if (activeAction != null && !activeAction.Loop && Player2DActionTime >= actionClip.Duration)
+                Player2DCurrentAction = "";
+        }
+
         // Resolve the sheet image + grid. The bridge's registry carries a live texture.
         if (!IDEBridge.TryGetSpriteSheetTexture(Player2DSpriteSheet, out uint texId, out int imgW, out int imgH))
             return;
         if (texId == 0 || imgW <= 0 || imgH <= 0) return;
 
         // Advance the animation clock HERE (once per frame per player) — this is the
-        // single source of truth so the sprite animates in edit mode too.
-        Player2DAnimTime += Glfw.GetDeltaTime();
+        // single source of truth so the sprite animates in edit mode too. The action
+        // clock runs instead while an action is active.
+        if (!actionActive)
+            Player2DAnimTime += Glfw.GetDeltaTime();
 
-        int frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        // Frame index: from the action clock (honoring the ACTION's loop flag without
+        // mutating the shared clip) or the base locomotion clock.
+        int frameIdx;
+        if (actionClip != null)
+        {
+            float frameDur = 1f / MathF.Max(0.01f, actionClip.FPS * actionClip.SpeedMultiplier);
+            int f = (int)(Player2DActionTime / frameDur);
+            int count = actionClip.FrameIndices.Count;
+            if (activeAction!.Loop && count > 0)
+                f = ((f % count) + count) % count;
+            else
+                f = Math.Clamp(f, 0, Math.Max(0, count - 1));
+            frameIdx = count > 0 ? actionClip.FrameIndices[f] : 0;
+        }
+        else
+        {
+            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        }
         var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
         // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
         // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. Raw uvMin.Y is the
@@ -2547,15 +2689,20 @@ public unsafe class EditorObject
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
 
         // Two triangles in WORLD space (identity model): pos(3) uv(2) tint(4).
+        // Facing left (Player2DFacing < 0) mirrors the frame horizontally by swapping
+        // the U coordinates (su0/su1) — the sprite looks toward its movement direction.
+        bool flipX = Player2DFacing < 0f;
+        float uL = flipX ? su1 : su0; // left edge of quad samples frame-right when flipped
+        float uR = flipX ? su0 : su1;
         float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
         var verts = stackalloc Map2DVertex[6]
         {
-            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
-            new(x1, y0, z, su1, svBot, tR, tG, tB, tA),
-            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
-            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
-            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
-            new(x0, y1, z, su0, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, uL, svBot, tR, tG, tB, tA),
+            new(x1, y0, z, uR, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, uR, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, uL, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, uR, svTop, tR, tG, tB, tA),
+            new(x0, y1, z, uL, svTop, tR, tG, tB, tA),
         };
 
         if (_player2dVAO == 0)
@@ -2592,6 +2739,48 @@ public unsafe class EditorObject
 
         // Restore main shader.
         GL.UseProgram(Shader.GetShaderProgram());
+    }
+
+    /// <summary>Resolve the animation clip for the currently-playing action (priority
+    /// system), or null when the base locomotion clip should play. The matched action is
+    /// returned via <paramref name="action"/> (for its Loop flag — the shared clip object
+    /// is never mutated).</summary>
+    private AnimationClip2D? GetActiveActionClip(out Player2DAction? action)
+    {
+        action = null;
+        if (string.IsNullOrEmpty(Player2DCurrentAction) || Actions.Count == 0)
+            return null;
+        var act = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+        if (act == null) { Player2DCurrentAction = ""; return null; }
+
+        string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? Player2DSpriteSheet : act.SpriteSheet;
+        string clipName = string.IsNullOrEmpty(act.Clip) ? Player2DAnimationClip : act.Clip;
+        if (IDEBridge.TryGetSpriteClip(sheetName, clipName, out var sheet, out var clip) && clip != null)
+        {
+            action = act;
+            return clip;
+        }
+        return null;
+    }
+
+    /// <summary>Trigger an action by name if its priority allows (respects the
+    /// interrupt rules: Dead=100 cancels all; equal/lower priority is ignored).</summary>
+    public bool TryStartAction(string name)
+    {
+        var act = Actions.FirstOrDefault(a => a.Name == name);
+        if (act == null) return false;
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && act.Priority < cur.Priority)
+                return false; // a higher-priority action is playing
+        }
+        if (Player2DCurrentAction != name)
+        {
+            Player2DCurrentAction = name;
+            Player2DActionTime = 0f;
+        }
+        return true;
     }
 
     /// <summary>
@@ -2680,8 +2869,9 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D have no solid mesh — selection shows via their line gizmos.
-        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D)
+        // Player2D/Start2D/CameraStart2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D)
             return;
 
         // ── GLB reference: draw the model's own meshes into the stencil mask. ──
@@ -2737,8 +2927,9 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D have no solid mesh — selection shows via their line gizmos.
-        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D)
+        // Player2D/Start2D/CameraStart2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D)
             return;
 
         // ── GLB reference: inverted-hull outline over the model's meshes. ──
