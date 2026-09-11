@@ -79,18 +79,18 @@
       "ImageHeight": 80,
       "Columns": 8,
       "Rows": 1,
-      "FrameWidth": 64,
-      "FrameHeight": 64,
-      "PaddingX": 16,
-      "PaddingY": 16,
-      "OffsetX": 10,
-      "OffsetY": 3,
+      "FrameWidth": 80,
+      "FrameHeight": 80,
+      "PaddingX": 0,
+      "PaddingY": 0,
+      "OffsetX": 0,
+      "OffsetY": 0,
       "CustomFrames": [
         {
-          "X": 10,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 0,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 0",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -101,10 +101,10 @@
           "Tags": {}
         },
         {
-          "X": 90,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 80,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 1",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -115,10 +115,10 @@
           "Tags": {}
         },
         {
-          "X": 170,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 160,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 2",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -129,10 +129,10 @@
           "Tags": {}
         },
         {
-          "X": 250,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 240,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 3",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -143,10 +143,10 @@
           "Tags": {}
         },
         {
-          "X": 330,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 320,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 4",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -157,10 +157,10 @@
           "Tags": {}
         },
         {
-          "X": 410,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 400,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 5",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -171,10 +171,10 @@
           "Tags": {}
         },
         {
-          "X": 490,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 480,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 6",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -185,10 +185,10 @@
           "Tags": {}
         },
         {
-          "X": 570,
-          "Y": 3,
-          "Width": 64,
-          "Height": 64,
+          "X": 560,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
           "Name": "Frame 7",
           "AnchorX": 0.5,
           "AnchorY": 1,
@@ -565,13 +565,13 @@
       "Rows": 1,
       "FrameWidth": 80,
       "FrameHeight": 80,
-      "PaddingX": 12,
+      "PaddingX": 16,
       "PaddingY": 0,
-      "OffsetX": 20,
+      "OffsetX": 8,
       "OffsetY": 0,
       "CustomFrames": [
         {
-          "X": 20,
+          "X": 8,
           "Y": 0,
           "Width": 80,
           "Height": 80,
@@ -585,7 +585,7 @@
           "Tags": {}
         },
         {
-          "X": 112,
+          "X": 104,
           "Y": 0,
           "Width": 80,
           "Height": 80,
@@ -599,7 +599,7 @@
           "Tags": {}
         },
         {
-          "X": 204,
+          "X": 200,
           "Y": 0,
           "Width": 80,
           "Height": 80,
@@ -627,7 +627,7 @@
           "Tags": {}
         },
         {
-          "X": 388,
+          "X": 392,
           "Y": 0,
           "Width": 80,
           "Height": 80,
@@ -641,7 +641,7 @@
           "Tags": {}
         },
         {
-          "X": 480,
+          "X": 488,
           "Y": 0,
           "Width": 80,
           "Height": 80,
@@ -655,7 +655,7 @@
           "Tags": {}
         },
         {
-          "X": 572,
+          "X": 584,
           "Y": 0,
           "Width": 80,
           "Height": 80,
@@ -669,7 +669,135 @@
           "Tags": {}
         },
         {
-          "X": 664,
+          "X": 680,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 7",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        }
+      ]
+    },
+    {
+      "Name": "Dead-Sheet",
+      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Chars\\Dead-Sheet.png",
+      "ImageWidth": 640,
+      "ImageHeight": 64,
+      "Columns": 8,
+      "Rows": 1,
+      "FrameWidth": 80,
+      "FrameHeight": 80,
+      "PaddingX": 0,
+      "PaddingY": 0,
+      "OffsetX": 0,
+      "OffsetY": 0,
+      "CustomFrames": [
+        {
+          "X": 0,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 0",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 80,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 1",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 160,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 2",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 240,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 3",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 320,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 4",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 400,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 5",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 480,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 6",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 560,
           "Y": 0,
           "Width": 80,
           "Height": 80,
@@ -795,7 +923,7 @@
     }
   ],
   "PreviewStartFrame": 0,
-  "PreviewEndFrame": 3,
+  "PreviewEndFrame": 2,
   "PreviewFps": 20,
   "PreviewLoop": true
 }

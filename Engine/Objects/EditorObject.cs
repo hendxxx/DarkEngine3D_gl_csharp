@@ -396,11 +396,14 @@ public unsafe class EditorObject
     /// start point for this play session (prevents a lerp swoop from the editor view).</summary>
     public static bool CameraFollowInitialized { get; set; }
 
-    /// <summary>Ensure the default locomotion actions exist (Idle/Walk/Run/Jump/Fall).</summary>
+    /// <summary>Ensure the default locomotion actions exist (Idle/Walk/Run/Jump/
+    /// Jump Start/Jump End/Fall). Jump covers rising+falling in one clip; Jump Start
+    /// /Jump End are the split variant: rise plays Jump Start (holds its last frame
+    /// while airborne), the descent switches to Jump End.</summary>
     public void EnsureDefaultActions()
     {
         if (Actions.Count > 0) return;
-        string[] defaults = ["Idle", "Walk", "Run", "Jump", "Fall"];
+        string[] defaults = ["Idle", "Walk", "Run", "Jump", "Jump Start", "Jump End", "Fall"];
         foreach (var n in defaults)
             Actions.Add(new Player2DAction { Name = n, SpriteSheet = Player2DSpriteSheet, Clip = Player2DAnimationClip });
     }
@@ -2620,6 +2623,51 @@ public unsafe class EditorObject
         return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
     }
 
+    /// <summary>Which locomotion action the player's CURRENT PHYSICS STATE wants
+    /// (Idle/Walk/Run/Jump/Jump Start/Jump End/Fall). Shared by ResolveLocomotion
+    /// Action and the non-loop release check in DrawPlayer2D.</summary>
+    private string ComputeLocomotionDesired()
+    {
+        bool moving = MathF.Abs(Player2DVelocityX) > 0.1f;
+        bool grounded = Player2DGrounded;
+        if (!grounded && Player2DVelocityY < -0.5f)
+        {
+            // Descending: prefer the split "Jump End" action when it has its own
+            // clip; otherwise fall back to the single "Jump"/"Fall" actions.
+            bool hasJumpEnd = HasActionOwnClip("Jump End");
+            return hasJumpEnd ? "Jump End"
+                : HasActionOwnClip("Fall") ? "Fall"
+                : "Jump";
+        }
+        if (!grounded)
+        {
+            // Rising: prefer the split "Jump Start" action when it has its own clip;
+            // its non-loop playback holds the LAST frame while still rising.
+            bool hasJumpStart = HasActionOwnClip("Jump Start");
+            return hasJumpStart ? "Jump Start"
+                : HasActionOwnClip("Jump") ? "Jump"
+                : "Fall";
+        }
+        if (moving) return Player2DVelocityX > 0 ? "Run" : "Walk";
+        return "Idle";
+    }
+
+    /// <summary>True when the named action exists AND resolves to its own clip (not a
+    /// fallback to the player's base clip). Used to decide between the split Jump
+    /// Start/Jump End actions and the single Jump/Fall actions.</summary>
+    public bool HasActionOwnClip(string name)
+    {
+        var act = Actions.FirstOrDefault(a => a.Name == name);
+        if (act == null) return false;
+        string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? Player2DSpriteSheet : act.SpriteSheet;
+        string clipName = string.IsNullOrEmpty(act.Clip) ? Player2DAnimationClip : act.Clip;
+        if (string.IsNullOrEmpty(clipName)) return false;
+        // "Own clip" = the clip name differs from the player's base clip (a Jump Start
+        // action still pointing at the idle clip is not a real jump-start animation).
+        return !string.IsNullOrEmpty(act.Clip) && act.Clip != Player2DAnimationClip
+            && IDEBridge.TryGetSpriteClip(sheetName, clipName, out _, out var clip) && clip != null;
+    }
+
     /// <summary>Resolve the base (idle) clip to sample when no action is active.
     /// State animations (Walk/Run/Jump/custom) override it through the Animation Actions
     /// system (GetActiveActionClip).</summary>
@@ -2661,17 +2709,7 @@ public unsafe class EditorObject
             }
         }
 
-        bool moving = MathF.Abs(Player2DVelocityX) > 0.1f;
-        bool grounded = Player2DGrounded;
-        string desired = "";
-        if (!grounded && Player2DVelocityY < -0.5f)
-            desired = "Fall";
-        else if (!grounded)
-            desired = "Jump";
-        else if (moving)
-            desired = Player2DVelocityX > 0 ? "Run" : "Walk";
-        else
-            desired = "Idle";
+        string desired = ComputeLocomotionDesired();
 
         if (desired == Player2DCurrentAction) return false;
         var act = Actions.FirstOrDefault(a => a.Name == desired);
@@ -2737,9 +2775,17 @@ public unsafe class EditorObject
             // Action only resets Player2DActionTime when the clip actually changes
             // (same-clip switches keep the clock running — the "no blink" fix).
             Player2DActionTime += Glfw.GetDeltaTime();
-            // Non-looping actions release when finished (state machine drops to locomotion).
+            // Non-looping actions release when finished — BUT only when the physics
+            // state no longer wants this action. Locomotion-driven non-loop actions
+            // (Jump Start/Jump End) must HOLD their last frame: releasing them while
+            // the state still matches makes the resolver re-pick the same action next
+            // frame, the clock resets, and the clip replays — a fake loop even with
+            // Loop = false. The frame index below already clamps past the end.
             if (activeAction != null && !activeAction.Loop && Player2DActionTime >= actionClip.Duration)
-                Player2DCurrentAction = "";
+            {
+                if (ComputeLocomotionDesired() != activeAction.Name)
+                    Player2DCurrentAction = "";
+            }
         }
 
         // Resolve the sheet image + grid. The bridge's registry carries a live texture.
