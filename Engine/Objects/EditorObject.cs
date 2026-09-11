@@ -281,8 +281,17 @@ public unsafe class EditorObject
     /// <summary>Sprite sheet name (from Sprite Editor) driving the player sprite.</summary>
     public string Player2DSpriteSheet { get; set; } = "";
     /// <summary>Animation clip name (from Sprite Editor) played on the player sprite.
-    /// Clip carries its own FPS/loop/reverse/speed settings.</summary>
+    /// Clip carries its own FPS/loop/reverse/speed settings. Doubles as the IDLE clip —
+    /// played whenever the player is not moving (see Player2DWalkSheet/Clip for the
+    /// moving state).</summary>
     public string Player2DAnimationClip { get; set; } = "";
+    /// <summary>Sprite sheet for the WALK animation (from Sprite Editor). Optional — when
+    /// empty the walk state reuses Player2DSpriteSheet (packs that keep idle/walk on the
+    /// same sheet). Empty by default so existing scenes keep their single-clip behavior.</summary>
+    public string Player2DWalkSheet { get; set; } = "";
+    /// <summary>Animation clip for the WALK state (from Sprite Editor). Optional — when
+    /// empty the player always plays Player2DAnimationClip (old behavior).</summary>
+    public string Player2DWalkClip { get; set; } = "";
     /// <summary>Sprite height in world units. Width derives from the sheet's frame aspect.</summary>
     public float Player2DHeight { get; set; } = 2f;
     /// <summary>Capsule collider radius in world units.</summary>
@@ -294,8 +303,15 @@ public unsafe class EditorObject
     /// <summary>Gravity acceleration (world units/s²) applied in preview/in-game.</summary>
     public float Player2DGravity { get; set; } = 25f;
     /// <summary>Runtime animation clock (seconds since play started). Editor ticks it too
-    /// so the idle animation previews live in the viewport.</summary>
+    /// so the idle animation previews live in the viewport. Resets on state switches so
+    /// each clip plays from its first frame.</summary>
     public float Player2DAnimTime { get; set; }
+    /// <summary>Runtime state: true while the player has horizontal input (WALK clip),
+    /// false when standing still (IDLE clip). Set by Player2DSystem, read by DrawPlayer2D.</summary>
+    public bool Player2DMoving { get; set; }
+    /// <summary>Runtime facing: true = sprite drawn normally (assumes right-facing art),
+    /// false = mirrored horizontally so the character faces LEFT. Set by Player2DSystem.</summary>
+    public bool Player2DFacingRight { get; set; } = true;
     /// <summary>Runtime physics velocity (Y only — sidescroller).</summary>
     public float Player2DVelocityY { get; set; }
     /// <summary>True when standing on a collision tile this frame (grounded).</summary>
@@ -2477,6 +2493,9 @@ public unsafe class EditorObject
 
     // ── Player2D sprite rendering (animated sheet frame on an upright quad) ──
     private uint _player2dVAO, _player2dVBO;
+    /// <summary>Name of the clip DrawPlayer2D played last frame — used to detect idle ↔
+    /// walk switches and restart the animation clock from frame 0 (transient).</summary>
+    private string? _player2dLastClip;
 
     /// <summary>Look up the Sprite Editor's sheet+clip by name via the IDEBridge static
     /// registry (set every frame by SpriteEditorPanel.SyncToBridge). Returns false when
@@ -2487,21 +2506,51 @@ public unsafe class EditorObject
         return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
     }
 
+    /// <summary>Resolve the clip to play RIGHT NOW based on the movement state set by
+    /// Player2DSystem: moving → walk clip (when configured), standing → idle clip.
+    /// Falls back to the idle clip whenever the walk clip can't resolve, so a deleted
+    /// or renamed walk asset degrades to the old single-clip behavior instead of
+    /// vanishing. Returns the owning sheet too (walk may live on a different sheet
+    /// than idle — e.g. GandalfHardcore's separate walk sheets).</summary>
+    private bool TryGetPlayer2DActiveClip(out SpriteSheet? sheet, out AnimationClip2D? clip)
+    {
+        sheet = null; clip = null;
+        if (Player2DMoving && !string.IsNullOrEmpty(Player2DWalkClip))
+        {
+            string walkSheet = string.IsNullOrEmpty(Player2DWalkSheet) ? Player2DSpriteSheet : Player2DWalkSheet;
+            if (IDEBridge.TryGetSpriteClip(walkSheet, Player2DWalkClip, out sheet, out clip) && sheet != null && clip != null)
+                return true;
+            // Walk clip unresolvable → fall through to the idle clip below.
+        }
+        return TryGetPlayer2DClip(out sheet, out clip);
+    }
+
     /// <summary>Advance the animation clock and draw the player as an upright textured
     /// quad showing the current clip frame. Works in edit mode (preview) and in-game.
     /// Called from Draw() after the Map2D branch so the player draws over the level.</summary>
     public unsafe void DrawPlayer2D(Camera camera)
     {
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
-        if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+        if (!TryGetPlayer2DActiveClip(out var sheet, out var clip) || sheet == null || clip == null) return;
 
         // Resolve the sheet image + grid. The bridge's registry carries a live texture.
-        if (!IDEBridge.TryGetSpriteSheetTexture(Player2DSpriteSheet, out uint texId, out int imgW, out int imgH))
+        // Uses the ACTIVE sheet's name — the walk clip may live on a different sheet
+        // than idle (e.g. GandalfHardcore's separate walk sheets), and sampling the
+        // walk sheet's frame indices against the idle sheet's texture would be wrong.
+        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out uint texId, out int imgW, out int imgH))
             return;
         if (texId == 0 || imgW <= 0 || imgH <= 0) return;
 
         // Advance the animation clock HERE (once per frame per player) — this is the
-        // single source of truth so the sprite animates in edit mode too.
+        // single source of truth so the sprite animates in edit mode too. The clock
+        // RESETS when the active clip changes (idle ↔ walk) so each state starts on
+        // its first frame instead of resuming mid-cycle.
+        string activeClipName = sheet.Name + "/" + clip.Name;
+        if (!string.Equals(_player2dLastClip, activeClipName, StringComparison.Ordinal))
+        {
+            _player2dLastClip = activeClipName;
+            Player2DAnimTime = 0f;
+        }
         Player2DAnimTime += Glfw.GetDeltaTime();
 
         int frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
@@ -2516,6 +2565,11 @@ public unsafe class EditorObject
         float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
         float svBot = 1f - uvMinRaw.Y;
         float svTop = 1f - uvMaxRaw.Y;
+
+        // Facing: sprite art is assumed right-facing. Facing left → swap U so the frame
+        // mirrors horizontally (per-object runtime state, never saved to disk).
+        if (!Player2DFacingRight)
+            (su0, su1) = (su1, su0);
 
         // Quad size: Player2DHeight tall, width follows the frame aspect.
         float frameAspect = sheet.FrameHeight > 0 ? (float)sheet.FrameWidth / sheet.FrameHeight : 1f;

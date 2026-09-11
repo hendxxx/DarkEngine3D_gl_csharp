@@ -2478,6 +2478,64 @@ public class InspectorPanel
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings)");
 
+        ImGui.Separator();
+
+        // ── Walk sheet + walk clip (optional state animation) ──
+        // While the player has horizontal input (A/D — set by Player2DSystem), the
+        // walk clip plays instead of the idle clip above. When left empty the walk
+        // state reuses the idle sheet/clip (old single-clip behavior).
+        string[] walkSheetArr = new string[sheets.Count + 1];
+        walkSheetArr[0] = "(same as Idle sheet)";
+        for (int i = 0; i < sheets.Count; i++) walkSheetArr[i + 1] = sheets[i];
+        int walkSheetIdx = 0;
+        for (int i = 1; i < walkSheetArr.Length; i++)
+            if (walkSheetArr[i] == editorObj.Player2DWalkSheet) { walkSheetIdx = i; break; }
+        if (ImGui.BeginCombo("Walk Sheet", walkSheetIdx > 0 ? walkSheetArr[walkSheetIdx] : walkSheetArr[0]))
+        {
+            for (int i = 0; i < walkSheetArr.Length; i++)
+            {
+                bool sel = i == walkSheetIdx;
+                if (ImGui.Selectable(walkSheetArr[i], sel))
+                {
+                    editorObj.Player2DWalkSheet = i == 0 ? "" : walkSheetArr[i];
+                    // Keep the walk clip only if it exists on the newly chosen sheet;
+                    // otherwise clear it so no dangling clip name is left behind.
+                    string checkSheet = i == 0 ? editorObj.Player2DSpriteSheet : editorObj.Player2DWalkSheet;
+                    if (!string.IsNullOrEmpty(editorObj.Player2DWalkClip)
+                        && !IDEBridge.GetClipNames(checkSheet).Contains(editorObj.Player2DWalkClip))
+                        editorObj.Player2DWalkClip = "";
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Sheet for the walking animation (empty = same sheet as idle)");
+
+        // Walk-clip list reads from the WALK sheet when one is chosen (packs often keep
+        // walk frames on a separate sheet), otherwise from the idle sheet — with an
+        // empty Walk Sheet the runtime falls back to the idle sheet for playback too.
+        string walkClipSource = string.IsNullOrEmpty(editorObj.Player2DWalkSheet)
+            ? editorObj.Player2DSpriteSheet : editorObj.Player2DWalkSheet;
+        var walkClips = IDEBridge.GetClipNames(walkClipSource);
+        string[] walkClipArr = new string[walkClips.Count + 1];
+        walkClipArr[0] = "(no walk clip — always idle)";
+        for (int i = 0; i < walkClips.Count; i++) walkClipArr[i + 1] = walkClips[i];
+        int walkClipIdx = 0;
+        for (int i = 1; i < walkClipArr.Length; i++)
+            if (walkClipArr[i] == editorObj.Player2DWalkClip) { walkClipIdx = i; break; }
+        if (ImGui.BeginCombo("Walk Clip", walkClipIdx > 0 ? walkClipArr[walkClipIdx] : walkClipArr[0]))
+        {
+            for (int i = 0; i < walkClipArr.Length; i++)
+            {
+                bool sel = i == walkClipIdx;
+                if (ImGui.Selectable(walkClipArr[i], sel))
+                    editorObj.Player2DWalkClip = i == 0 ? "" : walkClipArr[i];
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clip played while the player moves (A/D). Idle clip plays when standing still");
+
         // Show clip summary when resolvable.
         if (editorObj.TryGetPlayer2DClip(out var _, out var clipInfo) && clipInfo != null)
         {

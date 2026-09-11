@@ -943,6 +943,8 @@ public class SceneManagerPanel
                         SkySettings = obj.SkySettings,
                         Player2DSpriteSheet = obj.Player2DSpriteSheet,
                         Player2DAnimationClip = obj.Player2DAnimationClip,
+                        Player2DWalkSheet = obj.Player2DWalkSheet,
+                        Player2DWalkClip = obj.Player2DWalkClip,
                         Player2DHeight = obj.Player2DHeight,
                         Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
                         Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
@@ -1510,6 +1512,8 @@ public class SceneManagerPanel
                         // ── Player2D: restore sprite animation + capsule settings ──
                         obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
                         obj.Player2DAnimationClip = objData.Player2DAnimationClip;
+                        obj.Player2DWalkSheet = objData.Player2DWalkSheet;
+                        obj.Player2DWalkClip = objData.Player2DWalkClip;
                         obj.Player2DHeight = objData.Player2DHeight;
                         obj.Player2DCapsuleRadius = objData.Player2DCapsuleRadius;
                         obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;

@@ -33,14 +33,16 @@ public static class Player2DSystem
     {
         if (manager == null || map == null) return;
 
+        // Start2D marker — used both for the deferred spawn below and for pit respawn.
+        var start2d = manager.Objects.FirstOrDefault(o =>
+            o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D });
+
         // Deferred spawn: in-game entry sets Player2DSpawnPending because the .ing
         // reload re-creates objects AFTER the setter runs. On the first update frame
         // the re-created objects exist — teleport them to the Start2D marker now.
         if (Objects.EditorObject.Player2DSpawnPending)
         {
             Objects.EditorObject.Player2DSpawnPending = false;
-            var start2d = manager.Objects.FirstOrDefault(o =>
-                o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D });
             if (start2d != null)
             {
                 foreach (var p in manager.Objects)
@@ -49,6 +51,10 @@ public static class Player2DSystem
                     p.Position = start2d.Position;
                     p.Player2DVelocityY = 0f;
                     p.Player2DAnimTime = 0f;
+                    // Fresh run: clear any stale walk/facing state carried over from
+                    // a previous in-game session.
+                    p.Player2DMoving = false;
+                    p.Player2DFacingRight = true;
                     Console.WriteLine($"[Player2D] Spawned at Start ({p.Position.X:F1}, {p.Position.Y:F1})");
                 }
             }
@@ -100,6 +106,14 @@ public static class Player2DSystem
             float velX = 0f;
             if (left && !right) velX = -playerSpeed;
             else if (right && !left) velX = playerSpeed;
+
+            // Animation state for DrawPlayer2D: moving = horizontal input held (WALK clip,
+            // false = IDLE). Facing flips with the input direction. Note: we intentionally
+            // do NOT force the idle clip while jumping — the walk cycle keeps playing
+            // mid-air, which reads better than a frozen idle pose.
+            player.Player2DMoving = velX != 0f;
+            if (velX > 0f) player.Player2DFacingRight = true;
+            else if (velX < 0f) player.Player2DFacingRight = false;
             if (jump && player.Player2DGrounded)
             {
                 player.Player2DVelocityY = 8f;
@@ -303,6 +317,20 @@ public static class Player2DSystem
             pos.Y = newY;
             player.Player2DGrounded = grounded;
             player.Position = pos;
+
+            // ── Pit death: the world origin (0,0) is the map's bottom-left, so any
+            // Y well below zero means the player fell through a hole. Respawn at the
+            // Start2D marker instead of falling forever. ──
+            if (pos.Y < -cell * 2f && start2d != null)
+            {
+                player.Position = start2d.Position;
+                player.Player2DVelocityY = 0f;
+                player.Player2DGrounded = false;
+                // Respawn faces right in the idle state (standard sidescroller reset).
+                player.Player2DMoving = false;
+                player.Player2DFacingRight = true;
+                Console.WriteLine($"[Player2D] Fell below the map — respawned at Start ({start2d.Position.X:F1}, {start2d.Position.Y:F1})");
+            }
         }
         // Camera-follow: after every player has been resolved, pan the editor camera
         // (ortho front view) so the first player stays centered. Only moves the CAMERA

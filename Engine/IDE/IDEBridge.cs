@@ -294,6 +294,11 @@ public class IDEBridge
             o.Position = start2d.Position;
             o.Player2DVelocityY = 0f;
             o.Player2DAnimTime = 0f;
+            // Clear the runtime animation state too — edit mode doesn't run
+            // Player2DSystem.Update, so a stale Moving flag would keep the walk clip
+            // playing in the editor if the user exited in-game while holding A/D.
+            o.Player2DMoving = false;
+            o.Player2DFacingRight = true;
             Console.WriteLine($"[Bridge] Player2D reset to Start ({o.Position.X:F1}, {o.Position.Y:F1})");
         }
     }

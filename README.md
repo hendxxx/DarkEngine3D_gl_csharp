@@ -24,7 +24,7 @@ OpenGL/C# game engine with ImGui-based IDE editor.
   - **Tilemap in 3D** — rendered as an upright textured plane at world origin; camera auto-switches to ortho front view (editor and in-game)
   - **Parallax Backgrounds** — per-layer ScrollFactor/ZPosition/Alpha, aspect-preserving sizing, RepeatX/Y wrap, seamless scroll preview while panning, correct rendering in Play in Preview
   - **Collision Flags** — per-tile collision with dedicated Collision paint tool; full 3D translucent boxes with bright edges centered on the tile; per-layer collision IDs persisted
-  - **Player 2D** — capsule-collider character with animated sprite from the Sprite Editor (sheet + clip pickers, FPS/loop/speed respected), sprite previews live in edit mode
+  - **Player 2D** — capsule-collider character with animated sprite from the Sprite Editor (sheet + clip pickers, FPS/loop/speed respected), idle ↔ walk clip auto-switching while moving, sprite mirrors when facing left, sprite previews live in edit mode
   - **Start Marker** — player spawn point; Player2D spawns there in preview/in-game
   - **Player Physics** — gravity + capsule-vs-collision-tile resolution (ground/ceiling) active in preview/in-game only
   - **Player Spawn** — draggable spawn marker; GameScene places the player at the map's spawn on scene enter

@@ -174,6 +174,8 @@ public class EditorObjectData
     // ── Player2D (animated sprite + capsule collider) ──
     public string Player2DSpriteSheet { get; set; } = "";
     public string Player2DAnimationClip { get; set; } = "";
+    public string Player2DWalkSheet { get; set; } = "";
+    public string Player2DWalkClip { get; set; } = "";
     public float Player2DHeight { get; set; } = 2f;
     public float Player2DCapsuleRadius { get; set; } = 0.35f;
     public float Player2DCapsuleHeight { get; set; } = 1.8f;
