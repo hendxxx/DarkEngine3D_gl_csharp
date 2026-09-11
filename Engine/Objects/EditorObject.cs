@@ -307,16 +307,9 @@ public unsafe class EditorObject
     public string Player2DSpriteSheet { get; set; } = "";
     /// <summary>Animation clip name (from Sprite Editor) played on the player sprite.
     /// Clip carries its own FPS/loop/reverse/speed settings. Doubles as the IDLE clip —
-    /// played whenever the player is not moving (see Player2DWalkSheet/Clip for the
-    /// moving state).</summary>
+    /// played whenever no action overrides it. ALL other states (Walk/Run/Jump/Attack/
+    /// custom) are configured through the Animation Actions system (Player2DActions).</summary>
     public string Player2DAnimationClip { get; set; } = "";
-    /// <summary>Sprite sheet for the WALK animation (from Sprite Editor). Optional — when
-    /// empty the walk state reuses Player2DSpriteSheet (packs that keep idle/walk on the
-    /// same sheet). Empty by default so existing scenes keep their single-clip behavior.</summary>
-    public string Player2DWalkSheet { get; set; } = "";
-    /// <summary>Animation clip for the WALK state (from Sprite Editor). Optional — when
-    /// empty the player always plays Player2DAnimationClip (old behavior).</summary>
-    public string Player2DWalkClip { get; set; } = "";
     /// <summary>Sprite height in world units. Width derives from the sheet's frame aspect.</summary>
     public float Player2DHeight { get; set; } = 2f;
     /// <summary>Capsule collider radius in world units.</summary>
@@ -2625,22 +2618,11 @@ public unsafe class EditorObject
         return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
     }
 
-    /// <summary>Resolve the clip to play RIGHT NOW based on the movement state set by
-    /// Player2DSystem: moving → walk clip (when configured), standing → idle clip.
-    /// Falls back to the idle clip whenever the walk clip can't resolve, so a deleted
-    /// or renamed walk asset degrades to the old single-clip behavior instead of
-    /// vanishing. Returns the owning sheet too (walk may live on a different sheet
-    /// than idle — e.g. GandalfHardcore's separate walk sheets).</summary>
+    /// <summary>Resolve the base (idle) clip to sample when no action is active.
+    /// State animations (Walk/Run/Jump/custom) override it through the Animation Actions
+    /// system (GetActiveActionClip).</summary>
     private bool TryGetPlayer2DActiveClip(out SpriteSheet? sheet, out AnimationClip2D? clip)
     {
-        sheet = null; clip = null;
-        if (Player2DMoving && !string.IsNullOrEmpty(Player2DWalkClip))
-        {
-            string walkSheet = string.IsNullOrEmpty(Player2DWalkSheet) ? Player2DSpriteSheet : Player2DWalkSheet;
-            if (IDEBridge.TryGetSpriteClip(walkSheet, Player2DWalkClip, out sheet, out clip) && sheet != null && clip != null)
-                return true;
-            // Walk clip unresolvable → fall through to the idle clip below.
-        }
         return TryGetPlayer2DClip(out sheet, out clip);
     }
 
@@ -2742,7 +2724,7 @@ public unsafe class EditorObject
         }
         ResolveLocomotionAction(keyHeld);
 
-        var actionClip = GetActiveActionClip(out var activeAction);
+        var actionClip = GetActiveActionClip(out var activeAction, out var actionSheet);
         bool actionActive = actionClip != null;
         if (actionClip != null)
         {
@@ -2759,10 +2741,11 @@ public unsafe class EditorObject
         }
 
         // Resolve the sheet image + grid. The bridge's registry carries a live texture.
-        // Uses the ACTIVE sheet's name — the walk clip may live on a different sheet
-        // than idle (e.g. GandalfHardcore's separate walk sheets), and sampling the
-        // walk sheet's frame indices against the idle sheet's texture would be wrong.
-        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out uint texId, out int imgW, out int imgH))
+        // When an ACTION is active, sample the ACTION's sheet texture — walk/run clips
+        // usually live on a different sheet than idle, and sampling run frame indices
+        // against the idle sheet's texture renders the wrong (or no) animation.
+        var drawSheet = actionClip != null && actionSheet != null ? actionSheet : sheet;
+        if (!IDEBridge.TryGetSpriteSheetTexture(drawSheet.Name, out uint texId, out int imgW, out int imgH))
             return;
         if (texId == 0 || imgW <= 0 || imgH <= 0) return;
 
@@ -2800,7 +2783,7 @@ public unsafe class EditorObject
         {
             frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
         }
-        var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+        var (uvMinRaw, uvMaxRaw) = drawSheet.GetFrameUV(frameIdx);
         // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
         // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. Raw uvMin.Y is the
         // frame BOTTOM (small raw v = lower in the flipped convention) → after the
@@ -2819,8 +2802,9 @@ public unsafe class EditorObject
         if (!Player2DFacingRight)
             (su0, su1) = (su1, su0);
 
-        // Quad size: Player2DHeight tall, width follows the frame aspect.
-        float frameAspect = sheet.FrameHeight > 0 ? (float)sheet.FrameWidth / sheet.FrameHeight : 1f;
+        // Quad size: Player2DHeight tall, width follows the ACTIVE sheet's frame aspect
+        // (action sheets may have different frame dimensions than the base sheet).
+        float frameAspect = drawSheet.FrameHeight > 0 ? (float)drawSheet.FrameWidth / drawSheet.FrameHeight : 1f;
         float h = Player2DHeight;
         float w = h * frameAspect;
         // Feet on the object position (spawn anchors at the capsule bottom).
@@ -2909,9 +2893,10 @@ public unsafe class EditorObject
     /// Resolution order: (1) action's own sheet+clip if resolvable; (2) action's clip name
     /// looked up in the PLAYER's sheet (so Walk/Run can share the player's clip even when
     /// their Sheet field points elsewhere); (3) fall back to the player's base clip.</summary>
-    private AnimationClip2D? GetActiveActionClip(out Player2DAction? action)
+    private AnimationClip2D? GetActiveActionClip(out Player2DAction? action, out SpriteSheet? actionSheet)
     {
         action = null;
+        actionSheet = null;
         if (string.IsNullOrEmpty(Player2DCurrentAction) || Actions.Count == 0)
             return null;
         var act = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
@@ -2920,31 +2905,35 @@ public unsafe class EditorObject
         string playerSheet = Player2DSpriteSheet;
         string playerClip = Player2DAnimationClip;
 
-        // (1) Action's own sheet + clip.
+        // (1) Action's own sheet + clip. The owning sheet is returned too — the caller
+        //     must sample THIS sheet's texture (walk/run often live on a different
+        //     sheet than idle; sampling run frames against the idle texture breaks).
         string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? playerSheet : act.SpriteSheet;
         string clipName = string.IsNullOrEmpty(act.Clip) ? playerClip : act.Clip;
         if (IDEBridge.TryGetSpriteClip(sheetName, clipName, out var sheet, out var clip) && clip != null)
         {
             action = act;
+            actionSheet = sheet;
             return clip;
         }
 
         // (2) Action's clip name in the PLAYER's sheet — lets Walk/Run share the player's
         //     clip even when their Sheet field points at a different (possibly missing) sheet.
         if (!string.IsNullOrEmpty(act.Clip) && act.Clip != playerClip
-            && IDEBridge.TryGetSpriteClip(playerSheet, act.Clip, out _, out clip) && clip != null)
+            && IDEBridge.TryGetSpriteClip(playerSheet, act.Clip, out sheet, out clip) && clip != null)
         {
             action = act;
+            actionSheet = sheet;
             return clip;
         }
 
         // (3) Player's base clip as last resort. When the action's own clip can't be
-        // resolved at all (missing sheet or clip name), fall back to the player's current
-        // clip so the action still animates (e.g. Run bound to J shows the player's walk/
-        // idle clip if Run doesn't have its own resolvable clip).
-        if (IDEBridge.TryGetSpriteClip(playerSheet, playerClip, out _, out clip) && clip != null)
+        //     resolved at all (missing sheet or clip name), fall back to the player's
+        //     current clip so the action still animates.
+        if (IDEBridge.TryGetSpriteClip(playerSheet, playerClip, out sheet, out clip) && clip != null)
         {
             action = act;
+            actionSheet = sheet;
             return clip;
         }
 

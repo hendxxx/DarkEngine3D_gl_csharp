@@ -943,8 +943,6 @@ public class SceneManagerPanel
                         SkySettings = obj.SkySettings,
                         Player2DSpriteSheet = obj.Player2DSpriteSheet,
                         Player2DAnimationClip = obj.Player2DAnimationClip,
-                        Player2DWalkSheet = obj.Player2DWalkSheet,
-                        Player2DWalkClip = obj.Player2DWalkClip,
                         Player2DHeight = obj.Player2DHeight,
                         Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
                         Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
@@ -1534,8 +1532,18 @@ public class SceneManagerPanel
                         // ── Player2D: restore sprite animation + capsule settings ──
                         obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
                         obj.Player2DAnimationClip = objData.Player2DAnimationClip;
-                        obj.Player2DWalkSheet = objData.Player2DWalkSheet;
-                        obj.Player2DWalkClip = objData.Player2DWalkClip;
+                        // Legacy WalkSheet/WalkClip (removed fields) migrate into the Walk
+                        // action so old .ing files keep their moving animation after load.
+                        if (!string.IsNullOrEmpty(objData.Player2DWalkClip))
+                        {
+                            var walkAct = obj.Actions.FirstOrDefault(a => a.Name == "Walk");
+                            if (walkAct != null && string.IsNullOrEmpty(walkAct.Clip))
+                            {
+                                walkAct.Clip = objData.Player2DWalkClip;
+                                walkAct.SpriteSheet = string.IsNullOrEmpty(objData.Player2DWalkSheet)
+                                    ? objData.Player2DSpriteSheet : objData.Player2DWalkSheet;
+                            }
+                        }
                         obj.Player2DHeight = objData.Player2DHeight;
                         obj.Player2DCapsuleRadius = objData.Player2DCapsuleRadius;
                         obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
@@ -1561,6 +1569,8 @@ public class SceneManagerPanel
                                 Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
                                 Loop = a.Loop, Priority = a.Priority, KeyBinding = a.KeyBinding,
                             }).ToList();
+                        else
+                            obj.EnsureDefaultActions();
                         if (objData.TerrainSlopeLayer != null)
                         {
                             obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();
