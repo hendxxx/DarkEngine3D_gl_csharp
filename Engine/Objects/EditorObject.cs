@@ -336,8 +336,10 @@ public unsafe class EditorObject
     public float Player2DVelocityX { get; set; }
     /// <summary>Facing: 1 = right, -1 = left. Flipped automatically from Player2DVelocityX.</summary>
     public float Player2DFacing { get; set; } = 1f;
-    /// <summary>True when standing on a collision tile this frame (grounded).</summary>
-    public bool Player2DGrounded { get; set; }
+    /// <summary>True when standing on a collision tile this frame (grounded).
+    /// Defaults TRUE so edit mode (which never runs physics) treats the player as
+    /// standing — the locomotion resolver then picks Idle, not Jump.</summary>
+    public bool Player2DGrounded { get; set; } = true;
 
     // ── Movement tuning (all live in the Inspector, used by Player2DSystem) ──
     /// <summary>Horizontal walk speed (world units/s). Sensible platformer default ≈ 1 tile/s.

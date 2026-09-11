@@ -425,6 +425,264 @@
           "Tags": {}
         }
       ]
+    },
+    {
+      "Name": "Jump-Start-Sheet",
+      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Chars\\Jump-Start-Sheet.png",
+      "ImageWidth": 256,
+      "ImageHeight": 64,
+      "Columns": 4,
+      "Rows": 1,
+      "FrameWidth": 64,
+      "FrameHeight": 64,
+      "PaddingX": 0,
+      "PaddingY": 0,
+      "OffsetX": 0,
+      "OffsetY": 0,
+      "CustomFrames": [
+        {
+          "X": 0,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 0",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 64,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 1",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 128,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 2",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 192,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 3",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        }
+      ]
+    },
+    {
+      "Name": "Jump-End-Sheet",
+      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Chars\\Jump-End-Sheet.png",
+      "ImageWidth": 192,
+      "ImageHeight": 64,
+      "Columns": 3,
+      "Rows": 1,
+      "FrameWidth": 64,
+      "FrameHeight": 64,
+      "PaddingX": 0,
+      "PaddingY": 0,
+      "OffsetX": 0,
+      "OffsetY": 0,
+      "CustomFrames": [
+        {
+          "X": 0,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 0",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 64,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 1",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 128,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 2",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        }
+      ]
+    },
+    {
+      "Name": "Attack-01-Sheet",
+      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Chars\\Attack-01-Sheet.png",
+      "ImageWidth": 768,
+      "ImageHeight": 80,
+      "Columns": 8,
+      "Rows": 1,
+      "FrameWidth": 80,
+      "FrameHeight": 80,
+      "PaddingX": 12,
+      "PaddingY": 0,
+      "OffsetX": 20,
+      "OffsetY": 0,
+      "CustomFrames": [
+        {
+          "X": 20,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 0",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 112,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 1",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 204,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 2",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 296,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 3",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 388,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 4",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 480,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 5",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 572,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 6",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 664,
+          "Y": 0,
+          "Width": 80,
+          "Height": 80,
+          "Name": "Frame 7",
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        }
+      ]
     }
   ],
   "AnimationClips": [
@@ -487,10 +745,57 @@
       "Reverse": false,
       "SpeedMultiplier": 1,
       "Events": {}
+    },
+    {
+      "Name": "Char A - Jump End",
+      "SpriteSheetName": "Jump-End-Sheet",
+      "FrameIndices": [
+        0,
+        1,
+        2
+      ],
+      "FPS": 20,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {}
+    },
+    {
+      "Name": "Char A - Jump Start",
+      "SpriteSheetName": "Jump-Start-Sheet",
+      "FrameIndices": [
+        0,
+        1,
+        2
+      ],
+      "FPS": 20,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {}
+    },
+    {
+      "Name": "Char A - Attack",
+      "SpriteSheetName": "Attack-01-Sheet",
+      "FrameIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "FPS": 20,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {}
     }
   ],
   "PreviewStartFrame": 0,
-  "PreviewEndFrame": 14,
+  "PreviewEndFrame": 3,
   "PreviewFps": 20,
   "PreviewLoop": true
 }
