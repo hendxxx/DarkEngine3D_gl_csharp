@@ -6404,6 +6404,8 @@
           "isVisible": true,
           "player2DSpriteSheet": "",
           "player2DAnimationClip": "",
+          "player2DWalkSheet": "",
+          "player2DWalkClip": "",
           "player2DHeight": 2,
           "player2DCapsuleRadius": 0.35,
           "player2DCapsuleHeight": 1.8,
@@ -6984,6 +6986,8 @@
           "isVisible": true,
           "player2DSpriteSheet": "",
           "player2DAnimationClip": "",
+          "player2DWalkSheet": "",
+          "player2DWalkClip": "",
           "player2DHeight": 2,
           "player2DCapsuleRadius": 0.35,
           "player2DCapsuleHeight": 1.8,
@@ -7564,6 +7568,8 @@
           "isVisible": true,
           "player2DSpriteSheet": "Idle-Sheet",
           "player2DAnimationClip": "Char A - Idle",
+          "player2DWalkSheet": "Run-Sheet",
+          "player2DWalkClip": "Char A - Run",
           "player2DHeight": 10,
           "player2DCapsuleRadius": 1.5,
           "player2DCapsuleHeight": 8,
@@ -7597,12 +7603,36 @@
               "keyBinding": "None"
             },
             {
-              "name": "Action6",
+              "name": "Walk",
               "spriteSheet": "Run-Sheet",
               "clip": "Char A - Run",
               "loop": true,
-              "priority": 6,
-              "keyBinding": "J"
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Run",
+              "spriteSheet": "Run-Sheet",
+              "clip": "Char A - Run",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Jump",
+              "spriteSheet": "Jump-All-Sheet",
+              "clip": "Char A - Jump",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Fall",
+              "spriteSheet": "Idle-Sheet",
+              "clip": "Char A - Idle",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
             }
           ],
           "cameraFov": 60,
@@ -8162,6 +8192,8 @@
           "isVisible": true,
           "player2DSpriteSheet": "",
           "player2DAnimationClip": "",
+          "player2DWalkSheet": "",
+          "player2DWalkClip": "",
           "player2DHeight": 2,
           "player2DCapsuleRadius": 0.35,
           "player2DCapsuleHeight": 1.8,
@@ -8728,8 +8760,8 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        60.636566,
-        32,
+        83.03183,
+        43.81875,
         307.03183
       ],
       "editorCameraYaw": 180,

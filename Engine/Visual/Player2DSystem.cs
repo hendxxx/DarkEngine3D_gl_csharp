@@ -45,7 +45,7 @@ public static class Player2DSystem
             Objects.EditorObject.Player2DSpawnPending = false;
             // New play session: the follow camera must re-snap to its start point.
             Objects.EditorObject.CameraFollowInitialized = false;
-            var start2d = manager.Objects.FirstOrDefault(o =>
+            start2d = manager.Objects.FirstOrDefault(o =>
                 o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D });
             if (start2d != null)
             {

@@ -2746,20 +2746,13 @@ public unsafe class EditorObject
         bool actionActive = actionClip != null;
         if (actionClip != null)
         {
-            // Advance the clock: use the player's base clock (Player2DAnimTime) when the
-            // action is showing the player's own clip (fallback case — e.g. Run bound to J
-            // but Run has no resolvable clip, so it shows the player's walk/idle animation).
-            // Otherwise advance the action's own clock (Player2DActionTime) for actions with
-            // their own resolvable clip.
-            bool actionHasOwnResolvableClip = activeAction != null
-                && !string.IsNullOrEmpty(activeAction.SpriteSheet)
-                && activeAction.SpriteSheet != Player2DSpriteSheet
-                && !string.IsNullOrEmpty(activeAction.Clip)
-                && activeAction.Clip != Player2DAnimationClip;
-            if (!actionHasOwnResolvableClip)
-                Player2DAnimTime += Glfw.GetDeltaTime();
-            else
-                Player2DActionTime += Glfw.GetDeltaTime();
+            // Advance the ACTION clock while an action plays. The frame below is
+            // ALWAYS computed from Player2DActionTime — advancing any other clock
+            // here desyncs the two and the frame freezes on index 0 (the idle bug).
+            // Continuity across Idle↔Walk↔Run is preserved because ResolveLocomotion
+            // Action only resets Player2DActionTime when the clip actually changes
+            // (same-clip switches keep the clock running — the "no blink" fix).
+            Player2DActionTime += Glfw.GetDeltaTime();
             // Non-looping actions release when finished (state machine drops to locomotion).
             if (activeAction != null && !activeAction.Loop && Player2DActionTime >= actionClip.Duration)
                 Player2DCurrentAction = "";
@@ -2821,6 +2814,8 @@ public unsafe class EditorObject
 
         // Facing: sprite art is assumed right-facing. Facing left → swap U so the frame
         // mirrors horizontally (per-object runtime state, never saved to disk).
+        // This is the ONLY mirror — do not swap U again at the vertex build below,
+        // a second swap cancels this one and the sprite would never face left.
         if (!Player2DFacingRight)
             (su0, su1) = (su1, su0);
 
@@ -2854,11 +2849,11 @@ public unsafe class EditorObject
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
 
         // Two triangles in WORLD space (identity model): pos(3) uv(2) tint(4).
-        // Facing left (Player2DFacing < 0) mirrors the frame horizontally by swapping
-        // the U coordinates (su0/su1) — the sprite looks toward its movement direction.
-        bool flipX = Player2DFacing < 0f;
-        float uL = flipX ? su1 : su0; // left edge of quad samples frame-right when flipped
-        float uR = flipX ? su0 : su1;
+        // The horizontal mirror was already applied to su0/su1 above (single flip
+        // via Player2DFacingRight) — use them directly. Swapping again here would
+        // cancel the first flip (sprite stuck facing right when moving left).
+        float uL = su0;
+        float uR = su1;
         float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
         var verts = stackalloc Map2DVertex[6]
         {

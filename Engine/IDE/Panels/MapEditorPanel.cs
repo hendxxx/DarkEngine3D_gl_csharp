@@ -189,6 +189,12 @@ public class MapEditorPanel
         // needing to open the Map Editor first.
         SyncParallaxToEditorObjects();
 
+        // Keep the viewport paint tool in sync EVERY frame — even while the panel is
+        // collapsed or hidden. The bridge default is Paint (0); without this sync the
+        // viewport would keep painting tiles after startup even though the panel's
+        // default tool is Pick (viewport clicks must not stamp until Paint is chosen).
+        _bridge.MapPaintTool = (int)_currentTool;
+
         if (!_visible) return;
 
         ImGui.SetNextWindowSize(new Vector2(350, 600), ImGuiCond.FirstUseEver);
@@ -1749,6 +1755,11 @@ public class MapEditorPanel
         if (ActiveTilemap == null || _selectedLayerIdx < 0) return;
         var layer = ActiveTilemap.Layers[_selectedLayerIdx];
         if (layer.IsLocked) return;
+
+        // Pick tool NEVER paints — picking is handled by MapPickAt/PickAtWorldPosition.
+        // Belt-and-braces: even if the bridge's tool copy is stale, a Pick-tool click
+        // must not stamp tiles.
+        if (_currentTool == PaintTool.Pick) return;
 
         var (gx, gy) = ActiveTilemap.WorldToGrid(worldPos);
 
