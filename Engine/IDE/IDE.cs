@@ -273,6 +273,20 @@ public class IDE : IDisposable
         var cam = Bridge.Camera;
         if (cam == null) return;
 
+        // Carry the scene Camera object's 2D view offset into the runtime camera so the
+        // 2D follow code can apply it on top of the framed position (mirrored from the
+        // in-game switch path at SwitchToGameCamera).
+        {
+            var mgr = Bridge.EditorObjectManager;
+            if (mgr != null)
+            {
+                var gameCam = mgr.Objects.FirstOrDefault(o =>
+                    o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Camera });
+                if (gameCam != null)
+                    cam.ViewOffset = gameCam.CameraViewOffset;
+            }
+        }
+
         // Find the level currently shown: a VISIBLE Map2D object in the active scene's
         // manager that is bound to the active tilemap.
         Visual.Tilemap2D? level = IsLevelShown() ? Bridge.ActiveTilemap : null;
@@ -508,6 +522,10 @@ public class IDE : IDisposable
         }
 
         cam.Position = gameCamera.Position;
+
+        // Carry the Camera object's 2D view offset into the runtime camera so the 2D
+        // follow code (Player2DSystem) can apply it on top of the framed position.
+        cam.ViewOffset = gameCamera.CameraViewOffset;
 
         // Convert the Camera object's Euler rotation to editor fly-camera Yaw/Pitch.
         // Both use CreateFromYawPitchRoll convention: Y = yaw, X = pitch (positive = look up).

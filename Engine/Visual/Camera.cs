@@ -14,6 +14,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         
         // Transform
         public Vector3 Position = new(0, 0, 0);
+        /// <summary>Optional per-camera view offset for 2D/ortho framing. Added to the
+        /// computed view center so the user can nudge the 2D viewport without
+        /// changing the follow anchor. Default = zero (no offset).</summary>
+        public Vector3 ViewOffset = new(0, 0, 0);
         public Vector3 Front = new(0, 0, -1);
         public Vector3 Up = Vector3.UnitY;
         public Vector3 Right = Vector3.UnitX;

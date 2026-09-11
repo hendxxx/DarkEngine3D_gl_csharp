@@ -1,14 +1,36 @@
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using ImGuiNET;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects;
+
+/// <summary>
+/// A user-defined animation action for Player2D (Idle/Walk/Run/... + custom).
+/// Binds an action name to a sprite-sheet clip, a keyboard key, and a priority —
+/// higher-priority actions interrupt lower ones; Dead (100) cancels everything.
+/// </summary>
+public class Player2DAction
+{
+    public string Name { get; set; } = "";
+    /// <summary>Sprite sheet name from the Sprite Editor registry ("" = player's sheet).</summary>
+    public string SpriteSheet { get; set; } = "";
+    /// <summary>Animation clip name within the sheet.</summary>
+    public string Clip { get; set; } = "";
+    public bool Loop { get; set; } = true;
+    /// <summary>Priority — a playing action can only be replaced by equal/higher priority.
+    /// Dead = 100 cancels everything; Walk = 5 is interrupted by Attack/Skills.</summary>
+    public int Priority { get; set; } = 5;
+    /// <summary>Keyboard binding (ImGuiKey name, e.g. "J", "None" = not bound).</summary>
+    public string KeyBinding { get; set; } = "None";
+}
 
 /// <summary>
 /// Type of editor-placed 3D primitive.
@@ -27,7 +49,10 @@ public enum EditorPrimitiveType
     /// sprite-sheet clip. Spawned at the Start2D object's position in-game.</summary>
     Player2D,
     /// <summary>Player spawn marker. In preview/in-game the Player2D is placed here.</summary>
-    Start2D
+    Start2D,
+    /// <summary>Camera start marker for 2D levels: preview/in-game cameras begin here
+    /// (position = camera center, Scale.Y>0 marker field CameraStartZoom = ortho zoom).</summary>
+    CameraStart2D
 }
 
 /// <summary>
@@ -314,12 +339,76 @@ public unsafe class EditorObject
     public bool Player2DFacingRight { get; set; } = true;
     /// <summary>Runtime physics velocity (Y only — sidescroller).</summary>
     public float Player2DVelocityY { get; set; }
+    /// <summary>Current horizontal velocity (world units/s) — drives facing + walk/run anims.</summary>
+    public float Player2DVelocityX { get; set; }
+    /// <summary>Facing: 1 = right, -1 = left. Flipped automatically from Player2DVelocityX.</summary>
+    public float Player2DFacing { get; set; } = 1f;
     /// <summary>True when standing on a collision tile this frame (grounded).</summary>
     public bool Player2DGrounded { get; set; }
+
+    // ── Movement tuning (all live in the Inspector, used by Player2DSystem) ──
+    /// <summary>Horizontal walk speed (world units/s). Sensible platformer default ≈ 1 tile/s.
+    /// Raise Run Speed for a faster sprint (LeftShift).</summary>
+    public float Player2DMoveSpeed { get; set; } = 8f;
+    /// <summary>Horizontal run speed (world units/s) — used while LeftShift is held.</summary>
+    public float Player2DRunSpeed { get; set; } = 14f;
+    /// <summary>Initial upward velocity on jump (world units/s). Keep modest so airtime is snappy.
+    /// With the default gravity (25) this gives ≈ 0.9s to apex then fall — raise Gravity if
+    /// you want even shorter airtime.</summary>
+    public float Player2DJumpForce { get; set; } = 9f;
+    /// <summary>Multiplier on Player2DGravity.</summary>
+    public float Player2DGravityScale { get; set; } = 1.6f;
+    /// <summary>Ground horizontal acceleration (world units/s²). High values give immediate,
+    /// non-slippery response (no ice-skating).</summary>
+    public float Player2DAcceleration { get; set; } = 200f;
+    /// <summary>Ground horizontal deceleration when no input (world units/s²). Keep ≥
+    /// Acceleration so stopping is as snappy as starting.</summary>
+    public float Player2DDeceleration { get; set; } = 220f;
+    /// <summary>0..1 — how much of ground acceleration applies while airborne.
+    /// Low values = no mid-air steering (classic platformer feel).</summary>
+    public float Player2DAirControl { get; set; } = 0.25f;
+
+    // ── Camera-follow tuning (used by the Player2DSystem camera follow) ──
+    /// <summary>How fast the camera catches the target (higher = snappier).</summary>
+    public float CameraFollowSpeed { get; set; } = 6f;
+    /// <summary>Dead zone width in px — camera doesn't move while the player is inside it.</summary>
+    public float CameraDeadZoneWidth { get; set; } = 96f;
+    /// <summary>Dead zone height in px.</summary>
+    public float CameraDeadZoneHeight { get; set; } = 64f;
+    /// <summary>Camera rises only when the player climbs above this many px from the anchor.</summary>
+    public float CameraVerticalThreshold { get; set; } = 64f;
+    /// <summary>How fast the camera returns down to the player after a high climb.</summary>
+    public float CameraReturnSpeed { get; set; } = 3f;
+    /// <summary>Look-ahead distance in px toward the movement direction.</summary>
+    public float CameraLookAhead { get; set; } = 150f;
+    /// <summary>Optional per-camera 2D view offset (added after the follow/frame math).
+    /// Default (0,0,0) = no offset. Lets the user nudge the ortho viewport position.</summary>
+    public Vector3 CameraViewOffset { get; set; } = new(0, 0, 0);
+
+    // ── Animation action system ──
+    /// <summary>User-defined animation actions (Idle/Walk/... + custom). Persisted with the object.</summary>
+    public List<Player2DAction> Actions { get; set; } = new();
+    /// <summary>Currently playing action name ("" = base locomotion).</summary>
+    public string Player2DCurrentAction { get; set; } = "";
+    /// <summary>Time inside the current action (reset on action change).</summary>
+    public float Player2DActionTime { get; set; }
     /// <summary>Static: request all Player2D objects to respawn at their Start2D marker
     /// on the NEXT update (set when in-game mode begins — objects may be re-created
     /// asynchronously by the .ing reload that follows, so spawning must be deferred).</summary>
     public static bool Player2DSpawnPending { get; set; }
+
+    /// <summary>Static camera-follow state: true once the follow camera snapped to its
+    /// start point for this play session (prevents a lerp swoop from the editor view).</summary>
+    public static bool CameraFollowInitialized { get; set; }
+
+    /// <summary>Ensure the default locomotion actions exist (Idle/Walk/Run/Jump/Fall).</summary>
+    public void EnsureDefaultActions()
+    {
+        if (Actions.Count > 0) return;
+        string[] defaults = ["Idle", "Walk", "Run", "Jump", "Fall"];
+        foreach (var n in defaults)
+            Actions.Add(new Player2DAction { Name = n, SpriteSheet = Player2DSpriteSheet, Clip = Player2DAnimationClip });
+    }
 
     // ── PBR material (Box/Sphere/flat-plane) — dedicated PBR shader with 7 optional
     //    maps + tuning. Every map is optional: missing maps keep neutral defaults
@@ -863,6 +952,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
             EditorPrimitiveType.Map2D => new Vector3(0.8f, 0.8f, 0.9f),
             EditorPrimitiveType.Player2D => new Vector3(0.2f, 0.9f, 0.4f),
+            EditorPrimitiveType.CameraStart2D => new Vector3(0.25f, 0.85f, 1f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
     }
@@ -1055,7 +1145,7 @@ public unsafe class EditorObject
                     new Vector3( 0.5f,  0.5f,  0.5f)),
                 // Player2D/Start2D: feet-anchored capsule AABB — Position.Y is the
                 // capsule BOTTOM (matches DrawPlayer2DCapsule + Player2DSystem).
-                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D => new AABB(
+                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D or EditorPrimitiveType.CameraStart2D => new AABB(
                     new Vector3(-Player2DCapsuleRadius, 0f, -Player2DCapsuleRadius),
                     new Vector3( Player2DCapsuleRadius, Player2DCapsuleHeight,  Player2DCapsuleRadius)),
                 _ => new AABB(
@@ -2338,7 +2428,8 @@ public unsafe class EditorObject
     {
         if (!IsVisible || (PrimitiveType != EditorPrimitiveType.Camera
             && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky
-            && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D)) return;
+            && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D
+            && PrimitiveType != EditorPrimitiveType.CameraStart2D)) return;
 
         // Derive a camera-facing basis from Front (Right/Up fields can be stale in fly
         // mode). Same upRef fallback as the light/sky gizmos so the icon always faces you.
@@ -2387,6 +2478,34 @@ public unsafe class EditorObject
             Line(P(0.35f, 0.3f), P(0f, 0.15f));      // arrow head right
             Line(P(-0.35f, -0.35f), P(-0.35f, -0.5f)); // spawn bracket left
             Line(P(0.35f, -0.35f), P(0.35f, -0.5f));   // spawn bracket right
+        }
+        else if (PrimitiveType == EditorPrimitiveType.CameraStart2D)
+        {
+            // Camera start icon: eye glyph (lens circle + pupil + view rays).
+            const int eyeSegs = 16;
+            var eprev = P(MathF.Cos(0f), MathF.Sin(0f));
+            for (int i = 1; i <= eyeSegs; i++)
+            {
+                float a = i * MathF.PI * 2f / eyeSegs;
+                var ecur = P(MathF.Cos(a), MathF.Sin(a));
+                Line(eprev, ecur);
+                eprev = ecur;
+            }
+            const int pupilSegs = 10;
+            var pprev = P(0.3f * MathF.Cos(0f), 0.3f * MathF.Sin(0f));
+            for (int i = 1; i <= pupilSegs; i++)
+            {
+                float a = i * MathF.PI * 2f / pupilSegs;
+                var pcur = P(0.3f * MathF.Cos(a), 0.3f * MathF.Sin(a));
+                Line(pprev, pcur);
+                pprev = pcur;
+            }
+            // View rays: left + right
+            Line(P(-1.3f, 0f), P(-0.85f, 0f));
+            Line(P(0.85f, 0f), P(1.3f, 0f));
+            // Ground dashes under the icon
+            Line(P(-0.6f, -1.1f), P(-0.2f, -1.1f));
+            Line(P(0.2f, -1.1f), P(0.6f, -1.1f));
         }
         else if (PrimitiveType == EditorPrimitiveType.Camera)
         {
@@ -2525,6 +2644,77 @@ public unsafe class EditorObject
         return TryGetPlayer2DClip(out sheet, out clip);
     }
 
+    /// <summary>Auto-select the locomotion action that matches the current state (idle when
+    /// grounded+still, walk/run by velocity, jump/fall by vertical state). Called every
+    /// frame so the character switches action smoothly without user input. Actions that
+    /// don't bind a key are locomotion candidates; user-bound actions (Attack/J/...)
+    /// are only started by their key or by priority-gated events (Jump on takeoff).
+    /// 
+    /// When a key-bound action is active and its key is released, the action is cleared so
+    /// locomotion can take over (e.g. Run bound to J: hold J = Run, release J = Idle/Walk).
+    /// Pass <paramref name="keyStillHeld"/> = true when the bound key is currently down.
+    /// Returns true when the action changed this frame.</summary>
+    public bool ResolveLocomotionAction(bool keyStillHeld)
+    {
+        // If a key-bound action is currently active, check whether its key is still
+        // held. If released (and the action is loopable), let locomotion take over.
+        // Non-loop key-bound actions release on their own via the action-clock check in
+        // DrawPlayer2D; here we only handle the loop case (e.g. Run bound to J while held).
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
+            {
+                if (!keyStillHeld && cur.Loop)
+                {
+                    // Key released while a looping key-bound action was active — fall back
+                    // to locomotion. Clears the action; the next frame's locomotion switch
+                    // will pick Idle/Walk/Run based on state.
+                    Player2DCurrentAction = "";
+                    Player2DActionTime = 0f;
+                }
+                return false; // don't override a key-bound action (held or not)
+            }
+        }
+
+        bool moving = MathF.Abs(Player2DVelocityX) > 0.1f;
+        bool grounded = Player2DGrounded;
+        string desired = "";
+        if (!grounded && Player2DVelocityY < -0.5f)
+            desired = "Fall";
+        else if (!grounded)
+            desired = "Jump";
+        else if (moving)
+            desired = Player2DVelocityX > 0 ? "Run" : "Walk";
+        else
+            desired = "Idle";
+
+        if (desired == Player2DCurrentAction) return false;
+        var act = Actions.FirstOrDefault(a => a.Name == desired);
+        if (act == null) return false;
+
+        // Auto-fill the action's clip from the player's current clip when the sheet
+        // matches (designer-friendly: one sheet, one clip name per action).
+        if (string.IsNullOrEmpty(act.SpriteSheet) || act.SpriteSheet == Player2DSpriteSheet)
+        {
+            if (string.IsNullOrEmpty(act.SpriteSheet))
+                act.SpriteSheet = Player2DSpriteSheet;
+            if (string.IsNullOrEmpty(act.Clip))
+                act.Clip = Player2DAnimationClip;
+        }
+
+        // When switching between actions that share the same clip (e.g. Idle↔Walk↔Run
+        // all using the player's base clip), keep the action clock running so the frame
+        // doesn't snap back to 0 — that snap is the "blink" on transition. Only reset the
+        // clock when the clip actually changes (different action clip) or when entering a
+        // new non-locomotion action (Jump/Fall/custom).
+        bool sameClip = act.Clip == Player2DAnimationClip || (string.IsNullOrEmpty(act.Clip) && string.IsNullOrEmpty(Player2DAnimationClip));
+        Player2DCurrentAction = desired;
+        if (!sameClip)
+            Player2DActionTime = 0f;
+        return true;
+    }
+
     /// <summary>Advance the animation clock and draw the player as an upright textured
     /// quad showing the current clip frame. Works in edit mode (preview) and in-game.
     /// Called from Draw() after the Map2D branch so the player draws over the level.</summary>
@@ -2532,6 +2722,48 @@ public unsafe class EditorObject
     {
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
         if (!TryGetPlayer2DActiveClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+
+        // ── Animation action system: a bound action with an own clip overrides the base clip. ──
+        // DrawPlayer2D still owns the clock (single source of truth) — but when an action is
+        // playing we keep its clock separate (Player2DActionTime) so the base idle clock
+        // doesn't skip while actions fire.
+        // Auto-switch locomotion action (idle/walk/run/jump/fall) to match current state;
+        // pick up before resolving the clip so the action's auto-filled clip is used.
+        // In edit mode we can check the key directly.
+        bool keyHeld = false;
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
+            {
+                if (Enum.TryParse<ImGuiKey>(cur.KeyBinding, out var k) && k != ImGuiKey.None)
+                    keyHeld = ImGui.IsKeyDown(k);
+            }
+        }
+        ResolveLocomotionAction(keyHeld);
+
+        var actionClip = GetActiveActionClip(out var activeAction);
+        bool actionActive = actionClip != null;
+        if (actionClip != null)
+        {
+            // Advance the clock: use the player's base clock (Player2DAnimTime) when the
+            // action is showing the player's own clip (fallback case — e.g. Run bound to J
+            // but Run has no resolvable clip, so it shows the player's walk/idle animation).
+            // Otherwise advance the action's own clock (Player2DActionTime) for actions with
+            // their own resolvable clip.
+            bool actionHasOwnResolvableClip = activeAction != null
+                && !string.IsNullOrEmpty(activeAction.SpriteSheet)
+                && activeAction.SpriteSheet != Player2DSpriteSheet
+                && !string.IsNullOrEmpty(activeAction.Clip)
+                && activeAction.Clip != Player2DAnimationClip;
+            if (!actionHasOwnResolvableClip)
+                Player2DAnimTime += Glfw.GetDeltaTime();
+            else
+                Player2DActionTime += Glfw.GetDeltaTime();
+            // Non-looping actions release when finished (state machine drops to locomotion).
+            if (activeAction != null && !activeAction.Loop && Player2DActionTime >= actionClip.Duration)
+                Player2DCurrentAction = "";
+        }
 
         // Resolve the sheet image + grid. The bridge's registry carries a live texture.
         // Uses the ACTIVE sheet's name — the walk clip may live on a different sheet
@@ -2544,16 +2776,37 @@ public unsafe class EditorObject
         // Advance the animation clock HERE (once per frame per player) — this is the
         // single source of truth so the sprite animates in edit mode too. The clock
         // RESETS when the active clip changes (idle ↔ walk) so each state starts on
-        // its first frame instead of resuming mid-cycle.
-        string activeClipName = sheet.Name + "/" + clip.Name;
-        if (!string.Equals(_player2dLastClip, activeClipName, StringComparison.Ordinal))
+        // its first frame instead of resuming mid-cycle. While an action is active,
+        // its own clock (Player2DActionTime) advances instead of the base clock.
+        if (!actionActive)
         {
-            _player2dLastClip = activeClipName;
-            Player2DAnimTime = 0f;
+            string activeClipName = sheet.Name + "/" + clip.Name;
+            if (!string.Equals(_player2dLastClip, activeClipName, StringComparison.Ordinal))
+            {
+                _player2dLastClip = activeClipName;
+                Player2DAnimTime = 0f;
+            }
+            Player2DAnimTime += Glfw.GetDeltaTime();
         }
-        Player2DAnimTime += Glfw.GetDeltaTime();
 
-        int frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        // Frame index: from the action clock (honoring the ACTION's loop flag without
+        // mutating the shared clip) or the base locomotion clock.
+        int frameIdx;
+        if (actionClip != null)
+        {
+            float frameDur = 1f / MathF.Max(0.01f, actionClip.FPS * actionClip.SpeedMultiplier);
+            int f = (int)(Player2DActionTime / frameDur);
+            int count = actionClip.FrameIndices.Count;
+            if (activeAction!.Loop && count > 0)
+                f = ((f % count) + count) % count;
+            else
+                f = Math.Clamp(f, 0, Math.Max(0, count - 1));
+            frameIdx = count > 0 ? actionClip.FrameIndices[f] : 0;
+        }
+        else
+        {
+            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        }
         var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
         // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
         // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. Raw uvMin.Y is the
@@ -2601,15 +2854,20 @@ public unsafe class EditorObject
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
 
         // Two triangles in WORLD space (identity model): pos(3) uv(2) tint(4).
+        // Facing left (Player2DFacing < 0) mirrors the frame horizontally by swapping
+        // the U coordinates (su0/su1) — the sprite looks toward its movement direction.
+        bool flipX = Player2DFacing < 0f;
+        float uL = flipX ? su1 : su0; // left edge of quad samples frame-right when flipped
+        float uR = flipX ? su0 : su1;
         float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
         var verts = stackalloc Map2DVertex[6]
         {
-            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
-            new(x1, y0, z, su1, svBot, tR, tG, tB, tA),
-            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
-            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
-            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
-            new(x0, y1, z, su0, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, uL, svBot, tR, tG, tB, tA),
+            new(x1, y0, z, uR, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, uR, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, uL, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, uR, svTop, tR, tG, tB, tA),
+            new(x0, y1, z, uL, svTop, tR, tG, tB, tA),
         };
 
         if (_player2dVAO == 0)
@@ -2646,6 +2904,76 @@ public unsafe class EditorObject
 
         // Restore main shader.
         GL.UseProgram(Shader.GetShaderProgram());
+    }
+
+    /// <summary>Resolve the animation clip for the currently-playing action (priority
+    /// system), or null when the base locomotion clip should play. The matched action is
+    /// returned via <paramref name="action"/> (for its Loop flag — the shared clip object
+    /// is never mutated).
+    /// 
+    /// Resolution order: (1) action's own sheet+clip if resolvable; (2) action's clip name
+    /// looked up in the PLAYER's sheet (so Walk/Run can share the player's clip even when
+    /// their Sheet field points elsewhere); (3) fall back to the player's base clip.</summary>
+    private AnimationClip2D? GetActiveActionClip(out Player2DAction? action)
+    {
+        action = null;
+        if (string.IsNullOrEmpty(Player2DCurrentAction) || Actions.Count == 0)
+            return null;
+        var act = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+        if (act == null) { Player2DCurrentAction = ""; return null; }
+
+        string playerSheet = Player2DSpriteSheet;
+        string playerClip = Player2DAnimationClip;
+
+        // (1) Action's own sheet + clip.
+        string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? playerSheet : act.SpriteSheet;
+        string clipName = string.IsNullOrEmpty(act.Clip) ? playerClip : act.Clip;
+        if (IDEBridge.TryGetSpriteClip(sheetName, clipName, out var sheet, out var clip) && clip != null)
+        {
+            action = act;
+            return clip;
+        }
+
+        // (2) Action's clip name in the PLAYER's sheet — lets Walk/Run share the player's
+        //     clip even when their Sheet field points at a different (possibly missing) sheet.
+        if (!string.IsNullOrEmpty(act.Clip) && act.Clip != playerClip
+            && IDEBridge.TryGetSpriteClip(playerSheet, act.Clip, out _, out clip) && clip != null)
+        {
+            action = act;
+            return clip;
+        }
+
+        // (3) Player's base clip as last resort. When the action's own clip can't be
+        // resolved at all (missing sheet or clip name), fall back to the player's current
+        // clip so the action still animates (e.g. Run bound to J shows the player's walk/
+        // idle clip if Run doesn't have its own resolvable clip).
+        if (IDEBridge.TryGetSpriteClip(playerSheet, playerClip, out _, out clip) && clip != null)
+        {
+            action = act;
+            return clip;
+        }
+
+        return null;
+    }
+
+    /// <summary>Trigger an action by name if its priority allows (respects the
+    /// interrupt rules: Dead=100 cancels all; equal/lower priority is ignored).</summary>
+    public bool TryStartAction(string name)
+    {
+        var act = Actions.FirstOrDefault(a => a.Name == name);
+        if (act == null) return false;
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && act.Priority < cur.Priority)
+                return false; // a higher-priority action is playing
+        }
+        if (Player2DCurrentAction != name)
+        {
+            Player2DCurrentAction = name;
+            Player2DActionTime = 0f;
+        }
+        return true;
     }
 
     /// <summary>
@@ -2734,8 +3062,9 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D have no solid mesh — selection shows via their line gizmos.
-        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D)
+        // Player2D/Start2D/CameraStart2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D)
             return;
 
         // ── GLB reference: draw the model's own meshes into the stencil mask. ──
@@ -2791,8 +3120,9 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D have no solid mesh — selection shows via their line gizmos.
-        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D)
+        // Player2D/Start2D/CameraStart2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D)
             return;
 
         // ── GLB reference: inverted-hull outline over the model's meshes. ──

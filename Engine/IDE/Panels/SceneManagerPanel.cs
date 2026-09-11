@@ -950,6 +950,27 @@ public class SceneManagerPanel
                         Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
                         Player2DShowCapsule = obj.Player2DShowCapsule,
                         Player2DGravity = obj.Player2DGravity,
+                        Player2DMoveSpeed = obj.Player2DMoveSpeed,
+                        Player2DRunSpeed = obj.Player2DRunSpeed,
+                        Player2DJumpForce = obj.Player2DJumpForce,
+                        Player2DGravityScale = obj.Player2DGravityScale,
+                        Player2DAcceleration = obj.Player2DAcceleration,
+                        Player2DDeceleration = obj.Player2DDeceleration,
+                        Player2DAirControl = obj.Player2DAirControl,
+                        CameraFollowSpeed = obj.CameraFollowSpeed,
+                        CameraDeadZoneWidth = obj.CameraDeadZoneWidth,
+                        CameraDeadZoneHeight = obj.CameraDeadZoneHeight,
+                        CameraVerticalThreshold = obj.CameraVerticalThreshold,
+                        CameraReturnSpeed = obj.CameraReturnSpeed,
+                        CameraLookAhead = obj.CameraLookAhead,
+                        CameraViewOffset = obj.CameraViewOffset,
+                        Actions = obj.Actions.Count > 0
+                            ? obj.Actions.Select(a => new Player2DActionData
+                            {
+                                Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
+                                Loop = a.Loop, Priority = a.Priority, KeyBinding = a.KeyBinding,
+                            }).ToList()
+                            : null,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z,
@@ -1346,6 +1367,7 @@ public class SceneManagerPanel
                             "map2d" => EditorPrimitiveType.Map2D,
                             "player2d" => EditorPrimitiveType.Player2D,
                             "start2d" => EditorPrimitiveType.Start2D,
+                            "camerastart2d" => EditorPrimitiveType.CameraStart2D,
                             _ => EditorPrimitiveType.Box,
                         };
 
@@ -1519,6 +1541,26 @@ public class SceneManagerPanel
                         obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
                         obj.Player2DShowCapsule = objData.Player2DShowCapsule;
                         obj.Player2DGravity = objData.Player2DGravity;
+                        obj.Player2DMoveSpeed = objData.Player2DMoveSpeed;
+                        obj.Player2DRunSpeed = objData.Player2DRunSpeed;
+                        obj.Player2DJumpForce = objData.Player2DJumpForce;
+                        obj.Player2DGravityScale = objData.Player2DGravityScale;
+                        obj.Player2DAcceleration = objData.Player2DAcceleration;
+                        obj.Player2DDeceleration = objData.Player2DDeceleration;
+                        obj.Player2DAirControl = objData.Player2DAirControl;
+                        obj.CameraFollowSpeed = objData.CameraFollowSpeed;
+                        obj.CameraDeadZoneWidth = objData.CameraDeadZoneWidth;
+                        obj.CameraDeadZoneHeight = objData.CameraDeadZoneHeight;
+                        obj.CameraVerticalThreshold = objData.CameraVerticalThreshold;
+                        obj.CameraReturnSpeed = objData.CameraReturnSpeed;
+                        obj.CameraLookAhead = objData.CameraLookAhead;
+                        obj.CameraViewOffset = objData.CameraViewOffset;
+                        if (objData.Actions is { Count: > 0 } savedActions)
+                            obj.Actions = savedActions.Select(a => new Player2DAction
+                            {
+                                Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
+                                Loop = a.Loop, Priority = a.Priority, KeyBinding = a.KeyBinding,
+                            }).ToList();
                         if (objData.TerrainSlopeLayer != null)
                         {
                             obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();

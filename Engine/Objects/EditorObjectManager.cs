@@ -23,6 +23,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private int _map2dCounter = 1;
         private int _player2dCounter = 1;
         private int _start2dCounter = 1;
+        private int _cameraStart2dCounter = 1;
         private readonly uint _shaderProgram;
         private readonly int _modelLoc, _viewLoc, _projLoc;
         private readonly int _sunDirLoc, _realSunDirLoc, _lightColorLoc, _viewPosLoc;
@@ -146,6 +147,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 EditorPrimitiveType.Map2D => $"map2d{_map2dCounter++}",
                 EditorPrimitiveType.Player2D => $"player{_player2dCounter++}",
                 EditorPrimitiveType.Start2D => $"start{_start2dCounter++}",
+                EditorPrimitiveType.CameraStart2D => $"camstart{_cameraStart2dCounter++}",
                 _ => $"object{_boxCounter++}",
             };
         }
@@ -171,6 +173,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         case EditorPrimitiveType.Map2D:     if (num >= _map2dCounter) _map2dCounter = num + 1; break;
                         case EditorPrimitiveType.Player2D:  if (num >= _player2dCounter) _player2dCounter = num + 1; break;
                         case EditorPrimitiveType.Start2D:   if (num >= _start2dCounter) _start2dCounter = num + 1; break;
+                        case EditorPrimitiveType.CameraStart2D: if (num >= _cameraStart2dCounter) _cameraStart2dCounter = num + 1; break;
                     }
                 }
             }
@@ -504,7 +507,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // Player2D capsule + Start2D spawn arrow stay visible in-game too (they
                 // are gameplay aids, and Draw2DMarker internally skips when hidden).
                 if (obj.PrimitiveType == EditorPrimitiveType.Player2D ||
-                    obj.PrimitiveType == EditorPrimitiveType.Start2D)
+                    obj.PrimitiveType == EditorPrimitiveType.Start2D ||
+                    obj.PrimitiveType == EditorPrimitiveType.CameraStart2D)
                 {
                     if (showEditorGizmos || !EditorObject.Editor2DAidsHidden)
                         obj.Draw2DMarker(camera);

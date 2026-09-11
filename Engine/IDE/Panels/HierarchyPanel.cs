@@ -701,6 +701,19 @@ public class HierarchyPanel
                     ImGui.PopStyleColor(2);
                     if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Start marker (player spawns here in preview/in-game)");
 
+                    ImGui.SameLine();
+
+                    var colCs = new Vector4(0.2f, 0.55f, 0.75f, 1f);
+                    var colCsHov = new Vector4(0.3f, 0.7f, 0.9f, 1f);
+                    ImGui.PushStyleColor(ImGuiCol.Button, colCs);
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colCsHov);
+                    if (ImGui.Button("Cam Start", new Vector2(btnW2, 24)))
+                    {
+                        QuickAdd3D(EditorPrimitiveType.CameraStart2D);
+                    }
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Camera Start marker (play camera begins here, centered; Scale.Y = start zoom)");
+
                     ImGui.Separator();
                 }
             }
@@ -881,6 +894,7 @@ public class HierarchyPanel
                             EditorPrimitiveType.Map2D => "🗺",
                             EditorPrimitiveType.Player2D => "🏃",
                             EditorPrimitiveType.Start2D => "🚩",
+                            EditorPrimitiveType.CameraStart2D => "👁",
                             _ => "",
                         };
 
@@ -984,6 +998,7 @@ public class HierarchyPanel
                         EditorPrimitiveType.Map2D => "🗺",
                         EditorPrimitiveType.Player2D => "🏃",
                         EditorPrimitiveType.Start2D => "🚩",
+                        EditorPrimitiveType.CameraStart2D => "👁",
                         _ => "",
                     };
                     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth;
@@ -1799,6 +1814,7 @@ public class HierarchyPanel
                 14 => EditorPrimitiveType.Sky,
                 15 => EditorPrimitiveType.Player2D,
                 16 => EditorPrimitiveType.Start2D,
+                17 => EditorPrimitiveType.CameraStart2D,
                 _ => EditorPrimitiveType.Box,
             };
 
