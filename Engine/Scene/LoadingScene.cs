@@ -190,6 +190,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             gameScene.SetResources(_skyTextures, _gameTerrainChunk, _skybox, _hud, _objectManager);
             _gameScene = gameScene;
 
+            // ── If we restored a real game scene from game.ing, also load its UI hierarchy
+            // into the GameScene root so main-menu goto scene looks the same as the editor path.
+            if (!string.IsNullOrEmpty(_targetSceneName))
+            {
+                var targetAsset = SceneAssetSerializer.FindScene(_targetSceneName);
+                if (targetAsset != null && string.Equals(targetAsset.SceneType, "GameScene", StringComparison.OrdinalIgnoreCase))
+                {
+                    gameScene.LoadUIHierarchyFromAsset(targetAsset);
+                }
+            }
+
+
             // ── Scene starts blank! No .ing file is loaded automatically. ──
             // User can create UI via the IDE SceneDetail panel or use reload from .ing.
             _sceneRoot.ClearChildren();
@@ -414,6 +426,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.ShowSkyGizmo = objData.ShowSkyGizmo;
                 if (objData.SkySettings != null)
                     obj.SkySettings = objData.SkySettings;
+
+                // ── Player2D sprite sizing + capsule collider (offset lives on the object) ──
+                obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
+                obj.Player2DAnimationClip = objData.Player2DAnimationClip;
+                obj.Player2DHeight = objData.Player2DHeight;
+                obj.Player2DCapsuleRadius = objData.Player2DCapsuleRadius;
+                obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
+                obj.Player2DCapsuleOffsetX = objData.Player2DCapsuleOffsetX;
+                obj.Player2DCapsuleOffsetY = objData.Player2DCapsuleOffsetY;
 
                 // Restore per-object gizmo pivot override (nullable).
                 if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)

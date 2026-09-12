@@ -946,6 +946,8 @@ public class SceneManagerPanel
                         Player2DHeight = obj.Player2DHeight,
                         Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
                         Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
+                        Player2DCapsuleOffsetX = obj.Player2DCapsuleOffsetX,
+                        Player2DCapsuleOffsetY = obj.Player2DCapsuleOffsetY,
 
                         Player2DShowCapsule = obj.Player2DShowCapsule,
                         Player2DGravity = obj.Player2DGravity,
@@ -1548,6 +1550,8 @@ public class SceneManagerPanel
                         obj.Player2DHeight = objData.Player2DHeight;
                         obj.Player2DCapsuleRadius = objData.Player2DCapsuleRadius;
                         obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
+                        obj.Player2DCapsuleOffsetX = objData.Player2DCapsuleOffsetX;
+                        obj.Player2DCapsuleOffsetY = objData.Player2DCapsuleOffsetY;
 
                         obj.Player2DShowCapsule = objData.Player2DShowCapsule;
                         obj.Player2DGravity = objData.Player2DGravity;

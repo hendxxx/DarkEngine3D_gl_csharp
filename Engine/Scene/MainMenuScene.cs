@@ -607,7 +607,18 @@ public unsafe class MainMenuScene : IScene
                 if (asset != null)
                 {
                     Console.WriteLine($"[MainMenu] scene:{target} → switching to scene '{target}'");
-                    _sceneManager.SwitchScene(new MainMenuScene(_sceneManager, _camera, _light, target));
+
+                    // If the target is a GameScene, route through the loading path so the scene
+                    // enters with the same world/content as the editor/game flow (resources + restored
+                    // editor objects / map). Otherwise fall back to a normal MainMenuScene switch.
+                    if (string.Equals(asset.SceneType, "GameScene", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _sceneManager.SwitchScene(new LoadingScene(_sceneManager, _camera, _light, target));
+                    }
+                    else
+                    {
+                        _sceneManager.SwitchScene(new MainMenuScene(_sceneManager, _camera, _light, target));
+                    }
                 }
                 else
                 {

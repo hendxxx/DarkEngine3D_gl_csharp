@@ -35,6 +35,23 @@ public class SpriteSheet
     public int OffsetX;
     public int OffsetY;
 
+    // ── Per-sheet render normalization (set in Sprite Editor) ──
+    /// <summary>Master box WIDTH in pixels — the shared render width this sheet's frames
+    /// normalize into. 0 = square box of MasterHeight.</summary>
+    public float MasterWidth { get; set; } = 0f;
+    /// <summary>Master box HEIGHT in pixels — ALL sheets sharing the same master size
+    /// render the same visual size: the player's Sprite Height maps to exactly this many
+    /// pixels, and each frame is drawn as-is (native px) inside the master box at its
+    /// per-frame offsets. 0 = no normalization (native frame proportions).</summary>
+    public float MasterHeight { get; set; } = 0f;
+    /// <summary>Horizontal render nudge in master pixels — aligns art that sits
+    /// off-center in this sheet's frame canvas. Positive = shift right.</summary>
+    public float SpriteOffsetX { get; set; } = 0f;
+    /// <summary>Vertical render nudge in master pixels from the feet anchor —
+    /// raises art that sits low in this sheet's frame so feet align across sheets.
+    /// Positive = shift up.</summary>
+    public float SpriteOffsetY { get; set; } = 0f;
+
     /// <summary>Custom frame regions (non-uniform mode). Null = use uniform grid.</summary>
     public List<SpriteFrame>? CustomFrames;
 
@@ -150,10 +167,15 @@ public class SpriteSheet
         PaddingY = PaddingY,
         OffsetX = OffsetX,
         OffsetY = OffsetY,
+        MasterWidth = MasterWidth,
+        MasterHeight = MasterHeight,
+        SpriteOffsetX = SpriteOffsetX,
+        SpriteOffsetY = SpriteOffsetY,
         CustomFrames = CustomFrames?.Select(f => new SpriteFrameData
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
             Name = f.Name, AnchorX = f.AnchorX, AnchorY = f.AnchorY,
+            RenderOffsetX = f.RenderOffsetX, RenderOffsetY = f.RenderOffsetY,
             HitboxX = f.HitboxX, HitboxY = f.HitboxY,
             HitboxW = f.HitboxW, HitboxH = f.HitboxH,
             Tags = f.Tags?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? null
@@ -174,10 +196,15 @@ public class SpriteSheet
         PaddingY = data.PaddingY,
         OffsetX = data.OffsetX,
         OffsetY = data.OffsetY,
+        MasterWidth = data.MasterWidth,
+        MasterHeight = data.MasterHeight,
+        SpriteOffsetX = data.SpriteOffsetX,
+        SpriteOffsetY = data.SpriteOffsetY,
         CustomFrames = data.CustomFrames?.Select(f => new SpriteFrame
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
             Name = f.Name, AnchorX = f.AnchorX, AnchorY = f.AnchorY,
+            RenderOffsetX = f.RenderOffsetX, RenderOffsetY = f.RenderOffsetY,
             HitboxX = f.HitboxX, HitboxY = f.HitboxY,
             HitboxW = f.HitboxW, HitboxH = f.HitboxH,
             Tags = f.Tags != null ? new Dictionary<string, string>(f.Tags) : new()
@@ -193,6 +220,13 @@ public class SpriteFrame
     public int X, Y;          // Pixel position in source image
     public int Width, Height; // Pixel dimensions
     public string Name = "";
+
+    /// <summary>Per-frame render nudge in pixels (applied inside the master box when
+    /// Master Height is set): X positive = right, Y positive = up from the feet/ground
+    /// line. Lets individual frames align art that sits differently in its cell —
+    /// e.g. a jump pose whose feet tuck up — without touching other frames.</summary>
+    public float RenderOffsetX = 0f;
+    public float RenderOffsetY = 0f;
 
     /// <summary>Pivot/anchor point within frame (0-1, 0=left/top, 1=right/bottom).</summary>
     public float AnchorX = 0.5f;
@@ -221,6 +255,11 @@ public class SpriteSheetData
     public int PaddingY { get; set; }
     public int OffsetX { get; set; }
     public int OffsetY { get; set; }
+    // ── Per-sheet render normalization (Sprite Editor) ──
+    public float MasterWidth { get; set; } = 0f;
+    public float MasterHeight { get; set; } = 0f;
+    public float SpriteOffsetX { get; set; } = 0f;
+    public float SpriteOffsetY { get; set; } = 0f;
     public List<SpriteFrameData>? CustomFrames { get; set; }
 }
 
@@ -231,6 +270,9 @@ public class SpriteFrameData
     public int Width { get; set; }
     public int Height { get; set; }
     public string Name { get; set; } = "";
+    /// <summary>Per-frame render nudge in pixels (inside the master box).</summary>
+    public float RenderOffsetX { get; set; } = 0f;
+    public float RenderOffsetY { get; set; } = 0f;
     public float AnchorX { get; set; } = 0.5f;
     public float AnchorY { get; set; } = 1f;
     public int HitboxX { get; set; }

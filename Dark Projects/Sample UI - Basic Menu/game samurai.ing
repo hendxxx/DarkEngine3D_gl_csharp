@@ -1302,15 +1302,15 @@
       "transitionType": "slideleft",
       "transitionDuration": 0.6,
       "transitionColor": [
-        0,
+        1,
         0,
         0
       ],
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.03183,
-        43.81875,
+        60.636566,
+        32,
         307.03183
       ],
       "editorCameraYaw": 180,
@@ -1537,7 +1537,7 @@
                 1
               ],
               "alignment": "Center",
-              "isVisible": true,
+              "isVisible": false,
               "opacity": 0.25,
               "autoFillWindow": true,
               "autoCenterX": false,
@@ -6409,8 +6409,6 @@
           "player2DHeight": 2,
           "player2DCapsuleRadius": 0.35,
           "player2DCapsuleHeight": 1.8,
-          "player2DCapsuleOffsetX": 0,
-          "player2DCapsuleOffsetY": 0,
           "player2DShowCapsule": true,
           "player2DGravity": 25,
           "player2DMoveSpeed": 5,
@@ -7051,8 +7049,6 @@
           "player2DHeight": 2,
           "player2DCapsuleRadius": 0.35,
           "player2DCapsuleHeight": 1.8,
-          "player2DCapsuleOffsetX": 0,
-          "player2DCapsuleOffsetY": 0,
           "player2DShowCapsule": true,
           "player2DGravity": 25,
           "player2DMoveSpeed": 5,
@@ -7672,8 +7668,8 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 73.1,
-          "posY": 0,
+          "posX": 75.7,
+          "posY": 3.2,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -7686,15 +7682,13 @@
           "colorB": 0.8,
           "castShadow": true,
           "isVisible": true,
-          "player2DSpriteSheet": "Idle-Sheet",
-          "player2DAnimationClip": "Char A - Idle",
+          "player2DSpriteSheet": "Idle",
+          "player2DAnimationClip": "Samurai - Idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
           "player2DHeight": 18,
           "player2DCapsuleRadius": 1.5,
-          "player2DCapsuleHeight": 10.75,
-          "player2DCapsuleOffsetX": 0,
-          "player2DCapsuleOffsetY": 3.2,
+          "player2DCapsuleHeight": 8,
           "player2DShowCapsule": true,
           "player2DGravity": 60,
           "player2DMoveSpeed": 50,
@@ -7708,7 +7702,7 @@
           "cameraDeadZoneWidth": 0,
           "cameraDeadZoneHeight": 0,
           "cameraVerticalThreshold": 0,
-          "cameraReturnSpeed": 0.5,
+          "cameraReturnSpeed": 20,
           "cameraLookAhead": 0,
           "cameraViewOffset": {
             "X": 0,
@@ -7718,6 +7712,38 @@
           "actions": [
             {
               "name": "Idle",
+              "spriteSheet": "Idle",
+              "clip": "Samurai - Idle",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Walk",
+              "spriteSheet": "Walk",
+              "clip": "Samurai - Walk",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Run",
+              "spriteSheet": "Run",
+              "clip": "Samurai - Run",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Jump",
+              "spriteSheet": "Jump",
+              "clip": "Samurai - Jump",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Fall",
               "spriteSheet": "Idle-Sheet",
               "clip": "Char A - Idle",
               "loop": true,
@@ -7725,36 +7751,20 @@
               "keyBinding": "None"
             },
             {
-              "name": "Walk",
-              "spriteSheet": "Run-Sheet",
-              "clip": "Char A - Run",
+              "name": "Action8",
+              "spriteSheet": "Attack_1",
+              "clip": "Samurai - Attack 1",
               "loop": true,
-              "priority": 5,
-              "keyBinding": "None"
-            },
-            {
-              "name": "Run",
-              "spriteSheet": "Run-Sheet",
-              "clip": "Char A - Run",
-              "loop": true,
-              "priority": 5,
-              "keyBinding": "None"
-            },
-            {
-              "name": "Jump",
-              "spriteSheet": "Jump-All-Sheet",
-              "clip": "Char A - Jump",
-              "loop": false,
-              "priority": 5,
-              "keyBinding": "None"
-            },
-            {
-              "name": "Attach 1",
-              "spriteSheet": "Attack-01-Sheet",
-              "clip": "Char A - Attack 1",
-              "loop": false,
               "priority": 5,
               "keyBinding": "J"
+            },
+            {
+              "name": "Action9",
+              "spriteSheet": "Dead",
+              "clip": "Samurai - Dead",
+              "loop": false,
+              "priority": 5,
+              "keyBinding": "X"
             }
           ],
           "cameraFov": 60,
@@ -8298,7 +8308,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 73.1,
+          "posX": 75.7,
           "posY": 3.2,
           "posZ": 0,
           "rotX": 0,
@@ -8319,8 +8329,6 @@
           "player2DHeight": 2,
           "player2DCapsuleRadius": 0.35,
           "player2DCapsuleHeight": 1.8,
-          "player2DCapsuleOffsetX": 0,
-          "player2DCapsuleOffsetY": 0,
           "player2DShowCapsule": true,
           "player2DGravity": 25,
           "player2DMoveSpeed": 5,
@@ -8935,15 +8943,15 @@
       "transitionType": "slideright",
       "transitionDuration": 0.6,
       "transitionColor": [
-        0,
+        1,
         0,
         0
       ],
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.03183,
-        43.81875,
+        60.636566,
+        32,
         307.03183
       ],
       "editorCameraYaw": 180,

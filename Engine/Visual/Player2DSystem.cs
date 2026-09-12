@@ -52,14 +52,21 @@ public static class Player2DSystem
                 foreach (var p in manager.Objects)
                 {
                     if (p is not { PrimitiveType: Objects.EditorPrimitiveType.Player2D }) continue;
-                    p.Position = start2d.Position;
+                    // Spawn is CAPSULE-AWARE: Start2D marks where the COLLIDER stands,
+                    // so subtract the capsule offset (physics feet = Position.Y + offset).
+                    // The sprite anchor follows via its own rendering — collider lands
+                    // exactly on the marker regardless of the capsule nudge.
+                    p.Position = new System.Numerics.Vector3(
+                        start2d.Position.X - p.Player2DCapsuleOffsetX,
+                        start2d.Position.Y - p.Player2DCapsuleOffsetY,
+                        start2d.Position.Z);
                     p.Player2DVelocityY = 0f;
                     p.Player2DAnimTime = 0f;
                     // Fresh run: clear any stale walk/facing state carried over from
                     // a previous in-game session.
                     p.Player2DMoving = false;
                     p.Player2DFacingRight = true;
-                    Console.WriteLine($"[Player2D] Spawned at Start ({p.Position.X:F1}, {p.Position.Y:F1})");
+                    Console.WriteLine($"[Player2D] Spawned at Start ({p.Position.X:F1}, {p.Position.Y:F1}) (capsule offset {p.Player2DCapsuleOffsetX:F2},{p.Player2DCapsuleOffsetY:F2})");
                 }
             }
         }
@@ -165,6 +172,13 @@ public static class Player2DSystem
             float r = player.Player2DCapsuleRadius;
             float height = player.Player2DCapsuleHeight;
             float capZMin = pos.Z - r, capZMax = pos.Z + r;
+            // Capsule offset: the physics body can be shifted relative to the object
+            // position (same values the capsule gizmo draws with). capX is the capsule's
+            // horizontal CENTER; feet sit at pos.Y + capOffY. All probes/resolves below
+            // use these, and results are converted back into pos.X/pos.Y.
+            float capOffX = player.Player2DCapsuleOffsetX;
+            float capOffY = player.Player2DCapsuleOffsetY;
+            float capX = pos.X + capOffX;
 
             // ════════════════════════════════════════════════════════════
             // STEP 1 — Move X, resolve X (walls) via swept AABB.
@@ -174,8 +188,8 @@ public static class Player2DSystem
             // Vertical span covered during the X sweep (Y is unchanged here).
             // World +Y maps to DECREASING grid row, so the feet are the LARGER row
             // index and the head the SMALLER — iterate yHeadRow..yFeetRow.
-            float yBot = pos.Y;
-            float yTop = pos.Y + height;
+            float yBot = pos.Y + capOffY;
+            float yTop = pos.Y + capOffY + height;
             int yFeetRow = WorldRowFloor(map, yBot + 0.001f, cell);
             int yHeadRow = WorldRowFloor(map, yTop - 0.001f, cell);
 
@@ -184,13 +198,14 @@ public static class Player2DSystem
                 if (velX > 0f)
                 {
                     // Right wall: the capsule's right edge enters column gxEdge —
-                    // push back to that column's LEFT face.
-                    int gxEdge = WorldColFloor(map, newX + r, cell);
+                    // push back to that column's LEFT face (newX stores pos.X, so the
+                    // capsule center newX+capOffX lands skin-width from the face).
+                    int gxEdge = WorldColFloor(map, newX + capOffX + r, cell);
                     for (int gy = yHeadRow; gy <= yFeetRow; gy++)
                     {
                         if (IsSolid(map, collisionLayer, layerIdx, gxEdge, gy))
                         {
-                            newX = TileWorldMinX(gxEdge, cell) - r - SkinWidth;
+                            newX = TileWorldMinX(gxEdge, cell) - r - SkinWidth - capOffX;
                             break;
                         }
                     }
@@ -199,12 +214,12 @@ public static class Player2DSystem
                 {
                     // Left wall: the capsule's left edge enters column gxEdge —
                     // push back to that column's RIGHT face.
-                    int gxEdge = WorldColFloor(map, newX - r, cell);
+                    int gxEdge = WorldColFloor(map, newX + capOffX - r, cell);
                     for (int gy = yHeadRow; gy <= yFeetRow; gy++)
                     {
                         if (IsSolid(map, collisionLayer, layerIdx, gxEdge, gy))
                         {
-                            newX = TileWorldMaxX(gxEdge, cell) + r + SkinWidth;
+                            newX = TileWorldMaxX(gxEdge, cell) + r + SkinWidth - capOffX;
                             break;
                         }
                     }
@@ -219,10 +234,10 @@ public static class Player2DSystem
                 bool overlapY = yTop > bmin.Y + 0.001f && yBot < bmax.Y - 0.001f;
                 if (!overlapZ || !overlapY) continue;
 
-                if (newX + r > bmin.X && newX - r < bmax.X)
+                if (newX + capOffX + r > bmin.X && newX + capOffX - r < bmax.X)
                 {
-                    float pushLeft = bmin.X - (newX + r);   // negative: eject to the left
-                    float pushRight = bmax.X - (newX - r);  // positive: eject to the right
+                    float pushLeft = bmin.X - (newX + capOffX + r);   // negative: eject left
+                    float pushRight = bmax.X - (newX + capOffX - r);  // positive: eject right
                     newX += MathF.Abs(pushLeft) < MathF.Abs(pushRight) ? pushLeft : pushRight;
                 }
             }
@@ -244,8 +259,8 @@ public static class Player2DSystem
 
             // Horizontal span of the capsule after the X resolve — used for the
             // tile column range of every vertical probe.
-            int gx0 = WorldColFloor(map, pos.X - r + 0.001f, cell);
-            int gx1 = WorldColFloor(map, pos.X + r - 0.001f, cell);
+            int gx0 = WorldColFloor(map, capX - r + 0.001f, cell);
+            int gx1 = WorldColFloor(map, capX + r - 0.001f, cell);
 
             bool grounded = false;
 
@@ -254,8 +269,8 @@ public static class Player2DSystem
                 // ── Falling: swept feet probe from old feet to new feet ──
                 // Check every row the feet cross (topmost solid wins) plus the row
                 // the new feet rest in, so tunneling can't slip through a tile.
-                int rowFeetNew = WorldRowFloor(map, newY, cell);
-                int rowFeetOld = WorldRowFloor(map, pos.Y, cell);
+                int rowFeetNew = WorldRowFloor(map, newY + capOffY, cell);
+                int rowFeetOld = WorldRowFloor(map, pos.Y + capOffY, cell);
                 int rowTop = Math.Min(rowFeetOld, rowFeetNew); // smallest index = highest band
                 int rowBottom = Math.Max(rowFeetOld, rowFeetNew);
                 // Cross rows in the order the feet pass them: highest band first.
@@ -277,10 +292,10 @@ public static class Player2DSystem
                     if (!solid) continue;
 
                     float tileTop = TileWorldMaxY(map, gy, cell);
-                    if (pos.Y >= tileTop - 0.01f)
+                    if (pos.Y + capOffY >= tileTop - 0.01f)
                     {
-                        // Came from above → land on top of this tile.
-                        newY = tileTop;
+                        // Came from above → land on top of this tile (feet = pos.Y + capOffY).
+                        newY = tileTop - capOffY;
                         player.Player2DVelocityY = 0f;
                         grounded = true;
                         break;
@@ -292,8 +307,8 @@ public static class Player2DSystem
             else
             {
                 // ── Rising: swept head probe from old head to new head ──
-                int rowHeadNew = WorldRowFloor(map, newY + height, cell);
-                int rowHeadOld = WorldRowFloor(map, pos.Y + height, cell);
+                int rowHeadNew = WorldRowFloor(map, newY + capOffY + height, cell);
+                int rowHeadOld = WorldRowFloor(map, pos.Y + capOffY + height, cell);
                 int rowTop = Math.Min(rowHeadOld, rowHeadNew);
                 int rowBottom = Math.Max(rowHeadOld, rowHeadNew);
                 // Cross rows in the order the head passes them: lowest band first.
@@ -315,10 +330,10 @@ public static class Player2DSystem
                     if (!solid) continue;
 
                     float tileBottom = TileWorldMinY(map, gy, cell);
-                    if (pos.Y + height <= tileBottom + 0.01f)
+                    if (pos.Y + capOffY + height <= tileBottom + 0.01f)
                     {
                         // Came from below → bump the ceiling.
-                        newY = tileBottom - height;
+                        newY = tileBottom - height - capOffY;
                         player.Player2DVelocityY = 0f;
                         break;
                     }
@@ -334,16 +349,16 @@ public static class Player2DSystem
             // doesn't teleport the player onto the top — the X pass handles that).
             foreach (var (bmin, bmax) in boxes)
             {
-                bool overlapXZ = pos.X + r > bmin.X && pos.X - r < bmax.X
+                bool overlapXZ = capX + r > bmin.X && capX - r < bmax.X
                     && capZMax > bmin.Z && capZMin < bmax.Z;
                 if (!overlapXZ) continue;
 
                 if (player.Player2DVelocityY <= 0f)
                 {
                     // Falling: feet crossed the box top surface this frame.
-                    if (newY < bmax.Y && newY > bmin.Y && pos.Y >= bmax.Y - 0.01f)
+                    if (newY + capOffY < bmax.Y && newY + capOffY > bmin.Y && pos.Y + capOffY >= bmax.Y - 0.01f)
                     {
-                        newY = bmax.Y;
+                        newY = bmax.Y - capOffY;
                         player.Player2DVelocityY = 0f;
                         grounded = true;
                     }
@@ -351,9 +366,9 @@ public static class Player2DSystem
                 else
                 {
                     // Rising: head crossed the box bottom surface this frame.
-                    if (newY + height > bmin.Y && newY + height < bmax.Y && pos.Y + height <= bmin.Y + 0.01f)
+                    if (newY + capOffY + height > bmin.Y && newY + capOffY + height < bmax.Y && pos.Y + capOffY + height <= bmin.Y + 0.01f)
                     {
-                        newY = bmin.Y - height;
+                        newY = bmin.Y - height - capOffY;
                         player.Player2DVelocityY = 0f;
                     }
                 }
@@ -365,10 +380,13 @@ public static class Player2DSystem
 
             // ── Pit death: the world origin (0,0) is the map's bottom-left, so any
             // Y well below zero means the player fell through a hole. Respawn at the
-            // Start2D marker instead of falling forever. ──
+            // Start2D marker instead of falling forever (capsule-aware, same as spawn). ──
             if (pos.Y < -cell * 2f && start2d != null)
             {
-                player.Position = start2d.Position;
+                player.Position = new System.Numerics.Vector3(
+                    start2d.Position.X - player.Player2DCapsuleOffsetX,
+                    start2d.Position.Y - player.Player2DCapsuleOffsetY,
+                    start2d.Position.Z);
                 player.Player2DVelocityY = 0f;
                 player.Player2DGrounded = false;
                 // Respawn faces right in the idle state (standard sidescroller reset).

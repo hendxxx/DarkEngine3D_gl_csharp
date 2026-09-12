@@ -1683,6 +1683,12 @@ public class IDE : IDisposable
         {
             _lastInGameSceneName = currentScene;
             SwitchToGameCamera();
+
+            // 2D level scenes must re-anchor to the ortho FRONT view after an in-game
+            // scene switch too (main-menu "goto scene" navigation) — same as F8
+            // in-game entry. Without this the camera keeps the placed Camera object's
+            // orientation and the level renders from BEHIND the map plane.
+            _levelCameraReframePending = Bridge.ActiveTilemap != null;
         }
 
         // ── Stats overlay (in-game mode) — always visible, drawn last so it sits on top ──

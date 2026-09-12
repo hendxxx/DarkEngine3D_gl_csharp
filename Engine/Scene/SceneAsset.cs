@@ -179,6 +179,8 @@ public class EditorObjectData
     public float Player2DHeight { get; set; } = 2f;
     public float Player2DCapsuleRadius { get; set; } = 0.35f;
     public float Player2DCapsuleHeight { get; set; } = 1.8f;
+    public float Player2DCapsuleOffsetX { get; set; } = 0f;
+    public float Player2DCapsuleOffsetY { get; set; } = 0f;
     public bool Player2DShowCapsule { get; set; } = true;
     public float Player2DGravity { get; set; } = 25f;
     // ── Player2D movement tuning (Inspector-editable, used by Player2DSystem) ──

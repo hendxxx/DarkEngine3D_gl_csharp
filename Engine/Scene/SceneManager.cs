@@ -26,6 +26,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private readonly List<ScheduledBehavior> _scheduledBehaviors = new();
         private IScene? _currentScene;
         private IScene? _nextScene;
+        /// <summary>Scene switch parked while a transition is still playing. Applied the
+        /// frame the transition completes — loads run AFTER the overlay, not during it.</summary>
+        private IScene? _deferredTransitionScene;
         private bool _running;
         private bool _altEnterWasDown = false;
 
@@ -703,11 +706,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // so the old scene isn't destroyed before its render pass.
                 // If SwitchScene() was called during Update(), _nextScene
                 // is set here and applied before the next Update().
+                // SEQUENTIAL WITH TRANSITIONS: while a transition is running, the scene
+                // switch is HELD until the transition finishes — the overlay plays over
+                // the current scene first, then the (potentially heavy) load happens
+                // behind the completed overlay. Previously the midpoint fired the load
+                // mid-transition and its multi-second hitch ate the reveal animation.
                 if (_nextScene != null && _nextScene != _currentScene)
                 {
-                    SwitchToScene(_nextScene, false);
+                    if (_transitionManager.IsActive)
+                    {
+                        // Defer: apply the switch on the frame the transition completes.
+                        _deferredTransitionScene = _nextScene;
+                        _nextScene = null;
+                    }
+                    else
+                    {
+                        SwitchToScene(_nextScene, false);
 
-                    // When InGame mode (IDE off), update cursor for the new scene
+                        // When InGame mode (IDE off), update cursor for the new scene
+                        if (_ide != null && !_ide.IsActive)
+                            UpdateInGameCursor();
+                    }
+                }
+                // A transition just finished over this scene → now do the actual load.
+                else if (_deferredTransitionScene != null && !_transitionManager.IsActive)
+                {
+                    var toLoad = _deferredTransitionScene;
+                    _deferredTransitionScene = null;
+                    SwitchToScene(toLoad, false);
+
                     if (_ide != null && !_ide.IsActive)
                         UpdateInGameCursor();
                 }
@@ -734,6 +761,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             oldScene?.Dispose();
             _currentScene = null;
             _nextScene = null;
+            _deferredTransitionScene = null;
 
             Console.WriteLine("Engine Shutdown.");
         }
@@ -920,6 +948,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             _currentScene = scene;
             _nextScene = null;
+            _deferredTransitionScene = null; // any parked switch is now superseded
 
             if (!isInitial)
             {

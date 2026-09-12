@@ -2519,7 +2519,7 @@ public class InspectorPanel
         if (ImGui.DragFloat("Sprite Height", ref h, 0.05f, 0.1f, 50f, "%.2f"))
             editorObj.Player2DHeight = MathF.Max(0.1f, h);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("World height of the character box. EVERY animation sheet stretches to this exact height, so idle/attack/jump all render the same size regardless of their frame pixel dimensions.");
+            ImGui.SetTooltip("World height the MASTER size maps to. Set each sheet's Master Height + Render Offset in the Sprite Editor (Sheet Settings → Render Normalization) so all animations share one visual size.");
 
 
 
@@ -2531,6 +2531,20 @@ public class InspectorPanel
         float ch = editorObj.Player2DCapsuleHeight;
         if (ImGui.DragFloat("Capsule Height", ref ch, 0.05f, 0.1f, 50f, "%.2f"))
             editorObj.Player2DCapsuleHeight = MathF.Max(0.2f, ch);
+
+        // Capsule offset: shifts the collider relative to the object position so it
+        // hugs the visible character (same values drive the gizmo AND the physics).
+        float capOffX = editorObj.Player2DCapsuleOffsetX;
+        if (ImGui.DragFloat("Capsule Offset X", ref capOffX, 0.02f, -20f, 20f, "%.2f"))
+            editorObj.Player2DCapsuleOffsetX = Math.Clamp(capOffX, -20f, 20f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Shifts the capsule right/left from the object position (left-bottom sprite anchor). Gizmo and physics both use this.");
+
+        float capOffY = editorObj.Player2DCapsuleOffsetY;
+        if (ImGui.DragFloat("Capsule Offset Y", ref capOffY, 0.02f, -20f, 20f, "%.2f"))
+            editorObj.Player2DCapsuleOffsetY = Math.Clamp(capOffY, -20f, 20f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Lifts the capsule base off the ground line (positive = up). Feet land at Position.Y + this offset.");
 
         bool showCap = editorObj.Player2DShowCapsule;
         if (ImGui.Checkbox("Show Capsule##player", ref showCap))

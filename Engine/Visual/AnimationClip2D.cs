@@ -31,6 +31,16 @@ public class AnimationClip2D
     /// <summary>Events triggered at specific frames. Key = frame index, Value = event name.</summary>
     public Dictionary<int, string> Events = new();
 
+    // ── Master render box snapshot (copied from the sheet at Create Clip time) ──
+    /// <summary>Master box the clip's frames render into (W × H px). Snapshot from the
+    /// sheet's Render Normalization when the clip was created, so later sheet edits
+    /// don't shift already-aligned clips. 0 = fall back to the sheet's live values.</summary>
+    public float MasterWidth = 0f;
+    public float MasterHeight = 0f;
+    /// <summary>Sheet-level render offsets snapshotted with the master box.</summary>
+    public float SpriteOffsetX = 0f;
+    public float SpriteOffsetY = 0f;
+
     // ── Runtime ──
     public float Duration => FrameIndices.Count > 0 ? FrameIndices.Count / (FPS * SpeedMultiplier) : 0f;
 
@@ -135,7 +145,11 @@ public class AnimationClip2D
         Loop = Loop,
         Reverse = Reverse,
         SpeedMultiplier = SpeedMultiplier,
-        Events = Events.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value)
+        Events = Events.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
+        MasterWidth = MasterWidth,
+        MasterHeight = MasterHeight,
+        SpriteOffsetX = SpriteOffsetX,
+        SpriteOffsetY = SpriteOffsetY
     };
 
     public static AnimationClip2D FromData(AnimationClip2DData data) => new()
@@ -147,7 +161,11 @@ public class AnimationClip2D
         Loop = data.Loop,
         Reverse = data.Reverse,
         SpeedMultiplier = data.SpeedMultiplier,
-        Events = data.Events?.ToDictionary(kv => int.Parse(kv.Key), kv => kv.Value) ?? new()
+        Events = data.Events?.ToDictionary(kv => int.Parse(kv.Key), kv => kv.Value) ?? new(),
+        MasterWidth = data.MasterWidth,
+        MasterHeight = data.MasterHeight,
+        SpriteOffsetX = data.SpriteOffsetX,
+        SpriteOffsetY = data.SpriteOffsetY
     };
 }
 
@@ -277,4 +295,9 @@ public class AnimationClip2DData
     public bool Reverse { get; set; }
     public float SpeedMultiplier { get; set; } = 1f;
     public Dictionary<string, string>? Events { get; set; }
+    // ── Master render box snapshot (per clip) ──
+    public float MasterWidth { get; set; } = 0f;
+    public float MasterHeight { get; set; } = 0f;
+    public float SpriteOffsetX { get; set; } = 0f;
+    public float SpriteOffsetY { get; set; } = 0f;
 }

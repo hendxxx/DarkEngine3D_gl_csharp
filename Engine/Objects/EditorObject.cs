@@ -315,10 +315,22 @@ public unsafe class EditorObject
     /// to this height based on its native pixel size, so all animations render at the same
     /// visual size regardless of their original frame dimensions (idle 64px, run 80px, etc.).</summary>
     public float Player2DHeight { get; set; } = 2f;
+    // Per-sheet master-height normalization + render offsets live on SpriteSheet
+    // (Sprite Editor → Sheet Settings → Render Normalization) — shared by all objects
+    // using that sheet, serialized in sprites.sheets.json.
     /// <summary>Capsule collider radius in world units.</summary>
     public float Player2DCapsuleRadius { get; set; } = 0.35f;
     /// <summary>Capsule collider total height in world units.</summary>
     public float Player2DCapsuleHeight { get; set; } = 1.8f;
+    /// <summary>Capsule collider horizontal offset from the object position (world units).
+    /// With the left-bottom sprite anchor, the physics body usually needs shifting right
+    /// into the character's body — nudge X (and Y for tall/short art) until the capsule
+    /// hugs the visible character. Applied in BOTH the gizmo draw and the physics resolve.</summary>
+    public float Player2DCapsuleOffsetX { get; set; } = 0f;
+    /// <summary>Capsule collider vertical offset from the object position (world units).
+    /// Positive lifts the capsule base off the ground line (e.g. art feet drawn above
+    /// the anchor). Applied in BOTH the gizmo draw and the physics resolve.</summary>
+    public float Player2DCapsuleOffsetY { get; set; } = 0f;
     /// <summary>Render the capsule outline (edit mode only — hidden in-game).</summary>
     public bool Player2DShowCapsule { get; set; } = true;
     /// <summary>Gravity acceleration (world units/s²) applied in preview/in-game.</summary>
@@ -2574,7 +2586,12 @@ public unsafe class EditorObject
     {
         float r = Player2DCapsuleRadius;
         float H = Player2DCapsuleHeight;
-        float baseY = Position.Y;
+        // Capsule offset: shifts the whole capsule relative to the object position so
+        // the collider can hug the visible character (left-bottom anchor ⇒ the body
+        // usually sits right of Position.X). Same offset is applied by Player2DSystem
+        // physics — the gizmo always matches the real collision body.
+        float capX = Position.X + Player2DCapsuleOffsetX;
+        float baseY = Position.Y + Player2DCapsuleOffsetY;
         // Cap centers: bottom cap at baseY + r, top cap at baseY + H - r. The straight
         // cylinder wall spans between the two centers; the semicircle caps bulge OUTWARD
         // (down at the feet, up at the head). Clamp for the degenerate H < 2r pill.
@@ -2584,26 +2601,26 @@ public unsafe class EditorObject
         var verts = new List<Vector3>(64);
         const int segs = 12;
         // Top cap: 180° bulging UP (sin 0..PI is positive).
-        var prev = new Vector3(Position.X + r, cTop, Position.Z);
+        var prev = new Vector3(capX + r, cTop, Position.Z);
         for (int i = 1; i <= segs; i++)
         {
             float a = i * MathF.PI / segs; // 0..PI (right → left over the top)
-            var cur = new Vector3(Position.X + MathF.Cos(a) * r, cTop + MathF.Sin(a) * r, Position.Z);
+            var cur = new Vector3(capX + MathF.Cos(a) * r, cTop + MathF.Sin(a) * r, Position.Z);
             verts.Add(prev); verts.Add(cur); prev = cur;
         }
         // Bottom cap: 180° bulging DOWN (sin PI..2PI is negative).
-        prev = new Vector3(Position.X - r, cBot, Position.Z);
+        prev = new Vector3(capX - r, cBot, Position.Z);
         for (int i = 1; i <= segs; i++)
         {
             float a = MathF.PI + i * MathF.PI / segs; // PI..2PI (left → right under the bottom)
-            var cur = new Vector3(Position.X + MathF.Cos(a) * r, cBot + MathF.Sin(a) * r, Position.Z);
+            var cur = new Vector3(capX + MathF.Cos(a) * r, cBot + MathF.Sin(a) * r, Position.Z);
             verts.Add(prev); verts.Add(cur); prev = cur;
         }
         // Cylinder side lines connect the cap centers at x = ±r.
-        verts.Add(new Vector3(Position.X - r, cBot, Position.Z));
-        verts.Add(new Vector3(Position.X - r, cTop, Position.Z));
-        verts.Add(new Vector3(Position.X + r, cBot, Position.Z));
-        verts.Add(new Vector3(Position.X + r, cTop, Position.Z));
+        verts.Add(new Vector3(capX - r, cBot, Position.Z));
+        verts.Add(new Vector3(capX - r, cTop, Position.Z));
+        verts.Add(new Vector3(capX + r, cBot, Position.Z));
+        verts.Add(new Vector3(capX + r, cTop, Position.Z));
 
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
         GL.Disable(Const.GL_DEPTH_TEST);
@@ -2853,12 +2870,46 @@ public unsafe class EditorObject
         if (!Player2DFacingRight)
             (su0, su1) = (su1, su0);
 
-        float h = Player2DHeight;
-        float w = Player2DHeight;
-        float x0 = Position.X - w * 0.5f;
-        float x1 = Position.X + w * 0.5f;
-        float y0 = Position.Y;
-        float y1 = Position.Y + h;
+        // ── Sizing: SAVED-CLIP snapshot only — sheet values never reach the viewport ──
+        // The Render Normalization panel (Master W/H + Offset) is a SPRITE EDITOR tool:
+        // it exists there purely to align frames while authoring. Once the clip is
+        // saved, the clip carries its own snapshot (master W/H + base offsets) and the
+        // viewport renders from that: pxToWorld = SpriteHeight / masterH, the frame
+        // drawn AS-IS (native px), centered on Position.X with its bottom on
+        // Position.Y, nudged by the clip's base offsets + this frame's own offsets.
+        // A clip with no snapshot (never saved since this feature) renders native size.
+        float cellH = drawSheet.FrameHeight > 0 ? drawSheet.FrameHeight : drawSheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = drawSheet.FrameWidth > 0 ? drawSheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (drawSheet.CustomFrames != null && frameIdx < drawSheet.CustomFrames.Count)
+        {
+            drawFrame = drawSheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+        // ONLY the playing clip's snapshot — no sheet fallback in the viewport.
+        AnimationClip2D? sizingClip = actionClip ?? clip;
+        float snapH = sizingClip?.MasterHeight ?? 0f;
+        bool normalized = snapH > 0f;
+        float pxToWorld;
+        if (normalized)
+            pxToWorld = Player2DHeight / snapH;
+        else
+            pxToWorld = Player2DHeight / cellH; // unsaved clip → native proportions
+        float w = MathF.Max(0.05f, cellW * pxToWorld);   // frame as-is (native px)
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Player2DFacingRight ? 1f : -1f;
+        // Base offsets come from the clip snapshot only; sheet offsets don't apply here.
+        float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+        // Render AS-IS: centered on Position.X, bottom on Position.Y. The capsule
+        // (offset 0) centers on the same axis — sprite and collider align.
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
         float z = Position.Z + 0.05f;
 
         EnsureMap2DShader();
@@ -2926,9 +2977,13 @@ public unsafe class EditorObject
         GL.Disable(Const.GL_BLEND);
         GL.BindTexture(Const.GL_TEXTURE_2D, 0);
 
-        // Collider overlay in edit mode (hidden in-game via Editor2DAidsHidden).
+        // Collider guide in edit mode (hidden in-game via Editor2DAidsHidden).
+        // No master-box outline here: the saved clip's sizing IS the render — the
+        // master/reference box stays a Sprite Editor-only visualization.
         if (Player2DShowCapsule && !Editor2DAidsHidden)
+        {
             DrawPlayer2DCapsule(camera, new Vector3(0.2f, 0.95f, 1f), 0.9f);
+        }
 
         // Restore main shader.
         GL.UseProgram(Shader.GetShaderProgram());

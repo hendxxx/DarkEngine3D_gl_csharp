@@ -153,6 +153,14 @@ public class SpriteEditorPanel
                         _selectedSheetIdx = i;
                         _selectedFrameIdx = -1;
                         LoadSheetSettings();
+                        // Reset the Animation Preview range to this sheet's frame count
+                        // (End = count-1) — the previous sheet's range is invalid here.
+                        _animStartFrame = 0;
+                        _animEndFrame = Math.Max(0, SpriteSheets[i].FrameCount - 1);
+                        _animTime = 0f;
+                        _currentPreviewFrame = 0;
+                        if (_selectedClipIdx >= AnimationClips.Count)
+                            _selectedClipIdx = AnimationClips.Count - 1;
                     }
                 }
             }
@@ -190,6 +198,35 @@ public class SpriteEditorPanel
                         SelectedSheet.BakeUniformFrames();
                     }
                     ImGui.Text($"Frames: {SelectedSheet.FrameCount}");
+
+                    ImGui.Separator();
+                    ImGui.TextDisabled("Render Normalization (per sheet)");
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("The FINAL sprite size (master box W × H) shared by all sheets. Frames render as-is inside the box, nudged by offsets. Viewport shows the master box.");
+
+                    float masterW = SelectedSheet.MasterWidth;
+                    if (ImGui.DragFloat("Master Width (px)", ref masterW, 1f, 0f, 1024f, "%.0f"))
+                        SelectedSheet.MasterWidth = MathF.Max(0f, masterW);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Master box width — the final sprite render width shared by all sheets. 0 = square (same as Master Height).");
+
+                    float masterH = SelectedSheet.MasterHeight;
+                    if (ImGui.DragFloat("Master Height (px)", ref masterH, 1f, 0f, 1024f, "%.0f"))
+                        SelectedSheet.MasterHeight = MathF.Max(0f, masterH);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Master box height — the final sprite render height. The player's Sprite Height maps to exactly this many px. 0 = no normalization (native frame size).");
+
+                    float sOffX = SelectedSheet.SpriteOffsetX;
+                    if (ImGui.DragFloat("Render Offset X (px)", ref sOffX, 0.5f, -512f, 512f, "%.1f"))
+                        SelectedSheet.SpriteOffsetX = Math.Clamp(sOffX, -512f, 512f);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Sheet-wide horizontal nudge applied to every frame. Positive = right.");
+
+                    float sOffY = SelectedSheet.SpriteOffsetY;
+                    if (ImGui.DragFloat("Render Offset Y (px)", ref sOffY, 0.5f, -512f, 512f, "%.1f"))
+                        SelectedSheet.SpriteOffsetY = Math.Clamp(sOffY, -512f, 512f);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Sheet-wide vertical nudge from the ground line applied to every frame. Positive = up.");
                 }
 
                 ImGui.Separator();
@@ -219,6 +256,16 @@ public class SpriteEditorPanel
                         ImGui.InputText("Frame Name##frame", ref SelectedFrame.Name, 256);
                         ImGui.SliderFloat("Anchor X", ref SelectedFrame.AnchorX, 0f, 1f);
                         ImGui.SliderFloat("Anchor Y", ref SelectedFrame.AnchorY, 0f, 1f);
+                        ImGui.Separator();
+                        ImGui.TextDisabled("Render Offset (per frame, inside master box):");
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Nudges THIS frame only when rendering (master normalization on). Positive X = right, positive Y = up from the ground line.");
+                        float fOffX = SelectedFrame.RenderOffsetX;
+                        if (ImGui.DragFloat("Offset X (px)##frameoff", ref fOffX, 0.5f, -256f, 256f, "%.1f"))
+                            SelectedFrame.RenderOffsetX = Math.Clamp(fOffX, -256f, 256f);
+                        float fOffY = SelectedFrame.RenderOffsetY;
+                        if (ImGui.DragFloat("Offset Y (px)##frameoff", ref fOffY, 0.5f, -256f, 256f, "%.1f"))
+                            SelectedFrame.RenderOffsetY = Math.Clamp(fOffY, -256f, 256f);
                         ImGui.Separator();
                         ImGui.Text("Hitbox (pixels):");
                         ImGui.InputInt("X", ref SelectedFrame.HitboxX);
@@ -498,6 +545,45 @@ public class SpriteEditorPanel
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0.5f, 0f, 1f)));
         }
 
+        // ── Normalized render preview — WYSIWYG with the in-game viewport: the mini
+        // box IS the master box; this frame draws as-is inside it (native px), feet
+        // on the cyan ground line, nudged by sheet + frame offsets. ──
+        {
+            float miniBox = 80f;
+            float mCellW = MathF.Max(1, SelectedFrame.Width);
+            float mCellH = MathF.Max(1, SelectedFrame.Height);
+            bool mNorm = SelectedSheet.MasterHeight > 0f;
+            float mMasterH = mNorm ? SelectedSheet.MasterHeight : mCellH;
+            float mMasterW = mNorm
+                ? (SelectedSheet.MasterWidth > 0f ? SelectedSheet.MasterWidth : mMasterH)
+                : mCellW;
+            float mScale = miniBox / mMasterH;
+
+            float mW = mCellW * mScale, mH = mCellH * mScale;
+            var mPos = new Vector2(cursorPos.X + dispW + 16, cursorPos.Y);
+            drawList.AddRectFilled(mPos, new Vector2(mPos.X + miniBox, mPos.Y + miniBox),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.15f, 0.15f, 0.18f, 1f)));
+            // Yellow master-box outline + cyan ground line (= feet anchor).
+            if (mNorm)
+                drawList.AddRect(mPos, new Vector2(mPos.X + miniBox, mPos.Y + miniBox),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.8f, 0.2f, 0.6f)));
+            drawList.AddLine(new Vector2(mPos.X, mPos.Y + miniBox), new Vector2(mPos.X + miniBox, mPos.Y + miniBox),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.8f, 1f, 0.7f)), 1f);
+            float mOffX = (SelectedSheet.SpriteOffsetX + SelectedFrame.RenderOffsetX) * mScale;
+            // +Y offset = UP in world space → SUBTRACT in ImGui screen space (Y grows down)
+            // so the editor preview shows exactly what the viewport will render.
+            float mOffY = (SelectedSheet.SpriteOffsetY + SelectedFrame.RenderOffsetY) * mScale;
+            var imgMin = new Vector2(mPos.X + (miniBox - mW) * 0.5f + mOffX, mPos.Y + miniBox - mH - mOffY);
+            drawList.AddImage((nint)texId, imgMin, new Vector2(imgMin.X + mW, imgMin.Y + mH),
+                new Vector2(u0, v0), new Vector2(u1, v1));
+
+            string mLabel = mNorm
+                ? $"master {mMasterW:0}×{mMasterH:0}px · frame {mCellW:0}×{mCellH:0}px"
+                : "render: native size";
+            drawList.AddText(new Vector2(mPos.X, mPos.Y + miniBox + 6),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.55f, 0.85f, 0.55f, 1f)), mLabel);
+        }
+
         // Frame info
         ImGui.SameLine();
         ImGui.Text($"{SelectedFrame.Width}x{SelectedFrame.Height}px @ ({SelectedFrame.X},{SelectedFrame.Y})");
@@ -697,25 +783,55 @@ public class SpriteEditorPanel
                 float u1 = u0 + SelectedSheet.FrameWidth / (float)SelectedSheet.ImageWidth;
                 float v1 = v0 + SelectedSheet.FrameHeight / (float)SelectedSheet.ImageHeight;
 
-                // Maintain aspect ratio
-                float aspect = (float)SelectedSheet.FrameWidth / SelectedSheet.FrameHeight;
-                float dispW = previewSize;
-                float dispH = previewSize;
-                if (aspect > 1f)
-                    dispH = previewSize / aspect;
-                else
-                    dispW = previewSize * aspect;
+                // ── Normalized preview — WYSIWYG with the in-game viewport ──
+                // Frame renders AS-IS (native px) centered + bottom-anchored in the
+                // preview area; offsets are plain nudges (sheet base + this frame's
+                // own Render Offset X/Y). The yellow outline is just a size reference.
+                float cellW = MathF.Max(1, SelectedSheet.FrameWidth);
+                float cellH = MathF.Max(1, SelectedSheet.FrameHeight);
+                bool normalized = SelectedSheet.MasterHeight > 0f;
+                float masterH = normalized ? SelectedSheet.MasterHeight : cellH;
+                float masterW = normalized
+                    ? (SelectedSheet.MasterWidth > 0f ? SelectedSheet.MasterWidth : masterH)
+                    : cellW;
+                float pxScale = previewSize / masterH;
+                float dispW = cellW * pxScale;
+                float dispH = cellH * pxScale;
 
-                ImGui.Image((nint)texId, new Vector2(dispW, dispH),
-                    new Vector2(u0, v0), new Vector2(u1, v1));
+                SpriteFrame? pfFrame = null;
+                if (SelectedSheet.CustomFrames != null && frameIdx < SelectedSheet.CustomFrames.Count)
+                    pfFrame = SelectedSheet.CustomFrames[frameIdx];
+                float offXp = (SelectedSheet.SpriteOffsetX + (pfFrame?.RenderOffsetX ?? 0f)) * pxScale;
+                // +Y offset = UP in world space → SUBTRACT in ImGui screen space.
+                float offYp = (SelectedSheet.SpriteOffsetY + (pfFrame?.RenderOffsetY ?? 0f)) * pxScale;
+                offYp = -offYp;
 
-                // If image is smaller than preview box, position the label correctly
-                float offsetX = (previewSize - dispW) * 0.5f;
-                float offsetY = (previewSize - dispH) * 0.5f;
-                string frameLabel = $"Frame {_currentPreviewFrame}";
+                // Frame as-is: centered, bottom on the ground line.
+                float drawX = cursorPos.X + (previewSize - dispW) * 0.5f + offXp;
+                float drawY = cursorPos.Y + (previewSize - dispH) + offYp;
+
+                // Guides: cyan ground line at the box bottom + yellow master-box outline.
+                uint groundCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.8f, 1f, 0.7f));
+                drawList.AddLine(new Vector2(cursorPos.X, cursorPos.Y + previewSize),
+                    new Vector2(cursorPos.X + previewSize, cursorPos.Y + previewSize), groundCol, 1f);
+                if (normalized)
+                {
+                    uint masterCol = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.8f, 0.2f, 0.5f));
+                    float boxWp = masterW * pxScale;
+                    float bx0 = cursorPos.X + (previewSize - boxWp) * 0.5f;
+                    drawList.AddRect(new Vector2(bx0, cursorPos.Y),
+                        new Vector2(bx0 + boxWp, cursorPos.Y + previewSize), masterCol);
+                }
+
+                drawList.AddImage((nint)texId, new Vector2(drawX, drawY),
+                    new Vector2(drawX + dispW, drawY + dispH), new Vector2(u0, v0), new Vector2(u1, v1));
+
+                string frameLabel = normalized
+                    ? $"Frame {_currentPreviewFrame} — master {masterW:0}×{masterH:0}px, frame {cellW:0}×{cellH:0}px"
+                    : $"Frame {_currentPreviewFrame}";
                 var textSize = ImGui.CalcTextSize(frameLabel);
                 drawList.AddText(
-                    new Vector2(cursorPos.X + offsetX + 4, cursorPos.Y + offsetY + dispH - textSize.Y - 4),
+                    new Vector2(cursorPos.X + 4, cursorPos.Y + 4),
                     ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.7f, 0.8f, 1f)), frameLabel);
 
                 ImGui.Dummy(new Vector2(previewSize, previewSize));
@@ -755,7 +871,14 @@ public class SpriteEditorPanel
                 SpriteSheetName = SelectedSheet.Name,
                 FrameIndices = Enumerable.Range(start, count).ToList(),
                 FPS = _animFPS,
-                Loop = _animLoop
+                Loop = _animLoop,
+                // Snapshot the sheet's master render box + base offsets NOW, so this
+                // clip always renders exactly as aligned here — even if the sheet's
+                // normalization is changed later (old clips keep their own box).
+                MasterWidth = SelectedSheet.MasterWidth,
+                MasterHeight = SelectedSheet.MasterHeight,
+                SpriteOffsetX = SelectedSheet.SpriteOffsetX,
+                SpriteOffsetY = SelectedSheet.SpriteOffsetY
             };
             AnimationClips.Add(clip);
             _selectedClipIdx = AnimationClips.Count - 1;
@@ -808,8 +931,11 @@ public class SpriteEditorPanel
             ImGui.InputText("Name##clipname", ref SelectedClip.Name, 128);
 
             float fps = SelectedClip.FPS;
-            if (ImGui.SliderFloat("FPS##clip", ref fps, 1f, 60f))
+            if (ImGui.SliderFloat("FPS##clip", ref fps, 1f, 60f, "%.0f", ImGuiSliderFlags.AlwaysClamp | ImGuiSliderFlags.Logarithmic))
+            {
+                fps = MathF.Round(fps); // whole-number steps only (per 1.0)
                 SelectedClip.FPS = fps;
+            }
 
             bool loop = SelectedClip.Loop;
             if (ImGui.Checkbox("Loop##clip", ref loop))
@@ -853,6 +979,11 @@ public class SpriteEditorPanel
                         _selectedSheetIdx = sheetIdx;
                         _selectedFrameIdx = -1;
                         LoadSheetSettings();
+                        // Preview range must match the new sheet (End = frame count - 1).
+                        _animStartFrame = 0;
+                        _animEndFrame = Math.Max(0, SpriteSheets[sheetIdx].FrameCount - 1);
+                        _animTime = 0f;
+                        _currentPreviewFrame = 0;
                     }
                 }
             }
@@ -947,30 +1078,72 @@ public class SpriteEditorPanel
         float v1 = v0 + SelectedSheet.FrameHeight / (float)SelectedSheet.ImageHeight;
 
         float previewSize = 128f * _clipZoom;
-        float aspect = (float)SelectedSheet.FrameWidth / SelectedSheet.FrameHeight;
-        float dispW = previewSize;
-        float dispH = previewSize;
-        if (aspect > 1f) dispH = previewSize / aspect;
-        else dispW = previewSize * aspect;
 
-        // Checkerboard background
+        // ── Normalized clip preview — SAME math as the Animation Preview & in-game ──
+        // Box = the clip's snapshotted master box (falls back to the sheet's live
+        // values when the clip has none); the frame renders AS-IS (native px),
+        // feet on the ground line, nudged by the base offsets plus this sprite
+        // frame's own Render Offset X/Y. So what you save here is what plays.
+        float cellW = MathF.Max(1, SelectedSheet.FrameWidth);
+        float cellH = MathF.Max(1, SelectedSheet.FrameHeight);
+        SpriteFrame? clipFrame = null;
+        if (SelectedSheet.CustomFrames != null && spriteFrameIdx < SelectedSheet.CustomFrames.Count)
+        {
+            clipFrame = SelectedSheet.CustomFrames[spriteFrameIdx];
+            cellW = MathF.Max(1, clipFrame.Width);
+            cellH = MathF.Max(1, clipFrame.Height);
+        }
+        bool normalized = clip.MasterHeight > 0f || SelectedSheet.MasterHeight > 0f;
+        float clipMasterH = normalized
+            ? (clip.MasterHeight > 0f ? clip.MasterHeight : SelectedSheet.MasterHeight)
+            : cellH;
+        float clipMasterW = normalized
+            ? (clip.MasterWidth > 0f ? clip.MasterWidth
+                : (SelectedSheet.MasterWidth > 0f ? SelectedSheet.MasterWidth : clipMasterH))
+            : cellW;
+        float clipBaseOffX = clip.MasterHeight > 0f ? clip.SpriteOffsetX : SelectedSheet.SpriteOffsetX;
+        float clipBaseOffY = clip.MasterHeight > 0f ? clip.SpriteOffsetY : SelectedSheet.SpriteOffsetY;
+
+        float pxScale = previewSize / clipMasterH;
+        float dispW = cellW * pxScale;
+        float dispH = cellH * pxScale;
+        float clipOffX = (clipBaseOffX + (clipFrame?.RenderOffsetX ?? 0f)) * pxScale;
+        // +Y offset = UP in world space → SUBTRACT in ImGui screen space (Y grows down).
+        float clipOffY = -((clipBaseOffY + (clipFrame?.RenderOffsetY ?? 0f)) * pxScale);
+
         var drawList = ImGui.GetWindowDrawList();
         var cursorPos = ImGui.GetCursorScreenPos();
+        // Render AS-IS: frame at its native size, centered + bottom-anchored in the
+        // preview area; offsets are plain nudges from there (same as the viewport).
+        float drawX = cursorPos.X + (previewSize - dispW) * 0.5f + clipOffX;
+        float drawY = cursorPos.Y + (previewSize - dispH) + clipOffY;
+
+        // Checkerboard background over the whole master box
         uint ckA = ImGui.ColorConvertFloat4ToU32(new Vector4(0.35f, 0.35f, 0.35f, 1f));
         uint ckB = ImGui.ColorConvertFloat4ToU32(new Vector4(0.25f, 0.25f, 0.25f, 1f));
         int ck = 8;
-        for (int cy = 0; cy < dispH; cy += ck)
-            for (int cx = 0; cx < dispW; cx += ck)
+        for (int cy = 0; cy < (int)previewSize; cy += ck)
+            for (int cx = 0; cx < (int)previewSize; cx += ck)
             {
                 bool isA = ((cx / ck) + (cy / ck)) % 2 == 0;
                 drawList.AddRectFilled(
                     new Vector2(cursorPos.X + cx, cursorPos.Y + cy),
-                    new Vector2(Math.Min(cursorPos.X + cx + ck, cursorPos.X + dispW),
-                                Math.Min(cursorPos.Y + cy + ck, cursorPos.Y + dispH)),
+                    new Vector2(Math.Min(cursorPos.X + cx + ck, cursorPos.X + previewSize),
+                                Math.Min(cursorPos.Y + cy + ck, cursorPos.Y + previewSize)),
                     isA ? ckA : ckB);
             }
 
-        ImGui.Image((nint)texId, new Vector2(dispW, dispH), new Vector2(u0, v0), new Vector2(u1, v1));
+        // Guides: cyan ground line + yellow master-box outline (when normalized).
+        drawList.AddLine(new Vector2(cursorPos.X, cursorPos.Y + previewSize),
+            new Vector2(cursorPos.X + previewSize, cursorPos.Y + previewSize),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.8f, 1f, 0.7f)), 1f);
+        if (normalized)
+            drawList.AddRect(cursorPos, new Vector2(cursorPos.X + previewSize, cursorPos.Y + previewSize),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.8f, 0.2f, 0.5f)));
+
+        drawList.AddImage((nint)texId, new Vector2(drawX, drawY),
+            new Vector2(drawX + dispW, drawY + dispH), new Vector2(u0, v0), new Vector2(u1, v1));
+        ImGui.Dummy(new Vector2(previewSize, previewSize));
 
         // Frame timeline bar
         ImGui.Separator();
@@ -1158,6 +1331,12 @@ public class SpriteEditorPanel
             _selectedClipIdx = -1;
             if (SelectedSheet != null) LoadSheetSettings();
 
+            // Default preview range to the FULL first sheet before any saved values.
+            _animStartFrame = 0;
+            _animEndFrame = Math.Max(0, (SelectedSheet?.FrameCount ?? 1) - 1);
+            _animTime = 0f;
+            _currentPreviewFrame = 0;
+
             // Restore the last Animation Preview settings (Start/End/FPS/Loop).
             if (data.PreviewStartFrame >= 0 && SelectedSheet != null)
             {
@@ -1256,6 +1435,11 @@ public class SpriteEditorPanel
         SpriteSheets.Add(sheet);
         _selectedSheetIdx = SpriteSheets.Count - 1;
         _newSheetName = sheet.Name;
+        // New sheet: Animation Preview defaults to the FULL frame range (End = count-1).
+        _animStartFrame = 0;
+        _animEndFrame = Math.Max(0, sheet.FrameCount - 1);
+        _animTime = 0f;
+        _currentPreviewFrame = 0;
         LoadPreviewTexture(path);
 
         Console.WriteLine($"[SpriteEditor] Imported via drag: {sheet.Name} ({sheet.Columns}x{sheet.Rows} = {sheet.FrameCount} frames, {sheet.ImageWidth}x{sheet.ImageHeight}px)");
@@ -1325,6 +1509,11 @@ public class SpriteEditorPanel
             SpriteSheets.Add(sheet);
             _selectedSheetIdx = SpriteSheets.Count - 1;
             _newSheetName = sheet.Name;
+            // New sheet: Animation Preview defaults to the FULL frame range (End = count-1).
+            _animStartFrame = 0;
+            _animEndFrame = Math.Max(0, sheet.FrameCount - 1);
+            _animTime = 0f;
+            _currentPreviewFrame = 0;
 
             // Load preview texture
             LoadPreviewTexture(path);

@@ -291,7 +291,13 @@ public class IDEBridge
         foreach (var o in mgr.Objects)
         {
             if (o is not { PrimitiveType: EditorPrimitiveType.Player2D }) continue;
-            o.Position = start2d.Position;
+            // Capsule-aware: Start2D marks where the COLLIDER stands (physics feet =
+            // Position.Y + capsule offset), so place the object so the capsule — not
+            // the sprite anchor — lands exactly on the marker.
+            o.Position = new System.Numerics.Vector3(
+                start2d.Position.X - o.Player2DCapsuleOffsetX,
+                start2d.Position.Y - o.Player2DCapsuleOffsetY,
+                start2d.Position.Z);
             o.Player2DVelocityY = 0f;
             o.Player2DVelocityX = 0f;
             o.Player2DAnimTime = 0f;

@@ -484,6 +484,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 return;
             }
 
+            // For 2D levels, start from the same editor reset view so the in-game camera
+            // matches the editor reset view position/orientation.
+            ResetCameraToEditor2DView();
+
             _shaderProgram = Shader.GetShaderProgram();
             _projectionLocation = GL.GetUniformLocation(_shaderProgram, "projection");
             _viewLocation = GL.GetUniformLocation(_shaderProgram, "view");
@@ -625,7 +629,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // ── Register scene root for IDE Save All ──
             SceneAssetSerializer.RegisterSceneRoot("GameScene", _sceneRoot);
-
+            ResetCameraToEditor2DView();
             Mouse.ShowMouse(false);
             _prevCursorShown = false;
 
@@ -2152,7 +2156,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud.DrawText(label, sx - _hud.GetTextExtents(label).Width * 0.5f, sy - 18f, color, new Vector3(0f, 0f, 0f), 1.5f);
         }
 
-        /// <summary>Spawn random colored cubes above terrain so they fall with gravity.</summary>
+        /// <summary>Load UI hierarchy from a game.ing scene asset into this scene's root.
+        /// Used by the loading path so a main-menu goto-game-scene can enter with the same
+        /// UI hierarchy / scene root as the editor in-game path.
+        /// </summary>
+        public void LoadUIHierarchyFromAsset(SceneAsset asset)
+        {
+            if (asset?.Elements == null) return;
+
+            _sceneRoot.ClearChildren();
+            foreach (var elemData in asset.Elements)
+            {
+                var child = SceneAssetSerializer.ToUIElement(elemData);
+                _sceneRoot.AddChild(child);
+            }
+
+            // Keep scene root itself hidden in-game unless the asset explicitly wants it visible.
+            _sceneRoot.IsVisible = asset.Elements.Count > 0 && asset.Elements.Any(e => e.IsVisible);
+        }
+
+        /// <summary>For 2D levels, snap the camera to the same editor reset view used by the
+        /// editor so the in-game view starts from the same position/orientation as reset view.
+        /// Only applied when the scene has an active 2D tilemap (Map2D).
+        /// </summary>
+        private void ResetCameraToEditor2DView()
+        {
+            var bridge = _sceneManager.Bridge;
+            if (bridge == null || bridge.ActiveTilemap == null) return;
+
+            // Editor reset view for 2D: front view over the origin (top-down-ish front).
+            // This matches the editor's reset view for 2D level work.
+            _camera.SetEditorViewPreset(Camera.EditorViewPreset.Front);
+            _camera.SyncSmoothVectors();
+            _camera.UpdateVectors();
+            _camera.UpdateAspectRatio(Glfw.WindowWidth, Glfw.WindowHeight);
+
+            Console.WriteLine("[GameScene] Reset camera to editor 2D view (Front) for level.");
+        }
+
         /// <summary>Clear existing physics cubes and respawn new ones above terrain.</summary>
         public void Exit()
         {
