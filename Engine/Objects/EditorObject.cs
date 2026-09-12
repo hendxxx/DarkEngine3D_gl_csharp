@@ -2477,10 +2477,29 @@ public unsafe class EditorObject
         }
         else if (PrimitiveType == EditorPrimitiveType.Player2D)
         {
-            // Player icon: capsule outline (body) — matches the collider shape.
-            // The capsule is drawn world-upright (not billboarded) so its orientation
-            // matches the physics capsule exactly.
-            DrawPlayer2DCapsule(camera, new Vector3(0.2f, 0.95f, 1f), 0.95f);
+            // Show Capsule ON → draw the REAL physics capsule (world-upright, exact
+            // collider shape — this is the visualization the toggle controls).
+            // OFF → fall back to a SMALL billboarded capsule GLYPH so the marker stays
+            // visible/selectable without masquerading as the collider.
+            if (Player2DShowCapsule && !Editor2DAidsHidden)
+            {
+                DrawPlayer2DCapsule(camera, new Vector3(0.2f, 0.95f, 1f), 0.95f);
+            }
+            else
+            {
+                const int glyphSegs = 12;
+                var gprev = P(0f, -1f);
+                for (int i = 1; i <= glyphSegs; i++)
+                {
+                    float t = i / (float)glyphSegs;
+                    float half = t < 0.25f ? MathF.Sqrt(1f - MathF.Pow((0.25f - t) / 0.25f, 2f))
+                               : t > 0.75f ? MathF.Sqrt(1f - MathF.Pow((t - 0.75f) / 0.25f, 2f))
+                               : 1f;
+                    var gcur = P(half * 0.45f, -1f + t * 2f);
+                    Line(gprev, gcur);
+                    gprev = gcur;
+                }
+            }
         }
         else if (PrimitiveType == EditorPrimitiveType.Start2D)
         {

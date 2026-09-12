@@ -274,9 +274,6 @@ public class TileLayer
     /// <summary>Tile data as flat array [y * Width + x]. -1 = empty.</summary>
     private int[] _tiles = [];
 
-    /// <summary>Per-tile collision flags. null = no collision data.</summary>
-    private bool[]? _collisionFlags;
-
     public int Width;
     public int Height;
 

@@ -48,6 +48,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             if (!_visible) return;
 
             ImGui.Begin("PBR Material", ref _visible);
+            IDE.PanelFocus.Notify("PBR Material");
 
             var obj = _bridge?.SelectedEditorObject;
             if (obj == null)

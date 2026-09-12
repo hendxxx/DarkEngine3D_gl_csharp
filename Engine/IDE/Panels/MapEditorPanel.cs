@@ -24,7 +24,7 @@ public class MapEditorPanel
     public Tilemap2D? ActiveTilemap;
 
     // ── Tool modes ──
-    private enum PaintTool { Paint, Erase, Fill, Pick, Collision }
+    private enum PaintTool { Paint, Erase, Fill, Pick }
     private PaintTool _currentTool = PaintTool.Pick;
 
     // ── Layer management ──
@@ -200,6 +200,7 @@ public class MapEditorPanel
         ImGui.SetNextWindowSize(new Vector2(350, 600), ImGuiCond.FirstUseEver);
         if (ImGui.Begin("Map Editor", ref _visible))
         {
+            IDE.PanelFocus.Notify("Map Editor");
             // ── New Map ──
             if (ImGui.Button("New Map"))
                 CreateNewMap();
@@ -268,37 +269,6 @@ public class MapEditorPanel
                 // Keep the viewport Map2D object's parallax render list in sync so added/
                 // removed/re-ordered layers appear in the 3D grid immediately.
                 SyncParallaxToEditorObjects();
-
-                // ── Player Spawn ──
-                ImGui.Separator();
-                ImGui.Text("Player Spawn:");
-                if (ImGui.Button("Set at Hover##spawn"))
-                {
-                    if (_hoveredTileX >= 0 && _hoveredTileY >= 0)
-                    {
-                        // Center of the hovered tile, in world px (x horizontal,
-                        // y height above the map's bottom edge).
-                        float ws = ActiveTilemap.TileSize;
-                        ActiveTilemap.PlayerSpawn = new Vector2(
-                            (_hoveredTileX + 0.5f) * ws,
-                            (ActiveTilemap.Height - 1 - _hoveredTileY + 0.5f) * ws);
-                        ActiveTilemap.HasPlayerSpawn = true;
-                        Console.WriteLine($"[MapEditor] Player spawn set to tile ({_hoveredTileX}, {_hoveredTileY})");
-                    }
-                    else
-                    {
-                        Console.WriteLine("[MapEditor] Hover a tile in the viewport first, then click 'Set at Hover'.");
-                    }
-                }
-                ImGui.SameLine();
-                if (ImGui.Button("Reset##spawn") && ActiveTilemap.HasPlayerSpawn)
-                {
-                    ActiveTilemap.HasPlayerSpawn = false;
-                    Console.WriteLine("[MapEditor] Player spawn cleared");
-                }
-                ImGui.TextDisabled(ActiveTilemap.HasPlayerSpawn
-                    ? $"spawn: ({ActiveTilemap.PlayerSpawn.X:F0}, {ActiveTilemap.PlayerSpawn.Y:F0}) px"
-                    : "not set — gameplay uses its default spawn");
 
                 // ── Info ──
                 if (_hoveredTileX >= 0)
@@ -577,9 +547,22 @@ public class MapEditorPanel
 
     private void RenderToolbar()
     {
+        // ── Undo/Redo (tile painting) ──
+        ImGui.BeginDisabled(!CanUndoTiles);
+        if (ImGui.Button("↶##mapundo", new Vector2(34, 24)))
+            UndoTilePaint();
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Undo paint (Ctrl+Z over viewport)");
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!CanRedoTiles);
+        if (ImGui.Button("↷##mapredo", new Vector2(34, 24)))
+            RedoTilePaint();
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Redo paint (Ctrl+Y over viewport)");
+        ImGui.SameLine();
+
         var tools = new[] { ("Paint", PaintTool.Paint), ("Erase", PaintTool.Erase),
-                           ("Fill", PaintTool.Fill), ("Pick", PaintTool.Pick),
-                           ("Collision", PaintTool.Collision) };
+                           ("Fill", PaintTool.Fill), ("Pick", PaintTool.Pick) };
         foreach (var (label, tool) in tools)
         {
             bool isActive = _currentTool == tool;
@@ -1018,7 +1001,10 @@ public class MapEditorPanel
 
                 // Collision symbol: red badge on tiles flagged for collision so the
                 // palette itself shows which tile IDs block the player.
-                if (ActiveTilemap.ActiveLayer.TileHasCollision(tileId))
+                // Uses the SELECTED layer (same one paint/undo/viewport boxes use) —
+                // Tilemap2D.ActiveLayer is the LAST layer, not the selected one, and
+                // reading it here made the badges disagree with the viewport boxes.
+                if (ActiveTileLayerForOps.TileHasCollision(tileId))
                 {
                     float badge = _paletteCellSize * 0.22f;
                     var cMin = new Vector2(x + _paletteCellSize - badge - 2f, y + 2f);
@@ -1184,19 +1170,29 @@ public class MapEditorPanel
             _gridPrefsDirty = true;
     }
 
+    /// <summary>The layer ALL editor operations act on: the user-selected layer when
+    /// valid, else the first layer. NEVER use Tilemap2D.ActiveLayer — it returns the
+    /// LAST layer, which silently diverges from the selected one.</summary>
+    private TileLayer? ActiveTileLayerForOps =>
+        ActiveTilemap == null ? null
+        : _selectedLayerIdx >= 0 && _selectedLayerIdx < ActiveTilemap.Layers.Count
+            ? ActiveTilemap.Layers[_selectedLayerIdx]
+            : (ActiveTilemap.Layers.Count > 0 ? ActiveTilemap.Layers[0] : null);
+
     private void RenderCollisionSettings()
     {
-        if (ActiveTilemap == null) return;
+        var layer = ActiveTileLayerForOps;
+        if (ActiveTilemap == null || layer == null) return;
 
         ImGui.Text("Tiles with Collision:");
-        ImGui.TextDisabled("(Or use the Collision tool: click/drag tiles in the viewport)");
+        ImGui.TextDisabled("(Manual: toggle collision per tile ID here — painting does NOT auto-assign it)");
 
         // Multi-selection aware: toggle applies to ALL selected palette tiles.
         var targetIds = _selectedTileIds.Count > 0
             ? _selectedTileIds.Keys.ToList()
             : [_selectedTileId];
 
-        bool allHave = targetIds.All(id => ActiveTilemap.ActiveLayer.TileHasCollision(id));
+        bool allHave = targetIds.All(id => layer.TileHasCollision(id));
         string label = targetIds.Count == 1
             ? $"Tile {targetIds[0]} has collision"
             : $"All {targetIds.Count} selected tiles have collision";
@@ -1205,14 +1201,14 @@ public class MapEditorPanel
             foreach (int id in targetIds)
             {
                 if (allHave)
-                    ActiveTilemap.ActiveLayer.CollisionTileIds.Add(id);
+                    layer.CollisionTileIds.Add(id);
                 else
-                    ActiveTilemap.ActiveLayer.CollisionTileIds.Remove(id);
+                    layer.CollisionTileIds.Remove(id);
             }
         }
 
         // Quick summary of how many distinct tile IDs currently collide.
-        int count = ActiveTilemap.ActiveLayer.CollisionTileIds.Count;
+        int count = layer.CollisionTileIds.Count;
         ImGui.TextDisabled($"{count} tile ID(s) flagged for collision on this layer");
     }
 
@@ -1248,6 +1244,8 @@ public class MapEditorPanel
         _bridge.ActiveTilemap = ActiveTilemap;
         _selectedLayerIdx = 0;
         _showSceneWarning = false;
+        _undoStack.Clear();
+        _redoStack.Clear();
 
         // Create a Map2D scene object at (0,0) so the tilemap renders in the 3D viewport
         if (_bridge.EditorObjectManager != null)
@@ -1431,6 +1429,10 @@ public class MapEditorPanel
             ActiveTilemap = Tilemap2D.FromData(data.Tilemap);
             _bridge.ActiveTilemap = ActiveTilemap;
             _selectedLayerIdx = Math.Min(1, ActiveTilemap.Layers.Count - 1);
+            // A freshly loaded map has no history — stale undo entries could restore
+            // tiles from the previous map into this one.
+            _undoStack.Clear();
+            _redoStack.Clear();
 
             // Make sure a Map2D scene object renders this tilemap in the 3D viewport
             // (grid included) right after loading — just like "New Map" does.
@@ -1492,6 +1494,8 @@ public class MapEditorPanel
         ActiveTilemap = null;
         ParallaxLayers.Clear();
         _bridge.ActiveTilemap = null;
+        _undoStack.Clear();
+        _redoStack.Clear();
 
         if (string.IsNullOrEmpty(projectRoot)) return;
 
@@ -1722,8 +1726,9 @@ public class MapEditorPanel
         return _parallaxTextures.TryGetValue(path, out tex) ? tex : 0;
     }
 
-    /// <summary>Whether a tilemap is loaded (drives viewport undo/redo shortcuts).</summary>
-    public bool HasActiveTilemap => ActiveTilemap != null;
+    /// <summary>Undo/redo availability for toolbar + Edit menu.</summary>
+    public bool CanUndoTiles => _undoStack.Count > 0;
+    public bool CanRedoTiles => _redoStack.Count > 0;
 
     /// <summary>Undo the last tile paint/erase stroke (single-tile granularity).
     /// Rebuilds the mesh via the tilemap dirty → cache-key path.</summary>
@@ -1731,8 +1736,9 @@ public class MapEditorPanel
     {
         if (ActiveTilemap == null || _undoStack.Count == 0) return;
         var (layer, x, y, oldTile, _) = _undoStack.Pop();
+        int current = ActiveTilemap.GetTile(layer, x, y);
         ActiveTilemap.SetTile(layer, x, y, oldTile);
-        _redoStack.Push((layer, x, y, oldTile, ActiveTilemap.GetTile(layer, x, y)));
+        _redoStack.Push((layer, x, y, oldTile, current));
         Console.WriteLine($"[MapEditor] Undo tile ({x},{y}) → {oldTile}");
     }
 
@@ -1741,8 +1747,9 @@ public class MapEditorPanel
     {
         if (ActiveTilemap == null || _redoStack.Count == 0) return;
         var (layer, x, y, _, newTile) = _redoStack.Pop();
+        int current = ActiveTilemap.GetTile(layer, x, y);
         ActiveTilemap.SetTile(layer, x, y, newTile);
-        _undoStack.Push((layer, x, y, ActiveTilemap.GetTile(layer, x, y), newTile));
+        _undoStack.Push((layer, x, y, current, newTile));
         Console.WriteLine($"[MapEditor] Redo tile ({x},{y}) → {newTile}");
     }
 
@@ -1762,31 +1769,6 @@ public class MapEditorPanel
         if (_currentTool == PaintTool.Pick) return;
 
         var (gx, gy) = ActiveTilemap.WorldToGrid(worldPos);
-
-        // ── Collision tool: click/drag toggles collision on the tile ID under the
-        // cursor (first stroke sample decides add vs remove, so dragging over a run
-        // of mixed tiles applies ONE consistent operation instead of flip-flopping).
-        if (_currentTool == PaintTool.Collision)
-        {
-            if (!_collisionStrokeActive)
-            {
-                int tileAt = ActiveTilemap.GetTile(_selectedLayerIdx, gx, gy);
-                _collisionStrokeAdd = tileAt < 0
-                    ? true // empty cell → add collision for the selected tile ID
-                    : !layer.TileHasCollision(tileAt);
-                _collisionStrokeActive = true;
-            }
-
-            int targetId = ActiveTilemap.GetTile(_selectedLayerIdx, gx, gy);
-            if (targetId < 0) targetId = _selectedTileId; // empty cell → stamp on selection
-
-            bool changed = _collisionStrokeAdd
-                ? layer.CollisionTileIds.Add(targetId)
-                : layer.CollisionTileIds.Remove(targetId);
-            if (changed)
-                Console.WriteLine($"[MapEditor] Collision {(_collisionStrokeAdd ? "ON" : "OFF")} for tile {targetId}");
-            return;
-        }
 
         int tileId = _currentTool == PaintTool.Erase ? -1 : _selectedTileId;
 
@@ -1829,14 +1811,6 @@ public class MapEditorPanel
         if (tileId >= 0) _selectedTileId = tileId;
     }
 
-    // Collision-tool stroke state: the FIRST cell clicked decides add-vs-remove so a
-    // drag paints one consistent operation across the whole stroke.
-    private bool _collisionStrokeActive;
-    private bool _collisionStrokeAdd = true;
-
-    /// <summary>Called by ViewportPanel when the mouse is released — ends a collision
-    /// stroke so the next click re-evaluates add vs remove.</summary>
-    public void EndCollisionStroke() => _collisionStrokeActive = false;
 }
 
 /// <summary>

@@ -18,10 +18,7 @@ public class SpriteEditorPanel
     private readonly IDEBridge _bridge;
     private bool _visible = true;
     private readonly ImGuiFileDialog _importDialog = new();
-    private readonly ImGuiFileDialog _saveDialog = new();
     private readonly ImGuiFileDialog _loadSheetsDialog = new();
-    private string _lastSavePath = "";
-    private string _lastLoadPath = "";
 
     // ── Sprite sheets ──
     public List<SpriteSheet> SpriteSheets = new();
@@ -75,6 +72,17 @@ public class SpriteEditorPanel
         ? AnimationClips[_selectedClipIdx] : null;
     private string _newClipName = "New Clip";
 
+    // ── Undo/redo (snapshot-based) ──
+    // One undo step = full JSON snapshot of sheets + clips + preview settings.
+    // Covers every mutation path (sheet settings, master box, per-frame offsets,
+    // clips, FPS, hitboxes, import/delete) with zero per-widget plumbing.
+    private const int MaxUndoSteps = 30;
+    private readonly List<string> _undoStack = [];
+    private readonly List<string> _redoStack = [];
+    private string _capturedState = "";   // baseline state at the start of the current frame
+    private bool _captureActive;
+    private bool _skipNextCapture;         // set by Undo/Redo so the restore itself isn't recorded
+
     // ── Preview ──
     private float _previewZoom = 1f;
     private readonly Dictionary<string, uint> _previewTextures = new();
@@ -105,6 +113,8 @@ public class SpriteEditorPanel
 
         if (!_visible) return;
 
+        BeginUndoCapture();
+
         ImGui.SetNextWindowSize(new Vector2(500, 600), ImGuiCond.FirstUseEver);
         if (ImGui.Begin("Sprite Editor", ref _visible))
         {
@@ -122,7 +132,19 @@ public class SpriteEditorPanel
                 ImGui.EndDragDropTarget();
             }
 
+            IDE.PanelFocus.Notify("Sprite Editor");
+
             // ── Toolbar ──
+            ImGui.BeginDisabled(!CanUndo);
+            if (ImGui.Button("↶ Undo"))
+                Undo();
+            ImGui.EndDisabled();
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!CanRedo);
+            if (ImGui.Button("Redo ↷"))
+                Redo();
+            ImGui.EndDisabled();
+            ImGui.SameLine();
             if (ImGui.Button("Import Sheet"))
                 ImportNewSheet();
             ImGui.SameLine();
@@ -300,7 +322,6 @@ public class SpriteEditorPanel
             }
 
             // ── Bottom drop target (fallback) ──
-            var dropCursor = ImGui.GetCursorScreenPos();
             var availSize = ImGui.GetContentRegionAvail();
             if (availSize.Y > 0)
             {
@@ -324,10 +345,131 @@ public class SpriteEditorPanel
         // Render file dialogs outside the panel window
         _importDialog.Render();
         ProcessImportResult();
-        _saveDialog.Render();
-        ProcessSaveResult();
         _loadSheetsDialog.Render();
         ProcessLoadSheetsResult();
+
+        EndUndoCapture();
+    }
+
+    // ═══════════════════════════════════════════════
+    //  UNDO / REDO (snapshot-based)
+    // ═══════════════════════════════════════════════
+
+    /// <summary>Start the per-frame capture window (top of Render).</summary>
+    private void BeginUndoCapture()
+    {
+        _captureActive = true;
+        // First baseline: record current state without pushing an undo entry.
+        if (_capturedState.Length == 0 && _undoStack.Count == 0 && _redoStack.Count == 0)
+            _capturedState = SerializeForUndo();
+    }
+
+    /// <summary>End the capture window (bottom of Render): if the serialized state
+    /// changed since frame start, the PRE-change snapshot becomes an undo entry.</summary>
+    private void EndUndoCapture()
+    {
+        _captureActive = false;
+        string newState = SerializeForUndo();
+        if (_skipNextCapture)
+        {
+            _skipNextCapture = false;
+            _capturedState = newState;
+            return;
+        }
+        if (newState != _capturedState)
+        {
+            if (_capturedState.Length > 0)
+            {
+                _undoStack.Add(_capturedState);
+                if (_undoStack.Count > MaxUndoSteps)
+                    _undoStack.RemoveAt(0);
+                _redoStack.Clear();
+            }
+            _capturedState = newState;
+        }
+    }
+
+    private string SerializeForUndo() => JsonSerializer.Serialize(CaptureSaveData());
+
+    /// <summary>Drop all undo/redo history (project change / file load).</summary>
+    private void ClearUndoHistory()
+    {
+        _undoStack.Clear();
+        _redoStack.Clear();
+        _capturedState = "";
+        _skipNextCapture = false;
+    }
+
+    public bool CanUndo => _undoStack.Count > 0;
+    public bool CanRedo => _redoStack.Count > 0;
+
+    public void Undo()
+    {
+        if (_undoStack.Count == 0) return;
+        _redoStack.Add(SerializeForUndo());          // current state → redo
+        string state = _undoStack[^1];
+        _undoStack.RemoveAt(_undoStack.Count - 1);
+        ApplyStateSnapshot(state);
+        _skipNextCapture = true;                      // don't record the restore as a change
+        Console.WriteLine("[SpriteEditor] Undo");
+    }
+
+    public void Redo()
+    {
+        if (_redoStack.Count == 0) return;
+        _undoStack.Add(SerializeForUndo());           // current state → undo
+        string state = _redoStack[^1];
+        _redoStack.RemoveAt(_redoStack.Count - 1);
+        ApplyStateSnapshot(state);
+        _skipNextCapture = true;
+        Console.WriteLine("[SpriteEditor] Redo");
+    }
+
+    /// <summary>Restore sheets + clips + preview settings from a JSON snapshot.
+    /// Keeps the current sheet/clip selection clamped to the restored counts.</summary>
+    private void ApplyStateSnapshot(string json)
+    {
+        try
+        {
+            var data = JsonSerializer.Deserialize<SpriteSheetsSaveData>(json);
+            if (data?.Sheets == null) return;
+
+            SpriteSheets.Clear();
+            foreach (var sd in data.Sheets)
+            {
+                var sheet = SpriteSheet.FromData(sd);
+                SpriteSheets.Add(sheet);
+                if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(sheet.ImagePath))
+                    LoadPreviewTexture(sheet.ImagePath);
+            }
+            AnimationClips.Clear();
+            if (data.AnimationClips != null)
+                foreach (var cd in data.AnimationClips)
+                    AnimationClips.Add(AnimationClip2D.FromData(cd));
+
+            _selectedSheetIdx = SpriteSheets.Count > 0
+                ? Math.Clamp(_selectedSheetIdx, 0, SpriteSheets.Count - 1) : -1;
+            _selectedClipIdx = AnimationClips.Count > 0
+                ? Math.Clamp(_selectedClipIdx, 0, AnimationClips.Count - 1) : -1;
+            _selectedFrameIdx = -1;
+            _editingClip = null;
+
+            if (SelectedSheet != null)
+            {
+                LoadSheetSettings();
+                _animStartFrame = Math.Clamp(data.PreviewStartFrame >= 0 ? data.PreviewStartFrame : 0,
+                    0, Math.Max(0, SelectedSheet.FrameCount - 1));
+                _animEndFrame = Math.Clamp(Math.Max(data.PreviewEndFrame, _animStartFrame),
+                    _animStartFrame, Math.Max(0, SelectedSheet.FrameCount - 1));
+                if (data.PreviewFps > 0)
+                    _animFPS = Math.Clamp(data.PreviewFps, 1f, 120f);
+                _animLoop = data.PreviewLoop;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Undo apply failed: {ex.Message}");
+        }
     }
 
     private void RenderSheetPreview()
@@ -1237,38 +1379,11 @@ public class SpriteEditorPanel
             var opts = new JsonSerializerOptions { WriteIndented = true };
             string json = JsonSerializer.Serialize(CaptureSaveData(), opts);
             File.WriteAllText(path, json);
-            _lastSavePath = path;
             Console.WriteLine($"[SpriteEditor] Saved {SpriteSheets.Count} sheets + {AnimationClips.Count} clips to: {path}");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[SpriteEditor] Save failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>Open save dialog to choose a custom save path.</summary>
-    public void SaveAllSheetsDialog()
-    {
-        _saveDialog.OpenForSave("sprites.sheets.json");
-    }
-
-    private void ProcessSaveResult()
-    {
-        if (_saveDialog.IsConfirmed && _saveDialog.SelectedPath != null)
-        {
-            string path = _saveDialog.SelectedPath;
-            try
-            {
-                var opts = new JsonSerializerOptions { WriteIndented = true };
-                string json = JsonSerializer.Serialize(CaptureSaveData(), opts);
-                File.WriteAllText(path, json);
-                _lastSavePath = path;
-                Console.WriteLine($"[SpriteEditor] Saved {SpriteSheets.Count} sheets + {AnimationClips.Count} clips to: {path}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[SpriteEditor] Save failed: {ex.Message}");
-            }
         }
     }
 
@@ -1278,18 +1393,6 @@ public class SpriteEditorPanel
         {
             LoadSheetsFromFile(_loadSheetsDialog.SelectedPath);
         }
-    }
-
-    /// <summary>Load all sprite sheets from the default project location.</summary>
-    public void LoadAllSheets()
-    {
-        string path = GetDefaultSavePath();
-        if (!File.Exists(path))
-        {
-            Console.WriteLine($"[SpriteEditor] No save file found at: {path}");
-            return;
-        }
-        LoadSheetsFromFile(path);
     }
 
     /// <summary>Open load dialog to choose a custom file.</summary>
@@ -1326,6 +1429,7 @@ public class SpriteEditorPanel
                 foreach (var clipData in data.AnimationClips)
                     AnimationClips.Add(AnimationClip2D.FromData(clipData));
             }
+            ClearUndoHistory();
             _selectedSheetIdx = SpriteSheets.Count > 0 ? 0 : -1;
             _selectedFrameIdx = -1;
             _selectedClipIdx = -1;
@@ -1346,7 +1450,6 @@ public class SpriteEditorPanel
                 _animFPS = Math.Clamp(data.PreviewFps, 1f, 120f);
                 _animLoop = data.PreviewLoop;
             }
-            _lastLoadPath = path;
             Console.WriteLine($"[SpriteEditor] Loaded {SpriteSheets.Count} sheets + {AnimationClips.Count} clips from: {path}");
         }
         catch (Exception ex)
@@ -1364,6 +1467,7 @@ public class SpriteEditorPanel
         _selectedFrameIdx = -1;
         _selectedClipIdx = -1;
         _previewTextures.Clear();
+        ClearUndoHistory();
 
         if (!string.IsNullOrEmpty(projectRoot))
         {

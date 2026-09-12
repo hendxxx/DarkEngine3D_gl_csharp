@@ -63,6 +63,10 @@ public unsafe class ViewportPanel
     private bool _marqueeActive = false;
     // Tilemap paint stroke in progress (suppresses marquee/select while painting).
     private bool _mapPaintActive = false;
+    // Middle-click gizmo-pivot press state: tracks where the middle button went down
+    // so release-without-drag applies the pivot while drag = camera pan (perspective).
+    private Vector2? _midPressScreen;
+    private bool _midPressValid;
     /// <summary>True while the user is dragging the player spawn marker in the viewport.
     /// While active, mouse movement repositions the active map's spawn point and paint/
     /// marquee interactions are suppressed.</summary>
@@ -2188,9 +2192,35 @@ public unsafe class ViewportPanel
         }
     }
 
-    /// <summary>Toggle preview mode on/off.</summary>
+    /// <summary>Toggle preview mode on/off (F5 and the toolbar Preview button both
+    /// route here). Carries the FULL enter/exit logic — overlay/brush/gizmo resets —
+    /// so the keyboard shortcut behaves identically to clicking the button.</summary>
     public void TogglePreviewMode()
     {
+        if (!_previewMode)
+        {
+            // ── Entering Preview mode ──
+            ResetSceneOverlays();
+            // Hide brush ring so it can't leak into game view
+            ClearBrushIndicator();
+            // Turn off terrain brush in preview
+            _bridge.TerrainBrushActive = false;
+            _bridge.TerrainBrushMode = 0;
+        }
+        else
+        {
+            // ── Exiting Preview mode (back to Edit) ──
+            // Reset all edit-mode actions to default/off
+            _bridge.TerrainBrushActive = false;
+            _bridge.TerrainBrushMode = 0;
+            _bridge.GizmoMode = 0; // Translate (default)
+            if (_bridge.EditorGizmo != null)
+            {
+                _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
+                _bridge.EditorGizmo.EndDrag();
+            }
+            ClearBrushIndicator();
+        }
         PreviewMode = !_previewMode;
     }
 
@@ -2459,6 +2489,7 @@ public unsafe class ViewportPanel
             ImGui.Begin("Viewport", ref _visible, windowFlags);
         }
         ImGui.PopStyleVar();
+        IDE.PanelFocus.Notify("Viewport");
 
         // Track whether the viewport is focused
         _bridge.IsViewportFocused = ImGui.IsWindowFocused();
@@ -2482,34 +2513,7 @@ public unsafe class ViewportPanel
                     : new Vector4(0.35f, 0.35f, 0.35f, 1f)); // grey = editor
                 if (ImGui.Button(previewNow ? " Preview" : "▲ Edit"))
                 {
-                    if (!previewNow)
-                    {
-                        //  Entering Preview mode 
-                        ResetSceneOverlays();
-                        // Hide brush ring so it can't leak into game view
-                        ClearBrushIndicator();
-                        // Turn off terrain brush in preview
-                        _bridge.TerrainBrushActive = false;
-                        _bridge.TerrainBrushMode = 0;
-                    }
-                    else
-                    {
-                        //  Exiting Preview mode (back to Edit) 
-                        // Reset all edit-mode actions to default/off
-                        _bridge.TerrainBrushActive = false;
-                        _bridge.TerrainBrushMode = 0;
-                        _bridge.GizmoMode = 0; // Translate (default)
-                        if (_bridge.EditorGizmo != null)
-                        {
-                            _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
-                            _bridge.EditorGizmo.EndDrag();
-                        }
-                        ClearBrushIndicator();
-                    }
-                    _previewMode = !_previewMode;
-                    // Set preview mode flag  hides editor gizmos/helpers without
-                    // changing camera behavior (WASD fly still works).
-                    _bridge.IsPreviewMode = _previewMode;
+                    TogglePreviewMode();
                 }
                 ImGui.PopStyleColor(1);
                 if (ImGui.IsItemHovered())
@@ -3499,47 +3503,60 @@ ImGui.SameLine();
                     _bridge.ViewportClickY = sceneV * _bridge.SceneTextureHeight;
                 }
 
-                //  Middle click: reposition gizmo pivot 
-                // Skipped when any popup/menu is open or just closed (modal mode).
-                if (hasSceneTexture && ImGui.IsItemClicked(ImGuiMouseButton.Middle) && !_previewMode && _bridge.Camera != null
-                    && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                //  Middle CLICK (press + release without dragging): reposition gizmo pivot.
+                // Middle-DRAG is camera pan in perspective mode (Camera.SetCameraFlyMode),
+                // so the pivot only applies when the button is released with the cursor
+                // still near where it was pressed.
+                if (hasSceneTexture && ImGui.IsMouseClicked(ImGuiMouseButton.Middle) && !_previewMode
                     && !suppressInput && !worldInputBlocked)
                 {
-                    // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
-                    float midClickY = _bridge.SceneTextureHeight - sceneV * _bridge.SceneTextureHeight;
-                    _bridge.Camera.ScreenToRay(
-                        sceneU * _bridge.SceneTextureWidth, midClickY,
-                        _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
-                        out Vector3 rayOrigin, out Vector3 rayDir);
-
-                    Vector3? hitPoint = null;
-
-                    // Try editor objects first
-                    if (_bridge.EditorObjectManager != null)
+                    _midPressScreen = new Vector2(sceneU * _texW, sceneV * _texH);
+                    _midPressValid = true;
+                }
+                if (_midPressValid && ImGui.IsMouseReleased(ImGuiMouseButton.Middle))
+                {
+                    _midPressValid = false;
+                    bool moved = _midPressScreen is Vector2 mp &&
+                        Vector2.Distance(mp, new Vector2(sceneU * _texW, sceneV * _texH)) > 6f; // 6 scene-px = pan, not a click
+                    if (!moved && !_previewMode && _bridge.Camera != null
+                        && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
                     {
-                        var edObj = _bridge.EditorObjectManager.Raycast(rayOrigin, rayDir, out float edDist, out Vector3 edPoint);
-                        if (edObj != null)
+                        // Flip Y: ImGui Y=0=top → OpenGL Y=0=bottom
+                        float midClickY = _bridge.SceneTextureHeight - sceneV * _bridge.SceneTextureHeight;
+                        _bridge.Camera.ScreenToRay(
+                            sceneU * _bridge.SceneTextureWidth, midClickY,
+                            _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
+                            out Vector3 rayOrigin, out Vector3 rayDir);
+
+                        Vector3? hitPoint = null;
+
+                        // Try editor objects first
+                        if (_bridge.EditorObjectManager != null)
                         {
-                            hitPoint = edPoint;
+                            var edObj = _bridge.EditorObjectManager.Raycast(rayOrigin, rayDir, out float edDist, out Vector3 edPoint);
+                            if (edObj != null)
+                            {
+                                hitPoint = edPoint;
+                            }
                         }
-                    }
 
-                    // If no hit, raycast against Y=0 ground plane
-                    if (hitPoint == null && Math.Abs(rayDir.Y) > 0.0001f)
-                    {
-                        float t = -rayOrigin.Y / rayDir.Y;
-                        if (t > 0f)
-                            hitPoint = rayOrigin + rayDir * t;
-                    }
+                        // If no hit, raycast against Y=0 ground plane
+                        if (hitPoint == null && Math.Abs(rayDir.Y) > 0.0001f)
+                        {
+                            float t = -rayOrigin.Y / rayDir.Y;
+                            if (t > 0f)
+                                hitPoint = rayOrigin + rayDir * t;
+                        }
 
-                    if (hitPoint.HasValue && _bridge.SelectedEditorObject != null)
-                    {
-                        var pivotObj = _bridge.SelectedEditorObject;
-                        var oldPivot = pivotObj.GizmoPivotOverride;
-                        pivotObj.GizmoPivotOverride = hitPoint.Value;
-                        // Record undo so Ctrl+Z reverts the pivot placement (consistent with gizmo drags)
-                        _bridge.OnGizmoPivotChanged?.Invoke(pivotObj, oldPivot, hitPoint.Value);
-                        Console.WriteLine($"[Viewport] Gizmo pivot for '{pivotObj.Name}' set to {hitPoint.Value:F2}");
+                        if (hitPoint.HasValue && _bridge.SelectedEditorObject != null)
+                        {
+                            var pivotObj = _bridge.SelectedEditorObject;
+                            var oldPivot = pivotObj.GizmoPivotOverride;
+                            pivotObj.GizmoPivotOverride = hitPoint.Value;
+                            // Record undo so Ctrl+Z reverts the pivot placement (consistent with gizmo drags)
+                            _bridge.OnGizmoPivotChanged?.Invoke(pivotObj, oldPivot, hitPoint.Value);
+                            Console.WriteLine($"[Viewport] Gizmo pivot for '{pivotObj.Name}' set to {hitPoint.Value:F2}");
+                        }
                     }
                 }
                 // IsViewportClicked is reset on the next frame (set to false at start of each
@@ -3760,11 +3777,17 @@ ImGui.SameLine();
             //  Only active when a visible Map2D object actually renders the map —
             //  no map object, no yellow hover highlight, no click consumption.
             //  Suppressed while dragging the spawn marker (the grab owns the click).
+            //  ALSO suppressed while the cursor is over the selection gizmo or a gizmo
+            //  drag is in flight — the gizmo is always frontmost and owns the mouse,
+            //  so painting can never eat a gizmo grab over a tile.
+            bool gizmoHover = IsGizmoHitAtMouse();
+            bool gizmoDragging = _bridge.EditorGizmo?.IsDragging == true;
             if (!_previewMode && !_spawnDragActive && _bridge.ActiveTilemap != null && _bridge.Camera != null
                 && _bridge.EditorObjectManager != null && mouseOverImage && HasVisibleMapObject()
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
                 && hasSceneTexture && _dragMode == DragMode.None
-                && !suppressInput && !worldInputBlocked && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
+                && !suppressInput && !worldInputBlocked && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton()
+                && !gizmoHover && !gizmoDragging)
             {
                 var cam = _bridge.Camera;
                 int vpw = _bridge.SceneTextureWidth;
@@ -3821,34 +3844,6 @@ ImGui.SameLine();
                             bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
                             bool leftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
                             bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
-
-                            // ── Collision tool (tool 4): click/drag toggles collision on the
-                            // tile(s) under the cursor; ignore palette multi-select stamping.
-                            if (tool == 4)
-                            {
-                                if (leftDown || leftClicked)
-                                    _bridge.MapPaintAt?.Invoke(new Vector2(hit.X, hit.Y));
-                                if (leftReleased)
-                                    _bridge.MapEndCollisionStroke?.Invoke();
-
-                                // Red fill on hovered collision tiles, hollow on non-collision
-                                // (shows what this stroke would ADD vs REMOVE).
-                                int hTile = map.GetTile(_bridge.ActiveTileLayer, gx, gy);
-                                bool hCol = hTile >= 0 && map.ActiveLayer.TileHasCollision(hTile);
-                                var eMin = hs3; var eMax = hs1;
-                                uint eFill = ImGui.ColorConvertFloat4ToU32(hCol
-                                    ? new Vector4(1f, 0.1f, 0.1f, 0.35f)
-                                    : new Vector4(1f, 0.1f, 0.1f, 0.08f));
-                                uint eLine = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.2f, 0.2f, 0.95f));
-                                hdl.AddRectFilled(eMin, eMax, eFill);
-                                hdl.AddQuad(hs0, hs1, hs2, hs3, eLine, 2f);
-
-                                if (leftClicked)
-                                    _bridge.IsViewportClicked = false;
-                                // Fall through with tool forced out of paint modes so the
-                                // regular paint paths below do nothing.
-                                tool = -1;
-                            }
 
                             // Ctrl+Z / Ctrl+Y over the 2D level → tile paint undo/redo
                             // (map tools have no menu entry; keyboard is the only path).
@@ -4743,9 +4738,12 @@ ImGui.SameLine();
             }
             if (isOrtho)
             {
-                // Ortho zoom  adjusts the ortho view volume half-height
+                // Ortho zoom — adjusts the ortho view volume half-height. Limits come
+                // from the camera's shared constants so the slider matches scroll-wheel
+                // zoom exactly (either path can always undo the other).
                 float orthoSize = _bridge.Camera?.OrthoSize ?? 20f;
-                if (ImGui.SliderFloat("Ortho Zoom", ref orthoSize, 2f, 100f, "%.0f"))
+                if (ImGui.SliderFloat("Ortho Zoom", ref orthoSize,
+                    Engine.Visual.Camera.OrthoZoomMin, Engine.Visual.Camera.OrthoZoomMax, "%.0f"))
                 {
                     if (_bridge.Camera != null) _bridge.Camera.OrthoSize = orthoSize;
                 }

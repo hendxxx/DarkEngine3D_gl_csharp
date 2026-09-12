@@ -62,6 +62,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public int MapEditorPaletteCols { get; set; } = 8;
         public float MapEditorPaletteCell { get; set; } = 32f;
 
+        // ── IDE panel focus (persisted so the editor reopens on the panel the user
+        // was last working in, instead of always focusing the same default panel) ──
+        public string LastFocusedPanel { get; set; } = "";
+
+        // ── Ortho zoom limits (per project: pixel-art levels can tighten the range,
+        // large 3D worlds can widen it). Applies to scroll-wheel AND the Ortho Zoom
+        // slider in the camera options popup. ──
+        public float OrthoZoomMin { get; set; } = 2f;
+        public float OrthoZoomMax { get; set; } = 200f;
+
         // ── Transition defaults (persisted from TransitionPanel's "Apply Global Default") ──
         public int DefaultTransitionType { get; set; } = 0; // 0=Fade, 1=SlideLeft, 2=SlideRight
         public float DefaultTransitionDuration { get; set; } = 0.6f;

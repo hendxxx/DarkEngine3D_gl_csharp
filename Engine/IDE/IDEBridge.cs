@@ -233,13 +233,9 @@ public class IDEBridge
     public Action<Vector2>? MapPaintAt { get; set; }
     public Action<Vector2>? MapFillAt { get; set; }
     public Action<Vector2>? MapPickAt { get; set; }
-    /// <summary>Ends the in-progress collision-toggle stroke (Collision tool).</summary>
-    public Action? MapEndCollisionStroke { get; set; }
     /// <summary>Tile paint/erase undo-redo (wired to MapEditorPanel.UndoTilePaint/Redo).</summary>
     public Action? MapUndo { get; set; }
     public Action? MapRedo { get; set; }
-    /// <summary>True while the Map Editor has a tilemap loaded (drives map-tool shortcuts).</summary>
-    public Func<bool>? MapHasLevel { get; set; }
 
     // ── Map Editor grid settings (synced to ViewportPanel) ──
 

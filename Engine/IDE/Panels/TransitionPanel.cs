@@ -28,6 +28,7 @@ public class TransitionPanel
     {
         if (!_visible) return;
         ImGui.Begin("Transition", ref _visible);
+        IDE.PanelFocus.Notify("Transition");
 
         // Global default
         ImGui.Text("Global Default Transition");

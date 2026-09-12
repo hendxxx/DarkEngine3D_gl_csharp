@@ -44,6 +44,9 @@ public unsafe class ImGuiController : IDisposable
     /// (bin) instead of ImGui's CWD-relative default "imgui.ini" so the IDE layout is
     /// loaded/saved next to the executable and never pollutes the project folder.</summary>
     private byte* _iniFilenamePtr;
+    /// <summary>Managed mirror of the pinned ini path (for comparisons + re-save on
+    /// project switch — the pinned pointer alone is not readable back safely).</summary>
+    private string _iniPath = "";
 
     private readonly Dictionary<int, ImGuiKey> _glfwToImGuiKey = [];
 
@@ -80,6 +83,7 @@ public unsafe class ImGuiController : IDisposable
         _iniFilenamePtr = (byte*)Marshal.StringToCoTaskMemUTF8(iniPath);
         io.NativePtr->IniFilename = _iniFilenamePtr;
         Console.WriteLine($"[ImGui] imgui.ini: {iniPath}");
+        _iniPath = iniPath;
 
         _hasVtxOffset = GL.DrawElementsBaseVertexPtr != IntPtr.Zero;
         if (_hasVtxOffset)
@@ -324,6 +328,39 @@ public unsafe class ImGuiController : IDisposable
         // Ultimate fallback
         io.Fonts.AddFontDefault();
         Console.WriteLine($"[ImGui] Default font: ImGui built-in @ {fontSize}px (size ignored)");
+    }
+
+    /// <summary>Re-point imgui.ini when the active project changes (project folder ↔
+    /// exe fallback). The constructor runs BEFORE any project is open, so without this
+    /// the layout would forever save to the exe folder and never to the project.
+    /// Saves the current layout to the OLD path first, then loads the new path's
+    /// layout when that file exists — opening a project restores ITS saved layout.</summary>
+    public void SetIniPath(string iniPath)
+    {
+        if (string.Equals(_iniPath, iniPath, StringComparison.OrdinalIgnoreCase)) return;
+        try
+        {
+            if (!string.IsNullOrEmpty(_iniPath))
+                ImGui.SaveIniSettingsToDisk(_iniPath);
+        }
+        catch (Exception ex) { Console.WriteLine($"[ImGui] Ini save before switch failed: {ex.Message}"); }
+
+        if (_iniFilenamePtr != null)
+        {
+            Marshal.FreeCoTaskMem((nint)_iniFilenamePtr);
+            _iniFilenamePtr = null;
+        }
+        _iniFilenamePtr = (byte*)Marshal.StringToCoTaskMemUTF8(iniPath);
+        ImGui.GetIO().NativePtr->IniFilename = _iniFilenamePtr;
+        _iniPath = iniPath;
+
+        try
+        {
+            if (File.Exists(iniPath))
+                ImGui.LoadIniSettingsFromDisk(iniPath);
+            Console.WriteLine($"[ImGui] imgui.ini switched to: {iniPath}");
+        }
+        catch (Exception ex) { Console.WriteLine($"[ImGui] Ini load failed: {ex.Message}"); }
     }
 
     public void Dispose()

@@ -144,6 +144,7 @@ public class SceneManagerPanel
         if (!_visible) return;
 
         ImGui.Begin("Scene Manager", ref _visible);
+        IDE.PanelFocus.Notify("Scene Manager");
 
         //  Header: current scene indicator 
         var sm = _bridge.SceneManager;

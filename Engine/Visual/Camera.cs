@@ -349,6 +349,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// <summary>Half-height of the orthographic view volume in world units
     /// (scales how much of the scene is visible in ortho mode).
     /// Setting it dirties the cached projection matrix so the change takes effect.</summary>
+    /// <summary>Zoom limits for the ortho view volume (scroll wheel AND the
+    /// "Ortho Zoom" slider in the camera options popup share these, so the slider can
+    /// always reach whatever value scrolling produced and vice versa). Configurable
+    /// per project via settings.json (OrthoZoomMin/OrthoZoomMax) — pixel-art levels
+    /// can tighten the range, large worlds can widen it. Defaults: 2..200.</summary>
+    public static float OrthoZoomMin = 2f;
+    public static float OrthoZoomMax = 200f;
+
+    /// <summary>Apply validated zoom limits (min ≥ 0.5, max ≥ min + 1). Called at
+    /// IDE startup and whenever the IDE Settings sliders change.</summary>
+    public static void ApplyZoomLimits(float min, float max)
+    {
+        min = MathF.Max(0.5f, min);
+        max = MathF.Max(min + 1f, max);
+        OrthoZoomMin = min;
+        OrthoZoomMax = max;
+    }
+
     public float OrthoSize
     {
         get => _orthoSize;
@@ -441,12 +459,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
                                 Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
 
-                // ── Right-drag pan + Fly mouse-look ──
-                // Right-drag ALWAYS pans the camera in the view plane (screen X → camera
-                // Right, screen Y → camera Up) — it never rotates the view and never moves
-                // any object. The ✈ Fly toggle is the only way to rotate/look around.
-                bool rightLook = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT);
-                if (!ctrlHeld && rightLook)
+                // ── Drag pan + Fly mouse-look ──
+                // PERSPECTIVE mode: MIDDLE-drag pans the camera in the view plane
+                // (standard 3D-editor convention); right-drag is left free for other
+                // interactions. ORTHO mode (2D levels): right-drag pans as before.
+                // Panning never rotates the view and never moves any object — the
+                // ✈ Fly toggle is the only way to rotate/look around.
+                bool dragPan = IsOrthographic
+                    ? Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT)
+                    : Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE);
+                if (!ctrlHeld && dragPan)
                 {
                     // Pan speed scales with the view volume so the drag feels 1:1 with the
                     // cursor: ortho pans roughly one view height across the viewport.
@@ -528,7 +550,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     {
                         if (IsOrthographic)
                         {
-                            OrthoSize = Math.Clamp(OrthoSize * (1f - Mouse.ScrollY * 0.08f), 1f, 200f);
+                            OrthoSize = Math.Clamp(OrthoSize * (1f - Mouse.ScrollY * 0.08f), OrthoZoomMin, OrthoZoomMax);
                             Mouse.ResetScroll();
                         }
                         else

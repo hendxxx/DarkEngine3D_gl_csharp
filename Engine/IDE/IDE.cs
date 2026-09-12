@@ -36,7 +36,6 @@ public class IDE : IDisposable
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
     private readonly MapEditorPanel _mapEditor = null!;
-    private readonly CollisionEditorPanel _collisionEditor = null!;
     private readonly IDESettingsPanel _ideSettings = null!;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
     private readonly ImGuiFileDialog _glbDialog = new();
@@ -56,6 +55,32 @@ public class IDE : IDisposable
     private UIElement? _focusedInGameElement = null;
     private int _focusedInGameIndex = -1;
     // ── Project dialogs ──
+
+    // ── Panel focus memory ──
+    // Tracks which editor panel window the user focused LAST (click/title bar) and
+    // restores it on startup, so the IDE reopens on the panel the user was working
+    // in instead of always landing on the same default (e.g. Map Editor).
+    private string _restoreFocusPanel = "";
+    private bool _focusRestoreApplied = false;
+    private const int PanelFocusFramesDelay = 30; // let ImGui layout settle before restoring
+    private int _focusRestoreCountdown = PanelFocusFramesDelay;
+    private double _focusSaveElapsed = 0;
+    private float _lastDeltaTime = 1f / 60f;
+    /// <summary>Set when editor panels must re-focus the last-used panel (startup
+    /// restore or returning from in-game mode — both make all windows "appearing").</summary>
+    private bool _panelFocusRestorePending = false;
+    private int _panelFocusRestoreDelay = 4;
+    /// <summary>Frames remaining where panel focus TRACKING is frozen (transition
+    /// frames — stops the auto-focused window, e.g. Map Editor, from overwriting
+    /// PanelFocus.LastFocused before the restore fires).</summary>
+    private int _focusFreezeFrames = PanelFocusFramesDelay;
+    /// <summary>Panels eligible for focus memory.</summary>
+    private static readonly string[] TrackablePanels =
+    {
+        "Viewport", "Scene View", "Inspector", "SceneDetail", "Console",
+        "Scene Manager", "Asset Browser", "Render Time", "Shadow Settings",
+        "PBR Material", "Transition", "Sprite Editor", "Map Editor", "IDE Settings"
+    };
     private bool _showNewProjectDialog = false;
     private bool _showOpenProjectDialog = false;
     private byte[] _newProjectNameBuf = new byte[256];
@@ -133,6 +158,13 @@ public class IDE : IDisposable
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
                     _lastInGameSceneName = null;
+                    // Return focus to the panel the user was working in (e.g. the
+                    // Inspector while editing the player). Without this, every panel
+                    // becomes "appearing" again after in-game mode and the LAST-Begun
+                    // window (Map Editor) steals focus on the next frame.
+                    _panelFocusRestorePending = true;
+                    _panelFocusRestoreDelay = 4;
+                    _focusFreezeFrames = 8; // keep tracking frozen across the transition
                 }
                 Console.WriteLine($"[IDE] In-Game Mode: {_inGameMode}");
             }
@@ -193,10 +225,43 @@ public class IDE : IDisposable
         Console.WriteLine($"[IDE] Reloaded ({Bridge.EditorScenes.Count} scenes)");
     }
 
+    /// <summary>
+    /// Route an undo/redo request to the LAST FOCUSED undo-capable context:
+    /// Sprite Editor (snapshot stack) → Map Editor (tile-paint stack) → hierarchy
+    /// (UI elements + editor objects). Falls through in priority order when the
+    /// focused panel has nothing to undo, so Ctrl+Z always does the most sensible thing.
+    /// </summary>
+    private void RouteUndoRedo(bool undo)
+    {
+        string focused = PanelFocus.LastFocused ?? "";
+        if (undo)
+        {
+            if (focused == "Sprite Editor") { if (_spriteEditor.CanUndo) { _spriteEditor.Undo(); return; } }
+            else if (focused == "Map Editor") { if (_mapEditor.CanUndoTiles) { _mapEditor.UndoTilePaint(); return; } }
+            if (_hierarchy.CanUndo) { _hierarchy.Undo(); return; }
+            if (_spriteEditor.CanUndo) { _spriteEditor.Undo(); return; }
+            if (_mapEditor.CanUndoTiles) { _mapEditor.UndoTilePaint(); return; }
+        }
+        else
+        {
+            if (focused == "Sprite Editor") { if (_spriteEditor.CanRedo) { _spriteEditor.Redo(); return; } }
+            else if (focused == "Map Editor") { if (_mapEditor.CanRedoTiles) { _mapEditor.RedoTilePaint(); return; } }
+            if (_hierarchy.CanRedo) { _hierarchy.Redo(); return; }
+            if (_spriteEditor.CanRedo) { _spriteEditor.Redo(); return; }
+            if (_mapEditor.CanRedoTiles) { _mapEditor.RedoTilePaint(); return; }
+        }
+    }
+
     /// <summary>Auto-load game.ing when a project is opened or closed.</summary>
     private void OnProjectChanged()
     {
         Console.WriteLine($"[IDE] OnProjectChanged: IsProjectLoaded={Engine.Project.ProjectManager.IsProjectLoaded}, ProjectRoot='{Engine.Project.ProjectManager.ProjectRoot}'");
+        // imgui.ini follows the active project — the ImGuiController constructor runs
+        // BEFORE any project is open, so without this re-point the layout would save
+        // to the exe folder forever and never load the project's saved layout.
+        _imgui.SetIniPath(Engine.Project.ProjectManager.IsProjectLoaded
+            ? System.IO.Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "imgui.ini")
+            : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "imgui.ini"));
         if (Engine.Project.ProjectManager.IsProjectLoaded)
         {
             string gameIng = Engine.Project.ProjectManager.GameIngPath;
@@ -584,7 +649,6 @@ public class IDE : IDisposable
             _pbrPanel = new PbrPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
-            _collisionEditor = new CollisionEditorPanel(Bridge);
             _ideSettings = new IDESettingsPanel(Bridge);
 
             // Wire tilemap painting: viewport raycasts → panel paint/fill/pick handlers.
@@ -593,10 +657,16 @@ public class IDE : IDisposable
             Bridge.MapPaintAt = pos => _mapEditor.PaintAtWorldPosition(pos);
             Bridge.MapFillAt = pos => _mapEditor.FillAtWorldPosition(pos);
             Bridge.MapPickAt = pos => _mapEditor.PickAtWorldPosition(pos);
-            Bridge.MapEndCollisionStroke = () => _mapEditor.EndCollisionStroke();
             Bridge.MapUndo = () => _mapEditor.UndoTilePaint();
             Bridge.MapRedo = () => _mapEditor.RedoTilePaint();
-            Bridge.MapHasLevel = () => _mapEditor.HasActiveTilemap;
+
+            // Remember the panel the user was last focused on (persisted per project).
+            var bootSettings = SettingsSave.Load();
+            _restoreFocusPanel = bootSettings.LastFocusedPanel ?? "";
+            PanelFocus.LastFocused = _restoreFocusPanel;
+
+            // Apply per-project ortho zoom limits (settings.json → Camera constants).
+            Visual.Camera.ApplyZoomLimits(bootSettings.OrthoZoomMin, bootSettings.OrthoZoomMax);
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -630,6 +700,7 @@ public class IDE : IDisposable
     public void Update(float deltaTime)
     {
         if (!IsHealthy) return;
+        _lastDeltaTime = deltaTime;
         _imgui.NewFrame(deltaTime);
     }
 
@@ -638,9 +709,17 @@ public class IDE : IDisposable
     {
         if (!IsHealthy) return;
 
+        // Persist "last focused panel" (debounced) so startup reopens on it.
+        SavePanelFocusIfDirty(_lastDeltaTime);
+
         // ── F8 shortcut: toggle between IDE Mode and In-Game Mode ──
         if (ImGui.IsKeyReleased(ImGuiKey.F8))
             ToggleInGameMode();
+
+        // ── F5 shortcut: toggle Preview Mode (edit-mode helper hiding) ──
+        // Inactive while in-game (matches the View menu, where the item is disabled).
+        if (!_inGameMode && ImGui.IsKeyReleased(ImGuiKey.F5))
+            _viewport.TogglePreviewMode();
 
         // A level (Map2D) keeps the camera in orthographic FRONT view even while in-game:
         // this must run for both editor frames and in-game frames (before the early return).
@@ -921,15 +1000,16 @@ public class IDE : IDisposable
             // ════════════════════════════════════════════════════
             if (ImGui.BeginMenu("Edit"))
             {
-                // Undo / Redo
-                ImGui.BeginDisabled(!_hierarchy.CanUndo);
+                // Undo / Redo — routed to the LAST FOCUSED context
+                // (Sprite Editor / Map Editor / hierarchy) via shared routing below.
+                ImGui.BeginDisabled(!(_spriteEditor.CanUndo || _mapEditor.CanUndoTiles || _hierarchy.CanUndo));
                 if (ImGui.MenuItem("Undo", "Ctrl+Z"))
-                    _hierarchy.Undo();
+                    RouteUndoRedo(undo: true);
                 ImGui.EndDisabled();
 
-                ImGui.BeginDisabled(!_hierarchy.CanRedo);
+                ImGui.BeginDisabled(!(_spriteEditor.CanRedo || _mapEditor.CanRedoTiles || _hierarchy.CanRedo));
                 if (ImGui.MenuItem("Redo", "Ctrl+Y"))
-                    _hierarchy.Redo();
+                    RouteUndoRedo(undo: false);
                 ImGui.EndDisabled();
 
                 ImGui.Separator();
@@ -998,7 +1078,7 @@ public class IDE : IDisposable
                 ImGui.BeginDisabled(_inGameMode);
                 bool isPreview = _viewport.PreviewMode;
                 if (ImGui.MenuItem("Preview Mode", "F5", isPreview, !_inGameMode))
-                    _viewport.PreviewMode = !isPreview;
+                    _viewport.TogglePreviewMode();
                 ImGui.EndDisabled();
 
                 ImGui.Separator();
@@ -1039,7 +1119,6 @@ public class IDE : IDisposable
                 // ── 2D Sidescroller Panels ──
                 _spriteEditor.ShowInMenu();
                 _mapEditor.ShowInMenu();
-                _collisionEditor.ShowInMenu();
                 ImGui.Separator();
                 _ideSettings.ShowInMenu();
 
@@ -1124,8 +1203,22 @@ public class IDE : IDisposable
         // ── 2D Sidescroller Panels ──
         _spriteEditor.Render();
         _mapEditor.Render();
-        _collisionEditor.Render();
         _ideSettings.Render();
+
+        // ── Global undo/redo routing (after panels, before popups) ──
+        // Route by LAST FOCUSED panel so the same Ctrl+Z works everywhere without
+        // stealing keys from each other (each consumer checks its own availability):
+        //   Sprite Editor / Map Editor → their snapshot & tile-paint stacks
+        //   anything else              → hierarchy (UI elements + editor objects)
+        // Skipped in in-game mode (F8) — gameplay keys must stay untouched.
+        if (!_inGameMode && ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
+            RouteUndoRedo(undo: true);
+        if (!_inGameMode && ImGui.GetIO().KeyCtrl &&
+            (ImGui.IsKeyPressed(ImGuiKey.Y, false) ||
+             (ImGui.GetIO().KeyShift && ImGui.IsKeyPressed(ImGuiKey.Z, false))))
+            RouteUndoRedo(undo: false);
+
+        TrackAndRestorePanelFocus();
 
         // ── Project popups (rendered after panels, so window context exists) ──
         RenderProjectPopups();
@@ -1139,6 +1232,93 @@ public class IDE : IDisposable
         catch { }
 
         _imgui.Render();
+    }
+
+    /// <summary>Re-focuses the panel persisted as last-focused. Runs ONCE at startup
+    /// (docking/layout settled) and AGAIN every time we return from in-game mode —
+    /// both transitions reset ImGui's "appearing" state on all windows, and without
+    /// this the LAST-Begun window (Map Editor) always steals focus.</summary>
+    private void TrackAndRestorePanelFocus()
+    {
+        // Freeze tracking during transition frames so whatever window ImGui auto-focuses
+        // while re-appearing (Map Editor) can NOT overwrite the remembered panel.
+        if (_focusFreezeFrames > 0)
+        {
+            _focusFreezeFrames--;
+            PanelFocus.Frozen = true;
+        }
+        else
+        {
+            PanelFocus.Frozen = false;
+        }
+
+        if (_panelFocusRestorePending)
+        {
+            // Wait a few frames after exiting in-game mode so the panel Begin()s have
+            // re-registered before we push focus back.
+            _panelFocusRestoreDelay--;
+            if (_panelFocusRestoreDelay > 0) return;
+            _panelFocusRestorePending = false;
+            FocusPanel(PanelFocus.LastFocused);
+        }
+        else if (!_focusRestoreApplied)
+        {
+            if (_focusRestoreCountdown > 0)
+            {
+                _focusRestoreCountdown--;
+                return;
+            }
+            _focusRestoreApplied = true;
+            FocusPanel(_restoreFocusPanel);
+        }
+    }
+
+    private void FocusPanel(string name)
+    {
+        if (string.IsNullOrEmpty(name) || Array.IndexOf(TrackablePanels, name) < 0) return;
+        ImGui.SetWindowFocus(name);
+        PanelFocus.LastFocused = name;
+        Console.WriteLine($"[IDE] Restored panel focus: {name}");
+    }
+
+    /// <summary>Persist PanelFocus.LastFocused to settings.json when it changed
+    /// (called from Update with delta time; writes at most every few seconds).</summary>
+    private void SavePanelFocusIfDirty(double dt)
+    {
+        if (!PanelFocus.Dirty) return;
+        _focusSaveElapsed += dt;
+        if (_focusSaveElapsed < 1.5) return; // debounce: wait until the user stops switching
+        _focusSaveElapsed = 0;
+        PanelFocus.Dirty = false;
+        try
+        {
+            var s = SettingsSave.Load();
+            if (!string.Equals(s.LastFocusedPanel, PanelFocus.LastFocused, StringComparison.Ordinal))
+            {
+                s.LastFocusedPanel = PanelFocus.LastFocused;
+                SettingsSave.Save(s);
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>Static focus tracker: each panel calls Notify right after Begin with
+    /// its window name; the call records the window only when it currently HAS focus.</summary>
+    internal static class PanelFocus
+    {
+        public static string LastFocused = "";
+        public static bool Dirty;
+        /// <summary>True during mode transitions — tracking is suspended.</summary>
+        public static bool Frozen;
+        public static void Notify(string name)
+        {
+            if (Frozen) return;
+            if (ImGui.IsWindowFocused(ImGuiFocusedFlags.None) && LastFocused != name)
+            {
+                LastFocused = name;
+                Dirty = true;
+            }
+        }
     }
 
     /// <summary>Render project management popups (New/Open Project, Folder Picker).

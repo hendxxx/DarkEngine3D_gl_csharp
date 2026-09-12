@@ -150,6 +150,7 @@ public unsafe class AssetBrowserPanel
         if (!_visible) return;
 
         ImGui.Begin("Asset Browser", ref _visible);
+        IDE.PanelFocus.Notify("Asset Browser");
 
         // ── Breadcrumb navigation ──
         if (_currentPath != _rootPath)

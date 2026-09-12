@@ -45,6 +45,7 @@ public class RenderTimePanel
         if (!_visible) return;
 
         ImGui.Begin("Render Time", ref _visible);
+        IDE.PanelFocus.Notify("Render Time");
         // Sync the capture flag in case the user closed the window via the X button
         _bridge.CaptureRenderTimings = _visible;
 

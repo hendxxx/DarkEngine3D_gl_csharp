@@ -457,6 +457,7 @@ public class HierarchyPanel
         }
 
         ImGui.Begin("SceneDetail", ref _visible, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        IDE.PanelFocus.Notify("SceneDetail");
 
         var rootElements = _bridge.SceneRootElements;
         bool hasUIElementSelection = _bridge.SelectedUIElement != null;

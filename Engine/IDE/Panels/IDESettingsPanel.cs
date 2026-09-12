@@ -41,6 +41,7 @@ public class IDESettingsPanel
         ImGui.SetNextWindowSize(new Vector2(400, 500), ImGuiCond.FirstUseEver);
         if (ImGui.Begin("IDE Settings", ref _visible))
         {
+            IDE.PanelFocus.Notify("IDE Settings");
             // Load from current settings each frame (in case external changes)
             LoadFromSettings();
 
@@ -152,6 +153,48 @@ public class IDESettingsPanel
                     Save(settings);
                 }
                 ImGui.PopItemWidth();
+            }
+
+            ImGui.Separator();
+
+            // ── Camera Zoom (per project) ──
+            if (ImGui.CollapsingHeader("Camera Zoom"))
+            {
+                var settingsZ = Load();
+                ImGui.PushItemWidth(200);
+                float zMin = settingsZ.OrthoZoomMin;
+                if (ImGui.DragFloat("Ortho Zoom Min", ref zMin, 0.5f, 0.5f, 100f, "%.1f"))
+                {
+                    settingsZ.OrthoZoomMin = zMin;
+                    Save(settingsZ);
+                    Engine.Visual.Camera.ApplyZoomLimits(zMin, settingsZ.OrthoZoomMax);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Closest ortho zoom (smallest view half-height).\nPixel-art levels: raise this (e.g. 5) so players can't zoom in past crisp pixel scale.\nApplies to scroll wheel + Ortho Zoom slider. Per project, saved in settings.json.");
+
+                float zMax = settingsZ.OrthoZoomMax;
+                if (ImGui.DragFloat("Ortho Zoom Max", ref zMax, 5f, 1f, 2000f, "%.0f"))
+                {
+                    settingsZ.OrthoZoomMax = zMax;
+                    Save(settingsZ);
+                    Engine.Visual.Camera.ApplyZoomLimits(settingsZ.OrthoZoomMin, zMax);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Farthest ortho zoom (largest view half-height).\nLarge worlds: raise it; pixel-art levels: lower it (e.g. 60).\nApplies to scroll wheel + Ortho Zoom slider. Per project, saved in settings.json.");
+                ImGui.PopItemWidth();
+
+                ImGui.TextDisabled($"current range: {Engine.Visual.Camera.OrthoZoomMin:0.##} – {Engine.Visual.Camera.OrthoZoomMax:0.#}");
+
+                if (ImGui.SmallButton("Reset Zoom Limits"))
+                {
+                    var s = Load();
+                    s.OrthoZoomMin = 2f;
+                    s.OrthoZoomMax = 200f;
+                    Save(s);
+                    Engine.Visual.Camera.ApplyZoomLimits(2f, 200f);
+                }
+                ImGui.SameLine();
+                ImGui.TextDisabled("default 2 – 200");
             }
 
             ImGui.Separator();
