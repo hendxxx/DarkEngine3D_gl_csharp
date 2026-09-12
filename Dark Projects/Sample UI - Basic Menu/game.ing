@@ -1309,8 +1309,8 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.03183,
-        43.81875,
+        60.636566,
+        32,
         307.03183
       ],
       "editorCameraYaw": 180,
@@ -1660,8 +1660,8 @@
                   "text": "",
                   "x": 500,
                   "y": 220,
-                  "width": 1884,
-                  "height": 1100,
+                  "width": 2080,
+                  "height": 1020,
                   "imagePath": "",
                   "imageMode": "Stretch",
                   "fontSize": 13,
@@ -1815,172 +1815,11 @@
                   "radioGroup": "default",
                   "children": [
                     {
-                      "name": "lbSettings",
-                      "type": "Label",
-                      "text": "Settings",
-                      "x": -320,
-                      "y": -80,
-                      "width": 2020,
-                      "height": 80,
-                      "imagePath": "",
-                      "imageMode": "Stretch",
-                      "fontSize": 45,
-                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-                      "textColor": [
-                        0.95,
-                        0.95,
-                        1
-                      ],
-                      "bgColor": [
-                        0,
-                        0,
-                        0
-                      ],
-                      "borderColor": [
-                        0,
-                        0,
-                        0
-                      ],
-                      "hoverTextColor": [
-                        0.95,
-                        0.95,
-                        1
-                      ],
-                      "hoverBgColor": [
-                        0,
-                        0,
-                        0
-                      ],
-                      "hoverBorderColor": [
-                        0,
-                        0,
-                        0
-                      ],
-                      "alignment": "Center",
-                      "isVisible": true,
-                      "opacity": 1,
-                      "autoFillWindow": false,
-                      "autoCenterX": false,
-                      "autoCenterY": false,
-                      "anchor": "None",
-                      "useHover": false,
-                      "clickBehavior": "None",
-                      "hoverEnterBehavior": "None",
-                      "hoverExitBehavior": "None",
-                      "minValue": 0,
-                      "maxValue": 100,
-                      "step": 1,
-                      "currentValue": 50,
-                      "textOptions": [
-                        "Option A",
-                        "Option B",
-                        "Option C"
-                      ],
-                      "selectedTextIndex": 0,
-                      "isChecked": false,
-                      "options": [
-                        "Option 1",
-                        "Option 2",
-                        "Option 3"
-                      ],
-                      "selectedIndex": 0,
-                      "fallbackText": "",
-                      "wordWrap": true,
-                      "triggeredByKeyboardButton": "",
-                      "placeholder": "Enter text...",
-                      "maxLength": 0,
-                      "inputText": "",
-                      "scrollY": 0,
-                      "scrollBarWidth": 10,
-                      "scrollBarTrackColor": [
-                        0.15,
-                        0.15,
-                        0.2
-                      ],
-                      "scrollBarThumbColor": [
-                        0.45,
-                        0.45,
-                        0.55
-                      ],
-                      "scrollBarThumbHoverColor": [
-                        0.55,
-                        0.55,
-                        0.65
-                      ],
-                      "sliderTrackColor": [
-                        0.3,
-                        0.3,
-                        0.35
-                      ],
-                      "sliderFillColor": [
-                        0.3,
-                        0.6,
-                        1
-                      ],
-                      "sliderThumbColor": [
-                        0.9,
-                        0.9,
-                        1
-                      ],
-                      "sliderThumbBorderColor": [
-                        0.3,
-                        0.6,
-                        1
-                      ],
-                      "sliderThumbSize": 14,
-                      "sliderTrackHeight": 6,
-                      "sliderLabelPosition": 2,
-                      "sliderLabelSpacing": 8,
-                      "labelSpacing": 8,
-                      "checkmarkColor": [
-                        0.9,
-                        0.9,
-                        1
-                      ],
-                      "checkedBgColor": [
-                        0.25,
-                        0.55,
-                        1
-                      ],
-                      "uncheckedBgColor": [
-                        0.15,
-                        0.15,
-                        0.22
-                      ],
-                      "arrowColor": [
-                        0.5,
-                        0.5,
-                        0.7
-                      ],
-                      "cursorColor": [
-                        0.5,
-                        0.8,
-                        1
-                      ],
-                      "radioSelectedColor": [
-                        0.3,
-                        0.7,
-                        1
-                      ],
-                      "radioSelectedBgColor": [
-                        0.2,
-                        0.4,
-                        0.65
-                      ],
-                      "radioUnselectedBgColor": [
-                        0.15,
-                        0.15,
-                        0.22
-                      ],
-                      "radioGroup": "default",
-                      "children": []
-                    },
-                    {
                       "name": "drpShadow",
                       "type": "Dropdown",
                       "text": "Shadow",
-                      "x": 340,
-                      "y": 280,
+                      "x": 250,
+                      "y": 260,
                       "width": 740,
                       "height": 80,
                       "imagePath": "",
@@ -2140,10 +1979,10 @@
                       "name": "sldResolution",
                       "type": "SliderText",
                       "text": "Resolution",
-                      "x": 340,
-                      "y": 80,
+                      "x": 260,
+                      "y": 90,
                       "width": 740,
-                      "height": 120,
+                      "height": 100,
                       "imagePath": "",
                       "imageMode": "Stretch",
                       "fontSize": 30,
@@ -2303,8 +2142,8 @@
                       "name": "chkUseVsync",
                       "type": "Checkbox",
                       "text": "Use Vsync",
-                      "x": 340,
-                      "y": 200,
+                      "x": 250,
+                      "y": 190,
                       "width": 260,
                       "height": 60,
                       "imagePath": "",
@@ -2464,7 +2303,7 @@
                       "name": "sldrVolume",
                       "type": "SliderNumber",
                       "text": "Volume",
-                      "x": 340,
+                      "x": 240,
                       "y": 830,
                       "width": 740,
                       "height": 100,
@@ -2625,7 +2464,7 @@
                       "name": "rdInputKeyboardAndMouse",
                       "type": "RadioButton",
                       "text": "Mouse and Keyboard",
-                      "x": 340,
+                      "x": 240,
                       "y": 450,
                       "width": 740,
                       "height": 80,
@@ -2786,7 +2625,7 @@
                       "name": "rdInputMouse",
                       "type": "RadioButton",
                       "text": "Mouse",
-                      "x": 340,
+                      "x": 240,
                       "y": 530,
                       "width": 740,
                       "height": 80,
@@ -2947,7 +2786,7 @@
                       "name": "rdInputKeyboard",
                       "type": "RadioButton",
                       "text": "Keyboard",
-                      "x": 340,
+                      "x": 240,
                       "y": 600,
                       "width": 740,
                       "height": 80,
@@ -3108,7 +2947,7 @@
                       "name": "rdInputGamePad",
                       "type": "RadioButton",
                       "text": "Game Pad\n",
-                      "x": 340,
+                      "x": 240,
                       "y": 680,
                       "width": 740,
                       "height": 80,
@@ -3266,16 +3105,177 @@
                       "children": []
                     },
                     {
+                      "name": "lbSettings",
+                      "type": "Label",
+                      "text": "Settings",
+                      "x": -300,
+                      "y": -50,
+                      "width": 1360,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
+                      "fontSize": 54,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "textColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "bgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "borderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverTextColor": [
+                        0.95,
+                        0.95,
+                        1
+                      ],
+                      "hoverBgColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "hoverBorderColor": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "alignment": "Center",
+                      "isVisible": true,
+                      "opacity": 1,
+                      "autoFillWindow": false,
+                      "autoCenterX": false,
+                      "autoCenterY": false,
+                      "anchor": "None",
+                      "useHover": false,
+                      "clickBehavior": "None",
+                      "hoverEnterBehavior": "None",
+                      "hoverExitBehavior": "None",
+                      "minValue": 0,
+                      "maxValue": 100,
+                      "step": 1,
+                      "currentValue": 50,
+                      "textOptions": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                      ],
+                      "selectedTextIndex": 0,
+                      "isChecked": false,
+                      "options": [
+                        "Option 1",
+                        "Option 2",
+                        "Option 3"
+                      ],
+                      "selectedIndex": 0,
+                      "fallbackText": "",
+                      "wordWrap": true,
+                      "triggeredByKeyboardButton": "",
+                      "placeholder": "Enter text...",
+                      "maxLength": 0,
+                      "inputText": "",
+                      "scrollY": 0,
+                      "scrollBarWidth": 10,
+                      "scrollBarTrackColor": [
+                        0.15,
+                        0.15,
+                        0.2
+                      ],
+                      "scrollBarThumbColor": [
+                        0.45,
+                        0.45,
+                        0.55
+                      ],
+                      "scrollBarThumbHoverColor": [
+                        0.55,
+                        0.55,
+                        0.65
+                      ],
+                      "sliderTrackColor": [
+                        0.3,
+                        0.3,
+                        0.35
+                      ],
+                      "sliderFillColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "sliderThumbBorderColor": [
+                        0.3,
+                        0.6,
+                        1
+                      ],
+                      "sliderThumbSize": 14,
+                      "sliderTrackHeight": 6,
+                      "sliderLabelPosition": 2,
+                      "sliderLabelSpacing": 8,
+                      "labelSpacing": 8,
+                      "checkmarkColor": [
+                        0.9,
+                        0.9,
+                        1
+                      ],
+                      "checkedBgColor": [
+                        0.25,
+                        0.55,
+                        1
+                      ],
+                      "uncheckedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "arrowColor": [
+                        0.5,
+                        0.5,
+                        0.7
+                      ],
+                      "cursorColor": [
+                        0.5,
+                        0.8,
+                        1
+                      ],
+                      "radioSelectedColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
+                      "radioSelectedBgColor": [
+                        0.2,
+                        0.4,
+                        0.65
+                      ],
+                      "radioUnselectedBgColor": [
+                        0.15,
+                        0.15,
+                        0.22
+                      ],
+                      "radioGroup": "default",
+                      "children": []
+                    },
+                    {
                       "name": "lbInput",
                       "type": "Label",
                       "text": "Input",
-                      "x": -180,
+                      "x": -280,
                       "y": 360,
                       "width": 1360,
                       "height": 60,
                       "imagePath": "",
                       "imageMode": "Stretch",
-                      "fontSize": 25,
+                      "fontSize": 30,
                       "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                       "textColor": [
                         0.95,
@@ -3430,13 +3430,13 @@
                       "name": "lbVideo",
                       "type": "Label",
                       "text": "Video",
-                      "x": -180,
-                      "y": 0,
+                      "x": -300,
+                      "y": 50,
                       "width": 1360,
                       "height": 60,
                       "imagePath": "",
                       "imageMode": "Stretch",
-                      "fontSize": 25,
+                      "fontSize": 30,
                       "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                       "textColor": [
                         0.95,
@@ -3591,13 +3591,13 @@
                       "name": "lbSound",
                       "type": "Label",
                       "text": "Sound",
-                      "x": -180,
+                      "x": -290,
                       "y": 780,
                       "width": 1360,
                       "height": 60,
                       "imagePath": "",
                       "imageMode": "Stretch",
-                      "fontSize": 25,
+                      "fontSize": 30,
                       "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                       "textColor": [
                         0.95,
@@ -6463,6 +6463,22 @@
               "keyBinding": "None"
             },
             {
+              "name": "Jump Start",
+              "spriteSheet": "",
+              "clip": "",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Jump End",
+              "spriteSheet": "",
+              "clip": "",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
               "name": "Fall",
               "spriteSheet": "",
               "clip": "",
@@ -7087,6 +7103,22 @@
               "keyBinding": "None"
             },
             {
+              "name": "Jump Start",
+              "spriteSheet": "",
+              "clip": "",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Jump End",
+              "spriteSheet": "",
+              "clip": "",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
               "name": "Fall",
               "spriteSheet": "",
               "clip": "",
@@ -7650,11 +7682,11 @@
           "colorB": 0.8,
           "castShadow": true,
           "isVisible": true,
-          "player2DSpriteSheet": "Idle-Sheet",
-          "player2DAnimationClip": "Char A - Idle",
+          "player2DSpriteSheet": "Idle",
+          "player2DAnimationClip": "Samurai - Idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
-          "player2DHeight": 10,
+          "player2DHeight": 18,
           "player2DCapsuleRadius": 1.5,
           "player2DCapsuleHeight": 8,
           "player2DShowCapsule": true,
@@ -7669,8 +7701,8 @@
           "cameraFollowSpeed": 30,
           "cameraDeadZoneWidth": 0,
           "cameraDeadZoneHeight": 0,
-          "cameraVerticalThreshold": 64,
-          "cameraReturnSpeed": 20,
+          "cameraVerticalThreshold": 0,
+          "cameraReturnSpeed": 0.5,
           "cameraLookAhead": 0,
           "cameraViewOffset": {
             "X": 0,
@@ -7680,6 +7712,38 @@
           "actions": [
             {
               "name": "Idle",
+              "spriteSheet": "Idle",
+              "clip": "Samurai - Idle",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Walk",
+              "spriteSheet": "Walk",
+              "clip": "Samurai - Walk",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Run",
+              "spriteSheet": "Run",
+              "clip": "Samurai - Run",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Jump",
+              "spriteSheet": "Jump",
+              "clip": "Samurai - Jump",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Fall",
               "spriteSheet": "Idle-Sheet",
               "clip": "Char A - Idle",
               "loop": true,
@@ -7687,44 +7751,20 @@
               "keyBinding": "None"
             },
             {
-              "name": "Walk",
-              "spriteSheet": "Run-Sheet",
-              "clip": "Char A - Run",
+              "name": "Action8",
+              "spriteSheet": "Attack_1",
+              "clip": "Samurai - Attack 1",
               "loop": true,
-              "priority": 5,
-              "keyBinding": "None"
-            },
-            {
-              "name": "Run",
-              "spriteSheet": "Run-Sheet",
-              "clip": "Char A - Run",
-              "loop": true,
-              "priority": 5,
-              "keyBinding": "None"
-            },
-            {
-              "name": "Jump",
-              "spriteSheet": "Jump-Start-Sheet",
-              "clip": "Char A - Jump Start",
-              "loop": false,
-              "priority": 5,
-              "keyBinding": "None"
-            },
-            {
-              "name": "Fall",
-              "spriteSheet": "Jump-End-Sheet",
-              "clip": "Char A - Jump End",
-              "loop": false,
-              "priority": 5,
-              "keyBinding": "None"
-            },
-            {
-              "name": "Attach",
-              "spriteSheet": "Attack-01-Sheet",
-              "clip": "Char A - Attack",
-              "loop": false,
               "priority": 5,
               "keyBinding": "J"
+            },
+            {
+              "name": "Action9",
+              "spriteSheet": "Dead",
+              "clip": "Samurai - Dead",
+              "loop": false,
+              "priority": 5,
+              "keyBinding": "X"
             }
           ],
           "cameraFov": 60,
@@ -8343,6 +8383,22 @@
               "keyBinding": "None"
             },
             {
+              "name": "Jump Start",
+              "spriteSheet": "",
+              "clip": "",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
+              "name": "Jump End",
+              "spriteSheet": "",
+              "clip": "",
+              "loop": true,
+              "priority": 5,
+              "keyBinding": "None"
+            },
+            {
               "name": "Fall",
               "spriteSheet": "",
               "clip": "",
@@ -8894,8 +8950,8 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.03183,
-        43.81875,
+        60.636566,
+        32,
         307.03183
       ],
       "editorCameraYaw": 180,

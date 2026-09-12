@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Terrains;
@@ -16,7 +17,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     public class LoadingScene : IScene
     {
         private readonly SceneManager _sceneManager;
-        private readonly GameScene _gameScene;
+        private readonly Camera _camera;
+        private readonly Lights _light;
+
+        // Target scene from game.ing (optional). When set, we load its asset and switch to
+        // that scene after resources are ready instead of switching to a blank GameScene.
+        private readonly string? _targetSceneName;
 
         // ── Scene root element for IDE hierarchy ──
         private readonly UIElement _sceneRoot = new()
@@ -32,16 +38,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private string _status = "Loading...";
         private float _deltaTime = 0f;
 
-        // When true, synchronous loading is done and we should switch to GameScene
+        // When true, synchronous loading is done and we should switch to the target scene.
         private bool _loadingComplete = false;
 
         // Game resources that will be created during loading
-        private Camera? _camera;
-        private Lights? _light;
         private TerrainChunk? _gameTerrainChunk;
         private Skybox? _skybox;
         private ObjectManager? _objectManager;
         private Texture[]? _skyTextures;
+
+        // Active tilemap restored from the target game.ing scene (if any).
+        // Propagated to the IDE bridge before switching so GameScene can use
+        // map-based player spawn / level camera re-anchoring.
+        private Tilemap2D? _activeTilemap;
+
+        // Game scene created during loading and handed off to the engine.
+        private GameScene? _gameScene;
 
         public string Name => "LoadingScene";
 
@@ -58,14 +70,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         };
         public SceneRenderProperties RenderProperties => _renderProperties;
 
-        public LoadingScene(SceneManager sceneManager, Camera camera, Lights light)
+        public LoadingScene(SceneManager sceneManager, Camera camera, Lights light, string? targetSceneName = null)
         {
             _sceneManager = sceneManager;
             _camera = camera;
             _light = light;
-
-            // Create GameScene early (we'll pass fully loaded resources to it)
-            _gameScene = new GameScene(sceneManager, camera, light);
+            _targetSceneName = targetSceneName;
         }
 
         public void Enter()
@@ -151,8 +161,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             Thread.Sleep(500);
 
-            // ── Finalize: set up GameScene with loaded resources ──
-            _gameScene.SetResources(_skyTextures, _gameTerrainChunk, _skybox, _hud, _objectManager);
+        // ── If a real game scene from game.ing was requested, restore its editor objects
+            // (Player2D, Map2D, lights, ...) into an EditorObjectManager and wire that manager
+            // into the IDE bridge so the loaded scene has the same world/content as the editor
+            // in-game path. Only the runtime ObjectManager is handed to GameScene below.
+            if (!string.IsNullOrEmpty(_targetSceneName))
+            {
+                var targetAsset = SceneAssetSerializer.FindScene(_targetSceneName);
+                if (targetAsset != null && string.Equals(targetAsset.SceneType, "GameScene", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[LoadingScene] Target game scene '{_targetSceneName}' found in game.ing — restoring its editor objects");
+
+                    var editorMgr = new EditorObjectManager();
+                    _activeTilemap = RestoreEditorObjects(editorMgr, targetAsset);
+
+                    var b = _sceneManager.Bridge;
+                    if (b != null)
+                    {
+                        b.EditorObjectManager = editorMgr;
+                        if (_activeTilemap != null)
+                            b.ActiveTilemap = _activeTilemap;
+                    }
+                }
+            }
+
+            // ── Finalize: create GameScene and set loaded resources ──
+            var gameScene = new GameScene(_sceneManager, _camera, _light);
+            gameScene.SetResources(_skyTextures, _gameTerrainChunk, _skybox, _hud, _objectManager);
+            _gameScene = gameScene;
 
             // ── Scene starts blank! No .ing file is loaded automatically. ──
             // User can create UI via the IDE SceneDetail panel or use reload from .ing.
@@ -202,6 +238,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (_loadingComplete)
             {
                 _loadingComplete = false;
+
+                // If we restored a Map2D from the target scene asset, wire it into the IDE
+                // bridge before switching so GameScene.Enter() can use map-based player spawn
+                // and level camera re-anchoring consistently with the editor in-game path.
+                if (_activeTilemap != null)
+                {
+                    var b = _sceneManager.Bridge;
+                    if (b != null)
+                        b.ActiveTilemap = _activeTilemap;
+                }
+
                 _sceneManager.SwitchScene(_gameScene);
             }
         }
@@ -297,6 +344,95 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 OpenGL.SwapBuffer(window);
                 OpenGL.PollEvents();
             }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  Restore scene content from game.ing into the loaded ObjectManager
+        // ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Restore editor-placed 3D objects from a game.ing scene asset into the given manager.
+        /// Returns the active Tilemap2D (if any) so the loader can propagate it to the IDE
+        /// bridge / level camera path before switching to the game scene.
+        /// </summary>
+        private Tilemap2D? RestoreEditorObjects(EditorObjectManager manager, SceneAsset asset)
+        {
+            Tilemap2D? activeTilemap = null;
+
+            if (asset.EditorObjects == null || manager == null) return activeTilemap;
+
+            foreach (var objData in asset.EditorObjects)
+            {
+                var primType = objData.PrimitiveType.ToLowerInvariant() switch
+                {
+                    "plane" => EditorPrimitiveType.Plane,
+                    "sphere" => EditorPrimitiveType.Sphere,
+                    "box" => EditorPrimitiveType.Box,
+                    "glbreference" => EditorPrimitiveType.GlbReference,
+                    "camera" => EditorPrimitiveType.Camera,
+                    "light" => EditorPrimitiveType.Light,
+                    "sky" => EditorPrimitiveType.Sky,
+                    "map2d" => EditorPrimitiveType.Map2D,
+                    "player2d" => EditorPrimitiveType.Player2D,
+                    "start2d" => EditorPrimitiveType.Start2D,
+                    "camerastart2d" => EditorPrimitiveType.CameraStart2D,
+                    _ => EditorPrimitiveType.Box,
+                };
+
+                var pos = new System.Numerics.Vector3(objData.PosX, objData.PosY, objData.PosZ);
+                var obj = manager.AddPrimitive(primType, pos);
+                obj.Name = objData.Name;
+                obj.RotationEuler = new System.Numerics.Vector3(objData.RotX, objData.RotY, objData.RotZ);
+                obj.Scale = new System.Numerics.Vector3(objData.ScaleX, objData.ScaleY, objData.ScaleZ);
+                obj.Color = new System.Numerics.Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
+                obj.CastShadow = objData.CastShadow;
+                obj.IsVisible = objData.IsVisible;
+
+                // Restore GLB model path (resolved against the exe folder, same as the IDE path).
+                if (!string.IsNullOrEmpty(objData.GlbFilePath))
+                    obj.GlbFilePath = PathHelpers.Resolve(objData.GlbFilePath);
+
+                // ── Per-type runtime properties ──
+                // (Only restore fields the runtime actually uses; the rest are editor-only.)
+                obj.CameraFov = objData.CameraFov;
+                obj.CameraNear = objData.CameraNear;
+                obj.CameraFar = objData.CameraFar;
+                obj.LightDirection = new System.Numerics.Vector3(objData.LightDirX, objData.LightDirY, objData.LightDirZ);
+                obj.LightIntensity = objData.LightIntensity;
+                obj.LightTypeEnum = (LightType)Math.Clamp(objData.LightType, 0, 2);
+                obj.LightConeAngle = Math.Clamp(objData.LightConeAngle, 1f, 89f);
+                obj.LightPointRadius = Math.Max(0f, objData.LightPointRadius);
+                obj.SkyTimeOfDay = objData.SkyTimeOfDay;
+                obj.SkySunPitch = objData.SkySunPitch;
+                obj.SkySunYaw = objData.SkySunYaw;
+                obj.SkyCloudCoverage = objData.SkyCloudCoverage;
+                obj.SkySunIntensity = objData.SkySunIntensity;
+                obj.SkyTimeAnimSpeed = objData.SkyTimeAnimSpeed;
+                obj.SkyTimeAnimPaused = objData.SkyTimeAnimPaused;
+                obj.ShowFrustum = objData.ShowFrustum;
+                obj.ShowLightGizmo = objData.ShowLightGizmo;
+                obj.ShowSkyGizmo = objData.ShowSkyGizmo;
+                if (objData.SkySettings != null)
+                    obj.SkySettings = objData.SkySettings;
+
+                // Restore per-object gizmo pivot override (nullable).
+                if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)
+                    obj.GizmoPivotOverride = new System.Numerics.Vector3(objData.PivotOverrideX.Value, objData.PivotOverrideY.Value, objData.PivotOverrideZ.Value);
+
+                // ── Map2D payload ──
+                if (primType == EditorPrimitiveType.Map2D && objData.Tilemap != null)
+                {
+                    var mapObj = obj as Objects.EditorObject;
+                    if (mapObj != null && mapObj.Map2dTilemap == null)
+                    {
+                        var tilemap = Visual.Tilemap2D.FromData(objData.Tilemap);
+                        mapObj.Map2dTilemap = tilemap;
+                        activeTilemap = tilemap;
+                    }
+                }
+            }
+
+            return activeTilemap;
         }
     }
 }

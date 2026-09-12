@@ -2518,6 +2518,10 @@ public class InspectorPanel
         float h = editorObj.Player2DHeight;
         if (ImGui.DragFloat("Sprite Height", ref h, 0.05f, 0.1f, 50f, "%.2f"))
             editorObj.Player2DHeight = MathF.Max(0.1f, h);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("World height of the character box. EVERY animation sheet stretches to this exact height, so idle/attack/jump all render the same size regardless of their frame pixel dimensions.");
+
+
 
         // ── Capsule collider ──
         float r = editorObj.Player2DCapsuleRadius;

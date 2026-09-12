@@ -1663,8 +1663,35 @@ public unsafe class ViewportPanel
         _bridge.SelectedEditorScene = sceneName;
         _bridge.SceneRoot = targetScene.Root;
         _bridge.SceneRootElements = new List<UIElement> { targetScene.Root }.AsReadOnly();
+
+        // ── Adopt the target scene's world state (same as SceneManagerPanel.SelectEditor        // Scene does when the user picks a scene in the panel). Without this, switching        // MainMenu → GameScene at runtime never adopts the GameScene's EditorObject        // manager/tilemap/spawn, so the 2D level and player never appear in-game.
+        _bridge.EditorObjectManager = targetScene.ObjectManager;
+        _bridge.SelectedEditorObject = null;
+
+        Tilemap2D? sceneLevel = null;
+        if (targetScene.Type == IDEBridge.SceneType.GameScene && targetScene.ObjectManager != null)
+        {
+            foreach (var o in targetScene.ObjectManager.Objects)
+            {
+                if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)
+                {
+                    sceneLevel = o.Map2dTilemap;
+                    break;
+                }
+            }
+        }
+        bool levelChanged = !ReferenceEquals(_bridge.ActiveTilemap, sceneLevel);
+        _bridge.ActiveTilemap = sceneLevel;
+
+        // Entering a 2D level: re-run the deferred player spawn (the new scene's        // Player2D object needs teleporting to the level's Start2D marker) and let        // SyncLevelCamera re-anchor the ortho front view for the new map.
+        if (sceneLevel != null)
+        {
+            EditorObject.Player2DSpawnPending = true;
+            EditorObject.CameraFollowInitialized = false;
+        }
+
         ResetSceneOverlays();
-        Console.WriteLine($"[Viewport] scene:{sceneName} → switched immediately");
+        Console.WriteLine($"[Viewport] scene:{sceneName} → switched immediately (type={targetScene.Type}, level={(sceneLevel != null ? "yes" : "no")})");
     }
 
     /// <summary>Toggle an overlay's visibility. Finds the overlay by name and toggles it.

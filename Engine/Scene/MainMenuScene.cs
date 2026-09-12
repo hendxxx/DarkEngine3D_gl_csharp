@@ -646,7 +646,18 @@ public unsafe class MainMenuScene : IScene
             {
                 Console.WriteLine("[MainMenu] Starting new game...");
                 GameScene.PendingLoadSlot = -1;
-                _sceneManager.SwitchScene(new LoadingScene(_sceneManager, _camera, _light));
+
+                // If a game scene exists in game.ing, route the new-game flow through the
+                // loading screen into that scene (so it shares the same world/content as the
+                // editor in-game path). Otherwise fall back to the legacy blank GameScene path.
+                string? targetSceneName = null;
+                var gameSceneAsset = SceneAssetSerializer.FindScene("scnUtama");
+                if (gameSceneAsset != null && string.Equals(gameSceneAsset.SceneType, "GameScene", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetSceneName = "scnUtama";
+                }
+
+                _sceneManager.SwitchScene(new LoadingScene(_sceneManager, _camera, _light, targetSceneName));
             },
             "continue" => () =>
             {

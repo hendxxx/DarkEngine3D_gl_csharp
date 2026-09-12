@@ -310,7 +310,10 @@ public unsafe class EditorObject
     /// played whenever no action overrides it. ALL other states (Walk/Run/Jump/Attack/
     /// custom) are configured through the Animation Actions system (Player2DActions).</summary>
     public string Player2DAnimationClip { get; set; } = "";
-    /// <summary>Sprite height in world units. Width derives from the sheet's frame aspect.</summary>
+    /// <summary>Sprite height in world units. Width derives from the sheet's frame aspect.
+    /// Used as the BASE height reference. Each animation frame is scaled proportionally
+    /// to this height based on its native pixel size, so all animations render at the same
+    /// visual size regardless of their original frame dimensions (idle 64px, run 80px, etc.).</summary>
     public float Player2DHeight { get; set; } = 2f;
     /// <summary>Capsule collider radius in world units.</summary>
     public float Player2DCapsuleRadius { get; set; } = 0.35f;
@@ -2795,7 +2798,7 @@ public unsafe class EditorObject
         var drawSheet = actionClip != null && actionSheet != null ? actionSheet : sheet;
         if (!IDEBridge.TryGetSpriteSheetTexture(drawSheet.Name, out uint texId, out int imgW, out int imgH))
             return;
-        if (texId == 0 || imgW <= 0 || imgH <= 0) return;
+        if (texId == 0) return;
 
         // Advance the animation clock HERE (once per frame per player) — this is the
         // single source of truth so the sprite animates in edit mode too. The clock
@@ -2850,15 +2853,13 @@ public unsafe class EditorObject
         if (!Player2DFacingRight)
             (su0, su1) = (su1, su0);
 
-        // Quad size: Player2DHeight tall, width follows the ACTIVE sheet's frame aspect
-        // (action sheets may have different frame dimensions than the base sheet).
-        float frameAspect = drawSheet.FrameHeight > 0 ? (float)drawSheet.FrameWidth / drawSheet.FrameHeight : 1f;
         float h = Player2DHeight;
-        float w = h * frameAspect;
-        // Feet on the object position (spawn anchors at the capsule bottom).
-        float x0 = Position.X - w * 0.5f, x1 = Position.X + w * 0.5f;
-        float y0 = Position.Y, y1 = Position.Y + h;
-        float z = Position.Z + 0.05f; // slightly in front of the grid
+        float w = Player2DHeight;
+        float x0 = Position.X - w * 0.5f;
+        float x1 = Position.X + w * 0.5f;
+        float y0 = Position.Y;
+        float y1 = Position.Y + h;
+        float z = Position.Z + 0.05f;
 
         EnsureMap2DShader();
         if (_map2dShader == 0) return;
