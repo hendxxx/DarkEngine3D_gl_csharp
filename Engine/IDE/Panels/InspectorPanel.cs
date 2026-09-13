@@ -2591,6 +2591,20 @@ public class InspectorPanel
             if (ImGui.SliderFloat("Air Control", ref air, 0f, 1f, "%.2f"))
                 editorObj.Player2DAirControl = air;
 
+            float coyote = editorObj.Player2DCoyoteTime;
+            if (ImGui.SliderFloat("Coyote Time", ref coyote, 0f, 0.3f, "%.2f s"))
+                editorObj.Player2DCoyoteTime = MathF.Max(0f, coyote);
+
+            float jbuf = editorObj.Player2DJumpBuffer;
+            if (ImGui.SliderFloat("Jump Buffer", ref jbuf, 0f, 0.3f, "%.2f s"))
+                editorObj.Player2DJumpBuffer = MathF.Max(0f, jbuf);
+
+            float jcut = editorObj.Player2DJumpCutMultiplier;
+            if (ImGui.SliderFloat("Jump Cut", ref jcut, 0.05f, 1f, "%.2f"))
+                editorObj.Player2DJumpCutMultiplier = jcut;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Velocity multiplier applied once when the jump key is released mid-rise.\nShort tap = short hop, hold = full height. 1.0 = fixed arc (off).");
+
             // Quick-preset the whole movement block using the project's tuning formula:
             //   Jump Force    = 2 × Move Speed
             //   Gravity Scale = Move Speed + (Move Speed / 4)  (= 1.25 × Move Speed)
@@ -2601,17 +2615,23 @@ public class InspectorPanel
             {
                 float ms = MathF.Max(0.1f, editorObj.Player2DMoveSpeed);
                 editorObj.Player2DRunSpeed = ms * 1.75f;
+                // Preset formula: Gravity 25, Jump Force = 2× walk speed,
+                // Gravity Scale = 2× (arc scales with speed, gravity base fixed).
                 editorObj.Player2DJumpForce = ms * 2f;
-                editorObj.Player2DGravity = 60f;
-                editorObj.Player2DGravityScale = ms + (ms / 4f);
+                editorObj.Player2DGravity = 25f;
+                editorObj.Player2DGravityScale = 2f;
                 editorObj.Player2DAcceleration = ms * 25f;
                 editorObj.Player2DDeceleration = ms * 27.5f;
                 editorObj.Player2DAirControl = 0.25f;
+                // Jump-feel defaults ride along so the preset configures the full feel.
+                editorObj.Player2DCoyoteTime = 0.1f;
+                editorObj.Player2DJumpBuffer = 0.12f;
+                editorObj.Player2DJumpCutMultiplier = 0.5f;
                 ImGui.SetItemDefaultFocus();
             }
             ImGui.SameLine();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Snaps Run/Accel/Decel to a platformer ratio and applies the tuning formula: Jump Force = 2 x Move Speed, Gravity Scale = Move Speed + Move Speed/4; AirControl stays low so mid-air steering stays minimal");
+                ImGui.SetTooltip("Snaps Run/Accel/Decel to a platformer ratio based on the current Move Speed and applies: Gravity = 25, Jump Force = 2 x Move Speed, Gravity Scale = 2; AirControl stays low so mid-air steering stays minimal");
         }
 
         // ── Camera follow tuning ──

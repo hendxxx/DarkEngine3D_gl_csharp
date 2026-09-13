@@ -45,6 +45,21 @@
         "RepeatY": 0,
         "LeftPx": 0,
         "TopPx": 0
+      },
+      {
+        "Name": "Parallax 2",
+        "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\0.png",
+        "IsVisible": true,
+        "ScrollFactor": 0.6,
+        "ZPosition": 1,
+        "Alpha": 1,
+        "TileHorizontal": true,
+        "WidthPx": 0,
+        "HeightPx": 0,
+        "RepeatX": 1,
+        "RepeatY": 1,
+        "LeftPx": 0,
+        "TopPx": 299
       }
     ],
     "CameraStartX": 83.03183,

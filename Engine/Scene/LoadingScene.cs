@@ -299,7 +299,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _status = text;
 
             nint window = Glfw.GetWindow();
-            float dt = Glfw.GetDeltaTime();
+            float dt = Glfw.PeekDeltaTime(); // peek: loading frames don't slice the shared clock
             bool ideActive = _sceneManager.IsIdeActive;
 
             // ── When IDE is active, render into the shared FBO so Viewport panel shows loading progress ──

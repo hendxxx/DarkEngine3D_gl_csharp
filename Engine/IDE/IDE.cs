@@ -300,6 +300,15 @@ public class IDE : IDisposable
             // Auto-load sprite sheets + Map Editor grid/palette prefs
             _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
             _mapEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
+            // Re-apply per-project ortho zoom limits. The IDE constructor applied
+            // these BEFORE any project was open (exe-fallback settings), so without
+            // this reload the project's settings.json range (e.g. 25–50 for pixel-art)
+            // never took effect until restart. Also clamp the camera's current zoom
+            // into the new range so an out-of-range OrthoSize snaps to the boundary.
+            var projSettings = SettingsSave.Load();
+            Visual.Camera.ApplyZoomLimits(projSettings.OrthoZoomMin, projSettings.OrthoZoomMax);
+            if (Bridge.Camera != null)
+                Bridge.Camera.OrthoSize = Math.Clamp(Bridge.Camera.OrthoSize, Visual.Camera.OrthoZoomMin, Visual.Camera.OrthoZoomMax);
             // 2D level maps live INSIDE each scene's .ing (Map2D object payload saved/restored
             // by SceneManagerPanel). A scene only shows its level when the file contains one,
             // so there is no project-wide map auto-load anymore.
@@ -319,6 +328,10 @@ public class IDE : IDisposable
             Bridge.ActiveTilemap = null;
             // Reset Asset Browser to default
             _assetBrowser?.SetProjectRoot(null);
+            // Zoom limits follow the active settings file — with no project open this
+            // reads the exe-fallback settings.json (IsProjectLoaded already false here).
+            var fallbackSettings = SettingsSave.Load();
+            Visual.Camera.ApplyZoomLimits(fallbackSettings.OrthoZoomMin, fallbackSettings.OrthoZoomMax);
             // Clear sprite sheets + map editor state
             _spriteEditor?.OnProjectChanged(null);
             _mapEditor?.AutoLoadMap(null);

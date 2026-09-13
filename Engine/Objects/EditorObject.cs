@@ -377,6 +377,23 @@ public unsafe class EditorObject
     /// <summary>0..1 — how much of ground acceleration applies while airborne.
     /// Low values = no mid-air steering (classic platformer feel).</summary>
     public float Player2DAirControl { get; set; } = 0.25f;
+    /// <summary>Grace period (s) after walking off a ledge where a jump still fires —
+    /// forgiving near-edge jumps. 0 = disabled (must be grounded the exact frame).</summary>
+    public float Player2DCoyoteTime { get; set; } = 0.1f;
+    /// <summary>Input buffer (s): a jump pressed slightly BEFORE landing still fires on
+    /// touchdown. 0 = disabled (press must land on the exact frame).</summary>
+    public float Player2DJumpBuffer { get; set; } = 0.12f;
+    /// <summary>0.05..1 — velocity multiplier applied ONCE when the jump key is released
+    /// mid-rise (short taps = short hops, hold = full height). 1 = disabled (fixed arc).</summary>
+    public float Player2DJumpCutMultiplier { get; set; } = 0.5f;
+
+    // Runtime (not persisted): countdowns + jump-cut latch for the params above.
+    /// <summary>Remaining coyote time this frame (refilled while grounded).</summary>
+    public float Player2DCoyoteTimer { get; set; }
+    /// <summary>Remaining jump-buffer time this frame (refilled while jump is pressed).</summary>
+    public float Player2DJumpBufferTimer { get; set; }
+    /// <summary>True once the current jump's height cut has been applied (reset on jump).</summary>
+    public bool Player2DJumpCutDone { get; set; } = true;
 
     // ── Camera-follow tuning (used by the Player2DSystem camera follow) ──
     /// <summary>How fast the camera catches the target (higher = snappier).</summary>
@@ -2652,6 +2669,10 @@ public unsafe class EditorObject
     /// <summary>Name of the clip DrawPlayer2D played last frame — used to detect idle ↔
     /// walk switches and restart the animation clock from frame 0 (transient).</summary>
     private string? _player2dLastClip;
+    /// <summary>Glfw.FrameId when the animation clock last advanced — DrawPlayer2D can run
+    /// multiple times per rendered frame (editor pass + per camera); the clock must only
+    /// advance once or clips play too fast (transient).</summary>
+    private int _player2dLastClockFrame = -1;
 
     /// <summary>Look up the Sprite Editor's sheet+clip by name via the IDEBridge static
     /// registry (set every frame by SpriteEditorPanel.SyncToBridge). Returns false when
@@ -2813,7 +2834,13 @@ public unsafe class EditorObject
             // Continuity across Idle↔Walk↔Run is preserved because ResolveLocomotion
             // Action only resets Player2DActionTime when the clip actually changes
             // (same-clip switches keep the clock running — the "no blink" fix).
-            Player2DActionTime += Glfw.GetDeltaTime();
+            // Frame-gated like the base clock below — DrawPlayer2D can run multiple
+            // times per rendered frame (editor pass + per camera).
+            if (_player2dLastClockFrame != Glfw.FrameId)
+            {
+                _player2dLastClockFrame = Glfw.FrameId;
+                Player2DActionTime += Glfw.PeekDeltaTime();
+            }
             // Non-looping actions release when finished — BUT only when the physics
             // state no longer wants this action. Locomotion-driven non-loop actions
             // (Jump Start/Jump End) must HOLD their last frame: releasing them while
@@ -2849,7 +2876,15 @@ public unsafe class EditorObject
                 _player2dLastClip = activeClipName;
                 Player2DAnimTime = 0f;
             }
-            Player2DAnimTime += Glfw.GetDeltaTime();
+            // Advance ONCE per frame even though DrawPlayer2D may run multiple times
+            // (editor pass + one per camera): gate on the central loop's frame id.
+            // PeekDeltaTime() is a read-only repeat — without this gate both passes
+            // would add the same dt and play every clip at 2× speed.
+            if (_player2dLastClockFrame != Glfw.FrameId)
+            {
+                _player2dLastClockFrame = Glfw.FrameId;
+                Player2DAnimTime += Glfw.PeekDeltaTime();
+            }
         }
 
         // Frame index: from the action clock (honoring the ACTION's loop flag without

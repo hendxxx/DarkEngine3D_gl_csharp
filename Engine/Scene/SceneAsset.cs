@@ -191,6 +191,10 @@ public class EditorObjectData
     public float Player2DAcceleration { get; set; } = 60f;
     public float Player2DDeceleration { get; set; } = 80f;
     public float Player2DAirControl { get; set; } = 0.65f;
+    // ── Platformer jump feel ──
+    public float Player2DCoyoteTime { get; set; } = 0.1f;
+    public float Player2DJumpBuffer { get; set; } = 0.12f;
+    public float Player2DJumpCutMultiplier { get; set; } = 0.5f;
     // ── Player2D camera-follow tuning ──
     public float CameraFollowSpeed { get; set; } = 6f;
     public float CameraDeadZoneWidth { get; set; } = 96f;

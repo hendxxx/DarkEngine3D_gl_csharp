@@ -959,6 +959,9 @@ public class SceneManagerPanel
                         Player2DAcceleration = obj.Player2DAcceleration,
                         Player2DDeceleration = obj.Player2DDeceleration,
                         Player2DAirControl = obj.Player2DAirControl,
+                        Player2DCoyoteTime = obj.Player2DCoyoteTime,
+                        Player2DJumpBuffer = obj.Player2DJumpBuffer,
+                        Player2DJumpCutMultiplier = obj.Player2DJumpCutMultiplier,
                         CameraFollowSpeed = obj.CameraFollowSpeed,
                         CameraDeadZoneWidth = obj.CameraDeadZoneWidth,
                         CameraDeadZoneHeight = obj.CameraDeadZoneHeight,
@@ -1563,6 +1566,9 @@ public class SceneManagerPanel
                         obj.Player2DAcceleration = objData.Player2DAcceleration;
                         obj.Player2DDeceleration = objData.Player2DDeceleration;
                         obj.Player2DAirControl = objData.Player2DAirControl;
+                        obj.Player2DCoyoteTime = objData.Player2DCoyoteTime;
+                        obj.Player2DJumpBuffer = objData.Player2DJumpBuffer;
+                        obj.Player2DJumpCutMultiplier = objData.Player2DJumpCutMultiplier;
                         obj.CameraFollowSpeed = objData.CameraFollowSpeed;
                         obj.CameraDeadZoneWidth = objData.CameraDeadZoneWidth;
                         obj.CameraDeadZoneHeight = objData.CameraDeadZoneHeight;

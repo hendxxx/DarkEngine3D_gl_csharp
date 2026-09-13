@@ -247,7 +247,7 @@
       "OffsetY": 0,
       "MasterWidth": 80,
       "MasterHeight": 80,
-      "SpriteOffsetX": 0,
+      "SpriteOffsetX": 6,
       "SpriteOffsetY": 15,
       "CustomFrames": [
         {
@@ -837,36 +837,6 @@
       "SpriteOffsetY": 15
     },
     {
-      "Name": "Char A - Jump",
-      "SpriteSheetName": "Jump-All-Sheet",
-      "FrameIndices": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14
-      ],
-      "FPS": 12,
-      "Loop": true,
-      "Reverse": false,
-      "SpeedMultiplier": 1,
-      "Events": {},
-      "MasterWidth": 80,
-      "MasterHeight": 80,
-      "SpriteOffsetX": 0,
-      "SpriteOffsetY": 15
-    },
-    {
       "Name": "Char A - Jump Start",
       "SpriteSheetName": "Jump-Start-Sheet",
       "FrameIndices": [
@@ -925,10 +895,40 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": -1
+    },
+    {
+      "Name": "Char A - Jump",
+      "SpriteSheetName": "Jump-All-Sheet",
+      "FrameIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "FPS": 20,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {},
+      "MasterWidth": 80,
+      "MasterHeight": 80,
+      "SpriteOffsetX": 6,
+      "SpriteOffsetY": 15
     }
   ],
   "PreviewStartFrame": 0,
-  "PreviewEndFrame": 3,
+  "PreviewEndFrame": 14,
   "PreviewFps": 20,
   "PreviewLoop": true
 }

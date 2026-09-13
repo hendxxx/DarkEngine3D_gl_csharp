@@ -62,6 +62,7 @@ public static class Player2DSystem
                         start2d.Position.Z);
                     p.Player2DVelocityY = 0f;
                     p.Player2DAnimTime = 0f;
+                    p.Player2DJumpCutDone = true; // fresh session: no height cut pending
                     // Fresh run: clear any stale walk/facing state carried over from
                     // a previous in-game session.
                     p.Player2DMoving = false;
@@ -135,12 +136,35 @@ public static class Player2DSystem
             player.Player2DMoving = MathF.Abs(velX) > 0.05f;
             if (velX > 0f) player.Player2DFacingRight = true;
             else if (velX < 0f) player.Player2DFacingRight = false;
-            if (jump && player.Player2DGrounded)
+            // ── Platformer jump feel: coyote time + jump buffer + variable height ──
+            // Timers advance per-frame against the live params (both 0 = classic strict
+            // grounded-jump behavior, so the feature never fights the old tuning).
+            bool jumpHeld = ImGui.IsKeyDown(ImGuiKey.Space) || ImGui.IsKeyDown(ImGuiKey.UpArrow);
+            float coyoteMax = MathF.Max(0f, player.Player2DCoyoteTime);
+            float bufferMax = MathF.Max(0f, player.Player2DJumpBuffer);
+            player.Player2DCoyoteTimer = player.Player2DGrounded ? coyoteMax : MathF.Max(0f, player.Player2DCoyoteTimer - dt);
+            if (jump) player.Player2DJumpBufferTimer = bufferMax;
+            else player.Player2DJumpBufferTimer = MathF.Max(0f, player.Player2DJumpBufferTimer - dt);
+
+            bool canCoyoteJump = player.Player2DGrounded || player.Player2DCoyoteTimer > 0f;
+            if (player.Player2DJumpBufferTimer > 0f && canCoyoteJump)
             {
+                // Consume the buffered press + burn coyote so one press can't double-fire.
+                player.Player2DJumpBufferTimer = 0f;
+                player.Player2DCoyoteTimer = 0f;
                 player.Player2DVelocityY = MathF.Max(1f, player.Player2DJumpForce);
                 player.Player2DGrounded = false;
+                player.Player2DJumpCutDone = false; // re-arm the release cut for this arc
                 // Jump action fires automatically (priority-gated).
                 player.TryStartAction("Jump");
+            }
+            // Variable jump height: releasing the key mid-rise cuts upward velocity ONCE
+            // (short tap = short hop, hold = full height; multiplier 1 = fixed arc).
+            if (!jumpHeld && !player.Player2DJumpCutDone && player.Player2DVelocityY > 0f)
+            {
+                float cut = Math.Clamp(player.Player2DJumpCutMultiplier, 0.05f, 1f);
+                player.Player2DVelocityY *= cut;
+                player.Player2DJumpCutDone = true;
             }
 
             // ── User-bound action keys (Inspector: Attack = J, Block = K, ...) ──
@@ -389,6 +413,7 @@ public static class Player2DSystem
                     start2d.Position.Z);
                 player.Player2DVelocityY = 0f;
                 player.Player2DGrounded = false;
+                player.Player2DJumpCutDone = true;
                 // Respawn faces right in the idle state (standard sidescroller reset).
                 player.Player2DMoving = false;
                 player.Player2DFacingRight = true;
