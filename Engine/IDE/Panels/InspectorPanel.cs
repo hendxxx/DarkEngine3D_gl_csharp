@@ -2791,11 +2791,27 @@ public class InspectorPanel
         {
             var act = editorObj.Actions[i];
             ImGui.PushID($"p2dact{i}");
-            if (ImGui.TreeNodeEx($"{act.Name}", ImGuiTreeNodeFlags.FramePadding))
+            // Stable widget ID: the label's visible part changes while typing, but the
+            // ID comes from the text after '##' — without it, renaming changed the ID
+            // every keystroke, ImGui rebuilt the TreeNode and the InputText lost focus.
+            if (ImGui.TreeNodeEx($"{act.Name}##p2dact{i}", ImGuiTreeNodeFlags.FramePadding))
             {
                 string name = act.Name;
-                if (ImGui.InputText("Action Name", ref name, 64))
-                    act.Name = name;
+                // Commit on Enter/defocus (not per keystroke) so renaming doesn't
+                // retrigger lookups (current-action reference, locomotion binding)
+                // while the text is still being typed.
+                ImGui.InputText("Action Name", ref name, 64, ImGuiInputTextFlags.EnterReturnsTrue);
+                if (ImGui.IsItemDeactivatedAfterEdit() || ImGui.IsKeyPressed(ImGuiKey.Enter))
+                {
+                    string trimmed = name.Trim();
+                    if (trimmed.Length > 0 && trimmed != act.Name)
+                    {
+                        // Keep references in sync: currently-playing action + key lookups.
+                        if (editorObj.Player2DCurrentAction == act.Name)
+                            editorObj.Player2DCurrentAction = trimmed;
+                        act.Name = trimmed;
+                    }
+                }
 
                 // Sheet dropdown (auto-select first — dropdown rule)
                 string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : [""];
@@ -2840,6 +2856,15 @@ public class InspectorPanel
                 bool loop = act.Loop;
                 if (ImGui.Checkbox("Loop", ref loop))
                     act.Loop = loop;
+
+                // Stop on Frame End: non-loop action finishes → HOLD the last frame
+                // until any key is pressed. The action's own key does nothing (no
+                // replay); a different action's key releases the hold and starts it.
+                bool stopEnd = act.StopOnFrameEnd;
+                if (ImGui.Checkbox("Stop on Frame End", ref stopEnd))
+                    act.StopOnFrameEnd = stopEnd;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("When the clip finishes (Loop off): hold the last frame. Any key releases the hold\nback to idle — the action's own key is ignored (no replay); a different action's key starts it.");
 
                 int prio = act.Priority;
                 if (ImGui.InputInt("Priority", ref prio))

@@ -467,6 +467,7 @@ public class Player2DActionData
     public string SpriteSheet { get; set; } = "";
     public string Clip { get; set; } = "";
     public bool Loop { get; set; } = true;
+    public bool StopOnFrameEnd { get; set; }
     public int Priority { get; set; } = 5;
     public string KeyBinding { get; set; } = "None";
 }

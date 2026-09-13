@@ -1364,6 +1364,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -1372,6 +1373,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -1380,6 +1382,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -1388,6 +1391,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -1396,6 +1400,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -1404,6 +1409,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -1412,6 +1418,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -2013,6 +2020,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2021,6 +2029,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2029,6 +2038,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2037,6 +2047,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2045,6 +2056,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2053,6 +2065,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2061,6 +2074,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -2664,6 +2678,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2672,6 +2687,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2680,6 +2696,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2688,6 +2705,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2696,6 +2714,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2704,6 +2723,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -2712,6 +2732,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -3313,6 +3334,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3321,6 +3343,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3329,6 +3352,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3337,6 +3361,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3345,6 +3370,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3353,6 +3379,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3361,6 +3388,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -3962,6 +3990,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3970,6 +3999,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3978,6 +4008,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3986,6 +4017,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -3994,6 +4026,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -4002,6 +4035,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -4010,6 +4044,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -9730,6 +9765,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -9738,6 +9774,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -9746,6 +9783,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -9754,6 +9792,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -9762,6 +9801,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -9770,6 +9810,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -9778,6 +9819,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -10379,6 +10421,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -10387,6 +10430,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -10395,6 +10439,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -10403,6 +10448,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -10411,6 +10457,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -10419,6 +10466,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -10427,6 +10475,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -10972,7 +11021,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 72,
+          "posX": 82.3,
           "posY": 0,
           "posZ": 0,
           "rotX": 0,
@@ -11015,7 +11064,7 @@
           "cameraDeadZoneWidth": 0,
           "cameraDeadZoneHeight": 0,
           "cameraVerticalThreshold": 0,
-          "cameraReturnSpeed": 0.5,
+          "cameraReturnSpeed": 20,
           "cameraLookAhead": 0,
           "cameraViewOffset": {
             "X": 0,
@@ -11028,6 +11077,7 @@
               "spriteSheet": "Idle-Sheet",
               "clip": "Char A - Idle",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11036,6 +11086,7 @@
               "spriteSheet": "Run-Sheet",
               "clip": "Char A - Run",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11044,6 +11095,7 @@
               "spriteSheet": "Run-Sheet",
               "clip": "Char A - Run",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11052,6 +11104,7 @@
               "spriteSheet": "Jump-All-Sheet",
               "clip": "Char A - Jump",
               "loop": false,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11060,8 +11113,18 @@
               "spriteSheet": "Attack-01-Sheet",
               "clip": "Char A - Attack 1",
               "loop": false,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "J"
+            },
+            {
+              "name": "Dead",
+              "spriteSheet": "Dead-Sheet",
+              "clip": "Char A - Dead",
+              "loop": false,
+              "stopOnFrameEnd": true,
+              "priority": 5,
+              "keyBinding": "C"
             }
           ],
           "cameraFov": 60,
@@ -11661,6 +11724,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11669,6 +11733,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11677,6 +11742,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11685,6 +11751,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11693,6 +11760,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11701,6 +11769,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -11709,6 +11778,7 @@
               "spriteSheet": "",
               "clip": "",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -12310,6 +12380,7 @@
               "spriteSheet": "Campfire sheet",
               "clip": "Fire 1",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -12318,6 +12389,7 @@
               "spriteSheet": "Campfire sheet",
               "clip": "Fire 1",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -12326,6 +12398,7 @@
               "spriteSheet": "Campfire sheet",
               "clip": "Fire 1",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -12334,6 +12407,7 @@
               "spriteSheet": "Campfire sheet",
               "clip": "Fire 1",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -12342,6 +12416,7 @@
               "spriteSheet": "Campfire sheet",
               "clip": "Fire 1",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -12350,6 +12425,7 @@
               "spriteSheet": "Campfire sheet",
               "clip": "Fire 1",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             },
@@ -12358,6 +12434,7 @@
               "spriteSheet": "Campfire sheet",
               "clip": "Fire 1",
               "loop": true,
+              "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None"
             }
@@ -12905,8 +12982,8 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        72,
-        32,
+        83.03183,
+        43.81875,
         307.03183
       ],
       "editorCameraYaw": 180,

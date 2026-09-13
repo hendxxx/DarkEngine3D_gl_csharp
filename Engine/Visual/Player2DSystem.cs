@@ -63,6 +63,10 @@ public static class Player2DSystem
                     p.Player2DVelocityY = 0f;
                     p.Player2DAnimTime = 0f;
                     p.Player2DJumpCutDone = true; // fresh session: no height cut pending
+                    // Fresh session: no action should carry over a frozen StopOnFrameEnd
+                    // hold from a previous run — start clean in idle.
+                    p.Player2DCurrentAction = "";
+                    p.Player2DActionHoldingEnd = false;
                     // Fresh run: clear any stale walk/facing state carried over from
                     // a previous in-game session.
                     p.Player2DMoving = false;

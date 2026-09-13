@@ -977,7 +977,8 @@ public class SceneManagerPanel
                             ? obj.Actions.Select(a => new Player2DActionData
                             {
                                 Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
-                                Loop = a.Loop, Priority = a.Priority, KeyBinding = a.KeyBinding,
+                                Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
+                                Priority = a.Priority, KeyBinding = a.KeyBinding,
                             }).ToList()
                             : null,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
@@ -1589,7 +1590,8 @@ public class SceneManagerPanel
                             obj.Actions = savedActions.Select(a => new Player2DAction
                             {
                                 Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
-                                Loop = a.Loop, Priority = a.Priority, KeyBinding = a.KeyBinding,
+                                Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
+                                Priority = a.Priority, KeyBinding = a.KeyBinding,
                             }).ToList();
                         else
                             obj.EnsureDefaultActions();

@@ -25,6 +25,12 @@ public class Player2DAction
     /// <summary>Animation clip name within the sheet.</summary>
     public string Clip { get; set; } = "";
     public bool Loop { get; set; } = true;
+    /// <summary>Non-loop actions with StopOnFrameEnd HOLD their last frame when the clip
+    /// finishes instead of returning to idle — until ANY key is pressed (move / jump /
+    /// action). Pressing the action's OWN key does nothing (no replay); a DIFFERENT
+    /// action's key releases the hold and starts that action. One-shot anims that
+    /// freeze on the impact frame (attack/death).</summary>
+    public bool StopOnFrameEnd { get; set; }
     /// <summary>Priority — a playing action can only be replaced by equal/higher priority.
     /// Dead = 100 cancels everything; Walk = 5 is interrupted by Attack/Skills.</summary>
     public int Priority { get; set; } = 5;
@@ -439,6 +445,11 @@ public unsafe class EditorObject
     public List<Player2DAction> Actions { get; set; } = new();
     /// <summary>Currently playing action name ("" = base locomotion).</summary>
     public string Player2DCurrentAction { get; set; } = "";
+    /// <summary>Runtime latch: the current StopOnFrameEnd action has finished and is
+    /// HOLDING its last frame — locomotion must not override until any key releases it
+    /// (the action's own key is ignored; a different action's key starts that action).
+    /// Not saved — editor-session state only.</summary>
+    [JsonIgnore] public bool Player2DActionHoldingEnd { get; set; }
     /// <summary>Time inside the current action (reset on action change).</summary>
     public float Player2DActionTime { get; set; }
     /// <summary>Static: request all Player2D objects to respawn at their Start2D marker
@@ -2802,9 +2813,15 @@ public unsafe class EditorObject
                     // will pick Idle/Walk/Run based on state.
                     Player2DCurrentAction = "";
                     Player2DActionTime = 0f;
+                    Player2DActionHoldingEnd = false;
                 }
                 return false; // don't override a key-bound action (held or not)
             }
+            // StopOnFrameEnd hold: the finished action freezes on its last frame —
+            // locomotion must NOT override it here. The hold releases only via the
+            // key scan in DrawPlayer2D (own key ignored, different action key starts).
+            if (cur != null && !cur.Loop && cur.StopOnFrameEnd && Player2DActionHoldingEnd)
+                return false;
         }
 
         string desired = ComputeLocomotionDesired();
@@ -2830,6 +2847,7 @@ public unsafe class EditorObject
         // new non-locomotion action (Jump/Fall/custom).
         bool sameClip = act.Clip == Player2DAnimationClip || (string.IsNullOrEmpty(act.Clip) && string.IsNullOrEmpty(Player2DAnimationClip));
         Player2DCurrentAction = desired;
+        Player2DActionHoldingEnd = false;
         if (!sameClip)
             Player2DActionTime = 0f;
         return true;
@@ -2877,7 +2895,11 @@ public unsafe class EditorObject
             if (_player2dLastClockFrame != Glfw.FrameId)
             {
                 _player2dLastClockFrame = Glfw.FrameId;
-                Player2DActionTime += Glfw.PeekDeltaTime();
+                // StopOnFrameEnd hold: clamp to the clip end so the time never runs
+                // away — the frame index below then stays pinned on the LAST frame.
+                float newT = Player2DActionTime + Glfw.PeekDeltaTime();
+                Player2DActionTime = (Player2DActionHoldingEnd && newT > actionClip.Duration)
+                    ? actionClip.Duration : newT;
             }
             // Non-looping actions release when finished — BUT only when the physics
             // state no longer wants this action. Locomotion-driven non-loop actions
@@ -2887,8 +2909,61 @@ public unsafe class EditorObject
             // Loop = false. The frame index below already clamps past the end.
             if (activeAction != null && !activeAction.Loop && Player2DActionTime >= actionClip.Duration)
             {
-                if (ComputeLocomotionDesired() != activeAction.Name)
+                // StopOnFrameEnd: latch the hold instead of clearing — the anim stays
+                // frozen on its last frame until any key releases it (scan below).
+                if (activeAction.StopOnFrameEnd)
+                {
+                    Player2DActionHoldingEnd = true;
+                }
+                else if (ComputeLocomotionDesired() != activeAction.Name)
+                {
                     Player2DCurrentAction = "";
+                }
+            }
+
+            // ── Hold release: ANY key returns the player to locomotion ──
+            // While a StopOnFrameEnd action holds its last frame: movement / jump keys
+            // clear the action so the resolver picks Idle/Walk/Run; a DIFFERENT action's
+            // key clears AND starts that action. The action's OWN key is ignored
+            // (no same-key replay) — only another action can follow.
+            if (Player2DActionHoldingEnd)
+            {
+                var holding = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+                bool released = false;
+                // Movement / jump: any of these breaks the hold back to locomotion.
+                if (ImGui.IsKeyPressed(ImGuiKey.A) || ImGui.IsKeyPressed(ImGuiKey.D)
+                    || ImGui.IsKeyPressed(ImGuiKey.W) || ImGui.IsKeyPressed(ImGuiKey.S)
+                    || ImGui.IsKeyPressed(ImGuiKey.LeftArrow) || ImGui.IsKeyPressed(ImGuiKey.RightArrow)
+                    || ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow))
+                {
+                    released = true;
+                }
+                // Action keys: own key ignored (validation), different key starts it.
+                if (!released)
+                {
+                    foreach (var a in Actions)
+                    {
+                        if (string.IsNullOrEmpty(a.KeyBinding) || a.KeyBinding == "None") continue;
+                        if (a.Name == holding?.Name) continue; // same-key: no replay
+                        if (Enum.TryParse<ImGuiKey>(a.KeyBinding, out var ak) && ak != ImGuiKey.None
+                            && ImGui.IsKeyPressed(ak))
+                        {
+                            released = true;
+                            Player2DActionHoldingEnd = false;
+                            Player2DCurrentAction = "";
+                            Player2DActionTime = 0f;
+                            TryStartAction(a.Name);
+                            break;
+                        }
+                    }
+                }
+                if (released && Player2DActionHoldingEnd)
+                {
+                    // Movement/jump release: drop to locomotion (resolver picks next frame).
+                    Player2DActionHoldingEnd = false;
+                    Player2DCurrentAction = "";
+                    Player2DActionTime = 0f;
+                }
             }
         }
 
@@ -2942,6 +3017,21 @@ public unsafe class EditorObject
         else
         {
             frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        }
+        // Past-sheet clamp: a frame index beyond the sheet's own frame list/grid would
+        // sample UVs OUTSIDE the texture (empty space → the sprite silently VANISHES,
+        // e.g. a death clip authored for 10 frames while the PNG only contains 8).
+        // Clamp to the last VALID frame so the pose freezes instead of disappearing.
+        if (drawSheet.CustomFrames != null)
+        {
+            if (drawSheet.CustomFrames.Count > 0 && frameIdx >= drawSheet.CustomFrames.Count)
+                frameIdx = drawSheet.CustomFrames.Count - 1;
+        }
+        else
+        {
+            int gridFrames = drawSheet.Columns * drawSheet.Rows;
+            if (gridFrames > 0 && frameIdx >= gridFrames)
+                frameIdx = gridFrames - 1;
         }
         var (uvMinRaw, uvMaxRaw) = drawSheet.GetFrameUV(frameIdx);
         // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
@@ -3279,6 +3369,7 @@ public unsafe class EditorObject
         {
             Player2DCurrentAction = name;
             Player2DActionTime = 0f;
+            Player2DActionHoldingEnd = false; // new action: clear the finished-hold latch
         }
         return true;
     }

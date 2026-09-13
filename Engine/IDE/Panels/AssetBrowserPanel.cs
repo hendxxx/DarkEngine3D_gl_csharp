@@ -171,8 +171,9 @@ public unsafe class AssetBrowserPanel
         {
             if (ImGui.Button("<- Back"))
             {
-                string? parentDir = Directory.GetParent(_currentPath)?.FullName;
-                _currentPath = string.IsNullOrEmpty(parentDir) ? _rootPath : parentDir;
+                var parentDir = Directory.GetParent(_currentPath);
+                if (parentDir != null)
+                    _currentPath = parentDir.FullName;
                 Refresh();
             }
             ImGui.SameLine();
