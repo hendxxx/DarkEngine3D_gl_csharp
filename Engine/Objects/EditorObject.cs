@@ -50,6 +50,10 @@ public enum EditorPrimitiveType
     Player2D,
     /// <summary>Player spawn marker. In preview/in-game the Player2D is placed here.</summary>
     Start2D,
+    /// <summary>Animated sprite decoration: same sheet/clip rendering as Player2D but
+    /// with NO controller, NO physics, and NO camera attachment — pure visual. Drag a
+    /// clip box from the Asset Browser's Sprites folder onto the viewport to place one.</summary>
+    Sprite2D,
     /// <summary>Camera start marker for 2D levels: preview/in-game cameras begin here
     /// (position = camera center, Scale.Y>0 marker field CameraStartZoom = ortho zoom).</summary>
     CameraStart2D
@@ -394,6 +398,24 @@ public unsafe class EditorObject
     public float Player2DJumpBufferTimer { get; set; }
     /// <summary>True once the current jump's height cut has been applied (reset on jump).</summary>
     public bool Player2DJumpCutDone { get; set; } = true;
+
+    // ── Sprite2D: decorative animated sprite (same rendering as Player2D,
+    // no controller/physics/camera). Reuses the Player2D sheet/clip/height/offset
+    // fields — the sprite looks identical, it just doesn't move by itself. ──
+    /// <summary>Loop the clip (true) or hold the last frame (false).</summary>
+    public bool Sprite2DLoop { get; set; } = true;
+    /// <summary>Playback speed multiplier (1 = clip FPS as authored).</summary>
+    public float Sprite2DSpeed { get; set; } = 1f;
+    /// <summary>Playback offset in seconds (0 = start at frame 0). Useful to
+    /// desynchronize several fire/candle sprites sharing one clip.</summary>
+    public float Sprite2DStartOffset { get; set; }
+    /// <summary>Facing mirror (sprite art is assumed right-facing).</summary>
+    public bool Sprite2DFacingRight { get; set; } = true;
+    /// <summary>Runtime playback clock (transient — not serialized).</summary>
+    public float Sprite2DAnimTime { get; set; }
+    /// <summary>Glfw.FrameId when the clock last advanced — DrawSprite2D can run
+    /// multiple times per rendered frame; the clock must advance once (transient).</summary>
+    private int _sprite2dLastClockFrame = -1;
 
     // ── Camera-follow tuning (used by the Player2DSystem camera follow) ──
     /// <summary>How fast the camera catches the target (higher = snappier).</summary>
@@ -969,6 +991,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Camera => new Vector3(0.5f, 0.4f, 0.6f),
             EditorPrimitiveType.Map2D => new Vector3(1f, 1f, 1f),
             EditorPrimitiveType.Player2D => new Vector3(1f, 2f, 1f),
+            EditorPrimitiveType.Sprite2D => new Vector3(1f, 1f, 1f),
             _ => Vector3.One,
         };
         Color = type switch
@@ -982,6 +1005,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
             EditorPrimitiveType.Map2D => new Vector3(0.8f, 0.8f, 0.9f),
             EditorPrimitiveType.Player2D => new Vector3(0.2f, 0.9f, 0.4f),
+            EditorPrimitiveType.Sprite2D => new Vector3(0.95f, 0.6f, 0.2f),
             EditorPrimitiveType.CameraStart2D => new Vector3(0.25f, 0.85f, 1f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
@@ -1175,7 +1199,8 @@ public unsafe class EditorObject
                     new Vector3( 0.5f,  0.5f,  0.5f)),
                 // Player2D/Start2D: feet-anchored capsule AABB — Position.Y is the
                 // capsule BOTTOM (matches DrawPlayer2DCapsule + Player2DSystem).
-                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D or EditorPrimitiveType.CameraStart2D => new AABB(
+                // Sprite2D reuses the same fields (selection box only — no physics).
+                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D or EditorPrimitiveType.CameraStart2D or EditorPrimitiveType.Sprite2D => new AABB(
                     new Vector3(-Player2DCapsuleRadius, 0f, -Player2DCapsuleRadius),
                     new Vector3( Player2DCapsuleRadius, Player2DCapsuleHeight,  Player2DCapsuleRadius)),
                 _ => new AABB(
@@ -1352,10 +1377,11 @@ public unsafe class EditorObject
             }
             case EditorPrimitiveType.Player2D:
             case EditorPrimitiveType.Start2D:
+            case EditorPrimitiveType.Sprite2D:
             {
-                // Player/Start markers have no solid mesh — the player renders as an
-                // animated sprite quad (DrawPlayer2D) and both draw gizmo outlines
-                // via Draw2DMarker. Keep _object3D null.
+                // Player/Start/Sprite markers have no solid mesh — the player renders
+                // as an animated sprite quad (DrawPlayer2D / DrawSprite2D) and all draw
+                // gizmo outlines via Draw2DMarker. Keep _object3D null.
                 _vertexCache = null;
                 break;
             }
@@ -2459,6 +2485,7 @@ public unsafe class EditorObject
         if (!IsVisible || (PrimitiveType != EditorPrimitiveType.Camera
             && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky
             && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D
+            && PrimitiveType != EditorPrimitiveType.Sprite2D
             && PrimitiveType != EditorPrimitiveType.CameraStart2D)) return;
 
         // Derive a camera-facing basis from Front (Right/Up fields can be stale in fly
@@ -2517,6 +2544,17 @@ public unsafe class EditorObject
                     gprev = gcur;
                 }
             }
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Sprite2D)
+        {
+            // Sprite icon: film-strip glyph (rectangle + two sprocket dots) — pure
+            // editor aid. Hidden in-game via Editor2DAidsHidden (manager gate).
+            Line(P(-0.7f, -0.45f), P(0.7f, -0.45f));
+            Line(P(0.7f, -0.45f), P(0.7f, 0.55f));
+            Line(P(0.7f, 0.55f), P(-0.7f, 0.55f));
+            Line(P(-0.7f, 0.55f), P(-0.7f, -0.45f));
+            Line(P(-0.45f, 0.2f), P(-0.45f, -0.1f));
+            Line(P(0.45f, 0.2f), P(0.45f, -0.1f));
         }
         else if (PrimitiveType == EditorPrimitiveType.Start2D)
         {
@@ -3043,6 +3081,133 @@ public unsafe class EditorObject
         GL.UseProgram(Shader.GetShaderProgram());
     }
 
+    /// <summary>Draw a Sprite2D: the SAME animated-sheet rendering as DrawPlayer2D
+    /// (saved-clip snapshot sizing, clip offsets, UV flip fix) but with NO controller,
+    /// NO physics and NO camera attachment — a pure decorative visual. Loops its clip
+    /// forever (or holds the last frame when Sprite2DLoop = false).</summary>
+    public unsafe void DrawSprite2D(Camera camera)
+    {
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sprite2D) return;
+        if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out uint texId, out int _, out int _))
+            return;
+        if (texId == 0) return;
+
+        // Clock: frame-gated like the player clock (DrawSprite2D can run for the
+        // editor pass AND per camera in the same rendered frame).
+        if (_sprite2dLastClockFrame != Glfw.FrameId)
+        {
+            _sprite2dLastClockFrame = Glfw.FrameId;
+            Sprite2DAnimTime += Glfw.PeekDeltaTime();
+        }
+
+        int count = clip.FrameIndices.Count;
+        if (count <= 0) return;
+        float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier * MathF.Max(0.01f, Sprite2DSpeed)));
+        float t = Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset);
+        int f = (int)(t / frameDur);
+        f = Sprite2DLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
+        int frameIdx = clip.FrameIndices[f];
+
+        var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+        // Same flip fix as DrawPlayer2D (textures upload top-row-first).
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
+        if (!Sprite2DFacingRight)
+            (su0, su1) = (su1, su0);
+
+        // Sizing: identical snapshot math to DrawPlayer2D (native px as-is, world
+        // scale from SpriteHeight vs the clip's saved master height).
+        float cellH = sheet.FrameHeight > 0 ? sheet.FrameHeight : sheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = sheet.FrameWidth > 0 ? sheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (sheet.CustomFrames != null && frameIdx < sheet.CustomFrames.Count)
+        {
+            drawFrame = sheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+        float snapH = clip.MasterHeight;
+        bool normalized = snapH > 0f;
+        float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
+        float w = MathF.Max(0.05f, cellW * pxToWorld);
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Sprite2DFacingRight ? 1f : -1f;
+        float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+        // AS-IS: centered on Position.X, bottom on Position.Y.
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
+        float z = Position.Z + 0.05f;
+
+        EnsureMap2DShader();
+        if (_map2dShader == 0) return;
+
+        GL.UseProgram(_map2dShader);
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+        GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+        GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+        var identity = Matrix4x4.Identity;
+        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
+
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+        GL.Uniform1i(_map2dLocTex, 0);
+        GL.Enable(Const.GL_BLEND);
+        GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+        bool cull = GL.IsEnabled(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_CULL_FACE);
+        bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+
+        float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
+        var verts = stackalloc Map2DVertex[6]
+        {
+            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
+            new(x1, y0, z, su1, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
+            new(x0, y1, z, su0, svTop, tR, tG, tB, tA),
+        };
+
+        if (_player2dVAO == 0)
+        {
+            uint vao = 0, vbo = 0;
+            GL.GenVertexArrays(1, &vao);
+            GL.BindVertexArray(vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+            GL.BindVertexArray(0);
+            _player2dVAO = vao; _player2dVBO = vbo;
+        }
+
+        GL.BindVertexArray(_player2dVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
+        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+        GL.BindVertexArray(0);
+
+        if (depth) GL.Enable(Const.GL_DEPTH_TEST);
+        if (cull) GL.Enable(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_BLEND);
+        GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+        // Restore main shader.
+        GL.UseProgram(Shader.GetShaderProgram());
+    }
+
     /// <summary>Resolve the animation clip for the currently-playing action (priority
     /// system), or null when the base locomotion clip should play. The matched action is
     /// returned via <paramref name="action"/> (for its Loop flag — the shared clip object
@@ -3204,9 +3369,9 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D/CameraStart2D have no solid mesh — selection shows via their line gizmos.
+        // Player2D/Start2D/CameraStart2D/Sprite2D have no solid mesh — selection shows via their line gizmos.
         if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
-            || PrimitiveType == EditorPrimitiveType.CameraStart2D)
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D)
             return;
 
         // ── GLB reference: draw the model's own meshes into the stencil mask. ──
@@ -3262,9 +3427,9 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D/CameraStart2D have no solid mesh — selection shows via their line gizmos.
+        // Player2D/Start2D/CameraStart2D/Sprite2D have no solid mesh — selection shows via their line gizmos.
         if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
-            || PrimitiveType == EditorPrimitiveType.CameraStart2D)
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D)
             return;
 
         // ── GLB reference: inverted-hull outline over the model's meshes. ──

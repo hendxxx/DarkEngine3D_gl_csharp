@@ -195,6 +195,11 @@ public class EditorObjectData
     public float Player2DCoyoteTime { get; set; } = 0.1f;
     public float Player2DJumpBuffer { get; set; } = 0.12f;
     public float Player2DJumpCutMultiplier { get; set; } = 0.5f;
+    // ── Sprite2D decorative sprite (Player2D fields reused for sheet/clip/height) ──
+    public bool Sprite2DLoop { get; set; } = true;
+    public float Sprite2DSpeed { get; set; } = 1f;
+    public float Sprite2DStartOffset { get; set; } = 0f;
+    public bool Sprite2DFacingRight { get; set; } = true;
     // ── Player2D camera-follow tuning ──
     public float CameraFollowSpeed { get; set; } = 6f;
     public float CameraDeadZoneWidth { get; set; } = 96f;

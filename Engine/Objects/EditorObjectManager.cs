@@ -22,6 +22,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private int _skyCounter = 1;
         private int _map2dCounter = 1;
         private int _player2dCounter = 1;
+        private int _sprite2dCounter = 1;
         private int _start2dCounter = 1;
         private int _cameraStart2dCounter = 1;
         private readonly uint _shaderProgram;
@@ -146,6 +147,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 EditorPrimitiveType.Sky => $"sky{_skyCounter++}",
                 EditorPrimitiveType.Map2D => $"map2d{_map2dCounter++}",
                 EditorPrimitiveType.Player2D => $"player{_player2dCounter++}",
+                EditorPrimitiveType.Sprite2D => $"sprite{_sprite2dCounter++}",
                 EditorPrimitiveType.Start2D => $"start{_start2dCounter++}",
                 EditorPrimitiveType.CameraStart2D => $"camstart{_cameraStart2dCounter++}",
                 _ => $"object{_boxCounter++}",
@@ -172,6 +174,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         case EditorPrimitiveType.Sky:       if (num >= _skyCounter) _skyCounter = num + 1; break;
                         case EditorPrimitiveType.Map2D:     if (num >= _map2dCounter) _map2dCounter = num + 1; break;
                         case EditorPrimitiveType.Player2D:  if (num >= _player2dCounter) _player2dCounter = num + 1; break;
+                        case EditorPrimitiveType.Sprite2D:  if (num >= _sprite2dCounter) _sprite2dCounter = num + 1; break;
                         case EditorPrimitiveType.Start2D:   if (num >= _start2dCounter) _start2dCounter = num + 1; break;
                         case EditorPrimitiveType.CameraStart2D: if (num >= _cameraStart2dCounter) _cameraStart2dCounter = num + 1; break;
                     }
@@ -494,6 +497,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     obj.DrawPlayer2D(camera);
             }
 
+            // ── Sprite2D decorative animated sprites (same pass, no controller) ──
+            foreach (var obj in _objects)
+            {
+                if (obj is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Sprite2D })
+                    obj.DrawSprite2D(camera);
+            }
+
             // ── Editor gizmos for special marker types (drawn after the solid objects so
             // the wireframe lines always render on top; depth test is disabled internally
             // so they show through terrain): real-camera frustum for cameras, a direction
@@ -508,6 +518,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // are gameplay aids, and Draw2DMarker internally skips when hidden).
                 if (obj.PrimitiveType == EditorPrimitiveType.Player2D ||
                     obj.PrimitiveType == EditorPrimitiveType.Start2D ||
+                    obj.PrimitiveType == EditorPrimitiveType.Sprite2D ||
                     obj.PrimitiveType == EditorPrimitiveType.CameraStart2D)
                 {
                     if (showEditorGizmos || !EditorObject.Editor2DAidsHidden)

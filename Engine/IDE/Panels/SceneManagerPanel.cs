@@ -962,6 +962,10 @@ public class SceneManagerPanel
                         Player2DCoyoteTime = obj.Player2DCoyoteTime,
                         Player2DJumpBuffer = obj.Player2DJumpBuffer,
                         Player2DJumpCutMultiplier = obj.Player2DJumpCutMultiplier,
+                        Sprite2DLoop = obj.Sprite2DLoop,
+                        Sprite2DSpeed = obj.Sprite2DSpeed,
+                        Sprite2DStartOffset = obj.Sprite2DStartOffset,
+                        Sprite2DFacingRight = obj.Sprite2DFacingRight,
                         CameraFollowSpeed = obj.CameraFollowSpeed,
                         CameraDeadZoneWidth = obj.CameraDeadZoneWidth,
                         CameraDeadZoneHeight = obj.CameraDeadZoneHeight,
@@ -1371,6 +1375,7 @@ public class SceneManagerPanel
                             "sky" => EditorPrimitiveType.Sky,
                             "map2d" => EditorPrimitiveType.Map2D,
                             "player2d" => EditorPrimitiveType.Player2D,
+                            "sprite2d" => EditorPrimitiveType.Sprite2D,
                             "start2d" => EditorPrimitiveType.Start2D,
                             "camerastart2d" => EditorPrimitiveType.CameraStart2D,
                             _ => EditorPrimitiveType.Box,
@@ -1569,6 +1574,10 @@ public class SceneManagerPanel
                         obj.Player2DCoyoteTime = objData.Player2DCoyoteTime;
                         obj.Player2DJumpBuffer = objData.Player2DJumpBuffer;
                         obj.Player2DJumpCutMultiplier = objData.Player2DJumpCutMultiplier;
+                        obj.Sprite2DLoop = objData.Sprite2DLoop;
+                        obj.Sprite2DSpeed = objData.Sprite2DSpeed;
+                        obj.Sprite2DStartOffset = objData.Sprite2DStartOffset;
+                        obj.Sprite2DFacingRight = objData.Sprite2DFacingRight;
                         obj.CameraFollowSpeed = objData.CameraFollowSpeed;
                         obj.CameraDeadZoneWidth = objData.CameraDeadZoneWidth;
                         obj.CameraDeadZoneHeight = objData.CameraDeadZoneHeight;

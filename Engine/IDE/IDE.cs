@@ -673,6 +673,25 @@ public class IDE : IDisposable
             Bridge.MapUndo = () => _mapEditor.UndoTilePaint();
             Bridge.MapRedo = () => _mapEditor.RedoTilePaint();
 
+            // Sprite2D placement from the Asset Browser clip boxes (click / drop):
+            // creates a decorative animated sprite (Player2D rendering, no controller,
+            // no physics, no camera). worldPos null → spawn at the camera position.
+            IDEBridge.RequestSprite2DPlacement = (sheetName, clipName, worldPos) =>
+            {
+                var mgr = Bridge.EditorObjectManager;
+                if (mgr == null) return;
+                var pos = worldPos ?? (Bridge.Camera != null
+                    ? new Vector3(Bridge.Camera.Position.X, Bridge.Camera.Position.Y, 0f)
+                    : new Vector3(0f, 1f, 0f));
+                var obj = mgr.AddPrimitive(EditorPrimitiveType.Sprite2D, pos);
+                obj.Name = obj.Name; // sprite counter name (sprite1, sprite2, ...)
+                obj.Player2DSpriteSheet = sheetName;
+                obj.Player2DAnimationClip = clipName;
+                obj.IsVisible = true;
+                Bridge.SelectEditorObject(obj);
+                Console.WriteLine($"[IDE] Sprite2D placed: {sheetName}/{clipName} at ({pos.X:F1}, {pos.Y:F1})");
+            };
+
             // Remember the panel the user was last focused on (persisted per project).
             var bootSettings = SettingsSave.Load();
             _restoreFocusPanel = bootSettings.LastFocusedPanel ?? "";

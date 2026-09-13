@@ -386,6 +386,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     "sky" => EditorPrimitiveType.Sky,
                     "map2d" => EditorPrimitiveType.Map2D,
                     "player2d" => EditorPrimitiveType.Player2D,
+                    "sprite2d" => EditorPrimitiveType.Sprite2D,
                     "start2d" => EditorPrimitiveType.Start2D,
                     "camerastart2d" => EditorPrimitiveType.CameraStart2D,
                     _ => EditorPrimitiveType.Box,

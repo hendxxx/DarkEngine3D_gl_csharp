@@ -674,9 +674,9 @@ public class HierarchyPanel
 
                 ImGui.Separator();
 
-                // ── 2D gameplay objects row: Player / Start ──
+                // ── 2D gameplay objects row: Player / Sprite / Start / Cam Start ──
                 {
-                    float btnW2 = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X) / 2f;
+                    float btnW2 = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 3f) / 4f;
 
                     var colPl = new Vector4(0.15f, 0.50f, 0.30f, 1f);
                     var colPlHov = new Vector4(0.22f, 0.65f, 0.40f, 1f);
@@ -688,6 +688,19 @@ public class HierarchyPanel
                     }
                     ImGui.PopStyleColor(2);
                     if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Player2D (capsule collider + animated sprite — set sheet/clip in Inspector)");
+
+                    ImGui.SameLine();
+
+                    var colSp = new Vector4(0.65f, 0.42f, 0.15f, 1f);
+                    var colSpHov = new Vector4(0.8f, 0.55f, 0.25f, 1f);
+                    ImGui.PushStyleColor(ImGuiCol.Button, colSp);
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colSpHov);
+                    if (ImGui.Button("Sprite", new Vector2(btnW2, 24)))
+                    {
+                        QuickAdd3D(EditorPrimitiveType.Sprite2D);
+                    }
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Sprite2D (animated clip sprite — no controller, no physics; assign a clip in Inspector or drag one from Asset Browser > Sprites)");
 
                     ImGui.SameLine();
 
@@ -1814,6 +1827,7 @@ public class HierarchyPanel
                 13 => EditorPrimitiveType.Light,
                 14 => EditorPrimitiveType.Sky,
                 15 => EditorPrimitiveType.Player2D,
+                19 => EditorPrimitiveType.Sprite2D,
                 16 => EditorPrimitiveType.Start2D,
                 17 => EditorPrimitiveType.CameraStart2D,
                 _ => EditorPrimitiveType.Box,

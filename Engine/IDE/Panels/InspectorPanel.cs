@@ -1606,6 +1606,10 @@ public class InspectorPanel
         if (editorObj.PrimitiveType == EditorPrimitiveType.Player2D)
             RenderPlayer2DInspector(editorObj);
 
+        // ── Sprite2D: decorative animated clip sprite (no controller) ──
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Sprite2D)
+            RenderSprite2DInspector(editorObj);
+
         //  Transform 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
         {
@@ -2438,6 +2442,108 @@ public class InspectorPanel
     /// <summary>Player2D settings: sprite sheet + animation clip pickers (from the
     /// Sprite Editor), sprite size, capsule collider tuning, and gameplay physics
     /// (gravity). Sheet/clip lists come from the IDEBridge static sprite registry.</summary>
+    /// <summary>Inspector for Sprite2D: sheet/clip pickers (or drag a clip box from the
+    /// Asset Browser onto this Inspector), render height, loop/speed/offset playback.</summary>
+    private unsafe void RenderSprite2DInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Sprite 2D", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var sheets = IDEBridge.GetSpriteSheetNames();
+        var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+
+        // Sheet combo (auto-select index 0 — dropdown rule).
+        string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : ["(no sheets — import in Sprite Editor)"];
+        int sheetIdx = 0;
+        for (int i = 0; i < sheetArr.Length; i++)
+            if (sheetArr[i] == editorObj.Player2DSpriteSheet) { sheetIdx = i; break; }
+        if (ImGui.BeginCombo("Sprite Sheet", sheets.Count == 0 ? sheetArr[0]
+            : (sheetIdx > 0 ? sheetArr[sheetIdx] : (string.IsNullOrEmpty(editorObj.Player2DSpriteSheet) ? sheetArr[0] : editorObj.Player2DSpriteSheet))))
+        {
+            for (int i = 0; i < sheetArr.Length; i++)
+            {
+                if (sheets.Count == 0) break;
+                bool sel = i == sheetIdx;
+                if (ImGui.Selectable(sheetArr[i], sel))
+                {
+                    editorObj.Player2DSpriteSheet = sheetArr[i];
+                    var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+                    editorObj.Player2DAnimationClip = newClips.Count > 0 ? newClips[0] : "";
+                    editorObj.Sprite2DAnimTime = 0;
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+
+        // Clip combo.
+        string[] clipArr = clips.Count > 0 ? clips.ToArray() : ["(no clips — create in Sprite Editor)"];
+        int clipIdx = 0;
+        for (int i = 0; i < clipArr.Length; i++)
+            if (clipArr[i] == editorObj.Player2DAnimationClip) { clipIdx = i; break; }
+        if (ImGui.BeginCombo("Animation Clip", clips.Count == 0 ? clipArr[0]
+            : (clipIdx > 0 ? clipArr[clipIdx] : (string.IsNullOrEmpty(editorObj.Player2DAnimationClip) ? clipArr[0] : editorObj.Player2DAnimationClip))))
+        {
+            for (int i = 0; i < clipArr.Length; i++)
+            {
+                if (clips.Count == 0) break;
+                bool sel = i == clipIdx;
+                if (ImGui.Selectable(clipArr[i], sel))
+                {
+                    editorObj.Player2DAnimationClip = clipArr[i];
+                    editorObj.Sprite2DAnimTime = 0;
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Or drag a clip box from Asset Browser > Assets/Sprites onto this Inspector");
+
+        // Drag-drop target: clip box → assign (same as dropping on the viewport with
+        // this object selected).
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload(AssetBrowserPanel.SpriteClipPayload);
+            if (payload.NativePtr != null && AssetBrowserPanel._dragSpriteClip != null)
+            {
+                var parts = AssetBrowserPanel._dragSpriteClip.Split('|');
+                AssetBrowserPanel._dragSpriteClip = null;
+                if (parts.Length == 2)
+                {
+                    editorObj.Player2DSpriteSheet = parts[0];
+                    editorObj.Player2DAnimationClip = parts[1];
+                    editorObj.Sprite2DAnimTime = 0;
+                }
+            }
+            ImGui.EndDragDropTarget();
+        }
+
+        if (editorObj.TryGetPlayer2DClip(out var _, out var clipInfo) && clipInfo != null)
+            ImGui.TextDisabled($"{clipInfo.FrameIndices.Count} frames @ {clipInfo.FPS * clipInfo.SpeedMultiplier * MathF.Max(0.01f, editorObj.Sprite2DSpeed):0.#} fps, {(editorObj.Sprite2DLoop ? "loop" : "once")}");
+
+        float hgt = editorObj.Player2DHeight;
+        if (ImGui.DragFloat("Render Height", ref hgt, 0.05f, 0.1f, 500f, "%.2f"))
+            editorObj.Player2DHeight = MathF.Max(0.1f, hgt);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Sprite height in world units (same scaling rule as Player2D)");
+
+        bool loop = editorObj.Sprite2DLoop;
+        if (ImGui.Checkbox("Loop", ref loop))
+            editorObj.Sprite2DLoop = loop;
+
+        float spd = editorObj.Sprite2DSpeed;
+        if (ImGui.SliderFloat("Speed", ref spd, 0.1f, 4f, "%.2fx"))
+            editorObj.Sprite2DSpeed = MathF.Max(0.01f, spd);
+
+        float soff = editorObj.Sprite2DStartOffset;
+        if (ImGui.DragFloat("Start Offset", ref soff, 0.05f, 0f, 60f, "%.2f s"))
+            editorObj.Sprite2DStartOffset = MathF.Max(0f, soff);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Playback offset in seconds — desynchronize several copies sharing one clip (e.g. campfires)");
+
+        bool faceR = editorObj.Sprite2DFacingRight;
+        if (ImGui.Checkbox("Facing Right", ref faceR))
+            editorObj.Sprite2DFacingRight = faceR;
+    }
+
     private void RenderPlayer2DInspector(EditorObject editorObj)
     {
         if (!ImGui.CollapsingHeader("Player 2D", ImGuiTreeNodeFlags.DefaultOpen))

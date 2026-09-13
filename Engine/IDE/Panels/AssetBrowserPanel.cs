@@ -152,12 +152,27 @@ public unsafe class AssetBrowserPanel
         ImGui.Begin("Asset Browser", ref _visible);
         IDE.PanelFocus.Notify("Asset Browser");
 
+        // ── Sprite Clips: animation boxes built from the Sprite Editor registry.
+        // Shown ONLY while browsing the project's Assets/Sprites folder. Each clip is
+        // a drag source — drop it on the viewport to place a Sprite2D (decorative
+        // animated sprite: no controller, no physics, no camera attachment), or onto
+        // a selected Player2D/Sprite2D to assign that clip to it.
+        bool isSpritesFolder = _rootPath != null &&
+            string.Equals(
+                Path.GetFullPath(_currentPath),
+                Path.GetFullPath(Path.Combine(_rootPath, "Assets", "Sprites")),
+                StringComparison.OrdinalIgnoreCase);
+        if (isSpritesFolder && IDEBridge.SpriteClipCount > 0)
+            RenderSpriteClipBoxes();
+
+
         // ── Breadcrumb navigation ──
         if (_currentPath != _rootPath)
         {
             if (ImGui.Button("<- Back"))
             {
-                _currentPath = Directory.GetParent(_currentPath)?.FullName ?? _rootPath;
+                string? parentDir = Directory.GetParent(_currentPath)?.FullName;
+                _currentPath = string.IsNullOrEmpty(parentDir) ? _rootPath : parentDir;
                 Refresh();
             }
             ImGui.SameLine();
@@ -207,6 +222,67 @@ public unsafe class AssetBrowserPanel
         }
 
         ImGui.End();
+    }
+
+    /// <summary>Payload type for sprite-clip drags. The static field carries the
+    /// "Sheet/Clip" pair (payload data itself is empty — same pattern as ASSET_IMAGE_PATH).</summary>
+    public const string SpriteClipPayload = "SPRITE_CLIP_REF";
+    public static string? _dragSpriteClip = null;
+
+    /// <summary>Render the Sprite Editor's animation clips as draggable boxes (shown in
+    /// the Assets/Sprites folder). One box per clip: colored tile + sheet/clip label.</summary>
+    private void RenderSpriteClipBoxes()
+    {
+        ImGui.Separator();
+        ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Animation Clips (drag to viewport)");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Drop on empty viewport = place a Sprite2D (animated, no controller).\nDrop on a selected Player2D/Sprite2D = assign this clip to it.");
+
+        var clips = IDEBridge.GetSpriteClipPairs().ToList();
+        float boxW = 132f;
+        float boxH = ImGui.GetTextLineHeightWithSpacing() + 8f;
+        float avail = ImGui.GetContentRegionAvail().X;
+        int cols = Math.Max(1, (int)(avail / (boxW + 6f)));
+
+        int n = 0;
+        while (n < clips.Count)
+        {
+            for (int c = 0; c < cols && n < clips.Count; c++, n++)
+            {
+                if (c > 0) ImGui.SameLine();
+                var (sheetName, clipName) = clips[n];
+
+                // Color-code per sheet so clips from the same sheet share a hue.
+                int hash = 0;
+                foreach (char ch in sheetName) hash = hash * 31 + ch;
+                var hue = (hash & 0xFF) / 255f;
+                var boxCol = ImGui.ColorConvertU32ToFloat4(ImGui.ColorConvertFloat4ToU32(
+                    new Vector4(System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(0.5f + hue, 0.45f, 0.75f - hue)), 0.45f)));
+
+                ImGui.PushStyleColor(ImGuiCol.Button, boxCol);
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(boxCol.X, boxCol.Y, boxCol.Z, 0.7f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(boxCol.X, boxCol.Y, boxCol.Z, 0.9f));
+                if (ImGui.Button($"{clipName}##clip{n}", new Vector2(boxW, boxH)))
+                {
+                    // Click = same as drop at the camera spawn: create a Sprite2D now.
+                    IDEBridge.RequestSprite2DPlacement?.Invoke(sheetName, clipName, null);
+                }
+                ImGui.PopStyleColor(3);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip($"{sheetName} / {clipName}\nClick or drag into the viewport to place.");
+
+                // ── Drag source ──
+                if (ImGui.BeginDragDropSource())
+                {
+                    ImGui.SetDragDropPayload(SpriteClipPayload, nint.Zero, 0);
+                    _dragSpriteClip = $"{sheetName}|{clipName}";
+                    ImGui.Text($"{clipName}");
+                    ImGui.TextDisabled($"{sheetName}");
+                    ImGui.EndDragDropSource();
+                }
+            }
+        }
+        ImGui.Separator();
     }
 
     private void DrawItem(string name, bool isDir, int idx)

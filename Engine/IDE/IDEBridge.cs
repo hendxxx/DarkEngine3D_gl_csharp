@@ -148,6 +148,20 @@ public class IDEBridge
     public static List<string> GetSpriteSheetNames()
         => _spriteSheets.Keys.OrderBy(k => k).ToList();
 
+    /// <summary>Number of animation clips currently registered by the Sprite Editor
+    /// (used by the Asset Browser to decide whether to show the clip boxes).</summary>
+    public static int SpriteClipCount => _spriteClips.Count;
+
+    /// <summary>Enumerate all registered clips with their sheet names (for the Asset
+    /// Browser's clip boxes). Ordered by sheet then clip name for stable UI.</summary>
+    public static IEnumerable<(string Sheet, string Clip)> GetSpriteClipPairs()
+        => _spriteClips.Keys.Select(k => (k.sheet, k.clip)).OrderBy(p => p.sheet).ThenBy(p => p.clip);
+
+    /// <summary>Request a Sprite2D placement from the Asset Browser (clip box click or
+    /// viewport drop). Handler lives in IDE: (sheetName, clipName, dropWorldPos — null
+    /// when the caller has no world position, e.g. a plain click → spawn at camera).</summary>
+    public static Action<string, string, Vector3?>? RequestSprite2DPlacement { get; set; }
+
     public static List<string> GetClipNames(string sheetName)
         => _spriteClips.Where(kv => kv.Key.sheet == sheetName).Select(kv => kv.Value.Name).OrderBy(n => n).ToList();
 

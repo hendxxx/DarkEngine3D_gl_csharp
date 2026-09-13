@@ -3448,6 +3448,62 @@ ImGui.SameLine();
                 ImGui.EndDragDropTarget();
             }
 
+            //  Drag-drop target: Sprite clip (Asset Browser → viewport) ──
+            // Dropped on a selected Player2D/Sprite2D → assign the clip to it.
+            // Dropped on empty space → create a Sprite2D at the drop position
+            // (map plane hit when a 2D level is visible, camera plane otherwise).
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload(AssetBrowserPanel.SpriteClipPayload);
+                if (payload.NativePtr != null && AssetBrowserPanel._dragSpriteClip != null)
+                {
+                    string clipRef = AssetBrowserPanel._dragSpriteClip;
+                    AssetBrowserPanel._dragSpriteClip = null;
+                    var parts = clipRef.Split('|');
+                    if (parts.Length == 2)
+                    {
+                        // Primary selected 2D object? → just assign the clip.
+                        var sel = _bridge.SelectedEditorObjects.Count > 0
+                            ? _bridge.SelectedEditorObjects.First() : null;
+                        if (sel is { PrimitiveType: EditorPrimitiveType.Player2D or EditorPrimitiveType.Sprite2D })
+                        {
+                            sel.Player2DSpriteSheet = parts[0];
+                            sel.Player2DAnimationClip = parts[1];
+                            Console.WriteLine($"[Viewport] Assigned clip '{parts[1]}' ({parts[0]}) → '{sel.Name}'");
+                        }
+                        else
+                        {
+                            // Empty space: resolve the drop to a world position on the
+                            // 2D plane (z=0); fall back to camera. mouseOverImage is
+                            // declared later in Render() — recompute locally here.
+                            Vector3? worldPos = null;
+                            var cam = _bridge.Camera;
+                            var dropMouse = ImGui.GetMousePos();
+                            bool dropOverImage = dropMouse.X >= _imageMin.X && dropMouse.X <= _imageMax.X &&
+                                                 dropMouse.Y >= _imageMin.Y && dropMouse.Y <= _imageMax.Y;
+                            if (cam != null && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0 && dropOverImage)
+                            {
+                                float glMy = _bridge.SceneTextureHeight - _bridge.ViewportMouseY;
+                                cam.ScreenToRay(_bridge.ViewportMouseX, glMy,
+                                    _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
+                                    out Vector3 ro, out Vector3 rd);
+                                if (MathF.Abs(rd.Z) > 0.0001f)
+                                {
+                                    float tHit = (0f - ro.Z) / rd.Z;
+                                    if (tHit > 0f)
+                                    {
+                                        var hit = ro + rd * tHit;
+                                        worldPos = new Vector3(hit.X, hit.Y, 0f);
+                                    }
+                                }
+                            }
+                            IDEBridge.RequestSprite2DPlacement?.Invoke(parts[0], parts[1], worldPos);
+                        }
+                    }
+                }
+                ImGui.EndDragDropTarget();
+            }
+
             //  Popup suppress: block all scene interactions when a popup/menu
             // is open, AND for 2 frames after it closes (prevents the click that
             // closed the menu from leaking into the terrain brush, gizmo, etc.) 
