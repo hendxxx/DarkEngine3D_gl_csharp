@@ -119,6 +119,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_ALPHA = 0x1906;
         public const uint GL_SRC_ALPHA = 0x0302;
         public const uint GL_ONE_MINUS_SRC_ALPHA = 0x0303;
+        public const uint GL_ONE = 0x0001;
 
         public const uint GL_UNSIGNED_BYTE = 0x1401;
         public const uint GL_UNSIGNED_INT = 0x1405;
@@ -144,6 +145,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public const uint GL_READ_FRAMEBUFFER = 0x8CA8;
         public const uint GL_DRAW_FRAMEBUFFER = 0x8CA9;
+        public const uint GL_FRAMEBUFFER_BINDING = 0x8CA6;
 
         // ── Multisampling (GL 3.0 / ARB_framebuffer_multisample) ──
         public const uint GL_TEXTURE_2D_MULTISAMPLE = 0x9100;

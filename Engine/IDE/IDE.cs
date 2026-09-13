@@ -31,7 +31,8 @@ public class IDE : IDisposable
     private readonly TransitionPanel _transitionPanel;
     private readonly RenderTimePanel _renderTime = null!;
     private readonly ShadowPanel _shadowPanel = null!;
-    // PostFX removed
+    private readonly PostFxPanel _postFxPanel = null!;
+    private readonly FrameBufferDebugPanel _framebufferDebug = null!;
     private readonly PbrPanel _pbrPanel = null!;
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
@@ -659,6 +660,11 @@ public class IDE : IDisposable
             _transitionPanel = new TransitionPanel(Bridge);
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
+            _postFxPanel = new PostFxPanel(Bridge);
+            _framebufferDebug = new FrameBufferDebugPanel(Bridge);
+            // DoF focus tracker reads the live bridge (camera, player, hover targets)
+            // from inside the composite, which runs in both render paths.
+            Visual.PostProcessing.DepthOfFieldFocusTracker.Bridge = Bridge;
             _pbrPanel = new PbrPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
@@ -1143,6 +1149,8 @@ public class IDE : IDisposable
                 _hierarchy.ShowInMenu();
                 _renderTime.ShowInMenu();
                 _shadowPanel.ShowInMenu();
+                _postFxPanel.ShowInMenu();
+                _framebufferDebug.ShowInMenu();
                 _pbrPanel.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
@@ -1226,6 +1234,8 @@ public class IDE : IDisposable
         _inspector.Render();
         _renderTime.Render();
         _shadowPanel.Render();
+        _postFxPanel.Render();
+        _framebufferDebug.Render();
         _pbrPanel.Render();
         _assetBrowser.Render();
         _hierarchy.Render();

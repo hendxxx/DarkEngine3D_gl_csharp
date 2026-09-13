@@ -417,6 +417,11 @@ public unsafe class EditorObject
     public float Sprite2DStartOffset { get; set; }
     /// <summary>Facing mirror (sprite art is assumed right-facing).</summary>
     public bool Sprite2DFacingRight { get; set; } = true;
+    /// <summary>Render layer for Sprite2D: higher layers draw ON TOP of lower ones.
+    /// Sprites are drawn sorted by this layer (ascending), and each step also nudges
+    /// the quad 0.01 world units closer to the camera (Position.Z + 0.01/layer) so the
+    /// ordering survives even when depth testing is enabled. Default 0 = base layer.</summary>
+    public int Sprite2DRenderLayer { get; set; }
     /// <summary>Runtime playback clock (transient — not serialized).</summary>
     public float Sprite2DAnimTime { get; set; }
     /// <summary>Glfw.FrameId when the clock last advanced — DrawSprite2D can run
@@ -3233,7 +3238,10 @@ public unsafe class EditorObject
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
-        float z = Position.Z + 0.05f;
+        // Render layer: each layer step nudges the quad 0.01 units toward the camera
+        // (matching the draw order set by the layer sort in EditorObjectManager) so a
+        // higher layer ALSO wins when depth testing is on — not just by draw order.
+        float z = Position.Z + 0.05f + Math.Clamp(Sprite2DRenderLayer, -1000, 1000) * 0.01f;
 
         EnsureMap2DShader();
         if (_map2dShader == 0) return;
@@ -3296,6 +3304,73 @@ public unsafe class EditorObject
 
         // Restore main shader.
         GL.UseProgram(Shader.GetShaderProgram());
+    }
+
+    /// <summary>Sprite-quad data for the DoF sprite-shape mask — an exact mirror of
+    /// DrawSprite2D's math (same frame resolution, sizing, offsets and UV flips) so the
+    /// sharp silhouette carved into the blur matches the drawn sprite pixel-for-pixel.
+    /// uvMin/uvMax are in DRAW space (already y-flipped + mirrored): uvMin = top-left,
+    /// uvMax = bottom-right of the quad.</summary>
+    public bool TryGetSprite2DDrawData(out uint texId,
+        out System.Numerics.Vector2 uvMin, out System.Numerics.Vector2 uvMax,
+        out System.Numerics.Vector3 bl, out System.Numerics.Vector3 br,
+        out System.Numerics.Vector3 tr, out System.Numerics.Vector3 tl)
+    {
+        texId = 0; uvMin = default; uvMax = default;
+        bl = br = tr = tl = default;
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sprite2D) return false;
+        if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return false;
+        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out texId, out int _, out int _))
+            return false;
+        if (texId == 0) return false;
+
+        int count = clip.FrameIndices.Count;
+        if (count <= 0) return false;
+        float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier * MathF.Max(0.01f, Sprite2DSpeed)));
+        float t = Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset);
+        int f = (int)(t / frameDur);
+        f = Sprite2DLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
+        int frameIdx = clip.FrameIndices[f];
+
+        var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
+        if (!Sprite2DFacingRight)
+            (su0, su1) = (su1, su0);
+
+        float cellH = sheet.FrameHeight > 0 ? sheet.FrameHeight : sheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = sheet.FrameWidth > 0 ? sheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (sheet.CustomFrames != null && frameIdx < sheet.CustomFrames.Count)
+        {
+            drawFrame = sheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+        float snapH = clip.MasterHeight;
+        bool normalized = snapH > 0f;
+        float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
+        float w = MathF.Max(0.05f, cellW * pxToWorld);
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Sprite2DFacingRight ? 1f : -1f;
+        float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
+        float z = Position.Z + 0.05f + Math.Clamp(Sprite2DRenderLayer, -1000, 1000) * 0.01f;
+
+        uvMin = new System.Numerics.Vector2(su0, svTop);
+        uvMax = new System.Numerics.Vector2(su1, svBot);
+        bl = new System.Numerics.Vector3(x0, y0, z);
+        br = new System.Numerics.Vector3(x1, y0, z);
+        tr = new System.Numerics.Vector3(x1, y1, z);
+        tl = new System.Numerics.Vector3(x0, y1, z);
+        return true;
     }
 
     /// <summary>Resolve the animation clip for the currently-playing action (priority

@@ -1291,8 +1291,57 @@ public unsafe class ViewportPanel
     /// <summary>
     /// Render a Placeholder element: background, scrollable children with clip rect, and scrollbar.
     /// The Placeholder box stays fixed; only children inside scroll vertically.
-    /// Consumes Mouse.ScrollY when hovered so scroll doesn't leak to camera zoom.</summary>
-    private void DrawPlaceholder(ImDrawListPtr drawList, UIElement placeholder, Vector2 mouseScreen,
+    /// Consumes Mouse.ScrollY when hovered so scroll doesn't leak to camera zoom.</summary>    /// <summary>
+    /// Track what the cursor points at IN WORLD SPACE for the DoF focus targets
+    /// "Hovered Tile" (map plane hit) and "Hovered Object" (first editor-object hit).
+    /// Cheap: one ScreenToRay + one map-plane intersect + one manager raycast per
+    /// frame, only while the cursor is over the image. Written to the bridge so the
+    /// focus tracker (which runs inside the DoF composite in BOTH render paths) can
+    /// read them without ViewportPanel ever needing to know about post-processing.
+    /// </summary>
+    private void UpdateHoverFocusTargets()
+    {
+        _bridge.HoveredMapTileWorld = null;
+        _bridge.HoveredEditorObjectWorld = null;
+
+        if (_previewMode) return;
+        var cam = _bridge.Camera;
+        var mgr = _bridge.EditorObjectManager;
+        int vpw = _bridge.SceneTextureWidth;
+        int vph = _bridge.SceneTextureHeight;
+        if (cam == null || vpw <= 0 || vph <= 0) return;
+        if (_bridge.ViewportMouseX < 0f || _bridge.ViewportMouseY < 0f) return;
+
+        // Same ray construction as tile painting / object picking.
+        float glMouseY = vph - _bridge.ViewportMouseY;
+        cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
+            out Vector3 rayOrigin, out Vector3 rayDir);
+
+        // Hovered OBJECT: first editor-object hit (includes Player2D / Sprite2D).
+        if (mgr != null &&
+            !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
+        {
+            var obj = mgr.Raycast(rayOrigin, rayDir, out _, out Vector3 hitPoint);
+            if (obj != null)
+                _bridge.HoveredEditorObjectWorld = hitPoint;
+        }
+
+        // Hovered TILE: cursor ray ∩ the map plane (z=0), same as paint raycast.
+        var map = _bridge.ActiveTilemap;
+        if (map != null && MathF.Abs(rayDir.Z) > 0.0001f)
+        {
+            float t = (0f - rayOrigin.Z) / rayDir.Z;
+            if (t > 0f)
+            {
+                var hit = rayOrigin + rayDir * t;
+                var (gx, gy) = map.WorldToGrid(new Vector2(hit.X, hit.Y));
+                if (gx >= 0 && gx < map.Width && gy >= 0 && gy < map.Height)
+                    _bridge.HoveredMapTileWorld = new Vector3(hit.X, hit.Y, 0f);
+            }
+        }
+    }
+
+        private void DrawPlaceholder(ImDrawListPtr drawList, UIElement placeholder, Vector2 mouseScreen,
         bool leftClicked, bool isPreview, bool isMouseDown, UIElement? focusedElement, bool keyboardActivate,
         float parentScrollOffsetY = 0f)
     {
@@ -3536,6 +3585,9 @@ ImGui.SameLine();
                 _bridge.ViewportMouseX = sceneU * _texW;
                 _bridge.ViewportMouseY = sceneV * _texH;
 
+                // ── Hover tracking for the DoF focus target "Hovered Tile/Object" ──
+                if (!suppressInput && !worldInputBlocked)
+                    UpdateHoverFocusTargets();
                 // Reset click flag each frame  set to true below if left-click occurs
                 _bridge.IsViewportClicked = false;
 
@@ -3625,6 +3677,8 @@ ImGui.SameLine();
                 _bridge.ViewportMouseX = -1;
                 _bridge.ViewportMouseY = -1;
                 _bridge.IsViewportClicked = false;
+                _bridge.HoveredMapTileWorld = null;   // DoF focus targets only track
+                _bridge.HoveredEditorObjectWorld = null; // while the cursor is in the viewport
             }
 
             //  Terrain brush: click-drag to raise/lower terrain height in real-time 

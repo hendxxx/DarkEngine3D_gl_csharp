@@ -133,6 +133,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float PostFxAutoExposureTarget { get; set; } = 0.18f;
         public float PostFxAutoExposureSpeed { get; set; } = 0.6f;
 
+        // ── Depth of Field (slider-driven focus point; everything outside the focus
+        // circle blurs — tuned live via PostFxSettings) ──
+        public bool PostFxDofEnabled { get; set; } = false;
+        public float PostFxDofFocusX { get; set; } = 0.5f;
+        public float PostFxDofFocusY { get; set; } = 0.45f;
+        public float PostFxDofRadius { get; set; } = 0.25f;
+        public float PostFxDofFeather { get; set; } = 0.35f;
+        public float PostFxDofMaxBlur { get; set; } = 6f;
+        /// <summary>DoF focus tracker: 0=manual, 1=player, 2=hovered tile, 3=hovered object, 4=selection.</summary>
+        public int PostFxDofFocusTarget { get; set; } = 0;
+        /// <summary>How fast the focus glides after a moving target (higher = tighter lock).</summary>
+        public float PostFxDofFollowSpeed { get; set; } = 14f;
+        /// <summary>DoF focus shape follows the SPRITE silhouette on a render layer (not a circle).</summary>
+        public bool PostFxDofSpriteShapeEnable { get; set; } = false;
+        /// <summary>Which Sprite2D Render Layer forms the sharp silhouette.</summary>
+        public int PostFxDofSpriteShapeLayer { get; set; } = 0;
+        /// <summary>Silhouette growth in mask texels (softens the sprite-shaped edge).</summary>
+        public float PostFxDofSpriteExpandPx { get; set; } = 2f;
+        /// <summary>Raises sprite alpha coverage (semi-transparent pixels count as inside).</summary>
+        public float PostFxDofSpriteAlphaBias { get; set; } = 0.05f;
+        /// <summary>Debug: blur EVERYWHERE except the sprite silhouette.</summary>
+        public bool PostFxDofSpriteMaskOnly { get; set; } = false;
+
         // ── Fog (Inspector "Fog" section) ──
         public bool FogEnabled { get; set; } = true;
         /// <summary>1 = Linear, 2 = Exponential, 3 = Exp2 + height blend.</summary>

@@ -2542,6 +2542,13 @@ public class InspectorPanel
         bool faceR = editorObj.Sprite2DFacingRight;
         if (ImGui.Checkbox("Facing Right", ref faceR))
             editorObj.Sprite2DFacingRight = faceR;
+
+        // Render layer: higher draws on top of lower (sorted draw order + z nudge).
+        int layer = editorObj.Sprite2DRenderLayer;
+        if (ImGui.SliderInt("Render Layer", ref layer, -10, 10))
+            editorObj.Sprite2DRenderLayer = layer;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Draw order between overlapping sprites: higher layers draw ON TOP of lower ones.\nEach layer also steps 0.01 world units closer to the camera. Default 0 = base layer.");
     }
 
     private void RenderPlayer2DInspector(EditorObject editorObj)

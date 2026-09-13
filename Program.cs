@@ -50,9 +50,12 @@ public unsafe class Program
         // Restore the global fog settings (Inspector "Fog" section).
         FogSettings.Apply(settings);
 
-        // Restore the post-processing settings (bloom / tonemapping / gamma) and
-        // write them through so settings.json always carries the full field set.
-        // PostFX removed.
+        // Restore the post-processing settings (bloom / tonemap / gamma / depth of
+        // field + focus tracking) — without this the Post FX panel reset to defaults
+        // every launch even though the sliders persisted values to settings.json.
+        // Write-through so settings.json always carries the full field set.
+        PostFxSettings.Apply(settings);
+        PostFxSettings.Persist();
 
         // Restore the unified quality preset (MSAA + shadow quality + shadow filter).
         // Runs after ShadowSettings so the preset's shadow level wins, and writes

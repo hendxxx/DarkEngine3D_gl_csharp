@@ -243,6 +243,13 @@ public class IDEBridge
     public int TilePaletteSelW { get; set; } = 1;
     public int TilePaletteSelH { get; set; } = 1;
     public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick
+    /// <summary>World position of the map tile under the mouse (0 = none). Updated by
+    /// ViewportPanel every frame while a visible map is hovered — consumed by the DoF
+    /// focus tracker's "Hovered Tile" mode.</summary>
+    public System.Numerics.Vector3? HoveredMapTileWorld { get; set; }
+    /// <summary>Hit point on the object under the mouse (0 = none). Updated by
+    /// ViewportPanel — consumed by the DoF focus tracker's "Hovered Object" mode.</summary>
+    public System.Numerics.Vector3? HoveredEditorObjectWorld { get; set; }
     // Tilemap painting hooks (wired by IDE.cs to MapEditorPanel).
     public Action<Vector2>? MapPaintAt { get; set; }
     public Action<Vector2>? MapFillAt { get; set; }

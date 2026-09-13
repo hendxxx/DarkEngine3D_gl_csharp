@@ -14,6 +14,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         public uint SceneColorTex;
         public uint SceneDepthRBO;
 
+        /// <summary>The most recently constructed stack — GameScene creates exactly one,
+        /// so the FrameBuffer Debug panel can reach the live game-scene textures.</summary>
+        public static PostProcessStack? Active { get; private set; }
+
+        /// <summary>Size of the scene render target in pixels (for debug panels).</summary>
+        public int Width => _width;
+        public int Height => _height;
+
         private uint _msaaColorRBO = 0;
         private uint _resolveFBO = 0;
         private int _samples;
@@ -29,6 +37,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
         public PostProcessStack(int width, int height)
         {
+            Active = this;
             _width = width;
             _height = height;
 
@@ -182,6 +191,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         {
             // MSAA resolve: SceneFBO (multisampled) → SceneColorTex (single-sample).
             Resolve();
+
+            // Depth of field (slider-driven focus circle): composited IN-PLACE into
+            // SceneColorTex BEFORE the display path — every consumer of the scene
+            // texture sees the effect, with or without other passes registered.
+            // Shared helper — the IDE edit-mode path (SceneManager SharedFBO) uses it too.
+            DepthOfFieldComposite.Apply(SceneColorTex, _resolveFBO, _width, _height, "gamescene");
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
             GL.Viewport(0, 0, windowWidth, windowHeight);

@@ -34,6 +34,21 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         private float _aeTarget = PostFxSettings.AutoExposureTargetLuminance;
         private float _aeSpeed = PostFxSettings.AutoExposureSpeed;
 
+        // Depth of field (slider-driven focus circle).
+        private bool _dofEnabled = PostFxSettings.DofEnabled;
+        private float _dofFocusX = PostFxSettings.DofFocusX;
+        private float _dofFocusY = PostFxSettings.DofFocusY;
+        private float _dofRadius = PostFxSettings.DofRadius;
+        private float _dofFeather = PostFxSettings.DofFeather;
+        private float _dofMaxBlur = PostFxSettings.DofMaxBlur;
+        private int _dofFocusTarget = PostFxSettings.DofFocusTarget;
+        private float _dofFollowSpeed = PostFxSettings.DofFollowSpeed;
+        private bool _dofSpriteShapeEnable = PostFxSettings.DofSpriteShapeEnable;
+        private int _dofSpriteShapeLayer = PostFxSettings.DofSpriteShapeLayer;
+        private float _dofSpriteExpandPx = PostFxSettings.DofSpriteExpandPx;
+        private float _dofSpriteAlphaBias = PostFxSettings.DofSpriteAlphaBias;
+        private bool _dofSpriteMaskOnly = PostFxSettings.DofSpriteMaskOnly;
+
         private string _notifText = "";
         private float _notifTimer = 0f;
 
@@ -57,6 +72,19 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             _aeMax = PostFxSettings.AutoExposureMaxExposure;
             _aeTarget = PostFxSettings.AutoExposureTargetLuminance;
             _aeSpeed = PostFxSettings.AutoExposureSpeed;
+            _dofEnabled = PostFxSettings.DofEnabled;
+            _dofFocusX = PostFxSettings.DofFocusX;
+            _dofFocusY = PostFxSettings.DofFocusY;
+            _dofRadius = PostFxSettings.DofRadius;
+            _dofFeather = PostFxSettings.DofFeather;
+            _dofMaxBlur = PostFxSettings.DofMaxBlur;
+            _dofFocusTarget = PostFxSettings.DofFocusTarget;
+            _dofFollowSpeed = PostFxSettings.DofFollowSpeed;
+            _dofSpriteShapeEnable = PostFxSettings.DofSpriteShapeEnable;
+            _dofSpriteShapeLayer = PostFxSettings.DofSpriteShapeLayer;
+            _dofSpriteExpandPx = PostFxSettings.DofSpriteExpandPx;
+            _dofSpriteAlphaBias = PostFxSettings.DofSpriteAlphaBias;
+            _dofSpriteMaskOnly = PostFxSettings.DofSpriteMaskOnly;
 
             ImGui.Begin("Post FX", ref _visible);
 
@@ -178,6 +206,185 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 ImGui.TextDisabled("ACES filmic tonemap: lifts midtones, rolls off highlights, keeps shadows deep.");
             }
 
+            // ══════════════════════════════════════════════
+            //  Depth of Field (slider-driven focus circle)
+            // ══════════════════════════════════════════════
+            if (ImGui.CollapsingHeader("Depth of Field", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.Checkbox("Enable Depth of Field", ref _dofEnabled))
+                {
+                    PostFxSettings.DofEnabled = _dofEnabled;
+                    PersistAndNotify(_dofEnabled ? "Depth of field enabled" : "Depth of field disabled");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Blur everything outside the focus circle.\nThe focus point is a spot on SCREEN (works for 2D and 3D cameras).");
+
+                if (_dofEnabled)
+                {
+                    // Live status: distinguishes "not running" (render path / shader
+                    // problem — see console) from "running but too subtle".
+                    if (Visual.PostProcessing.DepthOfFieldComposite.HasEverRun)
+                        ImGui.TextColored(new Vector4(0.35f, 0.85f, 0.45f, 1f), "● ACTIVE — compositing every frame");
+                    else
+                        ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.3f, 1f), "○ NOT RUNNING — check console for [DepthOfField] SKIP/disable");
+
+                    // ── Focus target: manual sliders or follow a scene object ──
+                    string[] targetNames = { "Manual (sliders)", "Follow Player", "Hovered Tile", "Hovered Object", "Selected Object" };
+                    int targetIdx = Math.Clamp(_dofFocusTarget, 0, targetNames.Length - 1);
+                    if (ImGui.BeginCombo("Focus Target", targetNames[targetIdx]))
+                    {
+                        for (int i = 0; i < targetNames.Length; i++)
+                        {
+                            if (ImGui.Selectable(targetNames[i], i == targetIdx))
+                            {
+                                _dofFocusTarget = i;
+                                PostFxSettings.DofFocusTarget = i;
+                                Visual.PostProcessing.DepthOfFieldFocusTracker.Snap();
+                                PersistAndNotify($"DoF focus → {targetNames[i]}");
+                            }
+                        }
+                        ImGui.EndCombo();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Apa yang dikejar lingkaran tajam:\nManual = geser slider Focus X/Y sendiri.\nFollow Player = mengikuti Player2D (juga saat main).\nHovered Tile = tile di bawah kursor (edit mode).\nHovered Object = objek di bawah kursor (edit mode).\nSelected Object = objek terpilih (rata-rata kalau multi).");
+
+                    if (_dofFocusTarget != 0)
+                    {
+                        if (ImGui.SliderFloat("Follow Speed", ref _dofFollowSpeed, 1f, 30f, "%.0f"))
+                        {
+                            PostFxSettings.DofFollowSpeed = _dofFollowSpeed;
+                            PersistAndNotify();
+                        }
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Seberapa cepat fokus mengejar target yang bergerak.\n1 = santai mengalir, 30 = menempel kencang.");
+
+                        // Live readout — the tracker writes these values every frame.
+                        ImGui.TextColored(new Vector4(0.7f, 0.8f, 0.95f, 1f),
+                            $"Live focus: {PostFxSettings.DofFocusX:F2}, {PostFxSettings.DofFocusY:F2}");
+                        ImGui.TextDisabled("Posisi dikendalikan target — slider manual disembunyikan.");
+                    }
+                    else
+                    {
+                    if (ImGui.SliderFloat("Focus X", ref _dofFocusX, 0f, 1f, "%.2f"))
+                    {
+                        PostFxSettings.DofFocusX = _dofFocusX;
+                        PersistAndNotify();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Focus point, horizontal: 0 = left edge, 0.5 = center, 1 = right edge.");
+
+                    if (ImGui.SliderFloat("Focus Y", ref _dofFocusY, 0f, 1f, "%.2f"))
+                    {
+                        PostFxSettings.DofFocusY = _dofFocusY;
+                        PersistAndNotify();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Focus point, vertical: 0 = bottom edge, 0.5 = center, 1 = top edge.");
+                    }
+
+                    if (ImGui.SliderFloat("Focus Radius", ref _dofRadius, 0.01f, 1f, "%.2f"))
+                    {
+                        PostFxSettings.DofRadius = _dofRadius;
+                        PersistAndNotify();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Sharp area around the focus point (fraction of screen height).\nEverything inside stays perfectly crisp.");
+
+                    if (ImGui.SliderFloat("Feather", ref _dofFeather, 0.01f, 1f, "%.2f"))
+                    {
+                        PostFxSettings.DofFeather = _dofFeather;
+                        PersistAndNotify();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Width of the transition band where blur ramps up.\nSmall = harsh focus edge, large = gradual cinematic falloff.");
+
+                    if (ImGui.SliderFloat("Blur Strength", ref _dofMaxBlur, 0f, 24f, "%.1f"))
+                    {
+                        PostFxSettings.DofMaxBlur = _dofMaxBlur;
+                        PersistAndNotify();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Maximum blur radius (in pixels) far from the focus point.");
+
+                    // ── Sprite-silhouette focus shape (optional) ──
+                    ImGui.Separator();
+                    if (ImGui.Checkbox("Focus = Sprite Shape (Layer)", ref _dofSpriteShapeEnable))
+                    {
+                        PostFxSettings.DofSpriteShapeEnable = _dofSpriteShapeEnable;
+                        PersistAndNotify(_dofSpriteShapeEnable ? "Sprite-shape focus ON" : "Sprite-shape focus OFF");
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Fokus bukan lingkaran: area tajam mengikuti SILUET alpha sprite\ndari semua Sprite2D pada Render Layer di bawah ini (circle tetap jalan di\nluar sprite). Butuh minimal satu Sprite2D di layer itu, kalau kosong\nfokus kembali ke lingkaran.");
+
+                    if (_dofSpriteShapeEnable)
+                    {
+                        if (ImGui.SliderInt("Sprite Layer", ref _dofSpriteShapeLayer, -10, 10))
+                        {
+                            PostFxSettings.DofSpriteShapeLayer = _dofSpriteShapeLayer;
+                            PersistAndNotify();
+                        }
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Render Layer mana yang siluetnya jadi bentuk fokus.\nHarus sama dengan Render Layer objek Sprite2D di Inspector.");
+
+                        if (ImGui.SliderFloat("Edge Expand", ref _dofSpriteExpandPx, 0f, 6f, "%.1f"))
+                        {
+                            PostFxSettings.DofSpriteExpandPx = _dofSpriteExpandPx;
+                            PersistAndNotify();
+                        }
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Seberapa jauh siluet membesar dari alpha asli (mask texel ≈ 2px scene).\n0 = piksel sempurna, 2-3 = tepi sprite tetap tajam walau blur makan tepi.");
+
+                        if (ImGui.SliderFloat("Alpha Bias", ref _dofSpriteAlphaBias, 0f, 0.5f, "%.2f"))
+                        {
+                            PostFxSettings.DofSpriteAlphaBias = _dofSpriteAlphaBias;
+                            PersistAndNotify();
+                        }
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Menambah coverage alpha: pixel semi-transparan ikut dianggap dalam fokus.");
+
+                        if (ImGui.Checkbox("Debug: Mask Only", ref _dofSpriteMaskOnly))
+                        {
+                            PostFxSettings.DofSpriteMaskOnly = _dofSpriteMaskOnly;
+                            PersistAndNotify();
+                        }
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Debug: SELURUH layar blur kecuali siluet sprite.\nPakai untuk memastikan bentuk mask sudah pas.");
+                    }
+
+                    if (ImGui.Button("Center Focus"))
+                    {
+                        _dofFocusX = 0.5f;
+                        _dofFocusY = 0.5f;
+                        PostFxSettings.DofFocusX = _dofFocusX;
+                        PostFxSettings.DofFocusY = _dofFocusY;
+                        PersistAndNotify("Focus moved to screen center");
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Snap the focus point to the middle of the screen.");
+
+                    ImGui.SameLine();
+                    // Sanity test: extreme values the eye CANNOT miss. If the scene is
+                    // still not blurry after this, the composite is not reaching the
+                    // texture your viewport samples — check the [DepthOfField] console log.
+                    if (ImGui.Button("Test: Max Blur"))
+                    {
+                        _dofFocusX = 0.5f; _dofFocusY = 0.5f;
+                        _dofRadius = 0.05f; _dofFeather = 0.10f; _dofMaxBlur = 20f;
+                        PostFxSettings.DofFocusX = _dofFocusX;
+                        PostFxSettings.DofFocusY = _dofFocusY;
+                        PostFxSettings.DofRadius = _dofRadius;
+                        PostFxSettings.DofFeather = _dofFeather;
+                        PostFxSettings.DofMaxBlur = _dofMaxBlur;
+                        PersistAndNotify("DoF test — tiny sharp dot, everything else blurred 20px");
+                        Console.WriteLine("[DepthOfField] TEST preset applied: radius=0.05 feather=0.10 blur=20px — the screen must look clearly blurry outside the center dot.");
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Extreme preset to verify the effect: only a tiny center dot stays sharp,\neverything else blurs hard. If you still see no blur, the composite isn't running\non your viewport's texture — check the console [DepthOfField] lines.");
+
+                    ImGui.TextDisabled("Focus circle on screen — outside blurs up to Blur Strength.");
+                }
+            }
+
             ImGui.Spacing();
 
             // ════════════════════════════════════════════════
@@ -222,6 +429,19 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             _aeMax = PostFxSettings.AutoExposureMaxExposure;
             _aeTarget = PostFxSettings.AutoExposureTargetLuminance;
             _aeSpeed = PostFxSettings.AutoExposureSpeed;
+            _dofEnabled = PostFxSettings.DofEnabled;
+            _dofFocusX = PostFxSettings.DofFocusX;
+            _dofFocusY = PostFxSettings.DofFocusY;
+            _dofRadius = PostFxSettings.DofRadius;
+            _dofFeather = PostFxSettings.DofFeather;
+            _dofMaxBlur = PostFxSettings.DofMaxBlur;
+            _dofFocusTarget = PostFxSettings.DofFocusTarget;
+            _dofFollowSpeed = PostFxSettings.DofFollowSpeed;
+            _dofSpriteShapeEnable = PostFxSettings.DofSpriteShapeEnable;
+            _dofSpriteShapeLayer = PostFxSettings.DofSpriteShapeLayer;
+            _dofSpriteExpandPx = PostFxSettings.DofSpriteExpandPx;
+            _dofSpriteAlphaBias = PostFxSettings.DofSpriteAlphaBias;
+            _dofSpriteMaskOnly = PostFxSettings.DofSpriteMaskOnly;
         }
     }
 }

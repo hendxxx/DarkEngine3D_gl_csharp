@@ -677,6 +677,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // samples an antialiased, up-to-date frame.
                     ResolveSharedFBO();
 
+                    // Depth of field (slider-driven focus circle, Post FX panel): composite
+                    // IN-PLACE into the shared resolve texture so the editor viewport shows
+                    // the effect live while dragging the sliders — not only during play.
+                    // Only when the viewport actually samples the SHARED texture (edit mode
+                    // or shared-FBO scenes): GameScene owns its own FBO and composites DoF
+                    // in PostProcessStack.RunStack — compositing here too would double it.
+                    if (bridge == null || bridge.SceneTextureID == 0 || bridge.SceneTextureID == _sharedColorTex)
+                    {
+                        if (DepthOfFieldComposite.Apply(_sharedColorTex, _sharedResolveFBO,
+                            Glfw.WindowWidth, Glfw.WindowHeight, "editor-sharedFBO"))
+                        {
+                            // Restore the resolved state so the assignments below keep working.
+                            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        }
+                    }
+
                     if (bridge != null && bridge.SceneTextureID == 0)
                     {
                         // Scene didn't set its own texture (MainMenuScene, etc.) — use shared FBO

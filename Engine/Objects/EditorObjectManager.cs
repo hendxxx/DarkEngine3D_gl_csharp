@@ -498,7 +498,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             // ── Sprite2D decorative animated sprites (same pass, no controller) ──
-            foreach (var obj in _objects)
+            // Sorted by Render Layer ascending: higher layers draw LATER (on top of
+            // lower ones). Draw order is the primary control; DrawSprite2D also nudges
+            // each layer 0.01 units toward the camera so the order survives depth test.
+            foreach (var obj in _objects.OrderBy(o => o.Sprite2DRenderLayer))
             {
                 if (obj is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Sprite2D })
                     obj.DrawSprite2D(camera);

@@ -8,6 +8,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint skyShaderProgram;
         static uint invertPassShaderProgram;
         static uint blurPassShaderProgram;
+        static uint dofSpriteMaskShaderProgram;
         static uint outlineShaderProgram;
 
         // ── AAA post-processing: bloom (bright-pass + separable blur) and final
@@ -15,6 +16,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint postFxBrightShaderProgram;
         static uint postFxBlurShaderProgram;
         static uint postFxCompositeShaderProgram;
+
+        // Depth of field — slider-driven focus circle + variable disk blur.
+        static uint postFxDofShaderProgram;
         
         static uint shadowShaderProgram;
         static uint shadowSkinnedShaderProgram;
@@ -79,6 +83,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 "Artifacts/shaders/blur_vertex.glsl",
                 "Artifacts/shaders/blur_fragment.glsl");
 
+            // DoF sprite-shape focus mask (sprite alpha → white silhouette).
+            dofSpriteMaskShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/dof_sprite_mask_fragment.glsl");
+
             outlineShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/outline_vertex.glsl",
                 "Artifacts/shaders/outline_fragment.glsl");
@@ -93,6 +102,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             postFxCompositeShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/post_vertex.glsl",
                 "Artifacts/shaders/postFxComposite_fragment.glsl");
+            postFxDofShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/dof_fragment.glsl");
 
             shadowShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/shadow_vertex.glsl",
@@ -167,6 +179,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetInvertPassShaderProgram()
         {
             return invertPassShaderProgram;
+        }
+
+        /// <summary>Depth-of-field post-process program (focus circle + variable disk blur).</summary>
+        /// <summary>DoF sprite-shape focus mask program (0 = failed to compile — caller skips the mask).</summary>
+        public static uint GetDofSpriteMaskShaderProgram()
+        {
+            if (dofSpriteMaskShaderProgram == 0) Init();
+            return dofSpriteMaskShaderProgram;
+        }
+
+        public static uint GetPostFxDofShaderProgram()
+        {
+            return postFxDofShaderProgram;
         }
 
         /// <summary>Shader used for the bloom bright-pass extraction.</summary>

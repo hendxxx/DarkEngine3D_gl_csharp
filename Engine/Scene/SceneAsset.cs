@@ -200,6 +200,8 @@ public class EditorObjectData
     public float Sprite2DSpeed { get; set; } = 1f;
     public float Sprite2DStartOffset { get; set; } = 0f;
     public bool Sprite2DFacingRight { get; set; } = true;
+    /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
+    public int Sprite2DRenderLayer { get; set; } = 0;
     // ── Player2D camera-follow tuning ──
     public float CameraFollowSpeed { get; set; } = 6f;
     public float CameraDeadZoneWidth { get; set; } = 96f;
