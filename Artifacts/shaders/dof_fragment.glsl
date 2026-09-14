@@ -6,6 +6,8 @@ uniform sampler2D sceneTex;
 uniform sampler2D u_MaskTex;     // sprite-shape focus mask (white = sharp silhouette)
 uniform int   u_MaskEnabled;     // 1 = mask valid this frame
 uniform int   u_MaskOnly;        // 1 = debug: sharp ONLY inside the mask
+uniform int   u_FocusShape;      // 0 = Circle (Geometric), 1 = Silhouette Only (non-geometric), 2 = Hybrid
+uniform int   u_InvertMask;      // 0 = Subject sharp / bg blurred, 1 = Subject blurred / bg sharp
 uniform vec2 texelSize;      // 1 / texture size
 // Focus circle in normalized screen coords (0..1). Y is measured from the
 // BOTTOM-left to match the FBO/OpenGL convention used by the quad UVs.
@@ -14,17 +16,17 @@ uniform float u_Radius;      // sharp radius around the focus point
 uniform float u_Feather;     // blur ramp width outside the radius
 uniform float u_MaxBlur;     // max blur disk radius in pixels
 
-// Variable-blur depth of field, slider-driven:
-//   - Inside the focus circle           → sharp (1 sample, passthrough).
-//   - Outside, ramping over u_Feather   → increasingly wide disk blur.
-// The disk uses the golden-angle spiral (uniform, noise-free sample spread)
-// with per-sample radius jitter, so a 32-sample disk looks far larger than 32 taps.
+// Variable-blur depth of field:
+//   - Geometric Circle: Inside the focus circle → sharp, outside → disk blur.
+//   - Sprite Silhouette: Sharp region strictly matches the Player/Sprite silhouette (no circle).
+//   - Inverted mode: Blur is applied to the sprite silhouette itself.
+// The disk uses the golden-angle spiral (uniform, noise-free sample spread).
 void main()
 {
     vec2 uv = TexCoord;
 
-    // Distance from the focus point, in units of screen HEIGHT (aspect-correct:
-    // the focus region is a circle on screen, not stretched by the window size).
+    // Geometric circle calculation:
+    // Distance from the focus point, in units of screen HEIGHT (aspect-correct).
     float aspect = texelSize.y / texelSize.x;   // (1/h) / (1/w) = w/h
     vec2 d = uv - u_FocusPoint;
     d.x *= aspect;
@@ -32,19 +34,32 @@ void main()
 
     // Blur amount 0..1: 0 inside the radius, rising to 1 at radius + feather.
     float t = clamp((dist - u_Radius) / max(u_Feather, 0.0001), 0.0, 1.0);
-    // Smoothstep the ramp edge so the transition band has no visible seam.
-    float blurAmt = t * t * (3.0 - 2.0 * t);
+    float circleBlur = t * t * (3.0 - 2.0 * t);
 
-    // Sprite-shape focus: pixels covered by the mask (the sprite silhouette on the
-    // chosen render layer) are pulled toward sharp. The 0.03 guard keeps a fully
-    // white mask from leaking a faint blur over the sprite's soft alpha edge.
+    float blurAmt = circleBlur;
+
+    // Sprite-shape focus: exact silhouette of Player sprites or Sprite2D objects.
     if (u_MaskEnabled == 1)
     {
         float m = texture(u_MaskTex, uv).r;
-        if (u_MaskOnly == 1)
-            blurAmt = 1.0 - m;                    // debug: sharp ONLY the silhouette
+        if (u_FocusShape == 1 || u_MaskOnly == 1)
+        {
+            // Pure silhouette focus (NON-GEOMETRIC, no circle):
+            blurAmt = (u_InvertMask == 1) ? m : (1.0 - m);
+        }
+        else if (u_FocusShape == 2)
+        {
+            // Hybrid: both circle and silhouette stay sharp (or inverted)
+            if (u_InvertMask == 1)
+                blurAmt = max(circleBlur, m);
+            else
+                blurAmt = circleBlur * (1.0 - m);
+        }
         else
-            blurAmt *= (1.0 - m);                 // circle blur ∧ NOT silhouette
+        {
+            // Circle mode with silhouette subtraction if mask active
+            blurAmt = circleBlur * (1.0 - m);
+        }
     }
 
     // Fully sharp fast path — most of a focused scene exits here.

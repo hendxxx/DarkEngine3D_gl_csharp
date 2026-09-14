@@ -3373,6 +3373,100 @@ public unsafe class EditorObject
         return true;
     }
 
+    /// <summary>Extract live draw parameters for this Player2D object: texture ID,
+    /// UV coordinates (y-flipped + mirrored, matching DrawPlayer2D), and the four quad
+    /// corners in world space. Consumed by the Depth of Field post-process mask so the
+    /// sharp silhouette carved into the blur matches the drawn player sprite pixel-for-pixel.</summary>
+    public bool TryGetPlayer2DDrawData(out uint texId,
+        out System.Numerics.Vector2 uvMin, out System.Numerics.Vector2 uvMax,
+        out System.Numerics.Vector3 bl, out System.Numerics.Vector3 br,
+        out System.Numerics.Vector3 tr, out System.Numerics.Vector3 tl)
+    {
+        texId = 0; uvMin = default; uvMax = default;
+        bl = br = tr = tl = default;
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return false;
+        if (!TryGetPlayer2DActiveClip(out var sheet, out var clip) || sheet == null || clip == null) return false;
+
+        var actionClip = GetActiveActionClip(out var activeAction, out var actionSheet);
+        var drawSheet = actionSheet ?? sheet;
+        if (!IDEBridge.TryGetSpriteSheetTexture(drawSheet.Name, out texId, out int _, out int _))
+            return false;
+        if (texId == 0) return false;
+
+        int frameIdx;
+        if (actionClip != null)
+        {
+            float frameDur = 1f / MathF.Max(0.01f, actionClip.FPS * actionClip.SpeedMultiplier);
+            int f = (int)(Player2DActionTime / frameDur);
+            int count = actionClip.FrameIndices.Count;
+            if (activeAction != null && activeAction.Loop && count > 0)
+                f = ((f % count) + count) % count;
+            else
+                f = Math.Clamp(f, 0, Math.Max(0, count - 1));
+            frameIdx = count > 0 ? actionClip.FrameIndices[f] : 0;
+        }
+        else
+        {
+            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        }
+
+        if (drawSheet.CustomFrames != null)
+        {
+            if (drawSheet.CustomFrames.Count > 0 && frameIdx >= drawSheet.CustomFrames.Count)
+                frameIdx = drawSheet.CustomFrames.Count - 1;
+        }
+        else
+        {
+            int gridFrames = drawSheet.Columns * drawSheet.Rows;
+            if (gridFrames > 0 && frameIdx >= gridFrames)
+                frameIdx = gridFrames - 1;
+        }
+
+        var (uvMinRaw, uvMaxRaw) = drawSheet.GetFrameUV(frameIdx);
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
+
+        if (!Player2DFacingRight)
+            (su0, su1) = (su1, su0);
+
+        float cellH = drawSheet.FrameHeight > 0 ? drawSheet.FrameHeight : drawSheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = drawSheet.FrameWidth > 0 ? drawSheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (drawSheet.CustomFrames != null && frameIdx < drawSheet.CustomFrames.Count)
+        {
+            drawFrame = drawSheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+
+        AnimationClip2D? sizingClip = actionClip ?? clip;
+        float snapH = sizingClip?.MasterHeight ?? 0f;
+        bool normalized = snapH > 0f;
+        float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
+        float w = MathF.Max(0.05f, cellW * pxToWorld);
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Player2DFacingRight ? 1f : -1f;
+        float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
+        float z = Position.Z + 0.05f;
+
+        uvMin = new System.Numerics.Vector2(su0, svTop);
+        uvMax = new System.Numerics.Vector2(su1, svBot);
+        bl = new System.Numerics.Vector3(x0, y0, z);
+        br = new System.Numerics.Vector3(x1, y0, z);
+        tr = new System.Numerics.Vector3(x1, y1, z);
+        tl = new System.Numerics.Vector3(x0, y1, z);
+        return true;
+    }
+
     /// <summary>Resolve the animation clip for the currently-playing action (priority
     /// system), or null when the base locomotion clip should play. The matched action is
     /// returned via <paramref name="action"/> (for its Loop flag — the shared clip object

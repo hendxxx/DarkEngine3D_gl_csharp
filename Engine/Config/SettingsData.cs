@@ -147,6 +147,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float PostFxDofFollowSpeed { get; set; } = 14f;
         /// <summary>DoF focus shape follows the SPRITE silhouette on a render layer (not a circle).</summary>
         public bool PostFxDofSpriteShapeEnable { get; set; } = false;
+        /// <summary>DoF focus shape / mask mode: 0=Geometric Circle, 1=Player Sprite, 2=Sprite2D Layer, 3=Player + Sprite2D Layer, 4=Hybrid (Circle + Player).</summary>
+        public int PostFxDofFocusShape { get; set; } = 0;
+        /// <summary>Invert DoF mask: false=subject sharp / background blurred, true=subject blurred / background sharp.</summary>
+        public bool PostFxDofInvertMask { get; set; } = false;
         /// <summary>Which Sprite2D Render Layer forms the sharp silhouette.</summary>
         public int PostFxDofSpriteShapeLayer { get; set; } = 0;
         /// <summary>Silhouette growth in mask texels (softens the sprite-shaped edge).</summary>

@@ -84,8 +84,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static float DofFollowSpeed = 14f;
 
         // ── Optional sprite-silhouette focus shape: instead of a circle, the sharp
-        // region is the exact alpha silhouette of every Sprite2D on a render layer.
-        /// <summary>Master switch for the sprite-shape focus mask.</summary>
+        // region is the exact alpha silhouette of Player sprites or Sprite2D objects.
+        /// <summary>DoF focus shape / mask mode: 0=Geometric Circle, 1=Player Sprite, 2=Sprite2D Layer, 3=Player + Sprite2D Layer, 4=Hybrid (Circle + Player).</summary>
+        public static int DofFocusShape = 0;
+        /// <summary>Invert DoF mask: false=subject sharp / background blurred, true=subject blurred / background sharp.</summary>
+        public static bool DofInvertMask = false;
+        /// <summary>Master switch for the sprite-shape focus mask (true when DofFocusShape != 0).</summary>
         public static bool DofSpriteShapeEnable = false;
         /// <summary>Which Sprite2D Render Layer forms the sharp silhouette (−10..10 slider).</summary>
         public static int DofSpriteShapeLayer = 0;
@@ -122,6 +126,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             DofMaxBlur = 12f;
             DofFocusTarget = 0;
             DofFollowSpeed = 14f;
+            DofFocusShape = 0;
+            DofInvertMask = false;
             DofSpriteShapeEnable = false;
             DofSpriteShapeLayer = 0;
             DofSpriteExpandPx = 2f;
@@ -154,7 +160,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 DofMaxBlur = Clamp(s.PostFxDofMaxBlur, 0f, 24f);
                 DofFocusTarget = Math.Clamp(s.PostFxDofFocusTarget, 0, 4);
                 DofFollowSpeed = Clamp(s.PostFxDofFollowSpeed, 1f, 30f);
-                DofSpriteShapeEnable = s.PostFxDofSpriteShapeEnable;
+                DofFocusShape = Math.Clamp(s.PostFxDofFocusShape, 0, 4);
+                if (DofFocusShape == 0 && s.PostFxDofSpriteShapeEnable)
+                    DofFocusShape = s.PostFxDofSpriteMaskOnly ? 2 : 4;
+                DofInvertMask = s.PostFxDofInvertMask;
+                DofSpriteShapeEnable = (DofFocusShape != 0) || s.PostFxDofSpriteShapeEnable;
                 DofSpriteShapeLayer = Math.Clamp(s.PostFxDofSpriteShapeLayer, -10, 10);
                 DofSpriteExpandPx = Clamp(s.PostFxDofSpriteExpandPx, 0f, 6f);
                 DofSpriteAlphaBias = Clamp(s.PostFxDofSpriteAlphaBias, 0f, 0.5f);
@@ -191,7 +201,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 s.PostFxDofMaxBlur = DofMaxBlur;
                 s.PostFxDofFocusTarget = DofFocusTarget;
                 s.PostFxDofFollowSpeed = DofFollowSpeed;
-                s.PostFxDofSpriteShapeEnable = DofSpriteShapeEnable;
+                s.PostFxDofFocusShape = DofFocusShape;
+                s.PostFxDofInvertMask = DofInvertMask;
+                s.PostFxDofSpriteShapeEnable = (DofFocusShape != 0) || DofSpriteShapeEnable;
                 s.PostFxDofSpriteShapeLayer = DofSpriteShapeLayer;
                 s.PostFxDofSpriteExpandPx = DofSpriteExpandPx;
                 s.PostFxDofSpriteAlphaBias = DofSpriteAlphaBias;

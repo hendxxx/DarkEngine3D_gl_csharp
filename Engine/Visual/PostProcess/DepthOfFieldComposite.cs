@@ -118,11 +118,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             DepthOfFieldFocusTracker.Update();
 
             // Optional sprite-silhouette focus shape (Post FX panel): render the alpha
-            // of every Sprite2D on the configured render layer into a half-res mask.
+            // of Player2D or Sprite2D objects into a half-res mask.
             // When it fails (no camera / no sprites / shader compile error) the DoF
             // pass silently falls back to the plain focus circle.
             bool maskOn = false;
-            if (PostFxSettings.DofSpriteShapeEnable)
+            if (PostFxSettings.DofFocusShape != 0 || PostFxSettings.DofSpriteShapeEnable)
                 maskOn = RenderSpriteMask(width, height);
 
             // ── 1. DoF composite: scene texture → scratch FBO ──
@@ -149,6 +149,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             GL.Uniform1f(GL.GetUniformLocation(shader, "u_Radius"), PostFxSettings.DofRadius);
             GL.Uniform1f(GL.GetUniformLocation(shader, "u_Feather"), PostFxSettings.DofFeather);
             GL.Uniform1f(GL.GetUniformLocation(shader, "u_MaxBlur"), PostFxSettings.DofMaxBlur);
+
+            int shaderFocusShape = 0;
+            if (PostFxSettings.DofFocusShape == 4)
+                shaderFocusShape = 2; // Hybrid (Circle + Silhouette)
+            else if (PostFxSettings.DofFocusShape >= 1 && PostFxSettings.DofFocusShape <= 3)
+                shaderFocusShape = 1; // Pure silhouette (non-geometric)
+            else if (PostFxSettings.DofSpriteMaskOnly)
+                shaderFocusShape = 1;
+
+            GL.Uniform1i(GL.GetUniformLocation(shader, "u_FocusShape"), shaderFocusShape);
+            GL.Uniform1i(GL.GetUniformLocation(shader, "u_InvertMask"), PostFxSettings.DofInvertMask ? 1 : 0);
             GL.Uniform1i(GL.GetUniformLocation(shader, "u_MaskEnabled"), maskOn ? 1 : 0);
             GL.Uniform1i(GL.GetUniformLocation(shader, "u_MaskOnly"), PostFxSettings.DofSpriteMaskOnly ? 1 : 0);
             GL.Uniform1i(GL.GetUniformLocation(shader, "u_MaskTex"), 1);
@@ -250,12 +261,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             Span<float> v = stackalloc float[24];
             int drawn = 0;
 
+            bool includePlayer = (PostFxSettings.DofFocusShape == 1 ||
+                                  PostFxSettings.DofFocusShape == 3 ||
+                                  PostFxSettings.DofFocusShape == 4);
+            bool includeSpriteLayer = (PostFxSettings.DofFocusShape == 2 ||
+                                       PostFxSettings.DofFocusShape == 3 ||
+                                       (PostFxSettings.DofFocusShape == 0 && PostFxSettings.DofSpriteShapeEnable));
+
             foreach (var o in mgr.Objects)
             {
-                if (o == null || o.PrimitiveType != EditorPrimitiveType.Sprite2D) continue;
-                if (o.Sprite2DRenderLayer != PostFxSettings.DofSpriteShapeLayer) continue;
-                if (!o.TryGetSprite2DDrawData(out uint texId, out var uvMin, out var uvMax,
-                    out var bl, out var br, out var tr, out var tl)) continue;
+                if (o == null) continue;
+
+                uint texId = 0;
+                System.Numerics.Vector2 uvMin = default, uvMax = default;
+                System.Numerics.Vector3 bl = default, br = default, tr = default, tl = default;
+                bool ok = false;
+
+                if (includePlayer && o.PrimitiveType == EditorPrimitiveType.Player2D)
+                {
+                    ok = o.TryGetPlayer2DDrawData(out texId, out uvMin, out uvMax, out bl, out br, out tr, out tl);
+                }
+                else if (includeSpriteLayer && o.PrimitiveType == EditorPrimitiveType.Sprite2D)
+                {
+                    if (o.Sprite2DRenderLayer == PostFxSettings.DofSpriteShapeLayer)
+                    {
+                        ok = o.TryGetSprite2DDrawData(out texId, out uvMin, out uvMax, out bl, out br, out tr, out tl);
+                    }
+                }
+
+                if (!ok || texId == 0) continue;
 
                 var pBL = TransformGizmo.ProjectToScreen(cam, bl, _maskW, _maskH);
                 var pBR = TransformGizmo.ProjectToScreen(cam, br, _maskW, _maskH);
