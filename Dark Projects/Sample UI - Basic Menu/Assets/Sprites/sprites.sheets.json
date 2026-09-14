@@ -1811,10 +1811,33 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0
+    },
+    {
+      "Name": "Char A - Walk",
+      "SpriteSheetName": "Run-Sheet",
+      "FrameIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "FPS": 20,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {},
+      "MasterWidth": 80,
+      "MasterHeight": 80,
+      "SpriteOffsetX": 0,
+      "SpriteOffsetY": 15
     }
   ],
   "PreviewStartFrame": 0,
-  "PreviewEndFrame": 3,
+  "PreviewEndFrame": 7,
   "PreviewFps": 20,
   "PreviewLoop": true
 }
