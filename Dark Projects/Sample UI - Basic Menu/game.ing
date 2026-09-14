@@ -11013,8 +11013,8 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 96.82403,
-          "posY": 2.9400601,
+          "posX": 72,
+          "posY": 0,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -11076,8 +11076,8 @@
             },
             {
               "name": "Walk",
-              "spriteSheet": "Campfire sheet",
-              "clip": "Fire 1",
+              "spriteSheet": "Run-Sheet",
+              "clip": "Char A - Walk",
               "loop": true,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12977,9 +12977,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        96.82404,
-        32,
-        307.0999
+        83.03183,
+        43.81875,
+        307.03183
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
