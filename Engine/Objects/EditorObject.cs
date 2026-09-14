@@ -2728,6 +2728,9 @@ public unsafe class EditorObject
     /// <summary>Name of the clip DrawPlayer2D played last frame — used to detect idle ↔
     /// walk switches and restart the animation clock from frame 0 (transient).</summary>
     private string? _player2dLastClip;
+    /// <summary>Last action name emitted by <see cref="LogActiveAnimChange"/> — dedups
+    /// the anim log so it prints only on transitions (transient).</summary>
+    private string? _player2dLastLoggedAction;
     /// <summary>Glfw.FrameId when the animation clock last advanced — DrawPlayer2D can run
     /// multiple times per rendered frame (editor pass + per camera); the clock must only
     /// advance once or clips play too fast (transient).</summary>
@@ -2740,6 +2743,22 @@ public unsafe class EditorObject
     {
         sheet = null; clip = null;
         return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
+    }
+
+    /// <summary>Console-log which animation the player is actually playing — fires ONLY
+    /// when the active action changes (dedup), so it is safe to call every frame.
+    /// Shows the action name, the RESOLVED clip + sheet (what really renders), and the
+    /// physics state that produced it. Debug aid for Walk/Run/Jump wiring issues.</summary>
+    private void LogActiveAnimChange()
+    {
+        if (Player2DCurrentAction == _player2dLastLoggedAction) return;
+        _player2dLastLoggedAction = Player2DCurrentAction;
+        string label = string.IsNullOrEmpty(Player2DCurrentAction) ? "(base clip)" : Player2DCurrentAction;
+        var resolved = GetActiveActionClip(out _, out var logSheet);
+        if (resolved != null && logSheet != null)
+            Console.WriteLine($"[Player2D] Anim: {label} — clip '{resolved.Name}' @ '{logSheet.Name}' ({resolved.FPS} FPS, velX {Player2DVelocityX:F2}, shiftRun {Player2DRunning})");
+        else
+            Console.WriteLine($"[Player2D] Anim: {label} — clip NOT resolvable (velX {Player2DVelocityX:F2}, shiftRun {Player2DRunning})");
     }
 
     /// <summary>Which locomotion action the player's CURRENT PHYSICS STATE wants
@@ -2870,6 +2889,8 @@ public unsafe class EditorObject
     {
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
         if (!TryGetPlayer2DActiveClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+        // Debug aid: print which animation is active whenever it changes (dedup'd).
+        LogActiveAnimChange();
 
         // ── Animation action system: a bound action with an own clip overrides the base clip. ──
         // DrawPlayer2D still owns the clock (single source of truth) — but when an action is

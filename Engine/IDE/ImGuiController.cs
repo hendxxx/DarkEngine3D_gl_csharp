@@ -407,6 +407,18 @@ public unsafe class ImGuiController : IDisposable
                                          Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_ALT));
         io.AddKeyEvent(ImGuiKey.ModSuper, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_SUPER) ||
                                            Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_SUPER));
+        // Modifier keys must ALSO be posted as their named key slots (LeftShift/LeftCtrl/…
+        // /LeftAlt/LeftSuper) — ModShift alone only feeds the modifier bitmask and never
+        // sets the named key's down state, so ImGui.IsKeyDown(ImGuiKey.LeftShift) stays
+        // false forever. The official imgui_impl_glfw backend posts both forms.
+        io.AddKeyEvent(ImGuiKey.LeftShift, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_SHIFT));
+        io.AddKeyEvent(ImGuiKey.RightShift, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_SHIFT));
+        io.AddKeyEvent(ImGuiKey.LeftCtrl, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_CONTROL));
+        io.AddKeyEvent(ImGuiKey.RightCtrl, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_CONTROL));
+        io.AddKeyEvent(ImGuiKey.LeftAlt, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_ALT));
+        io.AddKeyEvent(ImGuiKey.RightAlt, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_ALT));
+        io.AddKeyEvent(ImGuiKey.LeftSuper, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_SUPER));
+        io.AddKeyEvent(ImGuiKey.RightSuper, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_SUPER));
         foreach (var kvp in _glfwToImGuiKey)
             io.AddKeyEvent(kvp.Value, Keyboard.IsKeyDown(_window, kvp.Key));
 
