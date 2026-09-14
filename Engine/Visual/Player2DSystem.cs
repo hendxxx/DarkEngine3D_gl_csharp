@@ -110,15 +110,13 @@ public static class Player2DSystem
             // truth) — updating it here too would double the playback speed.
 
             // ── Input-driven movement + jump (preview/in-game only) ──
-            // A/D or Left/Right move horizontally with acceleration/deceleration;
-            // LeftShift runs (RunSpeed); Space/Up jumps when grounded; W/S fly-style
-            // vertical movement retained as a debug convenience.
+            // A/D or Left/Right move horizontally (Walk by default, Shift = Run);
+            // Space/Up jumps when grounded. W/S fly-style vertical movement was
+            // REMOVED — W no longer moves the player up (pure platformer controls).
             float walkSpeed = MathF.Max(0.1f, player.Player2DMoveSpeed);
             float runSpeed = MathF.Max(walkSpeed, player.Player2DRunSpeed);
             bool left = ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow);
             bool right = ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow);
-            bool upHeld = ImGui.IsKeyDown(ImGuiKey.W);
-            bool downHeld = ImGui.IsKeyDown(ImGuiKey.S);
             bool runHeld = ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift);
             bool jump = ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow);
             float targetVx = 0f;
@@ -197,9 +195,6 @@ public static class Player2DSystem
             // active key-bound action's key is still held — if released, locomotion takes
             // over (e.g. Run bound to J: hold = Run, release = back to Idle/Walk).
             player.ResolveLocomotionAction(currentActionKeyHeld);
-            // W/S override gravity while held (fly-style vertical movement).
-            if (upHeld && !downHeld) player.Player2DVelocityY = walkSpeed;
-            else if (downHeld && !upHeld) player.Player2DVelocityY = -walkSpeed;
 
             var pos = player.Position;
             float r = player.Player2DCapsuleRadius;
