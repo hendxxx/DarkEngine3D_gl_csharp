@@ -313,6 +313,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
                 drawn++;
             }
 
+            // ── Map2D tile rendering: include tiles from the selected Map Editor layer ──
+            // Only active when Focus Shape includes a sprite/tile layer (modes 2 or 3).
+            if (includeSpriteLayer)
+            {
+                var tileVerts = new System.Collections.Generic.List<float>();
+                foreach (var o in mgr.Objects)
+                {
+                    if (o == null || o.PrimitiveType != EditorPrimitiveType.Map2D) continue;
+                    int tileDrawn = o.RenderMap2DLayerToDofMask(
+                        PostFxSettings.DofSpriteShapeLayer, cam, _maskW, _maskH,
+                        tileVerts, out uint tileTexId);
+                    if (tileDrawn <= 0 || tileTexId == 0) { tileVerts.Clear(); continue; }
+
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, tileTexId);
+                    float[] arr = tileVerts.ToArray();
+                    fixed (float* ptv = arr)
+                        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(arr.Length * sizeof(float)), ptv, Const.GL_DYNAMIC_DRAW);
+                    GL.DrawArrays(Const.GL_TRIANGLES, 0, arr.Length / 4);
+                    drawn += tileDrawn;
+                    tileVerts.Clear();
+                }
+            }
+
             GL.BindVertexArray(0);
             GL.BindBuffer(Const.GL_ARRAY_BUFFER, 0);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);

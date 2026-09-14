@@ -4171,16 +4171,9 @@ void main() {
         _map2dVBO = vbo;
     }
 
-    /// <summary>Draw the 2D map as a textured plane in the 3D scene.</summary>
-    private unsafe void DrawMap2D(
-        int modelLoc, int viewLoc, int projLoc,
-        int sunDirLoc, int lightColorLoc, int viewPosLoc,
-        int useFogLoc, int fogColorLoc,
-        Camera camera, Lights light, CSM? csm)
+    public uint EnsureMap2DTilesetTexture()
     {
-        if (Map2dTilemap == null) return;
-
-        // Load tileset texture if needed
+        if (Map2dTilemap == null) return 0;
         string tilesetPath = Map2dTilemap.TilesetImagePath ?? "";
         if (!string.IsNullOrEmpty(tilesetPath) && tilesetPath != _map2dTilesetPath)
         {
@@ -4193,7 +4186,106 @@ void main() {
             }
             _map2dTilesetPath = tilesetPath;
         }
+        return _map2dTilesetTex;
+    }
 
+    /// <summary>Render all tiles of a specific tilemap layer to the DoF mask buffer.
+    /// Returns the number of visible tiles added to outVerts.</summary>
+    public int RenderMap2DLayerToDofMask(int layerIndex, Camera camera, int maskW, int maskH, List<float> outVerts, out uint outTexId)
+    {
+        outTexId = 0;
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Map2D || Map2dTilemap == null) return 0;
+        var map = Map2dTilemap;
+        if (layerIndex < 0 || layerIndex >= map.Layers.Count) return 0;
+        var layer = map.Layers[layerIndex];
+        if (!layer.IsVisible) return 0;
+
+        outTexId = EnsureMap2DTilesetTexture();
+        if (outTexId == 0) return 0;
+
+        int mapW = map.Width;
+        int mapH = map.Height;
+        int tsCols = Math.Max(1, Map2dTilesetCols);
+        int tsRows = Math.Max(1, Map2dTilesetRows);
+        float tileUW = 1f / tsCols;
+        float tileVH = 1f / tsRows;
+        float worldTs = map.TileSize * Tilemap2D.WorldScale;
+        float layerZ = Map2dLayerIndex >= 0 ? (float)Map2dLayerIndex : 0f;
+        float liftY = -layerIndex * 0.01f;
+        float z = layerZ + liftY;
+
+        int drawn = 0;
+
+        for (int ty = 0; ty < mapH; ty++)
+        {
+            for (int tx = 0; tx < mapW; tx++)
+            {
+                int tileId = layer.GetTile(tx, ty);
+                if (tileId < 0) continue;
+
+                int tc = tileId % tsCols;
+                int tr = tileId / tsCols;
+                if (tr >= tsRows) continue;
+
+                float vFlip = Map2dTilesetFlipV ? -1f : 1f;
+                float u0 = tc * tileUW;
+                float v0 = (tr + (vFlip < 0f ? 0f : 1f)) * tileVH * vFlip;
+                float u1 = u0 + tileUW;
+                float v1 = (tr + (vFlip < 0f ? 1f : 0f)) * tileVH * vFlip;
+
+                float x0 = tx * worldTs;
+                float x1 = x0 + worldTs;
+                float y0 = (mapH - 1 - ty) * worldTs;
+                float y1 = y0 + worldTs;
+
+                var pBL = TransformGizmo.ProjectToScreen(camera, new Vector3(x0, y0, z), maskW, maskH);
+                var pBR = TransformGizmo.ProjectToScreen(camera, new Vector3(x1, y0, z), maskW, maskH);
+                var pTR = TransformGizmo.ProjectToScreen(camera, new Vector3(x1, y1, z), maskW, maskH);
+                var pTL = TransformGizmo.ProjectToScreen(camera, new Vector3(x0, y1, z), maskW, maskH);
+
+                if (float.IsNaN(pBL.X) || float.IsInfinity(pBL.X)) continue; // behind camera
+
+                // Frustum / viewport culling
+                float minX = MathF.Min(MathF.Min(pBL.X, pBR.X), MathF.Min(pTR.X, pTL.X));
+                float maxX = MathF.Max(MathF.Max(pBL.X, pBR.X), MathF.Max(pTR.X, pTL.X));
+                float minY = MathF.Min(MathF.Min(pBL.Y, pBR.Y), MathF.Min(pTR.Y, pTL.Y));
+                float maxY = MathF.Max(MathF.Max(pBL.Y, pBR.Y), MathF.Max(pTR.Y, pTL.Y));
+                if (maxX < 0f || minX > maskW || maxY < 0f || minY > maskH) continue;
+
+                // Tri 1: BL, BR, TR
+                AddMaskVert(outVerts, pBL, maskW, maskH, u0, v0);
+                AddMaskVert(outVerts, pBR, maskW, maskH, u1, v0);
+                AddMaskVert(outVerts, pTR, maskW, maskH, u1, v1);
+
+                // Tri 2: BL, TR, TL
+                AddMaskVert(outVerts, pBL, maskW, maskH, u0, v0);
+                AddMaskVert(outVerts, pTR, maskW, maskH, u1, v1);
+                AddMaskVert(outVerts, pTL, maskW, maskH, u0, v1);
+
+                drawn++;
+            }
+        }
+
+        return drawn;
+    }
+
+    private static void AddMaskVert(List<float> v, Vector2 p, int maskW, int maskH, float u, float vv)
+    {
+        v.Add(p.X / maskW * 2f - 1f);
+        v.Add(p.Y / maskH * 2f - 1f);
+        v.Add(u);
+        v.Add(vv);
+    }
+
+    private unsafe void DrawMap2D(
+        int modelLoc, int viewLoc, int projLoc,
+        int sunDirLoc, int lightColorLoc, int viewPosLoc,
+        int useFogLoc, int fogColorLoc,
+        Camera camera, Lights light, CSM? csm)
+    {
+        if (Map2dTilemap == null) return;
+
+        EnsureMap2DTilesetTexture();
         BuildMap2DMesh();
 
         // The map is drawn as ONE canonical upright plane at the world origin so it

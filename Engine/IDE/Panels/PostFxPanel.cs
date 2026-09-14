@@ -1,4 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Objects;
+using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
 using System;
 using System.Numerics;
@@ -54,7 +56,9 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         private string _notifText = "";
         private float _notifTimer = 0f;
 
-        public PostFxPanel(IDEBridge bridge) { }
+        private readonly IDEBridge _bridge;
+
+        public PostFxPanel(IDEBridge bridge) { _bridge = bridge; }
 
         public void ShowInMenu() => ImGui.MenuItem("Post FX (Bloom/Tonemap/Gamma)", null, ref _visible);
 
@@ -279,13 +283,55 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
 
                         if (_dofFocusShape == 2 || _dofFocusShape == 3)
                         {
-                            if (ImGui.SliderInt("Sprite Layer", ref _dofSpriteShapeLayer, -10, 10))
+                            // Build layer name list from the active Map2D object in the scene.
+                            // Falls back to a plain numeric slider when no tilemap is loaded.
+                            Tilemap2D? activeTilemap = null;
+                            if (_bridge.EditorObjectManager != null)
                             {
-                                PostFxSettings.DofSpriteShapeLayer = _dofSpriteShapeLayer;
-                                PersistAndNotify();
+                                foreach (var o in _bridge.EditorObjectManager.Objects)
+                                {
+                                    if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)
+                                    {
+                                        activeTilemap = o.Map2dTilemap;
+                                        break;
+                                    }
+                                }
                             }
-                            if (ImGui.IsItemHovered())
-                                ImGui.SetTooltip("Render Layer mana yang siluetnya dipakai.\nHarus sama dengan Render Layer objek Sprite2D di Inspector.");
+
+                            if (activeTilemap != null && activeTilemap.Layers.Count > 0)
+                            {
+                                // Dropdown showing layer names from the Map Editor.
+                                int layerCount = activeTilemap.Layers.Count;
+                                int clampedIdx = Math.Clamp(_dofSpriteShapeLayer, 0, layerCount - 1);
+                                string currentLabel = $"[{clampedIdx}] {activeTilemap.Layers[clampedIdx].Name}";
+                                if (ImGui.BeginCombo("Map / Render Layer", currentLabel))
+                                {
+                                    for (int i = 0; i < layerCount; i++)
+                                    {
+                                        string label = $"[{i}] {activeTilemap.Layers[i].Name}";
+                                        if (ImGui.Selectable(label, i == clampedIdx))
+                                        {
+                                            _dofSpriteShapeLayer = i;
+                                            PostFxSettings.DofSpriteShapeLayer = i;
+                                            PersistAndNotify($"DoF layer → {label}");
+                                        }
+                                    }
+                                    ImGui.EndCombo();
+                                }
+                                if (ImGui.IsItemHovered())
+                                    ImGui.SetTooltip("Pilih layer Map Editor yang tile-nya ikut masuk ke DoF mask.\nLayer yang sama di Map Editor dan Inspector akan membuat animasi sprite + tile tampak tajam bersamaan.");
+                            }
+                            else
+                            {
+                                // Fallback: no tilemap loaded, show plain numeric slider.
+                                if (ImGui.SliderInt("Sprite Layer", ref _dofSpriteShapeLayer, -10, 10))
+                                {
+                                    PostFxSettings.DofSpriteShapeLayer = _dofSpriteShapeLayer;
+                                    PersistAndNotify();
+                                }
+                                if (ImGui.IsItemHovered())
+                                    ImGui.SetTooltip("Render Layer mana yang siluetnya dipakai.\nHarus sama dengan Render Layer objek Sprite2D di Inspector.\n(Muat tilemap di Map Editor untuk melihat nama layer.)");
+                            }
                         }
 
                         if (ImGui.SliderFloat("Edge Expand", ref _dofSpriteExpandPx, 0f, 6f, "%.1f"))

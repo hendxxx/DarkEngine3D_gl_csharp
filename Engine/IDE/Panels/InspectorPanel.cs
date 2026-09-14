@@ -2543,12 +2543,49 @@ public class InspectorPanel
         if (ImGui.Checkbox("Facing Right", ref faceR))
             editorObj.Sprite2DFacingRight = faceR;
 
-        // Render layer: higher draws on top of lower (sorted draw order + z nudge).
+        // Render layer: linked with Map Editor layers when available
+        var map = _bridge.ActiveTilemap ?? _bridge.EditorObjectManager?.Objects.FirstOrDefault(o => o?.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)?.Map2dTilemap;
         int layer = editorObj.Sprite2DRenderLayer;
-        if (ImGui.SliderInt("Render Layer", ref layer, -10, 10))
-            editorObj.Sprite2DRenderLayer = layer;
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Draw order between overlapping sprites: higher layers draw ON TOP of lower ones.\nEach layer also steps 0.01 world units closer to the camera. Default 0 = base layer.");
+
+        if (map != null && map.Layers.Count > 0)
+        {
+            string currentLayerLabel = (layer >= 0 && layer < map.Layers.Count)
+                ? $"[{layer}] {map.Layers[layer].Name}"
+                : $"Custom ({layer})";
+
+            if (ImGui.BeginCombo("Map / Render Layer", currentLayerLabel))
+            {
+                for (int i = 0; i < map.Layers.Count; i++)
+                {
+                    bool isSel = (layer == i);
+                    if (ImGui.Selectable($"[{i}] {map.Layers[i].Name}", isSel))
+                    {
+                        editorObj.Sprite2DRenderLayer = i;
+                    }
+                    if (isSel) ImGui.SetItemDefaultFocus();
+                }
+
+                ImGui.Separator();
+                if (ImGui.Selectable("Custom (Behind Map, -1)", layer == -1))
+                    editorObj.Sprite2DRenderLayer = -1;
+                if (ImGui.Selectable("Custom (Foreground, 99)", layer == 99))
+                    editorObj.Sprite2DRenderLayer = 99;
+
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Pilih layer Map Editor tempat sprite ini ditempatkan.\nSprite animasi pada layer yang sama akan mendapatkan perlakuan DoF yang sama dengan layer map tersebut.");
+
+            if (ImGui.SliderInt("Layer Offset", ref layer, -10, 10))
+                editorObj.Sprite2DRenderLayer = layer;
+        }
+        else
+        {
+            if (ImGui.SliderInt("Render Layer", ref layer, -10, 10))
+                editorObj.Sprite2DRenderLayer = layer;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Draw order between overlapping sprites: higher layers draw ON TOP of lower ones.\nEach layer also steps 0.01 world units closer to the camera. Default 0 = base layer.");
+        }
     }
 
     private void RenderPlayer2DInspector(EditorObject editorObj)
