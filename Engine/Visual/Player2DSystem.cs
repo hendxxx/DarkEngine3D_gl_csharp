@@ -67,10 +67,11 @@ public static class Player2DSystem
                     // hold from a previous run — start clean in idle.
                     p.Player2DCurrentAction = "";
                     p.Player2DActionHoldingEnd = false;
-                    // Fresh run: clear any stale walk/facing state carried over from
-                    // a previous in-game session.
-                    p.Player2DMoving = false;
-                    p.Player2DFacingRight = true;
+            // Fresh run: clear any stale walk/facing state carried over from
+            // a previous in-game session.
+            p.Player2DMoving = false;
+            p.Player2DRunning = false;
+            p.Player2DFacingRight = true;
                     Console.WriteLine($"[Player2D] Spawned at Start ({p.Position.X:F1}, {p.Position.Y:F1}) (capsule offset {p.Player2DCapsuleOffsetX:F2},{p.Player2DCapsuleOffsetY:F2})");
                 }
             }
@@ -123,6 +124,10 @@ public static class Player2DSystem
             float targetVx = 0f;
             if (left && !right) targetVx = -(runHeld ? runSpeed : walkSpeed);
             else if (right && !left) targetVx = runHeld ? runSpeed : walkSpeed;
+            // Walk vs Run is a STATE (speed modifier held + actually moving), consumed by
+            // ComputeLocomotionDesired for the animation action choice. Shift while still
+            // (or mid-air with no horizontal input) is NOT a run.
+            player.Player2DRunning = runHeld && targetVx != 0f;
 
             // Accelerate/decelerate toward the target (air control scales acceleration).
             float accel = player.Player2DAcceleration;

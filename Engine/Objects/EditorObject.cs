@@ -372,6 +372,11 @@ public unsafe class EditorObject
     public float Player2DMoveSpeed { get; set; } = 8f;
     /// <summary>Horizontal run speed (world units/s) — used while LeftShift is held.</summary>
     public float Player2DRunSpeed { get; set; } = 14f;
+
+    /// <summary>True while the run modifier (Shift) is held AND the player is actually
+    /// moving — drives the Walk↔Run animation action choice (transient, not persisted;
+    /// recomputed every physics tick by Player2DSystem).</summary>
+    public bool Player2DRunning { get; set; } = false;
     /// <summary>Initial upward velocity on jump (world units/s). Keep modest so airtime is snappy.
     /// With the default gravity (25) this gives ≈ 0.9s to apex then fall — raise Gravity if
     /// you want even shorter airtime.</summary>
@@ -2762,7 +2767,7 @@ public unsafe class EditorObject
                 : HasActionOwnClip("Jump") ? "Jump"
                 : "Fall";
         }
-        if (moving) return Player2DVelocityX > 0 ? "Run" : "Walk";
+        if (moving) return Player2DRunning && HasActionOwnClip("Run") ? "Run" : "Walk";
         return "Idle";
     }
 
