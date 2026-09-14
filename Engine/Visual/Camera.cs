@@ -357,6 +357,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public static float OrthoZoomMin = 2f;
     public static float OrthoZoomMax = 200f;
 
+    /// <summary>Master toggle for MOUSE camera control in the editor viewport (drag-pan
+    /// AND fly mouse-look). When false, the camera never moves from mouse input — keyboard
+    /// WASD/scroll/Views presets still work. Toggleable in IDE Settings → Camera; persisted
+    /// to settings.json (MouseCameraControl). Default true = classic behavior.</summary>
+    public static bool MouseCameraControl = true;
+
     /// <summary>Apply validated zoom limits (min ≥ 0.5, max ≥ min + 1). Called at
     /// IDE startup and whenever the IDE Settings sliders change.</summary>
     public static void ApplyZoomLimits(float min, float max)
@@ -465,9 +471,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // interactions. ORTHO mode (2D levels): right-drag pans as before.
                 // Panning never rotates the view and never moves any object — the
                 // ✈ Fly toggle is the only way to rotate/look around.
-                bool dragPan = IsOrthographic
+                bool dragPan = (IsOrthographic
                     ? Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT)
-                    : Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE);
+                    : Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE))
+                    && MouseCameraControl; // master toggle: off = mouse never moves the camera
                 if (!ctrlHeld && dragPan)
                 {
                     // Pan speed scales with the view volume so the drag feels 1:1 with the
@@ -483,7 +490,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         _mouseLookWasActive = false;
                     }
                 }
-                else if (!ctrlHeld && FlyMouseLook)
+                else if (!ctrlHeld && FlyMouseLook && MouseCameraControl)
                 {
                     // Use configurable sensitivity from CameraConfig
                     float sens = Config.CameraConfig.FlyMouseSensitivity;

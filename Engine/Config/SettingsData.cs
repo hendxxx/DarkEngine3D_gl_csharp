@@ -72,6 +72,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float OrthoZoomMin { get; set; } = 2f;
         public float OrthoZoomMax { get; set; } = 200f;
 
+        // ── Mouse camera control master toggle (IDE Settings → Camera). When false,
+        // drag-pan and fly mouse-look never move the editor camera — keyboard/scroll
+        // still work. Persisted per project; default true = classic behavior. ──
+        public bool MouseCameraControl { get; set; } = true;
+
         // ── Transition defaults (persisted from TransitionPanel's "Apply Global Default") ──
         public int DefaultTransitionType { get; set; } = 0; // 0=Fade, 1=SlideLeft, 2=SlideRight
         public float DefaultTransitionDuration { get; set; } = 0.6f;

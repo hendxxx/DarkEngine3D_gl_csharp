@@ -157,6 +157,29 @@ public class IDESettingsPanel
 
             ImGui.Separator();
 
+            // ── Camera (per project) ──
+            if (ImGui.CollapsingHeader("Camera"))
+            {
+                // Mouse camera control master toggle: OFF = drag-pan & fly mouse-look
+                // never move the camera (for users who find the viewport drifting
+                // annoying). WASD / scroll / Views presets remain available.
+                var settingsCam = Load();
+                bool mouseCam = settingsCam.MouseCameraControl;
+                if (ImGui.Checkbox("Mouse Camera Control", ref mouseCam))
+                {
+                    settingsCam.MouseCameraControl = mouseCam;
+                    Save(settingsCam);
+                    Engine.Visual.Camera.MouseCameraControl = mouseCam;
+                    Console.WriteLine($"[IDESettings] Mouse camera control: {(mouseCam ? "ON" : "OFF")}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Master toggle for mouse control of the editor camera.\nOFF = middle/right-drag pan AND fly mouse-look are disabled\n(the camera never moves from mouse input).\nKeyboard WASD, scroll zoom, and Views presets still work.\nPer project, saved in settings.json.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(mouseCam ? "drag-pan + fly look ON" : "mouse camera OFF");
+            }
+
+            ImGui.Separator();
+
             // ── Camera Zoom (per project) ──
             if (ImGui.CollapsingHeader("Camera Zoom"))
             {

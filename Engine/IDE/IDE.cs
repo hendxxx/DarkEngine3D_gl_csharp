@@ -308,6 +308,8 @@ public class IDE : IDisposable
             // into the new range so an out-of-range OrthoSize snaps to the boundary.
             var projSettings = SettingsSave.Load();
             Visual.Camera.ApplyZoomLimits(projSettings.OrthoZoomMin, projSettings.OrthoZoomMax);
+            // Mouse camera control toggle is per project too.
+            Visual.Camera.MouseCameraControl = projSettings.MouseCameraControl;
             if (Bridge.Camera != null)
                 Bridge.Camera.OrthoSize = Math.Clamp(Bridge.Camera.OrthoSize, Visual.Camera.OrthoZoomMin, Visual.Camera.OrthoZoomMax);
             // Re-apply post-FX (bloom/auto-exposure/DoF) from the PROJECT's settings.
@@ -714,6 +716,7 @@ public class IDE : IDisposable
 
             // Apply per-project ortho zoom limits (settings.json → Camera constants).
             Visual.Camera.ApplyZoomLimits(bootSettings.OrthoZoomMin, bootSettings.OrthoZoomMax);
+            Visual.Camera.MouseCameraControl = bootSettings.MouseCameraControl;
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
