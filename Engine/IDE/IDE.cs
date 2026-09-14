@@ -310,6 +310,12 @@ public class IDE : IDisposable
             Visual.Camera.ApplyZoomLimits(projSettings.OrthoZoomMin, projSettings.OrthoZoomMax);
             if (Bridge.Camera != null)
                 Bridge.Camera.OrthoSize = Math.Clamp(Bridge.Camera.OrthoSize, Visual.Camera.OrthoZoomMin, Visual.Camera.OrthoZoomMax);
+            // Re-apply post-FX (bloom/auto-exposure/DoF) from the PROJECT's settings.
+            // Program.cs applied the exe-fallback file before any project existed —
+            // without this reload the project's saved FX look never took effect
+            // (panel/slider states always snapped back to the fallback values).
+            Config.PostFxSettings.Apply(projSettings);
+            _postFxPanel?.OnProjectChanged();
             // 2D level maps live INSIDE each scene's .ing (Map2D object payload saved/restored
             // by SceneManagerPanel). A scene only shows its level when the file contains one,
             // so there is no project-wide map auto-load anymore.
@@ -333,6 +339,9 @@ public class IDE : IDisposable
             // reads the exe-fallback settings.json (IsProjectLoaded already false here).
             var fallbackSettings = SettingsSave.Load();
             Visual.Camera.ApplyZoomLimits(fallbackSettings.OrthoZoomMin, fallbackSettings.OrthoZoomMax);
+            // Follow the active settings file back to the exe fallback after close.
+            Config.PostFxSettings.Apply(fallbackSettings);
+            _postFxPanel?.OnProjectChanged();
             // Clear sprite sheets + map editor state
             _spriteEditor?.OnProjectChanged(null);
             _mapEditor?.AutoLoadMap(null);

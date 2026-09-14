@@ -28,6 +28,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         private float _bloomIntensity = PostFxSettings.BloomIntensity;
         private float _bloomThreshold = PostFxSettings.BloomThreshold;
         private float _bloomSoftKnee = PostFxSettings.BloomSoftKnee;
+        private float _bloomMips = PostFxSettings.BloomMips;
         private float _exposure = PostFxSettings.Exposure;
         private float _gamma = PostFxSettings.Gamma;
         private bool _autoExposure = PostFxSettings.AutoExposure;
@@ -62,6 +63,12 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
 
         public void ShowInMenu() => ImGui.MenuItem("Post FX (Bloom/Tonemap/Gamma)", null, ref _visible);
 
+        /// <summary>Reload all slider mirrors from <see cref="PostFxSettings"/> right now.
+        /// Called by the IDE when a project opens (project settings re-applied) so the
+        /// panel reflects the project's persisted look instead of the previous file's.
+        /// (Render also re-syncs every frame — this just makes the switch immediate.)</summary>
+        public void OnProjectChanged() => RefreshMirrors();
+
         public void Render()
         {
             if (!_visible) return;
@@ -71,6 +78,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             _bloomIntensity = PostFxSettings.BloomIntensity;
             _bloomThreshold = PostFxSettings.BloomThreshold;
             _bloomSoftKnee = PostFxSettings.BloomSoftKnee;
+            _bloomMips = PostFxSettings.BloomMips;
             _exposure = PostFxSettings.Exposure;
             _gamma = PostFxSettings.Gamma;
             _autoExposure = PostFxSettings.AutoExposure;
@@ -146,7 +154,16 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Width of the soft transition below the threshold.\nHigher = smoother falloff, no hard bloom edges.");
 
-                ImGui.TextDisabled("Bright pass is extracted at half resolution, blurred 2× (separable Gaussian).");
+                if (ImGui.SliderFloat("Radius (Mips)", ref _bloomMips, 1f, 5f, "%.0f"))
+                {
+                    PostFxSettings.BloomMips = (float)(int)MathF.Round(_bloomMips);
+                    _bloomMips = PostFxSettings.BloomMips;
+                    PersistAndNotify();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Reactive bloom chain length (1-5).\nMore mips = wider, softer cinematic halos.\nFewer mips = tight, hot glow around bright spots.");
+
+                ImGui.TextDisabled("Reactive bloom: 5-mip chain, additively combined — wide halos + tight cores.");
             }
 
             // ════════════════════════════════════════════════
@@ -505,6 +522,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             _bloomIntensity = PostFxSettings.BloomIntensity;
             _bloomThreshold = PostFxSettings.BloomThreshold;
             _bloomSoftKnee = PostFxSettings.BloomSoftKnee;
+            _bloomMips = PostFxSettings.BloomMips;
             _exposure = PostFxSettings.Exposure;
             _gamma = PostFxSettings.Gamma;
             _autoExposure = PostFxSettings.AutoExposure;

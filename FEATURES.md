@@ -88,7 +88,8 @@ ProjectRoot/
 | **Console** | Log output | Stdout/stderr capture |
 | **SceneManager** | Scene list | Add/remove/switch scenes, save/load, scene rename sync |
 | **ShadowSettings** | Shadow config | CSM bias/blend, local light shadows |
-| **PostFxPanel** | Post-processing | Bloom, tonemapping, auto-exposure, gamma |
+| **PostFxPanel** | Post-processing | Reactive bloom (mip chain), auto-exposure, tonemapping, gamma, DoF |
+| **FrameBufferDebugPanel** | Debug | Live thumbnails of every FBO: scene targets, DoF scratch/mask, Post FX stages (composite/output/luma/bloom mips) + completeness validation |
 | **TerrainBrush** | Terrain tools | Brush size/strength/softness, paint layers, sculpt |
 | **PbrPanel** | PBR material | Per-object texture slots + tuning (see §5) |
 | **RenderTime** | Performance | FPS, frame time, GPU timing |
@@ -415,7 +416,8 @@ File
 | HUD | `hudVertex_shader.glsl` | `hudFragment_shader.glsl` | UI elements |
 | Outline | `outline_vertex.glsl` | `outline_fragment.glsl` | Selection outline |
 | PostFX Bright | `post_vertex.glsl` | `postFxBright_fragment.glsl` | Bloom bright pass |
-| PostFX Blur | `post_vertex.glsl` | `postFxBlur_fragment.glsl` | Bloom gaussian blur |
+| PostFX Downsample | `post_vertex.glsl` | `postFxBloomDownsample_fragment.glsl` | Reactive bloom 13-tap downsample/soften |
+| PostFX Upsample | `post_vertex.glsl` | `postFxBloomUpsample_fragment.glsl` | Reactive bloom additive Catmull-Rom upsample |
 | PostFX Composite | `post_vertex.glsl` | `postFxComposite_fragment.glsl` | Final composite |
 
 ### 4.2 Rendering Flow (per frame)
@@ -436,9 +438,9 @@ File
 
 4. PostFX Chain (if enabled)
    ├── Auto-exposure (luminance measurement)
-   ├── Bloom (bright extract → blur → composite)
+   ├── Reactive Bloom (bright extract → 5-mip chain → additive upsample → composite)
    ├── ACES Tonemapping
-   └── Gamma correction
+   └── Gamma correction → quad-draw copy back to scene texture
 
 5. IDE Overlay
    ├── ImGui panels (Inspector, Hierarchy, etc.)
@@ -455,9 +457,9 @@ File
 | ShadowMap0/1/2 | DEPTH24 | CSM cascade 0/1/2 |
 | LocalShadowPoint[] | DEPTH24 | Per-point-light cube depth |
 | LocalShadowSpot[] | DEPTH24 | Per-spotlight projective depth |
-| BloomBright | RGBA16F | Bloom bright extraction |
-| BloomBlurA/B | RGBA16F | Ping-pong gaussian blur |
-| AutoExposureLuma | R16F | Luminance measurement |
+| BloomBright | RGBA8 half-res | Bloom bright extraction (mip 0 of the chain) |
+| BloomMip0-4 | RGBA8 ½→1/32 | Reactive bloom mip chain (ping-pong soften scratch per level) |
+| AutoExposureLuma | RGBA8 1/16 | Luminance measurement (mipmapped) |
 
 ---
 
@@ -648,21 +650,33 @@ Uploaded via `ShadowUniforms.UploadMain()`:
 ### 8.1 Pipeline
 
 ```
-SceneColorTex → Bright Extract → Gaussian Blur (ping-pong) → Bloom Composite
-             → Auto-Exposure → ACES Tonemapping → Gamma Correction
+SceneColorTex → Bright Extract → 5-Mip Reactive Chain (downsample → soften →
+               additive upsample) → Bloom Composite → Auto-Exposure →
+               ACES Tonemapping → Gamma → quad-draw copy back to scene texture
 ```
 
-### 8.2 Bloom
+- **One shared processor**: `PostFxProcessor.Shared` serves both render paths
+  (GameScene `PostProcessStack.RunStack` AND the editor shared-FBO viewport via
+  `ApplyInPlace`) — auto-exposure keeps one continuous adaptation state.
+- **Quad-draw copy-back**: the final result is copied with a passthrough quad draw,
+  NEVER `glBlitFramebuffer` (the wrapper silently no-ops when the wgl pointer fails
+  to load — this caused "effect works in debug panel but not in viewport").
+
+### 8.2 Reactive Bloom
 
 | Parameter | Default | Range |
 |-----------|---------|-------|
-| `BloomIntensity` | 1.0 | 0-4 |
+| `BloomIntensity` | 1.0 | 0-2 |
 | `BloomThreshold` | 0.5 | 0-2 |
-| `BloomSoftKnee` | 0.15 | 0-1 |
+| `BloomSoftKnee` | 0.15 | 0-0.5 |
+| `BloomMips` (Radius) | 5 | 1-5 |
 
-- Bright extraction: pixels above threshold + soft knee
-- Gaussian blur: configurable blur radius
-- Composite: additive blend with scene
+- Bright extraction: pixels above threshold + soft knee (half res)
+- **Mip chain**: 5 levels (½ → 1/32 res), each softened with 13-tap box blurs via
+  ping-pong scratch targets (never sampling and writing the same texture)
+- **Additive upsample**: Catmull-Rom 9-tap, blended ONE/ONE back down the chain —
+  lower mips contribute tight hot cores, upper mips wide soft halos
+- `BloomMips` truncates the chain: fewer mips = tight glow, more = cinematic halos
 
 ### 8.3 Auto-Exposure
 
@@ -674,9 +688,10 @@ SceneColorTex → Bright Extract → Gaussian Blur (ping-pong) → Bloom Composi
 | `AutoExposureTargetLuminance` | 0.18 | 0.01-1 |
 | `AutoExposureSpeed` | 0.6 | 0.01-10 |
 
-- Measures scene average luminance
-- Adapts exposure smoothly over time
-- Clamps to min/max range
+- Measures scene average luminance via a dedicated 1/16-res luma texture (mip
+  readback of its smallest level)
+- Adapts exposure smoothly over time (exponential smoothing)
+- Clamps to min/max range; live value shown in the Post FX panel
 
 ### 8.4 Tonemapping
 
@@ -688,7 +703,17 @@ SceneColorTex → Bright Extract → Gaussian Blur (ping-pong) → Bloom Composi
 | Parameter | Default | Range |
 |-----------|---------|-------|
 | `Gamma` | 2.2 | 0.4-4 |
-| `Exposure` | 1.0 | 0.1-8 |
+| `Exposure` | 1.0 | 0.1-4 (ignored while Auto Exposure is on) |
+
+### 8.6 FX Debug Views
+
+- **Viewport toolbar "FX Debug"** button cycles Scene → Composite → Output →
+  Luma (auto-exposure input) → Bloom Mip 0-4, drawn in place of the scene texture
+  with an amber stage badge (falls back to the scene when Post FX is off)
+- **FrameBuffer Debug panel** shows live thumbnails of every intermediate target
+  (composite, output, luma, all 5 bloom mips) plus a `Post FX chain:` liveness line
+- All Post FX parameters persist symmetrically: panel changes → `settings.json`
+  (project), project open → re-applied via `PostFxSettings.Apply`
 
 ---
 
@@ -788,6 +813,7 @@ Modes: Linear (1), Exponential (2), Exp2 + height blend (3)
   "PostFxBloomIntensity": 1.0,
   "PostFxBloomThreshold": 0.5,
   "PostFxBloomSoftKnee": 0.15,
+  "PostFxBloomMips": 5.0,
   "PostFxExposure": 1.0,
   "PostFxGamma": 2.2,
   "PostFxAutoExposure": true,

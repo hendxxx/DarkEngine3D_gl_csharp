@@ -125,6 +125,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float PostFxBloomIntensity { get; set; } = 0.8f;
         public float PostFxBloomThreshold { get; set; } = 0.45f;
         public float PostFxBloomSoftKnee { get; set; } = 0.15f;
+        /// <summary>Reactive bloom mip chain length (1..5). More = wider halos.</summary>
+        public float PostFxBloomMips { get; set; } = 5f;
         public float PostFxExposure { get; set; } = 1.0f;
         public float PostFxGamma { get; set; } = 2.2f;
         public bool PostFxAutoExposure { get; set; } = true;

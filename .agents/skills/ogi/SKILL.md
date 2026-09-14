@@ -102,6 +102,15 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Default Tool = Pick**: `_currentTool` mulai dari `PaintTool.Pick` — viewport klik tidak sengaja tidak menge-paint. Tools: Paint, Erase, Fill, Pick, Collision.
 - **Gizmo Z-Order**: Overlay 2D (grid tiles, hover highlight, collision box edges) menggambar dengan depth test OFF — mereka akan menimpa gizmo. Solusi: `GL.Clear(GL_DEPTH_BUFFER_BIT)` setelah `editorObjMgr.Draw()` sebelum `gizmo.Render()` (kedua jalur: no-scene editor DAN in-scene). Gizmo harus SELALU paling depan.
 
+## Post FX System Rules (Reactive Bloom + Auto Exposure):
+- **Satu Processor Bersama**: `PostFxProcessor.Shared` (singleton) — dipakai GameScene (`PostProcessStack.RunStack`) DAN editor shared-FBO path (`SceneManager.ApplyInPlace`). Auto-exposure adaptasi kontinu lintas path. GameScene-owned texture TIDAK di-grade lagi di editor path (double-grading).
+- **Reactive Bloom Chain**: bright pass (threshold + soft knee) → 5-mip chain (½, ¼ …) via 13-tap downsample + ping-pong soften (2 round trips) → ADDITIVE Catmull-Rom upsample (`GL_BLEND` ONE/ONE, `u_MipScale` 0.8 mip rendah / 0.4 tinggi). Hasil mip 0 = bloom final. `BloomMips` (1-5, persist) = panjang chain.
+- **NO glBlitFramebuffer untuk copy-back**: wrapper blit SILENT NO-OP kalau pointer wgl gagal load — efek "jalan di debug panel tapi tidak di viewport" (bug DoF dan Post FX sama-sama kena ini). SELALU pakai quad draw (passthrough shader, radius 0) untuk menyalin hasil grading ke scene texture/FBO.
+- **NO Same-Texture Read+Write**: blur/yang men-sample dan menulis texture yang sama = feedback loop UNDEFINED. Selalu ping-pong via scratch target (`_blurTexs[i]`).
+- **Settings Reload on Project Open**: `PostFxSettings.Apply()` hanya jalan sekali di Program.cs (exe fallback). IDE HARUS re-apply `PostFxSettings.Apply(SettingsSave.Load())` saat project open/close — FilePath mengikuti project, jadi tanpa reload nilai selalu "balik ke default" (save ke project, load dari fallback). Panel re-sync via `PostFxPanel.OnProjectChanged()`.
+- **FX Debug Views**: `_fxDebugView` di ViewportPanel (tombol "FX Debug" cycle Scene→Composite→Output→Luma→Mip 0-4, badge amber) + semua target di FrameBuffer Debug panel (thumbnails via `PostFxProcessor` debug surface). Fallback ke scene normal kalau chain belum allocate / Post FX off.
+- **Persist**: semua param (`Enabled`, `BloomIntensity/Threshold/SoftKnee/Mips`, `AutoExposure*`, `Gamma`, `Exposure`, DoF) simetris via `PostFxSettings.Apply/Persist` → `settings.json` project.
+
 ## Scene Management Rules:
 - **SceneEntry**: `record SceneEntry(Name, Description, HasInitializedEntry, Type, ...)` — stored in `AvailableScenesInternal`.
 - **EditorScene**: `record EditorScene(Name, Type, Root)` — stored in `EditorScenes` dictionary keyed by scene name.

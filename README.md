@@ -13,6 +13,7 @@ OpenGL/C# game engine with ImGui-based IDE editor.
 ## Features
 
 - **3D Engine**: OpenGL 4.x, PBR rendering, cascaded shadow maps, post-processing
+- **Post FX** — reactive bloom (5-mip chain: tight hot cores + wide soft halos, adjustable radius), auto exposure (eye adaptation with min/max clamp + target luminance), ACES tonemapping, gamma; runs live in both the editor viewport and in-game from one shared processor; per-stage framebuffer debug views in the viewport (FX Debug button) and the FrameBuffer Debug panel; all parameters persist per-project
 - **IDE Editor**: ImGui-based with Inspector, Hierarchy, Scene Manager, Asset Browser
 - **UI System**: Buttons, Labels, Sliders, Checkboxes, Dropdowns, Containers with scroll
 - **Project System**: `.projing` project files, per-project settings, auto-load scenes

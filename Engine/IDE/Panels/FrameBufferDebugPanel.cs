@@ -73,6 +73,34 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             if (mask != 0 && mw > 0)
                 targets.Add(new TargetInfo("DoF Sprite Mask (white = sharp)", mask, 0, mw, mh));
 
+            // ── Reactive bloom + auto-exposure intermediates (Post FX chain) — one
+            // thumbnail per FX stage so a broken/empty stage is instantly visible. ──
+            var pfx = Visual.PostProcessing.PostFxProcessor.Shared;
+            if (pfx.IsAllocated)
+            {
+                var (ow, oh) = pfx.OutputSize;
+                if (ow > 0)
+                {
+                    targets.Add(new TargetInfo("PostFX Composite (bloom+tonemap+gamma)",
+                        pfx.CompositeTex, 0, ow, oh));
+                    targets.Add(new TargetInfo("PostFX Output (blitted to display)",
+                        pfx.OutputTex, 0, ow, oh));
+                }
+
+                var (lw, lh) = pfx.LumaSize;
+                if (lw > 0)
+                    targets.Add(new TargetInfo("PostFX Luma (auto-exposure input)",
+                        pfx.LumaTex, 0, lw, lh));
+
+                for (int i = 0; i < pfx.DebugMipCount; i++)
+                {
+                    var (bw, bh) = pfx.GetMipSize(i);
+                    if (bw <= 0) continue;
+                    targets.Add(new TargetInfo($"PostFX Bloom Mip {i} ({bw}x{bh})",
+                        pfx.GetMipTex(i), 0, bw, bh));
+                }
+            }
+
             // ── What is the viewport ACTUALLY sampling this frame? ──
             uint sampled = _bridge.SceneTextureID;
             string sampledName =
@@ -95,6 +123,17 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 ImGui.TextColored(new Vector4(0.35f, 0.85f, 0.45f, 1f), $"RUNNING — {Visual.PostProcessing.DepthOfFieldComposite.RunCount} composites so far (counter must tick up every frame)");
             else
                 ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.3f, 1f), $"idle — {Visual.PostProcessing.DepthOfFieldComposite.RunCount} total (0 or stalled = effect not executing, see console [DepthOfField])");
+
+            // ── Post FX (reactive bloom + auto exposure) liveness ──
+            ImGui.Text("Post FX chain: ");
+            ImGui.SameLine();
+            if (!Config.PostFxSettings.Enabled)
+                ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.3f, 1f), "disabled (master switch off)");
+            else if (Visual.PostProcessing.PostFxProcessor.Shared.IsAllocated)
+                ImGui.TextColored(new Vector4(0.35f, 0.85f, 0.45f, 1f),
+                    $"RUNNING — exposure {Config.PostFxSettings.CurrentAutoExposure:F2} (auto {(Config.PostFxSettings.AutoExposure ? "ON" : "off")}, mips {(int)Config.PostFxSettings.BloomMips})");
+            else
+                ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.3f, 1f), "waiting for first frame…");
 
             ImGui.Separator();
             ImGui.SliderInt("Thumbnail width", ref _thumbW, 80, 480);

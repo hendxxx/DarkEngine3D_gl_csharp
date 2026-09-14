@@ -692,6 +692,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
                             GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
                         }
+
+                        // Reactive bloom + auto-exposure on the editor viewport texture
+                        // (same shared processor as GameScene — one continuous eye
+                        // adaptation). The outer condition already excludes GameScene
+                        // scenes that graded their own frame in PostProcessStack.RunStack.
+                        {
+                            PostFxProcessor.Shared.ApplyInPlace(_sharedColorTex, _sharedResolveFBO,
+                                Glfw.WindowWidth, Glfw.WindowHeight);
+                            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        }
                     }
 
                     if (bridge != null && bridge.SceneTextureID == 0)

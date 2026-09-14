@@ -82,6 +82,14 @@ public unsafe class ViewportPanel
     private int _postPopupFrames = 0;
     private bool _wasPopupOpen = false;
 
+    // ── FX debug view: render a chosen Post FX intermediate target in the viewport.
+    // 0 = normal scene, 1 = Composite, 2 = Output, 3 = Luma, 4..8 = Bloom Mip 0..4.
+    private int _fxDebugView = 0;
+    private const int FxDebugComposite = 1;
+    private const int FxDebugOutput = 2;
+    private const int FxDebugLuma = 3;
+    private const int FxDebugMipBase = 4;
+
     //  Terrain brush paint state 
     /// <summary>Object being painted in the current brush stroke (null = no stroke).</summary>
     private EditorObject? _brushObj = null;
@@ -2735,10 +2743,38 @@ ImGui.SameLine();
                 float offsetY = (avail.Y - imageSize.Y) * 0.5f;
                 ImGui.SetCursorPos(ImGui.GetCursorPos() + new Vector2(offsetX, offsetY));
 
-                // Display the scene texture as an ImGui image
+                // ── FX debug view: when active, render the chosen Post FX intermediate
+                // (composite/output/luma/bloom mip) instead of the normal scene texture.
+                // Falls back to the normal view when the chain hasn't allocated yet or
+                // the selected stage doesn't exist (e.g. mip beyond the current Radius).
+                uint fxDebugTex = ResolveFxDebugTexture(_fxDebugView);
+                bool fxDebug = fxDebugTex != 0;
+
+                // Display the scene texture as an ImGui image (or the FX debug target)
                 var uv0 = new Vector2(0, 1);
                 var uv1 = new Vector2(1, 0);
-                ImGui.Image((nint)(nint)_bridge.SceneTextureID, imageSize, uv0, uv1);
+                ImGui.Image((nint)(nint)(fxDebug ? fxDebugTex : _bridge.SceneTextureID), imageSize, uv0, uv1);
+
+                if (fxDebug)
+                {
+                    // Amber badge naming the debug stage + hint on how to leave it.
+                    var dl = ImGui.GetWindowDrawList();
+                    var rmin = ImGui.GetItemRectMin();
+                    string stage = _fxDebugView switch
+                    {
+                        FxDebugComposite => "FX: Composite (bloom+tonemap+gamma)",
+                        FxDebugOutput => "FX: Output (display copy)",
+                        FxDebugLuma => "FX: Luma (auto-exposure input)",
+                        >= FxDebugMipBase => $"FX: Bloom Mip {_fxDebugView - FxDebugMipBase}",
+                        _ => "FX: ?",
+                    };
+                    var tsz = ImGui.CalcTextSize(stage);
+                    var bmin = new Vector2(rmin.X + 8, rmin.Y + 8);
+                    var bmax = bmin + tsz + new Vector2(14, 8);
+                    dl.AddRectFilled(bmin, bmax, 0xC0000000, 4f);
+                    dl.AddRect(bmin, bmax, 0xFFDDAA66, 4f, ImDrawFlags.None, 1f);
+                    dl.AddText(bmin + new Vector2(7, 4), 0xFFEEDDAA, stage);
+                }
 
                 _imageMin = ImGui.GetItemRectMin();
                 _imageMax = ImGui.GetItemRectMax();
@@ -4870,6 +4906,26 @@ ImGui.SameLine();
 
     /// <summary>True when the mouse currently hovers the floating left-edge toolbar.
     /// Used to suppress marquee/raycast selection while interacting with the overlay.</summary>
+    /// <summary>Resolve the FX debug view index to a live GPU texture (0 = normal
+    /// scene view / stage not available). Composite+Output are full-res; Luma is the
+    /// auto-exposure input; mips are the bloom chain — mip 0 is the combined bloom
+    /// (after the additive upsample), 1-4 are pure downscale levels.</summary>
+    private uint ResolveFxDebugTexture(int view)
+    {
+        if (view == 0) return 0;
+        var pfx = Visual.PostProcessing.PostFxProcessor.Shared;
+        if (!pfx.IsAllocated || !Config.PostFxSettings.Enabled) return 0;
+        return view switch
+        {
+            FxDebugComposite => pfx.CompositeTex,
+            FxDebugOutput => pfx.OutputTex,
+            FxDebugLuma => pfx.LumaTex,
+            >= FxDebugMipBase when (view - FxDebugMipBase) < pfx.DebugMipCount
+                => pfx.GetMipTex(view - FxDebugMipBase),
+            _ => 0,
+        };
+    }
+
     private bool IsMouseOverLeftToolbar()
     {
         var mouse = ImGui.GetMousePos();
@@ -5007,6 +5063,28 @@ ImGui.SameLine();
         {
             if (_bridge.EditorGizmo != null)
                 _bridge.EditorGizmo.SnapEnabled = !gizmoSnap;
+        }
+
+        //  FX debug view cycler (Post FX intermediates in the viewport) 
+        {
+            string[] fxStages =
+            {
+                "Scene",
+                "FX Composite",
+                "FX Output",
+                "FX Luma (AE)",
+                "FX Mip 0", "FX Mip 1", "FX Mip 2", "FX Mip 3", "FX Mip 4",
+            };
+            int fxCount = fxStages.Length;
+            int fxCur = Math.Clamp(_fxDebugView, 0, fxCount - 1);
+            bool fxActive = _fxDebugView != 0;
+            if (ToolButton(fxActive ? $"FX: {fxStages[fxCur]}" : "FX Debug",
+                fxActive, new Vector4(0.85f, 0.60f, 0.20f, 0.95f),
+                "Cycle Post FX debug views: Scene → Composite → Output → Luma (auto-exposure input) → Bloom Mip 0-4.\nAmber badge = debug view active. Requires Post FX enabled (Post FX panel).", out y))
+            {
+                _fxDebugView = (_fxDebugView + 1) % fxCount;
+                Console.WriteLine($"[Viewport] FX debug view → {fxStages[Math.Clamp(_fxDebugView, 0, fxCount - 1)]}");
+            }
         }
 
         //  Terrain brush tools 

@@ -35,6 +35,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Soft transition width below the threshold (avoids hard bloom edges).</summary>
         public static float BloomSoftKnee = 0.15f;
 
+        /// <summary>Reactive bloom chain length (1..5): how many half-res mips feed the
+        /// additive upsample. More mips = wider, softer halos; fewer = tight hot glow.</summary>
+        public static float BloomMips = 5f;
+
         /// <summary>Exposure multiplier applied before tonemapping (used when
         /// <see cref="AutoExposure"/> is off).</summary>
         public static float Exposure = 1.0f;
@@ -110,6 +114,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             BloomIntensity = 1.0f;
             BloomThreshold = 0.5f;
             BloomSoftKnee = 0.15f;
+            BloomMips = 5f;
             Exposure = 1.0f;
             Gamma = 2.2f;
             AutoExposure = true;
@@ -145,6 +150,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 BloomIntensity = Clamp(s.PostFxBloomIntensity, 0f, 4f);
                 BloomThreshold = Clamp(s.PostFxBloomThreshold, 0f, 2f);
                 BloomSoftKnee = Clamp(s.PostFxBloomSoftKnee, 0f, 1f);
+                BloomMips = Clamp(s.PostFxBloomMips, 1f, 5f);
                 Exposure = Clamp(s.PostFxExposure, 0.1f, 8f);
                 Gamma = Clamp(s.PostFxGamma, 0.4f, 4f);
                 AutoExposure = s.PostFxAutoExposure;
@@ -186,6 +192,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 s.PostFxBloomIntensity = BloomIntensity;
                 s.PostFxBloomThreshold = BloomThreshold;
                 s.PostFxBloomSoftKnee = BloomSoftKnee;
+                s.PostFxBloomMips = BloomMips;
                 s.PostFxExposure = Exposure;
                 s.PostFxGamma = Gamma;
                 s.PostFxAutoExposure = AutoExposure;
