@@ -252,8 +252,6 @@ public class IDEBridge
     /// <summary>Trigger currently selected in the Map Editor's Triggers list. The
     /// viewport highlights it and routes drags/resize/Delete/Ctrl+D to it.</summary>
     public Visual.TilemapTriggerArea? SelectedTrigger { get; set; }
-    /// <summary>Panel-selected trigger changed (viewport highlight follows).</summary>
-    public event Action? TriggerSelectionChanged;
     /// <summary>World position of the map tile under the mouse (0 = none). Updated by
     /// ViewportPanel every frame while a visible map is hovered — consumed by the DoF
     /// focus tracker's "Hovered Tile" mode.</summary>

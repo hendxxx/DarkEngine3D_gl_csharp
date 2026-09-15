@@ -117,6 +117,31 @@ public class SceneElementData
     public float[] RadioUnselectedBgColor { get; set; } = [0.15f, 0.15f, 0.22f];
     public string RadioGroup { get; set; } = "default";
 
+    // ── Bar visual style ──
+    public string BarBackgroundPath { get; set; } = "";
+    public string BarEmptyPath { get; set; } = "";
+    public string BarProgressPath { get; set; } = "";
+    /// <summary>Legacy shared inset — migrated into the per-layer offsets on load.</summary>
+    public float BarInset { get; set; } = 0f;
+    /// <summary>0 = Left→Right, 1 = Right→Left, 2 = Bottom→Top, 3 = Top→Bottom.</summary>
+    public int BarDirection { get; set; } = 0;
+    /// <summary>Player2DStats slot this bar mirrors (None = manual CurrentValue).</summary>
+    public string BarStatBinding { get; set; } = "None";
+
+    // ── Bar per-layer edge offsets (scene px, + = outward, − = inward) ──
+    public float BarBgOffsetLeft { get; set; }
+    public float BarBgOffsetRight { get; set; }
+    public float BarBgOffsetTop { get; set; }
+    public float BarBgOffsetBottom { get; set; }
+    public float BarEmptyOffsetLeft { get; set; }
+    public float BarEmptyOffsetRight { get; set; }
+    public float BarEmptyOffsetTop { get; set; }
+    public float BarEmptyOffsetBottom { get; set; }
+    public float BarProgOffsetLeft { get; set; }
+    public float BarProgOffsetRight { get; set; }
+    public float BarProgOffsetTop { get; set; }
+    public float BarProgOffsetBottom { get; set; }
+
     // Recursive children
     public List<SceneElementData> Children { get; set; } = [];
 }

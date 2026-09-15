@@ -563,10 +563,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // the editor preference).
                 bool mouseCamEnabled = InGameSessionActive ? InGameMouseCameraControl : MouseCameraControl;
 
+                // Ortho drag-pan (right-drag) is the ONLY way to pan a 2D level while
+                // editing (WASD is locked there) — so it is ALWAYS allowed in EDIT mode.
+                // The user's Mouse Camera Control toggle governs playing only: OFF keeps
+                // the mouse exclusive to the game (clicks, aim) while in-game. Perspective
+                // middle-drag keeps following the toggle in both modes.
+                bool editMode = !InGameSessionActive;
+                bool rightDragPanAllowed = IsOrthographic && (editMode || mouseCamEnabled);
+
                 bool dragPan = (IsOrthographic
                     ? Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT)
                     : Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE))
-                    && mouseCamEnabled; // master toggle: off = mouse never moves the camera
+                    && (IsOrthographic ? rightDragPanAllowed : mouseCamEnabled);
                 if (!ctrlHeld && dragPan)
                 {
                     // Pan speed scales with the view volume so the drag feels 1:1 with the

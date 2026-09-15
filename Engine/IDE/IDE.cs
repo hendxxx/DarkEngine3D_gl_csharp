@@ -34,6 +34,7 @@ public class IDE : IDisposable
     private readonly PostFxPanel _postFxPanel = null!;
     private readonly FrameBufferDebugPanel _framebufferDebug = null!;
     private readonly PbrPanel _pbrPanel = null!;
+    private readonly PlayerInfoPanel _playerInfo = null!;
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
     private readonly MapEditorPanel _mapEditor = null!;
@@ -422,7 +423,9 @@ public class IDE : IDisposable
             cam.FlyMouseLook = false;
             // Keep fly WASD off too — the camera is owned by pan/zoom in edit mode and
             // by the Player2D camera-follow in preview/in-game (Player2DSystem.Update).
-            cam.LockTranslation = true;
+            // EDIT MODE ONLY: WASD stays unlocked while playing so the 2D player's own
+            // A/D input never fights a camera that also eats those keys.
+            cam.LockTranslation = !_inGameMode;
             return;
         }
 
@@ -459,7 +462,7 @@ public class IDE : IDisposable
             cam.SetEditorViewTransform(level.CameraStartPos, level.CameraStartYaw, level.CameraStartPitch, cam.FoV);
             cam.IsFlyMode = false;
             cam.FlyMouseLook = false;
-            cam.LockTranslation = true;
+            cam.LockTranslation = !_inGameMode; // WASD free while playing (edit-only lock)
             _levelCameraApplied = true;
             _levelCameraMap = level;
             Console.WriteLine($"[IDE] Level camera: restored saved camera start for '{level.Name}'");
@@ -487,10 +490,12 @@ public class IDE : IDisposable
         cam.SetEditorViewTransform(new Vector3(halfW, halfH, lookZ), 180f, 0f, cam.FoV);
 
         // 2D level mode has no fly navigation — yaw/pitch stay locked on the front view;
-        // users pan/zoom the ortho camera instead of flying around the map.
+        // users pan/zoom the ortho camera instead of flying around the map. The WASD
+        // translation lock itself is EDIT-MODE ONLY: while playing, WASD must stay free
+        // (the 2D player reads A/D directly — a locked camera would eat those keys).
         cam.IsFlyMode = false;
         cam.FlyMouseLook = false;
-        cam.LockTranslation = true;
+        cam.LockTranslation = !_inGameMode;
 
         _levelCameraApplied = true;
         _levelCameraMap = level;
@@ -690,6 +695,7 @@ public class IDE : IDisposable
             // from inside the composite, which runs in both render paths.
             Visual.PostProcessing.DepthOfFieldFocusTracker.Bridge = Bridge;
             _pbrPanel = new PbrPanel(Bridge);
+            _playerInfo = new PlayerInfoPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
             _ideSettings = new IDESettingsPanel(Bridge);
@@ -1205,6 +1211,7 @@ public class IDE : IDisposable
                 _postFxPanel.ShowInMenu();
                 _framebufferDebug.ShowInMenu();
                 _pbrPanel.ShowInMenu();
+                _playerInfo.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
                 _transitionPanel.ShowInMenu();
@@ -1290,6 +1297,7 @@ public class IDE : IDisposable
         _postFxPanel.Render();
         _framebufferDebug.Render();
         _pbrPanel.Render();
+        _playerInfo.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
         _console.Render();

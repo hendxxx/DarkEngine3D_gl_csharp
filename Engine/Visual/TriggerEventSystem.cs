@@ -1,6 +1,9 @@
 using System.Numerics;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Objects;
+using DarkEngine3D_gl_csharp.Engine.Project;
+using System.IO;
+using System.Text.Json;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual;
 
@@ -46,6 +49,68 @@ public static class TriggerEventSystem
     /// exact for the teleport).</summary>
     public static float CheckpointZ { get; set; }
 
+    /// <summary>Read the checkpoint from the most recent save slot. "Save Game" stores
+    /// the player position at save time — that IS the checkpoint the designer wants
+    /// "Load Checkpoint" to restore after a restart. Returns false when no valid
+    /// save exists (then the caller falls back to the Start2D start point).
+    /// The saved object position is converted to CAPSULE space (feet/capsule-center)
+    /// with the live offsets, then ground-snapped so the restored feet ALWAYS rest on
+    /// top of a collision tile — never embedded in one, never floating.</summary>
+    private static bool TryLoadCheckpointFromSaves(Tilemap2D? map, float capOffX, float capOffY,
+        out Vector2 position, out float z)
+    {
+        position = default;
+        z = 0f;
+        int slot = SaveManager.GetLatestSlot();
+        if (slot < 0) return false;
+        var data = SaveManager.Load(slot);
+        if (data == null) return false;
+
+        // Save Game writes the raw OBJECT position → convert to capsule space.
+        float capsuleX = data.PlayerX + capOffX;
+        float feetY = SnapFeetToGround(map, capsuleX, data.PlayerY + capOffY);
+        position = new Vector2(capsuleX, feetY);
+        z = data.PlayerZ;
+        return true;
+    }
+
+    /// <summary>Drop a capsule-space feet Y onto the collision surface below it: walk
+    /// the collision tiles of every layer down from the feet row and land the feet on
+    /// the TOP edge of the first solid tile (plus a hair above it, matching the
+    /// physics SkinWidth). Uses the same grid→world mapping as the physics (row ty
+    /// spans world Y [(mapH-1-ty)*cell, (mapH-ty)*cell], top edge = (mapH-ty)*cell).
+    /// Feet resting exactly on a surface stay put; feet inside a tile pop to its top.
+    /// Public: the pit-respawn path in Player2DSystem uses the same snap so a respawned
+    /// player always lands ON TOP of collision (never below the map again).</summary>
+    public static float SnapFeetToGroundPublic(Tilemap2D? map, float worldX, float feetY)
+        => SnapFeetToGround(map, worldX, feetY);
+
+    private static float SnapFeetToGround(Tilemap2D? map, float worldX, float feetY)
+    {
+        if (map == null || map.Layers.Count == 0) return feetY;
+        float cell = map.TileSize * Tilemap2D.WorldScale;
+        if (cell <= 0f) return feetY;
+
+        int gy = (int)MathF.Floor((map.Height * cell - feetY) / cell); // feet row (WorldRowFloor)
+        int gx = (int)MathF.Floor(worldX / cell);
+        if (gx < 0 || gx >= map.Width) return feetY;
+        if (gy < 0) gy = 0; // above the map: scan from the top row down
+
+        for (; gy < map.Height; gy++)
+        {
+            foreach (var layer in map.Layers)
+            {
+                if (layer == null) continue;
+                int tile = layer.GetTile(gx, gy);
+                if (tile < 0 || !layer.TileHasCollision(tile)) continue;
+                // Solid tile at/below the feet: land the feet on its TOP edge + ε so
+                // the capsule sits just above the collision surface (never inside it).
+                return (map.Height - gy) * cell + 0.001f; // TileWorldMaxY(map, gy, cell)
+            }
+        }
+        return feetY; // nothing solid below — keep the height (airborne checkpoint)
+    }
+
     /// <summary>Track which objects already logged a "not wired" message so a Stay
     /// trigger can't spam the console every frame.</summary>
     private static readonly HashSet<string> _warned = new();
@@ -55,14 +120,23 @@ public static class TriggerEventSystem
     /// per player (from Player2DSystem.Update, preview/in-game only).
     /// </summary>
     public static void Update(Tilemap2D? map, Vector3 playerFeetPos, float radius, float height, float dt,
-        float playerVelX = 0f)
+        float playerVelX = 0f, float capsuleOffsetX = 0f, float capsuleOffsetY = 0f)
     {
+        // Keep save-slot checkpoint loading able to ground-snap against the live map.
+        _activeMap = map;
+        _liveCapsuleOffsetX = capsuleOffsetX;
+        _liveCapsuleOffsetY = capsuleOffsetY;
+
         if (map == null || map.TriggerAreas.Count == 0) return;
 
         // Player capsule AABB in world space (feet-anchored, same convention as physics).
+        // A thin vertical pad (≈ the capsule radius) is added BELOW the feet: a feet-anchored
+        // box test otherwise has zero depth at the ground line, so a capsule standing ON a
+        // trigger box (or a box resized to exactly the player's height) reads "not inside".
+        // The pad keeps box-height ↔ capsule-height alignment forgiving at the ground seam.
         float pMinX = playerFeetPos.X - radius;
         float pMaxX = playerFeetPos.X + radius;
-        float pMinY = playerFeetPos.Y;
+        float pMinY = playerFeetPos.Y - radius * 0.5f;
         float pMaxY = playerFeetPos.Y + height;
 
         float cell = map.TileSize * Tilemap2D.WorldScale;
@@ -243,7 +317,9 @@ public static class TriggerEventSystem
 
             case TriggerActionTypes.SaveCheckpoint:
             {
-                // Record the player's current feet position as the checkpoint anchor.
+                // Record the player's position as the checkpoint anchor (OBJECT space,
+                // same convention as the pit-respawn and teleport paths — capsule
+                // offsets are applied exactly once by whoever consumes the value).
                 if (_lastPlayerPos.HasValue)
                 {
                     CheckpointPosition = new Vector2(_lastPlayerPos.Value.X, _lastPlayerPos.Value.Y);
@@ -257,14 +333,47 @@ public static class TriggerEventSystem
 
             case TriggerActionTypes.LoadCheckpoint:
             {
-                // Teleport the player to the saved checkpoint. When none was saved yet
-                // the fallback is the level's Start2D marker (the start point), so the
-                // action is always meaningful even on a fresh session.
+                // Teleport the player to the checkpoint: session-saved → latest save
+                // slot → Start2D fallback (always meaningful, even on a fresh project).
+                // EVERYTHING here resolves to FEET space and OnTeleportPlayer subtracts
+                // the capsule offsets once — passing object-space values through the same
+                // handler double-applies the offset (dropped the player below the map).
                 if (OnTeleportPlayer != null)
                 {
-                    Vector2 target = CheckpointPosition ?? _fallbackSpawn;
-                    OnTeleportPlayer(target, CheckpointZ);
-                    Console.WriteLine($"[Trigger] '{triggerName}' → Load Checkpoint → teleport to ({target.X:F1}, {target.Y:F1}) {(CheckpointPosition.HasValue ? "(checkpoint)" : "(start point — no checkpoint saved yet)")}");
+                    // 1) Fresh checkpoint saved this session → teleport there (re-snapped
+                    //    to the CURRENT collision in case the level changed since).
+                    // 2) No session checkpoint → load from the LATEST save slot (Save
+                    //    Game persists it), capsule-converted + ground-snapped.
+                    // 3) Nothing anywhere → fall back to the level's Start2D marker.
+                    Vector2 target;
+                    float z;
+                    string source;
+                    if (CheckpointPosition.HasValue)
+                    {
+                        // CheckpointPosition is OBJECT space → convert to feet space once.
+                        float feetX = CheckpointPosition.Value.X + _liveCapsuleOffsetX;
+                        float feetY = SnapFeetToGround(_activeMap, feetX,
+                            CheckpointPosition.Value.Y + _liveCapsuleOffsetY);
+                        target = new Vector2(feetX, feetY);
+                        z = CheckpointZ;
+                        source = "(session checkpoint)";
+                    }
+                    else if (TryLoadCheckpointFromSaves(_activeMap, _liveCapsuleOffsetX, _liveCapsuleOffsetY, out var saved, out float savedZ))
+                    {
+                        target = saved; // already capsule-space feet + ground-snapped
+                        z = savedZ;
+                        source = "(last saved checkpoint — from save slot)";
+                        CheckpointPosition = saved; // keep in memory for pit respawn too
+                        CheckpointZ = savedZ;
+                    }
+                    else
+                    {
+                        target = _fallbackSpawn; // Start2D marker is feet-anchored already
+                        z = CheckpointZ;
+                        source = "(start point — no checkpoint saved yet)";
+                    }
+                    OnTeleportPlayer(target, z);
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Load Checkpoint → teleport to ({target.X:F1}, {target.Y:F1}) {source}");
                 }
                 else
                     Console.WriteLine($"[Trigger] '{triggerName}' → Load Checkpoint skipped: no teleport handler registered");
@@ -317,13 +426,23 @@ public static class TriggerEventSystem
     }
 
     /// <summary>Last known player position, refreshed each Update so action handlers
-    /// (save/checkpoint) can capture where the trigger fired.</summary>
+    /// (save/checkpoint) can capture where the trigger fired. IMPORTANT: this is the
+    /// player's raw OBJECT position — NOT capsule space. All consumers (Save Checkpoint,
+    /// Save Game) must store it as-is, and every place that converts to feet space
+    /// adds CapsuleOffset exactly ONCE.</summary>
     public static Vector3? LastPlayerPosition
     {
         get => _lastPlayerPos;
         set => _lastPlayerPos = value;
     }
     private static Vector3? _lastPlayerPos;
+
+    /// <summary>Active map + live player capsule offsets — refreshed by Player2DSystem
+    /// every frame so save-slot checkpoint loading can ground-snap the restored feet
+    /// position against the CURRENT level (box heights may have changed since the save).</summary>
+    private static Tilemap2D? _activeMap;
+    private static float _liveCapsuleOffsetX;
+    private static float _liveCapsuleOffsetY;
 
     /// <summary>Start-point fallback (Start2D marker world pos, feet-anchored). The
     /// player2D system refreshes it every frame so Load Checkpoint can use it when no
@@ -342,5 +461,6 @@ public static class TriggerEventSystem
         State.Clear();
         _warned.Clear();
         CheckpointPosition = null;
+        Player2DStats.ResetToDefaults(); // fresh session → default HP/MP/Level/EXP/Fitness
     }
 }

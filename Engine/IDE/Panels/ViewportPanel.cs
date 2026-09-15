@@ -492,6 +492,7 @@ public unsafe class ViewportPanel
             if (!hasImage && elem.Type != UIElementType.Checkbox && elem.Type != UIElementType.RadioButton &&
                 elem.Type != UIElementType.Dropdown && elem.Type != UIElementType.SliderNumber &&
                 elem.Type != UIElementType.SliderText && elem.Type != UIElementType.TextBox &&
+                elem.Type != UIElementType.Bar &&
                 !string.IsNullOrEmpty(elem.Text))
             {
                 string label = elem.Text;
@@ -1126,6 +1127,42 @@ public unsafe class ViewportPanel
                     drawList.AddText(new Vector2(lenX, lenY), lenCol, lenStr);
                 }
             }
+            else if (elem.Type == UIElementType.Bar)
+            {
+                //  Bar: layered images — Back (ImagePath) → Background → Empty →
+                // Progress (this pass). Under-layers draw in RenderUIElements with their
+                // own per-edge offsets; here only the PROGRESS fill renders, width-scaled
+                // to the current fraction (no clipping, no UV tricks).
+                // Fraction source: stat binding (Player2DStats, live) when set — else manual.
+                float frac = !string.IsNullOrEmpty(elem.BarStatBinding) && elem.BarStatBinding != PlayerStatNames.None
+                    ? Player2DStats.GetFraction(elem.BarStatBinding)
+                    : (elem.MaxValue - elem.MinValue) > 0.001f
+                        ? Math.Clamp((elem.CurrentValue - elem.MinValue) / (elem.MaxValue - elem.MinValue), 0f, 1f)
+                        : 0f;
+
+                // Progress layer rect: element rect + its four edge offsets; WIDTH
+                // scales with the fraction along the fill direction.
+                var (pgX, pgY, pgW, pgH) = elem.GetBarLayerRect(sx0, sy0, sx1 - sx0, sy1 - sy0, UIElement.BarLayer.Progress);
+
+                // ── Progress fill (layer 0): width only ──
+                if (!string.IsNullOrEmpty(elem.BarProgressPath) && frac > 0.001f)
+                {
+                    uint progTex = LoadOrGetPreviewTexture(elem.BarProgressPath);
+                    if (progTex != 0)
+                        drawList.AddImage((nint)progTex, new Vector2(pgX, pgY),
+                            new Vector2(pgX + pgW * frac, pgY + pgH));
+                }
+
+                // Editor-mode only: show the fraction as text so tuning is possible without play.
+                if (!isPreview)
+                {
+                    string pct = $"{frac * 100f:F0}%";
+                    var pSz = ImGui.CalcTextSize(pct);
+                    uint pCol = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.75f * elemOpacity));
+                    drawList.AddText(new Vector2(sx0 + (elemScreenW - pSz.X) * 0.5f,
+                        sy0 + (elemScreenH - pSz.Y) * 0.5f), pCol, pct);
+                }
+            }
 
             //  Click handling 
             // Preview mode: trigger behavior; Editor mode: select element
@@ -1146,6 +1183,12 @@ public unsafe class ViewportPanel
             // Mouse click: must be hovered. Keyboard activation: bypass hover check for focused element.
             bool mouseClick = isHovered && clickActive && !blockedByScrollbar;
             bool keyActivate = isPreview && keyboardActivate && focusedElement != null && elem == focusedElement;
+            // Bar is a pure display element — clicks pass through (no behavior, no focus steal).
+            if (elem.Type == UIElementType.Bar && isPreview)
+            {
+                mouseClick = false;
+                keyActivate = false;
+            }
             if ((mouseClick || keyActivate) && dragOk && !blockedByOverlay)
             {
                 // Sync mouse click to keyboard focus (in-game mode only)
@@ -2334,6 +2377,17 @@ public unsafe class ViewportPanel
         _texW = texW;
         _texH = texH;
 
+        // ── Bar under-layers (drawn BEFORE the element's own pass) ──
+        // Back (ImagePath) → Background → Empty. Progress (+0) draws in the element's
+        // own pass on top. Each layer resolves its own edge offsets.
+        foreach (var elem in elements)
+        {
+            if (!elem.IsVisible || elem.Type != UIElementType.Bar) continue;
+            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Back, elem.ImagePath);
+            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Background, elem.BarBackgroundPath);
+            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Empty, elem.BarEmptyPath);
+        }
+
         DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
         // Render dropdown popup AFTER all elements (outside any container clip rect)
         RenderDropdownPopup(drawList, mouseScreen, leftClicked, isPreview);
@@ -2345,7 +2399,47 @@ public unsafe class ViewportPanel
         _texH = savedTexH;
     }
 
-    
+    /// <summary>Draw ONE Bar under-layer (Back / Background / Empty — everything the
+    /// element's own pass doesn't draw). The layer rect = element rect with that
+    /// layer's four edge offsets applied (GetBarLayerRect), so the decorated frame can
+    /// stick out beyond or inset into the element independently per edge.</summary>
+    private void DrawBarUnderLayer(UIElement elem, ImDrawListPtr drawList, UIElement.BarLayer layer, string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        uint texId = LoadOrGetPreviewTexture(path);
+        if (texId == 0) return;
+
+        // Resolve the element rect exactly like the main loop does (auto-fill / auto-center /
+        // parent chain / anchor).
+        float renderW = elem.Width, renderH = elem.Height;
+        float renderX = elem.X, renderY = elem.Y;
+        if (elem.AutoFillWindow) { renderX = 0; renderY = 0; renderW = _texW; renderH = _texH; }
+        else if (elem.AutoCenterX || elem.AutoCenterY)
+        {
+            if (elem.AutoCenterX) renderX = Math.Max(0f, (_texW - renderW) * 0.5f);
+            if (elem.AutoCenterY) renderY = Math.Max(0f, (_texH - renderH) * 0.5f);
+        }
+        else
+        {
+            var pp = elem.Parent;
+            while (pp != null)
+            {
+                if (pp.Type == UIElementType.Container) { renderX += pp.X; renderY += pp.Y; }
+                pp = pp.Parent;
+            }
+            if (elem.Anchor != UIAnchor.None)
+                (renderX, renderY) = elem.GetAnchoredPosition(_texW, _texH);
+        }
+
+        var (lx, ly, lw, lh) = elem.GetBarLayerRect(renderX, renderY, renderW, renderH, layer);
+
+        float sx0 = _imageMin.X + (lx / _texW) * _imageSize.X;
+        float sy0 = _imageMin.Y + (ly / _texH) * _imageSize.Y;
+        float sx1 = _imageMin.X + ((lx + lw) / _texW) * _imageSize.X;
+        float sy1 = _imageMin.Y + ((ly + lh) / _texH) * _imageSize.Y;
+
+        drawList.AddImage((nint)texId, new Vector2(sx0, sy0), new Vector2(sx1, sy1));
+    }
 
     /// <summary>True when the mouse currently hovers the SINGLE selection gizmo
     /// (group-center gizmo for multi-select). Used to keep marquee selection from

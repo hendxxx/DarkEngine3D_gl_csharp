@@ -416,24 +416,39 @@ public static class Player2DSystem
             // test uses the resolved position of this frame. Triggers never block —
             // detection only.
             TriggerEventSystem.LastPlayerPosition = pos;
-            TriggerEventSystem.Update(map, new Vector3(pos.X + capOffX, pos.Y + capOffY, pos.Z), r, height, dt, velX);
+            TriggerEventSystem.Update(map, new Vector3(pos.X + capOffX, pos.Y + capOffY, pos.Z), r, height, dt, velX, capOffX, capOffY);
 
             // ── Pit death: the world origin (0,0) is the map's bottom-left, so any
             // Y well below zero means the player fell through a hole. Respawn at the
             // saved checkpoint (trigger action) or the Start2D marker when none —
             // instead of falling forever (capsule-aware, same as spawn). ──
+            // CheckpointPosition is stored in OBJECT space by SaveCheckpoint, so the
+            // respawn must NOT subtract the capsule offsets again (double-applying the
+            // offset put the player back BELOW the map → infinite respawn loop).
             if (pos.Y < -cell * 2f)
             {
-                Vector2 respawn = TriggerEventSystem.CheckpointPosition ?? (start2d != null
-                    ? new Vector2(start2d.Position.X, start2d.Position.Y)
-                    : new Vector2(pos.X, 0f));
-                float respawnZ = TriggerEventSystem.CheckpointPosition.HasValue
-                    ? TriggerEventSystem.CheckpointZ
-                    : (start2d?.Position.Z ?? pos.Z);
+                // Feet-space target: object X + offset, ground-snapped onto the top of
+                // the collision column at that X — never inside a tile, never floating.
+                float feetX = pos.X + capOffX;
+                if (TriggerEventSystem.CheckpointPosition.HasValue)
+                    feetX = TriggerEventSystem.CheckpointPosition.Value.X + player.Player2DCapsuleOffsetX;
+                else if (start2d != null)
+                    feetX = start2d.Position.X + player.Player2DCapsuleOffsetX;
+
+                float feetY;
+                if (TriggerEventSystem.CheckpointPosition.HasValue)
+                    feetY = TriggerEventSystem.CheckpointPosition.Value.Y + player.Player2DCapsuleOffsetY;
+                else if (start2d != null)
+                    feetY = start2d.Position.Y + player.Player2DCapsuleOffsetY;
+                else
+                    feetY = 0f;
+                feetY = TriggerEventSystem.SnapFeetToGroundPublic(map, feetX, feetY);
+
                 player.Position = new System.Numerics.Vector3(
-                    respawn.X - player.Player2DCapsuleOffsetX,
-                    respawn.Y - player.Player2DCapsuleOffsetY,
-                    respawnZ);
+                    feetX - player.Player2DCapsuleOffsetX,
+                    feetY - player.Player2DCapsuleOffsetY,
+                    TriggerEventSystem.CheckpointPosition.HasValue ? TriggerEventSystem.CheckpointZ
+                        : (start2d?.Position.Z ?? pos.Z));
                 player.Player2DVelocityY = 0f;
                 player.Player2DGrounded = false;
                 player.Player2DJumpCutDone = true;
@@ -451,6 +466,9 @@ public static class Player2DSystem
         // (the Start2D marker position, feet-anchored).
         if (start2d != null)
             TriggerEventSystem._fallbackSpawn = new Vector2(start2d.Position.X, start2d.Position.Y);
+
+        // Live session → Player Info panel + UI Bars read fresh values.
+        Player2DStats.SessionActive = true;
         TriggerEventSystem.OnTeleportPlayer = (target, z) =>
         {
             foreach (var p in manager.Objects)

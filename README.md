@@ -35,7 +35,48 @@ OpenGL/C# game engine with ImGui-based IDE editor.
   - **Gizmo Frontmost** — transform gizmo always renders above the 2D grid/overlays
   - **Per-Map Camera Start** — saved view restored on Play in Preview; ortho/front locked for 2D levels
   - **Persistence** — maps saved to `Assets/Maps/*.tilemap.json` + scene `.ing`, autoloaded on project open; editor aids (grid/collision/spawn gizmos) auto-hidden in-game
+  - **Player Info Panel & Stats** — live monitor/editor of player status (menu *View → Player Info*); see [Player Stats Reference](#player-stats-reference) below
+  - **UI Bar Component** — progress/status bar built from 3 images (Background frame / Empty interior / Progress fill, plus the element's own Image as back layer) with fill direction, frame inset, and **Stat Binding**: pick Health/Mana/Level/Experience/Fitness and the bar mirrors `Player2DStats` live in editor preview and in-game; persisted per scene
 - **IDE Settings Panel** — VSync, MSAA antialiasing, debug grid, font sizes with instant apply
+
+## Player Stats Reference
+
+The player's status is stored in `Player2DStats` (one live instance, single player). The **Player Info** panel shows and edits every value in real time — while playing, bars bound to a stat update the same frame. Values reset to defaults at each play session.
+
+### Primary (vital) stats — shown in the Player Info panel and bindable to UI Bars
+
+| Stat | Slot name | Default | What it represents |
+|---|---|---|---|
+| HP (Hit Points) | `Health` | 100 / 100 | How many hits it takes to knock the character out. Higher HP absorbs more or stronger hits.|
+| MP (Magic Points) | `Mana` | 50 / 50 | Fuel for spells and special actions. Each action has a cost determining how often it can be used; replenished by items, zones, or rest.|
+| Level | `Level` | 1 (max 99) | Overall character progression.|
+| EXP (Experience) | `Experience` | 0 / 100 | Progress toward the next level.|
+| Fitness | `Fitness` | 100 / 100 | Endurance/stamina — how long the character can exert before tiring.|
+
+### Core attributes (classic tabletop six)
+
+| Attribute | Governs |
+|---|---|
+| **Strength** | Pushing, pulling, lifting, climbing, and anything physical. In combat: weapon damage, and accuracy of short-ranged weapons.|
+| **Dexterity** | Quickness and nimbleness. Combat: turn order, ranged accuracy (sometimes power), dodging. Out of battle: run speed, picking locks, pick-pocketing.|
+| **Constitution** | Durability: resisting poison, endurance, and the character's HP pool.|
+| **Intelligence** | Knowledge and spell effectiveness depending on character type.|
+| **Wisdom** | Applied knowledge: how well spells are used and defense against spells.|
+| **Charisma** | Communication and influence over other characters (and, per character, possibly usable spells).|
+
+### Derived combat stats (video-game RPG layer)
+
+| Stat | Effect |
+|---|---|
+| **Attack / Magic Attack** | Damage of weapon-based vs magical actions.|
+| **Defense / Magic Defense** | Reduce incoming physical vs magic damage, e.g. `total attack − total defense = final damage` (exact formula varies per game — some divide instead of subtracting).|
+| **Speed** | Turn order — faster characters usually act first; may also affect accuracy, evasion, or hit counts.|
+| **Evasion** | Lowers the odds an incoming attack hits (not present in every game).|
+| **Accuracy** | Raises the odds the user's attack lands (not present in every game).|
+| **Critical** | Improves the odds of bonus damage on certain attacks.|
+| **Luck** | May nudge accuracy, evasion, critical chance, or resist enemy actions (rare in modern games).|
+
+> Only the primary stats above are implemented and bindable today (`Player2DStats.Health/Mana/Level/Experience/Fitness`); the attribute and derived tables are the design reference the runtime stats grow into — gameplay systems (damage formulas, dodge rolls, level-ups) consume them through the same named slots.
 
 ## Tech Stack
 

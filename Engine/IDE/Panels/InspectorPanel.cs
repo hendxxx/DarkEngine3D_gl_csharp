@@ -34,7 +34,7 @@ public class InspectorPanel
 
     //  Element type labels (mirrors UIElementType order) 
     private static readonly string[] ElementTypeNames =
-        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton"];
+        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton", "Bar"];
 
     public InspectorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -1003,6 +1003,76 @@ public class InspectorPanel
                 }
                 break;
 
+            case UIElementType.Bar:
+                if (ImGui.CollapsingHeader("Bar Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    // Value range — same Min/Max/CurrentValue as a slider, non-interactive.
+                    ImGui.BeginDisabled(elem.BarStatBinding != PlayerStatNames.None); // manual value irrelevant while bound
+                    float barMin = elem.MinValue;
+                    if (ImGui.DragFloat("Min Value", ref barMin, 0.1f))
+                        elem.MinValue = barMin;
+
+                    float barMax = elem.MaxValue;
+                    if (ImGui.DragFloat("Max Value", ref barMax, 0.1f))
+                        elem.MaxValue = Math.Max(elem.MinValue + 0.001f, barMax);
+
+                    float barCur = elem.CurrentValue;
+                    if (ImGui.SliderFloat("Current Value", ref barCur, elem.MinValue, elem.MaxValue))
+                        elem.CurrentValue = barCur;
+                    ImGui.EndDisabled();
+
+                    float fracPreview = (elem.MaxValue - elem.MinValue) > 0.001f
+                        ? Math.Clamp((elem.CurrentValue - elem.MinValue) / (elem.MaxValue - elem.MinValue), 0f, 1f) : 0f;
+
+                    // ── Stat binding: drive the fill from Player2DStats (live) ──
+                    string[] statNames = PlayerStatNames.All;
+                    int statIdx = Array.IndexOf(statNames,
+                        string.IsNullOrEmpty(elem.BarStatBinding) ? PlayerStatNames.None : elem.BarStatBinding);
+                    if (statIdx < 0) statIdx = 0;
+                    if (ImGui.Combo("Stat Binding", ref statIdx, statNames, statNames.Length))
+                        elem.BarStatBinding = statNames[statIdx];
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Mirror a player stat (HP/MP/Level/EXP/Fitness) live — see the Player Info panel. 'None' = manual Current Value.");
+
+                    bool bound = elem.BarStatBinding != PlayerStatNames.None;
+                    if (bound)
+                    {
+                        float liveFrac = Player2DStats.GetFraction(elem.BarStatBinding);
+                        ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.4f, 1f),
+                            $"  {elem.BarStatBinding}: {Player2DStats.GetCurrent(elem.BarStatBinding):F0}/{Player2DStats.GetMax(elem.BarStatBinding):F0} ({liveFrac * 100f:F0}%)");
+                    }
+                    else
+                    {
+                        ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f), $"Fill: {fracPreview * 100f:F1}%");
+                    }
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Images (drag from Asset Browser)");
+                    DrawImagePathInput("Background", "##bar_bg", elem, v => elem.BarBackgroundPath = v);
+                    DrawImagePathInput("Empty", "##bar_empty", elem, v => elem.BarEmptyPath = v);
+                    DrawImagePathInput("Progress", "##bar_prog", elem, v => elem.BarProgressPath = v);
+
+                    ImGui.Separator();
+                    string[] barDirs = ["Left to Right", "Right to Left", "Bottom to Top", "Top to Bottom"];
+                    int barDir = Math.Clamp(elem.BarDirection, 0, 3);
+                    if (ImGui.Combo("Fill Direction", ref barDir, barDirs, barDirs.Length))
+                        elem.BarDirection = barDir;
+
+                    // ── Per-layer edge offsets ──
+                    // Each layer = the element rect with its own left/right/top/bottom
+                    // offsets applied independently (+ = edge outward, − = inward).
+                    DrawBarLayerOffsets("Background Offsets", "bgb", elem.BarBgOffsetLeft, elem.BarBgOffsetRight,
+                        elem.BarBgOffsetTop, elem.BarBgOffsetBottom,
+                        (l, r, t, b) => { elem.BarBgOffsetLeft = l; elem.BarBgOffsetRight = r; elem.BarBgOffsetTop = t; elem.BarBgOffsetBottom = b; });
+                    DrawBarLayerOffsets("Empty Offsets", "beo", elem.BarEmptyOffsetLeft, elem.BarEmptyOffsetRight,
+                        elem.BarEmptyOffsetTop, elem.BarEmptyOffsetBottom,
+                        (l, r, t, b) => { elem.BarEmptyOffsetLeft = l; elem.BarEmptyOffsetRight = r; elem.BarEmptyOffsetTop = t; elem.BarEmptyOffsetBottom = b; });
+                    DrawBarLayerOffsets("Progress Offsets", "bpo", elem.BarProgOffsetLeft, elem.BarProgOffsetRight,
+                        elem.BarProgOffsetTop, elem.BarProgOffsetBottom,
+                        (l, r, t, b) => { elem.BarProgOffsetLeft = l; elem.BarProgOffsetRight = r; elem.BarProgOffsetTop = t; elem.BarProgOffsetBottom = b; });
+                }
+                break;
+
             case UIElementType.Container:
                 if (elem.ContentHeight > elem.Height)
                 {
@@ -1488,6 +1558,67 @@ public class InspectorPanel
             case "HoverTextColor": elem.HoverTextColor = newColor; break;
             case "HoverBgColor": elem.HoverBgColor = newColor; break;
             case "HoverBorderColor": elem.HoverBorderColor = newColor; break;
+        }
+    }
+
+    /// <summary>One Bar layer's edge-offset editors inside a collapsing header:
+    /// Left / Right / Top / Bottom drag floats (scene px). + moves that edge OUTWARD
+    /// (layer grows), − pulls it INWARD (layer shrinks) — applied per edge
+    /// independently so frame art can overhang while the fill insets.</summary>
+    private static void DrawBarLayerOffsets(string header, string idSuffix,
+        float left, float right, float top, float bottom,
+        Action<float, float, float, float> apply)
+    {
+        if (!ImGui.CollapsingHeader(header))
+            return;
+
+        ImGui.Indent();
+        float l = left, r = right, t = top, b = bottom;
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Left{idSuffix}", ref l, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Right{idSuffix}", ref r, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Top{idSuffix}", ref t, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Bottom{idSuffix}", ref b, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("+ = edge moves outward (layer grows), − = inward (layer shrinks). Scene px.");
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"R{ idSuffix}"))
+            apply(0f, 0f, 0f, 0f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Reset this layer's offsets to zero (layer = element rect)");
+        ImGui.Unindent();
+    }
+
+    /// <summary>Image path input + Asset Browser drag-drop target for one Bar image
+    /// slot (Background / Empty / Progress). Mirrors the main Image section's
+    /// drag-drop payload so dropping an image onto any slot just works.</summary>
+    private static unsafe void DrawImagePathInput(string label, string id, UIElement elem, Action<string> setter)
+    {
+        ImGui.Text(label);
+        ImGui.SetNextItemWidth(-1);
+        string path = label switch
+        {
+            "Background" => elem.BarBackgroundPath,
+            "Empty" => elem.BarEmptyPath,
+            _ => elem.BarProgressPath,
+        };
+        if (ImGui.InputText(id, ref path, 512))
+            setter(path);
+
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+            {
+                setter(AssetBrowserPanel._dragImagePath);
+                Console.WriteLine($"[Inspector] Set Bar {label} on '{elem.Name}' → {AssetBrowserPanel._dragImagePath}");
+                AssetBrowserPanel._dragImagePath = null;
+            }
+            ImGui.EndDragDropTarget();
         }
     }
 

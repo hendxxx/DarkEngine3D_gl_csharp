@@ -76,8 +76,8 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky", "Player 2D", "Start"];
-    private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton", "Bar", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky", "Player 2D", "Start"];
+    private const int First3DTypeIdx = 10; // Index in ElementTypeLabels where 3D types start (after Bar)
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
@@ -512,8 +512,8 @@ public class HierarchyPanel
                 _addNameBuffer = _addTypeIdx switch
                 {
                 0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
-                5 => "chk", 6 => "drp", 7 => "txt",
-                9 => "plane", 10 => "box", 11 => "sphere", 12 => "camera", 13 => "light", 14 => "sky",
+                5 => "chk", 6 => "drp", 7 => "txt", 8 => "radio", 9 => "bar",
+                10 => "plane", 11 => "box", 12 => "sphere", 13 => "camera", 14 => "light", 15 => "sky",
                 _ => "element",
             };
                 _addTypeIdx = 0;
@@ -1106,8 +1106,8 @@ public class HierarchyPanel
                         string oldDefault = prevTypeIdx switch
                         {
                             0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
-                            5 => "chk", 6 => "drp", 7 => "txt",
-                            9 => "plane", 10 => "box", 11 => "sphere",
+                            5 => "chk", 6 => "drp", 7 => "txt", 8 => "radio", 9 => "bar",
+                            10 => "plane", 11 => "box", 12 => "sphere",
                             _ => "element",
                         };
                         if (_addNameBuffer == oldDefault)
@@ -1115,8 +1115,8 @@ public class HierarchyPanel
                             _addNameBuffer = ti switch
                             {
                                 0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
-                                5 => "chk", 6 => "drp", 7 => "txt",
-                                9 => "plane", 10 => "box", 11 => "sphere", 12 => "camera", 13 => "light", 14 => "sky",
+                                5 => "chk", 6 => "drp", 7 => "txt", 8 => "radio", 9 => "bar",
+                                10 => "plane", 11 => "box", 12 => "sphere", 13 => "camera", 14 => "light", 15 => "sky",
                                 _ => "element",
                             };
                         }
@@ -1820,16 +1820,16 @@ public class HierarchyPanel
 
             EditorPrimitiveType primType = typeIdx switch
             {
-                9 => EditorPrimitiveType.Plane,
-                10 => EditorPrimitiveType.Box,
-                11 => EditorPrimitiveType.Sphere,
-                12 => EditorPrimitiveType.Camera,
-                13 => EditorPrimitiveType.Light,
-                14 => EditorPrimitiveType.Sky,
-                15 => EditorPrimitiveType.Player2D,
+                10 => EditorPrimitiveType.Plane,
+                11 => EditorPrimitiveType.Box,
+                12 => EditorPrimitiveType.Sphere,
+                13 => EditorPrimitiveType.Camera,
+                14 => EditorPrimitiveType.Light,
+                15 => EditorPrimitiveType.Sky,
+                16 => EditorPrimitiveType.Player2D,
                 19 => EditorPrimitiveType.Sprite2D,
-                16 => EditorPrimitiveType.Start2D,
-                17 => EditorPrimitiveType.CameraStart2D,
+                17 => EditorPrimitiveType.Start2D,
+                18 => EditorPrimitiveType.CameraStart2D,
                 _ => EditorPrimitiveType.Box,
             };
 
@@ -1857,6 +1857,7 @@ public class HierarchyPanel
             6 => UIElementType.Dropdown,
             7 => UIElementType.TextBox,
             8 => UIElementType.RadioButton,
+            9 => UIElementType.Bar,
             _ => UIElementType.Button,
         };
 
@@ -1941,6 +1942,17 @@ public class HierarchyPanel
             newElem.Height = 36;
             newElem.IsChecked = false;
             newElem.RadioGroup = "default";
+        }
+        else if (elemType == UIElementType.Bar)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 300;
+            newElem.Height = 60;
+            newElem.MinValue = 0;
+            newElem.MaxValue = 100;
+            newElem.CurrentValue = 60; // show a partial fill out of the box
+            newElem.BarInset = 6;
+            newElem.BarDirection = 0;
         }
 
         UIElement? parent;
