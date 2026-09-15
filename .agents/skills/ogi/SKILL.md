@@ -140,3 +140,28 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 
 ## Bahasa:
 - Bisa berbahasa **Indonesia** dan **Inggris**.
+---
+
+## Appendix — Recent 2D Side-scroller Additions
+
+**EN:** The engine gained a 2D player stats pipeline. Use these entry points instead of rolling your own:
+
+| Path | Role |
+| --- | --- |
+| `Engine/Visual/Player2DStats.cs` | Runtime stat model for the 2D player (health, movement and gameplay values). Treat it as the single source of truth for player numbers. |
+| `Engine/Visual/Player2DSystem.cs` | Drives the 2D player: reads the stats model, applies movement and gameplay rules each frame. |
+| `Engine/Visual/TriggerEventSystem.cs` | Fires gameplay events when the player enters/exits triggers; wire HUD and stat changes through this instead of polling positions. |
+| `Engine/IDE/Panels/PlayerInfoPanel.cs` | Editor panel that surfaces the player stats while the game runs. |
+| `Engine/IDE/Panels/InspectorPanel.cs` | Inspector for components, including the 2D player components. |
+
+**ID:** Engine sekarang punya pipeline statistik pemain 2D. Pakai titik masuk di atas, jangan bikin sendiri: `Player2DStats` adalah sumber kebenaran untuk angka pemain, `Player2DSystem` menjalankannya tiap frame, `TriggerEventSystem` memicu event gameplay, dan `PlayerInfoPanel` menampilkan statistik itu di IDE.
+
+**Conventions (EN):**
+- HUD art lives under `Dark Projects/<project>/Assets/images/HUD/`.
+- Sprite/sheet metadata is declared in `Assets/Sprites/sprites.sheets.json`; scenes are stored in `*.ing` and described by `SceneAsset` / `SceneAssetSerializer`.
+- IDE-local state (`imgui.ini`, `settings.json`, `recent_files.json`) is per-machine and should not be treated as project content.
+
+**Konvensi (ID):**
+- Aset HUD ada di `Dark Projects/<project>/Assets/images/HUD/`.
+- Metadata sprite ada di `Assets/Sprites/sprites.sheets.json`; scene disimpan sebagai `*.ing` dan ditangani `SceneAsset` / `SceneAssetSerializer`.
+- State lokal IDE (`imgui.ini`, `settings.json`, `recent_files.json`) bersifat per-mesin, bukan konten proyek.
