@@ -969,6 +969,14 @@ public class SceneManagerPanel
                         Sprite2DFacingRight = obj.Sprite2DFacingRight,
                         Sprite2DGlow = obj.Sprite2DGlow,
                         Player2DGlow = obj.Player2DGlow,
+                        Sprite2DGlowColorX = obj.Sprite2DGlowColor.X,
+                        Sprite2DGlowColorY = obj.Sprite2DGlowColor.Y,
+                        Sprite2DGlowColorZ = obj.Sprite2DGlowColor.Z,
+                        Player2DGlowColorX = obj.Player2DGlowColor.X,
+                        Player2DGlowColorY = obj.Player2DGlowColor.Y,
+                        Player2DGlowColorZ = obj.Player2DGlowColor.Z,
+                        Sprite2DGlowFlicker = obj.Sprite2DGlowFlicker,
+                        Player2DGlowFlicker = obj.Player2DGlowFlicker,
                         Sprite2DRenderLayer = obj.Sprite2DRenderLayer,
                         CameraFollowSpeed = obj.CameraFollowSpeed,
                         CameraDeadZoneWidth = obj.CameraDeadZoneWidth,
@@ -1585,6 +1593,10 @@ public class SceneManagerPanel
                         obj.Sprite2DFacingRight = objData.Sprite2DFacingRight;
                         obj.Sprite2DGlow = objData.Sprite2DGlow;
                         obj.Player2DGlow = objData.Player2DGlow;
+                        obj.Sprite2DGlowColor = new Vector3(objData.Sprite2DGlowColorX, objData.Sprite2DGlowColorY, objData.Sprite2DGlowColorZ);
+                        obj.Player2DGlowColor = new Vector3(objData.Player2DGlowColorX, objData.Player2DGlowColorY, objData.Player2DGlowColorZ);
+                        obj.Sprite2DGlowFlicker = objData.Sprite2DGlowFlicker;
+                        obj.Player2DGlowFlicker = objData.Player2DGlowFlicker;
                         obj.Sprite2DRenderLayer = objData.Sprite2DRenderLayer;
                         obj.CameraFollowSpeed = objData.CameraFollowSpeed;
                         obj.CameraDeadZoneWidth = objData.CameraDeadZoneWidth;

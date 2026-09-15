@@ -135,7 +135,7 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 |---------|-------------|
 | **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise) |
 | **Tile Palette** | Auto-detected cols/rows from tileset image (read-only); multi-select (marquee) preserves block shape when stamping |
-| **Tools** | Paint, Erase (with brush size), Fill (flood), Pick (default), Collision — paint directly in the 3D viewport |
+| **Tools** | Paint, Erase (with brush size), Fill (flood), Pick (default), Collision, Trigger — paint directly in the 3D viewport |
 | **Layers** | Multiple tile layers, visibility/lock per layer, all visible layers render (stacked in depth, tiny lift per layer) |
 | **Undo/Redo** | Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y over the 2D level (per-tile granularity) |
 | **Collision Flags** | Per-tile-id collision toggles; dedicated Collision paint tool (click/drag toggles, hover preview shows add vs remove); full 3D translucent boxes with bright edges CENTERED on the tile; per-layer `CollisionTileIds` persist in the tilemap json; Show Collision checkbox persisted in settings |
@@ -145,6 +145,7 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 | **Camera Start** | Per-map saved view; "Set Current View"/"Reset" in Grid Settings; Play in Preview restores it; auto-captured on first framing |
 | **Player Spawn** | Draggable cyan cross marker in viewport (or "Set at Hover"); GameScene places the player there on Enter (unless a save slot loads) |
 | **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles + parallax + spawn + camera start) and canonical scene `.ing`; autoload first map on project open |
+| **Trigger Areas** | Dedicated Trigger tool: click-drag on the grid draws a snap-to-tile box; drag body to move, 8 handles to resize; Delete / Ctrl+C/X/V / Ctrl+D supported; amber translucent boxes (selected = brighter + white handles); edited in the Trigger Areas panel (see §2.9) |
 | **In-Game Parity** | Parallax layers/textures sync every frame in preview mode; startup `-load=` in-game re-anchors camera (lazy reframe when tilemap adopts late) |
 
 ### 2.6 Player2D System (2D Character)
@@ -206,7 +207,37 @@ The transform gizmo is ALWAYS frontmost: 2D overlays (tile grid, hover highlight
 **Player 2D**:
 - Sprite Sheet + Animation Clip combos (auto-select first item; clip summary shown when resolvable)
 - Sprite Height, Capsule Radius/Height, Show Capsule, Gravity
+- Glow (bloom) slider + Glow Tint picker + Flicker checkbox (see §2.10)
 - Selection shows via line gizmos (no stencil outline — no solid mesh)
+
+### 2.9 Trigger Area / Event System
+
+Non-blocking event volumes on the tilemap: the player passes through them; entering/staying/exiting fires an ordered list of actions.
+
+| Feature | Description |
+|---------|-------------|
+| **Trigger Area** | Rectangle in grid pixel coords (LeftPx/TopPx/WidthPx/HeightPx) on the tilemap; no physical collision — detection only |
+| **Conditions** | On Enter / On Stay (with repeat interval in seconds) / On Exit; optional gate "only when moving right" |
+| **Actions (16 types)** | Save Game, Save Checkpoint, Load Checkpoint, Change Map, Play Sound, Play Music, Spawn Effect, Spawn Object, Start Dialogue, Start Cutscene, Camera Shake, Unlock Door, Give Item, Activate Quest, Complete Quest, Run Script — each with Param/Param2/Delay |
+| **Wired Runtime** | Save Game (next empty slot), Save Checkpoint (records player position), Load Checkpoint (teleport to checkpoint, fallback = start point), Change Map (loads `Assets/Maps/{name}.tilemap.json` in place), Camera Shake (earthquake-style, intensity × duration) |
+| **Checkpoint Chain** | Save Checkpoint → player position stored for the session; Load Checkpoint zeroed velocity + grounded reset; pit-death respawn prefers the checkpoint; checkpoint state resets on each new play session |
+| **Camera Shake** | View-height-relative amplitude (7% × intensity), 3-layer noise + ±1.2° camera roll, quadratic decay, random seed per shake |
+| **Visual Editor** | Trigger tool: drag-create (snaps to tile bounds), move by dragging the body, resize via 8 handles, Delete/Ctrl+C/X/V/Ctrl+D; "Show Triggers" checkbox (persisted); Trigger Areas panel: list + rename + enable, conditions, per-action editor with contextual params + reorder, precise geometry |
+| **Rendering** | Amber translucent boxes drawn in edit mode only (hidden in-game via `Editor2DAidsHidden`); overlay projected via `SceneToScreen` so it sticks to the viewport image |
+| **Persistence** | `Assets/Maps/{map}.tilemap.json` AND scene `.ing` (`Tilemap2DData.TriggerAreas`) — triggers load with the project |
+
+### 2.10 Per-Sprite Glow (Emissive Post-FX)
+
+Per-sprite emissive boost so only bright sprite pixels (fire, lava, candles) cross the bloom threshold — the rest of the sprite and scene stay normal. Requires Post FX enabled.
+
+| Feature | Description |
+|---------|-------------|
+| **Glow (bloom)** | `Sprite2DGlow` / `Player2DGlow` (0-1) — vertex color multiplied ×1..×4; bright pixels bloom, dark pixels untouched |
+| **Glow Tint** | `Sprite2DGlowColor` / `Player2DGlowColor` — colors the bloom (e.g. blue fire); brightest channel normalized to 1 at render, so any brightness of the hue works; white = natural colors |
+| **Flicker** | `Sprite2DGlowFlicker` / `Player2DGlowFlicker` — organic fire breathing: 3 out-of-phase sine layers over absolute engine time (±22% around the Glow value), per-object seed from the name hash (two fires never sync), frame-gated via `Glfw.FrameId` for multi-pass consistency |
+| **Baked to Vertices** | Boost/tint/flicker multiply the per-vertex tint (`aTint`) — the map2d shader has no tint uniform by design |
+| **Inspector** | "Glow (bloom)" slider + "Glow Tint" picker + "Flicker" checkbox in both the Sprite2D and Player2D sections |
+| **Persistence** | Saved in the scene `.ing` via `EditorObjectData` (Glow + GlowColorX/Y/Z + Flicker), symmetric save/load |
 
 ---
 
@@ -241,6 +272,10 @@ Scene files use `.ing` extension — **JSON** format with `.ing` extension.
   "Player2DSpriteSheet": "", "Player2DAnimationClip": "",
   "Player2DHeight": 2.0, "Player2DCapsuleRadius": 0.35, "Player2DCapsuleHeight": 1.8,
   "Player2DShowCapsule": true, "Player2DGravity": 25.0,
+  "Sprite2DGlow": 0.0, "Player2DGlow": 0.0,
+  "Sprite2DGlowColorX": 1.0, "Sprite2DGlowColorY": 1.0, "Sprite2DGlowColorZ": 1.0,
+  "Player2DGlowColorX": 1.0, "Player2DGlowColorY": 1.0, "Player2DGlowColorZ": 1.0,
+  "Sprite2DGlowFlicker": false, "Player2DGlowFlicker": false,
   "GlbFilePath": "",
   "PosX": 0, "PosY": 0, "PosZ": 0,
   "RotX": 0, "RotY": 0, "RotZ": 0,

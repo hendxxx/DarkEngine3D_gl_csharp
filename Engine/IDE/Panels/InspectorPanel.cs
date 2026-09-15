@@ -2551,6 +2551,19 @@ public class InspectorPanel
             editorObj.Sprite2DGlow = glow;
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Emissive boost for this sprite only.\nBright pixels (fire, lava, candles) glow via bloom;\ndark pixels stay normal. Requires Post FX enabled\nin the Post FX panel.");
+        // Glow tint — colors the bloom (e.g. blue fire). Brightest channel is
+        // normalized to 1 at render, so any brightness of the hue works.
+        var glowCol = editorObj.Sprite2DGlowColor;
+        if (ImGui.ColorEdit3("Glow Tint", ref glowCol))
+            editorObj.Sprite2DGlowColor = glowCol;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Color of the glow/bloom for this sprite.\nWhite = natural colors; pick blue for blue fire.\nOnly affects pixels bright enough to bloom.");
+        // Fire flicker: glow intensity pulses organically over time.
+        bool gflick = editorObj.Sprite2DGlowFlicker;
+        if (ImGui.Checkbox("Flicker##glow", ref gflick))
+            editorObj.Sprite2DGlowFlicker = gflick;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Fire-like flicker: the glow intensity breathes\norganically over time instead of staying steady.\nRequires Glow > 0.");
 
         // Render layer: linked with Map Editor layers when available
         var map = _bridge.ActiveTilemap ?? _bridge.EditorObjectManager?.Objects.FirstOrDefault(o => o?.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)?.Map2dTilemap;
@@ -2719,6 +2732,16 @@ public class InspectorPanel
             editorObj.Player2DGlow = pGlow;
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Emissive boost for the player sprite only.\nBright pixels glow via bloom. Requires Post FX enabled.");
+        var pGlowCol = editorObj.Player2DGlowColor;
+        if (ImGui.ColorEdit3("Glow Tint##player", ref pGlowCol))
+            editorObj.Player2DGlowColor = pGlowCol;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Color of the player's glow/bloom.\nWhite = natural colors.\nOnly affects pixels bright enough to bloom.");
+        bool pFlick = editorObj.Player2DGlowFlicker;
+        if (ImGui.Checkbox("Flicker##glowplayer", ref pFlick))
+            editorObj.Player2DGlowFlicker = pFlick;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Fire-like flicker for the player's glow.\nRequires Glow > 0.");
 
         // ── Gameplay physics ──
         float g = editorObj.Player2DGravity;

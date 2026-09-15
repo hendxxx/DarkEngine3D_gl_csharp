@@ -206,6 +206,19 @@ public class EditorObjectData
     /// bloom. Player objects use Player2DGlow.</summary>
     public float Sprite2DGlow { get; set; } = 0f;
     public float Player2DGlow { get; set; } = 0f;
+    /// <summary>Glow color tint components (0-1). The brightest channel is
+    /// normalized to 1 at render time; white (1,1,1) = natural sprite colors.
+    /// Serialized per-component (X/Y/Z) like the rest of this class.</summary>
+    public float Sprite2DGlowColorX { get; set; } = 1f;
+    public float Sprite2DGlowColorY { get; set; } = 1f;
+    public float Sprite2DGlowColorZ { get; set; } = 1f;
+    public float Player2DGlowColorX { get; set; } = 1f;
+    public float Player2DGlowColorY { get; set; } = 1f;
+    public float Player2DGlowColorZ { get; set; } = 1f;
+    /// <summary>Organic flicker for the per-sprite glow (fire breathing). Player
+    /// objects use Player2DGlowFlicker.</summary>
+    public bool Sprite2DGlowFlicker { get; set; }
+    public bool Player2DGlowFlicker { get; set; }
     /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
     public int Sprite2DRenderLayer { get; set; } = 0;
     // ── Player2D camera-follow tuning ──

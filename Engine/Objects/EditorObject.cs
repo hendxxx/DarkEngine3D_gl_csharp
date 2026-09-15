@@ -428,8 +428,56 @@ public unsafe class EditorObject
     /// (body, wood, background) stay below it. Per-sprite: each sprite can glow on its
     /// own while everything else stays normal. Persisted with the scene.</summary>
     public float Sprite2DGlow { get; set; } = 0f;
+    /// <summary>Color tint of the per-sprite glow (Sprite2DGlow): the boosted
+    /// (emissive) sprite color is multiplied by this, so the bloom takes the chosen    /// hue — e.g. blue for blue fire. White = natural sprite colors. Normalized so
+    /// its brightest channel is 1 at render time.</summary>
+    public Vector3 Sprite2DGlowColor { get; set; } = Vector3.One;
     /// <summary>Player variant of the per-sprite glow (same mechanism).</summary>
     public float Player2DGlow { get; set; } = 0f;
+    /// <summary>Color tint of the player glow (see Sprite2DGlowColor).</summary>
+    public Vector3 Player2DGlowColor { get; set; } = Vector3.One;
+    /// <summary>Organic flicker for the per-sprite glow: intensity pulses over time
+    /// (fire breathing). Off = steady glow. Sampled once per frame so multi-pass
+    /// draws stay consistent.</summary>
+    public bool Sprite2DGlowFlicker { get; set; }
+    /// <summary>Player variant of the glow flicker (same mechanism).</summary>
+    public bool Player2DGlowFlicker { get; set; }
+
+    /// <summary>Frame-gated flicker sample cache (see ComputeGlowBoost).</summary>
+    private int _glowFlickerGateFrame = -1;
+    private float _glowFlickerCache = 1f;
+
+    /// <summary>Emissive boost multiplier for per-sprite glow, including the organic
+    /// fire flicker when enabled: three out-of-phase sine layers over absolute engine
+    /// time make the brightness breathe unevenly (like flames) instead of pulsing
+    /// metronomically. Frame-rate independent; sampled once per frame so the editor
+    /// pass and any second pass in the same frame read the identical value.</summary>
+    private float ComputeGlowBoost(float glowAmount, bool flicker)
+    {
+        float boost = 1f + MathF.Max(0f, glowAmount) * 3f;
+        if (flicker && glowAmount > 0f)
+        {
+            if (_glowFlickerGateFrame != Glfw.FrameId)
+            {
+                // Per-object seed from the name — two fires never pulse in sync.
+                unchecked
+                {
+                    uint h = 2166136261u;
+                    string s = Name ?? string.Empty;
+                    foreach (char c in s) { h ^= c; h *= 16777619u; }
+                    float seed = (h & 0x7FFFFFFF) / (float)0x7FFFFFFF * 10f;
+
+                    float t = Glfw.PeekTime() * 9.3f + seed;
+                    _glowFlickerCache = 0.78f
+                        + 0.13f * MathF.Sin(t)
+                        + 0.06f * MathF.Sin(t * 2.71f + 1.9f)
+                        + 0.03f * MathF.Sin(t * 5.37f + 4.2f);
+                }                    _glowFlickerGateFrame = (int)Glfw.FrameId;
+            }
+            boost *= _glowFlickerCache;
+        }
+        return boost;
+    }
     /// <summary>Facing mirror (sprite art is assumed right-facing).</summary>
     /// <summary>Render layer for Sprite2D: higher layers draw ON TOP of lower ones.
     /// Sprites are drawn sorted by this layer (ascending), and each step also nudges
@@ -3176,8 +3224,14 @@ public unsafe class EditorObject
         // whole sprite to white (tone mapping rolls the excess off filmically).
         if (Player2DGlow > 0f)
         {
-            float boost = 1f + Player2DGlow * 3f;
-            tR *= boost; tG *= boost; tB *= boost;
+            float boost = ComputeGlowBoost(Player2DGlow, Player2DGlowFlicker);
+            // Glow tint: multiply the boosted color by the normalized tint so the
+            // bloom takes its hue (white = unchanged). Bright pixels exceed the
+            // bloom threshold in the tint color — e.g. blue fire.
+            var gtc = Player2DGlowColor;
+            float gMax = MathF.Max(gtc.X, MathF.Max(gtc.Y, gtc.Z));
+            if (gMax > 0f) gtc = new Vector3(gtc.X / gMax, gtc.Y / gMax, gtc.Z / gMax);
+            tR *= boost * gtc.X; tG *= boost * gtc.Y; tB *= boost * gtc.Z;
         }
         var verts = stackalloc Map2DVertex[6]
         {
@@ -3321,8 +3375,12 @@ public unsafe class EditorObject
         // glow: bright pixels (fire) rise above the bloom threshold and glow.
         if (Sprite2DGlow > 0f)
         {
-            float boost = 1f + Sprite2DGlow * 3f;
-            tR *= boost; tG *= boost; tB *= boost;
+            float boost = ComputeGlowBoost(Sprite2DGlow, Sprite2DGlowFlicker);
+            // Glow tint — same normalized-color multiply as the player glow.
+            var gtc = Sprite2DGlowColor;
+            float gMax = MathF.Max(gtc.X, MathF.Max(gtc.Y, gtc.Z));
+            if (gMax > 0f) gtc = new Vector3(gtc.X / gMax, gtc.Y / gMax, gtc.Z / gMax);
+            tR *= boost * gtc.X; tG *= boost * gtc.Y; tB *= boost * gtc.Z;
         }
         var verts = stackalloc Map2DVertex[6]
         {

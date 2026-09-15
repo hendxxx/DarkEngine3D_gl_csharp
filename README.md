@@ -14,6 +14,7 @@ OpenGL/C# game engine with ImGui-based IDE editor.
 
 - **3D Engine**: OpenGL 4.x, PBR rendering, cascaded shadow maps, post-processing
 - **Post FX** — reactive bloom (5-mip chain: tight hot cores + wide soft halos, adjustable radius), auto exposure (eye adaptation with min/max clamp + target luminance), ACES tonemapping, gamma; runs live in both the editor viewport and in-game from one shared processor; per-stage framebuffer debug views in the viewport (FX Debug button) and the FrameBuffer Debug panel; all parameters persist per-project
+- **Per-Sprite Glow** — per-sprite emissive boost so only bright pixels (fire, lava, candles) bloom via Post FX; glow color tint (e.g. blue fire) and organic fire flicker (3-layer noise, per-sprite phase, frame-rate independent); Inspector controls per Sprite2D/Player2D object; persisted in the scene file
 - **IDE Editor**: ImGui-based with Inspector, Hierarchy, Scene Manager, Asset Browser
 - **UI System**: Buttons, Labels, Sliders, Checkboxes, Dropdowns, Containers with scroll
 - **Project System**: `.projing` project files, per-project settings, auto-load scenes
@@ -25,9 +26,11 @@ OpenGL/C# game engine with ImGui-based IDE editor.
   - **Tilemap in 3D** — rendered as an upright textured plane at world origin; camera auto-switches to ortho front view (editor and in-game)
   - **Parallax Backgrounds** — per-layer ScrollFactor/ZPosition/Alpha, aspect-preserving sizing, RepeatX/Y wrap, seamless scroll preview while panning, correct rendering in Play in Preview
   - **Collision Flags** — per-tile collision with dedicated Collision paint tool; full 3D translucent boxes with bright edges centered on the tile; per-layer collision IDs persisted
+  - **Trigger Areas** — non-blocking event volumes with the same drag/resize editor as collision boxes (snap to grid, copy/paste/duplicate); conditions On Enter / On Stay (interval) / On Exit + optional moving-right gate; 16 action types incl. Save Game, Save/Load Checkpoint, Change Map, and earthquake Camera Shake; triggers persist with the map and fire in preview/in-game
   - **Player 2D** — capsule-collider character with animated sprite from the Sprite Editor (sheet + clip pickers, FPS/loop/speed respected), idle ↔ walk clip auto-switching while moving, sprite mirrors when facing left, sprite previews live in edit mode
   - **Start Marker** — player spawn point; Player2D spawns there in preview/in-game
   - **Player Physics** — gravity + capsule-vs-collision-tile resolution (ground/ceiling) active in preview/in-game only
+  - **Checkpoints** — "Save Checkpoint" trigger records the player position; "Load Checkpoint" teleports back (fallback = start marker); pit-death respawn prefers the checkpoint; resets each play session
   - **Player Spawn** — draggable spawn marker; GameScene places the player at the map's spawn on scene enter
   - **Gizmo Frontmost** — transform gizmo always renders above the 2D grid/overlays
   - **Per-Map Camera Start** — saved view restored on Play in Preview; ortho/front locked for 2D levels

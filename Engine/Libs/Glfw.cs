@@ -289,6 +289,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         /// call any number of times per frame — always returns the same value the main
         /// loop measured, so VSync/monitor refresh never changes animation or UI speed.</summary>
         public static float PeekDeltaTime() => deltaTime;
+
+        /// <summary>Monotonic engine time in seconds (glfwGetTime), read-only. Safe to
+        /// call any number of times per frame — never advances or mutates anything.
+        /// Use for continuous visual effects (glow flicker, ambient pulses) that need
+        /// absolute time rather than per-object accumulated clocks.</summary>
+        public static float PeekTime() => (float)glfwGetTime();
         /// <summary>Internal helper: update GL viewport, window size vars, and fire resize event.</summary>
         private static void UpdateWindowSize(int width, int height)
         {

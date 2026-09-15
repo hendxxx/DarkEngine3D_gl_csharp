@@ -99,7 +99,7 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Selection Outline**: `DrawOutlineStencil`/`DrawOutline` early-return untuk Player2D/Start2D (tidak punya solid mesh — selection lewat line gizmo).
 
 ## Map Editor Tool Defaults:
-- **Default Tool = Pick**: `_currentTool` mulai dari `PaintTool.Pick` — viewport klik tidak sengaja tidak menge-paint. Tools: Paint, Erase, Fill, Pick, Collision.
+- **Default Tool = Pick**: `_currentTool` mulai dari `PaintTool.Pick` — viewport klik tidak sengaja tidak menge-paint. Tools: Paint, Erase, Fill, Pick, Collision, Trigger.
 - **Gizmo Z-Order**: Overlay 2D (grid tiles, hover highlight, collision box edges) menggambar dengan depth test OFF — mereka akan menimpa gizmo. Solusi: `GL.Clear(GL_DEPTH_BUFFER_BIT)` setelah `editorObjMgr.Draw()` sebelum `gizmo.Render()` (kedua jalur: no-scene editor DAN in-scene). Gizmo harus SELALU paling depan.
 
 ## Post FX System Rules (Reactive Bloom + Auto Exposure):
@@ -110,6 +110,27 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Settings Reload on Project Open**: `PostFxSettings.Apply()` hanya jalan sekali di Program.cs (exe fallback). IDE HARUS re-apply `PostFxSettings.Apply(SettingsSave.Load())` saat project open/close — FilePath mengikuti project, jadi tanpa reload nilai selalu "balik ke default" (save ke project, load dari fallback). Panel re-sync via `PostFxPanel.OnProjectChanged()`.
 - **FX Debug Views**: `_fxDebugView` di ViewportPanel (tombol "FX Debug" cycle Scene→Composite→Output→Luma→Mip 0-4, badge amber) + semua target di FrameBuffer Debug panel (thumbnails via `PostFxProcessor` debug surface). Fallback ke scene normal kalau chain belum allocate / Post FX off.
 - **Persist**: semua param (`Enabled`, `BloomIntensity/Threshold/SoftKnee/Mips`, `AutoExposure*`, `Gamma`, `Exposure`, DoF) simetris via `PostFxSettings.Apply/Persist` → `settings.json` project.
+
+## Trigger Area System Rules:
+- **Data Model**: `TilemapTriggerArea` (Tilemap2D.cs) — kotak dalam koordinat pixel grid (LeftPx/TopPx/WidthPx/HeightPx), `IsEnabled`, kondisi **OnEnter / OnStay (interval detik) / OnExit**, gate opsional **OnlyMovingRight**, dan daftar aksi berurutan (`TilemapTriggerAction`: Type, Param, Param2, Delay).
+- **16 Action Types**: SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect, SpawnObject, StartDialogue, StartCutscene, CameraShake, UnlockDoor, GiveItem, ActivateQuest, CompleteQuest, RunScript. Yang SUDAH wired runtime: SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, CameraShake. Sisanya ter-authoring + log "no runtime implementation yet" sekali per aksi — jangan diam total.
+- **Persistence**: TriggerAreas tersimpan DI DUA TEMPAT: `Assets/Maps/{map}.tilemap.json` DAN scene `.ing` (via `Tilemap2DData.TriggerAreas`). Load project = trigger ikut ter-load.
+- **Runtime**: `TriggerEventSystem` — deteksi OnEnter/OnStay/OnExit vs AABB kapsul player tiap frame fisika (dipanggil dari `Player2DSystem.Update`). Player MENEMBUS area — trigger TIDAK PERNAH menghalangi (beda dari collision tile).
+- **Checkpoint**: `SaveCheckpoint` rekam posisi player sesi; `LoadCheckpoint` teleport ke checkpoint + velocity di-nol-kan + grounded reset, fallback ke Start2D (start point) jika belum ada checkpoint. Pit death respawn juga prioritas checkpoint. State checkpoint di-reset tiap masuk in-game/preview (sesi baru = mulai dari start).
+- **Camera Shake**: `Camera.BeginShake(duration, intensity)` — gaya gempa: amplitudo relatif tinggi view (7% × intensity), noise 3 lapisan + camera roll ±1.2°, decay kuadratik, seed acak per-shake. Action: Param=intensity, Param2=duration (default 1.2s).
+- **Editor Interaksi**: Tool "Trigger" di MapEditor toolbar. Klik-drag di grid = buat kotak (snap ke batas tile), klik badan = pindah, 8 handle = resize, Delete hapus, Ctrl+C/X/V copy/cut/paste (paste di-offset 1 tile), Ctrl+D duplicate. Kotak amber transparan; terpilih lebih terang + handle putih. Klik-create di ruang kosong TIDAK boleh memicu marquee/raycast objek di frame yang sama.
+- **Overlay**: Viewport trigger overlay WAJIB lewat `SceneToScreen()` — koordinat scene mentah langsung ke draw list = kotak tidak nempel dengan gambar viewport yang di-zoom/offset.
+- **UI**: Panel "Trigger Areas" di MapEditor: list + rename + enable, kondisi (Enter/Stay interval/Exit/moving-right), editor aksi per item (combo 16 tipe + param kontekstual + reorder + hapus), geometry presisi. Checkbox "Show Triggers" persist via `TilemapShowTriggers` (scene .ing) + `Map2dShowTriggers`.
+- **ASCII Buttons Only**: Font ImGui default TIDAK punya glyph Unicode (↑/↓/✕ render "?"). Gunakan `^` (move up), `v` (move down), `X` (remove) + tooltip. Selalu PopID sebelum continue saat menghapus item dari list (ID stack safety).
+
+## Per-Sprite Glow Rules (Emissive Post-FX):
+- **Mekanisme**: Per-sprite emissive boost — warna vertex sprite dikali boost sehingga HANYA pixel terang (api/lava/lilin) naik melewati bloom threshold Post FX; pixel gelap (badan, kayu) tetap normal. Tidak perlu mask texture. WAJIB Post FX ON.
+- **NO shader uniform**: Shader map2d tidak punya uniform tint — boost/tint/flicker di-BAKE ke vertex tint (`aTint`) di DrawSprite2D/DrawPlayer2D. Jangan tambah GL.Uniform4f.
+- **Fields**: `Sprite2DGlow`/`Player2DGlow` (0-1), `Sprite2DGlowColor`/`Player2DGlowColor` (Vector3 — di-normalisasi channel terterang = 1 saat render, jadi warna gelap pun menghasilkan hue penuh), `Sprite2DGlowFlicker`/`Player2DGlowFlicker` (bool).
+- **Flicker**: `ComputeGlowBoost` — 3 sine out-of-phase (frekuensi irasional) atas `Glfw.PeekTime()` (waktu absolut), seed per-object dari hash NAMA (FNV-1a) → dua api tidak pernah sinkron, amplitudo ~±22% di sekitar nilai Glow. Frame-gated via `Glfw.FrameId` — sample sekali per frame supaya editor pass + pass kedua konsisten (pola sama dengan animation clock).
+- **Glfw.PeekTime()**: accessor read-only `glfwGetTime()` — aman dipanggil berkali-kali per frame, TIDAK menggeser shared clock (hanya SceneManager.Run boleh GetDeltaTime).
+- **Inspector**: slider "Glow (bloom)", color picker "Glow Tint" (mis. biru = blue fire), checkbox "Flicker" — ada di bagian Sprite2D DAN Player2D.
+- **Persist**: semua fields simetris via `EditorObjectData` (Glow, GlowColorX/Y/Z, GlowFlicker) di scene `.ing`.
 
 ## Scene Management Rules:
 - **SceneEntry**: `record SceneEntry(Name, Description, HasInitializedEntry, Type, ...)` — stored in `AvailableScenesInternal`.
