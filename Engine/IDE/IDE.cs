@@ -37,6 +37,9 @@ public class IDE : IDisposable
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
     private readonly MapEditorPanel _mapEditor = null!;
+    /// <summary>Intensity handed from the Camera Shake trigger action to BeginShake
+    /// (the runtime fires duration and intensity as two separate callbacks).</summary>
+    private float _pendingShakeIntensity = 1f;
     /// <summary>Public accessor so ViewportPanel can push the hovered grid cell to
     /// the Map Editor (used by "+ Add Trigger Area" placement).</summary>
     public MapEditorPanel MapEditorRef => _mapEditor;
@@ -720,9 +723,12 @@ public class IDE : IDisposable
             };
             Visual.TriggerEventSystem.OnCameraShake = duration =>
             {
+                // Earthquake: long default (1.2s) so the jolt actually reads.
                 if (Bridge.Camera != null)
-                    Bridge.Camera.BeginShake(MathF.Max(0.05f, duration));
+                    Bridge.Camera.BeginShake(MathF.Max(0.1f, duration), _pendingShakeIntensity);
             };
+            Visual.TriggerEventSystem.RequestShakeIntensity = intensity =>
+                _pendingShakeIntensity = Math.Clamp(intensity, 0.1f, 5f);
 
             // Sprite2D placement from the Asset Browser clip boxes (click / drop):
             // creates a decorative animated sprite (Player2D rendering, no controller,

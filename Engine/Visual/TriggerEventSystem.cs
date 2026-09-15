@@ -30,8 +30,12 @@ public static class TriggerEventSystem
     public static Func<string, bool>? OnChangeMap { get; set; }
 
     /// <summary>Set by the IDE so "Camera Shake" can reach the active camera without
-    /// the trigger runtime knowing camera internals.</summary>
+    /// the trigger runtime knowing camera internals. Parameter = duration seconds.</summary>
     public static Action<float>? OnCameraShake { get; set; }
+
+    /// <summary>Sets the intensity (jolt size multiplier) of the NEXT/active camera
+    /// shake. Kept separate from OnCameraShake so the camera API stays simple.</summary>
+    public static Action<float>? RequestShakeIntensity { get; set; }
 
     /// <summary>Remembered checkpoint world position (feet anchor). Set by the
     /// "Save Checkpoint" action; consumed by the "Load Checkpoint" action and by the
@@ -292,7 +296,12 @@ public static class TriggerEventSystem
                 float.TryParse(action.Param, out float intensity);
                 float.TryParse(action.Param2, out float duration);
                 if (duration <= 0f) duration = 0.4f;
-                OnCameraShake?.Invoke(duration * MathF.Max(0.05f, intensity <= 0f ? 1f : intensity));
+                if (intensity <= 0f) intensity = 1f;
+                // Earthquake shake: duration sets how long, intensity scales the jolt
+                // size (the camera scales the offset to the current view size, so even
+                // a mild intensity reads big on screen).
+                OnCameraShake?.Invoke(duration);
+                RequestShakeIntensity?.Invoke(intensity);
                 Console.WriteLine($"[Trigger] '{triggerName}' → Camera Shake (intensity {intensity}, duration {duration:F2}s)");
                 break;
             }

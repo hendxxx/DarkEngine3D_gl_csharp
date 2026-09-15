@@ -300,41 +300,82 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public Matrix4x4 GetViewMatrix()
         {
             var pos = Position;
-            // Trigger/camera-shake: small decaying random offsets around the true
-            // position while a shake is active. Applied only to the view matrix so
+            var up = Up;
+            // Trigger/camera-shake: EARTHQUAKE-style shake while active — layered
+            // jerky noise (slow jolts + fast shiver) instead of one smooth sine,
+            // amplitude scaled to the current VIEW SIZE (so it reads massive at any
+            // zoom), plus a slight camera roll. Applied only to the view matrix so
             // the authoritative Position stays untouched (no gameplay drift).
             if (_shakeRemaining > 0f)
             {
                 float decay = _shakeRemaining / _shakeDuration;
-                float amp = _shakeAmplitude * decay * decay;
-                float time = System.DateTime.Now.Ticks * 1e-7f * 37f;
-                pos += new Vector3(
-                    MathF.Sin(time * 13.7f) * amp,
-                    MathF.Cos(time * 17.3f) * amp * 0.8f,
-                    0f);
+                float strength = _shakeIntensity * decay * decay; // quadratic fade-out
+
+                // View scale: ortho = half view height; perspective = distance-scaled
+                // so the shake occupies a similar fraction of the screen either way.
+                float viewScale = IsOrthographic
+                    ? MathF.Max(0.5f, OrthoSize)
+                    : MathF.Max(0.5f, (Position - Vector3.Zero).Length() * 0.35f);
+
+                // Layered noise per axis: 3 sine bands (slow/medium/fast) with seeded
+                // random phases and irrational frequency ratios — non-repeating and
+                // jerky like real ground movement (sum ranges ≈ [-1, 1]).
+                float nx = MathF.Sin(_shakeTime * 9.7f + _shakeSeedX) * 0.5f
+                         + MathF.Sin(_shakeTime * 23.3f + _shakeSeedX * 1.7f) * 0.3f
+                         + MathF.Sin(_shakeTime * 47.9f + _shakeSeedX * 2.3f) * 0.2f;
+                float ny = MathF.Sin(_shakeTime * 8.1f + _shakeSeedY) * 0.5f
+                         + MathF.Sin(_shakeTime * 26.9f + _shakeSeedY * 1.9f) * 0.3f
+                         + MathF.Sin(_shakeTime * 53.3f + _shakeSeedY * 2.7f) * 0.2f;
+                float nr = MathF.Sin(_shakeTime * 6.3f + _shakeSeedR) * 0.6f
+                         + MathF.Sin(_shakeTime * 31.7f + _shakeSeedR * 2.1f) * 0.4f;
+
+                // Peak offset ≈ 7% of the half view height at intensity 1 — a big,
+                // violent jolt. Intensity scales it (2 = twice as wild).
+                pos += new Vector3(nx, ny, 0f) * viewScale * 0.07f * strength;
+
+                // Camera roll around the view axis (max ~1.2° at full strength) —
+                // sells the "the whole world is moving" feel.
+                float roll = nr * 0.021f * strength;
+                float rc = MathF.Cos(roll), rs = MathF.Sin(roll);
+                up = Vector3.Normalize(up * rc + Vector3.Cross(Front, up) * rs);
             }
-            return Matrix4x4.CreateLookAt(pos, pos + Front, Up);
+            return Matrix4x4.CreateLookAt(pos, pos + Front, up);
         }
 
         // ── Camera shake (triggered by trigger-area actions) ──
         private float _shakeRemaining;
         private float _shakeDuration = 1f;
-        private float _shakeAmplitude = 0.12f;
+        private float _shakeIntensity = 1f;
+        private float _shakeTime;
+        private float _shakeSeedX, _shakeSeedY, _shakeSeedR;
 
-        /// <summary>Start a camera shake lasting `duration` seconds. Amplitude decays
-        /// quadratically; the authoritative Position is never modified.</summary>
-        public void BeginShake(float duration, float amplitude = 0.12f)
+        /// <summary>Start an earthquake-style camera shake lasting `duration` seconds.
+        /// `intensity` scales the jolt size (1 = ~7% of the half view height, 2 = twice
+        /// as wild). Amplitude decays quadratically; each shake gets fresh random phase
+        /// seeds so consecutive shakes never repeat the same movement pattern. The
+        /// authoritative Position is never modified.</summary>
+        public void BeginShake(float duration, float intensity = 1f)
         {
             _shakeDuration = MathF.Max(0.05f, duration);
             _shakeRemaining = _shakeDuration;
-            _shakeAmplitude = amplitude;
+            _shakeIntensity = MathF.Max(0.05f, intensity);
+            _shakeTime = 0f;
+            var rng = new System.Random();
+            _shakeSeedX = rng.NextSingle() * MathF.Tau;
+            _shakeSeedY = rng.NextSingle() * MathF.Tau;
+            _shakeSeedR = rng.NextSingle() * MathF.Tau;
         }
 
-        /// <summary>Tick shake timers (call once per frame from the active scene loop).</summary>
+        /// <summary>Tick shake timers (call once per frame from the active scene loop).
+        /// Time is accumulated (not read from the wall clock) so the shake is
+        /// frame-rate independent.</summary>
         public void UpdateShake(float dt)
         {
             if (_shakeRemaining > 0f)
+            {
                 _shakeRemaining = MathF.Max(0f, _shakeRemaining - dt);
+                _shakeTime += dt;
+            }
         }
 
         /// <summary>
