@@ -47,6 +47,28 @@
         "TopPx": 0
       }
     ],
+    "TriggerAreas": [
+      {
+        "Name": "Trigger 1",
+        "IsEnabled": true,
+        "LeftPx": 850.0225,
+        "TopPx": 508.48315,
+        "WidthPx": 113.27872,
+        "HeightPx": 98.66374,
+        "OnEnter": true,
+        "OnStayIntervalSeconds": 0,
+        "OnExit": false,
+        "RequireMovingRight": false,
+        "Actions": [
+          {
+            "Type": "Load Checkpoint",
+            "Param": "",
+            "Param2": "",
+            "Delay": 0
+          }
+        ]
+      }
+    ],
     "CameraStartX": 83.03183,
     "CameraStartY": 43.81875,
     "CameraStartZ": 307.03183,

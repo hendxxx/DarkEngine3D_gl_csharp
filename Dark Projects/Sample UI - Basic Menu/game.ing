@@ -1303,6 +1303,7 @@
           "name": "plane2",
           "primitiveType": "Plane",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -1960,6 +1961,7 @@
           "name": "sky1",
           "primitiveType": "Sky",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -2619,6 +2621,7 @@
           "name": "light1",
           "primitiveType": "Light",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -3276,6 +3279,7 @@
           "name": "box2",
           "primitiveType": "Box",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -3933,6 +3937,7 @@
           "name": "light2",
           "primitiveType": "Light",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -7579,6 +7584,28 @@
                 "topPx": 0
               }
             ],
+            "triggerAreas": [
+              {
+                "name": "Trigger 1",
+                "isEnabled": true,
+                "leftPx": 850.0225,
+                "topPx": 508.48315,
+                "widthPx": 113.27872,
+                "heightPx": 98.66374,
+                "onEnter": true,
+                "onStayIntervalSeconds": 0,
+                "onExit": false,
+                "requireMovingRight": false,
+                "actions": [
+                  {
+                    "type": "Load Checkpoint",
+                    "param": "",
+                    "param2": "",
+                    "delay": 0
+                  }
+                ]
+              }
+            ],
             "cameraStartX": 83.03183,
             "cameraStartY": 43.81875,
             "cameraStartZ": 307.03183,
@@ -9694,6 +9721,7 @@
             ]
           },
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 1,
           "tilemapGridColorG": 1,
           "tilemapGridColorB": 1,
@@ -10351,6 +10379,7 @@
           "name": "camera1",
           "primitiveType": "Camera",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -11008,12 +11037,13 @@
           "name": "player1",
           "primitiveType": "Player2D",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 72,
+          "posX": 75.30045,
           "posY": 0,
           "posZ": 0,
           "rotX": 0,
@@ -11656,6 +11686,7 @@
           "name": "start1",
           "primitiveType": "Start2D",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -12313,6 +12344,7 @@
           "name": "sprite1",
           "primitiveType": "Sprite2D",
           "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 0.4,
           "tilemapGridColorG": 0.5,
           "tilemapGridColorB": 0.68,
@@ -12977,9 +13009,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        99.363434,
+        75.300446,
         32,
-        307.03183
+        307.0999
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
