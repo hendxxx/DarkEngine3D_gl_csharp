@@ -422,6 +422,15 @@ public unsafe class EditorObject
     public float Sprite2DStartOffset { get; set; }
     /// <summary>Facing mirror (sprite art is assumed right-facing).</summary>
     public bool Sprite2DFacingRight { get; set; } = true;
+    /// <summary>Emissive boost for per-sprite bloom/post-FX: 0 = unchanged, 1 = full
+    /// boost. Works by multiplying the sprite's color so only its BRIGHT pixels (fire,
+    /// candles, lava) rise above the Post FX bloom threshold and glow — dark pixels
+    /// (body, wood, background) stay below it. Per-sprite: each sprite can glow on its
+    /// own while everything else stays normal. Persisted with the scene.</summary>
+    public float Sprite2DGlow { get; set; } = 0f;
+    /// <summary>Player variant of the per-sprite glow (same mechanism).</summary>
+    public float Player2DGlow { get; set; } = 0f;
+    /// <summary>Facing mirror (sprite art is assumed right-facing).</summary>
     /// <summary>Render layer for Sprite2D: higher layers draw ON TOP of lower ones.
     /// Sprites are drawn sorted by this layer (ascending), and each step also nudges
     /// the quad 0.01 world units closer to the camera (Position.Z + 0.01/layer) so the
@@ -3160,6 +3169,16 @@ public unsafe class EditorObject
         float uL = su0;
         float uR = su1;
         float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
+        // Per-sprite emissive boost (Player2DGlow): multiply the color so the
+        // sprite's BRIGHT pixels (fire/candle/lava) rise above the Post FX bloom
+        // threshold and glow — dark pixels stay below it. Boost 0-4 (Glow 0-1
+        // × 4) is enough to clear any reasonable threshold without clipping the
+        // whole sprite to white (tone mapping rolls the excess off filmically).
+        if (Player2DGlow > 0f)
+        {
+            float boost = 1f + Player2DGlow * 3f;
+            tR *= boost; tG *= boost; tB *= boost;
+        }
         var verts = stackalloc Map2DVertex[6]
         {
             new(x0, y0, z, uL, svBot, tR, tG, tB, tA),
@@ -3298,6 +3317,13 @@ public unsafe class EditorObject
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
 
         float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
+        // Per-sprite emissive boost (Sprite2DGlow) — same mechanism as the player
+        // glow: bright pixels (fire) rise above the bloom threshold and glow.
+        if (Sprite2DGlow > 0f)
+        {
+            float boost = 1f + Sprite2DGlow * 3f;
+            tR *= boost; tG *= boost; tB *= boost;
+        }
         var verts = stackalloc Map2DVertex[6]
         {
             new(x0, y0, z, su0, svBot, tR, tG, tB, tA),

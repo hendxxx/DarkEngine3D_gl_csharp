@@ -967,6 +967,8 @@ public class SceneManagerPanel
                         Sprite2DSpeed = obj.Sprite2DSpeed,
                         Sprite2DStartOffset = obj.Sprite2DStartOffset,
                         Sprite2DFacingRight = obj.Sprite2DFacingRight,
+                        Sprite2DGlow = obj.Sprite2DGlow,
+                        Player2DGlow = obj.Player2DGlow,
                         Sprite2DRenderLayer = obj.Sprite2DRenderLayer,
                         CameraFollowSpeed = obj.CameraFollowSpeed,
                         CameraDeadZoneWidth = obj.CameraDeadZoneWidth,
@@ -1581,6 +1583,8 @@ public class SceneManagerPanel
                         obj.Sprite2DSpeed = objData.Sprite2DSpeed;
                         obj.Sprite2DStartOffset = objData.Sprite2DStartOffset;
                         obj.Sprite2DFacingRight = objData.Sprite2DFacingRight;
+                        obj.Sprite2DGlow = objData.Sprite2DGlow;
+                        obj.Player2DGlow = objData.Player2DGlow;
                         obj.Sprite2DRenderLayer = objData.Sprite2DRenderLayer;
                         obj.CameraFollowSpeed = objData.CameraFollowSpeed;
                         obj.CameraDeadZoneWidth = objData.CameraDeadZoneWidth;

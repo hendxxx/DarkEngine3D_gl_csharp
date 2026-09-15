@@ -202,6 +202,10 @@ public class EditorObjectData
     public float Sprite2DSpeed { get; set; } = 1f;
     public float Sprite2DStartOffset { get; set; } = 0f;
     public bool Sprite2DFacingRight { get; set; } = true;
+    /// <summary>Per-sprite emissive boost (0 = none, 1 = full) — drives per-sprite
+    /// bloom. Player objects use Player2DGlow.</summary>
+    public float Sprite2DGlow { get; set; } = 0f;
+    public float Player2DGlow { get; set; } = 0f;
     /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
     public int Sprite2DRenderLayer { get; set; } = 0;
     // ── Player2D camera-follow tuning ──

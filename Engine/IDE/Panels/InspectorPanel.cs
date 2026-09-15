@@ -2543,6 +2543,15 @@ public class InspectorPanel
         if (ImGui.Checkbox("Facing Right", ref faceR))
             editorObj.Sprite2DFacingRight = faceR;
 
+        // Per-sprite glow (emissive): boosts the sprite's bright pixels above the
+        // Post FX bloom threshold so only fire/lava/candles glow — the rest of the
+        // sprite and the rest of the scene stay normal. Requires Post FX ON.
+        float glow = editorObj.Sprite2DGlow;
+        if (ImGui.SliderFloat("Glow (bloom)", ref glow, 0f, 1f, glow <= 0f ? "off" : "%.2f"))
+            editorObj.Sprite2DGlow = glow;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Emissive boost for this sprite only.\nBright pixels (fire, lava, candles) glow via bloom;\ndark pixels stay normal. Requires Post FX enabled\nin the Post FX panel.");
+
         // Render layer: linked with Map Editor layers when available
         var map = _bridge.ActiveTilemap ?? _bridge.EditorObjectManager?.Objects.FirstOrDefault(o => o?.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)?.Map2dTilemap;
         int layer = editorObj.Sprite2DRenderLayer;
@@ -2703,6 +2712,13 @@ public class InspectorPanel
         bool showCap = editorObj.Player2DShowCapsule;
         if (ImGui.Checkbox("Show Capsule##player", ref showCap))
             editorObj.Player2DShowCapsule = showCap;
+
+        // Per-sprite glow (emissive) — same as Sprite2D glow: bright pixels bloom.
+        float pGlow = editorObj.Player2DGlow;
+        if (ImGui.SliderFloat("Glow (bloom)##player", ref pGlow, 0f, 1f, pGlow <= 0f ? "off" : "%.2f"))
+            editorObj.Player2DGlow = pGlow;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Emissive boost for the player sprite only.\nBright pixels glow via bloom. Requires Post FX enabled.");
 
         // ── Gameplay physics ──
         float g = editorObj.Player2DGravity;
