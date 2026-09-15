@@ -35,6 +35,12 @@ public class Tilemap2D
     /// AND the scene's .ing (via EditorObjectData.Tilemap) round-trip the parallax setup.</summary>
     public List<TilemapParallaxLayerData> ParallaxLayers = new();
 
+    /// <summary>Trigger areas: pass-through zones that fire gameplay events when the
+    /// player enters / stays inside / exits them (save point, checkpoint, map change,
+    /// sound, effects…). Unlike collision tiles these have NO physical blocking — they
+    /// are detection volumes only. Persisted with the map AND the scene .ing.</summary>
+    public List<TilemapTriggerArea> TriggerAreas = new();
+
     // ── Camera start (per-map) ──
     /// <summary>Editor camera position saved as this map's Play-in-Preview start view.
     /// Captured from the ortho level view (or "Set Camera Start" in the Map Editor) and
@@ -213,6 +219,7 @@ public class Tilemap2D
         GridColorB = GridColor.Z,
         GridColorA = GridColor.W,
         ParallaxLayers = ParallaxLayers.ToList(),
+        TriggerAreas = TriggerAreas.ToList(),
         CameraStartX = CameraStartPos.X,
         CameraStartY = CameraStartPos.Y,
         CameraStartZ = CameraStartPos.Z,
@@ -242,6 +249,7 @@ public class Tilemap2D
             ShowGrid = data.ShowGrid,
             GridColor = new Vector4(data.GridColorR, data.GridColorG, data.GridColorB, data.GridColorA),
             ParallaxLayers = data.ParallaxLayers ?? new(),
+            TriggerAreas = data.TriggerAreas ?? new(),
             CameraStartPos = new Vector3(data.CameraStartX, data.CameraStartY, data.CameraStartZ),
             CameraStartYaw = data.CameraStartYaw,
             CameraStartPitch = data.CameraStartPitch,
@@ -373,6 +381,8 @@ public class Tilemap2DData
     public float GridColorA { get; set; } = 0.12f;
     /// <summary>Parallax layers carried inside the map payload so scene files persist them.</summary>
     public List<TilemapParallaxLayerData>? ParallaxLayers { get; set; }
+    /// <summary>Trigger areas carried inside the map payload so scene files persist them.</summary>
+    public List<TilemapTriggerArea>? TriggerAreas { get; set; }
     // ── Per-map camera start (Play-in-Preview anchor) ──
     public float CameraStartX { get; set; }
     public float CameraStartY { get; set; }
@@ -413,6 +423,119 @@ public class TilemapParallaxLayerData
     /// <summary>Top offset in pixels pushing the quad's top edge DOWN from the grid's top
     /// edge (0 = flush with grid top; negative = extend above the grid).</summary>
     public float TopPx { get; set; }
+}
+
+/// <summary>Pass-through gameplay trigger volume defined in PIXEL grid coordinates.
+/// Unlike collision tiles the player walks THROUGH it; crossing the boundary fires
+/// events selected by the designer (save, checkpoint, map change, sound, …).</summary>
+public class TilemapTriggerArea
+{
+    /// <summary>Editor-facing display name ("Save Point 1", "Boss Room"…).</summary>
+    public string Name { get; set; } = "Trigger";
+    /// <summary>True when the trigger evaluates (disabled triggers render dim and never fire).</summary>
+    public bool IsEnabled { get; set; } = true;
+
+    // ── Rectangle in pixel grid space: (LeftPx, TopPx) is the top-left corner,
+    //    sizes in pixels (grid cell = TileSize px). Top = rows from the map top.
+    public float LeftPx { get; set; }
+    public float TopPx { get; set; }
+    public float WidthPx { get; set; } = 32f;
+    public float HeightPx { get; set; } = 32f;
+
+    // ── Fire conditions (any combination can be ticked) ──
+    /// <summary>Fires once the moment the player enters the area.</summary>
+    public bool OnEnter { get; set; } = true;
+    /// <summary>Fires every N seconds while the player remains inside (0 = off).</summary>
+    public float OnStayIntervalSeconds { get; set; }
+    /// <summary>Fires once the moment the player leaves the area.</summary>
+    public bool OnExit { get; set; }
+    /// <summary>Gate OnEnter/OnStay: only fires when the player is moving INTO the area
+    /// (useful for right-exit doors so backtracking never retriggers).</summary>
+    public bool RequireMovingRight { get; set; }
+
+    // ── Actions executed when the trigger fires, in list order ──
+    public List<TilemapTriggerAction> Actions { get; set; } = new();
+
+    /// <summary>Runtime-only: set true after an Enter fire until the player exits
+    /// (prevents OnEnter refiring every frame inside the zone). Not serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool RuntimePlayerInside { get; set; }
+    /// <summary>Runtime-only: countdown for the OnStay interval timer. Not serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public float RuntimeStayTimer { get; set; }
+    /// <summary>Runtime cooldown shared by all conditions so a firing trigger can't
+    /// spam itself the same frame. Not serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public float RuntimeCooldown { get; set; }
+
+    public TilemapTriggerArea Clone()
+    {
+        var c = new TilemapTriggerArea
+        {
+            Name = Name, IsEnabled = IsEnabled,
+            LeftPx = LeftPx, TopPx = TopPx, WidthPx = WidthPx, HeightPx = HeightPx,
+            OnEnter = OnEnter, OnStayIntervalSeconds = OnStayIntervalSeconds, OnExit = OnExit,
+            RequireMovingRight = RequireMovingRight,
+            Actions = Actions.Select(a => a.Clone()).ToList()
+        };
+        return c;
+    }
+}
+
+/// <summary>A single action executed by a trigger area when it fires.</summary>
+public class TilemapTriggerAction
+{
+    /// <summary>Action kind — one of TriggerActionTypes.Known values (free-form so new
+    /// action types can be added without breaking old save files).</summary>
+    public string Type { get; set; } = TriggerActionTypes.SaveGame;
+    /// <summary>Generic primary parameter (slot number, map name, file path, item id…).</summary>
+    public string Param { get; set; } = "";
+    /// <summary>Generic secondary parameter (volume, item amount…).</summary>
+    public string Param2 { get; set; } = "";
+    /// <summary>Delay in seconds before the action executes after the trigger fires.</summary>
+    public float Delay { get; set; }
+
+    public TilemapTriggerAction Clone() => new()
+    { Type = Type, Param = Param, Param2 = Param2, Delay = Delay };
+}
+
+/// <summary>Catalog of trigger action types the engine understands. String-based so
+/// the editor dropdown and the runtime dispatcher always agree.</summary>
+public static class TriggerActionTypes
+{
+    public const string SaveGame = "Save Game";
+    public const string SaveCheckpoint = "Save Checkpoint";
+    public const string LoadCheckpoint = "Load Checkpoint";
+    public const string ChangeMap = "Change Map";
+    public const string PlaySound = "Play Sound";
+    public const string PlayMusic = "Play Music";
+    public const string SpawnEffect = "Spawn Effect";
+    public const string SpawnObject = "Spawn Object";
+    public const string StartDialogue = "Start Dialogue";
+    public const string StartCutscene = "Start Cutscene";
+    public const string CameraShake = "Camera Shake";
+    public const string UnlockDoor = "Unlock Door";
+    public const string GiveItem = "Give Item";
+    public const string ActivateQuest = "Activate Quest";
+    public const string CompleteQuest = "Complete Quest";
+    public const string RunScript = "Run Script";
+
+    /// <summary>All known action types in editor-dropdown order.</summary>
+    public static readonly string[] All =
+    [
+        SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect,
+        SpawnObject, StartDialogue, StartCutscene, CameraShake, UnlockDoor,
+        GiveItem, ActivateQuest, CompleteQuest, RunScript
+    ];
+
+    /// <summary>True when the action type actually executes something today. Types
+    /// without a runtime implementation log a "not wired" message once instead of
+    /// failing silently — the editor still allows authoring them for future use.</summary>
+    public static bool IsImplemented(string type) => type switch
+    {
+        SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake => true,
+        _ => false
+    };
 }
 
 public class TileLayerData

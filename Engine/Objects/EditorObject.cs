@@ -957,6 +957,10 @@ public unsafe class EditorObject
     /// editor-only 2D aids (tile grid overlay, collision helper boxes) so the running
     /// game renders clean. Toggled by the IDE's InGameMode setter.</summary>
     public static bool Editor2DAidsHidden { get; set; }
+    /// <summary>Trigger area the editor currently highlights (set by the Map Editor's
+    /// Triggers list selection or a viewport click). Rendered brighter so the designer
+    /// sees exactly which volume is being edited. Reference comparison only.</summary>
+    public static TilemapTriggerArea? SelectedTriggerForHighlight { get; set; }
     /// <summary>Grid overlay color (RGB = line color, A = line alpha). Used by
     /// DrawMap2D so the Map Editor "Grid Color" picker really tints the 3D grid.</summary>
     public Vector4 Map2dGridColor { get; set; } = new(0.4f, 0.5f, 0.68f, 0.5f);
@@ -978,6 +982,10 @@ public unsafe class EditorObject
     /// can "stand" on it. A tile whose ID has NO collision flag draws NO box —
     /// no box = no collision.</summary>
     public bool Map2dShowCollision { get; set; } = true;
+    /// <summary>Whether the map's TRIGGER areas render as editor aids (amber boxes).
+    /// Same pattern as Map2dShowCollision; persist via EditorObjectData → scene .ing.
+    /// Triggers are always hidden in-game (Editor2DAidsHidden) regardless of this flag.</summary>
+    public bool Map2dShowTriggers { get; set; } = true;
     /// <summary>RGBA color of the collision helper boxes (default: translucent green).</summary>
     public Vector4 Map2dCollisionColor { get; set; } = new(0.25f, 0.85f, 0.45f, 0.35f);
     /// <summary>Parallax background/foreground layers to render with this map. Each layer
@@ -4744,6 +4752,152 @@ void main() {
                     if (cullCol)
                         GL.Enable(Const.GL_CULL_FACE);
                 }
+            }
+        }
+
+        // ── Trigger area boxes: translucent AMBER volumes for the map's pass-through
+        //    event zones (save points, checkpoints, map-change doors…). The player
+        //    walks THROUGH these — they detect, not block. Visual language: collision
+        //    boxes = solid red-edged 3D boxes that block; triggers = dimmer amber
+        //    wireframe volumes the player passes through. Editor aid only — hidden
+        //    in-game via Editor2DAidsHidden so gameplay never renders them.
+        if (Map2dShowTriggers && !Editor2DAidsHidden && Map2dTilemap?.TriggerAreas is { Count: > 0 })
+        {
+            var mapRef = Map2dTilemap;
+            EnsureMap2DShader();
+            if (_map2dShader != 0)
+            {
+                EnsurePbrWhiteTex();
+
+                GL.UseProgram(_map2dShader);
+                var view = camera.GetViewMatrix();
+                var proj = camera.GetProjectionMatrix();
+                GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+                GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _pbrWhiteTex);
+                GL.Uniform1i(_map2dLocTex, 0);
+
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+                bool cullTrg = GL.IsEnabled(Const.GL_CULL_FACE);
+                GL.Disable(Const.GL_CULL_FACE);
+
+                float trigDepth = cell * 0.5f;
+                float trigHalfDepth = trigDepth * 0.5f;
+                var trgBoxVerts = new List<Map2DVertex>(36 * 8);
+                var trgEdgeVerts = new List<Vector3>(24 * 8);
+                float tR = 1.0f, tG = 0.62f, tB = 0.05f; // amber
+
+                void TrgFace(float m, float ax, float ay, float az, float bx, float by, float bz,
+                             float cx, float cy, float cz, float dx, float dy, float dz,
+                             float alpha)
+                {
+                    trgBoxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(bx, by, bz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(dx, dy, dz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                }
+
+                foreach (var trig in mapRef.TriggerAreas)
+                {
+                    if (trig == null || trig.WidthPx <= 0f || trig.HeightPx <= 0f) continue;
+                    if (!trig.IsEnabled) continue; // disabled triggers don't render
+
+                    // Pixel rect → plane-local coords. X: left px × WorldScale. Y (local
+                    // up = world up here): TopPx counts DOWN from the map top — the top
+                    // edge sits at extentH - TopPx, bottom edge at extentH - TopPx - HeightPx.
+                    float lx0 = trig.LeftPx * Tilemap2D.WorldScale;
+                    float lx1 = (trig.LeftPx + trig.WidthPx) * Tilemap2D.WorldScale;
+                    float lyTop = extentH - trig.TopPx * Tilemap2D.WorldScale;
+                    float lyBot = extentH - (trig.TopPx + trig.HeightPx) * Tilemap2D.WorldScale;
+                    float yN = -trigHalfDepth;
+                    float yF = +trigHalfDepth;
+                    // Selected triggers pulse slightly brighter + tighter alpha so the
+                    // editor shows which trigger the Triggers UI refers to.
+                    bool isSel = ReferenceEquals(SelectedTriggerForHighlight, trig);
+                    float faceA = isSel ? 0.30f : 0.16f;
+
+                    TrgFace(1.25f, lx0, yN, lyTop, lx1, yN, lyTop, lx1, yF, lyTop, lx0, yF, lyTop, faceA); // top
+                    TrgFace(0.55f, lx0, yN, lyBot, lx1, yN, lyBot, lx1, yF, lyBot, lx0, yF, lyBot, faceA); // bottom
+                    TrgFace(0.80f, lx0, yN, lyBot, lx0, yN, lyTop, lx0, yF, lyTop, lx0, yF, lyBot, faceA); // left
+                    TrgFace(0.80f, lx1, yN, lyBot, lx1, yN, lyTop, lx1, yF, lyTop, lx1, yF, lyBot, faceA); // right
+                    TrgFace(1.00f, lx0, yN, lyBot, lx1, yN, lyBot, lx1, yN, lyTop, lx0, yN, lyTop, faceA); // near
+                    TrgFace(0.45f, lx0, yF, lyBot, lx1, yF, lyBot, lx1, yF, lyTop, lx0, yF, lyTop, faceA); // far
+
+                    float tzF = layerZ - trigHalfDepth, tzN = layerZ + trigHalfDepth;
+                    // Edge list per trigger: 12 edges of the box.
+                    void TrgEdge(float x0, float y0, float x1, float y1)
+                    {
+                        trgEdgeVerts.Add(new Vector3(x0, y0, tzF)); trgEdgeVerts.Add(new Vector3(x1, y1, tzF));
+                        trgEdgeVerts.Add(new Vector3(x0, y0, tzN)); trgEdgeVerts.Add(new Vector3(x1, y1, tzN));
+                        trgEdgeVerts.Add(new Vector3(x0, y0, tzF)); trgEdgeVerts.Add(new Vector3(x0, y0, tzN));
+                    }
+                    // bottom face rect
+                    TrgEdge(lx0, lyBot, lx1, lyBot); TrgEdge(lx1, lyBot, lx1, lyTop);
+                    TrgEdge(lx1, lyTop, lx0, lyTop); TrgEdge(lx0, lyTop, lx0, lyBot);
+                    // top face rect
+                    TrgEdge(lx0, lyBot, lx1, lyBot); TrgEdge(lx1, lyBot, lx1, lyTop);
+                    TrgEdge(lx1, lyTop, lx0, lyTop); TrgEdge(lx0, lyTop, lx0, lyBot);
+                    // vertical connectors
+                    TrgEdge(lx0, lyBot, lx0, lyBot); TrgEdge(lx1, lyBot, lx1, lyBot);
+                    TrgEdge(lx1, lyTop, lx1, lyTop); TrgEdge(lx0, lyTop, lx0, lyTop);
+
+                    // Label flag: a small vertical stem above the box so the designer can
+                    // tell triggers apart from collision boxes at a glance.
+                    var stem = new List<Vector3>
+                    {
+                        new((lx0 + lx1) * 0.5f, lyTop, layerZ),
+                        new((lx0 + lx1) * 0.5f, lyTop + cell * 0.6f, layerZ)
+                    };
+                    Terrains.TerrainChunk.DrawLineSegments(stem,
+                        new Vector3(tR, tG, tB), camera, isSel ? 1f : 0.8f);
+                }
+
+                if (trgBoxVerts.Count > 0)
+                {
+                    if (_parallaxVAO == 0)
+                    {
+                        uint vao = 0, vbo = 0;
+                        GL.GenVertexArrays(1, &vao);
+                        GL.BindVertexArray(vao);
+                        GL.GenBuffers(1, &vbo);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                        GL.EnableVertexAttribArray(0);
+                        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+                        GL.EnableVertexAttribArray(1);
+                        GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+                        GL.EnableVertexAttribArray(2);
+                        GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+                        GL.BindVertexArray(0);
+                        _parallaxVAO = vao;
+                        _parallaxVBO = vbo;
+                    }
+
+                    GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+
+                    fixed (Map2DVertex* p = trgBoxVerts.ToArray())
+                    {
+                        GL.BindVertexArray(_parallaxVAO);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _parallaxVBO);
+                        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(trgBoxVerts.Count * sizeof(Map2DVertex)), p, Const.GL_DYNAMIC_DRAW);
+                        GL.DrawArrays(Const.GL_TRIANGLES, 0, trgBoxVerts.Count);
+                        GL.BindVertexArray(0);
+                    }
+
+                    var trgEdgeCol = new Vector3(1f, 0.75f, 0.15f);
+                    Terrains.TerrainChunk.DrawLineSegments(trgEdgeVerts, trgEdgeCol, camera, 0.9f);
+                    GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+                }
+
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+                GL.Disable(Const.GL_BLEND);
+                if (cullTrg)
+                    GL.Enable(Const.GL_CULL_FACE);
             }
         }
 

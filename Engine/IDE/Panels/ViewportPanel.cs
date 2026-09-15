@@ -73,6 +73,25 @@ public unsafe class ViewportPanel
     private bool _spawnDragActive = false;
     /// <summary>True while the cursor hovers the spawn marker (cursor + click priority).</summary>
     private bool _spawnHover = false;
+
+    // ── Trigger Area viewport editing (Trigger tool in Map Editor) ──
+    /// <summary>Trigger drag modes: create a new box, move an existing one, or resize
+    /// via one of the 8 handles. Pixels stored in the trigger are converted to world
+    /// units (× Tilemap2D.WorldScale) for hit-testing and back for persistence.</summary>
+    private enum TriggerDragMode { None, Create, Move, Resize }
+    private TriggerDragMode _triggerDrag = TriggerDragMode.None;
+    /// <summary>Trigger being created/moved/resized right now.</summary>
+    private TilemapTriggerArea? _triggerDragTarget;
+    /// <summary>Resize handle: 0..7 = W, E, N, S, NW, NE, SW, SE (8 = move fallback).</summary>
+    private int _triggerResizeHandle;
+    /// <summary>World-space anchor at drag start (mouse ray hit on the map plane).</summary>
+    private Vector2 _triggerDragAnchorWorld;
+    /// <summary>Trigger pixel rect snapshot at drag start (for move/resize deltas).</summary>
+    private float _triggerStartL, _triggerStartT, _triggerStartW, _triggerStartH;
+    /// <summary>True while the cursor hovers a trigger box or handle (click priority).</summary>
+    private bool _triggerHover = false;
+    /// <summary>Clipboard: last copied trigger (Ctrl+C / Ctrl+V / Ctrl+D).</summary>
+    private TilemapTriggerArea? _triggerClipboard;
     // Show/hide the floating "▲ Views" menu + corner axis indicator.
     private bool _showViewsOverlay = true;
     // Collapse the whole left tool toolbar strip to a single expand chip (edit mode).
@@ -1344,7 +1363,13 @@ public unsafe class ViewportPanel
                 var hit = rayOrigin + rayDir * t;
                 var (gx, gy) = map.WorldToGrid(new Vector2(hit.X, hit.Y));
                 if (gx >= 0 && gx < map.Width && gy >= 0 && gy < map.Height)
+                {
                     _bridge.HoveredMapTileWorld = new Vector3(hit.X, hit.Y, 0f);
+                    // Push the hovered grid cell to the Map Editor so "+ Add Trigger
+                    // Area" can place new triggers under the cursor.
+                    if (_bridge.HostIDE is IDE host)
+                        host.MapEditorRef.LastHoverGrid = (gx, gy);
+                }
             }
         }
     }
@@ -2419,6 +2444,383 @@ public unsafe class ViewportPanel
     /// stamps tiles or changes the selection. While dragging, the spawn follows the
     /// mouse ray's intersection with the map plane (free positioning, clamped to the
     /// map extent + one tile margin outside).</summary>
+    // ── Trigger Area viewport interaction ───────────────────────────────────
+
+    /// <summary>Ray from the viewport mouse onto the map plane (z=0), returning the
+    /// world hit, or null when the ray misses the plane / context is missing.</summary>
+    private Vector2? RaycastMapPlane()
+    {
+        var cam = _bridge.Camera;
+        if (cam == null || _bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0
+            || _bridge.ViewportMouseX < 0f || _bridge.ViewportMouseY < 0f) return null;
+        int vpw = _bridge.SceneTextureWidth;
+        int vph = _bridge.SceneTextureHeight;
+        float glMouseY = vph - _bridge.ViewportMouseY;
+        cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph, out Vector3 rayOrigin, out Vector3 rayDir);
+        if (MathF.Abs(rayDir.Z) < 0.0001f) return null;
+        float t = (0f - rayOrigin.Z) / rayDir.Z;
+        if (t <= 0f) return null;
+        var hit = rayOrigin + rayDir * t;
+        return new Vector2(hit.X, hit.Y);
+    }
+
+    /// <summary>Project a world point on the map plane to viewport-pixel screen coords
+    /// (same Y-flip as the spawn marker projection), or null when behind the camera.</summary>
+    private Vector2? ProjectMapPoint(Vector2 world)
+    {
+        var cam = _bridge.Camera;
+        if (cam == null || _bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0) return null;
+        var p = TransformGizmo.ProjectToScreen(cam, new Vector3(world.X, world.Y, 0f),
+            _bridge.SceneTextureWidth, _bridge.SceneTextureHeight);
+        if (float.IsNaN(p.X) || float.IsInfinity(p.X)) return null;
+        // TransformGizmo returns Y-up GL coords; the UI draws Y-down.
+        return new Vector2(p.X, _bridge.SceneTextureHeight - p.Y);
+    }
+
+    /// <summary>Convert a trigger's pixel rect to a world-space AABB (left/bottom +
+    /// size). TopPx counts down from the map top — mirrors the render convention.</summary>
+    private static void TriggerWorldRect(Tilemap2D map, TilemapTriggerArea t,
+        out float minX, out float minY, out float maxX, out float maxY)
+    {
+        float mapHWorld = map.Height * map.TileSize * Tilemap2D.WorldScale;
+        minX = t.LeftPx * Tilemap2D.WorldScale;
+        maxX = (t.LeftPx + t.WidthPx) * Tilemap2D.WorldScale;
+        maxY = mapHWorld - t.TopPx * Tilemap2D.WorldScale;
+        minY = mapHWorld - (t.TopPx + t.HeightPx) * Tilemap2D.WorldScale;
+    }
+
+    /// <summary>Which trigger edge/handle is under the mouse (in viewport px)?
+    /// Returns 0..7 (W, E, N, S, NW, NE, SW, SE) or -1. Checks handles first,
+    /// then falls back to edge bands so dragging near an edge resizes.</summary>
+    private int TriggerHandleAtMouse(Tilemap2D map, TilemapTriggerArea t, Vector2 m)
+    {
+        TriggerWorldRect(map, t, out float minX, out float minY, out float maxX, out float maxY);
+        var s0 = ProjectMapPoint(new Vector2(minX, minY));
+        var s1 = ProjectMapPoint(new Vector2(maxX, maxY));
+        if (s0 == null || s1 == null) return -1;
+        float l = MathF.Min(s0.Value.X, s1.Value.X), r = MathF.Max(s0.Value.X, s1.Value.X);
+        float b = MathF.Max(s0.Value.Y, s1.Value.Y), tp = MathF.Min(s0.Value.Y, s1.Value.Y); // screen Y-down
+        const float H = 8f;
+        bool inX = m.X >= l - H && m.X <= r + H;
+        bool inY = m.Y >= tp - H && m.Y <= b + H;
+        if (!inX || !inY) return -1;
+        bool nearL = m.X <= l + H, nearR = m.X >= r - H;
+        bool nearT = m.Y <= tp + H, nearB = m.Y >= b - H;
+        if (nearL && nearT) return 4;  // NW
+        if (nearR && nearT) return 5;  // NE
+        if (nearL && nearB) return 6;  // SW
+        if (nearR && nearB) return 7;  // SE
+        if (nearL) return 0;           // W
+        if (nearR) return 1;           // E
+        if (nearT) return 2;           // N
+        if (nearB) return 3;           // S
+        return -1;
+    }
+
+    /// <summary>Is any trigger box body under the mouse (inside its screen rect)?
+    /// Returns the topmost (most recently added) hit trigger, or null.</summary>
+    private TilemapTriggerArea? TriggerBodyAtMouse(Tilemap2D map, Vector2 m)
+    {
+        for (int i = map.TriggerAreas.Count - 1; i >= 0; i--)
+        {
+            var t = map.TriggerAreas[i];
+            if (t == null || !t.IsEnabled) continue;
+            TriggerWorldRect(map, t, out float minX, out float minY, out float maxX, out float maxY);
+            var s0 = ProjectMapPoint(new Vector2(minX, minY));
+            var s1 = ProjectMapPoint(new Vector2(maxX, maxY));
+            if (s0 == null || s1 == null) continue;
+            float l = MathF.Min(s0.Value.X, s1.Value.X), r = MathF.Max(s0.Value.X, s1.Value.X);
+            float tp = MathF.Min(s0.Value.Y, s1.Value.Y), b = MathF.Max(s0.Value.Y, s1.Value.Y);
+            if (m.X >= l && m.X <= r && m.Y >= tp && m.Y <= b) return t;
+        }
+        return null;
+    }
+
+    /// <summary>Per-frame trigger interaction: hover cursor, click select, drag-create
+    /// with the Trigger tool, body move, 8-handle resize, Delete / Ctrl+C/V/D. Mirrors
+    /// UpdateSpawnMarkerDrag's "grab owns the click" pattern.</summary>
+    private void UpdateTriggerInteraction()
+    {
+        _triggerHover = false;
+        var map = _bridge.ActiveTilemap;
+        if (map == null || _previewMode || _bridge.Camera == null
+            || _bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0
+            || _bridge.ViewportMouseX < 0f || _bridge.ViewportMouseY < 0f
+            || IsMouseOverLeftToolbar() || IsMouseOverViewportViewsButton())
+        {
+            if (_triggerDrag == TriggerDragMode.None) _triggerDragTarget = null;
+            return;
+        }
+
+        var mouse = new Vector2(_bridge.ViewportMouseX, _bridge.ViewportMouseY);
+        bool leftClicked = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+        bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+        bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+        bool triggerTool = _bridge.MapPaintTool == 4; // PaintTool.Trigger
+        var sel = _bridge.SelectedTrigger;
+
+        // ── Continue an in-flight drag (any tool — releasing mid-drag must not drop it) ──
+        if (_triggerDrag != TriggerDragMode.None && _triggerDragTarget != null)
+        {
+            var hitOpt = RaycastMapPlane();
+            if (hitOpt != null)
+            {
+                var hit = hitOpt.Value;
+                float ws = Tilemap2D.WorldScale;
+                switch (_triggerDrag)
+                {
+                    case TriggerDragMode.Create:
+                    {
+                        float minWx = MathF.Min(_triggerDragAnchorWorld.X, hit.X);
+                        float maxWx = MathF.Max(_triggerDragAnchorWorld.X, hit.X);
+                        float minWy = MathF.Min(_triggerDragAnchorWorld.Y, hit.Y);
+                        float maxWy = MathF.Max(_triggerDragAnchorWorld.Y, hit.Y);
+                        // PIXEL units for the stored rect (TopPx counts DOWN from the map
+                        // top — world Y is measured from the bottom, so flip). Snap both
+                        // corners to tile boundaries so triggers align with the grid.
+                        float ts = map.TileSize;
+                        float mapHpx = map.Height * ts;
+                        float lpx = minWx / ws, rpx = maxWx / ws;
+                        float bpx = mapHpx - maxWy / ws, tpx = mapHpx - minWy / ws; // top/bottom in px-from-top
+                        _triggerDragTarget.LeftPx = MathF.Max(0f, MathF.Floor(lpx / ts) * ts);
+                        _triggerDragTarget.TopPx = Math.Clamp(MathF.Floor(bpx / ts) * ts, 0f, mapHpx);
+                        _triggerDragTarget.WidthPx = MathF.Max(ts * 0.25f, MathF.Ceiling((rpx - lpx) / ts) * ts);
+                        _triggerDragTarget.HeightPx = MathF.Max(ts * 0.25f, MathF.Ceiling((tpx - bpx) / ts) * ts);
+                        break;
+                    }
+                    case TriggerDragMode.Move:
+                    {
+                        float dxPx = (hit.X - _triggerDragAnchorWorld.X) / ws;
+                        float dyPx = (hit.Y - _triggerDragAnchorWorld.Y) / ws;
+                        _triggerDragTarget.LeftPx = MathF.Max(0f, _triggerStartL + dxPx);
+                        _triggerDragTarget.TopPx = MathF.Max(0f, _triggerStartT - dyPx); // up = smaller Top
+                        break;
+                    }
+                    case TriggerDragMode.Resize:
+                    {
+                        float dxPx = (hit.X - _triggerDragAnchorWorld.X) / ws;
+                        float dyPx = (hit.Y - _triggerDragAnchorWorld.Y) / ws;
+                        float minSize = map.TileSize * 0.25f;
+                        float l = _triggerStartL, t = _triggerStartT, w = _triggerStartW, h = _triggerStartH;
+                        int handle = _triggerResizeHandle;
+                        // dyPx > 0 = mouse moved UP (world Y). TopPx counts DOWN from the
+                        // map top, so the N edge follows the mouse with t -= dyPx and the
+                        // S edge with h -= dyPx (both edges move WITH the cursor).
+                        if (handle is 0 or 4 or 6) { l += dxPx; w -= dxPx; }        // W edges
+                        if (handle is 1 or 5 or 7) { w += dxPx; }                   // E edges
+                        if (handle is 2 or 4 or 5) { t -= dyPx; h += dyPx; }        // N edges (up = smaller Top)
+                        if (handle is 3 or 6 or 7) { h -= dyPx; }                   // S edges (down = taller)
+                        l = MathF.Max(0f, l);
+                        t = MathF.Max(0f, t);
+                        w = MathF.Max(minSize, w);
+                        h = MathF.Max(minSize, h);
+                        _triggerDragTarget.LeftPx = l; _triggerDragTarget.TopPx = t;
+                        _triggerDragTarget.WidthPx = w; _triggerDragTarget.HeightPx = h;
+                        break;
+                    }
+                }
+            }
+
+            if (leftReleased)
+            {
+                _triggerDrag = TriggerDragMode.None;
+                _triggerDragTarget = null;
+            }
+            if (_triggerDrag != TriggerDragMode.None || leftReleased)
+                _triggerHover = true;
+            return; // drag owns the mouse — no hover/selection this frame
+        }
+
+        // ── Not dragging: hover highlight + start interactions ──
+        int hoverHandle = -1;
+        TilemapTriggerArea? hoverBody = null;
+        if (triggerTool)
+        {
+            hoverBody = TriggerBodyAtMouse(map, mouse);
+            if (hoverBody != null)
+                hoverHandle = TriggerHandleAtMouse(map, hoverBody, mouse);
+            _triggerHover = hoverBody != null;
+        }
+
+        // Cursor feedback.
+        if (_triggerHover)
+        {
+            ImGui.SetMouseCursor(hoverHandle switch
+            {
+                0 or 1 => ImGuiMouseCursor.ResizeEW,
+                2 or 3 => ImGuiMouseCursor.ResizeNS,
+                4 or 7 => ImGuiMouseCursor.ResizeNWSE,
+                5 or 6 => ImGuiMouseCursor.ResizeNESW,
+                _ => ImGuiMouseCursor.Hand
+            });
+        }
+
+        // Grab priority: handles resize, body moves, empty space creates.
+        if (triggerTool && leftClicked)
+        {
+            // Any Trigger-tool click is owned by this handler — block the marquee
+            // start and the object-selection raycast on the same frame.
+            _bridge.IsViewportClicked = false;
+            if (hoverBody != null && hoverHandle >= 0)
+            {
+                _triggerDrag = TriggerDragMode.Resize;
+                _triggerDragTarget = hoverBody;
+                _triggerResizeHandle = hoverHandle;
+                _triggerDragAnchorWorld = RaycastMapPlane() ?? mouse;
+                (_triggerStartL, _triggerStartT, _triggerStartW, _triggerStartH) =
+                    (hoverBody.LeftPx, hoverBody.TopPx, hoverBody.WidthPx, hoverBody.HeightPx);
+                _bridge.SelectedTrigger = hoverBody;
+                EditorObject.SelectedTriggerForHighlight = hoverBody;
+                Console.WriteLine($"[Trigger] Resizing '{hoverBody.Name}' (handle {hoverHandle})");
+            }
+            else if (hoverBody != null)
+            {
+                _triggerDrag = TriggerDragMode.Move;
+                _triggerDragTarget = hoverBody;
+                _triggerDragAnchorWorld = RaycastMapPlane() ?? mouse;
+                (_triggerStartL, _triggerStartT, _triggerStartW, _triggerStartH) =
+                    (hoverBody.LeftPx, hoverBody.TopPx, hoverBody.WidthPx, hoverBody.HeightPx);
+                _bridge.SelectedTrigger = hoverBody;
+                EditorObject.SelectedTriggerForHighlight = hoverBody;
+            }
+            else
+            {
+                // Empty space with the Trigger tool: drag a NEW trigger box.
+                var hitOpt = RaycastMapPlane();
+                if (hitOpt != null)
+                {
+                    // Snap the anchor to the tile boundary under the cursor (pixel space,
+                    // TopPx counts down from the map top — flip world Y accordingly).
+                    float ts = map.TileSize;
+                    float mapHpx = map.Height * ts;
+                    float anchorPxX = hitOpt.Value.X / Tilemap2D.WorldScale;
+                    float anchorPxTop = mapHpx - hitOpt.Value.Y / Tilemap2D.WorldScale;
+                    var trig = new TilemapTriggerArea
+                    {
+                        Name = $"Trigger {map.TriggerAreas.Count + 1}",
+                        LeftPx = MathF.Max(0f, MathF.Floor(anchorPxX / ts) * ts),
+                        TopPx = Math.Clamp(MathF.Floor(anchorPxTop / ts) * ts, 0f, mapHpx),
+                        WidthPx = ts, HeightPx = ts,
+                        OnEnter = true
+                    };
+                    map.TriggerAreas.Add(trig);
+                    _triggerDrag = TriggerDragMode.Create;
+                    _triggerDragTarget = trig;
+                    _triggerDragAnchorWorld = hitOpt.Value;
+                    _bridge.SelectedTrigger = trig;
+                    EditorObject.SelectedTriggerForHighlight = trig;
+                    _triggerHover = true; // block marquee/click handlers this frame
+                    Console.WriteLine($"[Trigger] Creating '{trig.Name}' at ({trig.LeftPx:F0},{trig.TopPx:F0}) px");
+                }
+            }
+        }
+
+        // Keyboard ops on the selected trigger (Trigger tool only, not while dragging).
+        var kbSel = _bridge.SelectedTrigger;
+        if (triggerTool && kbSel != null && map.TriggerAreas.Contains(kbSel))
+        {
+            bool ctrl = ImGui.GetIO().KeyCtrl;
+            if (ImGui.IsKeyPressed(ImGuiKey.Delete, false))
+            {
+                map.TriggerAreas.Remove(kbSel);
+                _bridge.SelectedTrigger = null;
+                EditorObject.SelectedTriggerForHighlight = null;
+                Console.WriteLine("[Trigger] Deleted selected trigger");
+            }
+            else if (ctrl && ImGui.IsKeyPressed(ImGuiKey.C, false))
+            {
+                _triggerClipboard = kbSel.Clone();
+                Console.WriteLine($"[Trigger] Copied '{kbSel.Name}'");
+            }
+            else if (ctrl && ImGui.IsKeyPressed(ImGuiKey.X, false))
+            {
+                _triggerClipboard = kbSel.Clone();
+                map.TriggerAreas.Remove(kbSel);
+                _bridge.SelectedTrigger = null;
+                EditorObject.SelectedTriggerForHighlight = null;
+            }
+            else if (ctrl && ImGui.IsKeyPressed(ImGuiKey.V, false) && _triggerClipboard != null)
+            {
+                var copy = _triggerClipboard.Clone();
+                copy.Name = $"{copy.Name} copy";
+                // Offset the paste a little so it doesn't perfectly overlap the original.
+                copy.LeftPx += map.TileSize;
+                copy.TopPx += map.TileSize;
+                map.TriggerAreas.Add(copy);
+                _bridge.SelectedTrigger = copy;
+                EditorObject.SelectedTriggerForHighlight = copy;
+            }
+            else if (ctrl && ImGui.IsKeyPressed(ImGuiKey.D, false))
+            {
+                var dup = kbSel.Clone();
+                dup.Name = $"{kbSel.Name} copy";
+                dup.LeftPx += map.TileSize;
+                dup.TopPx += map.TileSize;
+                map.TriggerAreas.Add(dup);
+                _bridge.SelectedTrigger = dup;
+                EditorObject.SelectedTriggerForHighlight = dup;
+                Console.WriteLine($"[Trigger] Duplicated '{kbSel.Name}'");
+            }
+        }
+    }
+
+    /// <summary>Draw the screen-space overlay for trigger areas: fill + outline for
+    /// every trigger, highlighted fill for the selected one, and small squares on the
+    /// selected trigger's 8 resize handles. Only with the Trigger tool active.
+    /// All world points go through ProjectMapPoint (scene coords) then SceneToScreen
+    /// (ImGui window coords) so the overlay lands EXACTLY on the rendered trigger
+    /// box regardless of the viewport image's position/size on screen.</summary>
+    private void DrawTriggerOverlay()
+    {
+        var map = _bridge.ActiveTilemap;
+        var cam = _bridge.Camera;
+        if (map == null || cam == null || _previewMode
+            || _bridge.SceneTextureWidth <= 0 || _bridge.SceneTextureHeight <= 0
+            || _bridge.MapPaintTool != 4 || IsMouseOverLeftToolbar())
+            return;
+        var dl = ImGui.GetWindowDrawList();
+        var sel = _bridge.SelectedTrigger;
+
+        foreach (var t in map.TriggerAreas)
+        {
+            if (t == null || !t.IsEnabled) continue;
+            TriggerWorldRect(map, t, out float minX, out float minY, out float maxX, out float maxY);
+            var s0 = ProjectMapPoint(new Vector2(minX, minY));
+            var s1 = ProjectMapPoint(new Vector2(maxX, maxY));
+            if (s0 == null || s1 == null) continue;
+            // Scene coords → ImGui window coords (the image may be offset/zoomed).
+            var w0 = SceneToScreen(s0.Value.X, s0.Value.Y);
+            var w1 = SceneToScreen(s1.Value.X, s1.Value.Y);
+            float l = MathF.Min(w0.X, w1.X), r = MathF.Max(w0.X, w1.X);
+            float tp = MathF.Min(w0.Y, w1.Y), b = MathF.Max(w0.Y, w1.Y);
+            bool isSel = ReferenceEquals(sel, t);
+            uint fill = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.62f, 0.05f, isSel ? 0.25f : 0.12f));
+            uint line = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.75f, 0.15f, isSel ? 1f : 0.6f));
+            dl.AddRectFilled(new Vector2(l, tp), new Vector2(r, b), fill);
+            dl.AddRect(new Vector2(l, tp), new Vector2(r, b), line, 0f, 0, isSel ? 2.5f : 1.5f);
+
+            // Label above the box.
+            var label = t.Name;
+            var ts2 = ImGui.CalcTextSize(label);
+            dl.AddText(new Vector2(l, tp - ts2.Y - 3f), line, label);
+
+            // 8 resize handles on the selected trigger.
+            if (isSel && _triggerDrag == TriggerDragMode.None)
+            {
+                const float hs = 4f;
+                uint hcol = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.95f));
+                (Vector2, Vector2)[] corners =
+                [
+                    (new Vector2(l, tp), new Vector2(l + hs * 2, tp + hs * 2)),      // NW
+                    (new Vector2(r - hs * 2, tp), new Vector2(r, tp + hs * 2)),      // NE
+                    (new Vector2(l, b - hs * 2), new Vector2(l + hs * 2, b)),        // SW
+                    (new Vector2(r - hs * 2, b), new Vector2(r, b))                  // SE
+                ];
+                foreach (var (a, bb) in corners) dl.AddRectFilled(a, bb, hcol);
+            }
+        }
+    }
+
     private void UpdateSpawnMarkerDrag()
     {
         var map = _bridge.ActiveTilemap;
@@ -3916,6 +4318,11 @@ ImGui.SameLine();
             //  marker never stamps tiles and the drag follows the cursor every frame.
             UpdateSpawnMarkerDrag();
 
+            //  Trigger Area interaction: create/move/resize/select with the Trigger
+            //  tool. Runs BEFORE tilemap paint so grabbing a trigger never stamps
+            //  tiles; the drag owns the mouse until release (same as the spawn marker).
+            UpdateTriggerInteraction();
+
             //  Tilemap paint: raycast the cursor onto the active layer's vertical
             //  Map2D plane (z = ActiveTileLayer) and stamp tiles. Runs before the
             //  marquee/select/gizmo so a paint stroke never changes the selection;
@@ -3928,7 +4335,7 @@ ImGui.SameLine();
             //  so painting can never eat a gizmo grab over a tile.
             bool gizmoHover = IsGizmoHitAtMouse();
             bool gizmoDragging = _bridge.EditorGizmo?.IsDragging == true;
-            if (!_previewMode && !_spawnDragActive && _bridge.ActiveTilemap != null && _bridge.Camera != null
+            if (!_previewMode && !_spawnDragActive && !_triggerHover && _bridge.ActiveTilemap != null && _bridge.Camera != null
                 && _bridge.EditorObjectManager != null && mouseOverImage && HasVisibleMapObject()
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
                 && hasSceneTexture && _dragMode == DragMode.None
@@ -4131,7 +4538,8 @@ ImGui.SameLine();
                 // painting with the terrain brush.
                 if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
                     && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
-                    && !_spawnDragActive && !_spawnHover
+                    && !_spawnDragActive && !_spawnHover && !_triggerHover
+                    && _triggerDrag == TriggerDragMode.None
                     && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null
                     && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar()
                     && !worldInputBlocked)
@@ -4442,6 +4850,10 @@ ImGui.SameLine();
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.3f, 0.4f, 1f)),
                 "No Scene");
         }
+
+        //  Trigger Area overlay: amber boxes + labels + resize handles over the map
+        //  (Trigger tool only, edit mode only) 
+        DrawTriggerOverlay();
 
         //  Camera view menu overlay (top-left corner of the viewport image) 
         DrawViewportCameraOverlay(hasSceneTexture);

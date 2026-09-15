@@ -319,7 +319,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // is loaded while editor Player2D objects exist. ──
                     var bridgeP2d = _ide.Bridge;
                     if (bridgeP2d != null && (bridgeP2d.InGameActive || bridgeP2d.IsPreviewMode))
+                    {
                         Visual.Player2DSystem.Update(bridgeP2d.EditorObjectManager, bridgeP2d.ActiveTilemap, dt, bridgeP2d);
+                        // Trigger camera-shake timers decay every frame while a session runs.
+                        bridgeP2d.Camera?.UpdateShake(dt);
+                    }
                 }
 
                 // ── Advance transition animation each frame ──

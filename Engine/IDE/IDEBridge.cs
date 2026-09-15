@@ -11,6 +11,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE;
 /// </summary>
 public class IDEBridge
 {
+    /// <summary>Host IDE back-reference (set by IDE's constructor) so panels can reach
+    /// sibling panels without new constructor wiring — e.g. ViewportPanel pushing the
+    /// hovered grid cell to the Map Editor for trigger placement.</summary>
+    public IDE? HostIDE { get; set; }
     // ── ImGui Controller (for dynamic font loading) ──
     public ImGuiController? ImGuiCtrl { get; set; }
 
@@ -242,7 +246,14 @@ public class IDEBridge
     // row 0 = top row). Keeps a dragged block's shape when stamped into the grid.
     public int TilePaletteSelW { get; set; } = 1;
     public int TilePaletteSelH { get; set; } = 1;
-    public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick
+    public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick, 4=Trigger
+
+    // ── Trigger Area editing (viewport ↔ Map Editor panel) ──
+    /// <summary>Trigger currently selected in the Map Editor's Triggers list. The
+    /// viewport highlights it and routes drags/resize/Delete/Ctrl+D to it.</summary>
+    public Visual.TilemapTriggerArea? SelectedTrigger { get; set; }
+    /// <summary>Panel-selected trigger changed (viewport highlight follows).</summary>
+    public event Action? TriggerSelectionChanged;
     /// <summary>World position of the map tile under the mouse (0 = none). Updated by
     /// ViewportPanel every frame while a visible map is hovered — consumed by the DoF
     /// focus tracker's "Hovered Tile" mode.</summary>

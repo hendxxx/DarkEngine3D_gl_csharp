@@ -150,6 +150,8 @@ public class EditorObjectData
     /// the .ing actually contains it (no blanket auto-load).</summary>
     public Visual.Tilemap2DData? Tilemap { get; set; }
     public bool TilemapShowGrid { get; set; } = true;
+    /// <summary>Whether the map's trigger areas render as editor aids (amber boxes).</summary>
+    public bool TilemapShowTriggers { get; set; } = true;
     public float TilemapGridColorR { get; set; } = 0.4f;   // 3D map grid overlay color
     public float TilemapGridColorG { get; set; } = 0.5f;
     public float TilemapGridColorB { get; set; } = 0.68f;

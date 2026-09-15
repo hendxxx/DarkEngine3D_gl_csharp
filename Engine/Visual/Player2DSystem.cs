@@ -73,6 +73,11 @@ public static class Player2DSystem
             p.Player2DRunning = false;
             p.Player2DFacingRight = true;
                     Console.WriteLine($"[Player2D] Spawned at Start ({p.Position.X:F1}, {p.Position.Y:F1}) (capsule offset {p.Player2DCapsuleOffsetX:F2},{p.Player2DCapsuleOffsetY:F2})");
+                    // Fresh session: trigger areas start clean so OnEnter fires the
+                    // first time the player crosses each zone. Also resets any saved
+                    // checkpoint so Load Checkpoint falls back to this start point.
+                    TriggerEventSystem.BeginSession();
+                    TriggerEventSystem.ResetRuntime(map);
                 }
             }
         }
@@ -406,24 +411,60 @@ public static class Player2DSystem
             player.Player2DGrounded = grounded;
             player.Position = pos;
 
+            // ── Trigger areas: pass-through event volumes (capsule overlaps fire
+            // OnEnter / OnStay / OnExit actions). Runs AFTER physics so the overlap
+            // test uses the resolved position of this frame. Triggers never block —
+            // detection only.
+            TriggerEventSystem.LastPlayerPosition = pos;
+            TriggerEventSystem.Update(map, new Vector3(pos.X + capOffX, pos.Y + capOffY, pos.Z), r, height, dt, velX);
+
             // ── Pit death: the world origin (0,0) is the map's bottom-left, so any
             // Y well below zero means the player fell through a hole. Respawn at the
-            // Start2D marker instead of falling forever (capsule-aware, same as spawn). ──
-            if (pos.Y < -cell * 2f && start2d != null)
+            // saved checkpoint (trigger action) or the Start2D marker when none —
+            // instead of falling forever (capsule-aware, same as spawn). ──
+            if (pos.Y < -cell * 2f)
             {
+                Vector2 respawn = TriggerEventSystem.CheckpointPosition ?? (start2d != null
+                    ? new Vector2(start2d.Position.X, start2d.Position.Y)
+                    : new Vector2(pos.X, 0f));
+                float respawnZ = TriggerEventSystem.CheckpointPosition.HasValue
+                    ? TriggerEventSystem.CheckpointZ
+                    : (start2d?.Position.Z ?? pos.Z);
                 player.Position = new System.Numerics.Vector3(
-                    start2d.Position.X - player.Player2DCapsuleOffsetX,
-                    start2d.Position.Y - player.Player2DCapsuleOffsetY,
-                    start2d.Position.Z);
+                    respawn.X - player.Player2DCapsuleOffsetX,
+                    respawn.Y - player.Player2DCapsuleOffsetY,
+                    respawnZ);
                 player.Player2DVelocityY = 0f;
                 player.Player2DGrounded = false;
                 player.Player2DJumpCutDone = true;
                 // Respawn faces right in the idle state (standard sidescroller reset).
                 player.Player2DMoving = false;
                 player.Player2DFacingRight = true;
-                Console.WriteLine($"[Player2D] Fell below the map — respawned at Start ({start2d.Position.X:F1}, {start2d.Position.Y:F1})");
+                Console.WriteLine($"[Player2D] Fell below the map — respawned at {(TriggerEventSystem.CheckpointPosition.HasValue ? "checkpoint" : "Start")} ({player.Position.X:F1}, {player.Position.Y:F1})");
             }
         }
+        // Delayed trigger actions (queued with a Delay) tick every frame.
+        TriggerEventSystem.TickDelayed(dt);
+
+        // Keep the trigger runtime's start-point fallback + teleport handler fresh.
+        // Load Checkpoint without a saved checkpoint teleports to this fallback
+        // (the Start2D marker position, feet-anchored).
+        if (start2d != null)
+            TriggerEventSystem._fallbackSpawn = new Vector2(start2d.Position.X, start2d.Position.Y);
+        TriggerEventSystem.OnTeleportPlayer = (target, z) =>
+        {
+            foreach (var p in manager.Objects)
+            {
+                if (p is not { PrimitiveType: Objects.EditorPrimitiveType.Player2D }) continue;
+                p.Position = new System.Numerics.Vector3(
+                    target.X - p.Player2DCapsuleOffsetX,
+                    target.Y - p.Player2DCapsuleOffsetY,
+                    z);
+                p.Player2DVelocityY = 0f;
+                p.Player2DGrounded = false;
+            }
+        };
+
         // ── Platformer camera follow ──
         // Smooth follow (FollowSpeed), dead zone (DeadZoneWidth/Height), vertical
         // threshold (camera rises only above VerticalThreshold px, returns with

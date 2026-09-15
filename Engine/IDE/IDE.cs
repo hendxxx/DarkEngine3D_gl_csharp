@@ -37,6 +37,9 @@ public class IDE : IDisposable
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
     private readonly MapEditorPanel _mapEditor = null!;
+    /// <summary>Public accessor so ViewportPanel can push the hovered grid cell to
+    /// the Map Editor (used by "+ Add Trigger Area" placement).</summary>
+    public MapEditorPanel MapEditorRef => _mapEditor;
     private readonly IDESettingsPanel _ideSettings = null!;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
     private readonly ImGuiFileDialog _glbDialog = new();
@@ -118,6 +121,9 @@ public class IDE : IDisposable
                         _sceneManagerPanel.SelectEditorScenePublic(previousScene);
                     }
                     Bridge.InGameActive = true;
+                    // Camera mouse-control now follows the IN-GAME toggle (the IDE
+                    // Settings panel shows the option while playing).
+                    Visual.Camera.InGameSessionActive = true;
                     // Hide editor-only 2D aids (tile grid overlay, collision boxes) so
                     // the running game renders clean.
                     Engine.Objects.EditorObject.Editor2DAidsHidden = true;
@@ -147,6 +153,8 @@ public class IDE : IDisposable
                 {
                     // Reset fullscreen mode when exiting in-game mode
                     Bridge.InGameActive = false;
+                    // Camera mouse-control returns to the EDITOR toggle.
+                    Visual.Camera.InGameSessionActive = false;
                     // Restore editor-only 2D aids (tile grid overlay, collision boxes).
                     Engine.Objects.EditorObject.Editor2DAidsHidden = false;
                     // Return players to their Start2D marker — physics may have moved
@@ -308,8 +316,9 @@ public class IDE : IDisposable
             // into the new range so an out-of-range OrthoSize snaps to the boundary.
             var projSettings = SettingsSave.Load();
             Visual.Camera.ApplyZoomLimits(projSettings.OrthoZoomMin, projSettings.OrthoZoomMax);
-            // Mouse camera control toggle is per project too.
+            // Mouse camera control toggles are per project too (editor + in-game).
             Visual.Camera.MouseCameraControl = projSettings.MouseCameraControl;
+            Visual.Camera.InGameMouseCameraControl = projSettings.InGameMouseCameraControl;
             if (Bridge.Camera != null)
                 Bridge.Camera.OrthoSize = Math.Clamp(Bridge.Camera.OrthoSize, Visual.Camera.OrthoZoomMin, Visual.Camera.OrthoZoomMax);
             // Re-apply post-FX (bloom/auto-exposure/DoF) from the PROJECT's settings.
@@ -658,6 +667,7 @@ public class IDE : IDisposable
             Console.WriteLine("[IDE] Creating ImGuiController...");
             _imgui = new ImGuiController(window);
             Bridge.ImGuiCtrl = _imgui;
+            Bridge.HostIDE = this;
             Console.WriteLine("[IDE] ImGuiController OK");
 
             _viewport = new ViewportPanel(Bridge);
@@ -690,6 +700,30 @@ public class IDE : IDisposable
             Bridge.MapUndo = () => _mapEditor.UndoTilePaint();
             Bridge.MapRedo = () => _mapEditor.RedoTilePaint();
 
+            // Trigger Area runtime wiring: "Change Map" actions load from the project's
+            // Assets/Maps folder via the Map Editor's loader; "Camera Shake" nudges the
+            // active camera (small decaying offsets applied in Camera.Update).
+            Visual.TriggerEventSystem.OnChangeMap = mapName =>
+            {
+                string rel = Path.Combine("Assets", "Maps", mapName + ".tilemap.json");
+                string path = Project.ProjectManager.IsProjectLoaded
+                    ? Path.Combine(Project.ProjectManager.ProjectRoot!, rel)
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, rel);
+                if (!File.Exists(path))
+                {
+                    Console.WriteLine($"[Trigger] Map file not found: {path}");
+                    return false;
+                }
+                _mapEditor.LoadMapFromFile(path);
+                Visual.TriggerEventSystem.ResetRuntime(Bridge.ActiveTilemap);
+                return true;
+            };
+            Visual.TriggerEventSystem.OnCameraShake = duration =>
+            {
+                if (Bridge.Camera != null)
+                    Bridge.Camera.BeginShake(MathF.Max(0.05f, duration));
+            };
+
             // Sprite2D placement from the Asset Browser clip boxes (click / drop):
             // creates a decorative animated sprite (Player2D rendering, no controller,
             // no physics, no camera). worldPos null → spawn at the camera position.
@@ -717,6 +751,7 @@ public class IDE : IDisposable
             // Apply per-project ortho zoom limits (settings.json → Camera constants).
             Visual.Camera.ApplyZoomLimits(bootSettings.OrthoZoomMin, bootSettings.OrthoZoomMax);
             Visual.Camera.MouseCameraControl = bootSettings.MouseCameraControl;
+            Visual.Camera.InGameMouseCameraControl = bootSettings.InGameMouseCameraControl;
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -1955,7 +1990,11 @@ public class IDE : IDisposable
                 $"Render: t={Bridge.RenderTerrainMs:N1}ms  o={Bridge.RenderObjectsMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
                 $"POS: X={camPos.X:N2}  Y={camPos.Y:N2}  Z={camPos.Z:N2}",
                 $"Yaw: {Bridge.CameraYaw:F1}°  Pitch: {Bridge.CameraPitch:F1}°",
+                // Clickable in-game option: mouse camera control (drag-pan / fly look)
+                // only affects PLAY mode — the editor preference stays untouched.
+                $"[ ] Mouse Camera  {(Visual.Camera.InGameMouseCameraControl ? "ON — drag-pan + fly look" : "OFF — mouse belongs to the game")}",
             ];
+            int mouseCamLine = lines.Length - 1;
 
             var font = ImGui.GetFont();
             float fontSize = 18f;
@@ -1994,6 +2033,38 @@ public class IDE : IDisposable
                 drawList.AddText(font, fontSize, new Vector2(bgMin.X + pad, ty),
                     ImGui.ColorConvertFloat4ToU32(col), lines[li]);
                 ty += lineHeight;
+            }
+
+            // ── Clickable "Mouse Camera" toggle row (last line of the stats panel) ──
+            // In-game mode renders no ImGui windows, so the toggle is a hit-tested
+            // rect over the foreground draw list. Clicking flips the in-game toggle
+            // and persists it to the project settings.json immediately.
+            {
+                float lineW = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, lines[mouseCamLine]).X;
+                var btnMin = new Vector2(bgMin.X, bgMin.Y + pad + lineHeight * mouseCamLine);
+                var btnMax = new Vector2(bgMin.X + pad + lineW, btnMin.Y + lineHeight);
+                var mousePos = io.MousePos;
+                bool hovered = mousePos.X >= btnMin.X && mousePos.X <= btnMax.X
+                            && mousePos.Y >= btnMin.Y && mousePos.Y <= btnMax.Y;
+
+                // Highlight when hovered so it reads as clickable.
+                if (hovered)
+                    drawList.AddRectFilled(btnMin, btnMax,
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.10f)), 4f);
+
+                if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.WantCaptureMouse)
+                {
+                    bool newVal = !Visual.Camera.InGameMouseCameraControl;
+                    Visual.Camera.InGameMouseCameraControl = newVal;
+                    try
+                    {
+                        var s = Config.SettingsSave.Load();
+                        s.InGameMouseCameraControl = newVal;
+                        Config.SettingsSave.Save(s);
+                    }
+                    catch { }
+                    Console.WriteLine($"[IDE] In-game mouse camera control: {(newVal ? "ON" : "OFF")}");
+                }
             }
         }
 

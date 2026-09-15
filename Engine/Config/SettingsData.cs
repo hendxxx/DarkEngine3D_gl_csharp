@@ -77,6 +77,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // still work. Persisted per project; default true = classic behavior. ──
         public bool MouseCameraControl { get; set; } = true;
 
+        // ── In-game mouse camera toggle (IDE Settings → Camera, applies to Play In
+        // Preview / In-Game mode only). When false, drag-pan and fly mouse-look never
+        // move the camera while PLAYING — mouse input goes to the game instead.
+        // Persisted per project; the editor toggle above still governs edit mode. ──
+        public bool InGameMouseCameraControl { get; set; } = true;
+
         // ── Transition defaults (persisted from TransitionPanel's "Apply Global Default") ──
         public int DefaultTransitionType { get; set; } = 0; // 0=Fade, 1=SlideLeft, 2=SlideRight
         public float DefaultTransitionDuration { get; set; } = 0.6f;

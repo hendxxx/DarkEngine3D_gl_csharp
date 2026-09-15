@@ -902,6 +902,7 @@ public class SceneManagerPanel
                         PrimitiveType = obj.PrimitiveType.ToString(),
                         Tilemap = obj.PrimitiveType == EditorPrimitiveType.Map2D ? obj.Map2dTilemap?.ToData() : null,
                         TilemapShowGrid = obj.Map2dShowGrid,
+                        TilemapShowTriggers = obj.Map2dShowTriggers,
                         TilemapGridColorR = obj.Map2dGridColor.X,
                         TilemapGridColorG = obj.Map2dGridColor.Y,
                         TilemapGridColorB = obj.Map2dGridColor.Z,
@@ -1617,6 +1618,7 @@ public class SceneManagerPanel
                             // overrides this when the user selects another layer.
                             obj.Map2dActiveLayer = tilemap.Layers.Count > 0 ? 0 : -1;
                             obj.Map2dShowGrid = objData.TilemapShowGrid;
+                            obj.Map2dShowTriggers = objData.TilemapShowTriggers;
                             obj.Map2dGridColor = new Vector4(objData.TilemapGridColorR, objData.TilemapGridColorG,
                                 objData.TilemapGridColorB, objData.TilemapGridColorA);
                             obj.Name = tilemap.Name;

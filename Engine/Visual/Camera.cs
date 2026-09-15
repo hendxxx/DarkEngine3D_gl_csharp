@@ -299,7 +299,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         public Matrix4x4 GetViewMatrix()
         {
-            return Matrix4x4.CreateLookAt(Position, Position + Front, Up);
+            var pos = Position;
+            // Trigger/camera-shake: small decaying random offsets around the true
+            // position while a shake is active. Applied only to the view matrix so
+            // the authoritative Position stays untouched (no gameplay drift).
+            if (_shakeRemaining > 0f)
+            {
+                float decay = _shakeRemaining / _shakeDuration;
+                float amp = _shakeAmplitude * decay * decay;
+                float time = System.DateTime.Now.Ticks * 1e-7f * 37f;
+                pos += new Vector3(
+                    MathF.Sin(time * 13.7f) * amp,
+                    MathF.Cos(time * 17.3f) * amp * 0.8f,
+                    0f);
+            }
+            return Matrix4x4.CreateLookAt(pos, pos + Front, Up);
+        }
+
+        // ── Camera shake (triggered by trigger-area actions) ──
+        private float _shakeRemaining;
+        private float _shakeDuration = 1f;
+        private float _shakeAmplitude = 0.12f;
+
+        /// <summary>Start a camera shake lasting `duration` seconds. Amplitude decays
+        /// quadratically; the authoritative Position is never modified.</summary>
+        public void BeginShake(float duration, float amplitude = 0.12f)
+        {
+            _shakeDuration = MathF.Max(0.05f, duration);
+            _shakeRemaining = _shakeDuration;
+            _shakeAmplitude = amplitude;
+        }
+
+        /// <summary>Tick shake timers (call once per frame from the active scene loop).</summary>
+        public void UpdateShake(float dt)
+        {
+            if (_shakeRemaining > 0f)
+                _shakeRemaining = MathF.Max(0f, _shakeRemaining - dt);
         }
 
         /// <summary>
@@ -362,6 +397,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// WASD/scroll/Views presets still work. Toggleable in IDE Settings → Camera; persisted
     /// to settings.json (MouseCameraControl). Default true = classic behavior.</summary>
     public static bool MouseCameraControl = true;
+
+    /// <summary>In-game-only master toggle for mouse camera control (drag-pan + fly
+    /// mouse-look). The editor toggle MouseCameraControl keeps governing EDIT mode; this
+    /// one governs Play In Preview / In-Game mode so users can choose whether the
+    /// mouse moves the camera while playing. Default ON (same behavior as editing).</summary>
+    public static bool InGameMouseCameraControl = true;
+
+    /// <summary>True while the IDE is in Play In Preview / In-Game mode — set by the
+    /// IDE so the camera can pick the right master toggle (editor vs in-game).</summary>
+    public static bool InGameSessionActive { get; set; }
 
     /// <summary>Apply validated zoom limits (min ≥ 0.5, max ≥ min + 1). Called at
     /// IDE startup and whenever the IDE Settings sliders change.</summary>
@@ -471,10 +516,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // interactions. ORTHO mode (2D levels): right-drag pans as before.
                 // Panning never rotates the view and never moves any object — the
                 // ✈ Fly toggle is the only way to rotate/look around.
+                // Master toggle picks the right switch for the current session: the
+                // editor toggle governs edit mode, the in-game toggle governs
+                // preview/in-game (so playing can disable mouse-pan without touching
+                // the editor preference).
+                bool mouseCamEnabled = InGameSessionActive ? InGameMouseCameraControl : MouseCameraControl;
+
                 bool dragPan = (IsOrthographic
                     ? Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT)
                     : Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE))
-                    && MouseCameraControl; // master toggle: off = mouse never moves the camera
+                    && mouseCamEnabled; // master toggle: off = mouse never moves the camera
                 if (!ctrlHeld && dragPan)
                 {
                     // Pan speed scales with the view volume so the drag feels 1:1 with the
@@ -490,7 +541,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         _mouseLookWasActive = false;
                     }
                 }
-                else if (!ctrlHeld && FlyMouseLook && MouseCameraControl)
+                else if (!ctrlHeld && FlyMouseLook && mouseCamEnabled)
                 {
                     // Use configurable sensitivity from CameraConfig
                     float sens = Config.CameraConfig.FlyMouseSensitivity;

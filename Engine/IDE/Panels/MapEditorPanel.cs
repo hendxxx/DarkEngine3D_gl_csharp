@@ -24,7 +24,7 @@ public class MapEditorPanel
     public Tilemap2D? ActiveTilemap;
 
     // ── Tool modes ──
-    private enum PaintTool { Paint, Erase, Fill, Pick }
+    private enum PaintTool { Paint, Erase, Fill, Pick, Trigger }
     private PaintTool _currentTool = PaintTool.Pick;
 
     // ── Layer management ──
@@ -48,7 +48,11 @@ public class MapEditorPanel
     private bool _showPaletteGrid = true;
     private Vector4 _paletteGridColor = new(1f, 1f, 1f, 0.25f);
     private bool _showCollisions;
-
+    private bool _showTriggers = true;
+    /// <summary>Last tile the viewport cursor hovered over (grid coords), pushed from
+    /// ViewportPanel — used by "+ Add Trigger Area" to place new triggers under the
+    /// cursor instead of at the map center.</summary>
+    public (int X, int Y)? LastHoverGrid { get; set; }
     // ── Brush settings ──
     private int _brushSize = 1;
 
@@ -259,6 +263,10 @@ public class MapEditorPanel
                 // ── Collision Tiles ──
                 if (ImGui.CollapsingHeader("Collision"))
                     RenderCollisionSettings();
+
+                // ── Trigger Areas ──
+                if (ImGui.CollapsingHeader("Trigger Areas"))
+                    RenderTriggerSettings();
 
                 ImGui.Separator();
 
@@ -562,11 +570,13 @@ public class MapEditorPanel
         ImGui.SameLine();
 
         var tools = new[] { ("Paint", PaintTool.Paint), ("Erase", PaintTool.Erase),
-                           ("Fill", PaintTool.Fill), ("Pick", PaintTool.Pick) };
+                           ("Fill", PaintTool.Fill), ("Pick", PaintTool.Pick),
+                           ("Trigger", PaintTool.Trigger) };
         foreach (var (label, tool) in tools)
         {
             bool isActive = _currentTool == tool;
-            if (isActive) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.6f, 1f, 1f));
+            if (isActive) ImGui.PushStyleColor(ImGuiCol.Button, tool == PaintTool.Trigger
+                ? new Vector4(1f, 0.62f, 0.05f, 1f) : new Vector4(0.3f, 0.6f, 1f, 1f));
             if (ImGui.Button($"{label}##tool", new Vector2(70, 24)))
                 _currentTool = tool;
             if (isActive) ImGui.PopStyleColor();
@@ -579,6 +589,9 @@ public class MapEditorPanel
             _gridPrefsDirty = true;
         ImGui.SameLine();
         if (ImGui.Checkbox("Show Collision##toolbar", ref _showCollisions))
+            _gridPrefsDirty = true;
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Show Triggers##toolbar", ref _showTriggers))
             _gridPrefsDirty = true;
 
         // Sync to bridge for viewport painting
@@ -650,6 +663,7 @@ public class MapEditorPanel
                     o.Map2dTilesetFlipV = _tilesetFlipV;
                     o.Map2dActiveLayer = _selectedLayerIdx;
                     o.Map2dShowCollision = _showCollisions;
+                    o.Map2dShowTriggers = _showTriggers;
                 }
             }
         }
@@ -1210,6 +1224,191 @@ public class MapEditorPanel
         // Quick summary of how many distinct tile IDs currently collide.
         int count = layer.CollisionTileIds.Count;
         ImGui.TextDisabled($"{count} tile ID(s) flagged for collision on this layer");
+    }
+
+    // ── Trigger Areas UI ────────────────────────────────────────────────
+
+    /// <summary>Editor UI for the active map's Trigger Areas: list, rename, enable,
+    /// fire conditions (OnEnter / OnStay / OnExit) and the action list. Trigger
+    /// boxes themselves are drawn in the 3D viewport (amber volumes); the Trigger
+    /// TOOL in the toolbar creates/drags/resizes them directly on the grid.</summary>
+    private void RenderTriggerSettings()
+    {
+        var map = ActiveTilemap;
+        if (map == null)
+        {
+            ImGui.TextDisabled("No active map — create or load one first.");
+            return;
+        }
+
+        ImGui.TextDisabled("Pass-through zones that fire events. Player walks through.");
+
+        // Add button: creates a trigger over the last hovered tile (or map center).
+        if (ImGui.Button("+ Add Trigger Area", new Vector2(160, 0)))
+        {
+            float cell = map.TileSize;
+            float left, top;
+            if (LastHoverGrid.HasValue)
+            {
+                left = LastHoverGrid.Value.X * cell;
+                top = LastHoverGrid.Value.Y * cell;
+            }
+            else
+            {
+                left = map.Width * cell * 0.5f - cell;
+                top = map.Height * cell * 0.5f - cell;
+            }
+            var trig = new TilemapTriggerArea
+            {
+                Name = $"Trigger {map.TriggerAreas.Count + 1}",
+                LeftPx = left, TopPx = top, WidthPx = cell * 2f, HeightPx = cell * 3f,
+                OnEnter = true
+            };
+            map.TriggerAreas.Add(trig);
+            _bridge.SelectedTrigger = trig;
+            EditorObject.SelectedTriggerForHighlight = trig;
+            Console.WriteLine($"[MapEditor] Trigger added at ({left:F0},{top:F0}) px — drag it in the viewport with the Trigger tool");
+        }
+        ImGui.SameLine();
+        ImGui.TextDisabled($"{map.TriggerAreas.Count} zone(s)");
+
+        // ── Trigger list ──
+        for (int i = 0; i < map.TriggerAreas.Count; i++)
+        {
+            var trig = map.TriggerAreas[i];
+            if (trig == null) continue;
+            bool selected = ReferenceEquals(_bridge.SelectedTrigger, trig);
+            ImGui.PushID($"trg{i}");
+            string nodeLabel = $"{(trig.IsEnabled ? "" : "(off) ")}{trig.Name}";
+            var flags = selected ? ImGuiTreeNodeFlags.Selected : ImGuiTreeNodeFlags.None;
+            bool open = ImGui.TreeNodeEx(nodeLabel, flags | ImGuiTreeNodeFlags.FramePadding);
+            if (ImGui.IsItemClicked())
+            {
+                _bridge.SelectedTrigger = trig;
+                EditorObject.SelectedTriggerForHighlight = trig;
+                _currentTool = PaintTool.Trigger; // selecting a trigger arms the tool
+            }
+            if (open)
+            {
+                EditTriggerFields(trig, map);
+                ImGui.TreePop();
+            }
+            ImGui.PopID();
+        }
+
+        if (map.TriggerAreas.Count == 0)
+            ImGui.TextDisabled("No triggers yet — pick the Trigger tool and drag a box in the viewport.");
+
+        var sel = _bridge.SelectedTrigger;
+        if (sel != null && ImGui.Button("Delete Selected Trigger", new Vector2(180, 0)))
+        {
+            map.TriggerAreas.Remove(sel);
+            _bridge.SelectedTrigger = null;
+            EditorObject.SelectedTriggerForHighlight = null;
+        }
+    }
+
+    /// <summary>Name / enable / conditions / actions editing for one trigger node.</summary>
+    private void EditTriggerFields(TilemapTriggerArea trig, Tilemap2D map)
+    {
+        string name = trig.Name;
+        if (ImGui.InputText("Name", ref name, 64)) trig.Name = name;
+
+        bool enabled = trig.IsEnabled;
+        if (ImGui.Checkbox("Enabled", ref enabled)) trig.IsEnabled = enabled;
+
+        ImGui.SeparatorText("Conditions");
+        bool onEnter = trig.OnEnter;
+        if (ImGui.Checkbox("On Enter (fire once when player enters)", ref onEnter)) trig.OnEnter = onEnter;
+
+        float stay = trig.OnStayIntervalSeconds;
+        ImGui.SetNextItemWidth(140);
+        if (ImGui.SliderFloat("On Stay interval##st", ref stay, 0f, 5f, stay <= 0f ? "off" : "%.2f s"))
+            trig.OnStayIntervalSeconds = stay;
+
+        bool onExit = trig.OnExit;
+        if (ImGui.Checkbox("On Exit (fire once when player leaves)", ref onExit)) trig.OnExit = onExit;
+
+        bool reqRight = trig.RequireMovingRight;
+        if (ImGui.Checkbox("Only when moving right (door gate)", ref reqRight)) trig.RequireMovingRight = reqRight;
+
+        ImGui.SeparatorText($"Actions ({trig.Actions.Count})");
+        for (int a = 0; a < trig.Actions.Count; a++)
+        {
+            var act = trig.Actions[a];
+            ImGui.PushID($"act{a}");
+            int typeIdx = Array.IndexOf(TriggerActionTypes.All, act.Type);
+            if (typeIdx < 0) typeIdx = 0;
+            ImGui.SetNextItemWidth(170);
+            if (ImGui.Combo("##acttype", ref typeIdx, TriggerActionTypes.All, TriggerActionTypes.All.Length))
+                act.Type = TriggerActionTypes.All[typeIdx];
+
+            // Contextual parameter labels per action type.
+            string p1 = act.Param, p2 = act.Param2;
+            switch (act.Type)
+            {
+                case TriggerActionTypes.SaveGame:
+                    ImGui.TextDisabled("Saves into the next empty slot.");
+                    break;
+                case TriggerActionTypes.SaveCheckpoint:
+                    ImGui.TextDisabled("Records the player's position as the respawn checkpoint.");
+                    break;
+                case TriggerActionTypes.LoadCheckpoint:
+                    ImGui.TextDisabled("Teleports the player to the saved checkpoint (start point if none saved).");
+                    break;
+                case TriggerActionTypes.ChangeMap:
+                    if (ImGui.InputText("Map name", ref p1, 128)) act.Param = p1;
+                    ImGui.TextDisabled($"File: Assets/Maps/{(string.IsNullOrWhiteSpace(p1) ? "<name>" : p1)}.tilemap.json");
+                    break;
+                case TriggerActionTypes.CameraShake:
+                    if (ImGui.InputText("Intensity (default 1)", ref p1, 32)) act.Param = p1;
+                    if (ImGui.InputText("Duration s (default 0.4)", ref p2, 32)) act.Param2 = p2;
+                    break;
+                default:
+                    if (ImGui.InputText("Param", ref p1, 256)) act.Param = p1;
+                    if (ImGui.InputText("Param 2", ref p2, 256)) act.Param2 = p2;
+                    break;
+            }
+
+            if (!TriggerActionTypes.IsImplemented(act.Type))
+                ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), "(logged only — runtime not wired yet)");
+
+            // NOTE: ASCII glyphs only — the default ImGui font has no Unicode arrows,
+            // so ↑/↓/✕ rendered as "?". '^' = move up, 'v' = move down, 'X' = delete.
+            ImGui.SameLine();
+            if (ImGui.SmallButton("^") && a > 0)
+                (trig.Actions[a - 1], trig.Actions[a]) = (trig.Actions[a], trig.Actions[a - 1]);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move action up");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("v") && a < trig.Actions.Count - 1)
+                (trig.Actions[a + 1], trig.Actions[a]) = (trig.Actions[a], trig.Actions[a + 1]);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move action down");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("X"))
+            {
+                trig.Actions.RemoveAt(a);
+                ImGui.PopID();
+                a--;
+                continue;
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Remove action");
+            ImGui.PopID();
+        }
+
+        if (ImGui.Button("+ Add Action"))
+            trig.Actions.Add(new TilemapTriggerAction { Type = TriggerActionTypes.SaveGame });
+
+        // Extra geometry editing (precise numbers, complements viewport dragging).
+        ImGui.SeparatorText("Geometry (pixels)");
+        float l = trig.LeftPx, t = trig.TopPx, w = trig.WidthPx, h = trig.HeightPx;
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.DragFloat("Left##tg", ref l)) trig.LeftPx = MathF.Max(0f, l);
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.DragFloat("Top##tg", ref t)) trig.TopPx = MathF.Max(0f, t);
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.DragFloat("Width##tg", ref w)) trig.WidthPx = MathF.Max(map.TileSize * 0.25f, w);
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.DragFloat("Height##tg", ref h)) trig.HeightPx = MathF.Max(map.TileSize * 0.25f, h);
     }
 
     private bool IsCurrentSceneGameScene()
