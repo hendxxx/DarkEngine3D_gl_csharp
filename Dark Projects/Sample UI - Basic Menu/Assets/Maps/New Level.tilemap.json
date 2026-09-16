@@ -4,7 +4,7 @@
     "Width": 50,
     "Height": 20,
     "TileSize": 32,
-    "TilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+    "TilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
     "TilesetColumns": 25,
     "TilesetRows": 25,
     "TilesetFlipV": false,
@@ -18,7 +18,7 @@
     "ParallaxLayers": [
       {
         "Name": "Parallax 0",
-        "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+        "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
         "IsVisible": true,
         "ScrollFactor": 1,
         "ZPosition": -2,
@@ -33,7 +33,7 @@
       },
       {
         "Name": "Parallax 1",
-        "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+        "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
         "IsVisible": true,
         "ScrollFactor": 0.85,
         "ZPosition": -1,
@@ -51,10 +51,50 @@
       {
         "Name": "Trigger 1",
         "IsEnabled": true,
-        "LeftPx": 850.0225,
-        "TopPx": 508.48315,
+        "LeftPx": 362.00266,
+        "TopPx": 504.54715,
         "WidthPx": 113.27872,
         "HeightPx": 98.66374,
+        "OnEnter": true,
+        "OnStayIntervalSeconds": 0,
+        "OnExit": false,
+        "RequireMovingRight": false,
+        "Actions": [
+          {
+            "Type": "Camera Shake",
+            "Param": "2",
+            "Param2": "1",
+            "Delay": 0
+          }
+        ]
+      },
+      {
+        "Name": "Trigger 2",
+        "IsEnabled": true,
+        "LeftPx": 682.78625,
+        "TopPx": 443.95862,
+        "WidthPx": 64,
+        "HeightPx": 96,
+        "OnEnter": true,
+        "OnStayIntervalSeconds": 0,
+        "OnExit": false,
+        "RequireMovingRight": false,
+        "Actions": [
+          {
+            "Type": "Save Checkpoint",
+            "Param": "",
+            "Param2": "",
+            "Delay": 0
+          }
+        ]
+      },
+      {
+        "Name": "Trigger 3",
+        "IsEnabled": true,
+        "LeftPx": 1247.7678,
+        "TopPx": 514.3848,
+        "WidthPx": 64,
+        "HeightPx": 96,
         "OnEnter": true,
         "OnStayIntervalSeconds": 0,
         "OnExit": false,
@@ -64,6 +104,26 @@
             "Type": "Load Checkpoint",
             "Param": "",
             "Param2": "",
+            "Delay": 0
+          }
+        ]
+      },
+      {
+        "Name": "Trigger 4",
+        "IsEnabled": true,
+        "LeftPx": 960,
+        "TopPx": 576,
+        "WidthPx": 160,
+        "HeightPx": 32,
+        "OnEnter": true,
+        "OnStayIntervalSeconds": 0,
+        "OnExit": false,
+        "RequireMovingRight": false,
+        "Actions": [
+          {
+            "Type": "Start Dialogue",
+            "Param": "village_intro",
+            "Param2": "1",
             "Delay": 0
           }
         ]
