@@ -1418,7 +1418,7 @@ public unsafe class MainMenuScene : IScene
     }
 
     /// <summary>Render one Bar element in-game through the HUD, in the same layer order
-    /// as the editor: Back (ImagePath) → Background → Empty → Progress. Every layer
+    /// as the editor: Background (-3) → Empty (-2) → Progress (-1) → ImagePath (0, top). Every layer
     /// resolves its rect through GetBarLayerRect — the element rect plus that layer's
     /// four INDEPENDENT edge offsets (left/right/top/bottom, + = outward, − = inward) —
     /// so the decorated frame can overhang while the fill insets. The Progress layer's
@@ -1434,15 +1434,7 @@ public unsafe class MainMenuScene : IScene
                 ? Math.Clamp((elem.CurrentValue - elem.MinValue) / (elem.MaxValue - elem.MinValue), 0f, 1f)
                 : 0f;
 
-        // ── Layer Back: element ImagePath (optional art behind everything) ──
-        if (!string.IsNullOrEmpty(elem.ImagePath) &&
-            _imageTextureCache.TryGetValue(elem.ImagePath, out uint imgTex) && imgTex != 0)
-        {
-            var (bx, by, bw, bh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Back);
-            _hud!.DrawImage(bx, by, bw, bh, imgTex);
-        }
-
-        // ── Layer Background: frame (its own per-edge offsets) ──
+        // ── Layer Background (-3): frame (its own per-edge offsets) ──
         if (!string.IsNullOrEmpty(elem.BarBackgroundPath) &&
             _imageTextureCache.TryGetValue(elem.BarBackgroundPath, out uint bgTex) && bgTex != 0)
         {
@@ -1450,7 +1442,7 @@ public unsafe class MainMenuScene : IScene
             _hud!.DrawImage(bgx, bgy, bgw, bgh, bgTex);
         }
 
-        // ── Layer Empty: interior (its own per-edge offsets) ──
+        // ── Layer Empty (-2): interior (its own per-edge offsets) ──
         if (!string.IsNullOrEmpty(elem.BarEmptyPath) &&
             _imageTextureCache.TryGetValue(elem.BarEmptyPath, out uint emptyTex) && emptyTex != 0)
         {
@@ -1458,12 +1450,20 @@ public unsafe class MainMenuScene : IScene
             _hud!.DrawImage(emx, emy, emw, emh, emptyTex);
         }
 
-        // ── Layer Progress: fill — width scales with the fraction ──
+        // ── Layer Progress (-1): fill — width scales with the fraction ──
         if (!string.IsNullOrEmpty(elem.BarProgressPath) && frac > 0.001f &&
             _imageTextureCache.TryGetValue(elem.BarProgressPath, out uint progTex) && progTex != 0)
         {
             var (pgx, pgy, pgw, pgh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Progress);
             _hud!.DrawImage(pgx, pgy, pgw * frac, pgh, progTex);
+        }
+
+        // ── Layer ImagePath (0, top): element's own art over the fill ──
+        if (!string.IsNullOrEmpty(elem.ImagePath) &&
+            _imageTextureCache.TryGetValue(elem.ImagePath, out uint imgTex) && imgTex != 0)
+        {
+            var (ix, iy, iw, ih) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.ImagePath);
+            _hud!.DrawImage(ix, iy, iw, ih, imgTex);
         }
     }
 

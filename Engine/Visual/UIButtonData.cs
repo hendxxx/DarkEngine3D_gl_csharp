@@ -312,6 +312,16 @@ public class UIElement
     public float BarProgOffsetTop { get; set; }
     public float BarProgOffsetBottom { get; set; }
 
+    // ── Bar per-layer position (scene px translation, applied AFTER the edge offsets) ──
+    // Offsets change a layer's size; position slides the whole (already resized) rect
+    // without touching its dimensions — handy for nudging frame art into place.
+    public float BarBgPosX { get; set; }
+    public float BarBgPosY { get; set; }
+    public float BarEmptyPosX { get; set; }
+    public float BarEmptyPosY { get; set; }
+    public float BarProgPosX { get; set; }
+    public float BarProgPosY { get; set; }
+
     // ── Dropdown colors ──
     /// <summary>Color of the dropdown arrow icon.</summary>
     public Vector3 ArrowColor { get; set; } = new(0.5f, 0.5f, 0.7f);
@@ -400,8 +410,18 @@ public class UIElement
         };
     }
 
-    /// <summary>Bar layer identifiers (draw order: back → front).</summary>
-    public enum BarLayer { Back = 0, Background = 1, Empty = 2, Progress = 3 }
+    /// <summary>Resolve one Bar layer's X/Y translation (scene px). See <see cref="GetBarLayerRect"/>.</summary>
+    public (float x, float y) GetBarLayerPosition(BarLayer layer) => layer switch
+    {
+        BarLayer.Background => (BarBgPosX, BarBgPosY),
+        BarLayer.Empty => (BarEmptyPosX, BarEmptyPosY),
+        BarLayer.Progress => (BarProgPosX, BarProgPosY),
+        _ => (0f, 0f),
+    };
+
+    /// <summary>Bar layer identifiers, expressed as named z-indices. Draw order is
+    /// back → front: Background (-3) → Empty (-2) → Progress (-1) → ImagePath (0, top).</summary>
+    public enum BarLayer { Background = -3, Empty = -2, Progress = -1, ImagePath = 0 }
 
     /// <summary>Resolve the draw rect of one Bar layer: the element rect (in scene
     /// coordinates, parent/anchor already resolved by the caller) with that layer's
@@ -412,23 +432,28 @@ public class UIElement
     public (float x, float y, float w, float h) GetBarLayerRect(
         float elemX, float elemY, float elemW, float elemH, BarLayer layer)
     {
-        float l, r, t, b;
+        float l, r, t, b, px, py;
         switch (layer)
         {
             case BarLayer.Background:
                 l = BarBgOffsetLeft; r = BarBgOffsetRight; t = BarBgOffsetTop; b = BarBgOffsetBottom;
+                px = BarBgPosX; py = BarBgPosY;
                 break;
             case BarLayer.Empty:
                 l = BarEmptyOffsetLeft; r = BarEmptyOffsetRight; t = BarEmptyOffsetTop; b = BarEmptyOffsetBottom;
+                px = BarEmptyPosX; py = BarEmptyPosY;
                 break;
             case BarLayer.Progress:
                 l = BarProgOffsetLeft; r = BarProgOffsetRight; t = BarProgOffsetTop; b = BarProgOffsetBottom;
+                px = BarProgPosX; py = BarProgPosY;
                 break;
-            default: // Back (element's own ImagePath)
-                l = 0; r = 0; t = 0; b = 0;
+            default: // ImagePath (element's own art) — no edge offsets
+                l = 0; r = 0; t = 0; b = 0; px = 0; py = 0;
                 break;
         }
-        return (elemX + l, elemY + t,
+        // Edge offsets resize the layer, then the position offsets translate the whole
+        // resized rect — the two are fully independent.
+        return (elemX + px + l, elemY + py + t,
                 MathF.Max(1f, elemW - l + r),
                 MathF.Max(1f, elemH - t + b));
     }

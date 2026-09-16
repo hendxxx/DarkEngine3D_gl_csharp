@@ -402,7 +402,7 @@ public unsafe class ViewportPanel
             }
 
             //  Draw image element on top of background 
-            bool hasImage = !string.IsNullOrEmpty(elem.ImagePath);
+            bool hasImage = elem.Type != UIElementType.Bar && !string.IsNullOrEmpty(elem.ImagePath);
             if (hasImage)
             {
                 // Try to load and cache the image texture for preview
@@ -1129,10 +1129,10 @@ public unsafe class ViewportPanel
             }
             else if (elem.Type == UIElementType.Bar)
             {
-                //  Bar: layered images — Back (ImagePath) → Background → Empty →
-                // Progress (this pass). Under-layers draw in RenderUIElements with their
-                // own per-edge offsets; here only the PROGRESS fill renders, width-scaled
-                // to the current fraction (no clipping, no UV tricks).
+                //  Bar: layered images — Background (-3) → Empty (-2) → Progress (-1,
+                // this pass) → ImagePath (0, top). Under/over-layers draw in RenderUIElements
+                // with their own per-edge offsets; here only the PROGRESS fill renders,
+                // width-scaled to the current fraction (no clipping, no UV tricks).
                 // Fraction source: stat binding (Player2DStats, live) when set — else manual.
                 float frac = !string.IsNullOrEmpty(elem.BarStatBinding) && elem.BarStatBinding != PlayerStatNames.None
                     ? Player2DStats.GetFraction(elem.BarStatBinding)
@@ -1144,7 +1144,7 @@ public unsafe class ViewportPanel
                 // scales with the fraction along the fill direction.
                 var (pgX, pgY, pgW, pgH) = elem.GetBarLayerRect(sx0, sy0, sx1 - sx0, sy1 - sy0, UIElement.BarLayer.Progress);
 
-                // ── Progress fill (layer 0): width only ──
+                // ── Progress fill (layer -1): width only ──
                 if (!string.IsNullOrEmpty(elem.BarProgressPath) && frac > 0.001f)
                 {
                     uint progTex = LoadOrGetPreviewTexture(elem.BarProgressPath);
@@ -1793,7 +1793,10 @@ public unsafe class ViewportPanel
         _bridge.SceneRoot = targetScene.Root;
         _bridge.SceneRootElements = new List<UIElement> { targetScene.Root }.AsReadOnly();
 
-        // ── Adopt the target scene's world state (same as SceneManagerPanel.SelectEditor        // Scene does when the user picks a scene in the panel). Without this, switching        // MainMenu → GameScene at runtime never adopts the GameScene's EditorObject        // manager/tilemap/spawn, so the 2D level and player never appear in-game.
+        // ── Adopt the target scene's world state (same as SceneManagerPanel.SelectEditor
+        // Scene does when the user picks a scene in the panel). Without this, switching
+        // MainMenu → GameScene at runtime never adopts the GameScene's EditorObject
+        // manager/tilemap/spawn, so the 2D level and player never appear in-game.
         _bridge.EditorObjectManager = targetScene.ObjectManager;
         _bridge.SelectedEditorObject = null;
 
@@ -1812,7 +1815,9 @@ public unsafe class ViewportPanel
         bool levelChanged = !ReferenceEquals(_bridge.ActiveTilemap, sceneLevel);
         _bridge.ActiveTilemap = sceneLevel;
 
-        // Entering a 2D level: re-run the deferred player spawn (the new scene's        // Player2D object needs teleporting to the level's Start2D marker) and let        // SyncLevelCamera re-anchor the ortho front view for the new map.
+        // Entering a 2D level: re-run the deferred player spawn (the new scene's
+        // Player2D object needs teleporting to the level's Start2D marker) and let
+        // SyncLevelCamera re-anchor the ortho front view for the new map.
         if (sceneLevel != null)
         {
             EditorObject.Player2DSpawnPending = true;
@@ -2378,17 +2383,11 @@ public unsafe class ViewportPanel
         _texH = texH;
 
         // ── Bar under-layers (drawn BEFORE the element's own pass) ──
-        // Back (ImagePath) → Background → Empty. Progress (+0) draws in the element's
-        // own pass on top. Each layer resolves its own edge offsets.
-        foreach (var elem in elements)
-        {
-            if (!elem.IsVisible || elem.Type != UIElementType.Bar) continue;
-            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Back, elem.ImagePath);
-            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Background, elem.BarBackgroundPath);
-            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Empty, elem.BarEmptyPath);
-        }
+        DrawBarUnderLayers(drawList, elements);
 
         DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+        // Bar over-layers (ImagePath) draw AFTER the element pass so bar art sits on top.
+        DrawBarOverLayers(drawList, elements);
         // Render dropdown popup AFTER all elements (outside any container clip rect)
         RenderDropdownPopup(drawList, mouseScreen, leftClicked, isPreview);
 
@@ -2399,7 +2398,34 @@ public unsafe class ViewportPanel
         _texH = savedTexH;
     }
 
-    /// <summary>Draw ONE Bar under-layer (Back / Background / Empty — everything the
+    /// <summary>Draw all Bar under-layers (Background → Empty) for the given element
+    /// list, BEFORE the elements' own pass. Draw order is Background (-3) → Empty (-2);
+    /// Progress (-1) draws during the element's own pass and ImagePath (0, top) draws in
+    /// <see cref="DrawBarOverLayers"/> afterwards. Each layer resolves its own edge offsets.
+    /// Called by the viewport editor preview so bars look identical to the in-game pass.</summary>
+    public void DrawBarUnderLayers(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements)
+    {
+        foreach (var elem in elements)
+        {
+            if (!elem.IsVisible || elem.Type != UIElementType.Bar) continue;
+            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Background, elem.BarBackgroundPath);
+            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Empty, elem.BarEmptyPath);
+        }
+    }
+
+    /// <summary>Draw all Bar over-layers (ImagePath) for the given element list, AFTER the
+    /// elements' own pass. ImagePath is the topmost layer (0), so bar art sits over the
+    /// Progress fill — matching the in-game draw order.</summary>
+    public void DrawBarOverLayers(ImDrawListPtr drawList, IReadOnlyList<UIElement> elements)
+    {
+        foreach (var elem in elements)
+        {
+            if (!elem.IsVisible || elem.Type != UIElementType.Bar) continue;
+            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.ImagePath, elem.ImagePath);
+        }
+    }
+
+    /// <summary>Draw ONE Bar layer (Background / Empty / ImagePath — everything the
     /// element's own pass doesn't draw). The layer rect = element rect with that
     /// layer's four edge offsets applied (GetBarLayerRect), so the decorated frame can
     /// stick out beyond or inset into the element independently per edge.</summary>
@@ -3339,7 +3365,12 @@ ImGui.SameLine();
             {
                 _bridge.ScrollCapturedByUI = false; // reset each frame, set by DrawPlaceholder if hovered
                 var drawList = ImGui.GetWindowDrawList();
+                // Bar under-layers (Back/Background/Empty) must draw before the element pass —
+                // same as in-game, so the viewport shows bars identically.
+                DrawBarUnderLayers(drawList, _bridge.SceneRoot.Children);
                 DrawEditorUIPreview(drawList, _bridge.SceneRoot.Children, viewportMouseScreen, cachedLeftClicked, isPreview: _previewMode, isMouseDown: cachedLeftDown);
+                // Bar over-layers (ImagePath) draw AFTER the element pass so bar art sits on top.
+                DrawBarOverLayers(drawList, _bridge.SceneRoot.Children);
                 // Render dropdown popup AFTER all elements (outside any container clip rect)
                 RenderDropdownPopup(drawList, viewportMouseScreen, cachedLeftClicked, _previewMode);
             }

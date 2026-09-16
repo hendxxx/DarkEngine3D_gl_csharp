@@ -1070,6 +1070,16 @@ public class InspectorPanel
                     DrawBarLayerOffsets("Progress Offsets", "bpo", elem.BarProgOffsetLeft, elem.BarProgOffsetRight,
                         elem.BarProgOffsetTop, elem.BarProgOffsetBottom,
                         (l, r, t, b) => { elem.BarProgOffsetLeft = l; elem.BarProgOffsetRight = r; elem.BarProgOffsetTop = t; elem.BarProgOffsetBottom = b; });
+
+                    // ── Per-layer position ──
+                    // Pure X/Y translation of a layer's whole rect: size stays whatever the
+                    // edge offsets above made it, so the two controls never fight each other.
+                    DrawBarLayerPosition("Background Position", "bgp", elem.BarBgPosX, elem.BarBgPosY,
+                        (x, y) => { elem.BarBgPosX = x; elem.BarBgPosY = y; });
+                    DrawBarLayerPosition("Empty Position", "bep", elem.BarEmptyPosX, elem.BarEmptyPosY,
+                        (x, y) => { elem.BarEmptyPosX = x; elem.BarEmptyPosY = y; });
+                    DrawBarLayerPosition("Progress Position", "bpp", elem.BarProgPosX, elem.BarProgPosY,
+                        (x, y) => { elem.BarProgPosX = x; elem.BarProgPosY = y; });
                 }
                 break;
 
@@ -1590,6 +1600,32 @@ public class InspectorPanel
             apply(0f, 0f, 0f, 0f);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Reset this layer's offsets to zero (layer = element rect)");
+        ImGui.Unindent();
+    }
+
+    /// <summary>One Bar layer's X/Y position editors inside a collapsing header.
+    /// Translates the layer's whole rect in scene px (+X right, +Y down) and leaves
+    /// its size untouched — pair with <see cref="DrawBarLayerOffsets"/> to size it.</summary>
+    private static void DrawBarLayerPosition(string header, string idSuffix,
+        float x, float y, Action<float, float> apply)
+    {
+        if (!ImGui.CollapsingHeader(header))
+            return;
+
+        ImGui.Indent();
+        float nx = x, ny = y;
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"X{idSuffix}", ref nx, 0.5f, -2000f, 2000f, "%.1f")) apply(nx, ny);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Y{idSuffix}", ref ny, 0.5f, -2000f, 2000f, "%.1f")) apply(nx, ny);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Translate this layer in scene px (+X right, +Y down). Size is unchanged — use the offsets above for that.");
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"R{ idSuffix}"))
+            apply(0f, 0f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Reset this layer's position to (0, 0)");
         ImGui.Unindent();
     }
 
