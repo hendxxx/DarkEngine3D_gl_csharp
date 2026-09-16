@@ -415,6 +415,51 @@ public static class TriggerEventSystem
                 break;
             }
 
+            case TriggerActionTypes.StartDialogue:
+            {
+                // Dialogue asset id/name in Param. Opens the RPG conversation window
+                // (DialogueSystem draws it through the HUD — works in-game and preview).
+                string assetId = action.Param?.Trim() ?? "";
+                if (string.IsNullOrEmpty(assetId))
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Start Dialogue FAILED: no dialogue asset id set in the action's Param");
+                    break;
+                }
+                if (DialogueSystem.StartConversation(assetId))
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Start Dialogue → '{assetId}'");
+                break;
+            }
+
+            case TriggerActionTypes.ShowBubble:
+            {
+                // Param = text, Param2 = "type|duration" (optional). Bubble follows the
+                // player (trigger areas have no attached NPC).
+                string text = action.Param?.Trim() ?? "";
+                if (string.IsNullOrEmpty(text)) break;
+                string type = DialogueBubbleTypes.Speech;
+                float duration = 3f;
+                if (!string.IsNullOrEmpty(action.Param2))
+                {
+                    var parts = action.Param2.Split('|');
+                    if (!string.IsNullOrWhiteSpace(parts[0])) type = parts[0].Trim();
+                    if (parts.Length > 1 && float.TryParse(parts[1], out float d)) duration = d;
+                }
+                var player = FindPlayerObject();
+                if (player != null)
+                    DialogueSystem.ShowBubble(text, player, type, duration);
+                else if (LastPlayerPosition is Vector3 pp)
+                    DialogueSystem.ShowWorldBubble(text, new Vector2(pp.X, pp.Y + 2f), type, duration);
+                Console.WriteLine($"[Trigger] '{triggerName}' → Show Bubble → '{text}' ({type}, {duration:F1}s)");
+                break;
+            }
+
+            case TriggerActionTypes.HideBubble:
+            {
+                DialogueSystem.HideAllBubbles();
+                Console.WriteLine($"[Trigger] '{triggerName}' → Hide Bubble (all)");
+                break;
+            }
+
             default:
             {
                 string key = action.Type;
@@ -462,5 +507,22 @@ public static class TriggerEventSystem
         _warned.Clear();
         CheckpointPosition = null;
         Player2DStats.ResetToDefaults(); // fresh session → default HP/MP/Level/EXP/Fitness
+        DialogueSystem.ResetSession();   // fresh session → no flags/vars/progress/bubbles
+    }
+
+    /// <summary>Find the first visible Player2D object in the editor scene (used to
+    /// anchor player-following bubbles). The manager reference is refreshed by
+    /// Player2DSystem every frame (bubble Show actions fire from trigger detection
+    /// which runs inside that same update). Returns null when no player exists.</summary>
+    public static DarkEngine3D_gl_csharp.Engine.Objects.EditorObjectManager? LastEditorObjectManager { get; set; }
+
+    private static DarkEngine3D_gl_csharp.Engine.Objects.EditorObject? FindPlayerObject()
+    {
+        var mgr = LastEditorObjectManager;
+        if (mgr == null) return null;
+        foreach (var o in mgr.Objects)
+            if (o is { IsVisible: true, PrimitiveType: DarkEngine3D_gl_csharp.Engine.Objects.EditorPrimitiveType.Player2D })
+                return o;
+        return null;
     }
 }

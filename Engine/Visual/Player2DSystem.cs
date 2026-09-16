@@ -33,6 +33,11 @@ public static class Player2DSystem
     {
         if (manager == null || map == null) return;
 
+        // Refresh the trigger runtime's manager reference (bubble actions anchor to
+        // the player object found here). Also drives dialogue NPC interaction input.
+        TriggerEventSystem.LastEditorObjectManager = manager;
+        DialogueSystem.UpdateInteraction(manager, dt);
+
         // Start2D marker — used both for the deferred spawn below and for pit respawn.
         var start2d = manager.Objects.FirstOrDefault(o =>
             o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D });
@@ -118,12 +123,15 @@ public static class Player2DSystem
             // A/D or Left/Right move horizontally (Walk by default, Shift = Run);
             // Space/Up jumps when grounded. W/S fly-style vertical movement was
             // REMOVED — W no longer moves the player up (pure platformer controls).
-            float walkSpeed = MathF.Max(0.1f, player.Player2DMoveSpeed);
-            float runSpeed = MathF.Max(walkSpeed, player.Player2DRunSpeed);
-            bool left = ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow);
-            bool right = ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow);
-            bool runHeld = ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift);
-            bool jump = ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow);
+            // Conversation active → freeze ALL player input (movement, run, jump)
+            // but keep gravity/physics so the character stays planted mid-dialogue.
+            bool conversationActive = DialogueSystem.IsConversationActive;
+            float walkSpeed = conversationActive ? 0.001f : MathF.Max(0.1f, player.Player2DMoveSpeed);
+            float runSpeed = conversationActive ? 0.001f : MathF.Max(walkSpeed, player.Player2DRunSpeed);
+            bool left = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow));
+            bool right = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow));
+            bool runHeld = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift));
+            bool jump = !conversationActive && (ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow));
             float targetVx = 0f;
             if (left && !right) targetVx = -(runHeld ? runSpeed : walkSpeed);
             else if (right && !left) targetVx = runHeld ? runSpeed : walkSpeed;

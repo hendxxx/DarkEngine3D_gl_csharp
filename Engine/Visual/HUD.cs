@@ -847,6 +847,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public IReadOnlyList<ButtonDef> Buttons => _buttons;
         public int ButtonCount => _buttons.Count;
         public ButtonDef GetButton(int index) => index >= 0 && index < _buttons.Count ? _buttons[index] : default;
+        /// <summary>Number of baked font slots (external systems validate cached slot indexes against this).</summary>
+        public int FontSlotCount => _fontSlots.Count;
 
         /// <summary>Delete all font slot GPU textures and clear the cache. Keeps scratch textures intact.</summary>
         public void ClearFontSlots()

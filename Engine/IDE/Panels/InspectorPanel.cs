@@ -1788,6 +1788,10 @@ public class InspectorPanel
         if (editorObj.PrimitiveType == EditorPrimitiveType.Sprite2D)
             RenderSprite2DInspector(editorObj);
 
+        // ── NPC Dialogue: bind a dialogue asset + interaction range (Dialogue System) ──
+        if (editorObj.PrimitiveType is EditorPrimitiveType.Sprite2D or EditorPrimitiveType.Player2D)
+            RenderNpcDialogueInspector(editorObj);
+
         //  Transform 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
         {
@@ -2630,6 +2634,8 @@ public class InspectorPanel
         var sheets = IDEBridge.GetSpriteSheetNames();
         var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
 
+        RenderNpcDialogueInspector(editorObj);
+
         // Sheet combo (auto-select index 0 — dropdown rule).
         string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : ["(no sheets — import in Sprite Editor)"];
         int sheetIdx = 0;
@@ -2786,6 +2792,60 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Draw order between overlapping sprites: higher layers draw ON TOP of lower ones.\nEach layer also steps 0.01 world units closer to the camera. Default 0 = base layer.");
         }
+    }
+
+    /// <summary>NPC Dialogue binding: choose the dialogue asset (from the Dialogue    /// Editor) started when the player presses E nearby, plus the interaction range.
+    /// Also shows a quick preview button. Available for Sprite2D and Player2D objects
+    /// — any visible object with a dialogue becomes an interactable NPC.</summary>
+    private void RenderNpcDialogueInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("NPC Dialogue"))
+            return;
+
+        var assetIds = Visual.DialogueLibrary.GetAssetIds();
+        string[] arr = assetIds.Count > 0 ? assetIds.ToArray() : ["(no assets — create in Dialogue Editor)"];
+
+        int idx = 0;
+        for (int i = 0; i < arr.Length; i++)
+            if (arr[i] == editorObj.NpcDialogueId) { idx = i; break; }
+        bool missing = !string.IsNullOrEmpty(editorObj.NpcDialogueId)
+            && !assetIds.Contains(editorObj.NpcDialogueId);
+
+        string label = missing ? $"{editorObj.NpcDialogueId} (missing)"
+            : string.IsNullOrEmpty(editorObj.NpcDialogueId) ? arr[0]
+            : (idx > 0 ? arr[idx] : arr[0]);
+
+        if (ImGui.BeginCombo("Dialogue Asset", label))
+        {
+            // "(none)" clears the NPC binding.
+            if (ImGui.Selectable("(none)", string.IsNullOrEmpty(editorObj.NpcDialogueId)))
+                editorObj.NpcDialogueId = "";
+            for (int i = 0; i < arr.Length; i++)
+            {
+                if (assetIds.Count == 0) break;
+                bool sel = arr[i] == editorObj.NpcDialogueId;
+                if (ImGui.Selectable(arr[i], sel))
+                    editorObj.NpcDialogueId = arr[i];
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Dialogue played when the player presses E within range.\nAssets are created in the Dialogue Editor (2D Sidescroller menu).\nEmpty = this object is not an NPC.");
+
+        if (missing)
+            ImGui.TextColored(new Vector4(1f, 0.5f, 0.3f, 1f),
+                $"Asset '{editorObj.NpcDialogueId}' not found — create it in the Dialogue Editor");
+
+        float range = Visual.DialogueSystem.InteractionRange;
+        if (ImGui.DragFloat("Interaction Range", ref range, 0.1f, 0.5f, 15f, "%.1f"))
+            Visual.DialogueSystem.InteractionRange = MathF.Max(0.5f, range);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("World-unit distance at which the [E] Talk prompt appears.\nGlobal for all NPCs (0.5–15).");
+
+        // Quick preview: start the bound conversation immediately.
+        if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))
+            Visual.DialogueSystem.StartConversation(editorObj.NpcDialogueId, editorObj);
     }
 
     private void RenderPlayer2DInspector(EditorObject editorObj)

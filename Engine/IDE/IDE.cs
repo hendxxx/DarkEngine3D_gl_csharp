@@ -38,6 +38,7 @@ public class IDE : IDisposable
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
     private readonly MapEditorPanel _mapEditor = null!;
+    private readonly DialogueEditorPanel _dialogueEditor = null!;
     /// <summary>Intensity handed from the Camera Shake trigger action to BeginShake
     /// (the runtime fires duration and intensity as two separate callbacks).</summary>
     private float _pendingShakeIntensity = 1f;
@@ -698,6 +699,7 @@ public class IDE : IDisposable
             _playerInfo = new PlayerInfoPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
+            _dialogueEditor = new DialogueEditorPanel(Bridge);
             _ideSettings = new IDESettingsPanel(Bridge);
 
             // Wire tilemap painting: viewport raycasts → panel paint/fill/pick handlers.
@@ -1219,6 +1221,7 @@ public class IDE : IDisposable
                 // ── 2D Sidescroller Panels ──
                 _spriteEditor.ShowInMenu();
                 _mapEditor.ShowInMenu();
+                _dialogueEditor.ShowInMenu();
                 ImGui.Separator();
                 _ideSettings.ShowInMenu();
 
@@ -1306,6 +1309,7 @@ public class IDE : IDisposable
         // ── 2D Sidescroller Panels ──
         _spriteEditor.Render();
         _mapEditor.Render();
+        _dialogueEditor.Render();
         _ideSettings.Render();
 
         // ── Global undo/redo routing (after panels, before popups) ──

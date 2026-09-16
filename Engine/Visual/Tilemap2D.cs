@@ -512,6 +512,8 @@ public static class TriggerActionTypes
     public const string SpawnEffect = "Spawn Effect";
     public const string SpawnObject = "Spawn Object";
     public const string StartDialogue = "Start Dialogue";
+    public const string ShowBubble = "Show Bubble";
+    public const string HideBubble = "Hide Bubble";
     public const string StartCutscene = "Start Cutscene";
     public const string CameraShake = "Camera Shake";
     public const string UnlockDoor = "Unlock Door";
@@ -524,7 +526,7 @@ public static class TriggerActionTypes
     public static readonly string[] All =
     [
         SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect,
-        SpawnObject, StartDialogue, StartCutscene, CameraShake, UnlockDoor,
+        SpawnObject, StartDialogue, ShowBubble, HideBubble, StartCutscene, CameraShake, UnlockDoor,
         GiveItem, ActivateQuest, CompleteQuest, RunScript
     ];
 
@@ -533,7 +535,8 @@ public static class TriggerActionTypes
     /// failing silently — the editor still allows authoring them for future use.</summary>
     public static bool IsImplemented(string type) => type switch
     {
-        SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake => true,
+        SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake
+            or StartDialogue or ShowBubble or HideBubble => true,
         _ => false
     };
 }

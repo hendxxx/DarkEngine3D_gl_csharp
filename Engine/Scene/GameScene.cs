@@ -163,6 +163,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             IsVisible = false,
         };
 
+        // ── Dialogue System modal overlay (IsOverlayVisible gate) ──
+        // Registered into the scene root so ViewportPanel's overlay scan sees a visible
+        // Container while a conversation runs: editor fly/click/paint freeze behind the
+        // window exactly like authored UI overlays. Kept hidden when no conversation.
+        private readonly UIElement _dialogueOverlay = new()
+        {
+            Name = "DialogueOverlay",
+            Type = UIElementType.Container,
+            IsVisible = false,
+            Width = 0f,
+            Height = 0f,
+        };
+
         private int _renderedTris;
 
         //  IDE focus-camera state
@@ -626,6 +639,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // User can create UI via the IDE SceneDetail panel (+ Add button),
             // or use the "↻ Reload" button to load from a previously saved .ing file.
             _sceneRoot.ClearChildren();
+            _sceneRoot.AddChild(_dialogueOverlay); // modal gate for conversations (kept hidden)
 
             // ── Register scene root for IDE Save All ──
             SceneAssetSerializer.RegisterSceneRoot("GameScene", _sceneRoot);
@@ -667,9 +681,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 goto SkipInput;
             }
 
-                //  ESCAPE: always toggle pause (ESC always opens/closes the menu) 
+                //  ESCAPE: toggle pause — UNLESS a dialogue conversation is open, in
+                // which case ESC closes the conversation first (dialogue owns input).
                 bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
-                if (escapeDown && !_escapeWasDown && !_confirmingExit)
+                bool dialogueOwnsEsc = Visual.DialogueSystem.IsConversationActive;
+                if (escapeDown && !_escapeWasDown && !_confirmingExit && dialogueOwnsEsc)
+                {
+                    // Consumed by DialogueSystem.UpdateInteraction (EndConversation).
+                }
+                else if (escapeDown && !_escapeWasDown && !_confirmingExit)
                 {
                     _paused = !_paused;
                     if (_paused)
@@ -1355,6 +1375,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float notifY = Glfw.WindowHeight * 0.15f;
                 _hud.DrawText(_saveNotification, notifX, notifY, new Vector3(0.3f, 0.9f, 0.4f) * fade);
             }
+            // ── Dialogue System: bubbles + conversation window (all modes — preview
+            // shows it too so the designer can tune the window live). The hidden
+            // DialogueOverlay container doubles as the IsOverlayVisible modal gate so
+            // editor fly/pick/paint freeze while a conversation is open. ──
+            _dialogueOverlay.IsVisible = DialogueSystem.IsConversationActive;
+            DialogueSystem.ShowPrompts = isPreviewMode;
+            DialogueSystem.Tick(_deltaTime, _hud, _camera, _sceneManager.Bridge?.EditorObjectManager);
+
             //  HUD debug overlay — hidden in preview/in-game mode for a clean view
             if (!isPreviewMode)
             {
@@ -1575,6 +1603,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 CameraYaw = _camera.Yaw,
                 CameraPitch = _camera.Pitch,
                 WorldTime = _light.WorldTime,
+
+                // Dialogue progress (restored on load — quest flags survive saves).
+                DialogueCompleted = DialogueSystem.CaptureState().completed,
+                DialogueFlags = DialogueSystem.CaptureState().flags,
+                DialogueVariables = DialogueSystem.CaptureState().vars,
+
                 SaveTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
 
@@ -1633,6 +1667,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Restore world time
             _light.WorldTime = data.WorldTime;
+
+            // Restore dialogue progress (completed conversations, flags, variables).
+            DialogueSystem.RestoreState(data.DialogueCompleted, data.DialogueFlags, data.DialogueVariables);
 
             _saveNotification = $"Game loaded from Slot {slotIndex + 1}!";
             _saveNotificationTimer = 3f;

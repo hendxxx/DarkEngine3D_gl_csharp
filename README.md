@@ -26,7 +26,7 @@ OpenGL/C# game engine with ImGui-based IDE editor.
   - **Tilemap in 3D** — rendered as an upright textured plane at world origin; camera auto-switches to ortho front view (editor and in-game)
   - **Parallax Backgrounds** — per-layer ScrollFactor/ZPosition/Alpha, aspect-preserving sizing, RepeatX/Y wrap, seamless scroll preview while panning, correct rendering in Play in Preview
   - **Collision Flags** — per-tile collision with dedicated Collision paint tool; full 3D translucent boxes with bright edges centered on the tile; per-layer collision IDs persisted
-  - **Trigger Areas** — non-blocking event volumes with the same drag/resize editor as collision boxes (snap to grid, copy/paste/duplicate); conditions On Enter / On Stay (interval) / On Exit + optional moving-right gate; 16 action types incl. Save Game, Save/Load Checkpoint, Change Map, and earthquake Camera Shake; triggers persist with the map and fire in preview/in-game
+  - **Trigger Areas** — non-blocking event volumes with the same drag/resize editor as collision boxes (snap to grid, copy/paste/duplicate); conditions On Enter / On Stay (interval) / On Exit + optional moving-right gate; 18 action types incl. Save Game, Save/Load Checkpoint, Change Map, Start Dialogue, Show/Hide Bubble, and earthquake Camera Shake; triggers persist with the map and fire in preview/in-game
   - **Player 2D** — capsule-collider character with animated sprite from the Sprite Editor (sheet + clip pickers, FPS/loop/speed respected), idle ↔ walk clip auto-switching while moving, sprite mirrors when facing left, sprite previews live in edit mode
   - **Start Marker** — player spawn point; Player2D spawns there in preview/in-game
   - **Player Physics** — gravity + capsule-vs-collision-tile resolution (ground/ceiling) active in preview/in-game only
@@ -37,6 +37,7 @@ OpenGL/C# game engine with ImGui-based IDE editor.
   - **Persistence** — maps saved to `Assets/Maps/*.tilemap.json` + scene `.ing`, autoloaded on project open; editor aids (grid/collision/spawn gizmos) auto-hidden in-game
   - **Player Info Panel & Stats** — live monitor/editor of player status (menu *View → Player Info*); see [Player Stats Reference](#player-stats-reference) below
   - **UI Bar Component** — progress/status bar built from 3 images (Background frame / Empty interior / Progress fill, plus the element's own Image as back layer) with fill direction, frame inset, and **Stat Binding**: pick Health/Mana/Level/Experience/Fitness and the bar mirrors `Player2DStats` live in editor preview and in-game; persisted per scene
+  - **Dialogue System** — data-driven RPG conversations + follow-bubbles, fully authored in the **Dialogue Editor** (2D Sidescroller menu): branching nodes with choices/speakers/portraits/emotions, reusable color themes, 7-language localization table, condition gates (level/flag/item/quest/gold) and trigger-action results; NPCs (Sprite2D/Player2D with a dialogue id) show an "[E] Talk" prompt and open the conversation window in-game and in preview; progress (completed/flags/variables) saves with the game
 - **IDE Settings Panel** — VSync, MSAA antialiasing, debug grid, font sizes with instant apply
 
 ## Player Stats Reference

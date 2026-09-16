@@ -218,8 +218,8 @@ Non-blocking event volumes on the tilemap: the player passes through them; enter
 |---------|-------------|
 | **Trigger Area** | Rectangle in grid pixel coords (LeftPx/TopPx/WidthPx/HeightPx) on the tilemap; no physical collision — detection only |
 | **Conditions** | On Enter / On Stay (with repeat interval in seconds) / On Exit; optional gate "only when moving right" |
-| **Actions (16 types)** | Save Game, Save Checkpoint, Load Checkpoint, Change Map, Play Sound, Play Music, Spawn Effect, Spawn Object, Start Dialogue, Start Cutscene, Camera Shake, Unlock Door, Give Item, Activate Quest, Complete Quest, Run Script — each with Param/Param2/Delay |
-| **Wired Runtime** | Save Game (next empty slot), Save Checkpoint (records player position), Load Checkpoint (teleport to checkpoint, fallback = start point), Change Map (loads `Assets/Maps/{name}.tilemap.json` in place), Camera Shake (earthquake-style, intensity × duration) |
+| **Actions (18 types)** | Save Game, Save Checkpoint, Load Checkpoint, Change Map, Play Sound, Play Music, Spawn Effect, Spawn Object, Start Dialogue, Show Bubble, Hide Bubble, Start Cutscene, Camera Shake, Unlock Door, Give Item, Activate Quest, Complete Quest, Run Script — each with Param/Param2/Delay |
+| **Wired Runtime** | Save Game (next empty slot), Save Checkpoint (records player position), Load Checkpoint (teleport to checkpoint, fallback = start point), Change Map (loads `Assets/Maps/{name}.tilemap.json` in place), Camera Shake (earthquake-style, intensity × duration), Start Dialogue (opens the Dialogue System conversation), Show/Hide Bubble (player-following speech bubble; Param2 = `type\|duration`) |
 | **Checkpoint Chain** | Save Checkpoint → player position stored for the session; Load Checkpoint zeroed velocity + grounded reset; pit-death respawn prefers the checkpoint; checkpoint state resets on each new play session |
 | **Camera Shake** | View-height-relative amplitude (7% × intensity), 3-layer noise + ±1.2° camera roll, quadratic decay, random seed per shake |
 | **Visual Editor** | Trigger tool: drag-create (snaps to tile bounds), move by dragging the body, resize via 8 handles, Delete/Ctrl+C/X/V/Ctrl+D; "Show Triggers" checkbox (persisted); Trigger Areas panel: list + rename + enable, conditions, per-action editor with contextual params + reorder, precise geometry |
@@ -238,6 +238,25 @@ Per-sprite emissive boost so only bright sprite pixels (fire, lava, candles) cro
 | **Baked to Vertices** | Boost/tint/flicker multiply the per-vertex tint (`aTint`) — the map2d shader has no tint uniform by design |
 | **Inspector** | "Glow (bloom)" slider + "Glow Tint" picker + "Flicker" checkbox in both the Sprite2D and Player2D sections |
 | **Persistence** | Saved in the scene `.ing` via `EditorObjectData` (Glow + GlowColorX/Y/Z + Flicker), symmetric save/load |
+
+### 2.11 Dialogue System (Conversation + Bubble)
+
+Data-driven dialogue: RPG conversation window + world-space speech bubbles, authored entirely in the editor.
+
+| Feature | Description |
+|---------|-------------|
+| **Dialogue Assets** | `DialogueAsset` (Id, Name, StartNodeId, ThemeName) with `DialogueNode` pages — text, speaker, portrait, emotion, choices, auto-advance, per-node start/end actions; branching via NextNodeId / choice targets (empty = end). Stored in `Assets/Dialogue/dialogues.json` |
+| **Dialogue Editor** | Panel (2D Sidescroller menu): asset list + add/duplicate/delete, node editor (speaker/emotion/portrait/text/next/choices/actions), speaker manager, theme editor (colors, fonts, typewriter speed), language dropdown + translation table, ▶ Start/■ Stop preview |
+| **Conversation Runtime** | `DialogueSystem` — bottom window with portrait frame, colored speaker name, typewriter text, numbered choices (1-9 / arrows + E / Space next / Esc close); closes with a fade; freezes player input + editor camera via the `DialogueOverlay` modal gate |
+| **Speakers** | Reusable `SpeakerData` (Id, Name, portrait, name color); portraits support emotion variants (`<name>_Happy.png` tried before the base) |
+| **Themes** | `DialogueThemeData` with optional parent inheritance — window/border/name/text/choice/bubble colors, fonts, typewriter speed, optional background image; built-in Default + Medieval |
+| **Bubbles** | `ShowBubble/HideBubble` follow any object (player/NPC) with fade in/out, auto-hide on duration/distance, type-tinted borders (Speech/Thought/Quest/Warning); also fired from trigger actions |
+| **NPC Interaction** | `EditorObject.NpcDialogueId` (Inspector: NPC Dialogue section) — Sprite2D/Player2D with a dialogue id shows an "[E] Talk" prompt in range and starts the conversation on E |
+| **Conditions** | Choice conditions: `level:5`, `flag:name`, `item:potion`, `quest:id`, `questdone:id`, `gold:100`, `var:name:10` — unknown conditions fail closed |
+| **Actions** | Choices/nodes execute trigger-catalog actions (Give Item, Activate Quest, Change Map, Play Sound, Camera Shake…) — no new action types needed |
+| **Localization** | `DialogueLibrary.CurrentLanguage` + per-language override tables (English/Indonesia/Japanese/Chinese/Korean/Thai/Vietnamese); untranslated text passes through |
+| **Save/Load** | `SaveData.DialogueCompleted/Flags/Variables` captured on save, restored on load; session state resets on new play sessions |
+| **Trigger Integration** | Start Dialogue (Param = asset id), Show Bubble (Param = text, Param2 = `type\|seconds`), Hide Bubble — wired in `TriggerEventSystem` |
 
 ---
 

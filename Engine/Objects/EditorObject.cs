@@ -312,6 +312,12 @@ public unsafe class EditorObject
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
 
+    // ── NPC dialogue binding (Dialogue System) ──
+    /// <summary>Dialogue asset id shown when the player presses the interact key (E)
+    /// within range. Empty = not an NPC (no prompt, no interaction). Set in the
+    /// Inspector; the asset itself lives in the Dialogue Editor.</summary>
+    public string NpcDialogueId { get; set; } = "";
+
     // ── Player2D: sprite animation + capsule collider ──
     /// <summary>Sprite sheet name (from Sprite Editor) driving the player sprite.</summary>
     public string Player2DSpriteSheet { get; set; } = "";

@@ -837,9 +837,8 @@ public class SceneManagerPanel
         // for old .ing files (see LoadFromIngFile).
 
         foreach (var (name, editorScene) in _bridge.EditorScenes)
-        {
-            var asset = new SceneAsset
-            {
+        {                    var asset = new SceneAsset
+                    {
                 SceneName = name,
                 Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
                 BackgroundObjects = [],
@@ -945,6 +944,7 @@ public class SceneManagerPanel
                         SkySettings = obj.SkySettings,
                         Player2DSpriteSheet = obj.Player2DSpriteSheet,
                         Player2DAnimationClip = obj.Player2DAnimationClip,
+                        NpcDialogueId = obj.NpcDialogueId,
                         Player2DHeight = obj.Player2DHeight,
                         Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
                         Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
@@ -1557,6 +1557,7 @@ public class SceneManagerPanel
                         // ── Player2D: restore sprite animation + capsule settings ──
                         obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
                         obj.Player2DAnimationClip = objData.Player2DAnimationClip;
+                        obj.NpcDialogueId = objData.NpcDialogueId;
                         // Legacy WalkSheet/WalkClip (removed fields) migrate into the Walk
                         // action so old .ing files keep their moving animation after load.
                         if (!string.IsNullOrEmpty(objData.Player2DWalkClip))

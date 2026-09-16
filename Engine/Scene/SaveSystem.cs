@@ -27,6 +27,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         // World
         public float WorldTime { get; set; }
 
+        // Dialogue progress (Dialogue System): completed conversations, flags,
+        // and "name=value" numeric variables. Restored on load.
+        public List<string> DialogueCompleted { get; set; } = [];
+        public List<string> DialogueFlags { get; set; } = [];
+        public List<string> DialogueVariables { get; set; } = [];
+
         // Metadata
         public string SaveTime { get; set; } = "";
     }

@@ -202,6 +202,11 @@ public class EditorObjectData
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
 
+    // ── NPC dialogue binding (Dialogue System) ──
+    /// <summary>Dialogue asset id (Dialogue Editor) started when the player presses
+    /// E within range. Empty = not an NPC. Persisted per object.</summary>
+    public string NpcDialogueId { get; set; } = "";
+
     // ── Player2D (animated sprite + capsule collider) ──
     public string Player2DSpriteSheet { get; set; } = "";
     public string Player2DAnimationClip { get; set; } = "";
