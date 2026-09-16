@@ -363,6 +363,9 @@ public static class SceneAssetSerializer
             BarBackgroundPath = PathHelpers.Resolve(data.BarBackgroundPath),
             BarEmptyPath = PathHelpers.Resolve(data.BarEmptyPath),
             BarProgressPath = PathHelpers.Resolve(data.BarProgressPath),
+            BarBgColor = ArrayToVec3(data.BarBgColor, new Vector3(0.10f, 0.10f, 0.14f)),
+            BarEmptyColor = ArrayToVec3(data.BarEmptyColor, new Vector3(0.05f, 0.05f, 0.08f)),
+            BarProgressColor = ArrayToVec3(data.BarProgressColor, new Vector3(0.30f, 0.70f, 1.00f)),
             BarInset = data.BarInset, // legacy — kept for re-save, unused when offsets set
             BarDirection = data.BarDirection,
             BarStatBinding = data.BarStatBinding ?? "None",
@@ -504,6 +507,9 @@ public static class SceneAssetSerializer
             BarBackgroundPath = PathHelpers.MakeRelative(elem.BarBackgroundPath),
             BarEmptyPath = PathHelpers.MakeRelative(elem.BarEmptyPath),
             BarProgressPath = PathHelpers.MakeRelative(elem.BarProgressPath),
+            BarBgColor = Vec3ToArray(elem.BarBgColor),
+            BarEmptyColor = Vec3ToArray(elem.BarEmptyColor),
+            BarProgressColor = Vec3ToArray(elem.BarProgressColor),
             BarInset = 0f, // migrated into the per-layer offsets below
             BarDirection = elem.BarDirection,
             BarStatBinding = elem.BarStatBinding,

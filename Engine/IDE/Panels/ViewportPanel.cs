@@ -1144,13 +1144,23 @@ public unsafe class ViewportPanel
                 // scales with the fraction along the fill direction.
                 var (pgX, pgY, pgW, pgH) = elem.GetBarLayerRect(sx0, sy0, sx1 - sx0, sy1 - sy0, UIElement.BarLayer.Progress);
 
-                // ── Progress fill (layer -1): width only ──
-                if (!string.IsNullOrEmpty(elem.BarProgressPath) && frac > 0.001f)
+                // ── Progress fill (layer -1): width only. Uses the layer image when
+                // set, otherwise falls back to a flat color so the bar stays visible.
+                if (frac > 0.001f)
                 {
-                    uint progTex = LoadOrGetPreviewTexture(elem.BarProgressPath);
+                    uint progTex = string.IsNullOrEmpty(elem.BarProgressPath)
+                        ? 0u
+                        : LoadOrGetPreviewTexture(elem.BarProgressPath);
                     if (progTex != 0)
                         drawList.AddImage((nint)progTex, new Vector2(pgX, pgY),
                             new Vector2(pgX + pgW * frac, pgY + pgH));
+                    else
+                    {
+                        var pc = elem.BarProgressColor;
+                        uint progCol = ImGui.ColorConvertFloat4ToU32(new Vector4(pc.X, pc.Y, pc.Z, elem.Opacity));
+                        drawList.AddRectFilled(new Vector2(pgX, pgY),
+                            new Vector2(pgX + pgW * frac, pgY + pgH), progCol);
+                    }
                 }
 
                 // Editor-mode only: show the fraction as text so tuning is possible without play.
@@ -2408,8 +2418,8 @@ public unsafe class ViewportPanel
         foreach (var elem in elements)
         {
             if (!elem.IsVisible || elem.Type != UIElementType.Bar) continue;
-            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Background, elem.BarBackgroundPath);
-            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.Empty, elem.BarEmptyPath);
+            DrawBarLayer(elem, drawList, UIElement.BarLayer.Background, elem.BarBackgroundPath, elem.BarBgColor, true);
+            DrawBarLayer(elem, drawList, UIElement.BarLayer.Empty, elem.BarEmptyPath, elem.BarEmptyColor, true);
         }
     }
 
@@ -2421,7 +2431,7 @@ public unsafe class ViewportPanel
         foreach (var elem in elements)
         {
             if (!elem.IsVisible || elem.Type != UIElementType.Bar) continue;
-            DrawBarUnderLayer(elem, drawList, UIElement.BarLayer.ImagePath, elem.ImagePath);
+            DrawBarLayer(elem, drawList, UIElement.BarLayer.ImagePath, elem.ImagePath, default, false);
         }
     }
 
@@ -2429,11 +2439,14 @@ public unsafe class ViewportPanel
     /// element's own pass doesn't draw). The layer rect = element rect with that
     /// layer's four edge offsets applied (GetBarLayerRect), so the decorated frame can
     /// stick out beyond or inset into the element independently per edge.</summary>
-    private void DrawBarUnderLayer(UIElement elem, ImDrawListPtr drawList, UIElement.BarLayer layer, string path)
+    private void DrawBarLayer(UIElement elem, ImDrawListPtr drawList, UIElement.BarLayer layer,
+        string path, Vector3 color, bool colorFallback)
     {
-        if (string.IsNullOrEmpty(path)) return;
-        uint texId = LoadOrGetPreviewTexture(path);
-        if (texId == 0) return;
+        uint texId = string.IsNullOrEmpty(path) ? 0u : LoadOrGetPreviewTexture(path);
+        bool hasTex = texId != 0;
+        // Layers that may be authored as pure color (Background / Empty) still draw
+        // when no image is set; the top ImagePath layer stays image-only.
+        if (!hasTex && !colorFallback) return;
 
         // Resolve the element rect exactly like the main loop does (auto-fill / auto-center /
         // parent chain / anchor).
@@ -2464,7 +2477,15 @@ public unsafe class ViewportPanel
         float sx1 = _imageMin.X + ((lx + lw) / _texW) * _imageSize.X;
         float sy1 = _imageMin.Y + ((ly + lh) / _texH) * _imageSize.Y;
 
-        drawList.AddImage((nint)texId, new Vector2(sx0, sy0), new Vector2(sx1, sy1));
+        if (hasTex)
+        {
+            drawList.AddImage((nint)texId, new Vector2(sx0, sy0), new Vector2(sx1, sy1));
+        }
+        else
+        {
+            uint fill = ImGui.ColorConvertFloat4ToU32(new Vector4(color.X, color.Y, color.Z, elem.Opacity));
+            drawList.AddRectFilled(new Vector2(sx0, sy0), new Vector2(sx1, sy1), fill);
+        }
     }
 
     /// <summary>True when the mouse currently hovers the SINGLE selection gizmo

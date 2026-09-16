@@ -1052,6 +1052,17 @@ public class InspectorPanel
                     DrawImagePathInput("Empty", "##bar_empty", elem, v => elem.BarEmptyPath = v);
                     DrawImagePathInput("Progress", "##bar_prog", elem, v => elem.BarProgressPath = v);
 
+                    // ── Per-layer colors ──
+                    // Used as the layer fill when that layer has no image assigned.
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Colors (used when a layer has no image)");
+                    DrawColorPicker("Background Color", "bar_bgc", elem.BarBgColor, c => elem.BarBgColor = c,
+                        defaultColor: new(0.10f, 0.10f, 0.14f));
+                    DrawColorPicker("Empty Color", "bar_bec", elem.BarEmptyColor, c => elem.BarEmptyColor = c,
+                        defaultColor: new(0.05f, 0.05f, 0.08f));
+                    DrawColorPicker("Progress Color", "bar_bpc", elem.BarProgressColor, c => elem.BarProgressColor = c,
+                        defaultColor: new(0.30f, 0.70f, 1.00f));
+
                     ImGui.Separator();
                     string[] barDirs = ["Left to Right", "Right to Left", "Bottom to Top", "Top to Bottom"];
                     int barDir = Math.Clamp(elem.BarDirection, 0, 3);

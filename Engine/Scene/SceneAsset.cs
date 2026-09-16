@@ -121,6 +121,10 @@ public class SceneElementData
     public string BarBackgroundPath { get; set; } = "";
     public string BarEmptyPath { get; set; } = "";
     public string BarProgressPath { get; set; } = "";
+    /// <summary>Solid fill color of each Bar layer (RGB 0..1).</summary>
+    public float[] BarBgColor { get; set; } = [0.10f, 0.10f, 0.14f];
+    public float[] BarEmptyColor { get; set; } = [0.05f, 0.05f, 0.08f];
+    public float[] BarProgressColor { get; set; } = [0.30f, 0.70f, 1.00f];
     /// <summary>Legacy shared inset — migrated into the per-layer offsets on load.</summary>
     public float BarInset { get; set; } = 0f;
     /// <summary>0 = Left→Right, 1 = Right→Left, 2 = Bottom→Top, 3 = Top→Bottom.</summary>

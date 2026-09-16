@@ -72,6 +72,7 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
   - Rule 3: Kotak kuning = group move drag. Semua elemen selected bisa digeser bersama.
 - **DrawPlaceholder Signature**: `DrawPlaceholder(drawList, placeholder, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, parentScrollOffsetY)`
 - **DrawEditorUIPreview Signature**: `DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate, scrollOffsetY, clipBounds)`
+- **UI Bar Color Fallback**: Bar (`UIElementType.Bar`) punya tiga warna fallback — `BarBgColor`, `BarEmptyColor`, `BarProgressColor` (`Vector3`, RGB 0..1). Tiap layer (`Background`/`Empty`/`Progress`) menggambar rect warna ini kalau `ImagePath` layer kosong, jadi Bar tanpa sprite tetap terlihat (editor DAN runtime). Layer atas `ImagePath` tetap image-only. Warna fallback dikali `elem.Opacity` supaya fade berlaku seragam. Persist via `SceneElementData`/`SceneAssetSerializer` sebagai float array (default = nilai runtime, jadi `.ing` lama tetap load). Picker ada di InspectorPanel di bawah header "Colors (used when a layer has no image)".
 
 ## 2D Sidescroller System Rules:
 - **Map2D Rendering**: `EditorObject` dengan `PrimitiveType.Map2D` merender tilemap sebagai plane upright di world origin. Mesh di-bake dalam world units (px × `Tilemap2D.WorldScale` = 0.1); Position/Scale/Rotation objek TIDAK di-applikasikan ke mesh — paint raycast plane harus match.

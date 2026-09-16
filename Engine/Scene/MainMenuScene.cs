@@ -1434,28 +1434,38 @@ public unsafe class MainMenuScene : IScene
                 ? Math.Clamp((elem.CurrentValue - elem.MinValue) / (elem.MaxValue - elem.MinValue), 0f, 1f)
                 : 0f;
 
-        // ── Layer Background (-3): frame (its own per-edge offsets) ──
-        if (!string.IsNullOrEmpty(elem.BarBackgroundPath) &&
-            _imageTextureCache.TryGetValue(elem.BarBackgroundPath, out uint bgTex) && bgTex != 0)
+        // ── Layer Background (-3): frame (its own per-edge offsets) —
+        // image when set, otherwise a flat color fill.
         {
             var (bgx, bgy, bgw, bgh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Background);
-            _hud!.DrawImage(bgx, bgy, bgw, bgh, bgTex);
+            if (!string.IsNullOrEmpty(elem.BarBackgroundPath) &&
+                _imageTextureCache.TryGetValue(elem.BarBackgroundPath, out uint bgTex) && bgTex != 0)
+                _hud!.DrawImage(bgx, bgy, bgw, bgh, bgTex);
+            else
+                _hud!.DrawBox(bgx, bgy, bgw, bgh, elem.BarBgColor * elem.Opacity);
         }
 
-        // ── Layer Empty (-2): interior (its own per-edge offsets) ──
-        if (!string.IsNullOrEmpty(elem.BarEmptyPath) &&
-            _imageTextureCache.TryGetValue(elem.BarEmptyPath, out uint emptyTex) && emptyTex != 0)
+        // ── Layer Empty (-2): interior (its own per-edge offsets) —
+        // image when set, otherwise a flat color fill.
         {
             var (emx, emy, emw, emh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Empty);
-            _hud!.DrawImage(emx, emy, emw, emh, emptyTex);
+            if (!string.IsNullOrEmpty(elem.BarEmptyPath) &&
+                _imageTextureCache.TryGetValue(elem.BarEmptyPath, out uint emptyTex) && emptyTex != 0)
+                _hud!.DrawImage(emx, emy, emw, emh, emptyTex);
+            else
+                _hud!.DrawBox(emx, emy, emw, emh, elem.BarEmptyColor * elem.Opacity);
         }
 
-        // ── Layer Progress (-1): fill — width scales with the fraction ──
-        if (!string.IsNullOrEmpty(elem.BarProgressPath) && frac > 0.001f &&
-            _imageTextureCache.TryGetValue(elem.BarProgressPath, out uint progTex) && progTex != 0)
+        // ── Layer Progress (-1): fill — width scales with the fraction —
+        // image when set, otherwise a flat color fill.
+        if (frac > 0.001f)
         {
             var (pgx, pgy, pgw, pgh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Progress);
-            _hud!.DrawImage(pgx, pgy, pgw * frac, pgh, progTex);
+            if (!string.IsNullOrEmpty(elem.BarProgressPath) &&
+                _imageTextureCache.TryGetValue(elem.BarProgressPath, out uint progTex) && progTex != 0)
+                _hud!.DrawImage(pgx, pgy, pgw * frac, pgh, progTex);
+            else
+                _hud!.DrawBox(pgx, pgy, pgw * frac, pgh, elem.BarProgressColor * elem.Opacity);
         }
 
         // ── Layer ImagePath (0, top): element's own art over the fill ──

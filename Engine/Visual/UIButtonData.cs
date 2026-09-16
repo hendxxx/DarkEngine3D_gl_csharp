@@ -322,6 +322,17 @@ public class UIElement
     public float BarProgPosX { get; set; }
     public float BarProgPosY { get; set; }
 
+    // ── Bar per-layer fallback colors ──
+    // Each Bar layer draws its image when a path is set; when the path is empty
+    // (or the image fails to load) the layer falls back to this flat color, so a
+    // Bar is still fully visible while authoring.
+    /// <summary>Fill color for the Background layer when BarBackgroundPath is empty.</summary>
+    public Vector3 BarBgColor { get; set; } = new(0.10f, 0.10f, 0.14f);
+    /// <summary>Fill color for the Empty layer when BarEmptyPath is empty.</summary>
+    public Vector3 BarEmptyColor { get; set; } = new(0.05f, 0.05f, 0.08f);
+    /// <summary>Fill color for the Progress fill when BarProgressPath is empty.</summary>
+    public Vector3 BarProgressColor { get; set; } = new(0.30f, 0.70f, 1.00f);
+
     // ── Dropdown colors ──
     /// <summary>Color of the dropdown arrow icon.</summary>
     public Vector3 ArrowColor { get; set; } = new(0.5f, 0.5f, 0.7f);

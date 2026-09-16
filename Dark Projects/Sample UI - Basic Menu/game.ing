@@ -168,6 +168,21 @@
           "barBackgroundPath": "",
           "barEmptyPath": "",
           "barProgressPath": "",
+          "barBgColor": [
+            0.1,
+            0.1,
+            0.14
+          ],
+          "barEmptyColor": [
+            0.05,
+            0.05,
+            0.08
+          ],
+          "barProgressColor": [
+            0.3,
+            0.7,
+            1
+          ],
           "barInset": 0,
           "barDirection": 0,
           "barStatBinding": "None",
@@ -346,6 +361,21 @@
               "barBackgroundPath": "",
               "barEmptyPath": "",
               "barProgressPath": "",
+              "barBgColor": [
+                0.1,
+                0.1,
+                0.14
+              ],
+              "barEmptyColor": [
+                0.05,
+                0.05,
+                0.08
+              ],
+              "barProgressColor": [
+                0.3,
+                0.7,
+                1
+              ],
               "barInset": 0,
               "barDirection": 0,
               "barStatBinding": "None",
@@ -524,6 +554,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -703,6 +748,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -882,6 +942,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -1061,6 +1136,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -1240,6 +1330,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -1419,6 +1524,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -4796,9 +4916,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        1.824337,
-        1.6873771,
-        6.9884896
+        61.997982,
+        32,
+        307.03183
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
@@ -4983,6 +5103,21 @@
           "barBackgroundPath": "",
           "barEmptyPath": "",
           "barProgressPath": "",
+          "barBgColor": [
+            0.1,
+            0.1,
+            0.14
+          ],
+          "barEmptyColor": [
+            0.05,
+            0.05,
+            0.08
+          ],
+          "barProgressColor": [
+            0.3,
+            0.7,
+            1
+          ],
           "barInset": 0,
           "barDirection": 0,
           "barStatBinding": "None",
@@ -5043,7 +5178,7 @@
               ],
               "alignment": "Center",
               "isVisible": false,
-              "opacity": 0.25,
+              "opacity": 1,
               "autoFillWindow": true,
               "autoCenterX": false,
               "autoCenterY": false,
@@ -5161,6 +5296,21 @@
               "barBackgroundPath": "",
               "barEmptyPath": "",
               "barProgressPath": "",
+              "barBgColor": [
+                0.1,
+                0.1,
+                0.14
+              ],
+              "barEmptyColor": [
+                0.05,
+                0.05,
+                0.08
+              ],
+              "barProgressColor": [
+                0.3,
+                0.7,
+                1
+              ],
               "barInset": 0,
               "barDirection": 0,
               "barStatBinding": "None",
@@ -5339,6 +5489,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -5517,6 +5682,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -5698,6 +5878,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -5877,6 +6072,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -6056,6 +6266,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -6235,6 +6460,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -6414,6 +6654,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -6593,6 +6848,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -6772,6 +7042,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -6951,6 +7236,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -7130,6 +7430,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -7309,6 +7624,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -7488,6 +7818,21 @@
                       "barBackgroundPath": "",
                       "barEmptyPath": "",
                       "barProgressPath": "",
+                      "barBgColor": [
+                        0.1,
+                        0.1,
+                        0.14
+                      ],
+                      "barEmptyColor": [
+                        0.05,
+                        0.05,
+                        0.08
+                      ],
+                      "barProgressColor": [
+                        0.3,
+                        0.7,
+                        1
+                      ],
                       "barInset": 0,
                       "barDirection": 0,
                       "barStatBinding": "None",
@@ -7669,6 +8014,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -7848,6 +8208,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -8027,6 +8402,21 @@
                   "barBackgroundPath": "",
                   "barEmptyPath": "",
                   "barProgressPath": "",
+                  "barBgColor": [
+                    0.1,
+                    0.1,
+                    0.14
+                  ],
+                  "barEmptyColor": [
+                    0.05,
+                    0.05,
+                    0.08
+                  ],
+                  "barProgressColor": [
+                    0.3,
+                    0.7,
+                    1
+                  ],
                   "barInset": 0,
                   "barDirection": 0,
                   "barStatBinding": "None",
@@ -8050,12 +8440,12 @@
               "name": "barHealth",
               "type": "Bar",
               "text": "barHealth",
-              "x": 1360,
-              "y": 920,
-              "width": 700,
-              "height": 100,
+              "x": 20,
+              "y": 20,
+              "width": 360,
+              "height": 40,
               "imagePath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Health_Bar..png",
-              "imageMode": "Fill",
+              "imageMode": "Stretch",
               "fontSize": 13,
               "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
@@ -8102,7 +8492,7 @@
               "minValue": 0,
               "maxValue": 100,
               "step": 1,
-              "currentValue": 57.286,
+              "currentValue": 100,
               "textOptions": [
                 "Option A",
                 "Option B",
@@ -8205,24 +8595,233 @@
                 0.22
               ],
               "radioGroup": "default",
-              "barBackgroundPath": "",
+              "barBackgroundPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Health_Bar_Back.png",
               "barEmptyPath": "",
               "barProgressPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Health_Red.png",
+              "barBgColor": [
+                0.1,
+                0.1,
+                0.14
+              ],
+              "barEmptyColor": [
+                0.05,
+                0.05,
+                0.08
+              ],
+              "barProgressColor": [
+                0.3,
+                0.7,
+                1
+              ],
               "barInset": 0,
               "barDirection": 0,
               "barStatBinding": "None",
-              "barBgOffsetLeft": -16,
-              "barBgOffsetRight": 16,
-              "barBgOffsetTop": -16,
-              "barBgOffsetBottom": 16,
-              "barEmptyOffsetLeft": -16,
-              "barEmptyOffsetRight": 16,
-              "barEmptyOffsetTop": -16,
-              "barEmptyOffsetBottom": 16,
-              "barProgOffsetLeft": 31,
-              "barProgOffsetRight": -33,
-              "barProgOffsetTop": 9.5,
-              "barProgOffsetBottom": -5.5,
+              "barBgOffsetLeft": 15,
+              "barBgOffsetRight": -15,
+              "barBgOffsetTop": 5,
+              "barBgOffsetBottom": -5,
+              "barEmptyOffsetLeft": 0,
+              "barEmptyOffsetRight": 0,
+              "barEmptyOffsetTop": 0,
+              "barEmptyOffsetBottom": 0,
+              "barProgOffsetLeft": 15,
+              "barProgOffsetRight": -15,
+              "barProgOffsetTop": 5,
+              "barProgOffsetBottom": -5,
+              "children": []
+            },
+            {
+              "name": "barMagic",
+              "type": "Bar",
+              "text": "",
+              "x": 30,
+              "y": 80,
+              "width": 330,
+              "height": 20,
+              "imagePath": "",
+              "imageMode": "Stretch",
+              "fontSize": 13,
+              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+              "textColor": [
+                0.95,
+                0.95,
+                1
+              ],
+              "bgColor": [
+                0.1,
+                0.12,
+                0.18
+              ],
+              "borderColor": [
+                0.15,
+                0.18,
+                0.25
+              ],
+              "hoverTextColor": [
+                0.95,
+                0.95,
+                1
+              ],
+              "hoverBgColor": [
+                0.22,
+                0.28,
+                0.45
+              ],
+              "hoverBorderColor": [
+                0.5,
+                0.6,
+                1
+              ],
+              "alignment": "Center",
+              "isVisible": true,
+              "opacity": 1,
+              "autoFillWindow": false,
+              "autoCenterX": false,
+              "autoCenterY": false,
+              "anchor": "None",
+              "useHover": false,
+              "clickBehavior": "None",
+              "hoverEnterBehavior": "None",
+              "hoverExitBehavior": "None",
+              "minValue": 0,
+              "maxValue": 100,
+              "step": 1,
+              "currentValue": 100,
+              "textOptions": [
+                "Option A",
+                "Option B",
+                "Option C"
+              ],
+              "selectedTextIndex": 0,
+              "isChecked": false,
+              "options": [
+                "Option 1",
+                "Option 2",
+                "Option 3"
+              ],
+              "selectedIndex": 0,
+              "fallbackText": "",
+              "wordWrap": true,
+              "triggeredByKeyboardButton": "",
+              "placeholder": "Enter text...",
+              "maxLength": 0,
+              "inputText": "",
+              "scrollY": 0,
+              "scrollBarWidth": 10,
+              "scrollBarTrackColor": [
+                0.15,
+                0.15,
+                0.2
+              ],
+              "scrollBarThumbColor": [
+                0.45,
+                0.45,
+                0.55
+              ],
+              "scrollBarThumbHoverColor": [
+                0.55,
+                0.55,
+                0.65
+              ],
+              "sliderTrackColor": [
+                0.3,
+                0.3,
+                0.35
+              ],
+              "sliderFillColor": [
+                0.3,
+                0.6,
+                1
+              ],
+              "sliderThumbColor": [
+                0.9,
+                0.9,
+                1
+              ],
+              "sliderThumbBorderColor": [
+                0.3,
+                0.6,
+                1
+              ],
+              "sliderThumbSize": 14,
+              "sliderTrackHeight": 6,
+              "sliderLabelPosition": 1,
+              "sliderLabelSpacing": 8,
+              "labelSpacing": 8,
+              "checkmarkColor": [
+                0.9,
+                0.9,
+                1
+              ],
+              "checkedBgColor": [
+                0.25,
+                0.55,
+                1
+              ],
+              "uncheckedBgColor": [
+                0.15,
+                0.15,
+                0.22
+              ],
+              "arrowColor": [
+                0.5,
+                0.5,
+                0.7
+              ],
+              "cursorColor": [
+                0.5,
+                0.8,
+                1
+              ],
+              "radioSelectedColor": [
+                0.3,
+                0.7,
+                1
+              ],
+              "radioSelectedBgColor": [
+                0.2,
+                0.4,
+                0.65
+              ],
+              "radioUnselectedBgColor": [
+                0.15,
+                0.15,
+                0.22
+              ],
+              "radioGroup": "default",
+              "barBackgroundPath": "",
+              "barEmptyPath": "",
+              "barProgressPath": "",
+              "barBgColor": [
+                0.1,
+                0.1,
+                0.14
+              ],
+              "barEmptyColor": [
+                0.05,
+                0.05,
+                0.08
+              ],
+              "barProgressColor": [
+                0.1555556,
+                1,
+                0
+              ],
+              "barInset": 0,
+              "barDirection": 0,
+              "barStatBinding": "None",
+              "barBgOffsetLeft": 0,
+              "barBgOffsetRight": 0,
+              "barBgOffsetTop": 0,
+              "barBgOffsetBottom": 0,
+              "barEmptyOffsetLeft": 0,
+              "barEmptyOffsetRight": 0,
+              "barEmptyOffsetTop": 0,
+              "barEmptyOffsetBottom": 0,
+              "barProgOffsetLeft": 0,
+              "barProgOffsetRight": 0,
+              "barProgOffsetTop": 0,
+              "barProgOffsetBottom": 0,
               "children": []
             }
           ]
@@ -8238,7 +8837,7 @@
             "width": 50,
             "height": 20,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
             "tilesetColumns": 25,
             "tilesetRows": 25,
             "tilesetFlipV": false,
@@ -8252,7 +8851,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -2,
@@ -8267,7 +8866,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
                 "isVisible": true,
                 "scrollFactor": 0.85,
                 "zPosition": -1,
@@ -11800,7 +12399,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 40.702484,
+          "posX": 30,
           "posY": 0,
           "posZ": 0,
           "rotX": 0,
@@ -13796,8 +14395,8 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.03183,
-        43.81875,
+        61.997982,
+        32,
         307.03183
       ],
       "editorCameraYaw": 180,
