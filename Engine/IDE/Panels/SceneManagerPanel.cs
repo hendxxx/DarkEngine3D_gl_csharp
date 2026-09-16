@@ -991,6 +991,7 @@ public class SceneManagerPanel
                                 Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
                                 Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
                                 Priority = a.Priority, KeyBinding = a.KeyBinding,
+                                KeyTrigger = a.KeyTrigger,
                             }).ToList()
                             : null,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
@@ -1612,6 +1613,7 @@ public class SceneManagerPanel
                                 Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
                                 Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
                                 Priority = a.Priority, KeyBinding = a.KeyBinding,
+                                KeyTrigger = a.KeyTrigger,
                             }).ToList();
                         else
                             obj.EnsureDefaultActions();

@@ -419,14 +419,22 @@ public class IDE : IDisposable
         // unless a reframe was requested (e.g. entering in-game mode over the level).
         if (_levelCameraApplied && ReferenceEquals(_levelCameraMap, level) && !_levelCameraReframePending)
         {
-            // Keep fly mode off every frame while the 2D view is active.
-            cam.IsFlyMode = false;
-            cam.FlyMouseLook = false;
-            // Keep fly WASD off too — the camera is owned by pan/zoom in edit mode and
-            // by the Player2D camera-follow in preview/in-game (Player2DSystem.Update).
-            // EDIT MODE ONLY: WASD stays unlocked while playing so the 2D player's own
-            // A/D input never fights a camera that also eats those keys.
-            cam.LockTranslation = !_inGameMode;
+            // PLAYING (F5 preview / F8 in-game): the camera is owned by the Player2D
+            // follow — no freefly, no mouse-look, and WASD locked so the camera never
+            // eats the player's own A/D input.
+            // EDIT MODE: WASD + freefly stay AVAILABLE for navigating the level — only
+            // the translation lock is cleared (it is a play-mode-only restriction).
+            bool playing = _inGameMode || Bridge.IsPreviewMode;
+            if (playing)
+            {
+                cam.IsFlyMode = false;
+                cam.FlyMouseLook = false;
+                cam.LockTranslation = true;
+            }
+            else
+            {
+                cam.LockTranslation = false;
+            }
             return;
         }
 
@@ -463,7 +471,7 @@ public class IDE : IDisposable
             cam.SetEditorViewTransform(level.CameraStartPos, level.CameraStartYaw, level.CameraStartPitch, cam.FoV);
             cam.IsFlyMode = false;
             cam.FlyMouseLook = false;
-            cam.LockTranslation = !_inGameMode; // WASD free while playing (edit-only lock)
+            cam.LockTranslation = true; // play frame: camera owned by the 2D follow
             _levelCameraApplied = true;
             _levelCameraMap = level;
             Console.WriteLine($"[IDE] Level camera: restored saved camera start for '{level.Name}'");
@@ -490,13 +498,20 @@ public class IDE : IDisposable
         cam.OrthoSize = halfH;
         cam.SetEditorViewTransform(new Vector3(halfW, halfH, lookZ), 180f, 0f, cam.FoV);
 
-        // 2D level mode has no fly navigation — yaw/pitch stay locked on the front view;
-        // users pan/zoom the ortho camera instead of flying around the map. The WASD
-        // translation lock itself is EDIT-MODE ONLY: while playing, WASD must stay free
-        // (the 2D player reads A/D directly — a locked camera would eat those keys).
-        cam.IsFlyMode = false;
+        // Clean ortho start: mouse-look off so the front framing survives; the user can
+        // re-enable ✈ Fly freely in edit mode. While PLAYING, fly + WASD stay locked
+        // (the camera is owned by the Player2D follow); in edit mode they stay free.
         cam.FlyMouseLook = false;
-        cam.LockTranslation = !_inGameMode;
+        bool playingFrame = _inGameMode || Bridge.IsPreviewMode;
+        if (playingFrame)
+        {
+            cam.IsFlyMode = false;
+            cam.LockTranslation = true;
+        }
+        else
+        {
+            cam.LockTranslation = false;
+        }
 
         _levelCameraApplied = true;
         _levelCameraMap = level;
@@ -544,6 +559,7 @@ public class IDE : IDisposable
             _spriteEditor?.SaveAllSheets();
             _mapEditor?.SaveMap();
             _sceneManagerPanel?.SaveAllScenes();
+            DialogueLibrary.Save(); // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
         }
         catch (Exception ex)
         {
@@ -1002,6 +1018,7 @@ public class IDE : IDisposable
                     _spriteEditor?.SaveAllSheets();
                     _mapEditor?.SaveMap();
                     _sceneManagerPanel.SaveAllScenes();
+                    DialogueLibrary.Save(); // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
                 }
                 ImGui.EndDisabled();
 
@@ -1702,7 +1719,13 @@ public class IDE : IDisposable
             // owns the cursor; camera must not spin/drift behind it).
             bool levelMode = IsLevelShown();
             bool overlayModal = Bridge.IsOverlayVisible;
-            if (levelMode || overlayModal)
+            // EDIT mode: a 2D level and freefly coexist — the ✈ Fly toggle is user
+            // state, so it is left alone. Fly is force-off only while PLAYING a 2D
+            // level (the camera is owned by the Player2D follow) or when a modal
+            // overlay is up (the overlay owns the cursor; camera must not spin/drift
+            // behind it).
+            bool playing2d = levelMode && (_inGameMode || Bridge.IsPreviewMode);
+            if (playing2d || overlayModal)
             {
                 if (cam.FlyMouseLook || cam.IsFlyMode)
                 {

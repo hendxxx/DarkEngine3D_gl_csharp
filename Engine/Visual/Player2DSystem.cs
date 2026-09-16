@@ -188,18 +188,23 @@ public static class Player2DSystem
             }
 
             // ── User-bound action keys (Inspector: Attack = J, Block = K, ...) ──
-            // Track whether the bound key for the currently active action is still held —
-            // used by ResolveLocomotionAction to release the action when the key goes up.
+            // Track whether the bound key for the currently active action is still held —                // used by ResolveLocomotionAction to release the action when the key goes up.
             bool currentActionKeyHeld = false;
             foreach (var act in player.Actions)
             {
                 if (string.IsNullOrWhiteSpace(act.KeyBinding) || act.KeyBinding == "None") continue;
                 if (Enum.TryParse<ImGuiKey>(act.KeyBinding, out var k) && k != ImGuiKey.None)
                 {
-                    if (ImGui.IsKeyPressed(k))
+                    // Trigger mode: KeyDown fires on press; KeyUp fires on RELEASE —
+                    // a press-impulse action (charge up, release to swing/spin).
+                    if (act.KeyTriggered(k))
                         player.TryStartAction(act.Name);
                     if (act.Name == player.Player2DCurrentAction)
-                        currentActionKeyHeld = ImGui.IsKeyDown(k);
+                        // Hold-release only makes sense for KeyDown actions (hold = keep
+                        // playing). A KeyUp looping action inverts the hold: it persists
+                        // while the key STAYS released, so pressing again cancels and
+                        // re-releasing replays it.
+                        currentActionKeyHeld = act.IsKeyUpTrigger ? !ImGui.IsKeyDown(k) : ImGui.IsKeyDown(k);
                 }
             }
 

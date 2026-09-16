@@ -2634,7 +2634,9 @@ public class InspectorPanel
         var sheets = IDEBridge.GetSpriteSheetNames();
         var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
 
-        RenderNpcDialogueInspector(editorObj);
+        // NOTE: NPC Dialogue section is rendered once by the main dispatcher
+        // (RenderNpcDialogueInspector for Sprite2D/Player2D). Do NOT call it here —
+        // a second call produces duplicate ImGui IDs ("conflicting ID" error).
 
         // Sheet combo (auto-select index 0 — dropdown rule).
         string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : ["(no sheets — import in Sprite Editor)"];
@@ -3206,6 +3208,23 @@ public class InspectorPanel
                         if (sel) ImGui.SetItemDefaultFocus();
                     }                    ImGui.EndCombo();
                 }
+
+                // When the binding fires: on press (hold-style) or on release (impulse).
+                string[] triggers = ["KeyDown", "KeyUp"];
+                int trigIdx = act.IsKeyUpTrigger ? 1 : 0;
+                if (ImGui.BeginCombo("Trigger", triggers[trigIdx]))
+                {
+                    for (int t = 0; t < triggers.Length; t++)
+                    {
+                        bool sel = t == trigIdx;
+                        if (ImGui.Selectable(triggers[t], sel))
+                            act.KeyTrigger = triggers[t];
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("KeyDown = fires when the key is pressed (hold J = keep playing, release = back to idle).\nKeyUp = fires when the key is RELEASED (press-impulse: the action plays out regardless of hold length).");
 
                 if (ImGui.SmallButton("Test"))
                     editorObj.TryStartAction(act.Name);

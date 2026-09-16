@@ -333,7 +333,11 @@ public static class DialogueLibrary
     }
 
     /// <summary>Load once per project (re-loads when the project root changes). Old
-    /// files without new fields deserialize to defaults — no migration needed.</summary>
+    /// files without new fields deserialize to defaults — no migration needed.
+    /// With NO project open the library stays EMPTY: no JSON is read from the exe
+    /// folder and no sample content is seeded — closing/opening a project therefore
+    /// always starts from a clean slate (only built-in themes exist, which the
+    /// runtime renderer needs for prompt/indicator colors).</summary>
     public static void EnsureLoaded()
     {
         string? root = DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded
@@ -347,7 +351,12 @@ public static class DialogueLibrary
         Localizations = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
         CurrentLanguage = "English";
 
-        SeedDefaults();
+        // Built-in themes are engine content (draw colors), not project data —
+        // they exist in every state so the HUD renderer always has a theme.
+        SeedDefaultThemes();
+
+        // No project open → keep the library empty (no file read, no samples).
+        if (root == null) return;
 
         try
         {
@@ -372,12 +381,23 @@ public static class DialogueLibrary
         {
             Console.WriteLine($"[Dialogue] Load failed: {ex.Message}");
         }
+
+        // First-run sample content — only when the project has no assets of its
+        // own (a loaded dialogues.json always wins over the built-in samples).
+        SeedSampleContent();
     }
 
     public static void Save()
     {
         try
         {
+            // No project → nowhere sensible to save. Never recreate the exe-folder
+            // dialogues.json (the old fallback path) behind the user's back.
+            if (!DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded)
+            {
+                Console.WriteLine("[Dialogue] Save skipped: no project open");
+                return;
+            }
             EnsureLoaded();
             var data = new DialogueFileData
             {
@@ -397,9 +417,10 @@ public static class DialogueLibrary
         }
     }
 
-    /// <summary>Seed the built-in "Default"/"Medieval" themes + a sample speaker/asset
-    /// so a fresh project has something usable immediately.</summary>
-    private static void SeedDefaults()
+    /// <summary>Built-in themes only. The "Default" theme is required by the runtime
+    /// renderer (interact prompt + NPC indicators read it) so it always exists,
+    /// project or not.</summary>
+    private static void SeedDefaultThemes()
     {
         _defaultsSeeded = true;
         if (_themes.Count == 0)
@@ -414,6 +435,12 @@ public static class DialogueLibrary
                 NameColorR = 1f, NameColorG = 0.82f, NameColorB = 0.35f,
                 BubbleColorR = 0.11f, BubbleColorG = 0.08f, BubbleColorB = 0.05f,
             });
+    }
+
+    /// <summary>First-run sample content (project only): a sample speaker/asset so a
+    /// brand-new project has something to preview in the Dialogue Editor.</summary>
+    private static void SeedSampleContent()
+    {
         if (_speakers.Count == 0)
             _speakers.Add(new SpeakerData { Id = "village_chief", Name = "Village Chief" });
         if (_assets.Count == 0)

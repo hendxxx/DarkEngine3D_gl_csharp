@@ -116,6 +116,7 @@ public static unsafe class DialogueSystem
         }
         Active = new ConversationState { Asset = asset, Node = start, Source = source };
         EnterNode(start);
+        _diagTicks = 0; // restart per-conversation diagnostics
         Console.WriteLine($"[Dialogue] Started '{asset.Id}' (node '{start.Id}')");
         return true;
     }
@@ -194,6 +195,7 @@ public static unsafe class DialogueSystem
         if (st.CloseFade < 0f)
         {
             st.CloseFade = 0.25f; // brief fade-out, cleared by Tick
+            Console.WriteLine($"[Dialogue] EndConversation '{st.Asset.Id}' (at node '{st.Node.Id}')");
             return;
         }
         CompletedDialogues.Add(st.Asset.Id);
@@ -414,6 +416,11 @@ public static unsafe class DialogueSystem
         _time += dt;
         if (hud == null) return;
 
+        // DIAGNOSTIC: log the first ticks after a conversation starts. Distinguishes
+        // "never drawn" (log absent) from "drawn but killed early" (log then silence).
+        if (Active != null && ++_diagTicks <= 3)
+            Console.WriteLine($"[Dialogue DIAG] tick {_diagTicks}: node='{Active.Node.Id}' closeFade={Active.CloseFade:F2} windowDraw={Active.CloseFade < 0f}");
+
         int w = Glfw.WindowWidth;
         int h = Glfw.WindowHeight;
 
@@ -449,6 +456,20 @@ public static unsafe class DialogueSystem
             DrawBubble(hud, b, anchorWorld, theme, w, h);
         }
         foreach (var key in expired) _bubbles.Remove(key);
+
+        // ── NPC "!" indicators — every visible object with a dialogue binding ──
+        // Reads as "this character has something to say". The nearest in-range NPC
+        // shows the "[E] Talk" prompt instead, so the two markers never stack.
+        if (ShowPrompts && Active == null && manager != null && camera != null)
+        {
+            var indTheme = DialogueLibrary.GetTheme("Default");
+            foreach (var obj in manager.Objects)
+            {
+                if (obj == null || !obj.IsVisible || string.IsNullOrEmpty(obj.NpcDialogueId)) continue;
+                if (obj == InteractableNpc) continue; // "[E] Talk" prompt covers this one
+                DrawNpcIndicator(hud, obj, indTheme, w, h);
+            }
+        }
 
         // ── Interaction prompt ("E — Talk") above the nearby NPC ──
         if (ShowPrompts && Active == null && InteractableNpc != null && camera != null)
@@ -563,6 +584,30 @@ public static unsafe class DialogueSystem
         var ext = hud.GetTextExtents(label);
         hud.DrawText(label, sp.X - ext.Width * 0.5f, sp.Y, new Vector3(1f, 0.95f, 0.6f),
             new Vector3(0f, 0f, 0f), 1.5f);
+    }
+
+    /// <summary>Small "!" bubble above an NPC that has a dialogue binding but is out
+    /// of interact range. Uses the Default theme's bubble colors with a quest-yellow
+    /// exclamation mark; bobs gently so it reads as interactive, not decorative.</summary>
+    private static void DrawNpcIndicator(HUD hud, EditorObject npc, DialogueThemeData theme, int w, int h)
+    {
+        float bob = MathF.Sin(_time * 3f + npc.Position.X * 0.7f) * 3f;
+        var sp = Project(new Vector3(npc.Position.X,
+            npc.Position.Y + BubbleHeadHeight(npc) + 0.45f, npc.Position.Z), w, h);
+
+        const string mark = "!";
+        int slot = GetFontSlot(hud, theme, theme.BubbleFontSize);
+        var ext = hud.GetTextExtents(mark, slot);
+        float padX = 5f, padY = 3f;
+        float boxW = ext.Width + padX * 2f;
+        float boxH = ext.Height + padY * 2f;
+        float bx = sp.X - boxW * 0.5f;
+        float by = sp.Y - boxH + bob; // bottom-center anchored above the head
+
+        hud.DrawBox(bx - 1f, by - 1f, boxW + 2f, boxH + 2f, theme.BubbleBorderColor); // border
+        hud.DrawBox(bx, by, boxW, boxH, theme.BubbleColor);                            // bubble
+        hud.DrawText(mark, bx + padX, by + padY, new Vector3(1f, 0.85f, 0.25f),
+            new Vector3(0f, 0f, 0f), 1.2f, slot);
     }
 
     // ── Conversation window ────────────────────────
@@ -681,6 +726,7 @@ public static unsafe class DialogueSystem
     }
 
     private static float _time;
+    private static int _diagTicks; // DIAGNOSTIC: first-ticks logger (see Tick)
 
     private static string EmotionVariant(string portraitPath, string emotion)
     {

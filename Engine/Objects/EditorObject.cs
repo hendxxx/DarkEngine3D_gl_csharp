@@ -36,6 +36,14 @@ public class Player2DAction
     public int Priority { get; set; } = 5;
     /// <summary>Keyboard binding (ImGuiKey name, e.g. "J", "None" = not bound).</summary>
     public string KeyBinding { get; set; } = "None";
+    /// <summary>When the binding fires: "KeyDown" = on key press (hold-style — a looping
+    /// action ends when the key is released), "KeyUp" = on key release (press-impulse —
+    /// the action plays out regardless of how long the key was held).</summary>
+    public string KeyTrigger { get; set; } = "KeyDown";
+    /// <summary>True when the binding fires on key RELEASE instead of press.</summary>
+    public bool IsKeyUpTrigger => string.Equals(KeyTrigger, "KeyUp", StringComparison.OrdinalIgnoreCase);
+    /// <summary>True this frame when the configured trigger fires for <paramref name="k"/>.</summary>
+    public bool KeyTriggered(ImGuiKey k) => IsKeyUpTrigger ? ImGui.IsKeyReleased(k) : ImGui.IsKeyPressed(k);
 }
 
 /// <summary>
@@ -2977,7 +2985,9 @@ public unsafe class EditorObject
             if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
             {
                 if (Enum.TryParse<ImGuiKey>(cur.KeyBinding, out var k) && k != ImGuiKey.None)
-                    keyHeld = ImGui.IsKeyDown(k);
+                    // Trigger-aware: a KeyUp action "holds" while the key stays RELEASED
+                    // (pressing it again cancels), matching the update-pass scan.
+                    keyHeld = cur.IsKeyUpTrigger ? !ImGui.IsKeyDown(k) : ImGui.IsKeyDown(k);
             }
         }
         ResolveLocomotionAction(keyHeld);
@@ -3048,7 +3058,7 @@ public unsafe class EditorObject
                         if (string.IsNullOrEmpty(a.KeyBinding) || a.KeyBinding == "None") continue;
                         if (a.Name == holding?.Name) continue; // same-key: no replay
                         if (Enum.TryParse<ImGuiKey>(a.KeyBinding, out var ak) && ak != ImGuiKey.None
-                            && ImGui.IsKeyPressed(ak))
+                            && a.KeyTriggered(ak)) // trigger-aware: KeyUp actions start on release
                         {
                             released = true;
                             Player2DActionHoldingEnd = false;

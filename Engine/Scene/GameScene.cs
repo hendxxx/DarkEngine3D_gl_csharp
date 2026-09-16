@@ -794,10 +794,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         SkipInput:
             // ── Editor fly mode: when viewport is focused, use WASD + mouse look
-            // (fly mode) for camera navigation — works in both editor and in-game mode.
+            // (fly mode) for camera navigation — EDIT MODE ONLY. While playing
+            // (F5 preview / F8 in-game) the session owns the input: WASD goes to the
+            // 2D player, the camera is owned by the Player2D follow, so fly is off.
             // Modal: a visible UI overlay disables editor fly mode (background inert).
             var ideGate = _sceneManager.Bridge;
-            bool editorFlyMode = (ideGate?.IsViewportFocused ?? false) && !(ideGate?.IsOverlayVisible ?? false);
+            bool playingSession = ideGate is { InGameActive: true } || ideGate is { IsPreviewMode: true };
+            bool editorFlyMode = !playingSession
+                && (ideGate?.IsViewportFocused ?? false) && !(ideGate?.IsOverlayVisible ?? false);
 
             // ── Gizmo size shortcuts: = to increase, - to decrease ──
             // Only active when viewport is focused (not during gameplay or when typing in other panels).
@@ -1396,7 +1400,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             // ── Flush all queued HUD commands ──
+            // IDE docked: the Viewport panel displays the SCENE TEXTURE, so HUD flushed
+            // to the screen paints the dialogue window / [E] Talk prompt / pause menu
+            // BEHIND the dock — invisible. Use the proven LoadingScene/MainMenuScene
+            // path instead: composite the finished frame into the SHARED FBO (one HUD
+            // DrawImage), flush the HUD on top of it, then point the Viewport panel at
+            // SharedColorTex (SceneManager resolves the MSAA shared FBO every frame).
+            // Fullscreen (non-IDE) shows the screen directly — flush there as before.
+            bool hudToSharedFbo = ideActive && !wireframeMode && _ppStack != null;
+            if (hudToSharedFbo)
+            {
+                _sceneManager.EnsureSharedFBOExists();
+                hudToSharedFbo = _sceneManager.SharedFBO != 0;
+            }
+            if (hudToSharedFbo)
+            {
+                // Copy the finished frame into the shared FBO so the HUD overlays it.
+                // While paused the scene FBO still holds the last rendered frame —
+                // composite that (the blurred-to-screen pass stays docked-invisible).
+                _hud.DrawImage(0, 0, Glfw.WindowWidth, Glfw.WindowHeight, _ppStack.SceneColorTex);
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sceneManager.SharedFBO);
+                GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+            }
             _hud.Flush();
+            if (hudToSharedFbo)
+            {
+                // The Viewport panel samples the shared resolve texture (same as
+                // LoadingScene / MainMenuScene expose for their HUDs).
+                var hudBridge = _sceneManager.Bridge;
+                if (hudBridge != null)
+                {
+                    hudBridge.SceneTextureID = _sceneManager.SharedColorTex;
+                    hudBridge.SceneTextureWidth = Glfw.WindowWidth;
+                    hudBridge.SceneTextureHeight = Glfw.WindowHeight;
+                }
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            }
 
             // NOTE: The rolling FPS counter is driven by SceneManager's central main loop
             // (Glfw.UpdateFPS) so it stays live in every scene — do NOT call Glfw.ShowFPS
