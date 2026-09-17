@@ -22,7 +22,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
     /// </summary>
     public unsafe class FrameBufferDebugPanel
     {
-        private bool _visible = false;
+        private bool _visible = true;
         private readonly IDEBridge _bridge;
         private int _thumbW = 240;
         private readonly List<string> _lastValidation = new();

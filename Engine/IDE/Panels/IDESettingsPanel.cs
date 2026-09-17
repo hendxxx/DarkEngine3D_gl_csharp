@@ -12,7 +12,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 public class IDESettingsPanel
 {
     private readonly IDEBridge _bridge;
-    private bool _visible = false;
+    private bool _visible = true;
 
     // ── Cached settings (read from SettingsData on open) ──
     private bool _vsync;

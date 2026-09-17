@@ -521,13 +521,15 @@ public static class TriggerActionTypes
     public const string ActivateQuest = "Activate Quest";
     public const string CompleteQuest = "Complete Quest";
     public const string RunScript = "Run Script";
+    public const string Portal = "Portal";
+    public const string PortalOneWay = "Portal One Way";
 
     /// <summary>All known action types in editor-dropdown order.</summary>
     public static readonly string[] All =
     [
         SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect,
         SpawnObject, StartDialogue, ShowBubble, HideBubble, StartCutscene, CameraShake, UnlockDoor,
-        GiveItem, ActivateQuest, CompleteQuest, RunScript
+        GiveItem, ActivateQuest, CompleteQuest, RunScript, Portal, PortalOneWay
     ];
 
     /// <summary>True when the action type actually executes something today. Types
@@ -536,7 +538,7 @@ public static class TriggerActionTypes
     public static bool IsImplemented(string type) => type switch
     {
         SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake
-            or StartDialogue or ShowBubble or HideBubble => true,
+            or StartDialogue or ShowBubble or HideBubble or Portal or PortalOneWay => true,
         _ => false
     };
 }

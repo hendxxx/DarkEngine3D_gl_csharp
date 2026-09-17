@@ -16,7 +16,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 public class DialogueEditorPanel
 {
     private readonly IDEBridge _bridge;
-    private bool _visible;
+    private bool _visible = true;
 
     // Selection state
     private int _selectedAsset = -1;
