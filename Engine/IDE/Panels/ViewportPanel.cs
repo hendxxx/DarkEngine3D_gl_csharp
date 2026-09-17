@@ -3396,6 +3396,24 @@ ImGui.SameLine();
                 RenderDropdownPopup(drawList, viewportMouseScreen, cachedLeftClicked, _previewMode);
             }
 
+            // ── Dialogue overlay (preview / in-game, no-scene path) ──
+            // Drawn through the ImGui draw list — the SAME proven text path as the UI
+            // element preview above (labels, bars, badges), which renders text correctly
+            // where the HUD/stb pipeline produced empty glyphs on this path. Only runs
+            // while preview/in-game is active so edit mode stays clean.
+            if ((_bridge.IsPreviewMode || _bridge.InGameActive) && _bridge.SceneTextureID != 0
+                && DialogueSystem.HudDrawFrameId != Glfw.FrameId) // GameScene HUD already drew this frame → no double draw
+            {
+                var dlDialogue = ImGui.GetWindowDrawList();
+                ImFontPtr? dialogueFont = null;
+                var rawDialogueFont = _bridge.ImGuiCtrl?.GetFont(
+                    DialogueLibrary.GetTheme("Default")?.FontPath ?? "", 16f);
+                if (rawDialogueFont != null && (nint)rawDialogueFont != IntPtr.Zero)
+                    dialogueFont = new ImFontPtr(rawDialogueFont);
+                DialogueSystem.DrawImGuiOverlay(dlDialogue, _bridge.Camera, _bridge.EditorObjectManager,
+                    (int)_texW, (int)_texH, p => SceneToScreen(p.X, p.Y), dialogueFont);
+            }
+
             //  Preview mode indicator badge (bottom-right corner) 
             if (_previewMode)
             {

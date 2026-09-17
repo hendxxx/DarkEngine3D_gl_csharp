@@ -116,7 +116,6 @@ public static unsafe class DialogueSystem
         }
         Active = new ConversationState { Asset = asset, Node = start, Source = source };
         EnterNode(start);
-        _diagTicks = 0; // restart per-conversation diagnostics
         Console.WriteLine($"[Dialogue] Started '{asset.Id}' (node '{start.Id}')");
         return true;
     }
@@ -402,41 +401,36 @@ public static unsafe class DialogueSystem
     // ════════════════════════════════════════════
 
     private static readonly Dictionary<string, uint> _textureCache = [];
-    private static readonly Dictionary<string, int> _fontSlotCache = [];
+    private static readonly Dictionary<HUD, Dictionary<string, int>> _fontSlotCache = [];
     private static EditorObjectManager? _lastManager;
     private static Camera? _lastCamera;
 
     /// <summary>Update timers + queue all dialogue drawing. Call once per frame from
     /// the scene's HUD section (before hud.Flush()). manager/camera refresh the
     /// bubble follow targets and world→screen projection.</summary>
-    public static void Tick(float dt, HUD hud, Camera? camera, EditorObjectManager? manager)
+    /// <summary>State-only update (no drawing): bubbles age/expire, close-fade,
+    /// typewriter reveal, auto-advance. Called by the SceneManager no-scene path —
+    /// the visual pass for that path is <see cref="DrawImGuiOverlay"/> inside the
+    /// ViewportPanel (the same ImGui draw-list path the UI element preview uses).
+    /// GameScene goes through <see cref="Tick(float, HUD, Camera?, EditorObjectManager?)"/>
+    /// which calls this and then queues the HUD draws.</summary>
+    public static void TickState(float dt, Camera? camera, EditorObjectManager? manager)
     {
         _lastManager = manager;
         _lastCamera = camera;
         _time += dt;
-        if (hud == null) return;
 
-        // DIAGNOSTIC: log the first ticks after a conversation starts. Distinguishes
-        // "never drawn" (log absent) from "drawn but killed early" (log then silence).
-        if (Active != null && ++_diagTicks <= 3)
-            Console.WriteLine($"[Dialogue DIAG] tick {_diagTicks}: node='{Active.Node.Id}' closeFade={Active.CloseFade:F2} windowDraw={Active.CloseFade < 0f}");
-
-        int w = Glfw.WindowWidth;
-        int h = Glfw.WindowHeight;
-
-        // ── Bubbles ──
-        var expired = new List<string>();
+        // ── Bubbles: age, fade-in, expiry (state only — no drawing) ──
+        var expiredBubbles = new List<string>();
         foreach (var (key, b) in _bubbles)
         {
             b.Age += dt;
-            if (b.Life > 0f && b.Age >= b.Life) { expired.Add(key); continue; }
-
-            Vector3 anchorWorld;
+            b.Fade = MathF.Min(1f, b.Fade + 0.12f);
+            if (b.Life > 0f && b.Age >= b.Life) { expiredBubbles.Add(key); continue; }
             if (b.Target != null)
             {
-                if (!b.Target.IsVisible) { expired.Add(key); continue; }
-                anchorWorld = new Vector3(b.Target.Position.X, b.Target.Position.Y + b.HeadHeight, b.Target.Position.Z);
-                // Hide On Distance: player walked away → bubble goes with a fade.
+                if (!b.Target.IsVisible) { expiredBubbles.Add(key); continue; }
+                // Hide On Distance: player walked away → bubble goes.
                 if (BubbleHideDistance > 0f && manager != null)
                 {
                     var player = manager.Objects.FirstOrDefault(o =>
@@ -445,44 +439,31 @@ public static unsafe class DialogueSystem
                     {
                         float dx = b.Target.Position.X - player.Position.X;
                         float dy = b.Target.Position.Y - player.Position.Y;
-                        if (dx * dx + dy * dy > BubbleHideDistance * BubbleHideDistance) { expired.Add(key); continue; }
+                        if (dx * dx + dy * dy > BubbleHideDistance * BubbleHideDistance) { expiredBubbles.Add(key); continue; }
                     }
                 }
             }
-            else
-                anchorWorld = new Vector3(b.WorldPos.X, b.WorldPos.Y, 0f);
-
-            var theme = Active != null ? DialogueLibrary.GetTheme(Active.Asset.ThemeName) : DialogueLibrary.GetTheme("Default");
-            DrawBubble(hud, b, anchorWorld, theme, w, h);
         }
-        foreach (var key in expired) _bubbles.Remove(key);
+        foreach (var key in expiredBubbles) _bubbles.Remove(key);
 
-        // ── NPC "!" indicators — every visible object with a dialogue binding ──
-        // Reads as "this character has something to say". The nearest in-range NPC
-        // shows the "[E] Talk" prompt instead, so the two markers never stack.
-        if (ShowPrompts && Active == null && manager != null && camera != null)
-        {
-            var indTheme = DialogueLibrary.GetTheme("Default");
-            foreach (var obj in manager.Objects)
-            {
-                if (obj == null || !obj.IsVisible || string.IsNullOrEmpty(obj.NpcDialogueId)) continue;
-                if (obj == InteractableNpc) continue; // "[E] Talk" prompt covers this one
-                DrawNpcIndicator(hud, obj, indTheme, w, h);
-            }
-        }
-
-        // ── Interaction prompt ("E — Talk") above the nearby NPC ──
-        if (ShowPrompts && Active == null && InteractableNpc != null && camera != null)
-            DrawInteractPrompt(hud, InteractableNpc, w, h);
-
-        // ── Conversation window ──
+        // ── Conversation state: close fade + typewriter + auto-advance ──
         if (Active != null)
         {
             var st = Active;
             if (st.CloseFade >= 0f)
             {
                 st.CloseFade -= dt;
-                if (st.CloseFade <= 0f) { EndConversation(); return; }
+                if (st.CloseFade <= 0f)
+                {
+                    // Fade finished — complete the close DEFINITIVELY. EndConversation
+                    // re-arms the fade when it sees CloseFade < 0 (the ESC entry point),
+                    // and the decrement above almost always overshoots past zero —
+                    // without resetting it here the conversation re-armed itself every
+                    // frame: the window never closed, ESC did nothing visible, and the
+                    // player stayed frozen (IsConversationActive never went false).
+                    st.CloseFade = 0f;
+                    EndConversation();
+                }
             }
             else
             {
@@ -505,9 +486,57 @@ public static unsafe class DialogueSystem
                     if (st.AutoAdvanceTimer <= 0f) GotoNode(st.Node.NextNodeId);
                 }
             }
-
-            DrawConversation(hud, st, w, h);
+            // Pre-warm textures while the GL context is in a clean pass (the ImGui
+            // overlay below only READS cached ids — no GL uploads mid-ImGui-frame).
+            EnsureConversationTextures(st);
         }
+    }
+
+    /// <summary>Glfw.FrameId of the last Tick call (HUD draw path). The ViewportPanel
+    /// ImGui overlay skips itself when the HUD already drew this frame (GameScene
+    /// owns the render pass) so the conversation never draws twice.</summary>
+    public static int HudDrawFrameId { get; private set; } = -1;
+
+    public static void Tick(float dt, HUD hud, Camera? camera, EditorObjectManager? manager)
+    {
+        if (hud == null) return;
+        HudDrawFrameId = Glfw.FrameId;
+        TickState(dt, camera, manager);
+
+        int w = Glfw.WindowWidth;
+        int h = Glfw.WindowHeight;
+
+        // ── Bubbles (draw only — aging/expiry live in TickState) ──
+        foreach (var b in _bubbles.Values)
+        {
+            Vector3 anchorWorld = b.Target != null
+                ? new Vector3(b.Target.Position.X, b.Target.Position.Y + b.HeadHeight, b.Target.Position.Z)
+                : new Vector3(b.WorldPos.X, b.WorldPos.Y, 0f);
+            var theme = Active != null ? DialogueLibrary.GetTheme(Active.Asset.ThemeName) : DialogueLibrary.GetTheme("Default");
+            DrawBubble(hud, b, anchorWorld, theme, w, h);
+        }
+
+        // ── NPC "!" indicators — every visible object with a dialogue binding ──
+        // Reads as "this character has something to say". The nearest in-range NPC
+        // shows the "[E] Talk" prompt instead, so the two markers never stack.
+        if (ShowPrompts && Active == null && manager != null && camera != null)
+        {
+            var indTheme = DialogueLibrary.GetTheme("Default");
+            foreach (var obj in manager.Objects)
+            {
+                if (obj == null || !obj.IsVisible || string.IsNullOrEmpty(obj.NpcDialogueId)) continue;
+                if (obj == InteractableNpc) continue; // "[E] Talk" prompt covers this one
+                DrawNpcIndicator(hud, obj, indTheme, w, h);
+            }
+        }
+
+        // ── Interaction prompt ("E — Talk") above the nearby NPC ──
+        if (ShowPrompts && Active == null && InteractableNpc != null && camera != null)
+            DrawInteractPrompt(hud, InteractableNpc, w, h);
+
+        // ── Conversation window (state advanced in TickState — draw only) ──
+        if (Active != null)
+            DrawConversation(hud, Active, w, h);
     }
 
     /// <summary>Screen position (HUD coords, Y=0 top) of a world point.</summary>
@@ -522,7 +551,7 @@ public static unsafe class DialogueSystem
 
     private static void DrawBubble(HUD hud, ActiveBubble b, Vector3 anchorWorld, DialogueThemeData theme, int w, int h)
     {
-        b.Fade = MathF.Min(1f, b.Fade + 0.12f);
+        // (Fade-in lives in TickState — this is the HUD draw pass.)
         float fade = b.Fade * (b.Life > 0f ? Math.Clamp((b.Life - b.Age) / 0.3f, 0f, 1f) : 1f);
 
         var sp = Project(anchorWorld, w, h);
@@ -726,7 +755,6 @@ public static unsafe class DialogueSystem
     }
 
     private static float _time;
-    private static int _diagTicks; // DIAGNOSTIC: first-ticks logger (see Tick)
 
     private static string EmotionVariant(string portraitPath, string emotion)
     {
@@ -738,12 +766,323 @@ public static unsafe class DialogueSystem
 
     // ── Resource caches ────────────────────────────
 
-    private static int GetFontSlot(HUD hud, DialogueThemeData theme, float fontSize)
+    /// <summary>Make sure every texture the ACTIVE conversation (theme bg, portrait,
+    /// emotion variant) resolves to is already uploaded before the ImGui overlay
+    /// pass reads it. The overlay only consumes cached GL ids — it must never upload
+    /// textures mid-ImGui-frame (atlas/texture modification inside a frame is
+    /// undefined), so all GL work happens here in the state pass.</summary>
+    private static void EnsureConversationTextures(ConversationState st)
     {
-        string key = $"{theme.FontPath}@{fontSize}";
-        if (_fontSlotCache.TryGetValue(key, out int slot) && slot < hud.FontSlotCount) return slot;
+        var theme = DialogueLibrary.GetTheme(st.Asset.ThemeName);
+        if (theme != null && !string.IsNullOrEmpty(theme.BgImagePath))
+            GetTexture(theme.BgImagePath);
+
+        var speaker = DialogueLibrary.GetSpeaker(st.Node.SpeakerId);
+        string portraitPath = !string.IsNullOrEmpty(st.Node.PortraitPath)
+            ? st.Node.PortraitPath
+            : speaker?.PortraitPath ?? "";
+        if (!string.IsNullOrEmpty(portraitPath))
+        {
+            if (!string.Equals(st.Node.Emotion, DialogueEmotions.Neutral, StringComparison.OrdinalIgnoreCase))
+                GetTexture(EmotionVariant(portraitPath, st.Node.Emotion));
+            GetTexture(portraitPath);
+        }
+    }
+
+    // ════════════════════════════════════════════
+    //  IMGUI OVERLAY (no-scene preview path)
+    // ════════════════════════════════════════════
+
+    /// <summary>Anchor of a bubble in SCENE PIXEL space (scene-res coordinates,
+    /// Y=0 top) — ViewportPanel.SceneToScreen converts to ImGui screen space.</summary>
+    private static Vector2 AnchorScenePx(ActiveBubble b, int w, int h)
+    {
+        var sp = Project(b.Target != null
+            ? new Vector3(b.Target.Position.X, b.Target.Position.Y + b.HeadHeight, b.Target.Position.Z)
+            : new Vector3(b.WorldPos.X, b.WorldPos.Y, 0f), w, h);
+        return new Vector2(sp.X + b.OffsetX, sp.Y + b.OffsetY);
+    }
+
+    private static uint Rgba(Vector3 c, float a)
+    {
+        var f = new Vector4(c, Math.Clamp(a, 0f, 1f));
+        return ImGuiNET.ImGui.ColorConvertFloat4ToU32(f);
+    }
+
+    /// <summary>Draw the full dialogue overlay (bubbles, NPC prompts, conversation
+    /// window) through an ImGui DRAW LIST — the proven text path of the editor
+    /// viewport (UI labels, badges and the preview-mode indicator all use it and all
+    /// render fine where the HUD/stb pipeline produced empty glyphs on the no-scene
+    /// preview path). Coordinates: scene-space X/Y is converted via
+    /// sceneToScreen (ViewportPanel.SceneToScreen) so the overlay tracks the
+    /// zoomed/panned viewport image exactly.
+    ///
+    /// Text font: <paramref name="font"/> (bridge's custom ImGui font at the theme
+    /// size) or the ImGui default while the custom font is still loading — the same
+    /// fallback DrawEditorUIPreview uses.</summary>
+    public static void DrawImGuiOverlay(ImDrawListPtr dl, Camera? camera, EditorObjectManager? manager,
+        int sceneW, int sceneH, Func<Vector2, Vector2> sceneToScreen, ImFontPtr? font)
+    {
+        _lastCamera = camera;
+        _lastManager = manager;
+        int w = sceneW, h = sceneH;
+
+        // Text helpers (custom font when loaded, ImGui default otherwise).
+        ImFontPtr f = font ?? ImGuiNET.ImGui.GetFont();
+        float fs = font != null ? font.Value.FontSize : ImGuiNET.ImGui.GetFontSize();
+        if (fs <= 0f) fs = 14f;
+
+        float TextW(string s) => f.CalcTextSizeA(fs, float.MaxValue, 0f, s).X;
+        float TextH(string s) => f.CalcTextSizeA(fs, float.MaxValue, 0f, s).Y;
+        void Text(string s, Vector2 pos, uint col) => dl.AddText(f, fs, pos, col, s);
+
+        var defTheme = DialogueLibrary.GetTheme("Default");
+
+        // ── Bubbles ──
+        foreach (var b in _bubbles.Values)
+        {
+            var theme = Active != null ? DialogueLibrary.GetTheme(Active.Asset.ThemeName) : defTheme;
+            float fade = b.Fade * (b.Life > 0f ? Math.Clamp((b.Life - b.Age) / 0.3f, 0f, 1f) : 1f);
+            if (fade <= 0.01f) continue;
+
+            var anchor = AnchorScenePx(b, w, h);
+            string text = DialogueLibrary.Localize(b.Text);
+
+            // Word-wrap against a ~32%-wide bubble (scene-px), like the HUD version.
+            float maxW = MathF.Min(300f, w * 0.32f);
+            var lines = new List<string>();
+            foreach (var word in text.Split(' '))
+            {
+                string test = lines.Count == 0 ? word : lines[^1] + " " + word;
+                if (TextW(test) > maxW && lines.Count > 0) lines.Add(word);
+                else if (lines.Count == 0) lines.Add(word);
+                else lines[^1] = test;
+            }
+            if (lines.Count == 0) lines.Add(text);
+
+            float textH = TextH(text);
+            float lineH = textH + 2f;
+            float textW = 0f;
+            foreach (var line in lines) textW = MathF.Max(textW, TextW(line));
+
+            float padX = 9f, padY = 6f, arrowH = 7f;
+            float boxW = textW + padX * 2f;
+            float boxH = lines.Count * lineH + padY * 2f;
+
+            var (bg, border, txt) = BubbleColors(b.BubbleType, theme);
+            // Anchor→screen, then clamp the box on screen (ImGui space).
+            var aScr = sceneToScreen(anchor);
+            var scrBox = sceneToScreen(new Vector2(boxW, boxH));
+            float imgBoxW = scrBox.X - sceneToScreen(Vector2.Zero).X;
+            float imgBoxH = scrBox.Y - sceneToScreen(Vector2.Zero).Y;
+            var imgMin = sceneToScreen(Vector2.Zero);
+            var imgMax = sceneToScreen(new Vector2(w, h));
+            float bx = Math.Clamp(aScr.X - imgBoxW * 0.5f, imgMin.X + 4f, imgMax.X - imgBoxW - 4f);
+            float by = aScr.Y - imgBoxH - arrowH * (imgBoxH / MathF.Max(1f, boxH)) - 4f;
+
+            dl.AddRectFilled(new Vector2(bx - 1f, by - 1f), new Vector2(bx + imgBoxW + 1f, by + imgBoxH + 1f),
+                Rgba(border, fade * 0.9f));
+            dl.AddRectFilled(new Vector2(bx, by), new Vector2(bx + imgBoxW, by + imgBoxH), Rgba(bg, fade));
+            // Arrow (two shrinking bars).
+            float ax = Math.Clamp(aScr.X, bx + 6f, bx + imgBoxW - 6f);
+            dl.AddRectFilled(new Vector2(ax - 4f, by + imgBoxH), new Vector2(ax + 4f, by + imgBoxH + 3f * (imgBoxH / MathF.Max(1f, boxH))), Rgba(bg, fade));
+            dl.AddRectFilled(new Vector2(ax - 2f, by + imgBoxH + 3f * (imgBoxH / MathF.Max(1f, boxH))), new Vector2(ax + 2f, by + imgBoxH + 6f * (imgBoxH / MathF.Max(1f, boxH))), Rgba(bg, fade));
+
+            float ty = by + padY * (imgBoxH / MathF.Max(1f, boxH));
+            foreach (var line in lines)
+            {
+                Text(line, new Vector2(bx + padX, ty), Rgba(txt, fade));
+                ty += lineH * (imgBoxH / MathF.Max(1f, boxH));
+            }
+        }
+
+        // ── NPC "!" indicators + interact prompt (world-anchored) ──
+        if (ShowPrompts && manager != null && camera != null)
+        {
+            foreach (var obj in manager.Objects)
+            {
+                if (obj == null || !obj.IsVisible || string.IsNullOrEmpty(obj.NpcDialogueId)) continue;
+                if (Active != null || obj == InteractableNpc) continue;
+
+                float bob = MathF.Sin(_time * 3f + obj.Position.X * 0.7f) * 3f;
+                var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BubbleHeadHeight(obj) + 0.45f, obj.Position.Z), w, h);
+                var scr = sceneToScreen(new Vector2(head.X, head.Y + bob));
+                const string mark = "!";
+                float mw = TextW(mark), mh = TextH(mark);
+                float padX = 5f, padY = 3f;
+                var th = defTheme;
+                dl.AddRectFilled(new Vector2(scr.X - mw / 2 - padX - 1, scr.Y - mh - padY * 2 - 1),
+                    new Vector2(scr.X + mw / 2 + padX + 1, scr.Y + 1), Rgba(th.BubbleBorderColor, 0.9f));
+                dl.AddRectFilled(new Vector2(scr.X - mw / 2 - padX, scr.Y - mh - padY * 2),
+                    new Vector2(scr.X + mw / 2 + padX, scr.Y), Rgba(th.BubbleColor, 1f));
+                Text(mark, new Vector2(scr.X - mw / 2, scr.Y - mh - padY), Rgba(new Vector3(1f, 0.85f, 0.25f), 1f));
+            }
+
+            if (Active == null && InteractableNpc != null)
+            {
+                var head = Project(new Vector3(InteractableNpc.Position.X,
+                    InteractableNpc.Position.Y + BubbleHeadHeight(InteractableNpc) + 0.5f, InteractableNpc.Position.Z), w, h);
+                var scr = sceneToScreen(head);
+                string label = "[E] Talk";
+                float lw = TextW(label);
+                // Dark plate behind the prompt so it reads over any background.
+                dl.AddRectFilled(new Vector2(scr.X - lw / 2 - 5f, scr.Y - 2f),
+                    new Vector2(scr.X + lw / 2 + 5f, scr.Y + TextH(label) + 2f), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.75f));
+                Text(label, new Vector2(scr.X - lw / 2, scr.Y), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f));
+            }
+        }
+
+        // ── Conversation window (bottom-center of the scene image) ──
+        var st = Active;
+        if (st != null)
+        {
+            var theme = DialogueLibrary.GetTheme(st.Asset.ThemeName);
+            float fade = st.CloseFade >= 0f ? MathF.Max(0f, st.CloseFade / 0.25f) : 1f;
+
+            string fullText = DialogueLibrary.Localize(st.Node.Text);
+            string shown = st.FullyRevealed ? fullText : fullText[..Math.Min((int)st.RevealChars, fullText.Length)];
+
+            var speaker = DialogueLibrary.GetSpeaker(st.Node.SpeakerId);
+            string speakerName = speaker?.Name ?? st.Node.SpeakerId;
+            bool hasPortrait = !string.IsNullOrEmpty(st.Node.PortraitPath) ||
+                               !string.IsNullOrEmpty(speaker?.PortraitPath);
+
+            var imgMin = sceneToScreen(Vector2.Zero);
+            var imgMax = sceneToScreen(new Vector2(w, h));
+            float imgW = imgMax.X - imgMin.X;
+            float imgH = imgMax.Y - imgMin.Y;
+            float s = imgH / MathF.Max(1f, h); // uniform scene→screen scale (Y basis)
+
+            float fsz = font != null ? fs : 14f;              // window text size (px, screen space)
+            float nameFs = fsz + 2f;                          // speaker name slightly larger
+            float winW = MathF.Min(imgW * 0.72f, 860f * s);
+            float winX = imgMin.X + (imgW - winW) * 0.5f;
+
+            float textMaxW = winW - 40f * s - (hasPortrait ? 130f * s : 0f);
+            // Word-wrap the body text at the window's inner width.
+            var lines = new List<string>();
+            foreach (var word in shown.Split(' '))
+            {
+                string test = lines.Count == 0 ? word : lines[^1] + " " + word;
+                if (f.CalcTextSizeA(fsz, float.MaxValue, 0f, test).X > textMaxW && lines.Count > 0) lines.Add(word);
+                else if (lines.Count == 0) lines.Add(word);
+                else lines[^1] = test;
+            }
+            if (lines.Count == 0) lines.Add(shown);
+
+            var choices = st.FullyRevealed ? VisibleChoices(st) : new List<DialogueChoice>();
+            float lineH = f.CalcTextSizeA(fsz, float.MaxValue, 0f, "Ag").Y + 4f * s;
+            float choicesH = 0f;
+            if (choices.Count > 0)
+            {
+                foreach (var c in choices)
+                    choicesH += f.CalcTextSizeA(fsz, float.MaxValue, 0f, DialogueLibrary.Localize(c.Text)).Y + 10f * s;
+                choicesH += 8f * s;
+            }
+
+            float winH = 22f * s + nameFs + lines.Count * lineH + MathF.Max(choicesH, 26f * s) + 24f * s;
+            float winY = imgMax.Y - winH - 18f * s;
+
+            // Window bg + border.
+            dl.AddRectFilled(new Vector2(winX + 2f * s, winY + 2f * s), new Vector2(winX + winW + 2f * s, winY + winH + 2f * s),
+                Rgba(theme.BorderColor, fade * 0.9f));
+            dl.AddRectFilled(new Vector2(winX, winY), new Vector2(winX + winW, winY + winH), Rgba(theme.WindowColor, fade));
+            uint bgTex = string.IsNullOrEmpty(theme.BgImagePath) ? 0 : GetTexture(theme.BgImagePath);
+            if (bgTex != 0)
+                dl.AddImage((nint)bgTex, new Vector2(winX, winY), new Vector2(winX + winW, winY + winH),
+                    Vector2.Zero, Vector2.One, Rgba(Vector3.One, fade));
+
+            float contentX = winX + 20f * s;
+            float contentY = winY + 14f * s;
+
+            // Portrait (left).
+            if (hasPortrait)
+            {
+                float pSize = winH - 40f * s;
+                float pX = winX + 16f * s;
+                float pY = winY + 20f * s;
+                dl.AddRectFilled(new Vector2(pX + 2f * s, pY + 2f * s), new Vector2(pX + pSize + 2f * s, pY + pSize + 2f * s), Rgba(theme.BorderColor, fade * 0.9f));
+                dl.AddRectFilled(new Vector2(pX, pY), new Vector2(pX + pSize, pY + pSize), Rgba(theme.WindowColor * 1.6f, fade));
+
+                string portraitPath = !string.IsNullOrEmpty(st.Node.PortraitPath) ? st.Node.PortraitPath : speaker!.PortraitPath;
+                uint tex = 0;
+                if (!string.Equals(st.Node.Emotion, DialogueEmotions.Neutral, StringComparison.OrdinalIgnoreCase))
+                    tex = GetTexture(EmotionVariant(portraitPath, st.Node.Emotion));
+                if (tex == 0) tex = GetTexture(portraitPath);
+                if (tex != 0)
+                    dl.AddImage((nint)tex, new Vector2(pX + 3f * s, pY + 3f * s), new Vector2(pX + pSize - 3f * s, pY + pSize - 3f * s),
+                        Vector2.Zero, Vector2.One, Rgba(Vector3.One, fade));
+            }
+
+            float textX = contentX + (hasPortrait ? 124f * s : 0f);
+
+            // Speaker name.
+            if (!string.IsNullOrEmpty(speakerName))
+            {
+                var nameCol = speaker != null
+                    ? new Vector3(speaker.ColorR, speaker.ColorG, speaker.ColorB)
+                    : theme.NameColor;
+                Text(speakerName, new Vector2(textX, contentY), Rgba(nameCol, fade));
+                contentY += nameFs + 8f * s;
+            }
+
+            // Dialogue body (typewriter).
+            float ty = contentY;
+            foreach (var line in lines)
+            {
+                Text(line, new Vector2(textX, ty), Rgba(theme.TextColor, fade));
+                ty += lineH;
+            }
+
+            // Choices or continue hint.
+            if (choices.Count > 0)
+            {
+                float cy = winY + winH - choicesH - 10f * s;
+                for (int i = 0; i < choices.Count; i++)
+                {
+                    string label = $"{i + 1}. {DialogueLibrary.Localize(choices[i].Text)}";
+                    bool selected = i == st.ChoiceIndex;
+                    var lsz = f.CalcTextSizeA(fsz, float.MaxValue, 0f, label);
+                    if (selected)
+                        dl.AddRectFilled(new Vector2(textX - 6f * s, cy - 2f * s),
+                            new Vector2(textX + lsz.X + 8f * s, cy + lsz.Y + 4f * s), Rgba(theme.WindowColor * 1.8f, fade));
+                    Text(label, new Vector2(textX, cy), Rgba(selected ? theme.ChoiceHoverColor : theme.ChoiceColor, fade));
+                    cy += lsz.Y + 10f * s;
+                }
+            }
+            else if (st.FullyRevealed && !st.Node.AutoAdvance)
+            {
+                float blink = (MathF.Sin(_time * 5f) + 1f) * 0.5f;
+                string hint = "> [Space]";
+                float hw = f.CalcTextSizeA(fsz, float.MaxValue, 0f, hint).X;
+                Text(hint, new Vector2(winX + winW - hw - 18f * s, winY + winH - fsz - 10f * s),
+                    Rgba(new Vector3(0.7f, 0.75f, 0.95f), fade * (0.4f + 0.6f * blink)));
+            }
+        }
+    }
+
+    private static int GetFontSlot(HUD hud, DialogueThemeData theme, float fontSize)
+    {        string key = $"{theme.FontPath}@{fontSize}";
+
+        // Keyed PER HUD instance — slot indices are per-HUD (each HUD bakes its own
+        // font atlas); a static string-keyed cache leaked indices across HUDs (the
+        // GameScene HUD and the SceneManager no-scene dialogue HUD), so the dialogue
+        // could sample an unrelated HUD's slot → zero glyphs → invisible text.
+        if (!_fontSlotCache.TryGetValue(hud, out var slots))
+            _fontSlotCache[hud] = slots = [];
+        if (slots.TryGetValue(key, out int slot) && slot < hud.FontSlotCount) return slot;
+
+        // Slot 0 = the HUD's CONSTRUCTOR bake (clean GL state, before the render loop —
+        // the proven-working path, same as MainMenuScene). Mid-frame bakes can land with
+        // corrupt GL state and yield a GPU-empty atlas: boxes draw, text never does.
+        if (hud.IsPrimarySlot(theme.FontPath, fontSize))
+        {
+            slots[key] = 0;
+            return 0;
+        }
+
         slot = hud.GetOrCreateFontSlot(theme.FontPath, fontSize);
-        _fontSlotCache[key] = slot;
+        slots[key] = slot;
         return slot;
     }
 

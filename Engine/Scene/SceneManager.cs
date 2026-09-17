@@ -16,6 +16,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     public unsafe class SceneManager
     {
         private readonly TransitionManager _transitionManager = new();
+
+        // ── Dialogue overlay (no-scene path) — state only; visuals via ViewportPanel.
+        // Kept for reference: the HUD is no longer used on this path (ImGui overlay
+        // replaced it), so no field needed.
         // Scheduled delayed behaviors (timer actions)
         private record ScheduledBehavior(float Remaining, string Behavior)
         {
@@ -229,6 +233,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _running = true;
             if (startScene != null)
                 SwitchToScene(startScene, true);
+
+            // ── Dialogue HUD (no-scene editor path) — create + bake BEFORE the loop ──
+            // Mid-frame font bakes can land with corrupt GL state (shadow-map units,
+            // MSAA FBO binds…) and produce a GPU-EMPTY atlas: boxes draw but ALL text
+            // is discarded by the shader. Every scene HUD in this engine is created
+            // OUTSIDE the render pass (MainMenu Enter, Loading constructor) and those
+            // all render text fine — so the dialogue HUD follows the same rule and
+            // pre-bakes every theme font up front. Slot 0 = the Default theme's window
+            // font (same proven constructor-bake path as MainMenuScene).
+            // NOTE: SceneHUD is NOT created here on the GameScene path (that scene owns
+            // its HUD via LoadingScene) — this HUD only serves the no-scene viewport.
+            // (Dialogue HUD creation removed — the no-scene path now draws the dialogue
+            // overlay through ImGui (ViewportPanel.DrawImGuiOverlay call) instead of the
+            // HUD/stb pipeline, whose mid-frame font bakes produced empty glyphs here.)
 
             nint window = Glfw.GetWindow();
 
@@ -669,6 +687,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     bridge.SceneTextureID = _sharedColorTex;
                     bridge.SceneTextureWidth = Glfw.WindowWidth;
                     bridge.SceneTextureHeight = Glfw.WindowHeight;
+
+                    // ── Dialogue state (no-scene path) ──
+                    // The editor-viewport path (2D sidescroller runs as editor objects with
+                    // NO active IScene) has no scene render pass, so nothing ever called
+                    // DialogueSystem.Tick there — conversations logged "Started" but never
+                    // drew. Drawing the overlay via the HUD/stb pipeline here produced
+                    // boxes but no glyphs (mid-frame font bakes land with dirty GL state),
+                    // so the VISUALS for this path moved to ViewportPanel →
+                    // DialogueSystem.DrawImGuiOverlay (the same ImGui draw-list path the
+                    // UI element preview renders through — proven to show text). This pass
+                    // only advances state (typewriter, fades, bubble expiry) and pre-warms
+                    // texture uploads outside the ImGui frame.
+                    if (bridge.InGameActive || bridge.IsPreviewMode)
+                    {
+                        // GameScene normally sets this in its render pass — that pass never
+                        // runs on the no-scene path, so prompts would stay hidden forever.
+                        DialogueSystem.ShowPrompts = true;
+                        DialogueSystem.TickState(dt, _editorCamera, bridge.EditorObjectManager);
+                    }
                 }
 
                 // ── After scene render: ensure viewport texture is set & bind fb 0 for ImGui ──

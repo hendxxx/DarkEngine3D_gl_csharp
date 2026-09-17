@@ -131,7 +131,39 @@ public static class Player2DSystem
             bool left = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow));
             bool right = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow));
             bool runHeld = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift));
-            bool jump = !conversationActive && (ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow));
+
+            // ── Jump trigger resolution (Inspector-aware) ──
+            // The built-in jump honors the "Jump" action's Trigger setting:
+            //   KeyDown = jump fires on key PRESS  (hold for full height)
+            //   KeyUp   = jump fires on key RELEASE (press-impulse → full arc)
+            // Keys default to Space/Up; the Jump action's own KeyBinding overrides
+            // them when set. Before this, the Trigger field on Jump was cosmetic —
+            // the physics always jumped on press regardless of the Inspector.
+            var jumpAction = player.Actions.FirstOrDefault(a => a.Name == "Jump");
+            bool jumpOnRelease = jumpAction?.IsKeyUpTrigger ?? false;
+            ImGuiKey jumpBoundKey = ImGuiKey.None;
+            if (jumpAction != null && !string.IsNullOrEmpty(jumpAction.KeyBinding)
+                && jumpAction.KeyBinding != "None"
+                && Enum.TryParse<ImGuiKey>(jumpAction.KeyBinding, out var jumpBk)
+                && jumpBk != ImGuiKey.None)
+                jumpBoundKey = jumpBk;
+
+            bool jumpDown, jumpPressed;
+            if (jumpBoundKey != ImGuiKey.None)
+            {
+                jumpDown = ImGui.IsKeyDown(jumpBoundKey);
+                jumpPressed = jumpOnRelease ? ImGui.IsKeyReleased(jumpBoundKey) : ImGui.IsKeyPressed(jumpBoundKey);
+            }
+            else
+            {
+                jumpDown = ImGui.IsKeyDown(ImGuiKey.Space) || ImGui.IsKeyDown(ImGuiKey.UpArrow);
+                jumpPressed = jumpOnRelease
+                    ? (ImGui.IsKeyReleased(ImGuiKey.Space) || ImGui.IsKeyReleased(ImGuiKey.UpArrow))
+                    : (ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow));
+            }
+            jumpDown &= !conversationActive;
+            jumpPressed &= !conversationActive;
+            bool jump = jumpPressed;
             float targetVx = 0f;
             if (left && !right) targetVx = -(runHeld ? runSpeed : walkSpeed);
             else if (right && !left) targetVx = runHeld ? runSpeed : walkSpeed;
@@ -159,7 +191,8 @@ public static class Player2DSystem
             // ── Platformer jump feel: coyote time + jump buffer + variable height ──
             // Timers advance per-frame against the live params (both 0 = classic strict
             // grounded-jump behavior, so the feature never fights the old tuning).
-            bool jumpHeld = ImGui.IsKeyDown(ImGuiKey.Space) || ImGui.IsKeyDown(ImGuiKey.UpArrow);
+            // Physical key hold drives variable jump height (works for both trigger modes).
+            bool jumpHeld = jumpDown;
             float coyoteMax = MathF.Max(0f, player.Player2DCoyoteTime);
             float bufferMax = MathF.Max(0f, player.Player2DJumpBuffer);
             player.Player2DCoyoteTimer = player.Player2DGrounded ? coyoteMax : MathF.Max(0f, player.Player2DCoyoteTimer - dt);
@@ -174,7 +207,10 @@ public static class Player2DSystem
                 player.Player2DCoyoteTimer = 0f;
                 player.Player2DVelocityY = MathF.Max(1f, player.Player2DJumpForce);
                 player.Player2DGrounded = false;
-                player.Player2DJumpCutDone = false; // re-arm the release cut for this arc
+                // Re-arm the release cut for this arc — EXCEPT release-triggered jumps:
+                // the key is already UP when the impulse fires, so the cut would halve
+                // every hop. Release-jumps get a full arc (hold phase was the press).
+                player.Player2DJumpCutDone = jumpOnRelease;
                 // Jump action fires automatically (priority-gated).
                 player.TryStartAction("Jump");
             }
