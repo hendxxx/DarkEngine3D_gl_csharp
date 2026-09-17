@@ -228,6 +228,10 @@ public static class Player2DSystem
             bool currentActionKeyHeld = false;
             foreach (var act in player.Actions)
             {
+                // "Jump" is driven entirely by the physics block above (coyote/buffer).
+                // Processing it here would double-fire TryStartAction and corrupt
+                // currentActionKeyHeld, preventing locomotion from resolving.
+                if (string.Equals(act.Name, "Jump", StringComparison.OrdinalIgnoreCase)) continue;
                 if (string.IsNullOrWhiteSpace(act.KeyBinding) || act.KeyBinding == "None") continue;
                 if (Enum.TryParse<ImGuiKey>(act.KeyBinding, out var k) && k != ImGuiKey.None)
                 {
@@ -236,11 +240,17 @@ public static class Player2DSystem
                     if (act.KeyTriggered(k))
                         player.TryStartAction(act.Name);
                     if (act.Name == player.Player2DCurrentAction)
-                        // Hold-release only makes sense for KeyDown actions (hold = keep
-                        // playing). A KeyUp looping action inverts the hold: it persists
-                        // while the key STAYS released, so pressing again cancels and
-                        // re-releasing replays it.
-                        currentActionKeyHeld = act.IsKeyUpTrigger ? !ImGui.IsKeyDown(k) : ImGui.IsKeyDown(k);
+                        // Hold logic per trigger mode:
+                        // - KeyDown: held while key is down (hold = keep playing)
+                        // - KeyDownOnce: one-shot on press, never held (fire once then done, e.g. Jump)
+                        // - KeyUp: held while key is released (persists until re-press)
+                        // - KeyUpOnce: one-shot on release, never held (fire once then done)
+                        if (act.IsKeyUpOnceTrigger || act.IsKeyDownOnceTrigger)
+                            currentActionKeyHeld = false; // one-shot: don't persist as held
+                        else if (act.IsKeyUpTrigger)
+                            currentActionKeyHeld = !ImGui.IsKeyDown(k);
+                        else
+                            currentActionKeyHeld = ImGui.IsKeyDown(k);
                 }
             }
 

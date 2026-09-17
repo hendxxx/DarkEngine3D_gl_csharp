@@ -525,7 +525,9 @@ public class Player2DActionData
     public bool StopOnFrameEnd { get; set; }
     public int Priority { get; set; } = 5;
     public string KeyBinding { get; set; } = "None";
-    /// <summary>"KeyDown" (fire on press) or "KeyUp" (fire on release). Default keeps
+    /// <summary>"KeyDown" (fire on press), "KeyUp" (fire on release), "KeyDownOnce"
+    /// (fire once on press, requires release to fire again), or "KeyUpOnce"
+    /// (fire once on release, requires re-press to fire again). Default keeps
     /// old scenes behaving exactly as before.</summary>
     public string KeyTrigger { get; set; } = "KeyDown";
 }

@@ -3209,9 +3209,10 @@ public class InspectorPanel
                     }                    ImGui.EndCombo();
                 }
 
-                // When the binding fires: on press (hold-style) or on release (impulse).
-                string[] triggers = ["KeyDown", "KeyUp"];
-                int trigIdx = act.IsKeyUpTrigger ? 1 : 0;
+                // When the binding fires: on press (hold-style), on release (impulse),
+                // once on press requiring release, or once on release requiring re-press.
+                string[] triggers = ["KeyDown", "KeyUp", "KeyDownOnce", "KeyUpOnce"];
+                int trigIdx = act.IsKeyUpOnceTrigger ? 3 : act.IsKeyDownOnceTrigger ? 2 : act.IsKeyUpTrigger ? 1 : 0;
                 if (ImGui.BeginCombo("Trigger", triggers[trigIdx]))
                 {
                     for (int t = 0; t < triggers.Length; t++)
@@ -3224,7 +3225,7 @@ public class InspectorPanel
                     ImGui.EndCombo();
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("KeyDown = fires when the key is pressed (hold J = keep playing, release = back to idle).\nKeyUp = fires when the key is RELEASED (press-impulse: the action plays out regardless of hold length).");
+                    ImGui.SetTooltip("KeyDown = fires when the key is pressed (hold J = keep playing, release = back to idle).\nKeyUp = fires when the key is RELEASED (press-impulse: the action plays out regardless of hold length).\nKeyDownOnce = fires once on press; user must release the key before it can fire another time.\nKeyUpOnce = fires once on release; user must press the key again before it can fire another time.");
 
                 if (ImGui.SmallButton("Test"))
                     editorObj.TryStartAction(act.Name);

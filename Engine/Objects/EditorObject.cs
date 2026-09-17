@@ -38,12 +38,58 @@ public class Player2DAction
     public string KeyBinding { get; set; } = "None";
     /// <summary>When the binding fires: "KeyDown" = on key press (hold-style — a looping
     /// action ends when the key is released), "KeyUp" = on key release (press-impulse —
-    /// the action plays out regardless of how long the key was held).</summary>
+    /// the action plays out regardless of how long the key was held), "KeyDownOnce" = once
+    /// on press requiring release before re-fire, "KeyUpOnce" = once on release requiring
+    /// re-press before re-fire.</summary>
     public string KeyTrigger { get; set; } = "KeyDown";
     /// <summary>True when the binding fires on key RELEASE instead of press.</summary>
     public bool IsKeyUpTrigger => string.Equals(KeyTrigger, "KeyUp", StringComparison.OrdinalIgnoreCase);
+    /// <summary>True when the binding fires once on key RELEASE and requires a fresh
+    /// press before it can fire again.</summary>
+    public bool IsKeyUpOnceTrigger => string.Equals(KeyTrigger, "KeyUpOnce", StringComparison.OrdinalIgnoreCase);
+    /// <summary>True when the binding fires once on key PRESS and requires a fresh
+    /// release before it can fire again.</summary>
+    public bool IsKeyDownOnceTrigger => string.Equals(KeyTrigger, "KeyDownOnce", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Tracks whether the key has been pressed since the last KeyUpOnce trigger.
+    /// Only meaningful when KeyTrigger == "KeyUpOnce". Starts false so the user must
+    /// press the key first before a release can trigger the action.</summary>
+    [JsonIgnore]
+    public bool KeyUpOnceArmed { get; set; } = false;
+    /// <summary>Tracks whether the key has been released since the last KeyDownOnce trigger.
+    /// Only meaningful when KeyTrigger == "KeyDownOnce".</summary>
+    [JsonIgnore]
+    public bool KeyDownOnceArmed { get; set; } = true;
     /// <summary>True this frame when the configured trigger fires for <paramref name="k"/>.</summary>
-    public bool KeyTriggered(ImGuiKey k) => IsKeyUpTrigger ? ImGui.IsKeyReleased(k) : ImGui.IsKeyPressed(k);
+    public bool KeyTriggered(ImGuiKey k)
+    {
+        if (IsKeyUpOnceTrigger)
+        {
+            // Re-arm when the user presses the key again
+            if (ImGui.IsKeyPressed(k))
+                KeyUpOnceArmed = true;
+            // Fire once on release, then disarm until next press
+            if (KeyUpOnceArmed && ImGui.IsKeyReleased(k))
+            {
+                KeyUpOnceArmed = false;
+                return true;
+            }
+            return false;
+        }
+        if (IsKeyDownOnceTrigger)
+        {
+            // Re-arm when the user releases the key
+            if (ImGui.IsKeyReleased(k))
+                KeyDownOnceArmed = true;
+            // Fire once on press, then disarm until next release
+            if (KeyDownOnceArmed && ImGui.IsKeyPressed(k))
+            {
+                KeyDownOnceArmed = false;
+                return true;
+            }
+            return false;
+        }
+        return IsKeyUpTrigger ? ImGui.IsKeyReleased(k) : ImGui.IsKeyPressed(k);
+    }
 }
 
 /// <summary>

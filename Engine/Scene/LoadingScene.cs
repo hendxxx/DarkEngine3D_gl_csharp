@@ -432,6 +432,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
                 obj.Player2DAnimationClip = objData.Player2DAnimationClip;
                 obj.NpcDialogueId = objData.NpcDialogueId;
+
+                // ── Animation actions ──
+                // Restore the user-authored actions (Idle/Walk/Run/Jump/Attack/...). Without
+                // this the runtime player has an EMPTY Actions list: GetActiveActionClip
+                // never matches, every animation action is dead (only the base idle clip
+                // plays), and key-bound actions (Attack/Dead) never fire. The editor load
+                // path (SceneManagerPanel) already restores these — this is the runtime twin.
+                if (objData.Actions is { Count: > 0 } savedActions)
+                {
+                    obj.Actions = savedActions.Select(a => new Player2DAction
+                    {
+                        Name = a.Name,
+                        SpriteSheet = a.SpriteSheet,
+                        Clip = a.Clip,
+                        Loop = a.Loop,
+                        StopOnFrameEnd = a.StopOnFrameEnd,
+                        Priority = a.Priority,
+                        KeyBinding = a.KeyBinding,
+                        KeyTrigger = a.KeyTrigger,
+                    }).ToList();
+                }
+                else
+                {
+                    // Legacy scenes with no saved actions: give the runtime player the
+                    // default locomotion set so idle/walk/run/jump states still resolve.
+                    obj.EnsureDefaultActions();
+                }
                 obj.Player2DHeight = objData.Player2DHeight;
                 obj.Player2DCapsuleRadius = objData.Player2DCapsuleRadius;
                 obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
