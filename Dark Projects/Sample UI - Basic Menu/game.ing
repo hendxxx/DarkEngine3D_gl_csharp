@@ -590,8 +590,8 @@
                   "name": "lbWarning",
                   "type": "Label",
                   "text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras pulvinar ante porta, posuere odio sit amet, dictum nisl. Phasellus quis est porttitor, interdum ex vitae, accumsan quam. Etiam et congue massa. Vestibulum vel gravida augue. Phasellus sagittis faucibus viverra. Phasellus mauris velit, posuere ultrices hendrerit sed, vulputate sit amet odio. Nullam at mauris feugiat, rutrum nisi sed, ornare urna. Vestibulum egestas tellus vel vehicula accumsan. Nullam magna enim, egestas eget mi nec, pretium volutpat ligula. Suspendisse vel orci iaculis, sagittis quam interdum, molestie turpis. Maecenas facilisis est sit amet dui ultricies, eu ullamcorper lectus porta. Nam vel erat vitae velit congue porta scelerisque a nulla. Phasellus volutpat risus ut consequat rhoncus. Integer vitae nunc tincidunt, sodales ligula vel, mattis purus. Praesent interdum nisi ipsum, sit amet posuere ligula rhoncus sit amet.",
-                  "x": 20,
-                  "y": 40,
+                  "x": -0,
+                  "y": 20,
                   "width": 1880,
                   "height": 280,
                   "imagePath": "",
@@ -8863,200 +8863,6 @@
               "barProgOffsetTop": 0,
               "barProgOffsetBottom": 0,
               "children": []
-            },
-            {
-              "name": "lb",
-              "type": "Label",
-              "text": "testing label",
-              "x": 1000,
-              "y": 470,
-              "width": 200,
-              "height": 50,
-              "imagePath": "",
-              "imageMode": "Stretch",
-              "fontSize": 13,
-              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
-              "textColor": [
-                0.95,
-                0.95,
-                1
-              ],
-              "bgColor": [
-                0,
-                0,
-                0
-              ],
-              "borderColor": [
-                0,
-                0,
-                0
-              ],
-              "hoverTextColor": [
-                0.95,
-                0.95,
-                1
-              ],
-              "hoverBgColor": [
-                0,
-                0,
-                0
-              ],
-              "hoverBorderColor": [
-                0,
-                0,
-                0
-              ],
-              "alignment": "Center",
-              "isVisible": true,
-              "opacity": 1,
-              "autoFillWindow": false,
-              "autoCenterX": false,
-              "autoCenterY": false,
-              "anchor": "None",
-              "useHover": false,
-              "clickBehavior": "None",
-              "hoverEnterBehavior": "None",
-              "hoverExitBehavior": "None",
-              "minValue": 0,
-              "maxValue": 100,
-              "step": 1,
-              "currentValue": 50,
-              "textOptions": [
-                "Option A",
-                "Option B",
-                "Option C"
-              ],
-              "selectedTextIndex": 0,
-              "isChecked": false,
-              "options": [
-                "Option 1",
-                "Option 2",
-                "Option 3"
-              ],
-              "selectedIndex": 0,
-              "fallbackText": "",
-              "wordWrap": true,
-              "triggeredByKeyboardButton": "",
-              "placeholder": "Enter text...",
-              "maxLength": 0,
-              "inputText": "",
-              "scrollY": 0,
-              "scrollBarWidth": 10,
-              "scrollBarTrackColor": [
-                0.15,
-                0.15,
-                0.2
-              ],
-              "scrollBarThumbColor": [
-                0.45,
-                0.45,
-                0.55
-              ],
-              "scrollBarThumbHoverColor": [
-                0.55,
-                0.55,
-                0.65
-              ],
-              "sliderTrackColor": [
-                0.3,
-                0.3,
-                0.35
-              ],
-              "sliderFillColor": [
-                0.3,
-                0.6,
-                1
-              ],
-              "sliderThumbColor": [
-                0.9,
-                0.9,
-                1
-              ],
-              "sliderThumbBorderColor": [
-                0.3,
-                0.6,
-                1
-              ],
-              "sliderThumbSize": 14,
-              "sliderTrackHeight": 6,
-              "sliderLabelPosition": 1,
-              "sliderLabelSpacing": 8,
-              "labelSpacing": 8,
-              "checkmarkColor": [
-                0.9,
-                0.9,
-                1
-              ],
-              "checkedBgColor": [
-                0.25,
-                0.55,
-                1
-              ],
-              "uncheckedBgColor": [
-                0.15,
-                0.15,
-                0.22
-              ],
-              "arrowColor": [
-                0.5,
-                0.5,
-                0.7
-              ],
-              "cursorColor": [
-                0.5,
-                0.8,
-                1
-              ],
-              "radioSelectedColor": [
-                0.3,
-                0.7,
-                1
-              ],
-              "radioSelectedBgColor": [
-                0.2,
-                0.4,
-                0.65
-              ],
-              "radioUnselectedBgColor": [
-                0.15,
-                0.15,
-                0.22
-              ],
-              "radioGroup": "default",
-              "barBackgroundPath": "",
-              "barEmptyPath": "",
-              "barProgressPath": "",
-              "barBgColor": [
-                0.1,
-                0.1,
-                0.14
-              ],
-              "barEmptyColor": [
-                0.05,
-                0.05,
-                0.08
-              ],
-              "barProgressColor": [
-                0.3,
-                0.7,
-                1
-              ],
-              "barInset": 0,
-              "barDirection": 0,
-              "barStatBinding": "None",
-              "barBgOffsetLeft": 0,
-              "barBgOffsetRight": 0,
-              "barBgOffsetTop": 0,
-              "barBgOffsetBottom": 0,
-              "barEmptyOffsetLeft": 0,
-              "barEmptyOffsetRight": 0,
-              "barEmptyOffsetTop": 0,
-              "barEmptyOffsetBottom": 0,
-              "barProgOffsetLeft": 0,
-              "barProgOffsetRight": 0,
-              "barProgOffsetTop": 0,
-              "barProgOffsetBottom": 0,
-              "children": []
             }
           ]
         }
@@ -15364,8 +15170,8 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.0999,
-        42.891666,
+        86.86758,
+        29.44,
         307.0999
       ],
       "editorCameraYaw": 180,

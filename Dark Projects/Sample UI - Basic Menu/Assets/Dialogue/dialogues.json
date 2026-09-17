@@ -15,13 +15,13 @@
           "Choices": [
             {
               "Text": "Ya",
-              "NextNodeId": "accept",
+              "NextNodeId": "",
               "Conditions": [],
               "Actions": []
             },
             {
               "Text": "Tidak",
-              "NextNodeId": "decline",
+              "NextNodeId": "",
               "Conditions": [],
               "Actions": []
             }
