@@ -10,20 +10,34 @@
           "Id": "start",
           "SpeakerId": "village_chief",
           "Emotion": "Neutral",
-          "PortraitPath": "",
+          "PortraitPath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Speech3.png",
           "Text": "Selamat datang di desa kami! Apakah kamu ingin masuk ke dungeon ini?",
           "Choices": [
             {
               "Text": "Ya",
               "NextNodeId": "",
               "Conditions": [],
-              "Actions": []
+              "Actions": [
+                {
+                  "Type": "Start Dialogue",
+                  "Param": "1",
+                  "Param2": "",
+                  "Delay": 0
+                }
+              ]
             },
             {
               "Text": "Tidak",
               "NextNodeId": "",
               "Conditions": [],
-              "Actions": []
+              "Actions": [
+                {
+                  "Type": "Hide Bubble",
+                  "Param": "",
+                  "Param2": "",
+                  "Delay": 0
+                }
+              ]
             }
           ],
           "NextNodeId": "",

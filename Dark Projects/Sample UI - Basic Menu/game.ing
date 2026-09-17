@@ -8877,7 +8877,7 @@
             "width": 50,
             "height": 20,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
             "tilesetColumns": 25,
             "tilesetRows": 25,
             "tilesetFlipV": false,
@@ -8891,7 +8891,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -2,
@@ -8906,7 +8906,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
                 "isVisible": true,
                 "scrollFactor": 0.85,
                 "zPosition": -1,
@@ -12475,7 +12475,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 86.86758,
+          "posX": 69.35426,
           "posY": 0,
           "posZ": 0,
           "rotX": 0,
@@ -12576,7 +12576,7 @@
               "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "None",
-              "keyTrigger": "KeyUp"
+              "keyTrigger": "KeyDown"
             },
             {
               "name": "Attach 1",
@@ -12586,7 +12586,7 @@
               "stopOnFrameEnd": false,
               "priority": 5,
               "keyBinding": "J",
-              "keyTrigger": "KeyUp"
+              "keyTrigger": "KeyDownOnce"
             },
             {
               "name": "Dead",
@@ -15170,9 +15170,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        86.86758,
-        29.44,
-        307.0999
+        69.35426,
+        32,
+        307.03183
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
@@ -19461,12 +19461,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        -0.64950943,
-        23.163279,
-        66.07339
+        69.354294,
+        32,
+        305.59314
       ],
       "editorCameraYaw": 180,
-      "editorCameraPitch": -33.7,
+      "editorCameraPitch": 0,
       "renderProperties": {
         "backgroundColor": [
           0,
