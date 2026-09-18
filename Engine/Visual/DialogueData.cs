@@ -95,6 +95,10 @@ public class DialogueAsset
     public string ThemeName { get; set; } = "Default";
     public List<DialogueNode> Nodes { get; set; } = new();
 
+    /// <summary>Authoring-only sticky notes on the graph canvas (designer reminders,
+    /// TODOs). Serialized with the asset, never touched by the runtime.</summary>
+    public List<DialogueGraphNote> Notes { get; set; } = new();
+
     public DialogueNode? GetNode(string id) =>
         Nodes.FirstOrDefault(n => string.Equals(n.Id, id, StringComparison.OrdinalIgnoreCase));
 
@@ -102,7 +106,24 @@ public class DialogueAsset
     {
         Id = Id, Name = Name, StartNodeId = StartNodeId, ThemeName = ThemeName,
         Nodes = Nodes.Select(n => n.Clone()).ToList(),
+        Notes = Notes.Select(n => n.Clone()).ToList(),
     };
+}
+
+/// <summary>A free-floating comment box on the dialogue graph canvas. Pure authoring
+/// aid: it renders in the graph view and persists to dialogues.json, but the runtime
+/// conversation ignores it entirely.</summary>
+public class DialogueGraphNote
+{
+    public string Text { get; set; } = "New note";
+    public float X { get; set; }
+    public float Y { get; set; }
+    /// <summary>Box size in graph units (resizable from the corner handle).</summary>
+    public float W { get; set; } = 150f;
+    public float H { get; set; } = 70f;
+
+    public DialogueGraphNote Clone() => new()
+    { Text = Text, X = X, Y = Y, W = W, H = H };
 }
 
 /// <summary>A named speaker (portrait + name + name color). Speaker ids let one
@@ -325,6 +346,8 @@ public static class DialogueLibrary
         public List<DialogueThemeData> Themes { get; set; } = [];
         public string CurrentLanguage { get; set; } = "English";
         public Dictionary<string, Dictionary<string, string>> Localizations { get; set; } = new();
+        // Notes live INSIDE each asset (asset.Notes) — listed here only so the JSON
+        // schema reads nicely; the serializer walks the asset graph automatically.
     }
 
     public static string GetFilePath()

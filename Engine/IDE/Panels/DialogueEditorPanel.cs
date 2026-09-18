@@ -62,6 +62,13 @@ public class DialogueEditorPanel
     private string _graphSearch = "";            // node search box (id or text substring)
     private int _graphSearchCycle = -1;          // current match index for repeated Enter
     private bool _mmDragging;                    // minimap LMB navigation in progress
+    // ── Sticky notes (graph canvas) ──
+    private int _noteDrag = -1;                  // note being moved (index)
+    private bool _noteDragUndoPending;           // first drag frame pushes pre-move snapshot
+    private int _noteResize = -1;                // note being resized (index)
+    private Vector2 _noteGrabOffset;             // mouse→note grab offset (graph units)
+    private int _editingNote = -1;               // note with the text input open
+    private string _noteEditText = "";
 
     public DialogueEditorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -261,6 +268,21 @@ public class DialogueEditorPanel
                 AutoArrangeGraph(asset);
             }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Re-layout all nodes in BFS columns from the Start node.");
+            ImGui.SameLine();
+            if (ImGui.Button("+ Note"))
+            {
+                PushGraphUndo(asset);
+                // Place new notes near the center of the current view so they're found.
+                asset.Notes.Add(new DialogueGraphNote
+                {
+                    Text = "New note",
+                    X = (-_graphPan.X + 200f) / _graphZoom,
+                    Y = (-_graphPan.Y + 160f) / _graphZoom,
+                });
+                _editingNote = asset.Notes.Count - 1;
+                _noteEditText = "New note";
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Sticky note on the canvas (authoring only — ignored at runtime).");
             ImGui.SameLine();
             if (ImGui.Button("Center")) CenterOnNode(asset, null);
             ImGui.SameLine();
@@ -530,6 +552,162 @@ public class DialogueEditorPanel
         uint condPlate = C(40, 32, 14, 225); // dark amber plate behind it
         float edgeThick = Math.Clamp(1.8f * _graphZoom, 1f, 3f);
 
+        // Shared hit-test state (needed by notes below AND the node pass later).
+        var mouse = ImGui.GetIO().MousePos;
+        bool canvasHovered = ImGui.IsItemHovered();
+
+        // ── Sticky notes (BELOW edges/nodes — the quiet background layer) ──
+        // Yellow authoring memo, drawn under everything so routing stays readable.
+        var mouseIo = ImGui.GetIO();
+        for (int ni = 0; ni < asset.Notes.Count; ni++)
+        {
+            var note = asset.Notes[ni];
+            var nmin = ToScreen(new(note.X, note.Y));
+            var nmax = nmin + new Vector2(note.W, note.H) * _graphZoom;
+            bool editing = _editingNote == ni;
+
+            // Body + folded corner + border.
+            dl.AddRectFilled(nmin + new Vector2(2, 2), nmax + new Vector2(2, 2), C(0, 0, 0, 70), 3f); // shadow
+            dl.AddRectFilled(nmin, nmax, editing ? C(96, 88, 44) : C(82, 76, 40), 3f);
+            dl.AddRectFilled(nmin, nmax, C(238, 214, 112, 46), 3f);                                   // yellow wash
+            dl.AddRect(nmin, nmax, editing ? C(250, 226, 130) : C(180, 165, 92), 3f, ImDrawFlags.None, editing ? 1.8f : 1f);
+            // Corner fold (top-right triangle).
+            float fold = 11f * _graphZoom;
+            dl.AddTriangleFilled(new(nmax.X - fold, nmin.Y), nmax, new(nmax.X, nmin.Y + fold), C(196, 176, 92));
+
+            dl.PushClipRect(nmin, nmax, true);
+            if (editing)
+            {
+                // Text input overlay: an ImGui child positioned exactly on the note.
+                ImGui.SetNextWindowPos(nmin);
+                ImGui.SetNextWindowSize(new Vector2(note.W, note.H) * _graphZoom);
+                if (ImGui.Begin($"##note_edit{ni}", ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoSavedSettings
+                    | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoScrollbar))
+                {
+                    ImGui.PushStyleColor(ImGuiCol.FrameBg, new Vector4(0.30f, 0.28f, 0.14f, 1f));
+                    ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.96f, 0.93f, 0.78f, 1f));
+                    if (ImGui.InputTextMultiline($"##note_text{ni}", ref _noteEditText, 512,
+                        new Vector2(note.W, note.H) * _graphZoom - new Vector2(8, 8)))
+                        note.Text = _noteEditText;
+                    if (!ImGui.IsItemActive() && ImGui.IsMouseClicked(0)
+                        && !(mouse.X >= nmin.X && mouse.X <= nmax.X && mouse.Y >= nmin.Y && mouse.Y <= nmax.Y))
+                        _editingNote = -1; // clicked outside → commit & close
+                    ImGui.PopStyleColor(2);
+                }
+                ImGui.End();
+            }
+            else
+            {
+                // Wrapped note text (same measured ellipsis wrap as node bodies).
+                float noteFs = MathF.Max(8f, fs - 1f);
+                float nty = nmin.Y + 6f * _graphZoom;
+                float ntw = note.W * _graphZoom - 12f * _graphZoom;
+                var nlines = new List<string>();
+                foreach (var word in note.Text.Split('\n'))
+                {
+                    var wl = new List<string>();
+                    foreach (var w in word.Split(' '))
+                    {
+                        string test = wl.Count == 0 ? w : wl[^1] + " " + w;
+                        if (font.CalcTextSizeA(noteFs, float.MaxValue, 0f, test).X > ntw && wl.Count > 0) wl.Add(w);
+                        else if (wl.Count == 0) wl.Add(w);
+                        else wl[^1] = test;
+                    }
+                    nlines.AddRange(wl);
+                    nlines.Add(""); // hard line break
+                }
+                while (nlines.Count > 0 && nlines[^1] == "") nlines.RemoveAt(nlines.Count - 1);
+                int maxNoteLines = Math.Max(1, (int)((note.H * _graphZoom - 12f * _graphZoom) / (noteFs * 1.35f)));
+                foreach (var l in nlines.Take(maxNoteLines))
+                {
+                    string draw = l;
+                    while (draw.Length > 1 && font.CalcTextSizeA(noteFs, float.MaxValue, 0f, draw).X > ntw)
+                        draw = draw[..^1];
+                    if (draw != l && draw.Length > 0) draw = draw[..^1] + "…";
+                    dl.AddText(font, noteFs, new(nmin.X + 6f * _graphZoom, nty), C(94, 84, 40), draw);
+                    nty += noteFs * 1.35f;
+                }
+            }
+            dl.PopClipRect();
+        }
+
+        // Note interaction (after draw so rects above are final; before nodes so
+        // node hit-testing keeps priority when overlapping).
+        for (int ni = 0; ni < asset.Notes.Count; ni++)
+        {
+            var note = asset.Notes[ni];
+            var nmin = ToScreen(new(note.X, note.Y));
+            var nmax = nmin + new Vector2(note.W, note.H) * _graphZoom;
+            bool overNote = mouse.X >= nmin.X && mouse.X <= nmax.X && mouse.Y >= nmin.Y && mouse.Y <= nmax.Y;
+            var handleMin = nmax - new Vector2(10f * _graphZoom, 10f * _graphZoom);
+            bool overHandle = mouse.X >= handleMin.X && mouse.X <= nmax.X + 2 && mouse.Y >= handleMin.Y && mouse.Y <= nmax.Y + 2;
+            if (overHandle)
+                dl.AddTriangleFilled(new(nmax.X, nmax.Y - 9f * _graphZoom), new(nmax.X + 3, nmax.Y + 3), new(nmax.X - 9f * _graphZoom, nmax.Y), C(250, 226, 130));
+
+            if (canvasHovered && ImGui.IsMouseClicked(0) && _editingNote != ni)
+            {
+                if (overHandle)
+                {
+                    _noteResize = ni;
+                    PushGraphUndo(asset);
+                }
+                else if (overNote)
+                {
+                    // Double-click to edit, single grab to move (armed; snapshot on first drag).
+                    if (ImGui.IsMouseDoubleClicked(0))
+                    {
+                        _editingNote = ni;
+                        _noteEditText = note.Text;
+                    }
+                    else
+                    {
+                        _noteDrag = ni;
+                        _noteDragUndoPending = true;
+                        _noteGrabOffset = (nmin - mouse) / _graphZoom;
+                    }
+                }
+            }
+            if (overNote && !overHandle)
+                ImGui.SetTooltip("Sticky note — drag to move · double-click to edit · corner to resize");
+        }
+        if (_noteDrag >= 0 && _noteDrag < asset.Notes.Count && ImGui.IsMouseDragging(0))
+        {
+            if (_noteDragUndoPending) { _noteDragUndoPending = false; PushGraphUndo(asset); }
+            var note = asset.Notes[_noteDrag];
+            var screen = mouse - _noteGrabOffset * _graphZoom;
+            var g = (screen - canvasMin - _graphPan) / _graphZoom;
+            note.X = g.X; note.Y = g.Y;
+        }
+        else if (_noteDrag >= 0 && ImGui.IsMouseReleased(0))
+            _noteDrag = -1;
+        if (_noteResize >= 0 && _noteResize < asset.Notes.Count && ImGui.IsMouseDragging(0))
+        {
+            var note = asset.Notes[_noteResize];
+            var g = (mouse - canvasMin - _graphPan) / _graphZoom;
+            note.W = MathF.Max(70f, g.X - note.X);
+            note.H = MathF.Max(34f, g.Y - note.Y);
+        }
+        else if (_noteResize >= 0 && ImGui.IsMouseReleased(0))
+            _noteResize = -1;
+        // Delete note: hover + Del key.
+        if (_editingNote < 0)
+        {
+            for (int ni = 0; ni < asset.Notes.Count; ni++)
+            {
+                var note = asset.Notes[ni];
+                var nmin = ToScreen(new(note.X, note.Y));
+                var nmax = nmin + new Vector2(note.W, note.H) * _graphZoom;
+                bool overNote = mouse.X >= nmin.X && mouse.X <= nmax.X && mouse.Y >= nmin.Y && mouse.Y <= nmax.Y;
+                if (overNote && canvasHovered && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
+                {
+                    PushGraphUndo(asset);
+                    asset.Notes.RemoveAt(ni);
+                    if (_editingNote == ni) _editingNote = -1;
+                    break;
+                }
+            }
+        }
+
         // Compact condition summary for an arrow label: "level:5" → "level>=5",
         // "var:name:10" → "var:name>=10"; non-numeric gates pass through as-is.
         // All conditions must pass for the choice to be visible at runtime, so
@@ -632,10 +810,8 @@ public class DialogueEditorPanel
         }
 
         // ── Nodes ──
-        var mouse = ImGui.GetIO().MousePos;
         bool leftClicked = ImGui.IsMouseClicked(0);
         bool leftReleased = ImGui.IsMouseReleased(0);
-        bool canvasHovered = ImGui.IsItemHovered();
         int hoveredNode = -1;
         for (int i = 0; i < asset.Nodes.Count; i++)
         {
