@@ -146,6 +146,20 @@ public class IDESettingsPanel
                 // FOV
                 var settings = Load();
                 int fov = settings.Fov;
+
+                // In-game stats overlay (FPS/TRIS/Objects panel shown while playing).
+                // Toggleable here, or by clicking the panel itself while in-game.
+                bool stats = _bridge.ShowInGameStats;
+                if (ImGui.Checkbox("Show In-Game Stats", ref stats))
+                {
+                    _bridge.ShowInGameStats = stats;
+                    SaveSetting(s => s.ShowInGameStats = stats);
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("FPS/TRIS/Objects/POS overlay while playing (F8 / preview).\nAlso toggleable by clicking the panel itself in-game.\nPer project, saved in settings.json.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(stats ? "stats overlay ON" : "stats overlay hidden");
+
                 ImGui.PushItemWidth(200);
                 if (ImGui.SliderInt("FOV", ref fov, 30, 120, "%d°"))
                 {

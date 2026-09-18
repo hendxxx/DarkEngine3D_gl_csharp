@@ -83,6 +83,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // Persisted per project; the editor toggle above still governs edit mode. ──
         public bool InGameMouseCameraControl { get; set; } = true;
 
+        // ── In-game stats overlay (FPS/TRIS/Objects/POS panel + GameScene debug HUD).
+        // Shown while playing (F8 / preview). Persisted per project; toggle in
+        // IDE Settings → Gameplay, or click the panel itself while in-game. ──
+        public bool ShowInGameStats { get; set; } = true;
+
         // ── Transition defaults (persisted from TransitionPanel's "Apply Global Default") ──
         public int DefaultTransitionType { get; set; } = 0; // 0=Fade, 1=SlideLeft, 2=SlideRight
         public float DefaultTransitionDuration { get; set; } = 0.6f;

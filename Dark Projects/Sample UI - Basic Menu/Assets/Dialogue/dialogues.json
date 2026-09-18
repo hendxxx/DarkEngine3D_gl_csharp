@@ -3,15 +3,60 @@
     {
       "Id": "village_intro",
       "Name": "Village Intro",
-      "StartNodeId": "start",
+      "StartNodeId": "Page 1",
       "ThemeName": "Default",
       "Nodes": [
         {
-          "Id": "start",
+          "Id": "Page 1",
           "SpeakerId": "village_chief",
           "Emotion": "Neutral",
           "PortraitPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Blank bubble.png",
-          "Text": "Selamat datang di desa kami! Apakah kamu ingin masuk ke dungeon ini?",
+          "Text": "Selamat datang di desa kami! ",
+          "Choices": [],
+          "NextNodeId": "Page 2",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 114.90308,
+          "GraphY": 80.21366
+        },
+        {
+          "Id": "accept",
+          "SpeakerId": "village_chief",
+          "Emotion": "Neutral",
+          "PortraitPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Speech1.png",
+          "Text": "Hati-hati di dalam sana, penjelajah muda.",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": true,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 154.17531,
+          "GraphY": 316.64728
+        },
+        {
+          "Id": "decline",
+          "SpeakerId": "village_chief",
+          "Emotion": "Neutral",
+          "PortraitPath": "",
+          "Text": "Baik. Kembali lagi kapan pun kamu siap.",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": true,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 634.04236,
+          "GraphY": 266.87634
+        },
+        {
+          "Id": "Page 2",
+          "SpeakerId": "",
+          "Emotion": "Neutral",
+          "PortraitPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Blank bubble.png",
+          "Text": "Apakah kamu ingin masuk ke dungeon ini?",
           "Choices": [
             {
               "Text": "Ya",
@@ -30,33 +75,9 @@
           "AutoAdvance": false,
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
-          "OnEndActions": []
-        },
-        {
-          "Id": "accept",
-          "SpeakerId": "village_chief",
-          "Emotion": "Neutral",
-          "PortraitPath": "",
-          "Text": "Hati-hati di dalam sana, penjelajah muda.",
-          "Choices": [],
-          "NextNodeId": "",
-          "AutoAdvance": true,
-          "AutoAdvanceDelay": 1.5,
-          "OnStartActions": [],
-          "OnEndActions": []
-        },
-        {
-          "Id": "decline",
-          "SpeakerId": "village_chief",
-          "Emotion": "Neutral",
-          "PortraitPath": "",
-          "Text": "Baik. Kembali lagi kapan pun kamu siap.",
-          "Choices": [],
-          "NextNodeId": "",
-          "AutoAdvance": true,
-          "AutoAdvanceDelay": 1.5,
-          "OnStartActions": [],
-          "OnEndActions": []
+          "OnEndActions": [],
+          "GraphX": 444.6192,
+          "GraphY": 123.14455
         }
       ]
     }

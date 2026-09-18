@@ -1387,8 +1387,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             DialogueSystem.ShowPrompts = isPreviewMode;
             DialogueSystem.Tick(_deltaTime, _hud, _camera, _sceneManager.Bridge?.EditorObjectManager);
 
-            //  HUD debug overlay — hidden in preview/in-game mode for a clean view
-            if (!isPreviewMode)
+            //  HUD debug overlay — hidden in preview/in-game mode for a clean view.
+            // Visibility also honors the "Show In-Game Stats" preference (IDE Settings
+            // → Gameplay / Bridge.ShowInGameStats) so the F8 stats panel and this HUD
+            // hide together.
+            if (!isPreviewMode && (_sceneManager.Bridge?.ShowInGameStats ?? true))
             {
                 _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
                 float debugLineH = _hud.MeasureTextHeight(title1) + 6f;

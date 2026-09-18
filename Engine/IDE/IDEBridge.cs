@@ -208,6 +208,9 @@ public class IDEBridge
     // ── Editor debug grid toggle (shown in the viewport while editing) ──
     public bool ShowDebugGrid { get; set; } = true;
 
+    // ── In-game stats overlay toggle (FPS/TRIS/Objects panel while playing) ──
+    public bool ShowInGameStats { get; set; } = true;
+
     // ── Editor viewport shadows toggle (CSM on/off for editor objects) ──
     public bool ShowShadows { get; set; } = true;
 

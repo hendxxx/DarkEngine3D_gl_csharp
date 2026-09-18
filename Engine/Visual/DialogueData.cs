@@ -65,12 +65,16 @@ public class DialogueNode
     public List<TilemapTriggerAction> OnStartActions { get; set; } = new();
     /// <summary>Actions fired when this node is left (next page, choice or end).</summary>
     public List<TilemapTriggerAction> OnEndActions { get; set; } = new();
+    /// <summary>Graph View position in the Dialogue Editor (authoring-only, persisted so
+    /// the visual layout of the conversation survives save/load).</summary>
+    public float GraphX { get; set; }
+    public float GraphY { get; set; }
 
     public DialogueNode Clone() => new()
     {
         Id = Id, SpeakerId = SpeakerId, Emotion = Emotion, PortraitPath = PortraitPath,
         Text = Text, NextNodeId = NextNodeId, AutoAdvance = AutoAdvance,
-        AutoAdvanceDelay = AutoAdvanceDelay,
+        AutoAdvanceDelay = AutoAdvanceDelay, GraphX = GraphX, GraphY = GraphY,
         Choices = Choices.Select(c => c.Clone()).ToList(),
         OnStartActions = OnStartActions.Select(a => a.Clone()).ToList(),
         OnEndActions = OnEndActions.Select(a => a.Clone()).ToList(),

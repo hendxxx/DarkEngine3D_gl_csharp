@@ -324,6 +324,7 @@ public class IDE : IDisposable
             // Mouse camera control toggles are per project too (editor + in-game).
             Visual.Camera.MouseCameraControl = projSettings.MouseCameraControl;
             Visual.Camera.InGameMouseCameraControl = projSettings.InGameMouseCameraControl;
+            Bridge.ShowInGameStats = projSettings.ShowInGameStats;
             if (Bridge.Camera != null)
                 Bridge.Camera.OrthoSize = Math.Clamp(Bridge.Camera.OrthoSize, Visual.Camera.OrthoZoomMin, Visual.Camera.OrthoZoomMax);
             // Re-apply post-FX (bloom/auto-exposure/DoF) from the PROJECT's settings.
@@ -782,6 +783,7 @@ public class IDE : IDisposable
             Visual.Camera.ApplyZoomLimits(bootSettings.OrthoZoomMin, bootSettings.OrthoZoomMax);
             Visual.Camera.MouseCameraControl = bootSettings.MouseCameraControl;
             Visual.Camera.InGameMouseCameraControl = bootSettings.InGameMouseCameraControl;
+            Bridge.ShowInGameStats = bootSettings.ShowInGameStats;
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -2001,9 +2003,12 @@ public class IDE : IDisposable
             _levelCameraReframePending = Bridge.ActiveTilemap != null;
         }
 
-        // ── Stats overlay (in-game mode) — always visible, drawn last so it sits on top ──
-        // Mirrors the GameScene debug HUD: FPS/frame-time, triangles, object counts,
-        // and camera position. Reads the bridge values SceneManager refreshes every frame.
+        // ── Stats overlay (in-game mode) — drawn last so it sits on top; visibility
+        // governed by Bridge.ShowInGameStats (IDE Settings → Gameplay, or click the
+        // panel itself while in-game). Mirrors the GameScene debug HUD: FPS/frame-time,
+        // triangles, object counts, and camera position. Reads the bridge values
+        // SceneManager refreshes every frame. ──
+        if (Bridge.ShowInGameStats)
         {
             float fps = Bridge.Fps;
             float frameMs = Bridge.FrameMs;
@@ -2053,6 +2058,11 @@ public class IDE : IDisposable
 
             var bgMin = new Vector2(10f, 10f);
             var bgMax = new Vector2(10f + panelW + pad * 2f, 10f + panelH);
+            // Hit tests: the Mouse Camera row (its own handler) and the whole panel
+            // (click empty area = hide the stats overlay).
+            bool mouseCamHovered = false;
+            bool hoveredPanel = io.MousePos.X >= bgMin.X && io.MousePos.X <= bgMax.X
+                             && io.MousePos.Y >= bgMin.Y && io.MousePos.Y <= bgMax.Y;
             drawList.AddRectFilled(bgMin, bgMax,
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.45f)), 6f);
             drawList.AddRect(bgMin, bgMax,
@@ -2087,6 +2097,7 @@ public class IDE : IDisposable
                 var mousePos = io.MousePos;
                 bool hovered = mousePos.X >= btnMin.X && mousePos.X <= btnMax.X
                             && mousePos.Y >= btnMin.Y && mousePos.Y <= btnMax.Y;
+                mouseCamHovered = hovered;
 
                 // Highlight when hovered so it reads as clickable.
                 if (hovered)
@@ -2106,10 +2117,23 @@ public class IDE : IDisposable
                     catch { }
                     Console.WriteLine($"[IDE] In-game mouse camera control: {(newVal ? "ON" : "OFF")}");
                 }
+
+                // Click anywhere else on the panel → toggle the stats overlay itself.
+                // Persisted to settings.json so the choice survives restarts.
+                if (!mouseCamHovered && hoveredPanel && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.WantCaptureMouse)
+                {
+                    Bridge.ShowInGameStats = false;
+                    try
+                    {
+                        var s = Config.SettingsSave.Load();
+                        s.ShowInGameStats = false;
+                        Config.SettingsSave.Save(s);
+                    }
+                    catch { }
+                    Console.WriteLine("[IDE] In-game stats overlay: OFF (click panel to re-enable in IDE Settings → Gameplay)");
+                }
             }
         }
-
-        // ── Camera warning overlay (shown when no Camera object found) ──
         float dt = io.DeltaTime;
         RenderInGameWarning(dt);
 

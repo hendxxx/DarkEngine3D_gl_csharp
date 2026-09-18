@@ -400,7 +400,11 @@ public static unsafe class DialogueSystem
             var st = conv;
             int choiceCount = VisibleChoices(st).Count;
 
-            if (ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.Enter))
+            // Mouse click = same as Space/Enter (visual-novel style). Safe while
+            // choices are visible: Advance() no-ops then, and choice rows handle
+            // their own clicks in the draw path.
+            if (ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.Enter)
+                || ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 Advance();
             if (choiceCount > 0)
             {
@@ -719,7 +723,10 @@ public static unsafe class DialogueSystem
             choicesH += 8f;
         }
 
-        float winH = 22f /*name*/ + lines.Count * lineH + MathF.Max(choicesH, 26f) + 24f;
+        // Extra 20px when choices are visible: reserves its own bottom line for the
+        // "[E] Choose" hint so it never collides with the last choice row.
+        float winH = 22f /*name*/ + lines.Count * lineH + MathF.Max(choicesH, 26f) + 24f
+                   + (choices.Count > 0 ? 20f : 0f);
         float winY = h - winH - 18f;
 
         // ── Window background + border ──
@@ -788,12 +795,19 @@ public static unsafe class DialogueSystem
                 hud.DrawText(label, textX, cy, col, new Vector3(0f, 0f, 0f), 1f, cSlot);
                 cy += hud.MeasureTextHeight(label) + 10f;
             }
+
+            // [E] confirm hint — same corner style as the [Space] continue hint.
+            float eblink = (MathF.Sin(_time * 5f) + 1f) * 0.5f;
+            string ehint = "[E] Choose";
+            var eExt = hud.GetTextExtents(ehint);
+            hud.DrawText(ehint, winX + winW - eExt.Width - 18f, winY + winH - 22f,
+                new Vector3(0.7f, 0.75f, 0.95f) * fade * (0.4f + 0.6f * eblink));
         }
         else if (st.FullyRevealed && !st.Node.AutoAdvance)
         {
             // Continue indicator (blinks).
             float blink = (MathF.Sin(_time * 5f) + 1f) * 0.5f;
-            string hint = "▼ [Space]";
+            string hint = "▼ [Space] / Click";
             var hintExt = hud.GetTextExtents(hint);
             hud.DrawText(hint, winX + winW - hintExt.Width - 18f, winY + winH - 22f,
                 new Vector3(0.7f, 0.75f, 0.95f) * fade * (0.4f + 0.6f * blink));
@@ -1057,7 +1071,8 @@ public static unsafe class DialogueSystem
                 foreach (var c in choices)
                     choicesH += f.CalcTextSizeA(drawFs, float.MaxValue, 0f, DialogueLibrary.Localize(c.Text)).Y + 8f * s;
             }
-            float hintH = choices.Count == 0 && st.FullyRevealed && !st.Node.AutoAdvance ? drawFs + 4f * s : 0f;
+            float hintH = choices.Count == 0 && st.FullyRevealed && !st.Node.AutoAdvance ? drawFs + 4f * s
+                        : choices.Count > 0 ? drawFs + 6f * s : 0f;
 
             // Sequential layout: window height = EXACT content height, so nothing can
             // overflow the bottom and choices can never sit on top of the body text.
@@ -1143,11 +1158,18 @@ public static unsafe class DialogueSystem
                         hovered || selected ? theme.ChoiceHoverColor : theme.ChoiceColor, fade));
                     cy += lsz.Y + 8f * s;
                 }
+
+                // [E] confirm hint — bottom-right, same blink style as [Space].
+                float eblink = (MathF.Sin(_time * 5f) + 1f) * 0.5f;
+                string ehint = "[E] Choose";
+                float ehw = f.CalcTextSizeA(drawFs, float.MaxValue, 0f, ehint).X;
+                WText(ehint, new Vector2(winX + winW - ehw - padX, winY + winH - padY - drawFs),
+                    Rgba(new Vector3(0.7f, 0.75f, 0.95f), fade * (0.4f + 0.6f * eblink)));
             }
             else if (st.FullyRevealed && !st.Node.AutoAdvance)
             {
                 float blink = (MathF.Sin(_time * 5f) + 1f) * 0.5f;
-                string hint = "> [Space]";
+                string hint = "> [Space] / Click";
                 float hw = f.CalcTextSizeA(drawFs, float.MaxValue, 0f, hint).X;
                 WText(hint, new Vector2(winX + winW - hw - padX, winY + winH - padY - drawFs),
                     Rgba(new Vector3(0.7f, 0.75f, 0.95f), fade * (0.4f + 0.6f * blink)));
