@@ -15181,9 +15181,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        61.997982,
-        32,
-        307.03183
+        83.0999,
+        42.891666,
+        307.0999
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
@@ -19478,11 +19478,11 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        69.354294,
-        32,
-        305.59314
+        10.624298,
+        10.879817,
+        -0.8640904
       ],
-      "editorCameraYaw": 180,
+      "editorCameraYaw": 0,
       "editorCameraPitch": 0,
       "renderProperties": {
         "backgroundColor": [
