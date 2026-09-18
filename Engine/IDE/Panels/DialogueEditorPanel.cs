@@ -59,6 +59,9 @@ public class DialogueEditorPanel
     private readonly List<DialogueAsset> _graphRedo = new();
     private string _graphHistoryAssetId = "";   // asset the stacks belong to (reset on switch)
     private bool _graphDragUndoPending;          // armed on grab; first drag frame pushes pre-move state
+    private string _graphSearch = "";            // node search box (id or text substring)
+    private int _graphSearchCycle = -1;          // current match index for repeated Enter
+    private bool _mmDragging;                    // minimap LMB navigation in progress
 
     public DialogueEditorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -261,7 +264,39 @@ public class DialogueEditorPanel
             ImGui.SameLine();
             if (ImGui.Button("Center")) CenterOnNode(asset, null);
             ImGui.SameLine();
-            ImGui.TextDisabled($"{asset.Nodes.Count} nodes · drag=move · ● port→node=connect · LMB canvas=pan · wheel=zoom · RMB node=menu");
+            ImGui.SetNextItemWidth(170f);
+            ImGui.InputTextWithHint("##graph_search", "Search node…", ref _graphSearch, 64);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Match node id or text. Enter jumps match-to-match;\nShift+Enter goes back; Esc clears. Center = whole graph.");
+            if (ImGui.IsItemFocused())
+            {
+                if (ImGui.IsKeyPressed(ImGuiKey.Enter, false) && !string.IsNullOrWhiteSpace(_graphSearch))
+                {
+                    var matches = new List<int>();
+                    for (int i = 0; i < asset.Nodes.Count; i++)
+                    {
+                        var n = asset.Nodes[i];
+                        if (n is null) continue;
+                        if (n.Id.Contains(_graphSearch, StringComparison.OrdinalIgnoreCase)
+                            || n.Text.Contains(_graphSearch, StringComparison.OrdinalIgnoreCase))
+                            matches.Add(i);
+                    }
+                    if (matches.Count > 0)
+                    {
+                        // Cycle: forward on Enter, backward on Shift+Enter.
+                        int step = ImGui.GetIO().KeyShift ? -1 : +1;
+                        int pos = matches.IndexOf(_selectedNode);
+                        int next = pos < 0
+                            ? (step > 0 ? 0 : matches.Count - 1)
+                            : (pos + step + matches.Count) % matches.Count;
+                        _selectedNode = matches[next];
+                        _graphSearchCycle = matches[next];
+                        CenterOnNode(asset, asset.Nodes[_selectedNode]);
+                    }
+                }
+                if (ImGui.IsKeyPressed(ImGuiKey.Escape, false))
+                    _graphSearch = "";
+            }
 
             RenderGraphView(asset);
 
@@ -831,6 +866,96 @@ public class DialogueEditorPanel
                 }
             }
             ImGui.EndPopup();
+        }
+
+        // ── Minimap (bottom-right corner): whole graph + viewport rect.
+        // LMB drag on it pans the main canvas — pick-up-and-rubbery-band navigation
+        // for graphs too large to see at once. Draws INSIDE the canvas clip so it
+        // never leaks outside; on top of everything else in the draw order.
+        {
+            float mmW = 170f, mmH = 110f, mmMargin = 10f;
+            var mmMin = new Vector2(canvasMax.X - mmW - mmMargin, canvasMax.Y - mmH - mmMargin);
+            var mmMax = mmMin + new Vector2(mmW, mmH);
+
+            // Graph bounds → fit-to-box scale (uniform, centered).
+            Vector2 gmin = new(float.MaxValue, float.MaxValue), gmax = new(float.MinValue, float.MinValue);
+            foreach (var n in asset.Nodes)
+            {
+                if (n is null) continue;
+                gmin = new Vector2(MathF.Min(gmin.X, n.GraphX), MathF.Min(gmin.Y, n.GraphY));
+                gmax = new Vector2(MathF.Max(gmax.X, n.GraphX + GraphNodeW), MathF.Max(gmax.Y, n.GraphY + GraphNodeH));
+            }
+            bool hasNodes = gmin.X <= gmax.X;
+            if (hasNodes)
+            {
+                gmin -= new Vector2(20, 20); gmax += new Vector2(20, 20); // breathing room
+                float gW = MathF.Max(1f, gmax.X - gmin.X), gH = MathF.Max(1f, gmax.Y - gmin.Y);
+                float mmScale = MathF.Min((mmW - 8f) / gW, (mmH - 8f) / gH);
+                var mmOffset = new Vector2(
+                    mmMin.X + (mmW - gW * mmScale) * 0.5f,
+                    mmMin.Y + (mmH - gH * mmScale) * 0.5f);
+                Vector2 MM(Vector2 graphPos) => mmOffset + (graphPos - gmin) * mmScale;
+
+                dl.AddRectFilled(mmMin, mmMax, C(14, 16, 22, 235), 5f);
+                dl.AddRect(mmMin, mmMax, C(70, 78, 100, 200), 5f);
+
+                // Edges (dim) then nodes — same color language as the main canvas.
+                foreach (var n in asset.Nodes)
+                {
+                    if (n is null) continue;
+                    if (n.Choices.Count == 0 && !string.IsNullOrEmpty(n.NextNodeId))
+                    {
+                        int t = asset.Nodes.FindIndex(x => string.Equals(x.Id, n.NextNodeId, StringComparison.OrdinalIgnoreCase));
+                        if (t >= 0)
+                            dl.AddLine(MM(new(n.GraphX + GraphNodeW * 0.5f, n.GraphY + GraphNodeH * 0.5f)),
+                                MM(new(asset.Nodes[t].GraphX + GraphNodeW * 0.5f, asset.Nodes[t].GraphY + GraphNodeH * 0.5f)), C(120, 170, 235, 130), 1f);
+                    }
+                    foreach (var ch in n.Choices)
+                    {
+                        int t = asset.Nodes.FindIndex(x => string.Equals(x.Id, ch.NextNodeId, StringComparison.OrdinalIgnoreCase));
+                        if (t >= 0)
+                            dl.AddLine(MM(new(n.GraphX + GraphNodeW * 0.5f, n.GraphY + GraphNodeH * 0.5f)),
+                                MM(new(asset.Nodes[t].GraphX + GraphNodeW * 0.5f, asset.Nodes[t].GraphY + GraphNodeH * 0.5f)), C(95, 195, 150, 130), 1f);
+                    }
+                }
+                foreach (var n in asset.Nodes)
+                {
+                    if (n is null) continue;
+                    bool isStart = string.Equals(n.Id, asset.StartNodeId, StringComparison.OrdinalIgnoreCase);
+                    bool sel = asset.Nodes.IndexOf(n) == _selectedNode;
+                    bool hit = _graphSearchCycle >= 0 && asset.Nodes.IndexOf(n) == _graphSearchCycle
+                        && !string.IsNullOrWhiteSpace(_graphSearch)
+                        && (n.Id.Contains(_graphSearch, StringComparison.OrdinalIgnoreCase) || n.Text.Contains(_graphSearch, StringComparison.OrdinalIgnoreCase));
+                    uint col = hit ? C(250, 220, 120) : isStart ? C(95, 190, 120) : sel ? C(140, 190, 245) : C(90, 100, 130);
+                    var rmin = MM(new(n.GraphX, n.GraphY));
+                    var rmax = MM(new(n.GraphX + GraphNodeW, n.GraphY + GraphNodeH));
+                    dl.AddRectFilled(rmin, rmax, col, 1.5f);
+                }
+
+                // Viewport rect = what the main canvas currently shows.
+                var viewMinG = (canvasMin - _graphPan) / _graphZoom; // graph-space top-left of the view
+                var viewMaxG = viewMinG + canvasSize / _graphZoom;
+                var vpMin = MM(viewMinG);
+                var vpMax = MM(viewMaxG);
+                dl.AddRect(vpMin, vpMax, C(240, 240, 255, 220), 2f, ImDrawFlags.None, 1.5f);
+                dl.AddRectFilled(vpMin, vpMax, C(240, 240, 255, 22), 2f);
+
+                // Interaction: LMB down anywhere on the minimap = center the view on
+                // that graph point; hold-drag keeps following (minimap navigation).
+                bool mmHovered = mouse.X >= mmMin.X && mouse.X <= mmMax.X && mouse.Y >= mmMin.Y && mouse.Y <= mmMax.Y;
+                if (mmHovered && ImGui.IsMouseClicked(0))
+                    _mmDragging = true;
+                if (_mmDragging && ImGui.IsMouseDown(0))
+                {
+                    var gTarget = (mouse - mmOffset) / mmScale + gmin;
+                    _graphPan = canvasMin + canvasSize * 0.5f - gTarget * _graphZoom;
+                    _graphPanAnimating = false; // user wins
+                }
+                else
+                    _mmDragging = false;
+                if (mmHovered)
+                    ImGui.SetTooltip("Minimap — click/drag to navigate");
+            }
         }
 
         dl.PopClipRect();
