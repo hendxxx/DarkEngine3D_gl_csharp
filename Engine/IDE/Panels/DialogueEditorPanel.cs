@@ -50,7 +50,65 @@ public class DialogueEditorPanel
     private const float GraphNodeW = 190f;
     private const float GraphNodeH = 74f;
 
+    // ── Undo/redo (graph edits) ──
+    // Snapshot-based: every mutation pushes the full asset state BEFORE the change.
+    // Deep clones are cheap at dialogue scale (tens of nodes) and avoid a class of
+    // index/delta bugs — snapshots are immune to node-id renames and reordering.
+    private const int GraphHistoryMax = 50;
+    private readonly List<DialogueAsset> _graphUndo = new();
+    private readonly List<DialogueAsset> _graphRedo = new();
+    private string _graphHistoryAssetId = "";   // asset the stacks belong to (reset on switch)
+    private bool _graphDragUndoPending;          // armed on grab; first drag frame pushes pre-move state
+
     public DialogueEditorPanel(IDEBridge bridge) => _bridge = bridge;
+
+    // ── Graph undo/redo core ──
+
+    /// <summary>Record state BEFORE a graph mutation. Call for every destructive
+    /// edit: node add/duplicate/delete, connect, Set Start, id rename, delete.</summary>
+    private void PushGraphUndo(DialogueAsset asset)
+    {
+        if (_graphHistoryAssetId != asset.Id) { _graphUndo.Clear(); _graphRedo.Clear(); _graphHistoryAssetId = asset.Id; }
+        _graphUndo.Add(asset.Clone());
+        if (_graphUndo.Count > GraphHistoryMax) _graphUndo.RemoveAt(0);
+        _graphRedo.Clear();
+    }
+
+    private bool CanGraphUndo => _graphUndo.Count > 0;
+    private bool CanGraphRedo => _graphRedo.Count > 0;
+
+    /// <summary>Restore the last snapshot (swap current ↔ stacks keep redo working).</summary>
+    private void GraphUndo(DialogueAsset asset)
+    {
+        if (_graphUndo.Count == 0 || _graphHistoryAssetId != asset.Id) return;
+        var snap = _graphUndo[^1];
+        _graphUndo.RemoveAt(_graphUndo.Count - 1);
+        _graphRedo.Add(asset.Clone());
+        RestoreGraphSnapshot(asset, snap);
+    }
+
+    private void GraphRedo(DialogueAsset asset)
+    {
+        if (_graphRedo.Count == 0 || _graphHistoryAssetId != asset.Id) return;
+        var snap = _graphRedo[^1];
+        _graphRedo.RemoveAt(_graphRedo.Count - 1);
+        _graphUndo.Add(asset.Clone());
+        RestoreGraphSnapshot(asset, snap);
+    }
+
+    /// <summary>Copy snapshot contents into the live asset object (references from
+    /// the library must stay valid — never replace the instance).</summary>
+    private void RestoreGraphSnapshot(DialogueAsset asset, DialogueAsset snap)
+    {
+        asset.StartNodeId = snap.StartNodeId;
+        asset.ThemeName = snap.ThemeName;
+        asset.Nodes.Clear();
+        asset.Nodes.AddRange(snap.Nodes.Select(n => n.Clone()));
+        _selectedNode = -1;
+        _graphDragNode = -1;
+        _graphLinkSrc = -1;
+        _graphCtxNode = -1;
+    }
 
     public void ShowInMenu() => ImGui.MenuItem("Dialogue Editor", null, ref _visible);
 
@@ -176,14 +234,29 @@ public class DialogueEditorPanel
         if (_graphMode)
         {
             // ── Graph View: nodes as boxes, routing as arrows ──
+            ImGui.BeginDisabled(!CanGraphUndo);
+            if (ImGui.Button("Undo")) GraphUndo(asset);
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Undo last graph edit (Ctrl+Z while the graph is hovered)");
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!CanGraphRedo);
+            if (ImGui.Button("Redo")) GraphRedo(asset);
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Redo last undone graph edit (Ctrl+Y / Ctrl+Shift+Z)");
+            ImGui.SameLine();
             if (ImGui.Button("+ Node"))
             {
+                PushGraphUndo(asset);
                 asset.Nodes.Add(new DialogueNode { Id = UniqueNodeId(asset, "node"), GraphX = 40f, GraphY = 40f + asset.Nodes.Count * 90f });
                 _selectedNode = asset.Nodes.Count - 1;
             }
             // (graph pan uses middle-mouse below)
             ImGui.SameLine();
-            if (ImGui.Button("Auto Arrange")) AutoArrangeGraph(asset);
+            if (ImGui.Button("Auto Arrange"))
+            {
+                PushGraphUndo(asset);
+                AutoArrangeGraph(asset);
+            }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Re-layout all nodes in BFS columns from the Start node.");
             ImGui.SameLine();
             if (ImGui.Button("Center")) CenterOnNode(asset, null);
@@ -191,6 +264,19 @@ public class DialogueEditorPanel
             ImGui.TextDisabled($"{asset.Nodes.Count} nodes · drag=move · ● port→node=connect · LMB canvas=pan · wheel=zoom · RMB node=menu");
 
             RenderGraphView(asset);
+
+            // Ctrl+Z / Ctrl+Y while the graph canvas is hovered. Gate on hover so the
+            // shortcuts never steal undo from other editor panels. Shift check FIRST —
+            // otherwise plain Z consumes Ctrl+Shift+Z and redo never fires.
+            if (ImGui.IsWindowHovered() && ImGui.GetIO().KeyCtrl)
+            {
+                if (ImGui.IsKeyPressed(ImGuiKey.Z, false) && ImGui.GetIO().KeyShift)
+                    GraphRedo(asset);
+                else if (ImGui.IsKeyPressed(ImGuiKey.Z, false))
+                    GraphUndo(asset);
+                else if (ImGui.IsKeyPressed(ImGuiKey.Y, false))
+                    GraphRedo(asset);
+            }
         }
         else
         {
@@ -602,15 +688,22 @@ public class DialogueEditorPanel
                 {
                     string targetId = asset.Nodes[hoveredNode].Id;
                     var srcNode = asset.Nodes[_graphLinkSrc];
-                    if (_graphLinkChoice >= 0 && _graphLinkChoice < srcNode.Choices.Count)
+                    // Capture the old target first so undo can restore it.
+                    string oldTarget = _graphLinkChoice >= 0 && _graphLinkChoice < srcNode.Choices.Count
+                        ? srcNode.Choices[_graphLinkChoice].NextNodeId : srcNode.NextNodeId;
+                    if (oldTarget != targetId)
                     {
-                        srcNode.Choices[_graphLinkChoice].NextNodeId = targetId;
-                        Console.WriteLine($"[Dialogue Graph] choice '{_graphLinkChoice + 1}' of '{srcNode.Id}' → '{targetId}'");
-                    }
-                    else
-                    {
-                        srcNode.NextNodeId = targetId;
-                        Console.WriteLine($"[Dialogue Graph] '{srcNode.Id}' next → '{targetId}'");
+                        PushGraphUndo(asset);
+                        if (_graphLinkChoice >= 0 && _graphLinkChoice < srcNode.Choices.Count)
+                        {
+                            srcNode.Choices[_graphLinkChoice].NextNodeId = targetId;
+                            Console.WriteLine($"[Dialogue Graph] choice '{_graphLinkChoice + 1}' of '{srcNode.Id}' → '{targetId}'");
+                        }
+                        else
+                        {
+                            srcNode.NextNodeId = targetId;
+                            Console.WriteLine($"[Dialogue Graph] '{srcNode.Id}' next → '{targetId}'");
+                        }
                     }
                 }
                 _graphLinkSrc = -1; _graphLinkChoice = -1;
@@ -628,16 +721,27 @@ public class DialogueEditorPanel
             {
                 _selectedNode = hoveredNode;
                 _graphDragNode = hoveredNode;
+                _graphDragUndoPending = true; // push pre-move snapshot on first drag frame
                 var nodePos = ToScreen(new Vector2(asset.Nodes[hoveredNode].GraphX, asset.Nodes[hoveredNode].GraphY));
                 _graphDragOffset = (nodePos - mouse) / _graphZoom;
             }
         }
 
         // Node drag (LMB on a node body moves it) — while not dragging a connection.
+        // A continuous move would flood the history, so the move pushes one undo
+        // snapshot 0.6s into the drag (the position just before it) — undo lands the
+        // node back at its pre-drag spot.
         if (_graphLinkSrc < 0 && _graphDragNode >= 0 && _graphDragNode < asset.Nodes.Count)
         {
             if (ImGui.IsMouseDragging(0))
             {
+                // First drag frame: snapshot the pre-move layout, then disarm so the
+                // rest of the drag doesn't flood the history.
+                if (_graphDragUndoPending)
+                {
+                    _graphDragUndoPending = false;
+                    PushGraphUndo(asset);
+                }
                 var gn = asset.Nodes[_graphDragNode];
                 var screen = mouse + _graphDragOffset * _graphZoom - canvasMin - _graphPan;
                 gn.GraphX = screen.X / _graphZoom;
@@ -708,11 +812,20 @@ public class DialogueEditorPanel
             var n = _graphCtxNode >= 0 && _graphCtxNode < asset.Nodes.Count ? asset.Nodes[_graphCtxNode] : null;
             if (n != null)
             {
-                if (ImGui.MenuItem("Set Start")) asset.StartNodeId = n.Id;
+                if (ImGui.MenuItem("Set Start") && asset.StartNodeId != n.Id)
+                {
+                    PushGraphUndo(asset);
+                    asset.StartNodeId = n.Id;
+                }
                 if (ImGui.MenuItem("Duplicate"))
-                { asset.Nodes.Insert(_graphCtxNode + 1, CloneWithNewId(n, asset)); _selectedNode = _graphCtxNode + 1; }
+                {
+                    PushGraphUndo(asset);
+                    asset.Nodes.Insert(_graphCtxNode + 1, CloneWithNewId(n, asset));
+                    _selectedNode = _graphCtxNode + 1;
+                }
                 if (ImGui.MenuItem("Delete") && asset.Nodes.Count > 1)
                 {
+                    PushGraphUndo(asset);
                     asset.Nodes.RemoveAt(_graphCtxNode);
                     _selectedNode = Math.Min(_selectedNode, asset.Nodes.Count - 1);
                 }
@@ -748,8 +861,12 @@ public class DialogueEditorPanel
         if (ImGui.InputText("##nodeid", ref id, 64) && !string.IsNullOrWhiteSpace(id))
         {
             string oldId = node.Id;
-            node.Id = id.Trim();
-            if (asset.StartNodeId == oldId) asset.StartNodeId = node.Id;
+            if (id.Trim() != oldId)
+            {
+                PushGraphUndo(asset); // renames rewire every NextNodeId — undoable
+                node.Id = id.Trim();
+                if (asset.StartNodeId == oldId) asset.StartNodeId = node.Id;
+            }
         }
         ImGui.SameLine();
         if (ImGui.Button("Set Start")) asset.StartNodeId = node.Id;
