@@ -1100,6 +1100,7 @@ public class DialogueEditorPanel
             bool hasNodes = gmin.X <= gmax.X;
             if (hasNodes)
             {
+                var rawGmin = gmin; var rawGmax = gmax;   // node extents (for viewport clamp)
                 gmin -= new Vector2(20, 20); gmax += new Vector2(20, 20); // breathing room
                 float gW = MathF.Max(1f, gmax.X - gmin.X), gH = MathF.Max(1f, gmax.Y - gmin.Y);
                 float mmScale = MathF.Min((mmW - 8f) / gW, (mmH - 8f) / gH);
@@ -1144,22 +1145,22 @@ public class DialogueEditorPanel
                     dl.AddRectFilled(rmin, rmax, col, 1.5f);
                 }
 
-                // Viewport rect = what the main canvas currently shows.
-                // ToScreen: screen = canvasMin + pan + graphPos·zoom ⇒ the canvas
-                // top-left (screen == canvasMin) is graphPos = −pan/zoom — canvasMin
-                // cancels (including it drew the rect far off-minimap, invisible).
+                // Viewport rect = which part of the GRAPH the canvas currently shows.
+                // Canvas top-left in graph space is −pan/zoom (canvasMin cancels), but
+                // the raw view usually includes empty space around the graph — mapped
+                // naively the rect was always bigger than the node area, which read as
+                // "zoom position wrong". Clamp to the NODE extents: fully zoomed out →
+                // the white box hugs the graph exactly; zoomed in → shows the visible
+                // slice; panned completely away → nothing drawn (no misleading box).
                 var viewMinG = -_graphPan / _graphZoom;
                 var viewMaxG = viewMinG + canvasSize / _graphZoom;
-                var vpMin = MM(viewMinG);
-                var vpMax = MM(viewMaxG);
-                // Clip to the minimap box: when the whole graph is visible the rect
-                // maps LARGER than the box (view extends past graph bounds) and used
-                // to spill across the canvas. Clipped, it hugs the box exactly —
-                // which is the expected "white box = everything visible" look.
-                dl.PushClipRect(mmMin, mmMax, true);
-                dl.AddRect(vpMin, vpMax, C(240, 240, 255, 220), 2f, ImDrawFlags.None, 1.5f);
-                dl.AddRectFilled(vpMin, vpMax, C(240, 240, 255, 22), 2f);
-                dl.PopClipRect();
+                var iMinG = Vector2.Max(viewMinG, rawGmin);
+                var iMaxG = Vector2.Min(viewMaxG, rawGmax);
+                if (iMinG.X < iMaxG.X && iMinG.Y < iMaxG.Y)
+                {
+                    dl.AddRect(MM(iMinG), MM(iMaxG), C(240, 240, 255, 220), 2f, ImDrawFlags.None, 1.5f);
+                    dl.AddRectFilled(MM(iMinG), MM(iMaxG), C(240, 240, 255, 22), 2f);
+                }
 
                 // Interaction: LMB down anywhere on the minimap = center the view on
                 // that graph point; hold-drag keeps following (minimap navigation).
