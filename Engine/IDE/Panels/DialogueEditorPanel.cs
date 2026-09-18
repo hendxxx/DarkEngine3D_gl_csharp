@@ -405,14 +405,42 @@ public class DialogueEditorPanel
         uint nextCol = C(120, 170, 235);
         uint choiceCol = C(95, 195, 150);
         uint brokenCol = C(235, 92, 80);
+        uint condCol = C(235, 195, 110);   // amber: condition plate text
+        uint condPlate = C(40, 32, 14, 225); // dark amber plate behind it
         float edgeThick = Math.Clamp(1.8f * _graphZoom, 1f, 3f);
+
+        // Compact condition summary for an arrow label: "level:5" → "level>=5",
+        // "var:name:10" → "var:name>=10"; non-numeric gates pass through as-is.
+        // All conditions must pass for the choice to be visible at runtime, so
+        // they read as an AND chain joined with " & ".
+        string CondLabel(IReadOnlyList<string> conds)
+        {
+            if (conds is null || conds.Count == 0) return "";
+            var parts = new List<string>();
+            foreach (var c in conds)
+            {
+                if (string.IsNullOrWhiteSpace(c)) continue;
+                var seg = c.Split(':');
+                if (seg.Length >= 2 && float.TryParse(seg[^1], out _))
+                {
+                    var head = string.Join(':', seg.AsSpan(0, seg.Length - 1).ToArray());
+                    parts.Add($"{head}>= {seg[^1]}");
+                }
+                else
+                    parts.Add(c.Trim());
+            }
+            if (parts.Count == 0) return "";
+            string s = string.Join(" & ", parts);
+            if (s.Length > 48) s = s[..47] + "…";
+            return s;
+        }
 
         for (int i = 0; i < asset.Nodes.Count; i++)
         {
             var src = asset.Nodes[i];
             if (src is null) continue;
 
-            void Edge(Vector2 fromAnchor, string targetId, string label, uint color)
+            void Edge(Vector2 fromAnchor, string targetId, string label, uint color, string condLabel = "")
             {
                 if (string.IsNullOrWhiteSpace(targetId)) return;
                 int t = asset.Nodes.FindIndex(n => string.Equals(n.Id, targetId, StringComparison.OrdinalIgnoreCase));
@@ -456,6 +484,20 @@ public class DialogueEditorPanel
                     var cmax = mid + tsz * 0.5f + new Vector2(4f * _graphZoom, 2f);
                     dl.AddRectFilled(cmin, cmax, C(18, 20, 28, 215), 3f);
                     dl.AddText(font, fs, mid - tsz * 0.5f, color, label);
+
+                    // Condition plate below the number: shows the visibility gates
+                    // ("flag:met_elder & item:potion") right on the canvas so a
+                    // designer can see WHY a choice is hidden without opening JSON.
+                    if (!string.IsNullOrEmpty(condLabel))
+                    {
+                        var csz = font.CalcTextSizeA(fs, float.MaxValue, 0f, condLabel);
+                        var cpos = new Vector2(mid.X, mid.Y + tsz.Y * 0.5f + 5f * _graphZoom + csz.Y * 0.5f);
+                        var pmin = cpos - csz * 0.5f - new Vector2(5f * _graphZoom, 3f);
+                        var pmax = cpos + csz * 0.5f + new Vector2(5f * _graphZoom, 3f);
+                        dl.AddRectFilled(pmin, pmax, condPlate, 3f);
+                        dl.AddRect(pmin, pmax, condCol, 3f, ImDrawFlags.None, 1f);
+                        dl.AddText(font, fs, cpos - csz * 0.5f, condCol, condLabel);
+                    }
                 }
             }
 
@@ -464,7 +506,8 @@ public class DialogueEditorPanel
             if (src.Choices.Count == 0)
                 Edge(PortPos(i, 0), src.NextNodeId, "", nextCol);
             for (int ci = 0; ci < src.Choices.Count; ci++)
-                Edge(PortPos(i, ci), src.Choices[ci].NextNodeId, $"{ci + 1}", choiceCol);
+                Edge(PortPos(i, ci), src.Choices[ci].NextNodeId, $"{ci + 1}", choiceCol,
+                    CondLabel(src.Choices[ci].Conditions));
         }
 
         // ── Nodes ──
