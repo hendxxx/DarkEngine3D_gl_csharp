@@ -591,6 +591,14 @@ public class DialogueEditorPanel
                         new Vector2(note.W, note.H) * _graphZoom - new Vector2(8, 8)))
                         note.Text = _noteEditText;
                     ImGui.PopStyleColor(2);
+
+                    // Commit & close on lose focus: clicking anywhere outside this
+                    // window (canvas, nodes, other notes) focuses another window →
+                    // close. Esc also closes. The appearing frame is auto-focused so
+                    // this never fires on open.
+                    if (ImGui.IsKeyPressed(ImGuiKey.Escape, false)
+                        || (!ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && ImGui.IsMouseClicked(0)))
+                        _editingNote = -1;
                 }
                 ImGui.End();
             }
@@ -1135,7 +1143,10 @@ public class DialogueEditorPanel
                 }
 
                 // Viewport rect = what the main canvas currently shows.
-                var viewMinG = (canvasMin - _graphPan) / _graphZoom; // graph-space top-left of the view
+                // ToScreen: screen = canvasMin + pan + graphPos·zoom ⇒ the canvas
+                // top-left (screen == canvasMin) is graphPos = −pan/zoom — canvasMin
+                // cancels (including it drew the rect far off-minimap, invisible).
+                var viewMinG = -_graphPan / _graphZoom;
                 var viewMaxG = viewMinG + canvasSize / _graphZoom;
                 var vpMin = MM(viewMinG);
                 var vpMax = MM(viewMaxG);
