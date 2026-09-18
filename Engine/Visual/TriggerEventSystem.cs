@@ -417,16 +417,21 @@ public static class TriggerEventSystem
 
             case TriggerActionTypes.StartDialogue:
             {
-                // Dialogue asset id/name in Param. Opens the RPG conversation window
-                // (DialogueSystem draws it through the HUD — works in-game and preview).
+                // Dialogue asset id/name in Param; optional start node in Param2 (node id
+                // or numeric node index — e.g. "0" = first node). Opens the RPG
+                // conversation window (drawn through the HUD — works in-game and preview).
                 string assetId = action.Param?.Trim() ?? "";
                 if (string.IsNullOrEmpty(assetId))
                 {
                     Console.WriteLine($"[Trigger] '{triggerName}' → Start Dialogue FAILED: no dialogue asset id set in the action's Param");
                     break;
                 }
-                if (DialogueSystem.StartConversation(assetId))
-                    Console.WriteLine($"[Trigger] '{triggerName}' → Start Dialogue → '{assetId}'");
+                string node = action.Param2?.Trim() ?? "";
+                bool ok = !string.IsNullOrEmpty(node)
+                    ? DialogueSystem.StartConversationAt(assetId, node)
+                    : DialogueSystem.StartConversation(assetId);
+                if (ok)
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Start Dialogue → '{assetId}'{(node.Length > 0 ? $" @ node '{node}'" : "")}");
                 break;
             }
 

@@ -1618,7 +1618,7 @@ public class IDE : IDisposable
         }
     }
 
-    private void RenderInGameMode()
+    private unsafe void RenderInGameMode()
     {
         // In fullscreen mode the viewport IS the entire screen — always report focused
         // so the free-fly camera (WASD + mouse look) processes keyboard/mouse input.
@@ -2112,6 +2112,30 @@ public class IDE : IDisposable
         // ── Camera warning overlay (shown when no Camera object found) ──
         float dt = io.DeltaTime;
         RenderInGameWarning(dt);
+
+        // ── Dialogue overlay (in-game F8, fullscreen path) ──
+        // RenderInGameMode early-returns before ViewportPanel.Render(), so the        // viewport-panel overlay never draws here. Draw it on the same FOREGROUND        // draw list the scene texture uses, mapping scene pixels → the letterboxed        // image rect (same fit math as the AddImage above). State ticks already run        // in SceneManager/Player2DSystem — this is visuals + choice mouse picking only.
+        if (Bridge.SceneTextureID != 0
+            && DialogueSystem.HudDrawFrameId != Glfw.FrameId) // GameScene HUD drew this frame → no double draw
+        {
+            float texW = Bridge.SceneTextureWidth > 0 ? Bridge.SceneTextureWidth : 1f;
+            float texH = Bridge.SceneTextureHeight > 0 ? Bridge.SceneTextureHeight : 1f;
+            float panelAspect = screenW / screenH;
+            float texAspect = texW / texH;
+            Vector2 dImgSize = panelAspect > texAspect
+                ? new Vector2(screenH * texAspect, screenH)
+                : new Vector2(screenW, screenW / texAspect);
+            Vector2 dImgMin = new((screenW - dImgSize.X) * 0.5f, (screenH - dImgSize.Y) * 0.5f);
+
+            var rawFont = _imgui?.GetFont(
+                Visual.DialogueLibrary.GetTheme("Default")?.FontPath ?? "", 16f);
+            ImFontPtr? dialogueFont = rawFont != null && (nint)rawFont != IntPtr.Zero
+                ? new ImFontPtr(rawFont) : null;
+            Visual.DialogueSystem.DrawImGuiOverlay(drawList, Bridge.Camera, Bridge.EditorObjectManager,
+                (int)texW, (int)texH,
+                p => new Vector2(dImgMin.X + p.X / texW * dImgSize.X, dImgMin.Y + p.Y / texH * dImgSize.Y),
+                dialogueFont);
+        }
 
         // ── Render transition overlay (if any) while ImGui frame is active ──
         try

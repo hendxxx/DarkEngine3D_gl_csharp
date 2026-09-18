@@ -206,6 +206,9 @@ public class EditorObjectData
     /// <summary>Dialogue asset id (Dialogue Editor) started when the player presses
     /// E within range. Empty = not an NPC. Persisted per object.</summary>
     public string NpcDialogueId { get; set; } = "";
+    /// <summary>Optional alert/exclamation image drawn above the NPC instead of the
+    /// text "!" bubble. Empty = default text marker. Persisted per object.</summary>
+    public string NpcAlertImagePath { get; set; } = "";
 
     // ── Player2D (animated sprite + capsule collider) ──
     public string Player2DSpriteSheet { get; set; } = "";

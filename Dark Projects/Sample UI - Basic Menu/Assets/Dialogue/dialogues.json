@@ -10,34 +10,20 @@
           "Id": "start",
           "SpeakerId": "village_chief",
           "Emotion": "Neutral",
-          "PortraitPath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Speech3.png",
+          "PortraitPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\HUD\\Blank bubble.png",
           "Text": "Selamat datang di desa kami! Apakah kamu ingin masuk ke dungeon ini?",
           "Choices": [
             {
               "Text": "Ya",
-              "NextNodeId": "",
+              "NextNodeId": "accept",
               "Conditions": [],
-              "Actions": [
-                {
-                  "Type": "Start Dialogue",
-                  "Param": "1",
-                  "Param2": "",
-                  "Delay": 0
-                }
-              ]
+              "Actions": []
             },
             {
               "Text": "Tidak",
-              "NextNodeId": "",
+              "NextNodeId": "decline",
               "Conditions": [],
-              "Actions": [
-                {
-                  "Type": "Hide Bubble",
-                  "Param": "",
-                  "Param2": "",
-                  "Delay": 0
-                }
-              ]
+              "Actions": []
             }
           ],
           "NextNodeId": "",
@@ -54,7 +40,7 @@
           "Text": "Hati-hati di dalam sana, penjelajah muda.",
           "Choices": [],
           "NextNodeId": "",
-          "AutoAdvance": false,
+          "AutoAdvance": true,
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": []
@@ -67,7 +53,7 @@
           "Text": "Baik. Kembali lagi kapan pun kamu siap.",
           "Choices": [],
           "NextNodeId": "",
-          "AutoAdvance": false,
+          "AutoAdvance": true,
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": []
@@ -76,22 +62,6 @@
     }
   ],
   "Speakers": [
-    {
-      "Id": "village_chief",
-      "Name": "Village Chief",
-      "PortraitPath": "",
-      "ColorR": 0.55,
-      "ColorG": 0.75,
-      "ColorB": 1
-    },
-    {
-      "Id": "village_chief",
-      "Name": "Village Chief",
-      "PortraitPath": "",
-      "ColorR": 0.55,
-      "ColorG": 0.75,
-      "ColorB": 1
-    },
     {
       "Id": "village_chief",
       "Name": "Village Chief",

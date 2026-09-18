@@ -123,7 +123,7 @@
           {
             "Type": "Start Dialogue",
             "Param": "village_intro",
-            "Param2": "1",
+            "Param2": "0",
             "Delay": 0
           }
         ]

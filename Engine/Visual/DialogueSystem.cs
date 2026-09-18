@@ -105,6 +105,37 @@ public static unsafe class DialogueSystem
         return StartConversation(asset, source);
     }
 
+    /// <summary>Start a conversation at a specific node (by id, or numeric index as a
+    /// convenience for trigger actions). Used by 'Start Dialogue' actions whose Param2
+    /// names a node — empty/null starts at the asset's StartNode.</summary>
+    public static bool StartConversationAt(string assetIdOrName, string? nodeId, EditorObject? source = null)
+    {
+        var asset = DialogueLibrary.GetAsset(assetIdOrName);
+        if (asset == null) return StartConversation(assetIdOrName, source);
+        if (string.IsNullOrWhiteSpace(nodeId)) return StartConversation(asset, source);
+
+        DialogueNode? start;
+        if (int.TryParse(nodeId.Trim(), out int nodeIdx))
+            start = nodeIdx >= 0 && nodeIdx < asset.Nodes.Count ? asset.Nodes[nodeIdx] : null;
+        else
+            start = asset.GetNode(nodeId.Trim());
+        if (start == null)
+        {
+            Console.WriteLine($"[Dialogue] StartConversationAt FAILED: node '{nodeId}' not found in '{asset.Id}'");
+            return StartConversation(asset, source);
+        }
+        return StartConversationAt(asset, start, source);
+    }
+
+    public static bool StartConversationAt(DialogueAsset asset, DialogueNode startNode, EditorObject? source = null)
+    {
+        if (Active != null) return false;
+        Active = new ConversationState { Asset = asset, Node = startNode, Source = source };
+        EnterNode(startNode);
+        Console.WriteLine($"[Dialogue] Started '{asset.Id}' (node '{startNode.Id}')");
+        return true;
+    }
+
     public static bool StartConversation(DialogueAsset asset, EditorObject? source = null)
     {
         if (Active != null) return false;
@@ -624,6 +655,21 @@ public static unsafe class DialogueSystem
         var sp = Project(new Vector3(npc.Position.X,
             npc.Position.Y + BubbleHeadHeight(npc) + 0.45f, npc.Position.Z), w, h);
 
+        // Custom alert IMAGE (dragged from the Asset Browser in the Inspector) replaces
+        // the text "!" bubble entirely — quest marks, alert icons, any exclamation art.
+        if (!string.IsNullOrEmpty(npc.NpcAlertImagePath))
+        {
+            uint tex = GetTexture(npc.NpcAlertImagePath);
+            if (tex != 0)
+            {
+                const float size = 30f;
+                float ix = sp.X - size * 0.5f;
+                float iy = sp.Y - size + bob; // bottom-center anchored above the head
+                hud.DrawImage(ix, iy, size, size, tex);
+                return;
+            }
+        }
+
         const string mark = "!";
         int slot = GetFontSlot(hud, theme, theme.BubbleFontSize);
         var ext = hud.GetTextExtents(mark, slot);
@@ -827,9 +873,13 @@ public static unsafe class DialogueSystem
         _lastManager = manager;
         int w = sceneW, h = sceneH;
 
-        // Text helpers (custom font when loaded, ImGui default otherwise).
-        ImFontPtr f = font ?? ImGuiNET.ImGui.GetFont();
-        float fs = font != null ? font.Value.FontSize : ImGuiNET.ImGui.GetFontSize();
+        // ── Font resolution — CRASH GUARD ──
+        // A passed-in ImFontPtr can hold a NULL/stale native pointer (atlas rebuilds        // invalidate cached fonts; the ViewportPanel/IDE caches can lag one frame).        // Touching FontSize/CalcTextSizeA on it = NullReferenceException → segfault.        // Validate the raw pointer FIRST, fall back to ImGui's current default font,        // and skip the overlay entirely when even that is missing (no ImGui frame).
+        nint fontRaw = font.HasValue ? (nint)font.Value.NativePtr : 0;
+        ImFontPtr f = fontRaw != 0 ? font.Value : ImGuiNET.ImGui.GetFont();
+        if ((nint)f.NativePtr == 0)
+            return; // no usable font this frame — drawing text would crash
+        float fs = f.FontSize;
         if (fs <= 0f) fs = 14f;
 
         float TextW(string s) => f.CalcTextSizeA(fs, float.MaxValue, 0f, s).X;
@@ -907,6 +957,22 @@ public static unsafe class DialogueSystem
                 float bob = MathF.Sin(_time * 3f + obj.Position.X * 0.7f) * 3f;
                 var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BubbleHeadHeight(obj) + 0.45f, obj.Position.Z), w, h);
                 var scr = sceneToScreen(new Vector2(head.X, head.Y + bob));
+
+                // Custom alert IMAGE (Inspector drag-drop) replaces the text "!" bubble.
+                if (!string.IsNullOrEmpty(obj.NpcAlertImagePath))
+                {
+                    uint alertTex = GetTexture(obj.NpcAlertImagePath);
+                    if (alertTex != 0)
+                    {
+                        const float size = 30f;
+                        var amin = sceneToScreen(new Vector2(head.X - size * 0.5f, head.Y + bob - size));
+                        var amax = sceneToScreen(new Vector2(head.X + size * 0.5f, head.Y + bob));
+                        // sceneToScreen is pixel-space → DON'T scene-scale again here.
+                        dl.AddImage((nint)alertTex, new Vector2(amin.X, amin.Y), new Vector2(amax.X, amax.Y));
+                        continue;
+                    }
+                }
+
                 const string mark = "!";
                 float mw = TextW(mark), mh = TextH(mark);
                 float padX = 5f, padY = 3f;
@@ -953,34 +1019,49 @@ public static unsafe class DialogueSystem
             float imgH = imgMax.Y - imgMin.Y;
             float s = imgH / MathF.Max(1f, h); // uniform scene→screen scale (Y basis)
 
-            float fsz = font != null ? fs : 14f;              // window text size (px, screen space)
-            float nameFs = fsz + 2f;                          // speaker name slightly larger
+            // Text scales with the viewport (s≈1 fullscreen in-game → theme px; a small
+            // preview viewport shrinks text WITH the world so the window stays
+            // proportional). Everything below is measured in screen px at the SAME size
+            // the text is drawn at — mixing units here is what made the window overflow
+            // (oversized portrait over the text, choices on top of the body).
+            float drawFs = MathF.Max(9f, fs * s);
+            void WText(string t, Vector2 pos, uint col) => dl.AddText(f, drawFs, pos, col, t);
+            float nameFs = drawFs + 2f;                       // speaker name slightly larger
             float winW = MathF.Min(imgW * 0.72f, 860f * s);
             float winX = imgMin.X + (imgW - winW) * 0.5f;
 
-            float textMaxW = winW - 40f * s - (hasPortrait ? 130f * s : 0f);
+            float padX = 20f * s, padY = 14f * s;
+            // Portrait column: capped to a fraction of the window so the image can
+            // NEVER invade the text area (it used to size from winH unscaled).
+            float portraitCol = hasPortrait ? MathF.Min(120f * s, winW * 0.28f) : 0f;
+            float textMaxW = winW - padX * 2f - portraitCol - (hasPortrait ? 10f * s : 0f);
+            if (textMaxW < 60f * MathF.Max(1f, s)) textMaxW = MathF.Max(60f, winW - padX * 2f);
             // Word-wrap the body text at the window's inner width.
             var lines = new List<string>();
             foreach (var word in shown.Split(' '))
             {
                 string test = lines.Count == 0 ? word : lines[^1] + " " + word;
-                if (f.CalcTextSizeA(fsz, float.MaxValue, 0f, test).X > textMaxW && lines.Count > 0) lines.Add(word);
+                if (f.CalcTextSizeA(drawFs, float.MaxValue, 0f, test).X > textMaxW && lines.Count > 0) lines.Add(word);
                 else if (lines.Count == 0) lines.Add(word);
                 else lines[^1] = test;
             }
             if (lines.Count == 0) lines.Add(shown);
 
             var choices = st.FullyRevealed ? VisibleChoices(st) : new List<DialogueChoice>();
-            float lineH = f.CalcTextSizeA(fsz, float.MaxValue, 0f, "Ag").Y + 4f * s;
+            float lineH = f.CalcTextSizeA(drawFs, float.MaxValue, 0f, "Ag").Y + 4f * s;
+            float nameH = !string.IsNullOrEmpty(speakerName) ? nameFs + 8f * s : 0f;
+            float bodyH = lines.Count * lineH;
             float choicesH = 0f;
             if (choices.Count > 0)
             {
                 foreach (var c in choices)
-                    choicesH += f.CalcTextSizeA(fsz, float.MaxValue, 0f, DialogueLibrary.Localize(c.Text)).Y + 10f * s;
-                choicesH += 8f * s;
+                    choicesH += f.CalcTextSizeA(drawFs, float.MaxValue, 0f, DialogueLibrary.Localize(c.Text)).Y + 8f * s;
             }
+            float hintH = choices.Count == 0 && st.FullyRevealed && !st.Node.AutoAdvance ? drawFs + 4f * s : 0f;
 
-            float winH = 22f * s + nameFs + lines.Count * lineH + MathF.Max(choicesH, 26f * s) + 24f * s;
+            // Sequential layout: window height = EXACT content height, so nothing can
+            // overflow the bottom and choices can never sit on top of the body text.
+            float winH = padY * 2f + nameH + bodyH + MathF.Max(choices.Count > 0 ? choicesH + 6f * s : 0f, hintH);
             float winY = imgMax.Y - winH - 18f * s;
 
             // Window bg + border.
@@ -992,15 +1073,15 @@ public static unsafe class DialogueSystem
                 dl.AddImage((nint)bgTex, new Vector2(winX, winY), new Vector2(winX + winW, winY + winH),
                     Vector2.Zero, Vector2.One, Rgba(Vector3.One, fade));
 
-            float contentX = winX + 20f * s;
-            float contentY = winY + 14f * s;
+            float contentX = winX + padX;
+            float contentY = winY + padY;
 
-            // Portrait (left).
+            // Portrait (left) — fits inside its reserved column, vertically centered.
             if (hasPortrait)
             {
-                float pSize = winH - 40f * s;
-                float pX = winX + 16f * s;
-                float pY = winY + 20f * s;
+                float pSize = MathF.Min(winH - padY * 2f, portraitCol);
+                float pX = winX + padX;
+                float pY = winY + (winH - pSize) * 0.5f;
                 dl.AddRectFilled(new Vector2(pX + 2f * s, pY + 2f * s), new Vector2(pX + pSize + 2f * s, pY + pSize + 2f * s), Rgba(theme.BorderColor, fade * 0.9f));
                 dl.AddRectFilled(new Vector2(pX, pY), new Vector2(pX + pSize, pY + pSize), Rgba(theme.WindowColor * 1.6f, fade));
 
@@ -1014,7 +1095,7 @@ public static unsafe class DialogueSystem
                         Vector2.Zero, Vector2.One, Rgba(Vector3.One, fade));
             }
 
-            float textX = contentX + (hasPortrait ? 124f * s : 0f);
+            float textX = contentX + (hasPortrait ? portraitCol + 10f * s : 0f);
 
             // Speaker name.
             if (!string.IsNullOrEmpty(speakerName))
@@ -1022,40 +1103,53 @@ public static unsafe class DialogueSystem
                 var nameCol = speaker != null
                     ? new Vector3(speaker.ColorR, speaker.ColorG, speaker.ColorB)
                     : theme.NameColor;
-                Text(speakerName, new Vector2(textX, contentY), Rgba(nameCol, fade));
-                contentY += nameFs + 8f * s;
+                WText(speakerName, new Vector2(textX, contentY), Rgba(nameCol, fade));
+                contentY += nameH;
             }
 
             // Dialogue body (typewriter).
             float ty = contentY;
             foreach (var line in lines)
             {
-                Text(line, new Vector2(textX, ty), Rgba(theme.TextColor, fade));
+                WText(line, new Vector2(textX, ty), Rgba(theme.TextColor, fade));
                 ty += lineH;
             }
 
             // Choices or continue hint.
             if (choices.Count > 0)
             {
-                float cy = winY + winH - choicesH - 10f * s;
+                float cy = winY + padY + nameH + bodyH + 6f * s;
                 for (int i = 0; i < choices.Count; i++)
                 {
                     string label = $"{i + 1}. {DialogueLibrary.Localize(choices[i].Text)}";
                     bool selected = i == st.ChoiceIndex;
-                    var lsz = f.CalcTextSizeA(fsz, float.MaxValue, 0f, label);
+                    var lsz = f.CalcTextSizeA(drawFs, float.MaxValue, 0f, label);
+                    var cmin = new Vector2(textX - 6f * s, cy - 2f * s);
+                    var cmax = new Vector2(textX + lsz.X + 8f * s, cy + lsz.Y + 4f * s);
                     if (selected)
-                        dl.AddRectFilled(new Vector2(textX - 6f * s, cy - 2f * s),
-                            new Vector2(textX + lsz.X + 8f * s, cy + lsz.Y + 4f * s), Rgba(theme.WindowColor * 1.8f, fade));
-                    Text(label, new Vector2(textX, cy), Rgba(selected ? theme.ChoiceHoverColor : theme.ChoiceColor, fade));
-                    cy += lsz.Y + 10f * s;
+                        dl.AddRectFilled(cmin, cmax, Rgba(theme.WindowColor * 1.8f, fade));
+                    // Mouse support: hover highlights, click picks — same PickChoice path
+                    // as the keyboard (1-9 / ↑↓+E), so actions + NextNodeId routing run
+                    // identically no matter how the choice was selected.
+                    var mp = ImGui.GetMousePos();
+                    bool hovered = mp.X >= cmin.X && mp.X <= cmax.X && mp.Y >= cmin.Y && mp.Y <= cmax.Y;
+                    if (hovered)
+                    {
+                        dl.AddRectFilled(cmin, cmax, Rgba(theme.ChoiceHoverColor, fade * 0.3f));
+                        if (ImGui.IsMouseClicked(0))
+                            SelectChoice(i);
+                    }
+                    WText(label, new Vector2(textX, cy), Rgba(
+                        hovered || selected ? theme.ChoiceHoverColor : theme.ChoiceColor, fade));
+                    cy += lsz.Y + 8f * s;
                 }
             }
             else if (st.FullyRevealed && !st.Node.AutoAdvance)
             {
                 float blink = (MathF.Sin(_time * 5f) + 1f) * 0.5f;
                 string hint = "> [Space]";
-                float hw = f.CalcTextSizeA(fsz, float.MaxValue, 0f, hint).X;
-                Text(hint, new Vector2(winX + winW - hw - 18f * s, winY + winH - fsz - 10f * s),
+                float hw = f.CalcTextSizeA(drawFs, float.MaxValue, 0f, hint).X;
+                WText(hint, new Vector2(winX + winW - hw - padX, winY + winH - padY - drawFs),
                     Rgba(new Vector3(0.7f, 0.75f, 0.95f), fade * (0.4f + 0.6f * blink)));
             }
         }

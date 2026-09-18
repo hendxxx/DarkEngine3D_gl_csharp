@@ -203,6 +203,12 @@ public unsafe class ImGuiController : IDisposable
             try
             {
                 var font = io.Fonts.AddFontFromFileTTF(path, size);
+                // Guard: a null/stale native pointer cached here poisoned every consumer                // (dialogue overlay crashed with NRE in ImFontPtr.get_FontSize). Don't cache                // failures — they'll retry next time the font is requested.
+                if ((nint)font.NativePtr == 0)
+                {
+                    Console.WriteLine($"[ImGui] Font load returned NULL for '{Path.GetFileName(path)}' @ {size}px — not cached");
+                    continue;
+                }
                 _customFontCache[key] = (nint)font.NativePtr;
                 Console.WriteLine($"[ImGui] Loaded font: {Path.GetFileName(path)} @ {size}px");
             }

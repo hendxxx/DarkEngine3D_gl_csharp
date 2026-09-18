@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
@@ -2799,7 +2800,7 @@ public class InspectorPanel
     /// <summary>NPC Dialogue binding: choose the dialogue asset (from the Dialogue    /// Editor) started when the player presses E nearby, plus the interaction range.
     /// Also shows a quick preview button. Available for Sprite2D and Player2D objects
     /// — any visible object with a dialogue becomes an interactable NPC.</summary>
-    private void RenderNpcDialogueInspector(EditorObject editorObj)
+    private unsafe void RenderNpcDialogueInspector(EditorObject editorObj)
     {
         if (!ImGui.CollapsingHeader("NPC Dialogue"))
             return;
@@ -2844,6 +2845,34 @@ public class InspectorPanel
             Visual.DialogueSystem.InteractionRange = MathF.Max(0.5f, range);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("World-unit distance at which the [E] Talk prompt appears.\nGlobal for all NPCs (0.5–15).");
+
+        // ── Alert image ("!" replacement): drag from the Asset Browser ──
+        // Replaces the default text "!" bubble with any icon (quest mark, alert art).
+        // Drop target MUST sit directly on the input item — ImGui's BeginDragDropTarget
+        // applies to the last submitted item, so anything in between (X button) steals it.
+        ImGui.Text("Alert Image");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(-60f);
+        string alertPath = editorObj.NpcAlertImagePath;
+        if (ImGui.InputText("##alertimg", ref alertPath, 512))
+            editorObj.NpcAlertImagePath = alertPath.Trim();
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+            {
+                editorObj.NpcAlertImagePath = Helpers.PathHelpers.MakeRelative(AssetBrowserPanel._dragImagePath);
+                AssetBrowserPanel._dragImagePath = null;
+            }
+            ImGui.EndDragDropTarget();
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("X##alertimgx") && !string.IsNullOrEmpty(editorObj.NpcAlertImagePath))
+            editorObj.NpcAlertImagePath = "";
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clear the alert image (back to the default text '!' bubble)");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Image drawn above the NPC instead of the text '!' bubble.\nDrag from the Asset Browser. Empty = default '!'.");
 
         // Quick preview: start the bound conversation immediately.
         if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))

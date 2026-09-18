@@ -376,6 +376,10 @@ public unsafe class EditorObject
     /// within range. Empty = not an NPC (no prompt, no interaction). Set in the
     /// Inspector; the asset itself lives in the Dialogue Editor.</summary>
     public string NpcDialogueId { get; set; } = "";
+    /// <summary>Optional image (drag from Asset Browser) drawn above the NPC instead of
+    /// the text "!" indicator — quest marks, alert icons, any exclamation art.
+    /// Empty = the default text "!" bubble is drawn. Persisted with the NPC binding.</summary>
+    public string NpcAlertImagePath { get; set; } = "";
 
     // ── Player2D: sprite animation + capsule collider ──
     /// <summary>Sprite sheet name (from Sprite Editor) driving the player sprite.</summary>

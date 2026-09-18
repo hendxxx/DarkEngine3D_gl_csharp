@@ -197,7 +197,7 @@ public class DialogueEditorPanel
         return copy;
     }
 
-    private void RenderNodeEditor(DialogueAsset asset, DialogueNode node)
+    private unsafe void RenderNodeEditor(DialogueAsset asset, DialogueNode node)
     {
         ImGui.Separator();
         ImGui.Text("Node");
@@ -245,12 +245,30 @@ public class DialogueEditorPanel
             ImGui.EndCombo();
         }
 
-        // Portrait path
+        // Portrait path — type it OR drag an image straight from the Asset Browser.
+        // Drop target MUST sit directly on the input item (BeginDragDropTarget applies
+        // to the last submitted item — an X button in between steals the drop).
+        ImGui.Text("Portrait (png, optional)");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(-60f);
         string portrait = node.PortraitPath;
-        if (ImGui.InputText("Portrait (png, optional)", ref portrait, 256))
+        if (ImGui.InputText("##dlgportrait", ref portrait, 256))
             node.PortraitPath = portrait.Trim();
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+            {
+                node.PortraitPath = Helpers.PathHelpers.MakeRelative(AssetBrowserPanel._dragImagePath);
+                AssetBrowserPanel._dragImagePath = null;
+            }
+            ImGui.EndDragDropTarget();
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("X##dlgportraitx") && !string.IsNullOrEmpty(node.PortraitPath))
+            node.PortraitPath = "";
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Loaded from project/exe-relative paths. Emotion variants try <name>_Happy.png etc. first.");
+            ImGui.SetTooltip("Clear portrait.\nDrag an image from the Asset Browser onto the field.\nEmotion variants try <name>_Happy.png etc. first.");
 
         // Text (localized display)
         string text = node.Text;
@@ -390,7 +408,7 @@ public class DialogueEditorPanel
 
     // ── Speakers ───────────────────────────────────
 
-    private void RenderSpeakersSection()
+    private unsafe void RenderSpeakersSection()
     {
         if (!ImGui.CollapsingHeader($"Speakers ({DialogueLibrary.Speakers.Count})")) return;
         for (int i = 0; i < DialogueLibrary.Speakers.Count; i++)
@@ -409,7 +427,23 @@ public class DialogueEditorPanel
                 string name = s.Name;
                 if (ImGui.InputText("Name", ref name, 64)) s.Name = name;
                 string portrait = s.PortraitPath;
-                if (ImGui.InputText("Portrait", ref portrait, 256)) s.PortraitPath = portrait.Trim();
+                ImGui.SetNextItemWidth(-60f);
+                if (ImGui.InputText("##spkportrait", ref portrait, 256)) s.PortraitPath = portrait.Trim();
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    {
+                        s.PortraitPath = Helpers.PathHelpers.MakeRelative(AssetBrowserPanel._dragImagePath);
+                        AssetBrowserPanel._dragImagePath = null;
+                    }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.SmallButton("X##spkportraitx") && !string.IsNullOrEmpty(s.PortraitPath))
+                    s.PortraitPath = "";
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Clear. Drag an image from the Asset Browser onto the field.");
                 Vector3 col = new(s.ColorR, s.ColorG, s.ColorB);
                 if (ImGui.ColorEdit3("Name Color", ref col))
                 { s.ColorR = col.X; s.ColorG = col.Y; s.ColorB = col.Z; }

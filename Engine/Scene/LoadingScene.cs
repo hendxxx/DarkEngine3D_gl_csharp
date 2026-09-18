@@ -432,6 +432,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
                 obj.Player2DAnimationClip = objData.Player2DAnimationClip;
                 obj.NpcDialogueId = objData.NpcDialogueId;
+                obj.NpcAlertImagePath = PathHelpers.Resolve(objData.NpcAlertImagePath);
 
                 // ── Animation actions ──
                 // Restore the user-authored actions (Idle/Walk/Run/Jump/Attack/...). Without
