@@ -62,6 +62,11 @@ public class DialogueEditorPanel
     private string _graphSearch = "";            // node search box (id or text substring)
     private int _graphSearchCycle = -1;          // current match index for repeated Enter
     private bool _mmDragging;                    // minimap LMB navigation in progress
+    // Actual canvas rect, cached every frame by RenderGraphView. CenterOnNode runs
+    // during the TOOLBAR render (before the canvas exists this frame) — estimating
+    // the center from ContentRegionAvail there includes the toolbar row AND the
+    // node editor below the canvas, so every centering landed hundreds of px off.
+    private Vector2 _gCanvasMin, _gCanvasSize;
     // ── Sticky notes (graph canvas) ──
     private int _noteDrag = -1;                  // note being moved (index)
     private bool _noteDragUndoPending;           // first drag frame pushes pre-move snapshot
@@ -435,11 +440,12 @@ public class DialogueEditorPanel
         }
         else return;
 
-        // The pan needed to place the target at the canvas center. The canvas rect is
-        // not known here — recompute the same way RenderGraphView does (cursor pos at
-        // call time sits right where the canvas starts next frame).
-        var avail = ImGui.GetContentRegionAvail();
-        var canvasCenter = new Vector2(MathF.Max(120f, avail.X * 0.5f), MathF.Max(110f, MathF.Min(420f, avail.Y - 40f) * 0.5f));
+        // The pan needed to place the target at the canvas center. Use the ACTUAL
+        // canvas rect cached by RenderGraphView last frame — this runs during the
+        // toolbar pass (before the canvas exists), and estimating from
+        // ContentRegionAvail there included the toolbar row + the node editor below
+        // the canvas, so centering always landed off-target.
+        var canvasCenter = _gCanvasSize * 0.5f;
         Vector2 goalPan = canvasCenter - target * _graphZoom;
         _graphPanFrom = _graphPan;
         _graphPanTo = goalPan;
@@ -460,6 +466,7 @@ public class DialogueEditorPanel
         float canvasH = MathF.Min(420f, ImGui.GetContentRegionAvail().Y - 40f);
         var canvasMin = ImGui.GetCursorScreenPos();
         var canvasSize = new Vector2(ImGui.GetContentRegionAvail().X, MathF.Max(220f, canvasH));
+        _gCanvasMin = canvasMin; _gCanvasSize = canvasSize; // cached for CenterOnNode etc.
         ImGui.InvisibleButton("##graph_canvas", canvasSize,
             ImGuiButtonFlags.MouseButtonLeft | ImGuiButtonFlags.MouseButtonMiddle | ImGuiButtonFlags.MouseButtonRight);
         var dl = ImGui.GetWindowDrawList();
