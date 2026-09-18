@@ -133,14 +133,19 @@ public static class Player2DSystem
             bool runHeld = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift));
 
             // ── Jump trigger resolution (Inspector-aware) ──
-            // The built-in jump honors the "Jump" action's Trigger setting:
-            //   KeyDown = jump fires on key PRESS  (hold for full height)
-            //   KeyUp   = jump fires on key RELEASE (press-impulse → full arc)
+            // The built-in jump honors the "Jump" action's Trigger setting, using the
+            // same semantics as custom actions (EditorObject.KeyTriggered):
+            //   KeyDown      = jump on press  (hold for variable height)
+            //   KeyDownOnce  = jump on press, must release before next jump
+            //   KeyUp        = jump on release (press-impulse → full arc)
+            //   KeyUpOnce    = jump on release, must press before next jump
             // Keys default to Space/Up; the Jump action's own KeyBinding overrides
-            // them when set. Before this, the Trigger field on Jump was cosmetic —
-            // the physics always jumped on press regardless of the Inspector.
+            // them when set.
+            // Physical press is EDGE-detected (wasUp → isDown): ImGui.IsKeyPressed
+            // auto-repeats while held (OS key-repeat) which caused jump-spam and an
+            // endless jump-action loop. One physical press = one jump.
             var jumpAction = player.Actions.FirstOrDefault(a => a.Name == "Jump");
-            bool jumpOnRelease = jumpAction?.IsKeyUpTrigger ?? false;
+            bool jumpOnRelease = jumpAction is { IsKeyUpTrigger: true };
             ImGuiKey jumpBoundKey = ImGuiKey.None;
             if (jumpAction != null && !string.IsNullOrEmpty(jumpAction.KeyBinding)
                 && jumpAction.KeyBinding != "None"
@@ -148,20 +153,33 @@ public static class Player2DSystem
                 && jumpBk != ImGuiKey.None)
                 jumpBoundKey = jumpBk;
 
-            bool jumpDown, jumpPressed;
+            // Unified physical-state probe for whichever key drives the jump.
+            bool jkDown, jkPressed, jkReleased;
             if (jumpBoundKey != ImGuiKey.None)
             {
-                jumpDown = ImGui.IsKeyDown(jumpBoundKey);
-                jumpPressed = jumpOnRelease ? ImGui.IsKeyReleased(jumpBoundKey) : ImGui.IsKeyPressed(jumpBoundKey);
+                jkDown = ImGui.IsKeyDown(jumpBoundKey);
+                jkPressed = ImGui.IsKeyPressed(jumpBoundKey, false);
+                jkReleased = ImGui.IsKeyReleased(jumpBoundKey);
             }
             else
             {
-                jumpDown = ImGui.IsKeyDown(ImGuiKey.Space) || ImGui.IsKeyDown(ImGuiKey.UpArrow);
-                jumpPressed = jumpOnRelease
-                    ? (ImGui.IsKeyReleased(ImGuiKey.Space) || ImGui.IsKeyReleased(ImGuiKey.UpArrow))
-                    : (ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow));
+                jkDown = ImGui.IsKeyDown(ImGuiKey.Space) || ImGui.IsKeyDown(ImGuiKey.UpArrow);
+                jkPressed = ImGui.IsKeyPressed(ImGuiKey.Space, false) || ImGui.IsKeyPressed(ImGuiKey.UpArrow, false);
+                jkReleased = ImGui.IsKeyReleased(ImGuiKey.Space) || ImGui.IsKeyReleased(ImGuiKey.UpArrow);
             }
-            jumpDown &= !conversationActive;
+            bool jumpEdge = !player.Player2DJumpKeyWasDown && jkDown; // physical press edge (repeat-proof)
+            player.Player2DJumpKeyWasDown = jkDown;
+
+            bool jumpPressed;
+            if (jumpAction is { IsKeyDownOnceTrigger: true })
+                jumpPressed = jumpEdge;
+            else if (jumpAction is { IsKeyUpOnceTrigger: true })
+                jumpPressed = jkReleased; // release edge is already one-shot by nature
+            else if (jumpOnRelease)
+                jumpPressed = jkReleased;
+            else
+                jumpPressed = jumpEdge; // KeyDown (default): press edge, hold = variable height
+            jkDown &= !conversationActive;
             jumpPressed &= !conversationActive;
             bool jump = jumpPressed;
             float targetVx = 0f;
@@ -191,8 +209,9 @@ public static class Player2DSystem
             // ── Platformer jump feel: coyote time + jump buffer + variable height ──
             // Timers advance per-frame against the live params (both 0 = classic strict
             // grounded-jump behavior, so the feature never fights the old tuning).
-            // Physical key hold drives variable jump height (works for both trigger modes).
-            bool jumpHeld = jumpDown;
+            // Physical key hold drives variable jump height (works for both trigger modes;
+            // for KeyUp triggers the hold phase was the press, so hold-state is unused).
+            bool jumpHeld = jkDown;
             float coyoteMax = MathF.Max(0f, player.Player2DCoyoteTime);
             float bufferMax = MathF.Max(0f, player.Player2DJumpBuffer);
             player.Player2DCoyoteTimer = player.Player2DGrounded ? coyoteMax : MathF.Max(0f, player.Player2DCoyoteTimer - dt);

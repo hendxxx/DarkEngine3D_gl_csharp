@@ -62,10 +62,15 @@ public class Player2DAction
     /// <summary>True this frame when the configured trigger fires for <paramref name="k"/>.</summary>
     public bool KeyTriggered(ImGuiKey k)
     {
+        // NOTE: all IsKeyPressed checks pass repeat:false — ImGui auto-repeats while
+        // a key is held (OS key-repeat), which made hold-style and one-shot actions
+        // re-trigger every repeat tick (e.g. a "Jump" KeyDownOnce action looping
+        // while Space was held). Trigger semantics are EDGES of the physical key:
+        // press edge / release edge, never the auto-repeat stream.
         if (IsKeyUpOnceTrigger)
         {
             // Re-arm when the user presses the key again
-            if (ImGui.IsKeyPressed(k))
+            if (ImGui.IsKeyPressed(k, false))
                 KeyUpOnceArmed = true;
             // Fire once on release, then disarm until next press
             if (KeyUpOnceArmed && ImGui.IsKeyReleased(k))
@@ -81,14 +86,14 @@ public class Player2DAction
             if (ImGui.IsKeyReleased(k))
                 KeyDownOnceArmed = true;
             // Fire once on press, then disarm until next release
-            if (KeyDownOnceArmed && ImGui.IsKeyPressed(k))
+            if (KeyDownOnceArmed && ImGui.IsKeyPressed(k, false))
             {
                 KeyDownOnceArmed = false;
                 return true;
             }
             return false;
         }
-        return IsKeyUpTrigger ? ImGui.IsKeyReleased(k) : ImGui.IsKeyPressed(k);
+        return IsKeyUpTrigger ? ImGui.IsKeyReleased(k) : ImGui.IsKeyPressed(k, false);
     }
 }
 
@@ -469,6 +474,12 @@ public unsafe class EditorObject
     public float Player2DJumpBufferTimer { get; set; }
     /// <summary>True once the current jump's height cut has been applied (reset on jump).</summary>
     public bool Player2DJumpCutDone { get; set; } = true;
+    /// <summary>Previous-frame physical state of the jump key (runtime only, not saved).
+    /// Drives the press-edge detection in Player2DSystem so OS key-repeat cannot
+    /// spam jumps — one physical press = one jump, re-press to jump again.
+    /// Per-object so multiple Player2D instances don't steal each other's edges.</summary>
+    [JsonIgnore]
+    public bool Player2DJumpKeyWasDown { get; set; }
 
     // ── Sprite2D: decorative animated sprite (same rendering as Player2D,
     // no controller/physics/camera). Reuses the Player2D sheet/clip/height/offset
