@@ -154,6 +154,7 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **UI harus mengikuti runtime**: PbrPanel `isPrimitive` dan Inspector "Texture Settings" WAJIB include `EditorPrimitiveType.Plane` — UI terkunci Box/Sphere = designer tidak bisa assign map ke plane (gejala "PBR plane tidak bisa dipakai" padahal renderer sudah jalan).
 - **Tuning shared**: field `TerrainPbr*` per-object dipakai KETIGA tipe — namanya legacy, bukan khusus terrain.
 - **Serializer**: `Pbr*Path` + `PbrTexSettings[7]` + tuning sudah simetris di SceneAsset — Plane PBR persist tanpa perubahan serializer.
+- **Auto-detect (PbrMapDiscovery)**: split token pakai `_ - space .` **PLUS camelCase boundary** (`AmbientOcclusion` → `[ambient, occlusion]`, `NormalGL` → `[normal, gl]`) — tanpa ini pack tekstur PolyHaven-style (`_1K-JPG_Metalness/AmbientOcclusion`) tidak pernah match token exact. Match per slot = **best longest token wins** (BUKAN file alfabetis pertama): `MetalPlates013.png` (base color mengandung token `metal`!) akan mencuri slot metallic dari `..._Metalness.jpg` kalau greedy first-match. Skip `.psd/.tif/.tiff`.
 
 ## Per-Sprite Glow Rules (Emissive Post-FX):
 - **Mekanisme**: Per-sprite emissive boost — warna vertex sprite dikali boost sehingga HANYA pixel terang (api/lava/lilin) naik melewati bloom threshold Post FX; pixel gelap (badan, kayu) tetap normal. Tidak perlu mask texture. WAJIB Post FX ON.

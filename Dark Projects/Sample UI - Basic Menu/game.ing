@@ -5222,7 +5222,7 @@
                 1
               ],
               "alignment": "Center",
-              "isVisible": false,
+              "isVisible": true,
               "opacity": 1,
               "autoFillWindow": true,
               "autoCenterX": false,
@@ -5255,7 +5255,7 @@
               "placeholder": "Enter text...",
               "maxLength": 0,
               "inputText": "",
-              "scrollY": 0,
+              "scrollY": 289,
               "scrollBarWidth": 10,
               "scrollBarTrackColor": [
                 0.15,
@@ -15181,9 +15181,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        83.0999,
-        42.891666,
-        307.0999
+        84.896065,
+        43.81875,
+        307.03183
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
@@ -15809,14 +15809,14 @@
               "emissionIntensity": 1
             }
           ],
-          "pbrAlbedoPath": "",
-          "pbrNormalPath": "",
-          "pbrMetallicPath": "",
-          "pbrRoughnessPath": "",
-          "pbrAoPath": "",
-          "pbrHeightPath": "",
+          "pbrAlbedoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Color.jpg",
+          "pbrNormalPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_NormalGL.jpg",
+          "pbrMetallicPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Metalness.jpg",
+          "pbrRoughnessPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Roughness.jpg",
+          "pbrAoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_AmbientOcclusion.jpg",
+          "pbrHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Displacement.jpg",
           "pbrEmissionPath": "",
-          "pbrTexTiling": 1,
+          "pbrTexTiling": 10,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -16235,9 +16235,7 @@
           "lightType": 0,
           "lightConeAngle": 30,
           "lightPointRadius": 50,
-          "skyTimeOfDay": 12,
-          "skySunPitch": 73.06431,
-          "skySunYaw": 293.276,
+          "skyTimeOfDay": 18.3,
           "skyCloudCoverage": 0.3,
           "skySunIntensity": 1,
           "skyTimeAnimSpeed": 0,
@@ -16769,7 +16767,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 10.624298,
+          "posX": 11,
           "posY": 16.879818,
           "posZ": -0.8640904,
           "rotX": 0,
@@ -16907,9 +16905,9 @@
           "cameraFov": 60,
           "cameraNear": 0.1,
           "cameraFar": 500,
-          "lightDirX": -0.26759,
-          "lightDirY": 0.9566323,
-          "lightDirZ": 0.1151096,
+          "lightDirX": -0.9548736,
+          "lightDirY": -0.07515007,
+          "lightDirZ": 0.28734788,
           "lightIntensity": 1,
           "lightType": 0,
           "lightConeAngle": 30,
@@ -19478,12 +19476,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        10.624298,
-        10.879817,
-        -0.8640904
+        4.2400813,
+        3.9497266,
+        19.606672
       ],
-      "editorCameraYaw": 0,
-      "editorCameraPitch": 0,
+      "editorCameraYaw": 324,
+      "editorCameraPitch": 11,
       "renderProperties": {
         "backgroundColor": [
           0,
