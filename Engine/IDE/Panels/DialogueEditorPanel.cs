@@ -562,6 +562,12 @@ public class DialogueEditorPanel
         // Shared hit-test state (needed by notes below AND the node pass later).
         var mouse = ImGui.GetIO().MousePos;
         bool canvasHovered = ImGui.IsItemHovered();
+        // Minimap rect (method scope: pan/dblclick gates below must exclude it —
+        // a minimap nav click must never also start a canvas pan or dblclick focus).
+        const float mmW = 170f, mmH = 110f, mmMargin = 10f;
+        var mmMin = new Vector2(canvasMax.X - mmW - mmMargin, canvasMax.Y - mmH - mmMargin);
+        var mmMax = mmMin + new Vector2(mmW, mmH);
+        bool overMinimap = mouse.X >= mmMin.X && mouse.X <= mmMax.X && mouse.Y >= mmMin.Y && mouse.Y <= mmMax.Y;
         int hoveredNote = -1; // set by the note pass; gates pan/dblclick so a note
                               // grab never pans the canvas underneath it
 
@@ -1011,8 +1017,10 @@ public class DialogueEditorPanel
                 _graphPanAnimating = false;
             // Pan: LMB on empty space (only when nothing else is in progress) or MMB.
             // Notes count as "something" — a note grab must not pan the canvas too
-            // (that was the note-jumps-away bug).
-            if (ImGui.IsMouseClicked(0) && hoveredNode < 0 && hoveredPortNode < 0 && hoveredNote < 0 && _graphLinkSrc < 0)
+            // (that was the note-jumps-away bug). The minimap region counts too:
+            // a minimap nav click must not ALSO start a canvas pan (they fight).
+            if (ImGui.IsMouseClicked(0) && hoveredNode < 0 && hoveredPortNode < 0 && hoveredNote < 0
+                && !overMinimap && _graphLinkSrc < 0)
             {
                 _graphPanning = true;
                 _graphPanStart = _graphPan;
@@ -1043,8 +1051,9 @@ public class DialogueEditorPanel
             _graphPanning = false;
 
         // Double-click node → smoothly pan the canvas so that node centers in view.
-        // (Double-click on empty space → re-center on the whole graph.)
-        if (canvasHovered && ImGui.IsMouseDoubleClicked(0))
+        // (Double-click on empty space → re-center on the whole graph. Not on the
+        // minimap — a fast double nav-click there would also fire this.)
+        if (canvasHovered && !overMinimap && ImGui.IsMouseDoubleClicked(0))
         {
             if (hoveredNode >= 0)
                 CenterOnNode(asset, asset.Nodes[hoveredNode]);
@@ -1092,10 +1101,6 @@ public class DialogueEditorPanel
         // for graphs too large to see at once. Draws INSIDE the canvas clip so it
         // never leaks outside; on top of everything else in the draw order.
         {
-            float mmW = 170f, mmH = 110f, mmMargin = 10f;
-            var mmMin = new Vector2(canvasMax.X - mmW - mmMargin, canvasMax.Y - mmH - mmMargin);
-            var mmMax = mmMin + new Vector2(mmW, mmH);
-
             // Graph bounds → fit-to-box scale (uniform, centered).
             Vector2 gmin = new(float.MaxValue, float.MaxValue), gmax = new(float.MinValue, float.MinValue);
             foreach (var n in asset.Nodes)
@@ -1177,7 +1182,11 @@ public class DialogueEditorPanel
                 if (_mmDragging && ImGui.IsMouseDown(0))
                 {
                     var gTarget = (mouse - mmOffset) / mmScale + gmin;
-                    _graphPan = canvasMin + canvasSize * 0.5f - gTarget * _graphZoom;
+                    // pan = canvasCenter − gTarget·zoom — NO canvasMin here! ToScreen
+                    // already adds it (canvasMin + pan + g·zoom); including it again
+                    // offset the view by the canvas position on screen (the
+                    // "click minimap → jumps somewhere unknown" bug).
+                    _graphPan = canvasSize * 0.5f - gTarget * _graphZoom;
                     _graphPanAnimating = false; // user wins
                 }
                 else
