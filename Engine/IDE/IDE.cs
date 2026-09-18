@@ -1220,6 +1220,13 @@ public class IDE : IDisposable
 
                 ImGui.Separator();
 
+                // ── Scene Detail Timing panel ──
+                bool timing = _viewport.ShowTimingPanel;
+                if (ImGui.MenuItem("Scene Detail Timing", null, timing))
+                    _viewport.ShowTimingPanel = !timing;
+
+                ImGui.Separator();
+
                 // ── Panel visibility toggles ──
                 _viewport.ShowInMenu();
                 _sceneView.ShowInMenu();
