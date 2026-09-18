@@ -571,10 +571,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 bool editMode = !InGameSessionActive;
                 bool rightDragPanAllowed = IsOrthographic && (editMode || mouseCamEnabled);
 
-                bool dragPan = (IsOrthographic
-                    ? Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT)
-                    : Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE))
-                    && (IsOrthographic ? rightDragPanAllowed : mouseCamEnabled);
+                // Pan trigger per mode:
+                // - ORTHO (2D level): right-drag (as before).
+                // - PERSPECTIVE (no 2D map): RIGHT-drag MOVES the camera when the ✈ Fly
+                //   toggle is off — RMB previously did nothing here (the doc claimed a
+                //   temporary look that was never wired). With ✈ on, look owns the mouse
+                //   and MMB-drag still pans. Both follow the Mouse Camera Control toggle
+                //   in every mode, so flipping the setting has an immediate, visible
+                //   effect on the viewport.
+                bool rmbHeld = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT);
+                bool mmbHeld = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE);
+                bool dragPan = IsOrthographic
+                    ? rmbHeld && rightDragPanAllowed
+                    : ((rmbHeld && !FlyMouseLook) || mmbHeld) && mouseCamEnabled;
                 if (!ctrlHeld && dragPan)
                 {
                     // Pan speed scales with the view volume so the drag feels 1:1 with the
