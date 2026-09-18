@@ -1823,7 +1823,13 @@ public unsafe class EditorObject
         if (PbrUniforms.ParallaxScale >= 0) GL.Uniform1f(PbrUniforms.ParallaxScale, PbrParallaxScale);
 
         GL.BindVertexArray(_object3D!.VAO);
+        // ── Flat planes: single CCW quad → culled (invisible) from below. Draw PBR
+        //    planes two-sided like the derivative-TBN shader expects; boxes/spheres
+        //    are closed meshes and keep the scene's culling state untouched.
+        bool twoSided = PrimitiveType == EditorPrimitiveType.Plane;
+        if (twoSided) GL.Disable(Const.GL_CULL_FACE);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+        if (twoSided && GL.IsEnabled(Const.GL_CULL_FACE)) GL.Enable(Const.GL_CULL_FACE);
         GL.BindVertexArray(0);
 
         // ── Restore: main shader + its shadow bindings at units 6/7/8 (the main pass

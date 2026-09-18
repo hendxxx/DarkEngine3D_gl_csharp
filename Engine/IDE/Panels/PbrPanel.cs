@@ -17,8 +17,8 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
     /// <item>Per-map-type tuning (albedo brightness/saturation/contrast, normal strength/blur,
     /// metallic threshold/softness/strength, roughness strength/invert, AO strength/brightness,
     /// height strength/invert/blur, emission intensity) + UV tiling — all live uniforms.</item>
-    /// </list>
-    /// Applies to Box / Sphere. Planes (terrain) get 5 per-texture layer sections — each
+    /// </list>        /// Applies to Box / Sphere / flat Plane — the shared objectPbr shader renders
+        /// all three from the same 7 optional maps.
     /// layer has its own 7 map slots and its own tuning, because PBR is per texture; GLB
     /// references use the maps embedded in the .glb. Missing maps keep neutral defaults, so
     /// loading just an albedo already gives a full PBR material.
@@ -53,13 +53,15 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             var obj = _bridge?.SelectedEditorObject;
             if (obj == null)
             {
-                ImGui.TextDisabled("Select a Box / Sphere in the scene to edit its PBR material.");
+                ImGui.TextDisabled("Select a Box / Sphere / Plane in the scene to edit its PBR material.");
                 ImGui.End();
                 _dialog.Render();
                 return;
             }
 
-            bool isPrimitive = obj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere;
+            // Box/Sphere = closed PBR primitives; Plane = flat PBR ground (two-sided).
+            bool isPrimitive = obj.PrimitiveType is EditorPrimitiveType.Box
+                or EditorPrimitiveType.Sphere or EditorPrimitiveType.Plane;
 
             ImGui.TextColored(new Vector4(0.6f, 0.85f, 1f, 1f), $"◉ {obj.Name}");
             ImGui.TextDisabled(obj.PrimitiveType.ToString());
@@ -79,7 +81,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             }
             else if (obj.PrimitiveType == EditorPrimitiveType.Plane)
             {
-                ImGui.TextDisabled("Terrain plane — plain layer textures (air / dirt / grass / snow), PBR removed.");
+                ImGui.TextDisabled("This object type has no material (marker / gizmo).");
                 ImGui.Separator();
             }
             else

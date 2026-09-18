@@ -313,6 +313,15 @@ float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, f
 // ======================================================
 void main() {
     vec3 norm = normalize(Normal);
+    // ── TWO-SIDED SHADING: flat planes are a single CCW quad drawn with culling
+    //    disabled (see EditorObject.DrawPbrPrimitive), so their back side IS
+    //    rendered when the camera looks from below. The attribute normal still
+    //    points up there — lighting + the derivative tangent basis built from it
+    //    would shade the underside inverted (dark, relief flipped). Flipping the
+    //    geometry normal here flips the whole T/B basis with it (T/B derive from
+    //    cross products against norm), so both sides shade correctly. Closed
+    //    meshes (Box/Sphere) never see backfaces — no change for them.
+    if (!gl_FrontFacing) norm = -norm;
     float slope = 1.0 - norm.y;
     vec3 viewDir = normalize(viewPos - FragPos);
     // Per-map UV transforms (each map has its own tiling/offset in TextureSettings).

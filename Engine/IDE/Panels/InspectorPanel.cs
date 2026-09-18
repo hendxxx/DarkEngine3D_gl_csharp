@@ -2565,9 +2565,10 @@ public class InspectorPanel
         //  Texture Settings: min/mag filter, mipmapping & advanced filters (anisotropy,
         //    LOD bias), common presets, wrapping, and UV tiling/offset. PER TEXTURE  pick
         //    which texture slot to edit: Simple (TexturePath) or one of the 7 PBR maps.
-        //    Box/Sphere only  a Plane always renders as terrain, so its per-texture
-        //    sampling lives in the Terrain section ("Texture Sampling", per layer). 
+        //    Box/Sphere/Plane — the PBR shader path is type-agnostic (flat plane renders
+        //    through the same objectPbr_fragment.glsl, two-sided).
         if (editorObj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere
+            or EditorPrimitiveType.Plane
             && ImGui.CollapsingHeader("Texture Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
             if (!ReferenceEquals(_texSettingsObj, editorObj))
