@@ -258,7 +258,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             const float dayBrightness = 0.85f;
             const float duskBrightness = 0.65f;
-            const float nightBrightness = 0.55f;
+            // Moonlight — dimmed (was 0.55; nights read as bright as overcast day).
+            const float nightBrightness = 0.45f;
 
             Vector3 lightColor =
                 (dayLight * (dayBrightness * tDay) +
@@ -296,6 +297,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 // Sky sun brightness still applies on top of the light-marker color so the
                 // intensity slider keeps working even when a Light object is present.
                 lightColor = LightColorOverride.Value * LightIntensity * SunBrightness;
+            }
+
+            // ── Night dimming (FINAL, after overrides) ──
+            // The day/night blend above only shapes the procedural color; a Light marker
+            // (LightColorOverride) replaces it entirely, which used to keep nights as
+            // bright as the marker's day color while the sky went dark. When the ACTIVE
+            // sun direction dips below the horizon, fade the final light color toward
+            // the dark moon tint — one source of truth for "how bright is moonlight"
+            // shared by terrain, PBR primitives, glTF and impostors.
+            float finalNight = Smoothstep01(0.15f, 0.0f, sunDir.Y);
+            if (finalNight > 0f)
+            {
+                Vector3 moonLight = nightLight *
+                    (nightBrightness * MathF.Max(SunBrightness, 0f) * MathF.Max(LightIntensity, 0f));
+                lightColor = Vector3.Lerp(lightColor, moonLight, finalNight);
             }
 
             Vector3 horizonFogColor = ComputeHorizonFogColor(sunDir);

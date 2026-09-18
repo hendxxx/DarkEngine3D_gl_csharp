@@ -201,14 +201,17 @@ void main()
 
     // ── PBR lighting with scene sun direction ───────────────────────────────
     vec3 V = normalize(viewPos - vWorldPos);
-    vec3 L = normalize(sunDir);
-    vec3 H = normalize(L + V);
 
     // Night/day transition (matches gltf_fragment.glsl)
     float nightBlend = smoothstep(0.15, 0.0, sunDir.y);
-    vec3 moonColor = vec3(0.25, 0.30, 0.45);
+    // Key light flips to the moon at night (same as gltf/PBR), and the moon tint is
+    // the dark value from Lights.cs — lightColor arrives pre-dimmed, this is a guard.
+    vec3 L = normalize(mix(normalize(sunDir), normalize(-sunDir), nightBlend));
+    vec3 moonColor = vec3(0.05, 0.07, 0.14);
     vec3 effectiveLightColor = mix(lightColor, moonColor, nightBlend);
     float ambientStrength = mix(0.25, 0.18, nightBlend);
+
+    vec3 H = normalize(L + V);
 
     float NdotV = max(dot(N, V), 0.001);
     float NdotL = max(dot(N, L), 0.0);

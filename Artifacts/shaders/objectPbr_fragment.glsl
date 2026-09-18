@@ -416,7 +416,12 @@ void main() {
     ao = clamp(ao * u_aoTuning.x + u_aoTuning.y, 0.0, 1.0);
 
     // ── PBR DIRECT LIGHTING (Cook-Torrance, sun as the directional light) ──
-    vec3 L = normalize(sunDir);
+    // Sun below the horizon → key light flips to the MOON direction (opposite the
+    // sun) so primitives keep a soft directional moon key instead of losing all
+    // direct light (NdotL of a down-pointing sun is ≤ 0). Radiance dimming itself
+    // is owned by Lights.cs — lightColor arrives already faded to the moon tint.
+    float nightBlendPbr = smoothstep(0.15, 0.0, sunDir.y);
+    vec3 L = normalize(mix(normalize(sunDir), normalize(-sunDir), nightBlendPbr));
     vec3 V = viewDir;
     vec3 H = normalize(V + L);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
