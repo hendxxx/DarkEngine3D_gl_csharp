@@ -184,6 +184,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         // ── Mouse look toggle: only active when CTRL is held ──
         private bool _mouseLookWasActive = false;
+        /// <summary>True while a TEMPORARY RMB-hold freefly owns the hidden cursor
+        /// (perspective, ✈ Fly off). Release must restore the cursor even though the
+        /// ✈ toggle state never changed — separate from the toggle's own session.</summary>
+        private bool _rmbLookWasActive = false;
+        /// <summary>Shared read side of <see cref="_rmbLookWasActive"/> — gameplay systems
+        /// (Player2D) check it so WASD goes to the CAMERA, not the player, while the
+        /// editor RMB freefly is held.</summary>
+        public static bool RmbFreeflyActive { get; private set; }
 
         public Camera(float x, float y, float z, float yaw, float pitch, float aspect, float fov, float nearDist, float farDist)
         {
@@ -553,10 +561,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 // ── Drag pan + Fly mouse-look ──
                 // PERSPECTIVE mode: MIDDLE-drag pans the camera in the view plane
-                // (standard 3D-editor convention); right-drag is left free for other
-                // interactions. ORTHO mode (2D levels): right-drag pans as before.
-                // Panning never rotates the view and never moves any object — the
-                // ✈ Fly toggle is the only way to rotate/look around.
+                // (standard 3D-editor convention) and RIGHT-drag = TEMPORARY freefly
+                // (mouse-look + WASD for exactly as long as the button is held; the
+                // ✈ Fly toggle is the sticky version of the same look). ORTHO mode
+                // (2D levels): right-drag pans as before. Panning never rotates the
+                // view and never moves any object.
                 // Master toggle picks the right switch for the current session: the
                 // editor toggle governs edit mode, the in-game toggle governs
                 // preview/in-game (so playing can disable mouse-pan without touching
@@ -572,18 +581,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 bool rightDragPanAllowed = IsOrthographic && (editMode || mouseCamEnabled);
 
                 // Pan trigger per mode:
-                // - ORTHO (2D level): right-drag (as before).
-                // - PERSPECTIVE (no 2D map): RIGHT-drag MOVES the camera when the ✈ Fly
-                //   toggle is off — RMB previously did nothing here (the doc claimed a
-                //   temporary look that was never wired). With ✈ on, look owns the mouse
-                //   and MMB-drag still pans. Both follow the Mouse Camera Control toggle
-                //   in every mode, so flipping the setting has an immediate, visible
+                // - ORTHO (2D level): right-drag pans (as before).
+                // - PERSPECTIVE (no 2D map): right-drag = TEMPORARY freefly — holds
+                //   mouse-look for as long as the button is down (cursor hidden,
+                //   WASD moves) and releases cleanly when the button comes up.
+                //   With the ✈ Fly toggle ON, look already owns the mouse and MMB
+                //   still pans. Both follow the Mouse Camera Control toggle in
+                //   every mode, so flipping the setting has an immediate, visible
                 //   effect on the viewport.
                 bool rmbHeld = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_RIGHT);
                 bool mmbHeld = Mouse.IsButtonDown(Const.GLFW_MOUSE_BUTTON_MIDDLE);
                 bool dragPan = IsOrthographic
                     ? rmbHeld && rightDragPanAllowed
-                    : ((rmbHeld && !FlyMouseLook) || mmbHeld) && mouseCamEnabled;
+                    : mmbHeld && mouseCamEnabled;
+                bool rmbFlyLook = !IsOrthographic && rmbHeld && !FlyMouseLook && mouseCamEnabled;
                 if (!ctrlHeld && dragPan)
                 {
                     // Pan speed scales with the view volume so the drag feels 1:1 with the
@@ -598,8 +609,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         Mouse.ResetState();
                         _mouseLookWasActive = false;
                     }
+                    // The RMB hold owns the cursor — the temporary fly-look below must
+                    // not fight the pan for it this frame.
+                    _rmbLookWasActive = false;
                 }
-                else if (!ctrlHeld && FlyMouseLook && mouseCamEnabled)
+                else if (!ctrlHeld && (rmbFlyLook || (FlyMouseLook && mouseCamEnabled)))
                 {
                     // Use configurable sensitivity from CameraConfig
                     float sens = Config.CameraConfig.FlyMouseSensitivity;
@@ -615,6 +629,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         Mouse.ResetState();
                         _mouseLookWasActive = true;
                     }
+                    // Remember WHICH session hid the cursor: a RMB hold is temporary and
+                    // must restore the cursor on release even though the ✈ toggle never
+                    // changed (a toggle session is ended by the toggle itself / ESC).
+                    _rmbLookWasActive = rmbFlyLook;
                 }
                 else
                 {
@@ -623,8 +641,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         Mouse.ShowMouse(true);
                         Mouse.ResetState();
                         _mouseLookWasActive = false;
+                        _rmbLookWasActive = false;
                     }
                 }
+
+                // Publish the RMB freefly session for gameplay systems: while held,
+                // A/D belong to the camera (Player2D freezes its own movement input).
+                RmbFreeflyActive = _rmbLookWasActive || (!IsOrthographic && rmbHeld && FlyMouseLook);
 
                 Yaw = smoothYaw;
                 Pitch = smoothPitch;
@@ -681,6 +704,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             {
                 // Still update vectors even without input processing so the camera faces the right way
                 UpdateCameraVectorsFly();
+                RmbFreeflyActive = false; // input skipped (modal/popup) — never freeze the player on a stale flag
             }
         }
 

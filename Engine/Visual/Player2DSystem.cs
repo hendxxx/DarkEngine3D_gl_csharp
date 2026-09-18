@@ -125,12 +125,20 @@ public static class Player2DSystem
             // REMOVED — W no longer moves the player up (pure platformer controls).
             // Conversation active → freeze ALL player input (movement, run, jump)
             // but keep gravity/physics so the character stays planted mid-dialogue.
+            // Same while the EDITOR's RMB-hold freefly owns the camera: A/D would
+            // drive the player AND the camera at once (the camera moves, the player
+            // must not). RMB only takes the camera in perspective (3D) view — 2D
+            // levels keep right-drag = pan, so player input stays live there.
+            // (RmbFreeflyActive is only ever set in perspective — the static flag is
+            // the single source of truth; no ortho check needed here.)
             bool conversationActive = DialogueSystem.IsConversationActive;
+            bool rmbLookOwnsInput = Camera.RmbFreeflyActive;
             float walkSpeed = conversationActive ? 0.001f : MathF.Max(0.1f, player.Player2DMoveSpeed);
             float runSpeed = conversationActive ? 0.001f : MathF.Max(walkSpeed, player.Player2DRunSpeed);
-            bool left = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow));
-            bool right = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow));
-            bool runHeld = !conversationActive && (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift));
+            bool inputFrozen = conversationActive || rmbLookOwnsInput;
+            bool left = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow));
+            bool right = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow));
+            bool runHeld = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift));
 
             // ── Jump trigger resolution (Inspector-aware) ──
             // The built-in jump honors the "Jump" action's Trigger setting, using the
@@ -179,8 +187,8 @@ public static class Player2DSystem
                 jumpPressed = jkReleased;
             else
                 jumpPressed = jumpEdge; // KeyDown (default): press edge, hold = variable height
-            jkDown &= !conversationActive;
-            jumpPressed &= !conversationActive;
+            jkDown &= !inputFrozen;
+            jumpPressed &= !inputFrozen;
             bool jump = jumpPressed;
             float targetVx = 0f;
             if (left && !right) targetVx = -(runHeld ? runSpeed : walkSpeed);

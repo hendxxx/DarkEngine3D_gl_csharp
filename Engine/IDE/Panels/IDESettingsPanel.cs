@@ -187,9 +187,9 @@ public class IDESettingsPanel
                     Console.WriteLine($"[IDESettings] Mouse camera control: {(mouseCam ? "ON" : "OFF")}");
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Master toggle for mouse control of the EDITOR camera (edit mode).\nOFF = middle/right-drag pan AND fly mouse-look are disabled\n(the camera never moves from mouse input).\nKeyboard WASD, scroll zoom, and Views presets still work.\nPer project, saved in settings.json.");
+                    ImGui.SetTooltip("Master toggle for mouse control of the EDITOR camera (edit mode).\nON = hold RIGHT mouse in a perspective viewport for a temporary freefly\n(look with the mouse, WASD to move — released = back to normal cursor),\nMMB-drag pans, the \u2708 Fly toggle is the sticky version of the look.\nOFF = no mouse camera input at all.\nKeyboard WASD (\u2708/sticky only), scroll zoom, and Views presets still work.\nPer project, saved in settings.json.");
                 ImGui.SameLine();
-                ImGui.TextDisabled(mouseCam ? "edit: drag-pan + fly look ON" : "edit: mouse camera OFF");
+                ImGui.TextDisabled(mouseCam ? "edit: RMB freefly + MMB pan ON" : "edit: mouse camera OFF");
 
                 // In-game mouse camera option — the checkbox only matters while PLAYING
                 // (Play In Preview / In-Game mode), so the row is hidden in pure edit
@@ -206,10 +206,10 @@ public class IDESettingsPanel
                         Console.WriteLine($"[IDESettings] In-game mouse camera control: {(inGameMouseCam ? "ON" : "OFF")}");
                     }
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Mouse camera control for PLAY mode (Play In Preview / In-Game).\nOFF = right-drag pan and fly mouse-look do NOT move the camera while playing\n(the mouse belongs to the game UI instead).\nDoes not affect the editor camera in edit mode.\nPer project, saved in settings.json.");
+                        ImGui.SetTooltip("Mouse camera control for PLAY mode (Play In Preview / In-Game).\nOFF = right-drag freefly and MMB pan do NOT move the camera while playing\n(the mouse belongs to the game UI instead).\nDoes not affect the editor camera in edit mode.\nPer project, saved in settings.json.");
                     ImGui.SameLine();
                     ImGui.TextColored(new Vector4(1f, 0.75f, 0.2f, 1f),
-                        inGameMouseCam ? "in-game: drag-pan + fly look ON" : "in-game: mouse camera OFF");
+                        inGameMouseCam ? "in-game: RMB freefly + MMB pan ON" : "in-game: mouse camera OFF");
                 }
             }
 
