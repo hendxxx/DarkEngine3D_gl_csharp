@@ -8882,7 +8882,7 @@
             "width": 50,
             "height": 20,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
             "tilesetColumns": 25,
             "tilesetRows": 25,
             "tilesetFlipV": false,
@@ -8896,7 +8896,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -2,
@@ -8911,7 +8911,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
                 "isVisible": true,
                 "scrollFactor": 0.85,
                 "zPosition": -1,
@@ -16322,7 +16322,7 @@
                 "Y": 1,
                 "Z": 1
               },
-              "texturePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
+              "texturePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
               "rotationSpeed": 0,
               "phaseOffset": 0.8370237
             },
@@ -19476,12 +19476,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        36.928043,
-        22.40507,
-        2.0170643
+        10.624298,
+        10.879817,
+        -0.8640904
       ],
-      "editorCameraYaw": 129,
-      "editorCameraPitch": 8.299999,
+      "editorCameraYaw": 25,
+      "editorCameraPitch": -12.5,
       "renderProperties": {
         "backgroundColor": [
           0,
