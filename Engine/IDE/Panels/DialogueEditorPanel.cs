@@ -572,9 +572,11 @@ public class DialogueEditorPanel
             dl.AddRectFilled(nmin, nmax, editing ? C(96, 88, 44) : C(82, 76, 40), 3f);
             dl.AddRectFilled(nmin, nmax, C(238, 214, 112, 46), 3f);                                   // yellow wash
             dl.AddRect(nmin, nmax, editing ? C(250, 226, 130) : C(180, 165, 92), 3f, ImDrawFlags.None, editing ? 1.8f : 1f);
-            // Corner fold (top-right triangle).
+            // Corner fold (top-right triangle): hug the TOP-right corner — the
+            // middle vertex is the corner itself, NOT nmax (bottom-right), which
+            // stretched a wedge down the whole right edge.
             float fold = 11f * _graphZoom;
-            dl.AddTriangleFilled(new(nmax.X - fold, nmin.Y), nmax, new(nmax.X, nmin.Y + fold), C(196, 176, 92));
+            dl.AddTriangleFilled(new(nmax.X - fold, nmin.Y), new(nmax.X, nmin.Y), new(nmax.X, nmin.Y + fold), C(196, 176, 92));
 
             dl.PushClipRect(nmin, nmax, true);
             if (editing)
@@ -1150,8 +1152,14 @@ public class DialogueEditorPanel
                 var viewMaxG = viewMinG + canvasSize / _graphZoom;
                 var vpMin = MM(viewMinG);
                 var vpMax = MM(viewMaxG);
+                // Clip to the minimap box: when the whole graph is visible the rect
+                // maps LARGER than the box (view extends past graph bounds) and used
+                // to spill across the canvas. Clipped, it hugs the box exactly —
+                // which is the expected "white box = everything visible" look.
+                dl.PushClipRect(mmMin, mmMax, true);
                 dl.AddRect(vpMin, vpMax, C(240, 240, 255, 220), 2f, ImDrawFlags.None, 1.5f);
                 dl.AddRectFilled(vpMin, vpMax, C(240, 240, 255, 22), 2f);
+                dl.PopClipRect();
 
                 // Interaction: LMB down anywhere on the minimap = center the view on
                 // that graph point; hold-drag keeps following (minimap navigation).
