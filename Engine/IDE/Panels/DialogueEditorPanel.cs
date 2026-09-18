@@ -555,10 +555,11 @@ public class DialogueEditorPanel
         // Shared hit-test state (needed by notes below AND the node pass later).
         var mouse = ImGui.GetIO().MousePos;
         bool canvasHovered = ImGui.IsItemHovered();
+        int hoveredNote = -1; // set by the note pass; gates pan/dblclick so a note
+                              // grab never pans the canvas underneath it
 
         // ── Sticky notes (BELOW edges/nodes — the quiet background layer) ──
         // Yellow authoring memo, drawn under everything so routing stays readable.
-        var mouseIo = ImGui.GetIO();
         for (int ni = 0; ni < asset.Notes.Count; ni++)
         {
             var note = asset.Notes[ni];
@@ -589,9 +590,6 @@ public class DialogueEditorPanel
                     if (ImGui.InputTextMultiline($"##note_text{ni}", ref _noteEditText, 512,
                         new Vector2(note.W, note.H) * _graphZoom - new Vector2(8, 8)))
                         note.Text = _noteEditText;
-                    if (!ImGui.IsItemActive() && ImGui.IsMouseClicked(0)
-                        && !(mouse.X >= nmin.X && mouse.X <= nmax.X && mouse.Y >= nmin.Y && mouse.Y <= nmax.Y))
-                        _editingNote = -1; // clicked outside → commit & close
                     ImGui.PopStyleColor(2);
                 }
                 ImGui.End();
@@ -644,6 +642,28 @@ public class DialogueEditorPanel
             if (overHandle)
                 dl.AddTriangleFilled(new(nmax.X, nmax.Y - 9f * _graphZoom), new(nmax.X + 3, nmax.Y + 3), new(nmax.X - 9f * _graphZoom, nmax.Y), C(250, 226, 130));
 
+            if (overNote)
+            {
+                hoveredNote = ni;
+                // Explicit delete button (✕) — Delete-key only was undiscoverable AND
+                // broken (pan stole the click). Drawn top-right next to the fold.
+                var xMin = new Vector2(nmax.X - 20f * _graphZoom, nmin.Y + 2f);
+                var xMax = xMin + new Vector2(16f * _graphZoom, 16f * _graphZoom);
+                bool xHover = mouse.X >= xMin.X && mouse.X <= xMax.X && mouse.Y >= xMin.Y && mouse.Y <= xMax.Y;
+                if (xHover)
+                    dl.AddRectFilled(xMin, xMax, C(140, 50, 45, 235), 3f);
+                dl.AddText(font, MathF.Max(9f, 11f * _graphZoom), xMin + new Vector2(3f * _graphZoom, 1f),
+                    xHover ? C(255, 235, 235) : C(120, 100, 60), "✕");
+                if (xHover && ImGui.IsMouseClicked(0))
+                {
+                    PushGraphUndo(asset);
+                    asset.Notes.RemoveAt(ni);
+                    if (_editingNote == ni) _editingNote = -1;
+                    if (_noteDrag == ni) _noteDrag = -1;
+                    break;
+                }
+            }
+
             if (canvasHovered && ImGui.IsMouseClicked(0) && _editingNote != ni)
             {
                 if (overHandle)
@@ -659,17 +679,31 @@ public class DialogueEditorPanel
                         _editingNote = ni;
                         _noteEditText = note.Text;
                     }
-                    else
+                    else if (!ImGui.GetIO().KeyCtrl)
                     {
+                        // Grab offset = mouse relative to the note's top-left. Screen
+                        // position during drag = mouse + offset (NOT minus — that
+                        // mirrored the note through the cursor).
                         _noteDrag = ni;
                         _noteDragUndoPending = true;
-                        _noteGrabOffset = (nmin - mouse) / _graphZoom;
+                        _noteGrabOffset = (mouse - nmin) / _graphZoom;
                     }
                 }
             }
             if (overNote && !overHandle)
-                ImGui.SetTooltip("Sticky note — drag to move · double-click to edit · corner to resize");
+                ImGui.SetTooltip("Sticky note — drag to move · double-click to edit · corner to resize · ✕ to delete");
         }
+        if (_noteDrag >= 0 && _noteDrag < asset.Notes.Count && ImGui.IsMouseDragging(0))
+        {
+            if (_noteDragUndoPending) { _noteDragUndoPending = false; PushGraphUndo(asset); }
+            var note = asset.Notes[_noteDrag];
+            // Keep the grabbed point under the cursor, in GRAPH space:
+            // graphPos = (mouseScreen − canvasMin − pan) / zoom, note.XY = graphPos − grabOffset.
+            var g = (mouse - canvasMin - _graphPan) / _graphZoom - _noteGrabOffset;
+            note.X = g.X; note.Y = g.Y;
+        }
+        else if (_noteDrag >= 0 && ImGui.IsMouseReleased(0))
+            _noteDrag = -1;
         if (_noteDrag >= 0 && _noteDrag < asset.Notes.Count && ImGui.IsMouseDragging(0))
         {
             if (_noteDragUndoPending) { _noteDragUndoPending = false; PushGraphUndo(asset); }
@@ -689,23 +723,13 @@ public class DialogueEditorPanel
         }
         else if (_noteResize >= 0 && ImGui.IsMouseReleased(0))
             _noteResize = -1;
-        // Delete note: hover + Del key.
-        if (_editingNote < 0)
+        // Delete note via Del key still works (in addition to the ✕ button).
+        if (_editingNote < 0 && hoveredNote >= 0 && canvasHovered && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
         {
-            for (int ni = 0; ni < asset.Notes.Count; ni++)
-            {
-                var note = asset.Notes[ni];
-                var nmin = ToScreen(new(note.X, note.Y));
-                var nmax = nmin + new Vector2(note.W, note.H) * _graphZoom;
-                bool overNote = mouse.X >= nmin.X && mouse.X <= nmax.X && mouse.Y >= nmin.Y && mouse.Y <= nmax.Y;
-                if (overNote && canvasHovered && ImGui.IsKeyPressed(ImGuiKey.Delete, false))
-                {
-                    PushGraphUndo(asset);
-                    asset.Notes.RemoveAt(ni);
-                    if (_editingNote == ni) _editingNote = -1;
-                    break;
-                }
-            }
+            PushGraphUndo(asset);
+            asset.Notes.RemoveAt(hoveredNote);
+            if (_editingNote == hoveredNote) _editingNote = -1;
+            if (_noteDrag == hoveredNote) _noteDrag = -1;
         }
 
         // Compact condition summary for an arrow label: "level:5" → "level>=5",
@@ -969,7 +993,9 @@ public class DialogueEditorPanel
             if (_graphPanAnimating && (ImGui.IsMouseClicked(0) || ImGui.IsMouseClicked(ImGuiMouseButton.Middle)))
                 _graphPanAnimating = false;
             // Pan: LMB on empty space (only when nothing else is in progress) or MMB.
-            if (ImGui.IsMouseClicked(0) && hoveredNode < 0 && hoveredPortNode < 0 && _graphLinkSrc < 0)
+            // Notes count as "something" — a note grab must not pan the canvas too
+            // (that was the note-jumps-away bug).
+            if (ImGui.IsMouseClicked(0) && hoveredNode < 0 && hoveredPortNode < 0 && hoveredNote < 0 && _graphLinkSrc < 0)
             {
                 _graphPanning = true;
                 _graphPanStart = _graphPan;
