@@ -5222,7 +5222,7 @@
                 1
               ],
               "alignment": "Center",
-              "isVisible": true,
+              "isVisible": false,
               "opacity": 1,
               "autoFillWindow": true,
               "autoCenterX": false,
@@ -5255,7 +5255,7 @@
               "placeholder": "Enter text...",
               "maxLength": 0,
               "inputText": "",
-              "scrollY": 289,
+              "scrollY": 0,
               "scrollBarWidth": 10,
               "scrollBarTrackColor": [
                 0.15,
@@ -15181,9 +15181,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        84.896065,
-        43.81875,
-        307.03183
+        83.0999,
+        42.891666,
+        307.0999
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
@@ -16235,7 +16235,7 @@
           "lightType": 0,
           "lightConeAngle": 30,
           "lightPointRadius": 50,
-          "skyTimeOfDay": 18.3,
+          "skyTimeOfDay": 20.1,
           "skyCloudCoverage": 0.3,
           "skySunIntensity": 1,
           "skyTimeAnimSpeed": 0,
@@ -16270,66 +16270,66 @@
               "pingPongAmplitude": 30
             },
             "sun": {
-              "size": 1,
-              "softness": 0.8,
+              "size": 0.82192624,
+              "softness": 0.5177383,
               "color": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
+                "X": 0.9426254,
+                "Y": 0.8867872,
+                "Z": 0.76928097
               },
-              "glowIntensity": 1
+              "glowIntensity": 0.7288221
             },
             "scattering": {
-              "intensity": 18,
-              "rayleigh": 0.5,
+              "intensity": 24.275652,
+              "rayleigh": 1.4429734,
               "rayColor": {
-                "X": 0.6,
-                "Y": 0.8,
-                "Z": 1
+                "X": 0.5188016,
+                "Y": 0.62452537,
+                "Z": 0.79016364
               },
-              "rayHeight": 0.8,
-              "mie": 0.35,
+              "rayHeight": 3.2975347,
+              "mie": 1.5681658,
               "mieColor": {
-                "X": 1,
-                "Y": 0.6,
-                "Z": 0.35
+                "X": 0.46035743,
+                "Y": 0.6325836,
+                "Z": 0.67227983
               },
-              "mieFocus": 0.8,
-              "mieHeight": 0.6
+              "mieFocus": 0.65053225,
+              "mieHeight": 1.9244937
             },
             "clouds": {
-              "density": 0.3,
-              "altitude": 2.5,
-              "speed": 0.035,
-              "detail": 0.35,
-              "erosion": 0.25,
-              "shadowStrength": 0.65,
-              "scatter": 0.25,
+              "density": 0.46727714,
+              "altitude": 2.4552748,
+              "speed": 0.016812414,
+              "detail": 0.24657969,
+              "erosion": 0.458982,
+              "shadowStrength": 0.745221,
+              "scatter": 0.2918405,
               "tintColor": {
                 "X": 1,
                 "Y": 1,
                 "Z": 1
               },
-              "cirrusStrength": 0.1,
-              "enabled": true
+              "cirrusStrength": 0.28344116,
+              "enabled": false
             },
             "moon": {
-              "brightness": 1.25,
-              "size": 1,
-              "glowRadius": 1,
+              "brightness": 0.97396994,
+              "size": 0.7904882,
+              "glowRadius": 1.8039382,
               "tintColor": {
                 "X": 1,
                 "Y": 1,
                 "Z": 1
               },
-              "texturePath": "Artifacts/Textures/moon.png",
+              "texturePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
               "rotationSpeed": 0,
-              "phaseOffset": 0.5
+              "phaseOffset": 0.8370237
             },
             "stars": {
-              "brightness": 1,
-              "density": 1,
-              "twinkleSpeed": 1,
+              "brightness": 1.5279922,
+              "density": 1.5592055,
+              "twinkleSpeed": 1.4354293,
               "color": {
                 "X": 1,
                 "Y": 1,
@@ -16347,13 +16347,13 @@
               }
             },
             "sunRays": {
-              "intensity": 0.3,
-              "rayCount": 12,
-              "length": 1,
+              "intensity": 0,
+              "rayCount": 24,
+              "length": 1.3894122,
               "color": {
-                "X": 1,
-                "Y": 1,
-                "Z": 1
+                "X": 0.9113965,
+                "Y": 0.8451949,
+                "Z": 0.7214724
               },
               "enabled": true
             }
@@ -16905,8 +16905,8 @@
           "cameraFov": 60,
           "cameraNear": 0.1,
           "cameraFar": 500,
-          "lightDirX": -0.9548736,
-          "lightDirY": -0.07515007,
+          "lightDirX": -0.81668115,
+          "lightDirY": -0.5004629,
           "lightDirZ": 0.28734788,
           "lightIntensity": 1,
           "lightType": 0,
@@ -19476,12 +19476,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        4.2400813,
-        3.9497266,
-        19.606672
+        36.928043,
+        22.40507,
+        2.0170643
       ],
-      "editorCameraYaw": 324,
-      "editorCameraPitch": 11,
+      "editorCameraYaw": 129,
+      "editorCameraPitch": 8.299999,
       "renderProperties": {
         "backgroundColor": [
           0,

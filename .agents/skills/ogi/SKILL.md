@@ -124,6 +124,7 @@ Ogi adalah senior developer spesialis **game engine development** menggunakan **
 - **Key light flip**: terrain (fragment_shader.glsl) sudah punya `activeLightDir = mix(realSunDir, moonDir)`; PBR primitives (`objectPbr_fragment.glsl`) & impostor TIDAK punya — tanpa flip manual `mix(sunDir, -sunDir, nightBlend)`, NdotL matahari-bawah ≤ 0 = objek kehilangan seluruh direct light di malam hari.
 - **Piringan bulan (visual)**: brightness texture moon di sky_fragment.glsl dikali 0.9 (was 1.25). Kontrol penuh per-Sky-object via `SkySettings.Moon` (Brightness/Size/GlowRadius/Tint/Phase) — realtime path.
 - **Konvensi arah**: +Y = atas (siang) untuk `SunDirOverride` DAN procedural — gate `overrideNight > 0.5f → shadow pakai -sunDir` di Lights.cs sudah benar, jangan dibalik.
+- **Editor default 10:00**: `_editorLights` (KEDUA site di SceneManager.cs — no-scene path DAN shared-FBO path) dibuat dengan startTime "10:00". Default lama mengikuti jam nyata → IDE dibuka malam hari = viewport gelap total tanpa kontrol waktu yang jelas. Sky object (`SkyTimeOfDay` di Inspector) tetap override per-scene.
 
 ## Trigger Area System Rules:
 - **Data Model**: `TilemapTriggerArea` (Tilemap2D.cs) — kotak dalam koordinat pixel grid (LeftPx/TopPx/WidthPx/HeightPx), `IsEnabled`, kondisi **OnEnter / OnStay (interval detik) / OnExit**, gate opsional **OnlyMovingRight**, dan daftar aksi berurutan (`TilemapTriggerAction`: Type, Param, Param2, Delay).

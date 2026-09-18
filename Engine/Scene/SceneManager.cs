@@ -292,10 +292,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                         if (_editorLights == null)
                         {
+                            // Fixed 10:00 start — the previous default followed the real
+                            // clock, so opening the IDE at night gave a pitch-dark editor
+                            // viewport with no visible way to change the time. A Sky object
+                            // (SkyTimeOfDay) still overrides this per scene.
                             _editorLights = new Lights(
                                 new Vector3(-0.5f, 0.8f, -0.3f),
                                 new Vector3(0.9f, 0.9f, 0.85f),
-                                _editorCamera.Position);
+                                _editorCamera.Position,
+                                "10:00");
                         }
 
                         bool imguiCapture = ImGuiNET.ImGui.GetIO().WantCaptureMouse;
@@ -488,10 +493,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                     if (_editorLights == null)
                     {
+                        // Same fixed 10:00 default as the no-scene path above — daylight
+                        // editor viewport regardless of when the IDE is opened.
                         _editorLights = new Lights(
                             new Vector3(-0.5f, 0.8f, -0.3f),
                             new Vector3(0.9f, 0.9f, 0.85f),
-                            _editorCamera.Position);
+                            _editorCamera.Position,
+                            "10:00");
                     }
 
                     _editorCamera.UpdateAspectRatio(Glfw.WindowWidth, Glfw.WindowHeight);
