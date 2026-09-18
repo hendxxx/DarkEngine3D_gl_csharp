@@ -3382,9 +3382,15 @@ ImGui.SameLine();
             //  Render UI elements in both editor and preview mode 
             // In editor mode: elements are rendered with click-to-select behavior.
             // In preview mode: elements are rendered with click-to-interact behavior (game-like).
+            // Reset per-frame input-capture flags BEFORE the child-count gate: they must
+            // clear even when the scene has NO children (e.g. an empty scene selected
+            // after a UI scene). Left stale, ScrollCapturedByUI/IsOverlayVisible freeze
+            // the editor camera for good (SetCameraFlyMode runs with processInput=false,
+            // so WASD/RMB in the viewport silently die — empty scene = camera dead).
+            _bridge.ScrollCapturedByUI = false; // re-set by DrawPlaceholder if hovered
+            _bridge.IsOverlayVisible = false;   // re-set by DrawEditorUIPreview if a Container is visible
             if (_bridge.SceneRoot != null && _bridge.SceneRoot.Children.Count > 0)
             {
-                _bridge.ScrollCapturedByUI = false; // reset each frame, set by DrawPlaceholder if hovered
                 var drawList = ImGui.GetWindowDrawList();
                 // Bar under-layers (Back/Background/Empty) must draw before the element pass —
                 // same as in-game, so the viewport shows bars identically.
