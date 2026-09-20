@@ -1044,6 +1044,14 @@ public class SceneManagerPanel
                         PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
                         PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                         PbrTexTiling = obj.PbrTexTiling,
+                        PbrParallaxScale = obj.PbrParallaxScale,
+                        PbrPomShadowStrength = obj.PbrPomShadowStrength,
+                        PbrHeightContrast = obj.PbrHeightContrast,
+                        PbrHeightContrastCenter = obj.PbrHeightContrastCenter,
+                        PbrHeightOffset = obj.PbrHeightOffset,
+                        PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
+                        PbrVertexDisplace = obj.PbrVertexDisplace,
+                        PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
                         TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                         PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                         TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
@@ -1506,6 +1514,15 @@ public class SceneManagerPanel
                         obj.PbrHeightPath = PathHelpers.Resolve(objData.PbrHeightPath);
                         obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
                         obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
+                        obj.PbrParallaxScale = Math.Clamp(objData.PbrParallaxScale, 0f, 0.5f);
+                        obj.PbrPomShadowStrength = Math.Clamp(objData.PbrPomShadowStrength, 0f, 1f);
+                        obj.PbrHeightContrast = Math.Clamp(objData.PbrHeightContrast, 0.1f, 4f);
+                        obj.PbrHeightContrastCenter = Math.Clamp(objData.PbrHeightContrastCenter, 0f, 1f);
+                        obj.PbrHeightOffset = Math.Clamp(objData.PbrHeightOffset, -0.5f, 0.5f);
+                        obj.PbrHeightScaleCenter = Math.Clamp(objData.PbrHeightScaleCenter, 0f, 1f);
+                        obj.PbrVertexDisplace = objData.PbrVertexDisplace;
+                        obj.PbrVertexDisplaceScale = Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 2f);
+                        if (obj.PbrVertexDisplace) obj.MarkDirty(); // plane needs the dense grid
                         // Per-texture sampling settings (min/mag, mipmap, wrapping, UV
                         // tiling/offset). Legacy scenes have no TexSettings → fall back to
                         // the old scalar tiling so existing scenes keep their look.
@@ -1938,6 +1955,14 @@ public class SceneManagerPanel
                             PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
+                            PbrParallaxScale = obj.PbrParallaxScale,
+                            PbrPomShadowStrength = obj.PbrPomShadowStrength,
+                            PbrHeightContrast = obj.PbrHeightContrast,
+                            PbrHeightContrastCenter = obj.PbrHeightContrastCenter,
+                            PbrHeightOffset = obj.PbrHeightOffset,
+                            PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
+                            PbrVertexDisplace = obj.PbrVertexDisplace,
+                            PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                             PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                             TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),

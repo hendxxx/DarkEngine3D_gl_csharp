@@ -638,6 +638,29 @@ public unsafe class EditorObject
     public float PbrTexTiling { get; set; } = 1f;
     /// <summary>PBR parallax depth (0 = off, 0.15 = default strong). Steep POM height-map displacement.</summary>
     public float PbrParallaxScale { get; set; } = 0.15f;
+    /// <summary>Relief self-shadowing strength for the height-map POM (0 = off, 0.6 default, 1 = hard).
+    /// Marches the height field toward the sun so displaced slopes cast contact shadows.</summary>
+    public float PbrPomShadowStrength { get; set; } = 0.6f;
+    // ── Marmoset-style height calibration (Displacement module equivalents) ──
+    /// <summary>Height contrast: exaggerates separation between low/high areas (1 = off).</summary>
+    public float PbrHeightContrast { get; set; } = 1f;
+    /// <summary>Height contrast center: which gray level is treated as the mid height.</summary>
+    public float PbrHeightContrastCenter { get; set; } = 0.5f;
+    /// <summary>Height offset: shifts the whole height field up/down (−0.5..0.5).</summary>
+    public float PbrHeightOffset { get; set; } = 0f;
+    /// <summary>Height scale center: the baseline gray level treated as zero displacement depth.</summary>
+    public float PbrHeightScaleCenter { get; set; } = 0.5f;
+    /// <summary>TRUE geometric displacement for PBR planes: the plane mesh is tessellated
+    /// into a dense grid and its vertices are pushed along the height map (real
+    /// silhouette + parallax + self-occlusion, Marmoset "Height" model).</summary>
+    public bool PbrVertexDisplace { get; set; } = false;
+    /// <summary>Peak displacement height in world units for vertex displacement.</summary>
+    public float PbrVertexDisplaceScale { get; set; } = 0.15f;
+    // Lazy uniform-location sets for the two PBR programs (standard / vertex-displaced).
+    private PbrUniformSet? _pbrUniformsStd;
+    private PbrUniformSet? _pbrUniformsDisp;
+    /// <summary>Tessellation segments per side for the displaced plane grid.</summary>
+    public const int PbrDisplaceSegments = 256;
     /// <summary>Sampling settings for the SIMPLE texture (<see cref="TexturePath"/>):
     /// min/mag filter, mipmapping & anisotropy, wrapping, UV tiling/offset.</summary>
     public Libs.TextureSettings TexSettings { get; set; } = new();
@@ -1498,7 +1521,11 @@ public unsafe class EditorObject
                     _vertexCache = null;
                     break;
                 }
-                var verts = Object3D.CreatePlaneVertices(1f, 1f, Color);
+                // "Vertex Displacement" ON → tessellate into a dense grid so the
+                // vertex shader has vertices to move (true geometric displacement).
+                // 256×256 = 131k tris per plane, plenty for 4K height maps.
+                int segs = PbrVertexDisplace && !string.IsNullOrEmpty(PbrHeightPath) ? 256 : 1;
+                var verts = Object3D.CreatePlaneVertices(1f, 1f, Color, segs, segs);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
                 _vertexCache = verts;
@@ -1665,27 +1692,31 @@ public unsafe class EditorObject
         return t;
     }
 
-    /// <summary>Cached uniform locations of the object PBR shader (one-time init, like
-    /// the GlbUniforms pattern used by EditorObjectManager).</summary>
-    private static class PbrUniforms
+    /// <summary>Uniform locations for one PBR program. There are two programs — the
+    /// standard objectPbr pair and the vertex-displacement variant (dense planes whose
+    /// height map moves the actual vertices) — so locations are per-instance instead of
+    /// static (static fields held stale locations across the two).</summary>
+    private class PbrUniformSet
     {
-        public static bool Ready;
-        public static uint Program;
-        public static int View, Proj, Model, SunDir, LightColor, ViewPos, FogColor, UseFog;
-        public static readonly int[] UvScale = new int[7];   // per-map u_uvScale[i]
-        public static readonly int[] UvOffset = new int[7];  // per-map u_uvOffset[i]
-        public static readonly int[] Maps = new int[7];     // albedo..emission (units 0-6)
-        public static readonly int[] UseMaps = new int[7];  // useAlbedo..useEmission
-        public static int AlbedoTune, NormalTune, MetallicTune, RoughnessTune, AoTune, HeightTune, EmissionIntensity;
-        public static int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
-        public static int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
-        public static int ShowCSMCascadeColor;
-        public static int ParallaxScale;
+        public readonly uint Program;
+        public int View, Proj, Model, SunDir, LightColor, ViewPos, FogColor, UseFog;
+        public readonly int[] UvScale = new int[7];   // per-map u_uvScale[i]
+        public readonly int[] UvOffset = new int[7];  // per-map u_uvOffset[i]
+        public readonly int[] Maps = new int[7];     // albedo..emission (units 0-6)
+        public readonly int[] UseMaps = new int[7];  // useAlbedo..useEmission
+        public int AlbedoTune, NormalTune, MetallicTune, RoughnessTune, AoTune, HeightTune, EmissionIntensity;
+        public int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
+        public int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
+        public int ShowCSMCascadeColor;
+        public int ParallaxScale;
+        public int PomShadowStrength;
+        public int HeightAdvance;
+        public int VertexDisplace, DispScale;
 
-        public static void Ensure()
+        public PbrUniformSet(uint program)
         {
-            if (Ready) return;
-            Program = Shader.GetObjectPbrShaderProgram();
+            Program = program;
+            if (Program == 0) return;
             View = GL.GetUniformLocation(Program, "view");
             Proj = GL.GetUniformLocation(Program, "projection");
             Model = GL.GetUniformLocation(Program, "model");
@@ -1726,7 +1757,10 @@ public unsafe class EditorObject
             CascadeEnds2 = GL.GetUniformLocation(Program, "cascadeEnds[2]");
             ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
             ParallaxScale = GL.GetUniformLocation(Program, "parallaxScale");
-            Ready = true;
+            PomShadowStrength = GL.GetUniformLocation(Program, "u_pomShadowStrength");
+            HeightAdvance = GL.GetUniformLocation(Program, "u_heightAdvance");
+            VertexDisplace = GL.GetUniformLocation(Program, "u_vertexDisplace");
+            DispScale = GL.GetUniformLocation(Program, "u_dispScale");
         }
     }
 
@@ -1735,28 +1769,35 @@ public unsafe class EditorObject
     /// the next object in the editor pass renders exactly as before.</summary>
     private void DrawPbrPrimitive(Camera camera, Lights light, CSM? csm)
     {
-        PbrUniforms.Ensure();
-        uint pbr = PbrUniforms.Program;
+        EnsurePbrTextures();
+
+        // Program choice: planes with "Vertex Displacement" on use the geometric-
+        // displacement vertex stage (true moving geometry); everything else the
+        // standard one. Both share the objectPbr fragment stage.
+        bool displaced = PrimitiveType == EditorPrimitiveType.Plane
+                         && PbrVertexDisplace && _pbrTex[5] != 0;
+        var u = displaced ? _pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram())
+                          : _pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram());
+        uint pbr = u.Program;
         if (pbr == 0) return;
 
-        EnsurePbrTextures();
         GL.UseProgram(pbr);
 
         var model = WorldMatrix;
         var view = camera.GetViewMatrix();
         var proj = camera.GetProjectionMatrix();
-        GL.UniformMatrix4fv(PbrUniforms.Model, 1, false, (float*)&model);
-        GL.UniformMatrix4fv(PbrUniforms.View, 1, false, (float*)&view);
-        GL.UniformMatrix4fv(PbrUniforms.Proj, 1, false, (float*)&proj);
-        GL.Uniform3f(PbrUniforms.SunDir, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
-        GL.Uniform3f(PbrUniforms.LightColor, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
-        GL.Uniform3f(PbrUniforms.ViewPos, camera.Position.X, camera.Position.Y, camera.Position.Z);
+        GL.UniformMatrix4fv(u.Model, 1, false, (float*)&model);
+        GL.UniformMatrix4fv(u.View, 1, false, (float*)&view);
+        GL.UniformMatrix4fv(u.Proj, 1, false, (float*)&proj);
+        GL.Uniform3f(u.SunDir, light.SunDir.X, light.SunDir.Y, light.SunDir.Z);
+        GL.Uniform3f(u.LightColor, light.LightColor.X, light.LightColor.Y, light.LightColor.Z);
+        GL.Uniform3f(u.ViewPos, camera.Position.X, camera.Position.Y, camera.Position.Z);
 
         // ── Fog (enable, mode, color, density, start/end, height — Config.FogSettings) ──
-        Visual.FogUniforms.UploadMain(PbrUniforms.Program, light);
+        Visual.FogUniforms.UploadMain(u.Program, light);
 
-        if (PbrUniforms.ShowCSMCascadeColor >= 0)
-            GL.Uniform1i(PbrUniforms.ShowCSMCascadeColor, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+        if (u.ShowCSMCascadeColor >= 0)
+            GL.Uniform1i(u.ShowCSMCascadeColor, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
 
         // ── Local point/spot lights (from editor Light markers) ──
         light.UploadLocalLights(pbr);
@@ -1767,23 +1808,23 @@ public unsafe class EditorObject
         // ── CSM shadow uniforms → units 7/8/9 ──
         if (csm != null)
         {
-            if (PbrUniforms.ShadowFilter >= 0) GL.Uniform1i(PbrUniforms.ShadowFilter, Keyboard.GetIsHardShadow());
-            if (PbrUniforms.ShadowDir >= 0) GL.Uniform3f(PbrUniforms.ShadowDir, light.ShadowDirStable.X, light.ShadowDirStable.Y, light.ShadowDirStable.Z);
+            if (u.ShadowFilter >= 0) GL.Uniform1i(u.ShadowFilter, Keyboard.GetIsHardShadow());
+            if (u.ShadowDir >= 0) GL.Uniform3f(u.ShadowDir, light.ShadowDirStable.X, light.ShadowDirStable.Y, light.ShadowDirStable.Z);
             unsafe
             {
                 fixed (float* p0 = &csm.LightSpaceMatrices[0].M11)
-                    GL.UniformMatrix4fv(PbrUniforms.LightSpace0, 1, false, p0);
+                    GL.UniformMatrix4fv(u.LightSpace0, 1, false, p0);
                 fixed (float* p1 = &csm.LightSpaceMatrices[1].M11)
-                    GL.UniformMatrix4fv(PbrUniforms.LightSpace1, 1, false, p1);
+                    GL.UniformMatrix4fv(u.LightSpace1, 1, false, p1);
                 fixed (float* p2 = &csm.LightSpaceMatrices[2].M11)
-                    GL.UniformMatrix4fv(PbrUniforms.LightSpace2, 1, false, p2);
+                    GL.UniformMatrix4fv(u.LightSpace2, 1, false, p2);
             }
-            GL.Uniform1f(PbrUniforms.CascadeEnds0, csm.CascadeEnds[0]);
-            GL.Uniform1f(PbrUniforms.CascadeEnds1, csm.CascadeEnds[1]);
-            GL.Uniform1f(PbrUniforms.CascadeEnds2, csm.CascadeEnds[2]);
-            GL.Uniform1i(PbrUniforms.ShadowMap0, 7);
-            GL.Uniform1i(PbrUniforms.ShadowMap1, 8);
-            GL.Uniform1i(PbrUniforms.ShadowMap2, 9);
+            GL.Uniform1f(u.CascadeEnds0, csm.CascadeEnds[0]);
+            GL.Uniform1f(u.CascadeEnds1, csm.CascadeEnds[1]);
+            GL.Uniform1f(u.CascadeEnds2, csm.CascadeEnds[2]);
+            GL.Uniform1i(u.ShadowMap0, 7);
+            GL.Uniform1i(u.ShadowMap1, 8);
+            GL.Uniform1i(u.ShadowMap2, 9);
             GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
             GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
             GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
@@ -1798,8 +1839,8 @@ public unsafe class EditorObject
         {
             GL.ActiveTexture(Const.GL_TEXTURE0 + (uint)i);
             GL.BindTexture(Const.GL_TEXTURE_2D, _pbrTex[i] != 0 ? _pbrTex[i] : white);
-            GL.Uniform1i(PbrUniforms.Maps[i], i);
-            GL.Uniform1i(PbrUniforms.UseMaps[i], _pbrTex[i] != 0 ? 1 : 0);
+            GL.Uniform1i(u.Maps[i], i);
+            GL.Uniform1i(u.UseMaps[i], _pbrTex[i] != 0 ? 1 : 0);
         }
 
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
@@ -1808,19 +1849,27 @@ public unsafe class EditorObject
         float globalTiling = PbrTexTiling;
         for (int i = 0; i < 7; i++)
         {
-            if (PbrUniforms.UvScale[i] >= 0)
-                GL.Uniform2f(PbrUniforms.UvScale[i], PbrTexSettings[i].TilingX * globalTiling, PbrTexSettings[i].TilingY * globalTiling);
-            if (PbrUniforms.UvOffset[i] >= 0)
-                GL.Uniform2f(PbrUniforms.UvOffset[i], PbrTexSettings[i].OffsetX, PbrTexSettings[i].OffsetY);
+            if (u.UvScale[i] >= 0)
+                GL.Uniform2f(u.UvScale[i], PbrTexSettings[i].TilingX * globalTiling, PbrTexSettings[i].TilingY * globalTiling);
+            if (u.UvOffset[i] >= 0)
+                GL.Uniform2f(u.UvOffset[i], PbrTexSettings[i].OffsetX, PbrTexSettings[i].OffsetY);
         }
-        GL.Uniform3f(PbrUniforms.AlbedoTune, TerrainPbrAlbedoBrightness, TerrainPbrAlbedoSaturation, TerrainPbrAlbedoContrast);
-        GL.Uniform2f(PbrUniforms.NormalTune, TerrainPbrNormalStrength, TerrainPbrNormalBlur);
-        GL.Uniform3f(PbrUniforms.MetallicTune, TerrainPbrMetallicThreshold, TerrainPbrMetallicSoftness, TerrainPbrMetallicStrength);
-        GL.Uniform2f(PbrUniforms.RoughnessTune, TerrainPbrRoughnessStrength, TerrainPbrRoughnessInvert ? 1f : 0f);
-        GL.Uniform2f(PbrUniforms.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
-        GL.Uniform3f(PbrUniforms.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
-        GL.Uniform1f(PbrUniforms.EmissionIntensity, TerrainPbrEmissionIntensity);
-        if (PbrUniforms.ParallaxScale >= 0) GL.Uniform1f(PbrUniforms.ParallaxScale, PbrParallaxScale);
+        GL.Uniform3f(u.AlbedoTune, TerrainPbrAlbedoBrightness, TerrainPbrAlbedoSaturation, TerrainPbrAlbedoContrast);
+        GL.Uniform2f(u.NormalTune, TerrainPbrNormalStrength, TerrainPbrNormalBlur);
+        GL.Uniform3f(u.MetallicTune, TerrainPbrMetallicThreshold, TerrainPbrMetallicSoftness, TerrainPbrMetallicStrength);
+        GL.Uniform2f(u.RoughnessTune, TerrainPbrRoughnessStrength, TerrainPbrRoughnessInvert ? 1f : 0f);
+        GL.Uniform2f(u.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
+        GL.Uniform3f(u.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
+        if (u.VertexDisplace >= 0) GL.Uniform1f(u.VertexDisplace, displaced ? 1f : 0f);
+        if (u.DispScale >= 0) GL.Uniform1f(u.DispScale, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f));
+        GL.Uniform4f(u.HeightAdvance,
+            Math.Clamp(PbrHeightContrast, 0.1f, 4f),
+            Math.Clamp(PbrHeightContrastCenter, 0f, 1f),
+            Math.Clamp(PbrHeightOffset, -0.5f, 0.5f),
+            Math.Clamp(PbrHeightScaleCenter, 0f, 1f));
+        GL.Uniform1f(u.EmissionIntensity, TerrainPbrEmissionIntensity);
+        if (u.ParallaxScale >= 0) GL.Uniform1f(u.ParallaxScale, PbrParallaxScale);
+        if (u.PomShadowStrength >= 0) GL.Uniform1f(u.PomShadowStrength, Math.Clamp(PbrPomShadowStrength, 0f, 1f));
 
         GL.BindVertexArray(_object3D!.VAO);
         // ── Flat planes: single CCW quad → culled (invisible) from below. Draw PBR

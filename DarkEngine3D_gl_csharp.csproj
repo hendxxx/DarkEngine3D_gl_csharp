@@ -492,6 +492,8 @@
     <None Update="Artifacts\shaders\terrainEditor_fragment.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Artifacts\shaders\pbrDisplace_vertex.glsl">
+    </None>
     <None Update="Artifacts\shaders\vertex_shader.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

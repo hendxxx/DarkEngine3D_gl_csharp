@@ -558,7 +558,28 @@ Per-object PBR with 7 texture slots:
 - `TerrainPbrHeightStrength/Invert/Blur` — Parallax/height
 - `TerrainPbrEmissionIntensity` — Self-illumination
 - `PbrTexTiling` — Global texture tiling multiplier
-- `PbrParallaxScale` — Parallax occlusion depth
+- `PbrParallaxScale` — Parallax occlusion depth (steep POM, 0 = off)
+- `PbrPomShadowStrength` — Relief self-shadowing strength (0 = off, 1 = hard)
+
+**Height / Displacement (POM revamp)**:
+- Steep Parallax Occlusion Mapping in the correct tangent basis (`transpose(TBN)·V`)
+- Canonical height mapping: full 0..1 depth span, raw 0.5 = flat (invert/strength/blur tuning applied)
+- Adaptive ray-march steps (8–48) by view obliqueness × depth scale; occlusion interpolation kills stair-stepping
+- Displacement offset converted per map (`tiling_i / tiling_height`) so per-map tiling stays pixel-locked
+- Relief self-shadowing: 8-tap march toward the sun in tangent space, slope-attenuated, distance-faded
+- Crevice AO: 4-tap height-difference darkening of occluded valleys, blended with the AO map
+- Marmoset-style height calibration (per-object, persisted):
+  - `PbrHeightScaleCenter` — baseline gray treated as zero displacement depth ("Scale Center")
+  - `PbrHeightContrast` / `PbrHeightContrastCenter` — exaggerate low/high separation around an adjustable mid
+  - `PbrHeightOffset` — shifts the whole height field (raise valleys / tame crumpled spikes)
+- Smear guards: physical tangent kept up to ~87° view elevation (no depth squashing at low angles),
+  hard ±0.16 UV offset cap prevents cross-tile texture smearing, far-field fade 80–160u for stability
+- **Vertex Displacement** (planes, opt-in): TRUE geometric displacement — the plane mesh is
+  tessellated into a 256×256 grid (`Object3D.CreatePlaneVertices`) and a dedicated vertex stage
+  (`pbrDisplace_vertex.glsl` + the shared objectPbr fragment) pushes vertices along the height map
+  via vertex texture fetch, re-deriving normals from the height gradient. Real silhouette, real
+  parallax, real self-occlusion (Marmoset "Height" model); view-ray POM auto-disables so depth is
+  not doubled. Sliders: enable toggle + `PbrVertexDisplaceScale` (peak height, world units); both persist
 
 ### 5.3 Terrain PBR (terrainEditor_fragment.glsl)
 

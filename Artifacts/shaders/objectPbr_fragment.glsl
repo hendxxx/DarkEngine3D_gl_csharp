@@ -49,6 +49,10 @@ uniform int useAlbedo, useNormal, useMetallic, useRoughness, useAo, useHeight, u
 uniform vec2 u_uvScale[7];   // per-map UV tiling multiplier (x = U, y = V) — albedo..emission
 uniform vec2 u_uvOffset[7];  // per-map UV offset (x = U, y = V)
 uniform float parallaxScale = 0.15;   // base height-map displacement strength (0 = off, 0.15 = default strong)
+uniform int u_pomMinSteps = 16;       // POM ray-march steps head-on → min (cheap)
+uniform int u_pomMaxSteps = 96;       // POM ray-march steps grazing → max (detail, no banding)
+uniform float u_pomShadowStrength = 0.6; // relief self-shadowing strength (0 = off, 1 = hard)
+uniform float u_vertexDisplace = 0.0; // 1 = geometry ALREADY displaced by the vertex stage → skip view-ray POM
 
 // ── PBR MAP TUNING (uploaded from the PBR panel; applies to the selected object) ──
 uniform vec3 u_albedoTuning = vec3(1.0, 1.0, 1.0);    // brightness, saturation, contrast
@@ -57,6 +61,9 @@ uniform vec3 u_metallicTuning = vec3(0.5, 0.1, 1.0);  // threshold, softness, st
 uniform vec2 u_roughnessTuning = vec2(1.0, 0.0);      // strength, invert(0/1)
 uniform vec2 u_aoTuning = vec2(1.0, 0.0);             // strength, brightness offset
 uniform vec3 u_heightTuning = vec3(1.0, 0.0, 0.0);    // strength, invert(0/1), blur (texels)
+// ── HEIGHT ADVANCE (Marmoset-style displacement calibration) ──
+// x = contrast (1 = off), y = contrast center, z = offset (−0.5..0.5), w = scale center
+uniform vec4 u_heightAdvance = vec4(1.0, 0.5, 0.0, 0.5);
 uniform float u_emissionIntensity = 1.0;
 
 // ── CSM SHADOWS (editor viewport — shadow maps bound to units 7/8/9) ──
@@ -128,6 +135,26 @@ float sampleHeightBlurred(sampler2D tex, vec2 uv, float blurTexels) {
       + texture(tex, uv - vec2(o.x, 0.0)).r
       + texture(tex, uv + vec2(0.0, o.y)).r
       + texture(tex, uv - vec2(0.0, o.y)).r) / 5.0;
+}
+
+// ======================================================
+// HEIGHT SAMPLING (Marmoset-style calibration — raw 0.5 = flat)
+// Pipeline: blur → invert → strength → contrast around center → offset →
+// scale-center rebase. Contrast exaggerates the separation between low and
+// high areas (Marmoset "Contrast"); center picks which gray level is treated
+// as mid; offset shifts the whole field to stop crumpled edges / lift valleys;
+// scale center sets the baseline the parallax depth measures from.
+// ======================================================
+float sampleHeight(sampler2D tex, vec2 uv, float blurTexels) {
+    float h = sampleHeightBlurred(tex, uv, blurTexels);
+    h = (h - 0.5) * u_heightTuning.x + 0.5;
+    if (u_heightTuning.y > 0.5) h = 1.0 - h;
+    // Contrast around the adjustable center (Marmoset "Contrast" + "Contrast Center")
+    h = (h - u_heightAdvance.y) * u_heightAdvance.x + u_heightAdvance.y;
+    // Global field shift (Marmoset "Offset") — raise valleys / tame spikes
+    h += u_heightAdvance.z;
+    // Rebase so the scale center maps to 0 depth (Marmoset "Scale Center")
+    return clamp(h - u_heightAdvance.w, 0.0, 1.0);
 }
 
 // ======================================================
@@ -352,51 +379,138 @@ void main() {
     vec2 uvHeight   = TexCoord * u_uvScale[5] + u_uvOffset[5];
     vec2 uvEmission = TexCoord * u_uvScale[6] + u_uvOffset[6];
 
-    // ── STEEP PARALLAX OCCLUSION MAPPING (POM) ──
-    // Height map displaces UV along tangent-space view ray with multi-step
-    // ray marching for visible depth + self-shadowing. Much more "timbul" than
-    // the old single-sample parallax.
-    vec2 off = vec2(0.0);
+    // ── Sun key-light direction (also used by the POM relief self-shadow below
+    //    and the direct-lighting term). Night → flips to the MOON direction
+    //    (opposite the sun) so primitives keep a soft directional moon key
+    //    instead of losing all direct light (NdotL of a down-pointing sun is
+    //    ≤ 0). Radiance dimming itself is owned by Lights.cs — lightColor
+    //    arrives already faded to the moon tint.
+    float nightBlendPbr = smoothstep(0.15, 0.0, sunDir.y);
+    vec3 L = normalize(mix(normalize(sunDir), normalize(-sunDir), nightBlendPbr));
+
+    // ── STEEP PARALLAX OCCLUSION MAPPING (POM) — revamped ──
+    // Height map displaces the UV along the tangent-space view ray. Revamp:
+    //   • ray in the CORRECT basis (transpose(TBN)·V — TBN·V was an inverse
+    //     rotation, so grazing relief depth was wrong on every primitive),
+    //   • canonical height mapping (sampleHeight): full 0..1 depth span,
+    //   • adaptive steps 8..48 by view obliqueness (far/grazing = cheap, no
+    //     banding close up), step count scales with parallaxScale,
+    //   • occlusion offset is per-map-scaled downstream so per-map tiling
+    //     stays locked (identical displacement for all 7 maps).
+    int pomSteps = u_pomMinSteps;
+    vec2 pomOff = vec2(0.0);
+    float pomShadow = 1.0;
     if (useHeight == 1 && parallaxScale > 0.0) {
-        vec3 Vts = normalize(TBN * viewDir);
-        float layerDepth = 1.0 / 16.0;
-        vec2 texelPerLayer = Vts.xy / max(abs(Vts.z), 0.02) * parallaxScale / 16.0;
+        // ── SMEAR GUARDS (relief stays FULL at every angle) — the classic POM
+        //    failure mode is the huge OFFSET at grazing angles, not the depth
+        //    itself; the ±0.16 UV hard cap below handles that. Physical tangent
+        //    kept up to ~87°, no oblique fading; far-field fade for stability.
+        float pomDistFade = 1.0 - smoothstep(80.0, 160.0, viewDepth);
+        float effScale = parallaxScale * pomDistFade;
+        // View-ray POM is SKIPPED when the vertices are already displaced
+        // ("Vertex Displacement" — true geometry): depth is physical, keeping
+        // the march would double-displace the shading.
+        if (u_vertexDisplace < 0.5 && effScale > 0.004) {
+        vec3 Vts = normalize(transpose(TBN) * viewDir);   // tangent-space view ray
+        float facing = clamp(abs(Vts.z), 0.0, 1.0);       // 1 = head-on, 0 = grazing
+        pomSteps = int(mix(float(u_pomMaxSteps), float(u_pomMinSteps), facing) * clamp(effScale / 0.15, 0.2, 1.5));
+        pomSteps = clamp(pomSteps, 4, 96);
+        float layerDepth = 1.0 / float(pomSteps);
+        vec2 texelPerLayer = Vts.xy / max(abs(Vts.z), 0.05) * effScale / float(pomSteps);
         vec2 currentUV = uvHeight;
         float currentLayerDepth = 0.0;
-        float currentTexelHeight = (sampleHeightBlurred(heightMap, currentUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
-        if (u_heightTuning.y > 0.5) currentTexelHeight = -currentTexelHeight;
-        // Ray march: find where layer depth exceeds texel height
-        for (int i = 0; i < 16; i++) {
+        float currentTexelHeight = sampleHeight(heightMap, currentUV, max(u_heightTuning.z, 0.0));
+        // Linear ray march (tangent-space ray tracing): stop where the layer
+        // plane passes under the height surface.
+        for (int i = 0; i < 96; i++) {
+            if (i >= pomSteps) break;
             if (currentLayerDepth >= currentTexelHeight) break;
             currentUV -= texelPerLayer;
             currentLayerDepth += layerDepth;
-            currentTexelHeight = (sampleHeightBlurred(heightMap, currentUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
-            if (u_heightTuning.y > 0.5) currentTexelHeight = -currentTexelHeight;
+            currentTexelHeight = sampleHeight(heightMap, currentUV, max(u_heightTuning.z, 0.0));
         }
-        // Interpolate between previous and current for smoother result
+        // Occlusion interpolation between the straddling samples (parallax
+        // occlusion, not plain steep parallax — kills the layer stair-stepping).
         vec2 prevUV = currentUV + texelPerLayer;
         float afterDepth = currentTexelHeight - currentLayerDepth;
-        float beforeDepth = (sampleHeightBlurred(heightMap, prevUV, max(u_heightTuning.z, 0.0)) - 0.5) * u_heightTuning.x;
-        if (u_heightTuning.y > 0.5) beforeDepth = -beforeDepth;
-        beforeDepth -= (currentLayerDepth - layerDepth);
-        float weight = afterDepth / max(afterDepth - beforeDepth, 0.001);
-        off = (uvHeight - mix(currentUV, prevUV, weight)) * 0.5;
-        off = clamp(off, vec2(-0.15), vec2(0.15));
+        float beforeDepth = sampleHeight(heightMap, prevUV, max(u_heightTuning.z, 0.0)) - (currentLayerDepth - layerDepth);
+        float weight = clamp(afterDepth / max(afterDepth - beforeDepth, 0.001), 0.0, 1.0);
+        pomOff = uvHeight - mix(currentUV, prevUV, weight);
+        // Hard-cap the shift well below one tile: anything beyond that smears
+        // unrelated texture regions across the surface (the comb-tooth look).
+        // 0.16 ≈ full relief depth before grazing fade — deep but tile-safe.
+        pomOff = clamp(pomOff, vec2(-0.16), vec2(0.16));
+        }
+
+        // ── RELIEF SELF-SHADOWING — march the height field toward the SUN in
+        //    tangent space (like the “soft shadow” pass in the classic POM
+        //    paper). This is what makes stones look like they sit ON the
+        //    ground: slopes facing away from the key light fall into shadow,
+        //    peaks catch light. u_pomShadowStrength 0 = off, 1 = hard.
+        if (u_pomShadowStrength > 0.001 && effScale > 0.01) {
+            vec3 Lts = normalize(transpose(TBN) * L);
+            if (Lts.z > 0.0) { // sun above the surface — relief can cast shadow
+                float shadowScale = effScale * 0.5; // short soft penumbra
+                float numSamplesSh = 8.0;
+                float layerSh = 1.0 / numSamplesSh;
+                vec2 offsetSh = Lts.xy / max(Lts.z, 0.3) * shadowScale / numSamplesSh;
+                float occ = 0.0;
+                float reach = 0.0;
+                float hAt = sampleHeight(heightMap, uvHeight - pomOff, max(u_heightTuning.z, 0.0));
+                for (int s = 0; s < 8; s++) {
+                    reach += layerSh;
+                    float h = sampleHeight(heightMap, uvHeight - pomOff + offsetSh * reach, max(u_heightTuning.z, 0.0));
+                    occ += max(0.0, (hAt + reach * 1.0 - h));
+                }
+                // Attenuate by slope toward the light + distance falloff (twin:
+                // fine steps everywhere is too expensive; far away shadows fade
+                // into the CSM/NdotL term anyway).
+                float slopeDarken = clamp(1.0 - (1.0 - max(dot(norm, L), 0.0)) * 1.5, 0.2, 1.0);
+                float penumbra = 1.0 - clamp(occ / numSamplesSh * u_pomShadowStrength * 1.6, 0.0, 0.95);
+                float distFade = 1.0 - smoothstep(60.0, 140.0, viewDepth);
+                pomShadow = mix(1.0, penumbra * slopeDarken, distFade);
+            }
+        }
     }
 
     // ── ALBEDO: texture if present, else the object's vertex color. ──
-    vec3 albedo = useAlbedo == 1 ? texture(albedoMap, uvAlbedo - off).rgb : ObjColor;
+    // The occlusion offset is computed in the HEIGHT map's UV space; convert it
+    // into each map's own UV space (off_i = off_h · tiling_i / tiling_h) so
+    // per-map tiling stays pixel-locked under displacement.
+    vec2 pomOffPerMap[7];
+    {
+        vec2 sH = max(abs(u_uvScale[5]), vec2(1e-3));
+        for (int m = 0; m < 7; m++)
+            pomOffPerMap[m] = clamp(pomOff * (u_uvScale[m] / sH), vec2(-0.25), vec2(0.25));
+    }
+    vec3 albedo = useAlbedo == 1 ? texture(albedoMap, uvAlbedo - pomOffPerMap[0]).rgb : ObjColor;
 
     // ── NORMAL: tangent-space map → world via TBN (flat geometry normal when absent). ──
     vec3 tsNormal = useNormal == 1
-        ? sampleNormalBlurred(normalMap, uvNormal - off, max(u_normalTuning.y, 0.0))
+        ? sampleNormalBlurred(normalMap, uvNormal - pomOffPerMap[1], max(u_normalTuning.y, 0.0))
         : vec3(0.0, 0.0, 1.0);
     vec3 mapNormal = normalize(T * tsNormal.x + B * tsNormal.y + norm * tsNormal.z);
 
-    float metallic  = useMetallic  == 1 ? texture(metallicMap,  uvMetallic - off).r : 0.0;
-    float roughness = useRoughness == 1 ? texture(roughnessMap, uvRough     - off).r : 0.6;
-    float ao        = useAo        == 1 ? texture(aoMap,        uvAo        - off).r : 1.0;
-    vec3  emission  = useEmission  == 1 ? texture(emissionMap,  uvEmission  - off).rgb : vec3(0.0);
+    float metallic  = useMetallic  == 1 ? texture(metallicMap,  uvMetallic  - pomOffPerMap[2]).r : 0.0;
+    float roughness = useRoughness == 1 ? texture(roughnessMap, uvRough     - pomOffPerMap[3]).r : 0.6;
+    float ao        = useAo        == 1 ? texture(aoMap,        uvAo        - pomOffPerMap[4]).r : 1.0;
+    vec3  emission  = useEmission  == 1 ? texture(emissionMap,  uvEmission  - pomOffPerMap[6]).rgb : vec3(0.0);
+
+    // ── CREVICE AO from the height field: darken occluded valleys (cheap 4-tap
+    //    height diff) — sells contact between relief and the surface, boosting
+    //    whatever AO map exists.
+    if (useHeight == 1 && parallaxScale > 0.0) {
+        vec2 texelH = 1.5 / vec2(textureSize(heightMap, 0));
+        float h0 = sampleHeight(heightMap, uvHeight - pomOff, 0.0);
+        float hAvg = sampleHeight(heightMap, uvHeight - pomOff + vec2( texelH.x, 0.0), 0.0)
+                   + sampleHeight(heightMap, uvHeight - pomOff - vec2( texelH.x, 0.0), 0.0)
+                   + sampleHeight(heightMap, uvHeight - pomOff + vec2(0.0,  texelH.y), 0.0)
+                   + sampleHeight(heightMap, uvHeight - pomOff - vec2(0.0,  texelH.y), 0.0);
+        hAvg *= 0.25;
+        float crevice = clamp(1.0 - max(hAvg - h0, 0.0) * 4.0 * clamp(parallaxScale / 0.15, 0.0, 1.0), 0.0, 1.0);
+        float aoMixW = (useAo == 1) ? 0.5 : 1.0;
+        ao = clamp(mix(ao, min(ao, crevice), aoMixW), 0.0, 1.0);
+    }
 
     // ── ALBEDO TUNING (brightness / saturation / contrast) ──
     albedo *= u_albedoTuning.x;
@@ -416,12 +530,8 @@ void main() {
     ao = clamp(ao * u_aoTuning.x + u_aoTuning.y, 0.0, 1.0);
 
     // ── PBR DIRECT LIGHTING (Cook-Torrance, sun as the directional light) ──
-    // Sun below the horizon → key light flips to the MOON direction (opposite the
-    // sun) so primitives keep a soft directional moon key instead of losing all
-    // direct light (NdotL of a down-pointing sun is ≤ 0). Radiance dimming itself
-    // is owned by Lights.cs — lightColor arrives already faded to the moon tint.
-    float nightBlendPbr = smoothstep(0.15, 0.0, sunDir.y);
-    vec3 L = normalize(mix(normalize(sunDir), normalize(-sunDir), nightBlendPbr));
+    // (Key-light direction L computed above the POM block — the relief
+    // self-shadow marches toward it.)
     vec3 V = viewDir;
     vec3 H = normalize(V + L);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
@@ -437,7 +547,7 @@ void main() {
 
     // Sun radiance scaled (×4 ≈ 1.27 after the /PI) so full-sun brightness matches the
     // hillshade brightness of the other editor shaders; NdotL drives the PBR falloff.
-    vec3 Lo = (kD * albedo / PI + specular) * lightColor * 4.0 * NdotL;
+    vec3 Lo = (kD * albedo / PI + specular) * lightColor * 4.0 * NdotL * pomShadow;
 
     // Ambient fill (hemisphere): sky light from above, ground bounce from below, scaled
     // by AO and a gentle slope darkening — strong enough that shadowed faces and sides

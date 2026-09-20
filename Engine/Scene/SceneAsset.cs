@@ -383,6 +383,22 @@ public class EditorObjectData
     public string PbrHeightPath { get; set; } = "";
     public string PbrEmissionPath { get; set; } = "";
     public float PbrTexTiling { get; set; } = 1f;
+    /// <summary>Steep POM height-map displacement depth (0 = off).</summary>
+    public float PbrParallaxScale { get; set; } = 0.15f;
+    /// <summary>Relief self-shadowing strength for the height-map POM (0 = off, 1 = hard).</summary>
+    public float PbrPomShadowStrength { get; set; } = 0.6f;
+    /// <summary>Marmoset-style height calibration: contrast (1 = off).</summary>
+    public float PbrHeightContrast { get; set; } = 1f;
+    /// <summary>Marmoset-style height calibration: contrast center (mid gray).</summary>
+    public float PbrHeightContrastCenter { get; set; } = 0.5f;
+    /// <summary>Marmoset-style height calibration: whole-field offset (−0.5..0.5).</summary>
+    public float PbrHeightOffset { get; set; } = 0f;
+    /// <summary>Marmoset-style height calibration: baseline gray treated as zero depth.</summary>
+    public float PbrHeightScaleCenter { get; set; } = 0.5f;
+    /// <summary>True geometric displacement for PBR planes (dense tessellated grid, moving vertices).</summary>
+    public bool PbrVertexDisplace { get; set; } = false;
+    /// <summary>Peak displacement height in world units for vertex displacement.</summary>
+    public float PbrVertexDisplaceScale { get; set; } = 0.15f;
     /// <summary>Sampling settings for the SIMPLE texture (min/mag filter, mipmapping,
     /// anisotropy, wrapping, UV tiling/offset). Null/absent = legacy scene → defaults
     /// (tiling falls back to <see cref="PbrTexTiling"/>).</summary>

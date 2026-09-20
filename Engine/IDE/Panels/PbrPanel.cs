@@ -237,6 +237,24 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             bool hi = obj.TerrainPbrHeightInvert;
             if (ImGui.Checkbox("Invert (valleys/peaks)##height", ref hi)) obj.TerrainPbrHeightInvert = hi;
             float hb = obj.TerrainPbrHeightBlur; Tune("Blur (texels)##height", ref hb, 0.05f, 0f, 8f); obj.TerrainPbrHeightBlur = hb;
+            ImGui.Separator();
+            ImGui.TextDisabled("Calibration (Marmoset-style)");
+            float hsc = obj.PbrHeightScaleCenter; Tune("Scale Center##height", ref hsc, 0.005f, 0f, 1f); obj.PbrHeightScaleCenter = hsc;
+            float hct = obj.PbrHeightContrast; Tune("Contrast##height", ref hct, 0.01f, 0.1f, 4f); obj.PbrHeightContrast = hct;
+            float hcc = obj.PbrHeightContrastCenter; Tune("Contrast Center##height", ref hcc, 0.005f, 0f, 1f); obj.PbrHeightContrastCenter = hcc;
+            float hof = obj.PbrHeightOffset; Tune("Offset##height", ref hof, 0.005f, -0.5f, 0.5f); obj.PbrHeightOffset = hof;
+            ImGui.Separator();
+            bool vd = obj.PbrVertexDisplace;
+            if (ImGui.Checkbox("Vertex Displacement (real geometry)", ref vd))
+            {
+                obj.PbrVertexDisplace = vd;
+                obj.MarkDirty(); // rebuild the plane mesh: dense grid vs single quad
+            }
+            if (vd)
+            {
+                float vds = obj.PbrVertexDisplaceScale; Tune("Displace Height##vdisp", ref vds, 0.005f, 0f, 2f); obj.PbrVertexDisplaceScale = vds;
+                ImGui.TextDisabled($"Mesh: {EditorObject.PbrDisplaceSegments}×{EditorObject.PbrDisplaceSegments} grid");
+            }
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(1f, 0.95f, 0.55f, 1f), "Emission");
@@ -246,6 +264,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             ImGui.TextColored(new Vector4(0.7f, 0.75f, 0.85f, 1f), "Mapping");
             float til = obj.PbrTexTiling; Tune("Map Tiling##object", ref til, 0.05f, 0.1f, 10f); obj.PbrTexTiling = til;
             float parallax = obj.PbrParallaxScale; Tune("Parallax Depth##object", ref parallax, 0.005f, 0f, 0.5f); obj.PbrParallaxScale = parallax;
+            float pomSh = obj.PbrPomShadowStrength; Tune("Relief Shadow##object", ref pomSh, 0.01f, 0f, 1f); obj.PbrPomShadowStrength = pomSh;
 
             ImGui.Spacing();
             if (ImGui.Button("Reset tuning to defaults"))
@@ -256,8 +275,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 obj.TerrainPbrRoughnessStrength = 1f; obj.TerrainPbrRoughnessInvert = false;
                 obj.TerrainPbrAoStrength = 1f; obj.TerrainPbrAoBrightness = 0f;
                 obj.TerrainPbrHeightStrength = 1f; obj.TerrainPbrHeightInvert = false; obj.TerrainPbrHeightBlur = 0f;
+                obj.PbrHeightContrast = 1f; obj.PbrHeightContrastCenter = 0.5f; obj.PbrHeightOffset = 0f; obj.PbrHeightScaleCenter = 0.5f;
+                obj.PbrVertexDisplace = false; obj.PbrVertexDisplaceScale = 0.15f; obj.MarkDirty();
                 obj.TerrainPbrEmissionIntensity = 1f;
-                obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0.15f;
+                obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0.15f; obj.PbrPomShadowStrength = 0.6f;
             }
         }
 

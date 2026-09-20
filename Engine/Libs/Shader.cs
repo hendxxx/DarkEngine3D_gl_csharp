@@ -32,6 +32,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // Editor primitives with a PBR material (Box/Sphere/flat plane) — dedicated
         // program with 7 optional maps + tuning (reuses the shared vertex shader).
         static uint objectPbrShaderProgram;
+        static uint objectPbrDisplaceShaderProgram;
 
 #pragma warning disable CS0649
         static uint rainStreakShaderProgram;
@@ -131,6 +132,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             objectPbrShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/vertex_shader.glsl",
                 "Artifacts/shaders/objectPbr_fragment.glsl");
+
+            // PBR object shader with GEOMETRIC displacement (vertex texture fetch):
+            // used for planes whose height map displaces the actual vertices
+            // ("Vertex Displacement" toggle) — shares the objectPbr fragment stage.
+            objectPbrDisplaceShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/pbrDisplace_vertex.glsl",
+                "Artifacts/shaders/objectPbr_fragment.glsl");
         }
 
         public void Use()
@@ -164,6 +172,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public static uint GetObjectPbrShaderProgram()
         {
             return objectPbrShaderProgram;
+        }
+
+        /// <summary>PBR object shader whose vertex stage displaces vertices along their
+        /// normals by the height map (true geometric displacement for dense planes).</summary>
+        public static uint GetObjectPbrDisplaceShaderProgram()
+        {
+            return objectPbrDisplaceShaderProgram;
         }
 
         public static uint GetRainStreakShaderProgram()
