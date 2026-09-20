@@ -23,15 +23,24 @@ uniform mat4 projection;
 uniform sampler2D heightMap;                 // unit 5 (bound by DrawPbrPrimitive)
 uniform float u_vertexDisplace = 0.0;        // 1 = displace this draw
 uniform float u_dispScale = 0.15;            // peak height in world units
+uniform float u_dispGrid = 256.0;            // tessellation segments per side
 uniform vec3 u_heightTuning = vec3(1.0, 0.0, 0.0);       // strength, invert, blur
 uniform vec4 u_heightAdvance = vec4(1.0, 0.5, 0.0, 0.5); // contrast, ctr, offset, scale center
 uniform vec2 u_uvScale[7];
 uniform vec2 u_uvOffset[7];
 
 // Same calibration pipeline as the fragment's sampleHeight() so displaced
-// geometry and shading agree on where the surface sits.
+// geometry and shading agree on where the surface sits. A small fixed blur
+// (Marmoset: "smooth microscopic surface noise to prevent displacement
+tearing across polygon vertices") keeps vertices from spiking on per-pixel
+// 4K noise the 256² grid can't represent anyway.
 float dispHeight(vec2 uv) {
-    float h = texture(heightMap, uv).r;
+    vec2 o = 0.75 / vec2(textureSize(heightMap, 0));
+    float h = (texture(heightMap, uv).r * 2.0
+             + texture(heightMap, uv + vec2(o.x, 0.0)).r
+             + texture(heightMap, uv - vec2(o.x, 0.0)).r
+             + texture(heightMap, uv + vec2(0.0, o.y)).r
+             + texture(heightMap, uv - vec2(0.0, o.y)).r) * 0.2;
     h = (h - 0.5) * u_heightTuning.x + 0.5;
     if (u_heightTuning.y > 0.5) h = 1.0 - h;
     h = (h - u_heightAdvance.y) * u_heightAdvance.x + u_heightAdvance.y;
@@ -50,17 +59,23 @@ void main() {
         worldPos.xyz += nw * h * u_dispScale;
 
         // Re-derive the normal from the height-field gradient (central
-        // differences). World tangents: u runs along +X, v along +Z (plane).
-        vec2 texel = 1.5 / vec2(textureSize(heightMap, 0));
-        float dhdu = (dispHeight(uvH + vec2(texel.x, 0.0)) - dispHeight(uvH - vec2(texel.x, 0.0))) / (2.0 * texel.x);
-        float dhdv = (dispHeight(uvH + vec2(0.0, texel.y)) - dispHeight(uvH - vec2(0.0, texel.y))) / (2.0 * texel.y);
+        // differences). Footprint = ONE GRID CELL measured in mesh-UV space,
+        // not texels: a texel-wide window on a 4K map measures pure per-pixel
+        // noise (near-vertical fake slopes, speckled shading). One-cell
+        // gradients match what the mesh can actually render — smooth,
+        // believable slopes; the normal map carries the sub-cell detail.
+        // Slope = Δh over the cell / cell world size. Tiling cancels because
+        // the sample window scales with u_uvScale (cell in height-UV space) and
+        // the world span of a mesh-UV cell is planeLength / gridSegments.
+        vec2 cellUv = max(u_uvScale[5], vec2(1e-3)) / u_dispGrid;   // one cell, height-map UV space
         vec3 Tx = mat3(model) * vec3(1.0, 0.0, 0.0);
         vec3 Bz = mat3(model) * vec3(0.0, 0.0, 1.0);
-        // World distance per UV unit: plane extent / tiling (guards the divide).
-        float Lu = max(length(Tx) / max(u_uvScale[5].x, 1e-3), 1e-4);
-        float Lv = max(length(Bz) / max(u_uvScale[5].y, 1e-3), 1e-4);
-        nw = normalize(nw - normalize(Tx) * (dhdu * u_dispScale / Lu)
-                           - normalize(Bz) * (dhdv * u_dispScale / Lv));
+        float cellWorldU = max(length(Tx) / u_dispGrid, 1e-5);
+        float cellWorldV = max(length(Bz) / u_dispGrid, 1e-5);
+        float slopeU = (dispHeight(uvH + vec2(cellUv.x, 0.0)) - dispHeight(uvH - vec2(cellUv.x, 0.0))) * u_dispScale / (2.0 * cellWorldU);
+        float slopeV = (dispHeight(uvH + vec2(0.0, cellUv.y)) - dispHeight(uvH - vec2(0.0, cellUv.y))) * u_dispScale / (2.0 * cellWorldV);
+        nw = normalize(nw - normalize(Tx) * slopeU
+                           - normalize(Bz) * slopeV);
     }
 
     FragPos = worldPos.xyz;

@@ -1711,7 +1711,7 @@ public unsafe class EditorObject
         public int ParallaxScale;
         public int PomShadowStrength;
         public int HeightAdvance;
-        public int VertexDisplace, DispScale;
+        public int VertexDisplace, DispScale, DispGrid;
 
         public PbrUniformSet(uint program)
         {
@@ -1761,6 +1761,7 @@ public unsafe class EditorObject
             HeightAdvance = GL.GetUniformLocation(Program, "u_heightAdvance");
             VertexDisplace = GL.GetUniformLocation(Program, "u_vertexDisplace");
             DispScale = GL.GetUniformLocation(Program, "u_dispScale");
+            DispGrid = GL.GetUniformLocation(Program, "u_dispGrid");
         }
     }
 
@@ -1862,6 +1863,7 @@ public unsafe class EditorObject
         GL.Uniform3f(u.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
         if (u.VertexDisplace >= 0) GL.Uniform1f(u.VertexDisplace, displaced ? 1f : 0f);
         if (u.DispScale >= 0) GL.Uniform1f(u.DispScale, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f));
+        if (u.DispGrid >= 0) GL.Uniform1f(u.DispGrid, PbrDisplaceSegments);
         GL.Uniform4f(u.HeightAdvance,
             Math.Clamp(PbrHeightContrast, 0.1f, 4f),
             Math.Clamp(PbrHeightContrastCenter, 0f, 1f),

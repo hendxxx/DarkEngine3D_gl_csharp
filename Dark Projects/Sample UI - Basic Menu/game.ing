@@ -1977,6 +1977,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -2656,6 +2658,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -3333,6 +3337,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -4010,6 +4016,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -4687,6 +4695,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -11532,6 +11542,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -11805,7 +11817,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 30,
+          "posX": 29,
           "posY": 3.2,
           "posZ": 0,
           "rotX": 0,
@@ -12209,6 +12221,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -12482,8 +12496,8 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 95.01014,
-          "posY": 0,
+          "posX": 29,
+          "posY": 3.2,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -12498,7 +12512,7 @@
           "isVisible": true,
           "npcDialogueId": "",
           "npcAlertImagePath": "",
-          "player2DSpriteSheet": "Idle-Sheet",
+          "player2DSpriteSheet": "Idle",
           "player2DAnimationClip": "Char A - Idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
@@ -12506,7 +12520,7 @@
           "player2DCapsuleRadius": 1.5,
           "player2DCapsuleHeight": 10.75,
           "player2DCapsuleOffsetX": 0,
-          "player2DCapsuleOffsetY": 3.2,
+          "player2DCapsuleOffsetY": 0,
           "player2DShowCapsule": true,
           "player2DGravity": 25,
           "player2DMoveSpeed": 10,
@@ -12548,7 +12562,7 @@
           "actions": [
             {
               "name": "Idle",
-              "spriteSheet": "Idle-Sheet",
+              "spriteSheet": "Idle",
               "clip": "Char A - Idle",
               "loop": true,
               "stopOnFrameEnd": false,
@@ -12558,7 +12572,7 @@
             },
             {
               "name": "Walk",
-              "spriteSheet": "Run-Sheet",
+              "spriteSheet": "Walk",
               "clip": "Char A - Walk",
               "loop": true,
               "stopOnFrameEnd": false,
@@ -12568,7 +12582,7 @@
             },
             {
               "name": "Run",
-              "spriteSheet": "Run-Sheet",
+              "spriteSheet": "Run",
               "clip": "Char A - Run",
               "loop": true,
               "stopOnFrameEnd": false,
@@ -12578,7 +12592,7 @@
             },
             {
               "name": "Jump",
-              "spriteSheet": "Jump-All-Sheet",
+              "spriteSheet": "Jump",
               "clip": "Char A - Jump",
               "loop": false,
               "stopOnFrameEnd": false,
@@ -12588,8 +12602,8 @@
             },
             {
               "name": "Attach 1",
-              "spriteSheet": "Attack-01-Sheet",
-              "clip": "Char A - Attack 1",
+              "spriteSheet": "Attack",
+              "clip": "Char A - Attack",
               "loop": false,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12598,8 +12612,8 @@
             },
             {
               "name": "Dead",
-              "spriteSheet": "Dead-Sheet",
-              "clip": "Char A - Dead",
+              "spriteSheet": "Die",
+              "clip": "Char A - Die",
               "loop": false,
               "stopOnFrameEnd": true,
               "priority": 5,
@@ -12876,6 +12890,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -13553,6 +13569,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -14230,6 +14248,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -14907,6 +14927,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -15181,7 +15203,7 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        95.010124,
+        60.636566,
         32,
         307.03183
       ],
@@ -15713,9 +15735,9 @@
           "terrainPbrRoughnessInvert": false,
           "terrainPbrAoStrength": 1,
           "terrainPbrAoBrightness": 0,
-          "terrainPbrHeightStrength": 1,
+          "terrainPbrHeightStrength": 0.61,
           "terrainPbrHeightInvert": false,
-          "terrainPbrHeightBlur": 0,
+          "terrainPbrHeightBlur": 8,
           "terrainPbrEmissionIntensity": 1,
           "terrainLayers": [
             {
@@ -15809,14 +15831,16 @@
               "emissionIntensity": 1
             }
           ],
-          "pbrAlbedoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Color.jpg",
-          "pbrNormalPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_NormalGL.jpg",
-          "pbrMetallicPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Metalness.jpg",
-          "pbrRoughnessPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Roughness.jpg",
-          "pbrAoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_AmbientOcclusion.jpg",
-          "pbrHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\MetalPlates013\\MetalPlates013_1K-JPG_Displacement.jpg",
+          "pbrAlbedoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Color.png",
+          "pbrNormalPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_NormalDX.png",
+          "pbrMetallicPath": "",
+          "pbrRoughnessPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Roughness.png",
+          "pbrAoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_AmbientOcclusion.png",
+          "pbrHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Displacement.png",
           "pbrEmissionPath": "",
-          "pbrTexTiling": 10,
+          "pbrTexTiling": 1.7,
+          "pbrParallaxScale": 0.01,
+          "pbrPomShadowStrength": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -15828,13 +15852,13 @@
             "wrapT": 0,
             "tilingX": 1,
             "tilingY": 1,
-            "offsetX": 0,
-            "offsetY": 0,
+            "offsetX": 0.19405273,
+            "offsetY": 0.0770329,
             "randomTiling": false
           },
           "pbrTexSettings": [
             {
-              "filterPreset": 2,
+              "filterPreset": 6,
               "minFilter": 5,
               "magFilter": 1,
               "generateMipmaps": true,
@@ -15914,7 +15938,7 @@
               "magFilter": 1,
               "generateMipmaps": true,
               "mipmapBias": 0,
-              "anisotropy": 16,
+              "anisotropy": 4,
               "wrapS": 0,
               "wrapT": 0,
               "tilingX": 1,
@@ -16235,11 +16259,11 @@
           "lightType": 0,
           "lightConeAngle": 30,
           "lightPointRadius": 50,
-          "skyTimeOfDay": 20.1,
+          "skyTimeOfDay": 15.1,
           "skyCloudCoverage": 0.3,
           "skySunIntensity": 1,
-          "skyTimeAnimSpeed": 0,
-          "skyTimeAnimPaused": false,
+          "skyTimeAnimSpeed": 1,
+          "skyTimeAnimPaused": true,
           "showFrustum": true,
           "showLightGizmo": true,
           "showSkyGizmo": true,
@@ -16494,6 +16518,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -16905,8 +16931,8 @@
           "cameraFov": 60,
           "cameraNear": 0.1,
           "cameraFar": 500,
-          "lightDirX": -0.81668115,
-          "lightDirY": -0.5004629,
+          "lightDirX": -0.69478256,
+          "lightDirY": 0.65932417,
           "lightDirZ": 0.28734788,
           "lightIntensity": 1,
           "lightType": 0,
@@ -17171,6 +17197,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -17848,6 +17876,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -18525,6 +18555,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -19202,6 +19234,8 @@
           "pbrHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -19476,12 +19510,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        36.928043,
-        22.40507,
-        2.0170643
+        10.624298,
+        10.879817,
+        -0.8640904
       ],
-      "editorCameraYaw": 129,
-      "editorCameraPitch": 8.299999,
+      "editorCameraYaw": -174.69984,
+      "editorCameraPitch": -42.300148,
       "renderProperties": {
         "backgroundColor": [
           0,

@@ -406,11 +406,13 @@ void main() {
         //    itself; the ±0.16 UV hard cap below handles that. Physical tangent
         //    kept up to ~87°, no oblique fading; far-field fade for stability.
         float pomDistFade = 1.0 - smoothstep(80.0, 160.0, viewDepth);
-        float effScale = parallaxScale * pomDistFade;
-        // View-ray POM is SKIPPED when the vertices are already displaced
-        // ("Vertex Displacement" — true geometry): depth is physical, keeping
-        // the march would double-displace the shading.
-        if (u_vertexDisplace < 0.5 && effScale > 0.004) {
+        // Layered detail: over vertex-displaced geometry the large shapes are
+        // REAL, so the ray march contributes only ~30% depth — the sub-cell
+        // micro occlusion (workflow: displacement for large forms, POM for
+        // micro detail). Flat surfaces keep the full-depth march.
+        float micro = (u_vertexDisplace >= 0.5) ? 0.3 : 1.0;
+        float effScale = parallaxScale * pomDistFade * micro;
+        if (effScale > 0.004) {
         vec3 Vts = normalize(transpose(TBN) * viewDir);   // tangent-space view ray
         float facing = clamp(abs(Vts.z), 0.0, 1.0);       // 1 = head-on, 0 = grazing
         pomSteps = int(mix(float(u_pomMaxSteps), float(u_pomMinSteps), facing) * clamp(effScale / 0.15, 0.2, 1.5));
