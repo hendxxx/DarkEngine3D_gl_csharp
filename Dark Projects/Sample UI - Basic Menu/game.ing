@@ -2210,6 +2210,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -2899,6 +2937,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -3586,6 +3662,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -4273,6 +4387,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -4960,6 +5112,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -11815,6 +12005,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -12502,6 +12730,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -13179,6 +13445,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -13866,6 +14170,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -14553,6 +14895,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -15240,6 +15620,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -15823,7 +16241,7 @@
           "terrainPbrRoughnessInvert": false,
           "terrainPbrAoStrength": 1,
           "terrainPbrAoBrightness": 0,
-          "terrainPbrHeightStrength": 0.61,
+          "terrainPbrHeightStrength": 1,
           "terrainPbrHeightInvert": false,
           "terrainPbrHeightBlur": 8,
           "terrainPbrEmissionIntensity": 1,
@@ -15934,7 +16352,7 @@
           "pbrHeightOffset": 0,
           "pbrHeightScaleCenter": 0.5,
           "pbrVertexDisplace": true,
-          "pbrVertexDisplaceScale": 0.15,
+          "pbrVertexDisplaceScale": 1.5,
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 16,
           "texSettings": {
@@ -16160,6 +16578,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -16847,6 +17303,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -17534,6 +18028,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -18221,6 +18753,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -18908,6 +19478,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -19595,6 +20203,44 @@
             false
           ],
           "paintLayerCount": 1,
+          "pbrSplatLayers": [
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            },
+            {
+              "albedoPath": "",
+              "tintR": 1,
+              "tintG": 1,
+              "tintB": 1
+            }
+          ],
+          "pbrSplatPaintLayerIndex": 0,
+          "pbrSplatPaintStrength": 0.45,
+          "pbrSplatTiling": 0.5,
+          "pbrSplatData": "",
+          "pbrSculptData": "",
+          "pbrLodEnabled": false,
+          "pbrLodDistance": 40,
+          "pbrLodDistance2": 120,
+          "pbrOcclusionEnabled": false,
+          "splatHeightLayersEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 0.08,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -19646,12 +20292,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        10.624298,
-        10.879817,
-        -0.8640904
+        9.861094,
+        26.836567,
+        44.67901
       ],
-      "editorCameraYaw": -174.69984,
-      "editorCameraPitch": -42.300148,
+      "editorCameraYaw": -166.19983,
+      "editorCameraPitch": -35,
       "renderProperties": {
         "backgroundColor": [
           0,
