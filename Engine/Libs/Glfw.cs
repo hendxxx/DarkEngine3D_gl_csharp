@@ -254,17 +254,47 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         {
             OnWindowResized?.Invoke(_windowWidth, _windowHeight);
         }
+        /// <summary>Advance the shared frame clock ONCE and return this frame's delta.
+        /// ONLY the central main loop (SceneManager.Run) may call this — every extra
+        /// call slices the frame time again (later callers get ~0), which made
+        /// animation speed change with frame pacing (e.g. VSync on/off). Secondary
+        /// consumers (animation clocks, HUD spinners, perf readouts) must use
+        /// <see cref="PeekDeltaTime"/> instead. Delta is clamped to 0.1s so a hitch
+        /// (window drag, load stall) can't teleport physics or skip animation frames.</summary>
         public static float GetDeltaTime()
         {
-
             float currentFrame = (float)glfwGetTime();
-
+            FrameId++;
 
             deltaTime = currentFrame - lastFrame;
             lastFrame = currentFrame;
 
+            // Clamp pathological deltas (startup spike, debugger pause, window drag).
+            if (deltaTime < 0f) deltaTime = 0f;
+            else if (deltaTime > MaxDeltaTime) deltaTime = MaxDeltaTime;
+
             return deltaTime;
         }
+
+        /// <summary>Upper bound for a single frame delta (s) — hitch protection.</summary>
+        private const float MaxDeltaTime = 0.1f;
+
+        /// <summary>Monotonic frame id — bumped once per GetDeltaTime() call (i.e. once per
+        /// rendered frame by the central loop). Per-object clocks that could otherwise be
+        /// advanced multiple times per frame (DrawPlayer2D runs for the editor pass AND
+        /// per camera) gate their advance on this id.</summary>
+        public static int FrameId;
+
+        /// <summary>Read this frame's delta WITHOUT advancing the shared clock. Safe to
+        /// call any number of times per frame — always returns the same value the main
+        /// loop measured, so VSync/monitor refresh never changes animation or UI speed.</summary>
+        public static float PeekDeltaTime() => deltaTime;
+
+        /// <summary>Monotonic engine time in seconds (glfwGetTime), read-only. Safe to
+        /// call any number of times per frame — never advances or mutates anything.
+        /// Use for continuous visual effects (glow flicker, ambient pulses) that need
+        /// absolute time rather than per-object accumulated clocks.</summary>
+        public static float PeekTime() => (float)glfwGetTime();
         /// <summary>Internal helper: update GL viewport, window size vars, and fire resize event.</summary>
         private static void UpdateWindowSize(int width, int height)
         {

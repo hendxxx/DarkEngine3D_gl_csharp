@@ -426,8 +426,9 @@ public unsafe class MainMenuScene : IScene
         if (!ingameActive)
         {
             // ── IDE mode: free-fly camera (WASD + mouse look) when viewport is focused ──
+            // A visible overlay is modal → camera input frozen while it's up.
             var ideBridge = _sceneManager.Bridge;
-            if (ideBridge != null && ideBridge.IsViewportFocused)
+            if (ideBridge != null && ideBridge.IsViewportFocused && !ideBridge.IsOverlayVisible)
             {
                 _camera.SetCameraFlyMode(window, _deltaTime, true);
             }
@@ -606,7 +607,18 @@ public unsafe class MainMenuScene : IScene
                 if (asset != null)
                 {
                     Console.WriteLine($"[MainMenu] scene:{target} → switching to scene '{target}'");
-                    _sceneManager.SwitchScene(new MainMenuScene(_sceneManager, _camera, _light, target));
+
+                    // If the target is a GameScene, route through the loading path so the scene
+                    // enters with the same world/content as the editor/game flow (resources + restored
+                    // editor objects / map). Otherwise fall back to a normal MainMenuScene switch.
+                    if (string.Equals(asset.SceneType, "GameScene", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _sceneManager.SwitchScene(new LoadingScene(_sceneManager, _camera, _light, target));
+                    }
+                    else
+                    {
+                        _sceneManager.SwitchScene(new MainMenuScene(_sceneManager, _camera, _light, target));
+                    }
                 }
                 else
                 {
@@ -645,7 +657,18 @@ public unsafe class MainMenuScene : IScene
             {
                 Console.WriteLine("[MainMenu] Starting new game...");
                 GameScene.PendingLoadSlot = -1;
-                _sceneManager.SwitchScene(new LoadingScene(_sceneManager, _camera, _light));
+
+                // If a game scene exists in game.ing, route the new-game flow through the
+                // loading screen into that scene (so it shares the same world/content as the
+                // editor in-game path). Otherwise fall back to the legacy blank GameScene path.
+                string? targetSceneName = null;
+                var gameSceneAsset = SceneAssetSerializer.FindScene("scnUtama");
+                if (gameSceneAsset != null && string.Equals(gameSceneAsset.SceneType, "GameScene", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetSceneName = "scnUtama";
+                }
+
+                _sceneManager.SwitchScene(new LoadingScene(_sceneManager, _camera, _light, targetSceneName));
             },
             "continue" => () =>
             {
@@ -1240,6 +1263,10 @@ public unsafe class MainMenuScene : IScene
         {
             if (!string.IsNullOrEmpty(elem.ImagePath))
                 LoadImageTexture(elem.ImagePath);
+            // Bar: pre-load all three layer images
+            if (!string.IsNullOrEmpty(elem.BarBackgroundPath)) LoadImageTexture(elem.BarBackgroundPath);
+            if (!string.IsNullOrEmpty(elem.BarEmptyPath)) LoadImageTexture(elem.BarEmptyPath);
+            if (!string.IsNullOrEmpty(elem.BarProgressPath)) LoadImageTexture(elem.BarProgressPath);
             if (elem.Children.Count > 0)
                 LoadImageTexturesFromHierarchy(elem.Children);
         }
@@ -1354,7 +1381,12 @@ public unsafe class MainMenuScene : IScene
             // effective bounds without mutating the stored values.
             var (ex, ey, ew, eh) = elem.GetLayoutBounds(canvasW, canvasH);
 
-            if (!string.IsNullOrEmpty(elem.ImagePath))
+            // ── Bar: background frame → empty interior → clipped progress fill ──
+            if (elem.Type == UIElementType.Bar)
+            {
+                RenderBarElement(elem, ex, ey, ew, eh);
+            }
+            else if (!string.IsNullOrEmpty(elem.ImagePath))
             {
                 if (_imageTextureCache.TryGetValue(elem.ImagePath, out uint texID) && texID != 0)
                 {
@@ -1382,6 +1414,66 @@ public unsafe class MainMenuScene : IScene
 
             if (elem.Children.Count > 0)
                 RenderImageElements(elem.Children);
+        }
+    }
+
+    /// <summary>Render one Bar element in-game through the HUD, in the same layer order
+    /// as the editor: Background (-3) → Empty (-2) → Progress (-1) → ImagePath (0, top). Every layer
+    /// resolves its rect through GetBarLayerRect — the element rect plus that layer's
+    /// four INDEPENDENT edge offsets (left/right/top/bottom, + = outward, − = inward) —
+    /// so the decorated frame can overhang while the fill insets. The Progress layer's
+    /// WIDTH scales with the value fraction (same math as the editor preview).</summary>
+    private void RenderBarElement(UIElement elem, float ex, float ey, float ew, float eh)
+    {
+        if (elem.Opacity <= 0.01f) return;
+
+        // Fraction source: stat binding (live Player2DStats) when set — else manual.
+        float frac = !string.IsNullOrEmpty(elem.BarStatBinding) && elem.BarStatBinding != PlayerStatNames.None
+            ? Player2DStats.GetFraction(elem.BarStatBinding)
+            : (elem.MaxValue - elem.MinValue) > 0.001f
+                ? Math.Clamp((elem.CurrentValue - elem.MinValue) / (elem.MaxValue - elem.MinValue), 0f, 1f)
+                : 0f;
+
+        // ── Layer Background (-3): frame (its own per-edge offsets) —
+        // image when set, otherwise a flat color fill.
+        {
+            var (bgx, bgy, bgw, bgh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Background);
+            if (!string.IsNullOrEmpty(elem.BarBackgroundPath) &&
+                _imageTextureCache.TryGetValue(elem.BarBackgroundPath, out uint bgTex) && bgTex != 0)
+                _hud!.DrawImage(bgx, bgy, bgw, bgh, bgTex);
+            else
+                _hud!.DrawBox(bgx, bgy, bgw, bgh, elem.BarBgColor * elem.Opacity);
+        }
+
+        // ── Layer Empty (-2): interior (its own per-edge offsets) —
+        // image when set, otherwise a flat color fill.
+        {
+            var (emx, emy, emw, emh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Empty);
+            if (!string.IsNullOrEmpty(elem.BarEmptyPath) &&
+                _imageTextureCache.TryGetValue(elem.BarEmptyPath, out uint emptyTex) && emptyTex != 0)
+                _hud!.DrawImage(emx, emy, emw, emh, emptyTex);
+            else
+                _hud!.DrawBox(emx, emy, emw, emh, elem.BarEmptyColor * elem.Opacity);
+        }
+
+        // ── Layer Progress (-1): fill — width scales with the fraction —
+        // image when set, otherwise a flat color fill.
+        if (frac > 0.001f)
+        {
+            var (pgx, pgy, pgw, pgh) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.Progress);
+            if (!string.IsNullOrEmpty(elem.BarProgressPath) &&
+                _imageTextureCache.TryGetValue(elem.BarProgressPath, out uint progTex) && progTex != 0)
+                _hud!.DrawImage(pgx, pgy, pgw * frac, pgh, progTex);
+            else
+                _hud!.DrawBox(pgx, pgy, pgw * frac, pgh, elem.BarProgressColor * elem.Opacity);
+        }
+
+        // ── Layer ImagePath (0, top): element's own art over the fill ──
+        if (!string.IsNullOrEmpty(elem.ImagePath) &&
+            _imageTextureCache.TryGetValue(elem.ImagePath, out uint imgTex) && imgTex != 0)
+        {
+            var (ix, iy, iw, ih) = elem.GetBarLayerRect(ex, ey, ew, eh, UIElement.BarLayer.ImagePath);
+            _hud!.DrawImage(ix, iy, iw, ih, imgTex);
         }
     }
 

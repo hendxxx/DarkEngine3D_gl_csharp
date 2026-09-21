@@ -144,6 +144,7 @@ public class SceneManagerPanel
         if (!_visible) return;
 
         ImGui.Begin("Scene Manager", ref _visible);
+        IDE.PanelFocus.Notify("Scene Manager");
 
         //  Header: current scene indicator 
         var sm = _bridge.SceneManager;
@@ -836,9 +837,8 @@ public class SceneManagerPanel
         // for old .ing files (see LoadFromIngFile).
 
         foreach (var (name, editorScene) in _bridge.EditorScenes)
-        {
-            var asset = new SceneAsset
-            {
+        {                    var asset = new SceneAsset
+                    {
                 SceneName = name,
                 Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
                 BackgroundObjects = [],
@@ -899,6 +899,13 @@ public class SceneManagerPanel
                     {
                         Name = obj.Name,
                         PrimitiveType = obj.PrimitiveType.ToString(),
+                        Tilemap = obj.PrimitiveType == EditorPrimitiveType.Map2D ? obj.Map2dTilemap?.ToData() : null,
+                        TilemapShowGrid = obj.Map2dShowGrid,
+                        TilemapShowTriggers = obj.Map2dShowTriggers,
+                        TilemapGridColorR = obj.Map2dGridColor.X,
+                        TilemapGridColorG = obj.Map2dGridColor.Y,
+                        TilemapGridColorB = obj.Map2dGridColor.Z,
+                        TilemapGridColorA = obj.Map2dGridColor.W,
                         PosX = obj.Position.X,
                         PosY = obj.Position.Y,
                         PosZ = obj.Position.Z,
@@ -935,6 +942,59 @@ public class SceneManagerPanel
                         ShowLightGizmo = obj.ShowLightGizmo,
                         ShowSkyGizmo = obj.ShowSkyGizmo,
                         SkySettings = obj.SkySettings,
+                        Player2DSpriteSheet = obj.Player2DSpriteSheet,
+                        Player2DAnimationClip = obj.Player2DAnimationClip,
+                        NpcDialogueId = obj.NpcDialogueId,
+                        NpcAlertImagePath = PathHelpers.MakeRelative(obj.NpcAlertImagePath),
+                        Player2DHeight = obj.Player2DHeight,
+                        Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
+                        Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
+                        Player2DCapsuleOffsetX = obj.Player2DCapsuleOffsetX,
+                        Player2DCapsuleOffsetY = obj.Player2DCapsuleOffsetY,
+
+                        Player2DShowCapsule = obj.Player2DShowCapsule,
+                        Player2DGravity = obj.Player2DGravity,
+                        Player2DMoveSpeed = obj.Player2DMoveSpeed,
+                        Player2DRunSpeed = obj.Player2DRunSpeed,
+                        Player2DJumpForce = obj.Player2DJumpForce,
+                        Player2DGravityScale = obj.Player2DGravityScale,
+                        Player2DAcceleration = obj.Player2DAcceleration,
+                        Player2DDeceleration = obj.Player2DDeceleration,
+                        Player2DAirControl = obj.Player2DAirControl,
+                        Player2DCoyoteTime = obj.Player2DCoyoteTime,
+                        Player2DJumpBuffer = obj.Player2DJumpBuffer,
+                        Player2DJumpCutMultiplier = obj.Player2DJumpCutMultiplier,
+                        Sprite2DLoop = obj.Sprite2DLoop,
+                        Sprite2DSpeed = obj.Sprite2DSpeed,
+                        Sprite2DStartOffset = obj.Sprite2DStartOffset,
+                        Sprite2DFacingRight = obj.Sprite2DFacingRight,
+                        Sprite2DGlow = obj.Sprite2DGlow,
+                        Player2DGlow = obj.Player2DGlow,
+                        Sprite2DGlowColorX = obj.Sprite2DGlowColor.X,
+                        Sprite2DGlowColorY = obj.Sprite2DGlowColor.Y,
+                        Sprite2DGlowColorZ = obj.Sprite2DGlowColor.Z,
+                        Player2DGlowColorX = obj.Player2DGlowColor.X,
+                        Player2DGlowColorY = obj.Player2DGlowColor.Y,
+                        Player2DGlowColorZ = obj.Player2DGlowColor.Z,
+                        Sprite2DGlowFlicker = obj.Sprite2DGlowFlicker,
+                        Player2DGlowFlicker = obj.Player2DGlowFlicker,
+                        Sprite2DRenderLayer = obj.Sprite2DRenderLayer,
+                        CameraFollowSpeed = obj.CameraFollowSpeed,
+                        CameraDeadZoneWidth = obj.CameraDeadZoneWidth,
+                        CameraDeadZoneHeight = obj.CameraDeadZoneHeight,
+                        CameraVerticalThreshold = obj.CameraVerticalThreshold,
+                        CameraReturnSpeed = obj.CameraReturnSpeed,
+                        CameraLookAhead = obj.CameraLookAhead,
+                        CameraViewOffset = obj.CameraViewOffset,
+                        Actions = obj.Actions.Count > 0
+                            ? obj.Actions.Select(a => new Player2DActionData
+                            {
+                                Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
+                                Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
+                                Priority = a.Priority, KeyBinding = a.KeyBinding,
+                                KeyTrigger = a.KeyTrigger,
+                            }).ToList()
+                            : null,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z,
@@ -1067,6 +1127,23 @@ public class SceneManagerPanel
         }
         _bridge.EditorObjectManager = editorScene.ObjectManager;
         _bridge.SelectedEditorObject = null;
+
+        // The level shown by the Map Editor follows the selected scene: a GameScene that
+        // contains a Map2D object (saved in the .ing) provides the active tilemap; menu /
+        // loading scenes have none. Nothing is auto-created here.
+        Tilemap2D? sceneLevel = null;
+        if (editorScene.Type == IDEBridge.SceneType.GameScene && editorScene.ObjectManager != null)
+        {
+            foreach (var o in editorScene.ObjectManager.Objects)
+            {
+                if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)
+                {
+                    sceneLevel = o.Map2dTilemap;
+                    break;
+                }
+            }
+        }
+        _bridge.ActiveTilemap = sceneLevel;
 
         // Select the first visible child so wireframe/handles appear in the viewport
         _bridge.SelectedUIElements?.Clear();
@@ -1311,6 +1388,11 @@ public class SceneManagerPanel
                             "camera" => EditorPrimitiveType.Camera,
                             "light" => EditorPrimitiveType.Light,
                             "sky" => EditorPrimitiveType.Sky,
+                            "map2d" => EditorPrimitiveType.Map2D,
+                            "player2d" => EditorPrimitiveType.Player2D,
+                            "sprite2d" => EditorPrimitiveType.Sprite2D,
+                            "start2d" => EditorPrimitiveType.Start2D,
+                            "camerastart2d" => EditorPrimitiveType.CameraStart2D,
                             _ => EditorPrimitiveType.Box,
                         };
 
@@ -1473,10 +1555,98 @@ public class SceneManagerPanel
                         // Dynamic terrain layers + slope
                         if (objData.TerrainLayerList is { Count: > 0 } savedLayers)
                             obj.TerrainLayerList = savedLayers.Select(l => l.Clone().WithResolvedPaths()).ToList();
+
+                        // ── Player2D: restore sprite animation + capsule settings ──
+                        obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
+                        obj.Player2DAnimationClip = objData.Player2DAnimationClip;
+                        obj.NpcDialogueId = objData.NpcDialogueId;
+                        obj.NpcAlertImagePath = PathHelpers.Resolve(objData.NpcAlertImagePath);
+                        // Legacy WalkSheet/WalkClip (removed fields) migrate into the Walk
+                        // action so old .ing files keep their moving animation after load.
+                        if (!string.IsNullOrEmpty(objData.Player2DWalkClip))
+                        {
+                            var walkAct = obj.Actions.FirstOrDefault(a => a.Name == "Walk");
+                            if (walkAct != null && string.IsNullOrEmpty(walkAct.Clip))
+                            {
+                                walkAct.Clip = objData.Player2DWalkClip;
+                                walkAct.SpriteSheet = string.IsNullOrEmpty(objData.Player2DWalkSheet)
+                                    ? objData.Player2DSpriteSheet : objData.Player2DWalkSheet;
+                            }
+                        }
+                        obj.Player2DHeight = objData.Player2DHeight;
+                        obj.Player2DCapsuleRadius = objData.Player2DCapsuleRadius;
+                        obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
+                        obj.Player2DCapsuleOffsetX = objData.Player2DCapsuleOffsetX;
+                        obj.Player2DCapsuleOffsetY = objData.Player2DCapsuleOffsetY;
+
+                        obj.Player2DShowCapsule = objData.Player2DShowCapsule;
+                        obj.Player2DGravity = objData.Player2DGravity;
+                        obj.Player2DMoveSpeed = objData.Player2DMoveSpeed;
+                        obj.Player2DRunSpeed = objData.Player2DRunSpeed;
+                        obj.Player2DJumpForce = objData.Player2DJumpForce;
+                        obj.Player2DGravityScale = objData.Player2DGravityScale;
+                        obj.Player2DAcceleration = objData.Player2DAcceleration;
+                        obj.Player2DDeceleration = objData.Player2DDeceleration;
+                        obj.Player2DAirControl = objData.Player2DAirControl;
+                        obj.Player2DCoyoteTime = objData.Player2DCoyoteTime;
+                        obj.Player2DJumpBuffer = objData.Player2DJumpBuffer;
+                        obj.Player2DJumpCutMultiplier = objData.Player2DJumpCutMultiplier;
+                        obj.Sprite2DLoop = objData.Sprite2DLoop;
+                        obj.Sprite2DSpeed = objData.Sprite2DSpeed;
+                        obj.Sprite2DStartOffset = objData.Sprite2DStartOffset;
+                        obj.Sprite2DFacingRight = objData.Sprite2DFacingRight;
+                        obj.Sprite2DGlow = objData.Sprite2DGlow;
+                        obj.Player2DGlow = objData.Player2DGlow;
+                        obj.Sprite2DGlowColor = new Vector3(objData.Sprite2DGlowColorX, objData.Sprite2DGlowColorY, objData.Sprite2DGlowColorZ);
+                        obj.Player2DGlowColor = new Vector3(objData.Player2DGlowColorX, objData.Player2DGlowColorY, objData.Player2DGlowColorZ);
+                        obj.Sprite2DGlowFlicker = objData.Sprite2DGlowFlicker;
+                        obj.Player2DGlowFlicker = objData.Player2DGlowFlicker;
+                        obj.Sprite2DRenderLayer = objData.Sprite2DRenderLayer;
+                        obj.CameraFollowSpeed = objData.CameraFollowSpeed;
+                        obj.CameraDeadZoneWidth = objData.CameraDeadZoneWidth;
+                        obj.CameraDeadZoneHeight = objData.CameraDeadZoneHeight;
+                        obj.CameraVerticalThreshold = objData.CameraVerticalThreshold;
+                        obj.CameraReturnSpeed = objData.CameraReturnSpeed;
+                        obj.CameraLookAhead = objData.CameraLookAhead;
+                        obj.CameraViewOffset = objData.CameraViewOffset;
+                        if (objData.Actions is { Count: > 0 } savedActions)
+                            obj.Actions = savedActions.Select(a => new Player2DAction
+                            {
+                                Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
+                                Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
+                                Priority = a.Priority, KeyBinding = a.KeyBinding,
+                                KeyTrigger = a.KeyTrigger,
+                            }).ToList();
+                        else
+                            obj.EnsureDefaultActions();
                         if (objData.TerrainSlopeLayer != null)
                         {
                             obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();
                             obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
+                        }
+
+                        // 2D Map (level): rebind the tilemap payload saved in the scene file.
+                        // A level is only shown for scenes that actually contain one.
+                        if (primType == EditorPrimitiveType.Map2D && objData.Tilemap != null)
+                        {
+                            var tilemap = Tilemap2D.FromData(objData.Tilemap);
+                            obj.Map2dTilemap = tilemap;
+                            obj.Map2dTilesetCols = tilemap.TilesetColumns;
+                            obj.Map2dTilesetRows = tilemap.TilesetRows;
+                            obj.Map2dTilesetFlipV = tilemap.TilesetFlipV;
+                            obj.Map2dLayerIndex = -1; // whole map (all visible layers)
+                            // Render the first layer by default on load; the Map Editor panel
+                            // overrides this when the user selects another layer.
+                            obj.Map2dActiveLayer = tilemap.Layers.Count > 0 ? 0 : -1;
+                            obj.Map2dShowGrid = objData.TilemapShowGrid;
+                            obj.Map2dShowTriggers = objData.TilemapShowTriggers;
+                            obj.Map2dGridColor = new Vector4(objData.TilemapGridColorR, objData.TilemapGridColorG,
+                                objData.TilemapGridColorB, objData.TilemapGridColorA);
+                            obj.Name = tilemap.Name;
+                            // The Map Editor's active map follows the first level found.
+                            if (sceneType == IDEBridge.SceneType.GameScene && _bridge.ActiveTilemap == null)
+                                _bridge.ActiveTilemap = tilemap;
+                            Console.WriteLine($"[SceneManagerPanel] Restored level '{tilemap.Name}' in scene '{sceneName}' ({tilemap.Width}x{tilemap.Height}, {tilemap.Layers.Count} layers)");
                         }
 
 

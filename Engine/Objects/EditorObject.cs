@@ -1,13 +1,101 @@
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using ImGuiNET;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
+using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects;
+
+/// <summary>
+/// A user-defined animation action for Player2D (Idle/Walk/Run/... + custom).
+/// Binds an action name to a sprite-sheet clip, a keyboard key, and a priority —
+/// higher-priority actions interrupt lower ones; Dead (100) cancels everything.
+/// </summary>
+public class Player2DAction
+{
+    public string Name { get; set; } = "";
+    /// <summary>Sprite sheet name from the Sprite Editor registry ("" = player's sheet).</summary>
+    public string SpriteSheet { get; set; } = "";
+    /// <summary>Animation clip name within the sheet.</summary>
+    public string Clip { get; set; } = "";
+    public bool Loop { get; set; } = true;
+    /// <summary>Non-loop actions with StopOnFrameEnd HOLD their last frame when the clip
+    /// finishes instead of returning to idle — until ANY key is pressed (move / jump /
+    /// action). Pressing the action's OWN key does nothing (no replay); a DIFFERENT
+    /// action's key releases the hold and starts that action. One-shot anims that
+    /// freeze on the impact frame (attack/death).</summary>
+    public bool StopOnFrameEnd { get; set; }
+    /// <summary>Priority — a playing action can only be replaced by equal/higher priority.
+    /// Dead = 100 cancels everything; Walk = 5 is interrupted by Attack/Skills.</summary>
+    public int Priority { get; set; } = 5;
+    /// <summary>Keyboard binding (ImGuiKey name, e.g. "J", "None" = not bound).</summary>
+    public string KeyBinding { get; set; } = "None";
+    /// <summary>When the binding fires: "KeyDown" = on key press (hold-style — a looping
+    /// action ends when the key is released), "KeyUp" = on key release (press-impulse —
+    /// the action plays out regardless of how long the key was held), "KeyDownOnce" = once
+    /// on press requiring release before re-fire, "KeyUpOnce" = once on release requiring
+    /// re-press before re-fire.</summary>
+    public string KeyTrigger { get; set; } = "KeyDown";
+    /// <summary>True when the binding fires on key RELEASE instead of press.</summary>
+    public bool IsKeyUpTrigger => string.Equals(KeyTrigger, "KeyUp", StringComparison.OrdinalIgnoreCase);
+    /// <summary>True when the binding fires once on key RELEASE and requires a fresh
+    /// press before it can fire again.</summary>
+    public bool IsKeyUpOnceTrigger => string.Equals(KeyTrigger, "KeyUpOnce", StringComparison.OrdinalIgnoreCase);
+    /// <summary>True when the binding fires once on key PRESS and requires a fresh
+    /// release before it can fire again.</summary>
+    public bool IsKeyDownOnceTrigger => string.Equals(KeyTrigger, "KeyDownOnce", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Tracks whether the key has been pressed since the last KeyUpOnce trigger.
+    /// Only meaningful when KeyTrigger == "KeyUpOnce". Starts false so the user must
+    /// press the key first before a release can trigger the action.</summary>
+    [JsonIgnore]
+    public bool KeyUpOnceArmed { get; set; } = false;
+    /// <summary>Tracks whether the key has been released since the last KeyDownOnce trigger.
+    /// Only meaningful when KeyTrigger == "KeyDownOnce".</summary>
+    [JsonIgnore]
+    public bool KeyDownOnceArmed { get; set; } = true;
+    /// <summary>True this frame when the configured trigger fires for <paramref name="k"/>.</summary>
+    public bool KeyTriggered(ImGuiKey k)
+    {
+        // NOTE: all IsKeyPressed checks pass repeat:false — ImGui auto-repeats while
+        // a key is held (OS key-repeat), which made hold-style and one-shot actions
+        // re-trigger every repeat tick (e.g. a "Jump" KeyDownOnce action looping
+        // while Space was held). Trigger semantics are EDGES of the physical key:
+        // press edge / release edge, never the auto-repeat stream.
+        if (IsKeyUpOnceTrigger)
+        {
+            // Re-arm when the user presses the key again
+            if (ImGui.IsKeyPressed(k, false))
+                KeyUpOnceArmed = true;
+            // Fire once on release, then disarm until next press
+            if (KeyUpOnceArmed && ImGui.IsKeyReleased(k))
+            {
+                KeyUpOnceArmed = false;
+                return true;
+            }
+            return false;
+        }
+        if (IsKeyDownOnceTrigger)
+        {
+            // Re-arm when the user releases the key
+            if (ImGui.IsKeyReleased(k))
+                KeyDownOnceArmed = true;
+            // Fire once on press, then disarm until next release
+            if (KeyDownOnceArmed && ImGui.IsKeyPressed(k, false))
+            {
+                KeyDownOnceArmed = false;
+                return true;
+            }
+            return false;
+        }
+        return IsKeyUpTrigger ? ImGui.IsKeyReleased(k) : ImGui.IsKeyPressed(k, false);
+    }
+}
 
 /// <summary>
 /// Type of editor-placed 3D primitive.
@@ -20,7 +108,20 @@ public enum EditorPrimitiveType
     GlbReference,
     Camera,
     Light,
-    Sky
+    Sky,
+    Map2D,
+    /// <summary>2D player character: capsule collider + animated sprite from a
+    /// sprite-sheet clip. Spawned at the Start2D object's position in-game.</summary>
+    Player2D,
+    /// <summary>Player spawn marker. In preview/in-game the Player2D is placed here.</summary>
+    Start2D,
+    /// <summary>Animated sprite decoration: same sheet/clip rendering as Player2D but
+    /// with NO controller, NO physics, and NO camera attachment — pure visual. Drag a
+    /// clip box from the Asset Browser's Sprites folder onto the viewport to place one.</summary>
+    Sprite2D,
+    /// <summary>Camera start marker for 2D levels: preview/in-game cameras begin here
+    /// (position = camera center, Scale.Y>0 marker field CameraStartZoom = ortho zoom).</summary>
+    CameraStart2D
 }
 
 /// <summary>
@@ -212,6 +313,45 @@ public class TerrainPbrLayerData
         c.EmissionPath = EmissionPath == null ? null : PathHelpers.Resolve(EmissionPath);
         return c;
     }
+}/// <summary>Runtime render data for one Map2D parallax layer. The Map Editor panel
+/// pushes these onto <see cref="EditorObject.Map2dParallaxLayers"/> each time a layer is
+/// added/edited; <see cref="DrawMap2D"/> draws each as an upright textured quad at a
+/// world Z offset derived from the layer's ZPosition (positive = in front of the grid,
+/// negative = behind it), matching the sidescroller depth convention.</summary>
+public class MapParallaxRenderLayer
+{
+    public string Name = "";
+    public string ImagePath = "";
+    public bool IsVisible = true;
+    /// <summary>Depth factor: world-Z offset in tile cells. &gt; 0 = in front of the
+    /// grid, &lt; 0 = behind it.</summary>
+    public float ZPosition;
+    public float Alpha = 1f;
+    public bool TileHorizontal = true;
+    /// <summary>Scroll speed multiplier for the parallax preview: while the editor
+    /// camera pans, each layer slides horizontally by -camX × ScrollFactor — the same
+    /// rule the runtime background uses — so the depth illusion is visible while editing.
+    /// 0 = static, 1 = locked to the camera, 0.5 = half speed.</summary>
+    public float ScrollFactor = 0.5f;
+    /// <summary>GPU texture ID (owned/loaded by the Map Editor panel).</summary>
+    public uint TextureId;
+    /// <summary>Image size in pixels (natural texture size, used for auto sizing).</summary>
+    public int ImageWidth;
+    public int ImageHeight;
+    /// <summary>Quad width in pixels. 0 = auto: follow the map grid width.</summary>
+    public float WidthPx;
+    /// <summary>Quad height in pixels. 0 = auto: follow the map grid height.</summary>
+    public float HeightPx;
+    /// <summary>Horizontal texture repeats across the quad. 0 = auto (image shown once
+    /// per natural size; TileHorizontal still extends tiling across the grid).</summary>
+    public int RepeatX;
+    /// <summary>Vertical texture repeats across the quad. 0 = auto.</summary>
+    public int RepeatY;
+    /// <summary>Left offset in pixels from the grid's left edge (negative = extend left).</summary>
+    public float LeftPx;
+    /// <summary>Top offset in pixels pushing the quad's top edge DOWN from the grid's top
+    /// edge (0 = flush with grid top; negative = extend above the grid).</summary>
+    public float TopPx;
 }
 
 public unsafe class EditorObject
@@ -230,6 +370,250 @@ public unsafe class EditorObject
     public string? TexturePath { get; set; } = null;
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
+
+    // ── NPC dialogue binding (Dialogue System) ──
+    /// <summary>Dialogue asset id shown when the player presses the interact key (E)
+    /// within range. Empty = not an NPC (no prompt, no interaction). Set in the
+    /// Inspector; the asset itself lives in the Dialogue Editor.</summary>
+    public string NpcDialogueId { get; set; } = "";
+    /// <summary>Optional image (drag from Asset Browser) drawn above the NPC instead of
+    /// the text "!" indicator — quest marks, alert icons, any exclamation art.
+    /// Empty = the default text "!" bubble is drawn. Persisted with the NPC binding.</summary>
+    public string NpcAlertImagePath { get; set; } = "";
+
+    // ── Player2D: sprite animation + capsule collider ──
+    /// <summary>Sprite sheet name (from Sprite Editor) driving the player sprite.</summary>
+    public string Player2DSpriteSheet { get; set; } = "";
+    /// <summary>Animation clip name (from Sprite Editor) played on the player sprite.
+    /// Clip carries its own FPS/loop/reverse/speed settings. Doubles as the IDLE clip —
+    /// played whenever no action overrides it. ALL other states (Walk/Run/Jump/Attack/
+    /// custom) are configured through the Animation Actions system (Player2DActions).</summary>
+    public string Player2DAnimationClip { get; set; } = "";
+    /// <summary>Sprite height in world units. Width derives from the sheet's frame aspect.
+    /// Used as the BASE height reference. Each animation frame is scaled proportionally
+    /// to this height based on its native pixel size, so all animations render at the same
+    /// visual size regardless of their original frame dimensions (idle 64px, run 80px, etc.).</summary>
+    public float Player2DHeight { get; set; } = 2f;
+    // Per-sheet master-height normalization + render offsets live on SpriteSheet
+    // (Sprite Editor → Sheet Settings → Render Normalization) — shared by all objects
+    // using that sheet, serialized in sprites.sheets.json.
+    /// <summary>Capsule collider radius in world units.</summary>
+    public float Player2DCapsuleRadius { get; set; } = 0.35f;
+    /// <summary>Capsule collider total height in world units.</summary>
+    public float Player2DCapsuleHeight { get; set; } = 1.8f;
+    /// <summary>Capsule collider horizontal offset from the object position (world units).
+    /// With the left-bottom sprite anchor, the physics body usually needs shifting right
+    /// into the character's body — nudge X (and Y for tall/short art) until the capsule
+    /// hugs the visible character. Applied in BOTH the gizmo draw and the physics resolve.</summary>
+    public float Player2DCapsuleOffsetX { get; set; } = 0f;
+    /// <summary>Capsule collider vertical offset from the object position (world units).
+    /// Positive lifts the capsule base off the ground line (e.g. art feet drawn above
+    /// the anchor). Applied in BOTH the gizmo draw and the physics resolve.</summary>
+    public float Player2DCapsuleOffsetY { get; set; } = 0f;
+    /// <summary>Render the capsule outline (edit mode only — hidden in-game).</summary>
+    public bool Player2DShowCapsule { get; set; } = true;
+    /// <summary>Gravity acceleration (world units/s²) applied in preview/in-game.</summary>
+    public float Player2DGravity { get; set; } = 25f;
+    /// <summary>Runtime animation clock (seconds since play started). Editor ticks it too
+    /// so the idle animation previews live in the viewport. Resets on state switches so
+    /// each clip plays from its first frame.</summary>
+    public float Player2DAnimTime { get; set; }
+    /// <summary>Runtime state: true while the player has horizontal input (WALK clip),
+    /// false when standing still (IDLE clip). Set by Player2DSystem, read by DrawPlayer2D.</summary>
+    public bool Player2DMoving { get; set; }
+    /// <summary>Runtime facing: true = sprite drawn normally (assumes right-facing art),
+    /// false = mirrored horizontally so the character faces LEFT. Set by Player2DSystem.</summary>
+    public bool Player2DFacingRight { get; set; } = true;
+    /// <summary>Runtime physics velocity (Y only — sidescroller).</summary>
+    public float Player2DVelocityY { get; set; }
+    /// <summary>Current horizontal velocity (world units/s) — drives facing + walk/run anims.</summary>
+    public float Player2DVelocityX { get; set; }
+    /// <summary>Facing: 1 = right, -1 = left. Flipped automatically from Player2DVelocityX.</summary>
+    public float Player2DFacing { get; set; } = 1f;
+    /// <summary>True when standing on a collision tile this frame (grounded).
+    /// Defaults TRUE so edit mode (which never runs physics) treats the player as
+    /// standing — the locomotion resolver then picks Idle, not Jump.</summary>
+    public bool Player2DGrounded { get; set; } = true;
+
+    // ── Movement tuning (all live in the Inspector, used by Player2DSystem) ──
+    /// <summary>Horizontal walk speed (world units/s). Sensible platformer default ≈ 1 tile/s.
+    /// Raise Run Speed for a faster sprint (LeftShift).</summary>
+    public float Player2DMoveSpeed { get; set; } = 8f;
+    /// <summary>Horizontal run speed (world units/s) — used while LeftShift is held.</summary>
+    public float Player2DRunSpeed { get; set; } = 14f;
+
+    /// <summary>True while the run modifier (Shift) is held AND the player is actually
+    /// moving — drives the Walk↔Run animation action choice (transient, not persisted;
+    /// recomputed every physics tick by Player2DSystem).</summary>
+    public bool Player2DRunning { get; set; } = false;
+    /// <summary>Initial upward velocity on jump (world units/s). Keep modest so airtime is snappy.
+    /// With the default gravity (25) this gives ≈ 0.9s to apex then fall — raise Gravity if
+    /// you want even shorter airtime.</summary>
+    public float Player2DJumpForce { get; set; } = 9f;
+    /// <summary>Multiplier on Player2DGravity.</summary>
+    public float Player2DGravityScale { get; set; } = 1.6f;
+    /// <summary>Ground horizontal acceleration (world units/s²). High values give immediate,
+    /// non-slippery response (no ice-skating).</summary>
+    public float Player2DAcceleration { get; set; } = 200f;
+    /// <summary>Ground horizontal deceleration when no input (world units/s²). Keep ≥
+    /// Acceleration so stopping is as snappy as starting.</summary>
+    public float Player2DDeceleration { get; set; } = 220f;
+    /// <summary>0..1 — how much of ground acceleration applies while airborne.
+    /// Low values = no mid-air steering (classic platformer feel).</summary>
+    public float Player2DAirControl { get; set; } = 0.25f;
+    /// <summary>Grace period (s) after walking off a ledge where a jump still fires —
+    /// forgiving near-edge jumps. 0 = disabled (must be grounded the exact frame).</summary>
+    public float Player2DCoyoteTime { get; set; } = 0.1f;
+    /// <summary>Input buffer (s): a jump pressed slightly BEFORE landing still fires on
+    /// touchdown. 0 = disabled (press must land on the exact frame).</summary>
+    public float Player2DJumpBuffer { get; set; } = 0.12f;
+    /// <summary>0.05..1 — velocity multiplier applied ONCE when the jump key is released
+    /// mid-rise (short taps = short hops, hold = full height). 1 = disabled (fixed arc).</summary>
+    public float Player2DJumpCutMultiplier { get; set; } = 0.5f;
+
+    // Runtime (not persisted): countdowns + jump-cut latch for the params above.
+    /// <summary>Remaining coyote time this frame (refilled while grounded).</summary>
+    public float Player2DCoyoteTimer { get; set; }
+    /// <summary>Remaining jump-buffer time this frame (refilled while jump is pressed).</summary>
+    public float Player2DJumpBufferTimer { get; set; }
+    /// <summary>True once the current jump's height cut has been applied (reset on jump).</summary>
+    public bool Player2DJumpCutDone { get; set; } = true;
+    /// <summary>Previous-frame physical state of the jump key (runtime only, not saved).
+    /// Drives the press-edge detection in Player2DSystem so OS key-repeat cannot
+    /// spam jumps — one physical press = one jump, re-press to jump again.
+    /// Per-object so multiple Player2D instances don't steal each other's edges.</summary>
+    [JsonIgnore]
+    public bool Player2DJumpKeyWasDown { get; set; }
+
+    // ── Sprite2D: decorative animated sprite (same rendering as Player2D,
+    // no controller/physics/camera). Reuses the Player2D sheet/clip/height/offset
+    // fields — the sprite looks identical, it just doesn't move by itself. ──
+    /// <summary>Loop the clip (true) or hold the last frame (false).</summary>
+    public bool Sprite2DLoop { get; set; } = true;
+    /// <summary>Playback speed multiplier (1 = clip FPS as authored).</summary>
+    public float Sprite2DSpeed { get; set; } = 1f;
+    /// <summary>Playback offset in seconds (0 = start at frame 0). Useful to
+    /// desynchronize several fire/candle sprites sharing one clip.</summary>
+    public float Sprite2DStartOffset { get; set; }
+    /// <summary>Facing mirror (sprite art is assumed right-facing).</summary>
+    public bool Sprite2DFacingRight { get; set; } = true;
+    /// <summary>Emissive boost for per-sprite bloom/post-FX: 0 = unchanged, 1 = full
+    /// boost. Works by multiplying the sprite's color so only its BRIGHT pixels (fire,
+    /// candles, lava) rise above the Post FX bloom threshold and glow — dark pixels
+    /// (body, wood, background) stay below it. Per-sprite: each sprite can glow on its
+    /// own while everything else stays normal. Persisted with the scene.</summary>
+    public float Sprite2DGlow { get; set; } = 0f;
+    /// <summary>Color tint of the per-sprite glow (Sprite2DGlow): the boosted
+    /// (emissive) sprite color is multiplied by this, so the bloom takes the chosen    /// hue — e.g. blue for blue fire. White = natural sprite colors. Normalized so
+    /// its brightest channel is 1 at render time.</summary>
+    public Vector3 Sprite2DGlowColor { get; set; } = Vector3.One;
+    /// <summary>Player variant of the per-sprite glow (same mechanism).</summary>
+    public float Player2DGlow { get; set; } = 0f;
+    /// <summary>Color tint of the player glow (see Sprite2DGlowColor).</summary>
+    public Vector3 Player2DGlowColor { get; set; } = Vector3.One;
+    /// <summary>Organic flicker for the per-sprite glow: intensity pulses over time
+    /// (fire breathing). Off = steady glow. Sampled once per frame so multi-pass
+    /// draws stay consistent.</summary>
+    public bool Sprite2DGlowFlicker { get; set; }
+    /// <summary>Player variant of the glow flicker (same mechanism).</summary>
+    public bool Player2DGlowFlicker { get; set; }
+
+    /// <summary>Frame-gated flicker sample cache (see ComputeGlowBoost).</summary>
+    private int _glowFlickerGateFrame = -1;
+    private float _glowFlickerCache = 1f;
+
+    /// <summary>Emissive boost multiplier for per-sprite glow, including the organic
+    /// fire flicker when enabled: three out-of-phase sine layers over absolute engine
+    /// time make the brightness breathe unevenly (like flames) instead of pulsing
+    /// metronomically. Frame-rate independent; sampled once per frame so the editor
+    /// pass and any second pass in the same frame read the identical value.</summary>
+    private float ComputeGlowBoost(float glowAmount, bool flicker)
+    {
+        float boost = 1f + MathF.Max(0f, glowAmount) * 3f;
+        if (flicker && glowAmount > 0f)
+        {
+            if (_glowFlickerGateFrame != Glfw.FrameId)
+            {
+                // Per-object seed from the name — two fires never pulse in sync.
+                unchecked
+                {
+                    uint h = 2166136261u;
+                    string s = Name ?? string.Empty;
+                    foreach (char c in s) { h ^= c; h *= 16777619u; }
+                    float seed = (h & 0x7FFFFFFF) / (float)0x7FFFFFFF * 10f;
+
+                    float t = Glfw.PeekTime() * 9.3f + seed;
+                    _glowFlickerCache = 0.78f
+                        + 0.13f * MathF.Sin(t)
+                        + 0.06f * MathF.Sin(t * 2.71f + 1.9f)
+                        + 0.03f * MathF.Sin(t * 5.37f + 4.2f);
+                }                    _glowFlickerGateFrame = (int)Glfw.FrameId;
+            }
+            boost *= _glowFlickerCache;
+        }
+        return boost;
+    }
+    /// <summary>Facing mirror (sprite art is assumed right-facing).</summary>
+    /// <summary>Render layer for Sprite2D: higher layers draw ON TOP of lower ones.
+    /// Sprites are drawn sorted by this layer (ascending), and each step also nudges
+    /// the quad 0.01 world units closer to the camera (Position.Z + 0.01/layer) so the
+    /// ordering survives even when depth testing is enabled. Default 0 = base layer.</summary>
+    public int Sprite2DRenderLayer { get; set; }
+    /// <summary>Runtime playback clock (transient — not serialized).</summary>
+    public float Sprite2DAnimTime { get; set; }
+    /// <summary>Glfw.FrameId when the clock last advanced — DrawSprite2D can run
+    /// multiple times per rendered frame; the clock must advance once (transient).</summary>
+    private int _sprite2dLastClockFrame = -1;
+
+    // ── Camera-follow tuning (used by the Player2DSystem camera follow) ──
+    /// <summary>How fast the camera catches the target (higher = snappier).</summary>
+    public float CameraFollowSpeed { get; set; } = 6f;
+    /// <summary>Dead zone width in px — camera doesn't move while the player is inside it.</summary>
+    public float CameraDeadZoneWidth { get; set; } = 96f;
+    /// <summary>Dead zone height in px.</summary>
+    public float CameraDeadZoneHeight { get; set; } = 64f;
+    /// <summary>Camera rises only when the player climbs above this many px from the anchor.</summary>
+    public float CameraVerticalThreshold { get; set; } = 64f;
+    /// <summary>How fast the camera returns down to the player after a high climb.</summary>
+    public float CameraReturnSpeed { get; set; } = 3f;
+    /// <summary>Look-ahead distance in px toward the movement direction.</summary>
+    public float CameraLookAhead { get; set; } = 150f;
+    /// <summary>Optional per-camera 2D view offset (added after the follow/frame math).
+    /// Default (0,0,0) = no offset. Lets the user nudge the ortho viewport position.</summary>
+    public Vector3 CameraViewOffset { get; set; } = new(0, 0, 0);
+
+    // ── Animation action system ──
+    /// <summary>User-defined animation actions (Idle/Walk/... + custom). Persisted with the object.</summary>
+    public List<Player2DAction> Actions { get; set; } = new();
+    /// <summary>Currently playing action name ("" = base locomotion).</summary>
+    public string Player2DCurrentAction { get; set; } = "";
+    /// <summary>Runtime latch: the current StopOnFrameEnd action has finished and is
+    /// HOLDING its last frame — locomotion must not override until any key releases it
+    /// (the action's own key is ignored; a different action's key starts that action).
+    /// Not saved — editor-session state only.</summary>
+    [JsonIgnore] public bool Player2DActionHoldingEnd { get; set; }
+    /// <summary>Time inside the current action (reset on action change).</summary>
+    public float Player2DActionTime { get; set; }
+    /// <summary>Static: request all Player2D objects to respawn at their Start2D marker
+    /// on the NEXT update (set when in-game mode begins — objects may be re-created
+    /// asynchronously by the .ing reload that follows, so spawning must be deferred).</summary>
+    public static bool Player2DSpawnPending { get; set; }
+
+    /// <summary>Static camera-follow state: true once the follow camera snapped to its
+    /// start point for this play session (prevents a lerp swoop from the editor view).</summary>
+    public static bool CameraFollowInitialized { get; set; }
+
+    /// <summary>Ensure the default locomotion actions exist (Idle/Walk/Run/Jump/
+    /// Jump Start/Jump End/Fall). Jump covers rising+falling in one clip; Jump Start
+    /// /Jump End are the split variant: rise plays Jump Start (holds its last frame
+    /// while airborne), the descent switches to Jump End.</summary>
+    public void EnsureDefaultActions()
+    {
+        if (Actions.Count > 0) return;
+        string[] defaults = ["Idle", "Walk", "Run", "Jump", "Jump Start", "Jump End", "Fall"];
+        foreach (var n in defaults)
+            Actions.Add(new Player2DAction { Name = n, SpriteSheet = Player2DSpriteSheet, Clip = Player2DAnimationClip });
+    }
 
     // ── PBR material (Box/Sphere/flat-plane) — dedicated PBR shader with 7 optional
     //    maps + tuning. Every map is optional: missing maps keep neutral defaults
@@ -680,6 +1064,73 @@ public unsafe class EditorObject
     /// Persists across selection changes — each object remembers its own pivot override.</summary>
     public Vector3? GizmoPivotOverride { get; set; }
 
+    // ── 2D Map (only used when PrimitiveType == Map2D) ──
+    /// <summary>Reference to the Tilemap2D data this object renders.</summary>
+    [JsonIgnore] public Tilemap2D? Map2dTilemap { get; set; }
+    /// <summary>Tileset texture GPU ID (loaded from Map2dTilemap.TilesetImagePath).</summary>
+    [JsonIgnore] private uint _map2dTilesetTex = 0;
+    [JsonIgnore] private string _map2dTilesetPath = "";
+    /// <summary>Tileset grid layout.</summary>
+    public int Map2dTilesetCols { get; set; } = 8;
+    public int Map2dTilesetRows { get; set; } = 8;
+    public bool Map2dTilesetFlipV { get; set; } = false;
+    /// <summary>Whether to show the grid overlay on the map.</summary>
+    /// <summary>Show the tile grid overlay (editor-only aid). Automatically suppressed
+    /// while the IDE is in Play-in-Preview / in-game mode so the running game renders
+    /// clean without editor grid lines.</summary>
+    public bool Map2dShowGrid
+    {
+        get => _map2dShowGrid && !Editor2DAidsHidden;
+        set => _map2dShowGrid = value;
+    }
+    private bool _map2dShowGrid = true;
+
+    /// <summary>True while the IDE is in Play-in-Preview / in-game mode. Hides all
+    /// editor-only 2D aids (tile grid overlay, collision helper boxes) so the running
+    /// game renders clean. Toggled by the IDE's InGameMode setter.</summary>
+    public static bool Editor2DAidsHidden { get; set; }
+    /// <summary>Trigger area the editor currently highlights (set by the Map Editor's
+    /// Triggers list selection or a viewport click). Rendered brighter so the designer
+    /// sees exactly which volume is being edited. Reference comparison only.</summary>
+    public static TilemapTriggerArea? SelectedTriggerForHighlight { get; set; }
+    /// <summary>Grid overlay color (RGB = line color, A = line alpha). Used by
+    /// DrawMap2D so the Map Editor "Grid Color" picker really tints the 3D grid.</summary>
+    public Vector4 Map2dGridColor { get; set; } = new(0.4f, 0.5f, 0.68f, 0.5f);
+    /// <summary>
+    /// Which layer index this Map2D object renders (-1 = render all visible layers, >=0 = render single layer only).
+    /// </summary>
+    public int Map2dLayerIndex { get; set; } = -1;
+    /// <summary>
+    /// The ACTIVE (selected) layer in the Map Editor. When >= 0, only that layer's tiles
+    /// are baked into the mesh; non-active layers are NOT rendered even if visible. When
+    /// -1 the editor falls back to Map2dLayerIndex (all visible layers) for older scenes.
+    /// Kept separate from Map2dLayerIndex so the canonical plane stays at z=0 (paint/hover
+    /// math) while the rendered layer follows the editor selection.
+    /// </summary>
+    public int Map2dActiveLayer { get; set; } = -1;
+    /// <summary>Show FULL 3D collision helper boxes over tiles flagged for collision
+    /// (like Unreal's collision previews): one shaded box with bright edges per
+    /// collision tile, sticking OUT of the grid plane toward the viewer so the player
+    /// can "stand" on it. A tile whose ID has NO collision flag draws NO box —
+    /// no box = no collision.</summary>
+    public bool Map2dShowCollision { get; set; } = true;
+    /// <summary>Whether the map's TRIGGER areas render as editor aids (amber boxes).
+    /// Same pattern as Map2dShowCollision; persist via EditorObjectData → scene .ing.
+    /// Triggers are always hidden in-game (Editor2DAidsHidden) regardless of this flag.</summary>
+    public bool Map2dShowTriggers { get; set; } = true;
+    /// <summary>RGBA color of the collision helper boxes (default: translucent green).</summary>
+    public Vector4 Map2dCollisionColor { get; set; } = new(0.25f, 0.85f, 0.45f, 0.35f);
+    /// <summary>Parallax background/foreground layers to render with this map. Each layer
+    /// is a textured upright plane offset in world Z by its Y position (positive = in
+    /// front of the grid, negative = behind it). Pushed from the Map Editor panel.</summary>
+    [JsonIgnore] public List<MapParallaxRenderLayer>? Map2dParallaxLayers { get; set; }
+    /// <summary>Cached VAO/VBO for the tilemap mesh (rebuilt when tiles change).</summary>
+    [JsonIgnore] private uint _map2dVAO, _map2dVBO;
+    [JsonIgnore] private int _map2dVertCount = 0;
+    [JsonIgnore] private string _map2dMeshCacheKey = "";
+    /// <summary>Scratch VAO/VBO used to stream parallax layer quads (created lazily).</summary>
+    [JsonIgnore] private uint _parallaxVAO, _parallaxVBO;
+
     // ── Shader uniform locations (cached for Draw overloads) ──
 #pragma warning disable CS0414
     private int _modelLoc = -1, _viewLoc = -1, _projLoc = -1;
@@ -699,6 +1150,9 @@ public unsafe class EditorObject
         {
             EditorPrimitiveType.Plane => new Vector3(500f, 0.05f, 500f),
             EditorPrimitiveType.Camera => new Vector3(0.5f, 0.4f, 0.6f),
+            EditorPrimitiveType.Map2D => new Vector3(1f, 1f, 1f),
+            EditorPrimitiveType.Player2D => new Vector3(1f, 2f, 1f),
+            EditorPrimitiveType.Sprite2D => new Vector3(1f, 1f, 1f),
             _ => Vector3.One,
         };
         Color = type switch
@@ -710,6 +1164,10 @@ public unsafe class EditorObject
             EditorPrimitiveType.Camera => new Vector3(0.2f, 0.7f, 0.8f),
             EditorPrimitiveType.Light => new Vector3(1.0f, 0.85f, 0.3f),
             EditorPrimitiveType.Sky => new Vector3(0.5f, 0.7f, 1.0f),
+            EditorPrimitiveType.Map2D => new Vector3(0.8f, 0.8f, 0.9f),
+            EditorPrimitiveType.Player2D => new Vector3(0.2f, 0.9f, 0.4f),
+            EditorPrimitiveType.Sprite2D => new Vector3(0.95f, 0.6f, 0.2f),
+            EditorPrimitiveType.CameraStart2D => new Vector3(0.25f, 0.85f, 1f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
     }
@@ -900,6 +1358,12 @@ public unsafe class EditorObject
                 EditorPrimitiveType.GlbReference => new AABB(
                     new Vector3(-0.5f, -0.5f, -0.5f),
                     new Vector3( 0.5f,  0.5f,  0.5f)),
+                // Player2D/Start2D: feet-anchored capsule AABB — Position.Y is the
+                // capsule BOTTOM (matches DrawPlayer2DCapsule + Player2DSystem).
+                // Sprite2D reuses the same fields (selection box only — no physics).
+                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D or EditorPrimitiveType.CameraStart2D or EditorPrimitiveType.Sprite2D => new AABB(
+                    new Vector3(-Player2DCapsuleRadius, 0f, -Player2DCapsuleRadius),
+                    new Vector3( Player2DCapsuleRadius, Player2DCapsuleHeight,  Player2DCapsuleRadius)),
                 _ => new AABB(
                     new Vector3(-0.5f, -0.5f, -0.5f),
                     new Vector3( 0.5f,  0.5f,  0.5f)),
@@ -1063,6 +1527,22 @@ public unsafe class EditorObject
                 // Camera/Light/Sky markers are 2D billboard icons (drawn via Draw2DMarker) —
                 // no solid mesh (the camera shows a wireframe frustum gizmo instead).
                 // Keep _object3D null so they don't render as 3D boxes/spheres.
+                _vertexCache = null;
+                break;
+            }
+            case EditorPrimitiveType.Map2D:
+            {
+                // Map2D builds a custom quad mesh; tileset texture loaded separately.
+                _vertexCache = null;
+                break;
+            }
+            case EditorPrimitiveType.Player2D:
+            case EditorPrimitiveType.Start2D:
+            case EditorPrimitiveType.Sprite2D:
+            {
+                // Player/Start/Sprite markers have no solid mesh — the player renders
+                // as an animated sprite quad (DrawPlayer2D / DrawSprite2D) and all draw
+                // gizmo outlines via Draw2DMarker. Keep _object3D null.
                 _vertexCache = null;
                 break;
             }
@@ -1343,7 +1823,13 @@ public unsafe class EditorObject
         if (PbrUniforms.ParallaxScale >= 0) GL.Uniform1f(PbrUniforms.ParallaxScale, PbrParallaxScale);
 
         GL.BindVertexArray(_object3D!.VAO);
+        // ── Flat planes: single CCW quad → culled (invisible) from below. Draw PBR
+        //    planes two-sided like the derivative-TBN shader expects; boxes/spheres
+        //    are closed meshes and keep the scene's culling state untouched.
+        bool twoSided = PrimitiveType == EditorPrimitiveType.Plane;
+        if (twoSided) GL.Disable(Const.GL_CULL_FACE);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+        if (twoSided && GL.IsEnabled(Const.GL_CULL_FACE)) GL.Enable(Const.GL_CULL_FACE);
         GL.BindVertexArray(0);
 
         // ── Restore: main shader + its shadow bindings at units 6/7/8 (the main pass
@@ -1705,6 +2191,13 @@ public unsafe class EditorObject
 
             // Terrain enabled but no valid mesh (missing heightmap): fall back to the
             // flat plane mesh so the object stays visible and editable.
+
+            // ── 2D Map: render as textured plane with tile images ──
+            if (PrimitiveType == EditorPrimitiveType.Map2D)
+            {
+                DrawMap2D(modelLoc, viewLoc, projLoc, sunDirLoc, lightColorLoc, viewPosLoc, useFogLoc, fogColorLoc, camera, light, csm);
+                return;
+            }
 
             if (_object3D == null) return;
 
@@ -2157,7 +2650,10 @@ public unsafe class EditorObject
     public unsafe void Draw2DMarker(Camera camera)
     {
         if (!IsVisible || (PrimitiveType != EditorPrimitiveType.Camera
-            && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky)) return;
+            && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky
+            && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D
+            && PrimitiveType != EditorPrimitiveType.Sprite2D
+            && PrimitiveType != EditorPrimitiveType.CameraStart2D)) return;
 
         // Derive a camera-facing basis from Front (Right/Up fields can be stale in fly
         // mode). Same upRef fallback as the light/sky gizmos so the icon always faces you.
@@ -2189,6 +2685,81 @@ public unsafe class EditorObject
                 float c = MathF.Cos(a), s = MathF.Sin(a);
                 Line(P(c * 0.8f, s * 0.8f), P(c * 1.25f, s * 1.25f));
             }
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Player2D)
+        {
+            // Show Capsule ON → draw the REAL physics capsule (world-upright, exact
+            // collider shape — this is the visualization the toggle controls).
+            // OFF → fall back to a SMALL billboarded capsule GLYPH so the marker stays
+            // visible/selectable without masquerading as the collider.
+            if (Player2DShowCapsule && !Editor2DAidsHidden)
+            {
+                DrawPlayer2DCapsule(camera, new Vector3(0.2f, 0.95f, 1f), 0.95f);
+            }
+            else
+            {
+                const int glyphSegs = 12;
+                var gprev = P(0f, -1f);
+                for (int i = 1; i <= glyphSegs; i++)
+                {
+                    float t = i / (float)glyphSegs;
+                    float half = t < 0.25f ? MathF.Sqrt(1f - MathF.Pow((0.25f - t) / 0.25f, 2f))
+                               : t > 0.75f ? MathF.Sqrt(1f - MathF.Pow((t - 0.75f) / 0.25f, 2f))
+                               : 1f;
+                    var gcur = P(half * 0.45f, -1f + t * 2f);
+                    Line(gprev, gcur);
+                    gprev = gcur;
+                }
+            }
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Sprite2D)
+        {
+            // Sprite icon: film-strip glyph (rectangle + two sprocket dots) — pure
+            // editor aid. Hidden in-game via Editor2DAidsHidden (manager gate).
+            Line(P(-0.7f, -0.45f), P(0.7f, -0.45f));
+            Line(P(0.7f, -0.45f), P(0.7f, 0.55f));
+            Line(P(0.7f, 0.55f), P(-0.7f, 0.55f));
+            Line(P(-0.7f, 0.55f), P(-0.7f, -0.45f));
+            Line(P(-0.45f, 0.2f), P(-0.45f, -0.1f));
+            Line(P(0.45f, 0.2f), P(0.45f, -0.1f));
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Start2D)
+        {
+            // Start icon: downward arrow into a ground line ("player spawns here").
+            Line(P(-0.7f, -0.5f), P(0.7f, -0.5f));   // ground
+            Line(P(0f, 0.8f), P(0f, 0.15f));         // arrow shaft
+            Line(P(-0.35f, 0.3f), P(0f, 0.15f));     // arrow head left
+            Line(P(0.35f, 0.3f), P(0f, 0.15f));      // arrow head right
+            Line(P(-0.35f, -0.35f), P(-0.35f, -0.5f)); // spawn bracket left
+            Line(P(0.35f, -0.35f), P(0.35f, -0.5f));   // spawn bracket right
+        }
+        else if (PrimitiveType == EditorPrimitiveType.CameraStart2D)
+        {
+            // Camera start icon: eye glyph (lens circle + pupil + view rays).
+            const int eyeSegs = 16;
+            var eprev = P(MathF.Cos(0f), MathF.Sin(0f));
+            for (int i = 1; i <= eyeSegs; i++)
+            {
+                float a = i * MathF.PI * 2f / eyeSegs;
+                var ecur = P(MathF.Cos(a), MathF.Sin(a));
+                Line(eprev, ecur);
+                eprev = ecur;
+            }
+            const int pupilSegs = 10;
+            var pprev = P(0.3f * MathF.Cos(0f), 0.3f * MathF.Sin(0f));
+            for (int i = 1; i <= pupilSegs; i++)
+            {
+                float a = i * MathF.PI * 2f / pupilSegs;
+                var pcur = P(0.3f * MathF.Cos(a), 0.3f * MathF.Sin(a));
+                Line(pprev, pcur);
+                pprev = pcur;
+            }
+            // View rays: left + right
+            Line(P(-1.3f, 0f), P(-0.85f, 0f));
+            Line(P(0.85f, 0f), P(1.3f, 0f));
+            // Ground dashes under the icon
+            Line(P(-0.6f, -1.1f), P(-0.2f, -1.1f));
+            Line(P(0.2f, -1.1f), P(0.6f, -1.1f));
         }
         else if (PrimitiveType == EditorPrimitiveType.Camera)
         {
@@ -2246,6 +2817,931 @@ public unsafe class EditorObject
         }
 
         DrawEditorLines(verts, camera);
+    }
+
+    /// <summary>Draw the Player2D capsule outline world-upright (NOT billboarded) so it
+    /// exactly matches the physics capsule: two semicircle caps + two side lines.
+    /// The capsule is FEET-ANCHORED: Position.Y is the capsule bottom (same anchor as
+    /// the sprite quad), matching Player2DSystem's AABB. Spawn places the feet.</summary>
+    private void DrawPlayer2DCapsule(Camera camera, Vector3 lineColor, float alpha)
+    {
+        float r = Player2DCapsuleRadius;
+        float H = Player2DCapsuleHeight;
+        // Capsule offset: shifts the whole capsule relative to the object position so
+        // the collider can hug the visible character (left-bottom anchor ⇒ the body
+        // usually sits right of Position.X). Same offset is applied by Player2DSystem
+        // physics — the gizmo always matches the real collision body.
+        float capX = Position.X + Player2DCapsuleOffsetX;
+        float baseY = Position.Y + Player2DCapsuleOffsetY;
+        // Cap centers: bottom cap at baseY + r, top cap at baseY + H - r. The straight
+        // cylinder wall spans between the two centers; the semicircle caps bulge OUTWARD
+        // (down at the feet, up at the head). Clamp for the degenerate H < 2r pill.
+        float cBot = baseY + r;
+        float cTop = baseY + MathF.Max(H - r, r);
+
+        var verts = new List<Vector3>(64);
+        const int segs = 12;
+        // Top cap: 180° bulging UP (sin 0..PI is positive).
+        var prev = new Vector3(capX + r, cTop, Position.Z);
+        for (int i = 1; i <= segs; i++)
+        {
+            float a = i * MathF.PI / segs; // 0..PI (right → left over the top)
+            var cur = new Vector3(capX + MathF.Cos(a) * r, cTop + MathF.Sin(a) * r, Position.Z);
+            verts.Add(prev); verts.Add(cur); prev = cur;
+        }
+        // Bottom cap: 180° bulging DOWN (sin PI..2PI is negative).
+        prev = new Vector3(capX - r, cBot, Position.Z);
+        for (int i = 1; i <= segs; i++)
+        {
+            float a = MathF.PI + i * MathF.PI / segs; // PI..2PI (left → right under the bottom)
+            var cur = new Vector3(capX + MathF.Cos(a) * r, cBot + MathF.Sin(a) * r, Position.Z);
+            verts.Add(prev); verts.Add(cur); prev = cur;
+        }
+        // Cylinder side lines connect the cap centers at x = ±r.
+        verts.Add(new Vector3(capX - r, cBot, Position.Z));
+        verts.Add(new Vector3(capX - r, cTop, Position.Z));
+        verts.Add(new Vector3(capX + r, cBot, Position.Z));
+        verts.Add(new Vector3(capX + r, cTop, Position.Z));
+
+        bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+        GL.Disable(Const.GL_DEPTH_TEST);
+        Terrains.TerrainChunk.DrawLineSegments(verts, lineColor, camera, alpha);
+        if (depth) GL.Enable(Const.GL_DEPTH_TEST);
+    }
+
+    // ── Player2D sprite rendering (animated sheet frame on an upright quad) ──
+    private uint _player2dVAO, _player2dVBO;
+    /// <summary>Name of the clip DrawPlayer2D played last frame — used to detect idle ↔
+    /// walk switches and restart the animation clock from frame 0 (transient).</summary>
+    private string? _player2dLastClip;
+    /// <summary>Last action name emitted by <see cref="LogActiveAnimChange"/> — dedups
+    /// the anim log so it prints only on transitions (transient).</summary>
+    private string? _player2dLastLoggedAction;
+    /// <summary>Glfw.FrameId when the animation clock last advanced — DrawPlayer2D can run
+    /// multiple times per rendered frame (editor pass + per camera); the clock must only
+    /// advance once or clips play too fast (transient).</summary>
+    private int _player2dLastClockFrame = -1;
+
+    /// <summary>Look up the Sprite Editor's sheet+clip by name via the IDEBridge static
+    /// registry (set every frame by SpriteEditorPanel.SyncToBridge). Returns false when
+    /// the sheet/clip no longer exists.</summary>
+    public bool TryGetPlayer2DClip(out SpriteSheet? sheet, out AnimationClip2D? clip)
+    {
+        sheet = null; clip = null;
+        return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
+    }
+
+    /// <summary>Console-log which animation the player is actually playing — fires ONLY
+    /// when the active action changes (dedup), so it is safe to call every frame.
+    /// Shows the action name, the RESOLVED clip + sheet (what really renders), and the
+    /// physics state that produced it. Debug aid for Walk/Run/Jump wiring issues.</summary>
+    private void LogActiveAnimChange()
+    {
+        if (Player2DCurrentAction == _player2dLastLoggedAction) return;
+        _player2dLastLoggedAction = Player2DCurrentAction;
+        string label = string.IsNullOrEmpty(Player2DCurrentAction) ? "(base clip)" : Player2DCurrentAction;
+        var resolved = GetActiveActionClip(out _, out var logSheet);
+        if (resolved != null && logSheet != null)
+            Console.WriteLine($"[Player2D] Anim: {label} — clip '{resolved.Name}' @ '{logSheet.Name}' ({resolved.FPS} FPS, velX {Player2DVelocityX:F2}, shiftRun {Player2DRunning})");
+        else
+            Console.WriteLine($"[Player2D] Anim: {label} — clip NOT resolvable (velX {Player2DVelocityX:F2}, shiftRun {Player2DRunning})");
+    }
+
+    /// <summary>Which locomotion action the player's CURRENT PHYSICS STATE wants
+    /// (Idle/Walk/Run/Jump/Jump Start/Jump End/Fall). Shared by ResolveLocomotion
+    /// Action and the non-loop release check in DrawPlayer2D.</summary>
+    private string ComputeLocomotionDesired()
+    {
+        bool moving = MathF.Abs(Player2DVelocityX) > 0.1f;
+        bool grounded = Player2DGrounded;
+        if (!grounded && Player2DVelocityY < -0.5f)
+        {
+            // Descending: prefer the split "Jump End" action when it has its own
+            // clip; otherwise fall back to the single "Jump"/"Fall" actions.
+            bool hasJumpEnd = HasActionOwnClip("Jump End");
+            return hasJumpEnd ? "Jump End"
+                : HasActionOwnClip("Fall") ? "Fall"
+                : "Jump";
+        }
+        if (!grounded)
+        {
+            // Rising: prefer the split "Jump Start" action when it has its own clip;
+            // its non-loop playback holds the LAST frame while still rising.
+            bool hasJumpStart = HasActionOwnClip("Jump Start");
+            return hasJumpStart ? "Jump Start"
+                : HasActionOwnClip("Jump") ? "Jump"
+                : "Fall";
+        }
+        if (moving) return Player2DRunning && HasActionOwnClip("Run") ? "Run" : "Walk";
+        return "Idle";
+    }
+
+    /// <summary>True when the named action exists AND resolves to its own clip (not a
+    /// fallback to the player's base clip). Used to decide between the split Jump
+    /// Start/Jump End actions and the single Jump/Fall actions.</summary>
+    public bool HasActionOwnClip(string name)
+    {
+        var act = Actions.FirstOrDefault(a => a.Name == name);
+        if (act == null) return false;
+        string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? Player2DSpriteSheet : act.SpriteSheet;
+        string clipName = string.IsNullOrEmpty(act.Clip) ? Player2DAnimationClip : act.Clip;
+        if (string.IsNullOrEmpty(clipName)) return false;
+        // "Own clip" = the clip name differs from the player's base clip (a Jump Start
+        // action still pointing at the idle clip is not a real jump-start animation).
+        return !string.IsNullOrEmpty(act.Clip) && act.Clip != Player2DAnimationClip
+            && IDEBridge.TryGetSpriteClip(sheetName, clipName, out _, out var clip) && clip != null;
+    }
+
+    /// <summary>Resolve the base (idle) clip to sample when no action is active.
+    /// State animations (Walk/Run/Jump/custom) override it through the Animation Actions
+    /// system (GetActiveActionClip).</summary>
+    private bool TryGetPlayer2DActiveClip(out SpriteSheet? sheet, out AnimationClip2D? clip)
+    {
+        return TryGetPlayer2DClip(out sheet, out clip);
+    }
+
+    /// <summary>Auto-select the locomotion action that matches the current state (idle when
+    /// grounded+still, walk/run by velocity, jump/fall by vertical state). Called every
+    /// frame so the character switches action smoothly without user input. Actions that
+    /// don't bind a key are locomotion candidates; user-bound actions (Attack/J/...)
+    /// are only started by their key or by priority-gated events (Jump on takeoff).
+    /// 
+    /// When a key-bound action is active and its key is released, the action is cleared so
+    /// locomotion can take over (e.g. Run bound to J: hold J = Run, release J = Idle/Walk).
+    /// Pass <paramref name="keyStillHeld"/> = true when the bound key is currently down.
+    /// Returns true when the action changed this frame.</summary>
+    public bool ResolveLocomotionAction(bool keyStillHeld)
+    {
+        // If a key-bound action is currently active, check whether its key is still
+        // held. If released (and the action is loopable), let locomotion take over.
+        // Non-loop key-bound actions release on their own via the action-clock check in
+        // DrawPlayer2D; here we only handle the loop case (e.g. Run bound to J while held).
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
+            {
+                if (!keyStillHeld && cur.Loop)
+                {
+                    // Key released while a looping key-bound action was active — fall back
+                    // to locomotion. Clears the action; the next frame's locomotion switch
+                    // will pick Idle/Walk/Run based on state.
+                    Player2DCurrentAction = "";
+                    Player2DActionTime = 0f;
+                    Player2DActionHoldingEnd = false;
+                }
+                return false; // don't override a key-bound action (held or not)
+            }
+            // StopOnFrameEnd hold: the finished action freezes on its last frame —
+            // locomotion must NOT override it here. The hold releases only via the
+            // key scan in DrawPlayer2D (own key ignored, different action key starts).
+            if (cur != null && !cur.Loop && cur.StopOnFrameEnd && Player2DActionHoldingEnd)
+                return false;
+        }
+
+        string desired = ComputeLocomotionDesired();
+
+        if (desired == Player2DCurrentAction) return false;
+        var act = Actions.FirstOrDefault(a => a.Name == desired);
+        if (act == null) return false;
+
+        // Auto-fill the action's clip from the player's current clip when the sheet
+        // matches (designer-friendly: one sheet, one clip name per action).
+        if (string.IsNullOrEmpty(act.SpriteSheet) || act.SpriteSheet == Player2DSpriteSheet)
+        {
+            if (string.IsNullOrEmpty(act.SpriteSheet))
+                act.SpriteSheet = Player2DSpriteSheet;
+            if (string.IsNullOrEmpty(act.Clip))
+                act.Clip = Player2DAnimationClip;
+        }
+
+        // When switching between actions that share the same clip (e.g. Idle↔Walk↔Run
+        // all using the player's base clip), keep the action clock running so the frame
+        // doesn't snap back to 0 — that snap is the "blink" on transition. Only reset the
+        // clock when the clip actually changes (different action clip) or when entering a
+        // new non-locomotion action (Jump/Fall/custom).
+        bool sameClip = act.Clip == Player2DAnimationClip || (string.IsNullOrEmpty(act.Clip) && string.IsNullOrEmpty(Player2DAnimationClip));
+        Player2DCurrentAction = desired;
+        Player2DActionHoldingEnd = false;
+        if (!sameClip)
+            Player2DActionTime = 0f;
+        return true;
+    }
+
+    /// <summary>Advance the animation clock and draw the player as an upright textured
+    /// quad showing the current clip frame. Works in edit mode (preview) and in-game.
+    /// Called from Draw() after the Map2D branch so the player draws over the level.</summary>
+    public unsafe void DrawPlayer2D(Camera camera)
+    {
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
+        if (!TryGetPlayer2DActiveClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+        // Debug aid: print which animation is active whenever it changes (dedup'd).
+        LogActiveAnimChange();
+
+        // ── Animation action system: a bound action with an own clip overrides the base clip. ──
+        // DrawPlayer2D still owns the clock (single source of truth) — but when an action is
+        // playing we keep its clock separate (Player2DActionTime) so the base idle clock
+        // doesn't skip while actions fire.
+        // Auto-switch locomotion action (idle/walk/run/jump/fall) to match current state;
+        // pick up before resolving the clip so the action's auto-filled clip is used.
+        // In edit mode we can check the key directly.
+        bool keyHeld = false;
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
+            {
+                if (Enum.TryParse<ImGuiKey>(cur.KeyBinding, out var k) && k != ImGuiKey.None)
+                    // Trigger-aware: a KeyUp action "holds" while the key stays RELEASED
+                    // (pressing it again cancels), matching the update-pass scan.
+                    keyHeld = cur.IsKeyUpTrigger ? !ImGui.IsKeyDown(k) : ImGui.IsKeyDown(k);
+            }
+        }
+        ResolveLocomotionAction(keyHeld);
+
+        var actionClip = GetActiveActionClip(out var activeAction, out var actionSheet);
+        bool actionActive = actionClip != null;
+        if (actionClip != null)
+        {
+            // Advance the ACTION clock while an action plays. The frame below is
+            // ALWAYS computed from Player2DActionTime — advancing any other clock
+            // here desyncs the two and the frame freezes on index 0 (the idle bug).
+            // Continuity across Idle↔Walk↔Run is preserved because ResolveLocomotion
+            // Action only resets Player2DActionTime when the clip actually changes
+            // (same-clip switches keep the clock running — the "no blink" fix).
+            // Frame-gated like the base clock below — DrawPlayer2D can run multiple
+            // times per rendered frame (editor pass + per camera).
+            if (_player2dLastClockFrame != Glfw.FrameId)
+            {
+                _player2dLastClockFrame = Glfw.FrameId;
+                // StopOnFrameEnd hold: clamp to the clip end so the time never runs
+                // away — the frame index below then stays pinned on the LAST frame.
+                float newT = Player2DActionTime + Glfw.PeekDeltaTime();
+                Player2DActionTime = (Player2DActionHoldingEnd && newT > actionClip.Duration)
+                    ? actionClip.Duration : newT;
+            }
+            // Non-looping actions release when finished — BUT only when the physics
+            // state no longer wants this action. Locomotion-driven non-loop actions
+            // (Jump Start/Jump End) must HOLD their last frame: releasing them while
+            // the state still matches makes the resolver re-pick the same action next
+            // frame, the clock resets, and the clip replays — a fake loop even with
+            // Loop = false. The frame index below already clamps past the end.
+            if (activeAction != null && !activeAction.Loop && Player2DActionTime >= actionClip.Duration)
+            {
+                // StopOnFrameEnd: latch the hold instead of clearing — the anim stays
+                // frozen on its last frame until any key releases it (scan below).
+                if (activeAction.StopOnFrameEnd)
+                {
+                    Player2DActionHoldingEnd = true;
+                }
+                else if (ComputeLocomotionDesired() != activeAction.Name)
+                {
+                    Player2DCurrentAction = "";
+                }
+            }
+
+            // ── Hold release: ANY key returns the player to locomotion ──
+            // While a StopOnFrameEnd action holds its last frame: movement / jump keys
+            // clear the action so the resolver picks Idle/Walk/Run; a DIFFERENT action's
+            // key clears AND starts that action. The action's OWN key is ignored
+            // (no same-key replay) — only another action can follow.
+            if (Player2DActionHoldingEnd)
+            {
+                var holding = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+                bool released = false;
+                // Movement / jump: any of these breaks the hold back to locomotion.
+                if (ImGui.IsKeyPressed(ImGuiKey.A) || ImGui.IsKeyPressed(ImGuiKey.D)
+                    || ImGui.IsKeyPressed(ImGuiKey.W) || ImGui.IsKeyPressed(ImGuiKey.S)
+                    || ImGui.IsKeyPressed(ImGuiKey.LeftArrow) || ImGui.IsKeyPressed(ImGuiKey.RightArrow)
+                    || ImGui.IsKeyPressed(ImGuiKey.Space) || ImGui.IsKeyPressed(ImGuiKey.UpArrow))
+                {
+                    released = true;
+                }
+                // Action keys: own key ignored (validation), different key starts it.
+                if (!released)
+                {
+                    foreach (var a in Actions)
+                    {
+                        if (string.IsNullOrEmpty(a.KeyBinding) || a.KeyBinding == "None") continue;
+                        if (a.Name == holding?.Name) continue; // same-key: no replay
+                        if (Enum.TryParse<ImGuiKey>(a.KeyBinding, out var ak) && ak != ImGuiKey.None
+                            && a.KeyTriggered(ak)) // trigger-aware: KeyUp actions start on release
+                        {
+                            released = true;
+                            Player2DActionHoldingEnd = false;
+                            Player2DCurrentAction = "";
+                            Player2DActionTime = 0f;
+                            TryStartAction(a.Name);
+                            break;
+                        }
+                    }
+                }
+                if (released && Player2DActionHoldingEnd)
+                {
+                    // Movement/jump release: drop to locomotion (resolver picks next frame).
+                    Player2DActionHoldingEnd = false;
+                    Player2DCurrentAction = "";
+                    Player2DActionTime = 0f;
+                }
+            }
+        }
+
+        // Resolve the sheet image + grid. The bridge's registry carries a live texture.
+        // When an ACTION is active, sample the ACTION's sheet texture — walk/run clips
+        // usually live on a different sheet than idle, and sampling run frame indices
+        // against the idle sheet's texture renders the wrong (or no) animation.
+        var drawSheet = actionClip != null && actionSheet != null ? actionSheet : sheet;
+        if (!IDEBridge.TryGetSpriteSheetTexture(drawSheet.Name, out uint texId, out int imgW, out int imgH))
+            return;
+        if (texId == 0) return;
+
+        // Advance the animation clock HERE (once per frame per player) — this is the
+        // single source of truth so the sprite animates in edit mode too. The clock
+        // RESETS when the active clip changes (idle ↔ walk) so each state starts on
+        // its first frame instead of resuming mid-cycle. While an action is active,
+        // its own clock (Player2DActionTime) advances instead of the base clock.
+        if (!actionActive)
+        {
+            string activeClipName = sheet.Name + "/" + clip.Name;
+            if (!string.Equals(_player2dLastClip, activeClipName, StringComparison.Ordinal))
+            {
+                _player2dLastClip = activeClipName;
+                Player2DAnimTime = 0f;
+            }
+            // Advance ONCE per frame even though DrawPlayer2D may run multiple times
+            // (editor pass + one per camera): gate on the central loop's frame id.
+            // PeekDeltaTime() is a read-only repeat — without this gate both passes
+            // would add the same dt and play every clip at 2× speed.
+            if (_player2dLastClockFrame != Glfw.FrameId)
+            {
+                _player2dLastClockFrame = Glfw.FrameId;
+                Player2DAnimTime += Glfw.PeekDeltaTime();
+            }
+        }
+
+        // Frame index: from the action clock (honoring the ACTION's loop flag without
+        // mutating the shared clip) or the base locomotion clock.
+        int frameIdx;
+        if (actionClip != null)
+        {
+            float frameDur = 1f / MathF.Max(0.01f, actionClip.FPS * actionClip.SpeedMultiplier);
+            int f = (int)(Player2DActionTime / frameDur);
+            int count = actionClip.FrameIndices.Count;
+            if (activeAction!.Loop && count > 0)
+                f = ((f % count) + count) % count;
+            else
+                f = Math.Clamp(f, 0, Math.Max(0, count - 1));
+            frameIdx = count > 0 ? actionClip.FrameIndices[f] : 0;
+        }
+        else
+        {
+            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        }
+        // Past-sheet clamp: a frame index beyond the sheet's own frame list/grid would
+        // sample UVs OUTSIDE the texture (empty space → the sprite silently VANISHES,
+        // e.g. a death clip authored for 10 frames while the PNG only contains 8).
+        // Clamp to the last VALID frame so the pose freezes instead of disappearing.
+        if (drawSheet.CustomFrames != null)
+        {
+            if (drawSheet.CustomFrames.Count > 0 && frameIdx >= drawSheet.CustomFrames.Count)
+                frameIdx = drawSheet.CustomFrames.Count - 1;
+        }
+        else
+        {
+            int gridFrames = drawSheet.Columns * drawSheet.Rows;
+            if (gridFrames > 0 && frameIdx >= gridFrames)
+                frameIdx = gridFrames - 1;
+        }
+        var (uvMinRaw, uvMaxRaw) = drawSheet.GetFrameUV(frameIdx);
+        // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
+        // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. Raw uvMin.Y is the
+        // frame BOTTOM (small raw v = lower in the flipped convention) → after the
+        // 1-v conversion it becomes the LARGER GL v, so:
+        //   frame bottom → svBot (mapped to the quad's bottom vertex)
+        //   frame top    → svTop (mapped to the quad's top vertex)
+        // Crossing these two makes the sprite render upside down.
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
+
+        // Facing: sprite art is assumed right-facing. Facing left → swap U so the frame
+        // mirrors horizontally (per-object runtime state, never saved to disk).
+        // This is the ONLY mirror — do not swap U again at the vertex build below,
+        // a second swap cancels this one and the sprite would never face left.
+        if (!Player2DFacingRight)
+            (su0, su1) = (su1, su0);
+
+        // ── Sizing: SAVED-CLIP snapshot only — sheet values never reach the viewport ──
+        // The Render Normalization panel (Master W/H + Offset) is a SPRITE EDITOR tool:
+        // it exists there purely to align frames while authoring. Once the clip is
+        // saved, the clip carries its own snapshot (master W/H + base offsets) and the
+        // viewport renders from that: pxToWorld = SpriteHeight / masterH, the frame
+        // drawn AS-IS (native px), centered on Position.X with its bottom on
+        // Position.Y, nudged by the clip's base offsets + this frame's own offsets.
+        // A clip with no snapshot (never saved since this feature) renders native size.
+        float cellH = drawSheet.FrameHeight > 0 ? drawSheet.FrameHeight : drawSheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = drawSheet.FrameWidth > 0 ? drawSheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (drawSheet.CustomFrames != null && frameIdx < drawSheet.CustomFrames.Count)
+        {
+            drawFrame = drawSheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+        // ONLY the playing clip's snapshot — no sheet fallback in the viewport.
+        AnimationClip2D? sizingClip = actionClip ?? clip;
+        float snapH = sizingClip?.MasterHeight ?? 0f;
+        bool normalized = snapH > 0f;
+        float pxToWorld;
+        if (normalized)
+            pxToWorld = Player2DHeight / snapH;
+        else
+            pxToWorld = Player2DHeight / cellH; // unsaved clip → native proportions
+        float w = MathF.Max(0.05f, cellW * pxToWorld);   // frame as-is (native px)
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Player2DFacingRight ? 1f : -1f;
+        // Base offsets come from the clip snapshot only; sheet offsets don't apply here.
+        float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+        // Render AS-IS: centered on Position.X, bottom on Position.Y. The capsule
+        // (offset 0) centers on the same axis — sprite and collider align.
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
+        float z = Position.Z + 0.05f;
+
+        EnsureMap2DShader();
+        if (_map2dShader == 0) return;
+
+        GL.UseProgram(_map2dShader);
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+        GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+        GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+        var identity = Matrix4x4.Identity;
+        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
+
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+        GL.Uniform1i(_map2dLocTex, 0);
+        GL.Enable(Const.GL_BLEND);
+        GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+        bool cull = GL.IsEnabled(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_CULL_FACE);
+        bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+
+        // Two triangles in WORLD space (identity model): pos(3) uv(2) tint(4).
+        // The horizontal mirror was already applied to su0/su1 above (single flip
+        // via Player2DFacingRight) — use them directly. Swapping again here would
+        // cancel the first flip (sprite stuck facing right when moving left).
+        float uL = su0;
+        float uR = su1;
+        float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
+        // Per-sprite emissive boost (Player2DGlow): multiply the color so the
+        // sprite's BRIGHT pixels (fire/candle/lava) rise above the Post FX bloom
+        // threshold and glow — dark pixels stay below it. Boost 0-4 (Glow 0-1
+        // × 4) is enough to clear any reasonable threshold without clipping the
+        // whole sprite to white (tone mapping rolls the excess off filmically).
+        if (Player2DGlow > 0f)
+        {
+            float boost = ComputeGlowBoost(Player2DGlow, Player2DGlowFlicker);
+            // Glow tint: multiply the boosted color by the normalized tint so the
+            // bloom takes its hue (white = unchanged). Bright pixels exceed the
+            // bloom threshold in the tint color — e.g. blue fire.
+            var gtc = Player2DGlowColor;
+            float gMax = MathF.Max(gtc.X, MathF.Max(gtc.Y, gtc.Z));
+            if (gMax > 0f) gtc = new Vector3(gtc.X / gMax, gtc.Y / gMax, gtc.Z / gMax);
+            tR *= boost * gtc.X; tG *= boost * gtc.Y; tB *= boost * gtc.Z;
+        }
+        var verts = stackalloc Map2DVertex[6]
+        {
+            new(x0, y0, z, uL, svBot, tR, tG, tB, tA),
+            new(x1, y0, z, uR, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, uR, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, uL, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, uR, svTop, tR, tG, tB, tA),
+            new(x0, y1, z, uL, svTop, tR, tG, tB, tA),
+        };
+
+        if (_player2dVAO == 0)
+        {
+            uint vao = 0, vbo = 0;
+            GL.GenVertexArrays(1, &vao);
+            GL.BindVertexArray(vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+            GL.BindVertexArray(0);
+            _player2dVAO = vao; _player2dVBO = vbo;
+        }
+
+        GL.BindVertexArray(_player2dVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
+        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+        GL.BindVertexArray(0);
+
+        if (depth) GL.Enable(Const.GL_DEPTH_TEST);
+        if (cull) GL.Enable(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_BLEND);
+        GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+        // Collider guide in edit mode (hidden in-game via Editor2DAidsHidden).
+        // No master-box outline here: the saved clip's sizing IS the render — the
+        // master/reference box stays a Sprite Editor-only visualization.
+        if (Player2DShowCapsule && !Editor2DAidsHidden)
+        {
+            DrawPlayer2DCapsule(camera, new Vector3(0.2f, 0.95f, 1f), 0.9f);
+        }
+
+        // Restore main shader.
+        GL.UseProgram(Shader.GetShaderProgram());
+    }
+
+    /// <summary>Draw a Sprite2D: the SAME animated-sheet rendering as DrawPlayer2D
+    /// (saved-clip snapshot sizing, clip offsets, UV flip fix) but with NO controller,
+    /// NO physics and NO camera attachment — a pure decorative visual. Loops its clip
+    /// forever (or holds the last frame when Sprite2DLoop = false).</summary>
+    public unsafe void DrawSprite2D(Camera camera)
+    {
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sprite2D) return;
+        if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out uint texId, out int _, out int _))
+            return;
+        if (texId == 0) return;
+
+        // Clock: frame-gated like the player clock (DrawSprite2D can run for the
+        // editor pass AND per camera in the same rendered frame).
+        if (_sprite2dLastClockFrame != Glfw.FrameId)
+        {
+            _sprite2dLastClockFrame = Glfw.FrameId;
+            Sprite2DAnimTime += Glfw.PeekDeltaTime();
+        }
+
+        int count = clip.FrameIndices.Count;
+        if (count <= 0) return;
+        float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier * MathF.Max(0.01f, Sprite2DSpeed)));
+        float t = Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset);
+        int f = (int)(t / frameDur);
+        f = Sprite2DLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
+        int frameIdx = clip.FrameIndices[f];
+
+        var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+        // Same flip fix as DrawPlayer2D (textures upload top-row-first).
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
+        if (!Sprite2DFacingRight)
+            (su0, su1) = (su1, su0);
+
+        // Sizing: identical snapshot math to DrawPlayer2D (native px as-is, world
+        // scale from SpriteHeight vs the clip's saved master height).
+        float cellH = sheet.FrameHeight > 0 ? sheet.FrameHeight : sheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = sheet.FrameWidth > 0 ? sheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (sheet.CustomFrames != null && frameIdx < sheet.CustomFrames.Count)
+        {
+            drawFrame = sheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+        float snapH = clip.MasterHeight;
+        bool normalized = snapH > 0f;
+        float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
+        float w = MathF.Max(0.05f, cellW * pxToWorld);
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Sprite2DFacingRight ? 1f : -1f;
+        float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+        // AS-IS: centered on Position.X, bottom on Position.Y.
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
+        // Render layer: each layer step nudges the quad 0.01 units toward the camera
+        // (matching the draw order set by the layer sort in EditorObjectManager) so a
+        // higher layer ALSO wins when depth testing is on — not just by draw order.
+        float z = Position.Z + 0.05f + Math.Clamp(Sprite2DRenderLayer, -1000, 1000) * 0.01f;
+
+        EnsureMap2DShader();
+        if (_map2dShader == 0) return;
+
+        GL.UseProgram(_map2dShader);
+        var view = camera.GetViewMatrix();
+        var proj = camera.GetProjectionMatrix();
+        GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+        GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+        var identity = Matrix4x4.Identity;
+        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
+
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+        GL.Uniform1i(_map2dLocTex, 0);
+        GL.Enable(Const.GL_BLEND);
+        GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+        bool cull = GL.IsEnabled(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_CULL_FACE);
+        bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+
+        float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
+        // Per-sprite emissive boost (Sprite2DGlow) — same mechanism as the player
+        // glow: bright pixels (fire) rise above the bloom threshold and glow.
+        if (Sprite2DGlow > 0f)
+        {
+            float boost = ComputeGlowBoost(Sprite2DGlow, Sprite2DGlowFlicker);
+            // Glow tint — same normalized-color multiply as the player glow.
+            var gtc = Sprite2DGlowColor;
+            float gMax = MathF.Max(gtc.X, MathF.Max(gtc.Y, gtc.Z));
+            if (gMax > 0f) gtc = new Vector3(gtc.X / gMax, gtc.Y / gMax, gtc.Z / gMax);
+            tR *= boost * gtc.X; tG *= boost * gtc.Y; tB *= boost * gtc.Z;
+        }
+        var verts = stackalloc Map2DVertex[6]
+        {
+            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
+            new(x1, y0, z, su1, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
+            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
+            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
+            new(x0, y1, z, su0, svTop, tR, tG, tB, tA),
+        };
+
+        if (_player2dVAO == 0)
+        {
+            uint vao = 0, vbo = 0;
+            GL.GenVertexArrays(1, &vao);
+            GL.BindVertexArray(vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+            GL.BindVertexArray(0);
+            _player2dVAO = vao; _player2dVBO = vbo;
+        }
+
+        GL.BindVertexArray(_player2dVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
+        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
+        GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+        GL.BindVertexArray(0);
+
+        if (depth) GL.Enable(Const.GL_DEPTH_TEST);
+        if (cull) GL.Enable(Const.GL_CULL_FACE);
+        GL.Disable(Const.GL_BLEND);
+        GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+
+        // Restore main shader.
+        GL.UseProgram(Shader.GetShaderProgram());
+    }
+
+    /// <summary>Sprite-quad data for the DoF sprite-shape mask — an exact mirror of
+    /// DrawSprite2D's math (same frame resolution, sizing, offsets and UV flips) so the
+    /// sharp silhouette carved into the blur matches the drawn sprite pixel-for-pixel.
+    /// uvMin/uvMax are in DRAW space (already y-flipped + mirrored): uvMin = top-left,
+    /// uvMax = bottom-right of the quad.</summary>
+    public bool TryGetSprite2DDrawData(out uint texId,
+        out System.Numerics.Vector2 uvMin, out System.Numerics.Vector2 uvMax,
+        out System.Numerics.Vector3 bl, out System.Numerics.Vector3 br,
+        out System.Numerics.Vector3 tr, out System.Numerics.Vector3 tl)
+    {
+        texId = 0; uvMin = default; uvMax = default;
+        bl = br = tr = tl = default;
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sprite2D) return false;
+        if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return false;
+        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out texId, out int _, out int _))
+            return false;
+        if (texId == 0) return false;
+
+        int count = clip.FrameIndices.Count;
+        if (count <= 0) return false;
+        float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier * MathF.Max(0.01f, Sprite2DSpeed)));
+        float t = Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset);
+        int f = (int)(t / frameDur);
+        f = Sprite2DLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
+        int frameIdx = clip.FrameIndices[f];
+
+        var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
+        if (!Sprite2DFacingRight)
+            (su0, su1) = (su1, su0);
+
+        float cellH = sheet.FrameHeight > 0 ? sheet.FrameHeight : sheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = sheet.FrameWidth > 0 ? sheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (sheet.CustomFrames != null && frameIdx < sheet.CustomFrames.Count)
+        {
+            drawFrame = sheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+        float snapH = clip.MasterHeight;
+        bool normalized = snapH > 0f;
+        float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
+        float w = MathF.Max(0.05f, cellW * pxToWorld);
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Sprite2DFacingRight ? 1f : -1f;
+        float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
+        float z = Position.Z + 0.05f + Math.Clamp(Sprite2DRenderLayer, -1000, 1000) * 0.01f;
+
+        uvMin = new System.Numerics.Vector2(su0, svTop);
+        uvMax = new System.Numerics.Vector2(su1, svBot);
+        bl = new System.Numerics.Vector3(x0, y0, z);
+        br = new System.Numerics.Vector3(x1, y0, z);
+        tr = new System.Numerics.Vector3(x1, y1, z);
+        tl = new System.Numerics.Vector3(x0, y1, z);
+        return true;
+    }
+
+    /// <summary>Extract live draw parameters for this Player2D object: texture ID,
+    /// UV coordinates (y-flipped + mirrored, matching DrawPlayer2D), and the four quad
+    /// corners in world space. Consumed by the Depth of Field post-process mask so the
+    /// sharp silhouette carved into the blur matches the drawn player sprite pixel-for-pixel.</summary>
+    public bool TryGetPlayer2DDrawData(out uint texId,
+        out System.Numerics.Vector2 uvMin, out System.Numerics.Vector2 uvMax,
+        out System.Numerics.Vector3 bl, out System.Numerics.Vector3 br,
+        out System.Numerics.Vector3 tr, out System.Numerics.Vector3 tl)
+    {
+        texId = 0; uvMin = default; uvMax = default;
+        bl = br = tr = tl = default;
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return false;
+        if (!TryGetPlayer2DActiveClip(out var sheet, out var clip) || sheet == null || clip == null) return false;
+
+        var actionClip = GetActiveActionClip(out var activeAction, out var actionSheet);
+        var drawSheet = actionSheet ?? sheet;
+        if (!IDEBridge.TryGetSpriteSheetTexture(drawSheet.Name, out texId, out int _, out int _))
+            return false;
+        if (texId == 0) return false;
+
+        int frameIdx;
+        if (actionClip != null)
+        {
+            float frameDur = 1f / MathF.Max(0.01f, actionClip.FPS * actionClip.SpeedMultiplier);
+            int f = (int)(Player2DActionTime / frameDur);
+            int count = actionClip.FrameIndices.Count;
+            if (activeAction != null && activeAction.Loop && count > 0)
+                f = ((f % count) + count) % count;
+            else
+                f = Math.Clamp(f, 0, Math.Max(0, count - 1));
+            frameIdx = count > 0 ? actionClip.FrameIndices[f] : 0;
+        }
+        else
+        {
+            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+        }
+
+        if (drawSheet.CustomFrames != null)
+        {
+            if (drawSheet.CustomFrames.Count > 0 && frameIdx >= drawSheet.CustomFrames.Count)
+                frameIdx = drawSheet.CustomFrames.Count - 1;
+        }
+        else
+        {
+            int gridFrames = drawSheet.Columns * drawSheet.Rows;
+            if (gridFrames > 0 && frameIdx >= gridFrames)
+                frameIdx = gridFrames - 1;
+        }
+
+        var (uvMinRaw, uvMaxRaw) = drawSheet.GetFrameUV(frameIdx);
+        float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+        float svBot = 1f - uvMinRaw.Y;
+        float svTop = 1f - uvMaxRaw.Y;
+
+        if (!Player2DFacingRight)
+            (su0, su1) = (su1, su0);
+
+        float cellH = drawSheet.FrameHeight > 0 ? drawSheet.FrameHeight : drawSheet.ImageHeight;
+        if (cellH <= 0) cellH = 64;
+        float cellW = drawSheet.FrameWidth > 0 ? drawSheet.FrameWidth : cellH;
+        SpriteFrame? drawFrame = null;
+        if (drawSheet.CustomFrames != null && frameIdx < drawSheet.CustomFrames.Count)
+        {
+            drawFrame = drawSheet.CustomFrames[frameIdx];
+            cellW = drawFrame.Width;
+            cellH = drawFrame.Height;
+            if (cellH <= 0) cellH = 1;
+        }
+
+        AnimationClip2D? sizingClip = actionClip ?? clip;
+        float snapH = sizingClip?.MasterHeight ?? 0f;
+        bool normalized = snapH > 0f;
+        float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
+        float w = MathF.Max(0.05f, cellW * pxToWorld);
+        float h = MathF.Max(0.05f, cellH * pxToWorld);
+        float mirror = Player2DFacingRight ? 1f : -1f;
+        float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
+        float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
+
+        float x0 = Position.X - w * 0.5f + offX;
+        float x1 = x0 + w;
+        float y0 = Position.Y + offY;
+        float y1 = y0 + h;
+        float z = Position.Z + 0.05f;
+
+        uvMin = new System.Numerics.Vector2(su0, svTop);
+        uvMax = new System.Numerics.Vector2(su1, svBot);
+        bl = new System.Numerics.Vector3(x0, y0, z);
+        br = new System.Numerics.Vector3(x1, y0, z);
+        tr = new System.Numerics.Vector3(x1, y1, z);
+        tl = new System.Numerics.Vector3(x0, y1, z);
+        return true;
+    }
+
+    /// <summary>Resolve the animation clip for the currently-playing action (priority
+    /// system), or null when the base locomotion clip should play. The matched action is
+    /// returned via <paramref name="action"/> (for its Loop flag — the shared clip object
+    /// is never mutated).
+    /// 
+    /// Resolution order: (1) action's own sheet+clip if resolvable; (2) action's clip name
+    /// looked up in the PLAYER's sheet (so Walk/Run can share the player's clip even when
+    /// their Sheet field points elsewhere); (3) fall back to the player's base clip.</summary>
+    private AnimationClip2D? GetActiveActionClip(out Player2DAction? action, out SpriteSheet? actionSheet)
+    {
+        action = null;
+        actionSheet = null;
+        if (string.IsNullOrEmpty(Player2DCurrentAction) || Actions.Count == 0)
+            return null;
+        var act = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+        if (act == null) { Player2DCurrentAction = ""; return null; }
+
+        string playerSheet = Player2DSpriteSheet;
+        string playerClip = Player2DAnimationClip;
+
+        // (1) Action's own sheet + clip. The owning sheet is returned too — the caller
+        //     must sample THIS sheet's texture (walk/run often live on a different
+        //     sheet than idle; sampling run frames against the idle texture breaks).
+        string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? playerSheet : act.SpriteSheet;
+        string clipName = string.IsNullOrEmpty(act.Clip) ? playerClip : act.Clip;
+        if (IDEBridge.TryGetSpriteClip(sheetName, clipName, out var sheet, out var clip) && clip != null)
+        {
+            action = act;
+            actionSheet = sheet;
+            return clip;
+        }
+
+        // (2) Action's clip name in the PLAYER's sheet — lets Walk/Run share the player's
+        //     clip even when their Sheet field points at a different (possibly missing) sheet.
+        if (!string.IsNullOrEmpty(act.Clip) && act.Clip != playerClip
+            && IDEBridge.TryGetSpriteClip(playerSheet, act.Clip, out sheet, out clip) && clip != null)
+        {
+            action = act;
+            actionSheet = sheet;
+            return clip;
+        }
+
+        // (3) Player's base clip as last resort. When the action's own clip can't be
+        //     resolved at all (missing sheet or clip name), fall back to the player's
+        //     current clip so the action still animates.
+        if (IDEBridge.TryGetSpriteClip(playerSheet, playerClip, out sheet, out clip) && clip != null)
+        {
+            action = act;
+            actionSheet = sheet;
+            return clip;
+        }
+
+        return null;
+    }
+
+    /// <summary>Trigger an action by name if its priority allows (respects the
+    /// interrupt rules: Dead=100 cancels all; equal/lower priority is ignored).</summary>
+    public bool TryStartAction(string name)
+    {
+        var act = Actions.FirstOrDefault(a => a.Name == name);
+        if (act == null) return false;
+        if (!string.IsNullOrEmpty(Player2DCurrentAction))
+        {
+            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            if (cur != null && act.Priority < cur.Priority)
+                return false; // a higher-priority action is playing
+        }
+        if (Player2DCurrentAction != name)
+        {
+            Player2DCurrentAction = name;
+            Player2DActionTime = 0f;
+            Player2DActionHoldingEnd = false; // new action: clear the finished-hold latch
+        }
+        return true;
     }
 
     /// <summary>
@@ -2334,6 +3830,11 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
+        // Player2D/Start2D/CameraStart2D/Sprite2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D)
+            return;
+
         // ── GLB reference: draw the model's own meshes into the stencil mask. ──
         if (PrimitiveType == EditorPrimitiveType.GlbReference)
         {
@@ -2386,6 +3887,11 @@ public unsafe class EditorObject
     public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
     {
         if (!IsVisible) return;
+
+        // Player2D/Start2D/CameraStart2D/Sprite2D have no solid mesh — selection shows via their line gizmos.
+        if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D)
+            return;
 
         // ── GLB reference: inverted-hull outline over the model's meshes. ──
         if (PrimitiveType == EditorPrimitiveType.GlbReference)
@@ -2665,6 +4171,972 @@ public unsafe class EditorObject
         return obj;
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  2D Map rendering — textured plane with per-tile UV mapping
+    //  Uses a dedicated inline shader (similar to Sprite2D) for simple
+    //  textured rendering without the complex terrain lighting.
+    // ════════════════════════════════════════════════════════════════════
+
+    // Dedicated shader for Map2D (simple textured quad with per-vertex alpha)
+    private static uint _map2dShader;
+    private static int _map2dLocView, _map2dLocProj, _map2dLocModel, _map2dLocTex;
+
+    private static unsafe void EnsureMap2DShader()
+    {
+        if (_map2dShader != 0) return;
+
+        string vertSrc = @"#version 330 core
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec2 aUV;
+layout(location=2) in vec4 aTint;
+uniform mat4 view;
+uniform mat4 projection;
+uniform mat4 model;
+out vec2 vUV;
+out vec4 vTint;
+void main() {
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    vUV = aUV;
+    vTint = aTint;
+}";
+
+        string fragSrc = @"#version 330 core
+in vec2 vUV;
+in vec4 vTint;
+uniform sampler2D tex;
+out vec4 FragColor;
+void main() {
+    vec4 c = texture(tex, vUV) * vTint;
+    if (c.a < 0.01) discard;
+    FragColor = c;
+}";
+
+        uint vert = GL.CreateShader(Const.GL_VERTEX_SHADER);
+        GL.ShaderSource(vert, vertSrc);
+        GL.CompileShader(vert);
+
+        uint frag = GL.CreateShader(Const.GL_FRAGMENT_SHADER);
+        GL.ShaderSource(frag, fragSrc);
+        GL.CompileShader(frag);
+
+        _map2dShader = GL.CreateProgram();
+        GL.AttachShader(_map2dShader, vert);
+        GL.AttachShader(_map2dShader, frag);
+        GL.LinkProgram(_map2dShader);
+        GL.DeleteShader(vert);
+        GL.DeleteShader(frag);
+
+        _map2dLocView = GL.GetUniformLocation(_map2dShader, "view");
+        _map2dLocProj = GL.GetUniformLocation(_map2dShader, "projection");
+        _map2dLocModel = GL.GetUniformLocation(_map2dShader, "model");
+        _map2dLocTex = GL.GetUniformLocation(_map2dShader, "tex");
+    }
+
+    private struct Map2DVertex
+    {
+        // layout: pos(vec3) + uv(vec2) + tint(vec4)
+        public float X, Y, Z;      // location 0: position
+        public float U, V;         // location 1: texcoord
+        public float R, G, B, A;   // location 2: tint (RGBA)
+        public Map2DVertex(float x, float y, float z, float u, float v, float r, float g, float b, float a)
+        {
+            X = x; Y = y; Z = z;
+            U = u; V = v;
+            R = r; G = g; B = b; A = a;
+        }
+    }
+
+    /// <summary>Draw the parallax layers pushed from the Map Editor as upright textured
+    /// quads around the tile grid. Each layer's ZPosition maps to a world-Z offset:
+    /// &gt; 0 renders IN FRONT of the grid, &lt; 0 renders BEHIND it, 0 sits on the grid
+    /// plane itself. Layers are drawn back-to-front so alpha blending stacks correctly.
+    /// Must be called while extentW/extentH (map world size) are known — reuses the same
+    /// Map2D shader + vertex layout as the tile mesh.</summary>
+    /// <summary>Build a VBO with one quad per non-empty tile, UV-mapped into the tileset grid.
+    /// Vertices are in local space; the WorldMatrix positions/scales the whole mesh.
+    /// Renders ALL visible layers at once (layered in world Z by index so upper layers
+    /// draw over lower ones) — the Map Editor's "active layer" only controls painting.
+    /// Layer visibility comes from TileLayer.IsVisible, so a visible layer always shows.</summary>
+    private unsafe void BuildMap2DMesh()
+    {
+        var map = Map2dTilemap;
+        if (map == null) return;
+
+        // Render EVERY visible layer in one mesh. Layer visibility is respected
+        // (IsVisible=false layers are skipped), so a visible layer always renders.
+        // Upper layers must draw OVER lower ones: all layers bake coplanar at world
+        // z=0, so each layer gets a tiny local-Y lift (local Y maps to world depth
+        // through the -90° X rotation) — enough to win the depth test without any
+        // visible offset.
+        const float layerLiftStep = 0.01f; // world depth units between stacked layers
+        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}";
+        foreach (var l in map.Layers)
+        {
+            cacheKey += $"|{l.IsVisible}|{l.Opacity}";
+            for (int i = 0; i < map.Width * map.Height; i++)
+                cacheKey += $"|{l.GetTile(i % map.Width, i / map.Width)}";
+        }
+
+        if (_map2dMeshCacheKey == cacheKey && _map2dVAO != 0) return;
+        _map2dMeshCacheKey = cacheKey;
+
+        if (_map2dVAO != 0) { uint v = _map2dVAO; GL.DeleteVertexArrays(1, &v); _map2dVAO = 0; }
+        if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
+        if (_player2dVAO != 0) { uint v = _player2dVAO; GL.DeleteVertexArrays(1, &v); _player2dVAO = 0; }
+        if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
+
+        int mapW = map.Width;
+        int mapH = map.Height;
+        int tsCols = Math.Max(1, Map2dTilesetCols);
+        int tsRows = Math.Max(1, Map2dTilesetRows);
+        float tileUW = 1f / tsCols;
+        float tileVH = 1f / tsRows;
+
+        var verts = new List<Map2DVertex>();
+
+        // Bake every visible layer; deeper layers get a slightly smaller world-Z so
+        // upper layers composite over them (Z-fighting-free ordering).
+        for (int li = 0; li < map.Layers.Count; li++)
+        {
+            var layer = map.Layers[li];
+            if (!layer.IsVisible) continue;
+            float liftY = -li * layerLiftStep; // higher layer index → closer to the front camera
+            for (int ty = 0; ty < mapH; ty++)
+            {
+                for (int tx = 0; tx < mapW; tx++)
+                {
+                    int tileId = layer.GetTile(tx, ty);
+                    if (tileId < 0) continue;
+
+                    int tc = tileId % tsCols;
+                    int tr = tileId / tsCols;
+                    if (tr >= tsRows) continue;
+
+                    float vFlip = Map2dTilesetFlipV ? -1f : 1f;
+                    float u0 = tc * tileUW;
+                    float v0 = (tr + (vFlip < 0f ? 0f : 1f)) * tileVH * vFlip;
+                    float u1 = u0 + tileUW;
+                    float v1 = (tr + (vFlip < 0f ? 1f : 0f)) * tileVH * vFlip;
+
+                    float worldTs = map.TileSize * Tilemap2D.WorldScale;
+                    float x0 = tx * worldTs;
+                    float x1 = x0 + worldTs;
+                    // Row 0 at the top (matches Tilemap2D.GridToWorld, where y is
+                    // flipped); the -90° X rotation turns this into upright +Y.
+                    float z0 = (mapH - 1 - ty) * worldTs;
+                    float z1 = z0 + worldTs;
+                    float a = layer.Opacity;
+
+                    verts.Add(new Map2DVertex(x0, liftY, z0, u0, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, liftY, z0, u1, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, liftY, z1, u1, v1, 1, 1, 1, a));
+
+                    verts.Add(new Map2DVertex(x0, liftY, z0, u0, v0, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x1, liftY, z1, u1, v1, 1, 1, 1, a));
+                    verts.Add(new Map2DVertex(x0, liftY, z1, u0, v1, 1, 1, 1, a));
+                }
+            }
+        }
+
+        _map2dVertCount = verts.Count;
+        if (_map2dVertCount == 0) return;
+
+        uint vao = 0, vbo = 0;
+        GL.GenVertexArrays(1, &vao);
+        GL.BindVertexArray(vao);
+
+        GL.GenBuffers(1, &vbo);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+
+        int stride = sizeof(Map2DVertex);
+        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(_map2dVertCount * stride), (void*)0, Const.GL_DYNAMIC_DRAW);
+
+        fixed (Map2DVertex* p = verts.ToArray())
+        {
+            GL.BufferSubData(Const.GL_ARRAY_BUFFER, (nuint)0, (nuint)(_map2dVertCount * stride), p);
+        }
+
+        // location 0 = aPos (vec3)
+        GL.EnableVertexAttribArray(0);
+        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, stride, (void*)0);
+        // location 1 = aUV (vec2)
+        GL.EnableVertexAttribArray(1);
+        GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, stride, (void*)(3 * sizeof(float)));
+        // location 2 = aTint (vec4)
+        GL.EnableVertexAttribArray(2);
+        GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, stride, (void*)(5 * sizeof(float)));
+
+        GL.BindVertexArray(0);
+
+        _map2dVAO = vao;
+        _map2dVBO = vbo;
+    }
+
+    public uint EnsureMap2DTilesetTexture()
+    {
+        if (Map2dTilemap == null) return 0;
+        string tilesetPath = Map2dTilemap.TilesetImagePath ?? "";
+        if (!string.IsNullOrEmpty(tilesetPath) && tilesetPath != _map2dTilesetPath)
+        {
+            if (_map2dTilesetTex != 0) { uint t = _map2dTilesetTex; GL.DeleteTextures(1, &t); _map2dTilesetTex = 0; }
+            if (File.Exists(tilesetPath))
+            {
+                var tex = new Texture(tilesetPath);
+                _map2dTilesetTex = tex.ID;
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+            _map2dTilesetPath = tilesetPath;
+        }
+        return _map2dTilesetTex;
+    }
+
+    /// <summary>Render all tiles of a specific tilemap layer to the DoF mask buffer.
+    /// Returns the number of visible tiles added to outVerts.</summary>
+    public int RenderMap2DLayerToDofMask(int layerIndex, Camera camera, int maskW, int maskH, List<float> outVerts, out uint outTexId)
+    {
+        outTexId = 0;
+        if (!IsVisible || PrimitiveType != EditorPrimitiveType.Map2D || Map2dTilemap == null) return 0;
+        var map = Map2dTilemap;
+        if (layerIndex < 0 || layerIndex >= map.Layers.Count) return 0;
+        var layer = map.Layers[layerIndex];
+        if (!layer.IsVisible) return 0;
+
+        outTexId = EnsureMap2DTilesetTexture();
+        if (outTexId == 0) return 0;
+
+        int mapW = map.Width;
+        int mapH = map.Height;
+        int tsCols = Math.Max(1, Map2dTilesetCols);
+        int tsRows = Math.Max(1, Map2dTilesetRows);
+        float tileUW = 1f / tsCols;
+        float tileVH = 1f / tsRows;
+        float worldTs = map.TileSize * Tilemap2D.WorldScale;
+        float layerZ = Map2dLayerIndex >= 0 ? (float)Map2dLayerIndex : 0f;
+        float liftY = -layerIndex * 0.01f;
+        float z = layerZ + liftY;
+
+        int drawn = 0;
+
+        for (int ty = 0; ty < mapH; ty++)
+        {
+            for (int tx = 0; tx < mapW; tx++)
+            {
+                int tileId = layer.GetTile(tx, ty);
+                if (tileId < 0) continue;
+
+                int tc = tileId % tsCols;
+                int tr = tileId / tsCols;
+                if (tr >= tsRows) continue;
+
+                float vFlip = Map2dTilesetFlipV ? -1f : 1f;
+                float u0 = tc * tileUW;
+                float v0 = (tr + (vFlip < 0f ? 0f : 1f)) * tileVH * vFlip;
+                float u1 = u0 + tileUW;
+                float v1 = (tr + (vFlip < 0f ? 1f : 0f)) * tileVH * vFlip;
+
+                float x0 = tx * worldTs;
+                float x1 = x0 + worldTs;
+                float y0 = (mapH - 1 - ty) * worldTs;
+                float y1 = y0 + worldTs;
+
+                var pBL = TransformGizmo.ProjectToScreen(camera, new Vector3(x0, y0, z), maskW, maskH);
+                var pBR = TransformGizmo.ProjectToScreen(camera, new Vector3(x1, y0, z), maskW, maskH);
+                var pTR = TransformGizmo.ProjectToScreen(camera, new Vector3(x1, y1, z), maskW, maskH);
+                var pTL = TransformGizmo.ProjectToScreen(camera, new Vector3(x0, y1, z), maskW, maskH);
+
+                if (float.IsNaN(pBL.X) || float.IsInfinity(pBL.X)) continue; // behind camera
+
+                // Frustum / viewport culling
+                float minX = MathF.Min(MathF.Min(pBL.X, pBR.X), MathF.Min(pTR.X, pTL.X));
+                float maxX = MathF.Max(MathF.Max(pBL.X, pBR.X), MathF.Max(pTR.X, pTL.X));
+                float minY = MathF.Min(MathF.Min(pBL.Y, pBR.Y), MathF.Min(pTR.Y, pTL.Y));
+                float maxY = MathF.Max(MathF.Max(pBL.Y, pBR.Y), MathF.Max(pTR.Y, pTL.Y));
+                if (maxX < 0f || minX > maskW || maxY < 0f || minY > maskH) continue;
+
+                // Tri 1: BL, BR, TR
+                AddMaskVert(outVerts, pBL, maskW, maskH, u0, v0);
+                AddMaskVert(outVerts, pBR, maskW, maskH, u1, v0);
+                AddMaskVert(outVerts, pTR, maskW, maskH, u1, v1);
+
+                // Tri 2: BL, TR, TL
+                AddMaskVert(outVerts, pBL, maskW, maskH, u0, v0);
+                AddMaskVert(outVerts, pTR, maskW, maskH, u1, v1);
+                AddMaskVert(outVerts, pTL, maskW, maskH, u0, v1);
+
+                drawn++;
+            }
+        }
+
+        return drawn;
+    }
+
+    private static void AddMaskVert(List<float> v, Vector2 p, int maskW, int maskH, float u, float vv)
+    {
+        v.Add(p.X / maskW * 2f - 1f);
+        v.Add(p.Y / maskH * 2f - 1f);
+        v.Add(u);
+        v.Add(vv);
+    }
+
+    private unsafe void DrawMap2D(
+        int modelLoc, int viewLoc, int projLoc,
+        int sunDirLoc, int lightColorLoc, int viewPosLoc,
+        int useFogLoc, int fogColorLoc,
+        Camera camera, Lights light, CSM? csm)
+    {
+        if (Map2dTilemap == null) return;
+
+        EnsureMap2DTilesetTexture();
+        BuildMap2DMesh();
+
+        // The map is drawn as ONE canonical upright plane at the world origin so it
+        // lines up exactly with the editor paint/hover math (Tilemap2D.WorldToGrid /
+        // GridToWorld operate on the XY plane at z = layer index). The object's own
+        // Position/Scale/Rotation are deliberately NOT applied: the mesh below is baked
+        // in world units (px × Tilemap2D.WorldScale) and layer stacking is an explicit
+        // world-Z offset (the layer index), matching the paint raycast plane.
+        int mapW = Map2dTilemap.Width;
+        int mapH = Map2dTilemap.Height;
+        int ts = Map2dTilemap.TileSize;
+        float cell = ts * Tilemap2D.WorldScale;
+        float extentW = mapW * cell;
+        float extentH = mapH * cell;
+        float layerZ = Map2dLayerIndex >= 0 ? (float)Map2dLayerIndex : 0f;
+        var model = Matrix4x4.CreateTranslation(0f, 0f, layerZ)
+                  * Matrix4x4.CreateRotationX(-MathF.PI / 2f);
+
+        // Draw the tiles only when the map has some; the grid pass below still runs
+        // for an empty map so "New Map" immediately shows the upright plane outline
+        // with square cells in the 3D viewport.
+        if (_map2dVAO != 0 && _map2dVertCount != 0)
+        {
+            EnsureMap2DShader();
+            if (_map2dShader != 0)
+            {
+                GL.UseProgram(_map2dShader);
+
+                var view = camera.GetViewMatrix();
+                var proj = camera.GetProjectionMatrix();
+                GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+                GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+                GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _map2dTilesetTex);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+                GL.Uniform1i(_map2dLocTex, 0);
+
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+                // Map is visible from both sides (layers stack along Z; the editor
+                // camera can orbit either side).
+                bool cullEnabled = GL.IsEnabled(Const.GL_CULL_FACE);
+                GL.Disable(Const.GL_CULL_FACE);
+
+                GL.BindVertexArray(_map2dVAO);
+                GL.DrawArrays(Const.GL_TRIANGLES, 0, _map2dVertCount);
+                GL.BindVertexArray(0);
+
+                if (cullEnabled)
+                    GL.Enable(Const.GL_CULL_FACE);
+                GL.Disable(Const.GL_BLEND);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+        }
+
+        // ── Parallax layers: upright textured quads offset in world Z by their ZPosition
+        //    (positive = in front of the grid, negative = behind it). Drawn back-to-front
+        //    so depth + alpha blend stack correctly against the tile plane at Z = 0.
+        //    Bottom edge anchored at the grid bottom (world Y = 0); horizontally tiled
+        //    to cover the map extent when TileHorizontal is set. ──
+        if (Map2dParallaxLayers is { Count: > 0 })
+        {
+            bool pCull = GL.IsEnabled(Const.GL_CULL_FACE);
+            GL.Disable(Const.GL_CULL_FACE);
+
+            var sorted = Map2dParallaxLayers
+                .Where(l => l != null && l.IsVisible && !string.IsNullOrEmpty(l.ImagePath) && l.TextureId != 0)
+                .OrderBy(l => l.ZPosition) // farthest (most negative) first
+                .ToList();
+
+            if (sorted.Count > 0)
+            {
+                EnsureMap2DShader();
+                GL.UseProgram(_map2dShader);
+
+                // ── Parallax scroll preview ──
+                // Plain absolute camera X: offset = -camX × ScrollFactor. No anchor —
+                // the home offset is divided into a fractional UV phase (seamless via
+                // GL_REPEAT) plus whole-width copies, so layers stay glued to their
+                // Left/Top position while panning still previews the depth illusion.
+                float camX = camera.Position.X;
+
+                // Parallax quads are baked directly in world space → identity model.
+                var ident = Matrix4x4.Identity;
+                GL.UniformMatrix4fv(_map2dLocModel, 1, false, &ident.M11);
+
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+                float px2world = Tilemap2D.WorldScale;
+                var pVerts = new List<Map2DVertex>(24);
+                foreach (var pl in sorted)
+                {
+                    float a = Math.Clamp(pl.Alpha, 0f, 1f);
+                    if (a <= 0.01f) continue;
+
+                    // Quad size: default = the GRID extent (user rule), regardless of the
+                    // image's natural size — WidthPx/HeightPx only override when > 0.
+                    // An unset axis never falls back to the raw image size, which is what
+                    // made layers render huge/misaligned before.
+                    //
+                    // Aspect-ratio preservation: when exactly ONE axis is set, the other
+                    // axis scales from the image's natural aspect ratio (relative to the
+                    // set axis) instead of stretching to the grid. Setting BOTH axes
+                    // always stretches exactly as specified; setting NEITHER uses the
+                    // grid extent.
+                    bool wSet = pl.WidthPx > 0.5f;
+                    bool hSet = pl.HeightPx > 0.5f;
+                    float w, h;
+                    if (wSet && hSet)
+                    {
+                        w = pl.WidthPx * px2world;
+                        h = pl.HeightPx * px2world;
+                    }
+                    else if (wSet)
+                    {
+                        // Only width set → height keeps the image aspect ratio.
+                        w = pl.WidthPx * px2world;
+                        float imgAspect = pl.ImageHeight > 0 && pl.ImageWidth > 0
+                            ? (float)pl.ImageHeight / pl.ImageWidth : 1f;
+                        h = w * imgAspect;
+                    }
+                    else if (hSet)
+                    {
+                        // Only height set → width keeps the image aspect ratio.
+                        h = pl.HeightPx * px2world;
+                        float imgAspect = pl.ImageWidth > 0 && pl.ImageHeight > 0
+                            ? (float)pl.ImageWidth / pl.ImageHeight : 1f;
+                        w = h * imgAspect;
+                    }
+                    else
+                    {
+                        // Neither set → proportional to the image's ORIGINAL aspect ratio:
+                        // height fits the grid height, width follows the image ratio (so
+                        // panoramas stay wide, tall skies stay tall — never stretched to
+                        // the grid). Falls back to the grid extent only when the image
+                        // dimensions are unknown.
+                        h = extentH;
+                        w = pl.ImageWidth > 0 && pl.ImageHeight > 0
+                            ? h * ((float)pl.ImageWidth / pl.ImageHeight)
+                            : extentW;
+                    }
+                    w = MathF.Max(1f, w);
+                    h = MathF.Max(1f, h);
+                    float z = pl.ZPosition * cell; // 1 ZPosition unit = one tile cell of depth
+                    // Texture repeats across the quad. RepeatX/Y = explicit UV repeats
+                    // (requires GL_REPEAT wrapping — parallax textures use it for S).
+                    // 0 = auto: one natural copy; TileHorizontal still tiles whole copies
+                    // across the grid width.
+                    int uvRepeatX = Math.Max(0, pl.RepeatX);
+                    int uvRepeatY = Math.Max(0, pl.RepeatY);
+
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, pl.TextureId);
+                    // Stretch wrap mode when explicit repeats are used so UV &gt; 1 wraps.
+                    if (uvRepeatX > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
+                    if (uvRepeatY > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
+                    GL.Uniform1i(_map2dLocTex, 0);
+
+                    // Horizontal scroll preview, RELATIVE to the layer's home position:
+                    // the home offset (-camX × ScrollFactor) is what makes layers slide
+                    // at different speeds; subtracting the fractional part keeps the
+                    // visible texture anchored (no surprise half-screen jumps at load —
+                    // the previous absolute offset made scrolled layers look broken).
+                    float uPhase = 0f;
+                    float xShift = 0f;
+                    if (pl.ScrollFactor != 0f && w > 0.01f)
+                    {
+                        float scrollWorld = -camX * pl.ScrollFactor;
+                        float frac = (scrollWorld / w) % 1f;
+                        if (frac < 0f) frac += 1f;
+                        uPhase = frac;
+                        xShift = scrollWorld - frac * w; // whole widths back → home pos
+                    }
+
+                    // Static offsets: Left DISABLED (pinned to grid left edge); Top is
+                    // ACTIVE — the quad is TOP-anchored at the grid's top edge
+                    // (world Y = extentH) and TopPx pushes it DOWN (negative TopPx
+                    // extends above the grid, e.g. for tall skies).
+                    float leftWorld = 0f;
+                    float topY = extentH - pl.TopPx * px2world;
+
+                    // Copy range: cover the grid extent AND the camera neighborhood so
+                    // panning (any scroll factor) never reveals the quads' edges.
+                    int rStart, rEnd;
+                    if (pl.TileHorizontal && w > 0.01f)
+                    {
+                        float leftNeeded = MathF.Min(0f, camX - extentW);
+                        float rightNeeded = MathF.Max(extentW, camX + extentW);
+                        rStart = (int)MathF.Floor((leftNeeded - xShift - leftWorld) / w);
+                        rEnd = (int)MathF.Ceiling((rightNeeded - xShift - leftWorld) / w);
+                    }
+                    // (leftNeeded/rightNeeded still use ABSOLUTE camX — only the layer
+                    // offset is relative — so coverage math stays in the same space the
+                    // camera actually renders.)
+                    else
+                    {
+                        rStart = 0;
+                        rEnd = 0;
+                    }
+
+                    pVerts.Clear();
+                    for (int r = rStart; r <= rEnd; r++)
+                    {
+                        float x0 = r * w + xShift + leftWorld;
+                        float x1 = x0 + w;
+                        float yTop = topY;
+                        float yBot = topY - h;
+                        // UV spans (uvRepeat + phase) so RepeatX and the scroll wrap
+                        // combine; 0 keeps one natural copy per quad.
+                        float u0 = -uPhase * (uvRepeatX > 0 ? uvRepeatX : 1f);
+                        float u1 = u0 + (uvRepeatX > 0 ? uvRepeatX : 1f);
+                        float v1 = uvRepeatY > 0 ? uvRepeatY : 1f;
+                        // Top vertex samples v=0: the image top row was uploaded first,
+                        // so v=0 IS the top — this keeps the picture upright.
+                        // Vertex alpha carries the layer opacity — the shader multiplies
+                        // the per-vertex tint (the "tint" uniform has no location in this
+                        // shader, so per-vertex is the only channel that reaches the GPU).
+                        pVerts.Add(new Map2DVertex(x0, yBot, z, u0, v1, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x1, yBot, z, u1, v1, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x1, yTop, z, u1, 0f, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x0, yBot, z, u0, v1, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x1, yTop, z, u1, 0f, 1, 1, 1, a));
+                        pVerts.Add(new Map2DVertex(x0, yTop, z, u0, 0f, 1, 1, 1, a));
+                    }
+
+                    if (_parallaxVAO == 0)
+                    {
+                        uint vao = 0, vbo = 0;
+                        GL.GenVertexArrays(1, &vao);
+                        GL.BindVertexArray(vao);
+                        GL.GenBuffers(1, &vbo);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                        GL.EnableVertexAttribArray(0);
+                        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+                        GL.EnableVertexAttribArray(1);
+                        GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+                        GL.EnableVertexAttribArray(2);
+                        GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+                        GL.BindVertexArray(0);
+                        _parallaxVAO = vao;
+                        _parallaxVBO = vbo;
+                    }
+
+                    fixed (Map2DVertex* p = pVerts.ToArray())
+                    {
+                        GL.BindVertexArray(_parallaxVAO);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _parallaxVBO);
+                        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(pVerts.Count * sizeof(Map2DVertex)), p, Const.GL_DYNAMIC_DRAW);
+                        GL.DrawArrays(Const.GL_TRIANGLES, 0, pVerts.Count);
+                        GL.BindVertexArray(0);
+                    }
+
+                    // Restore default wrap so other passes (tileset uses CLAMP) are
+                    // unaffected by the repeat settings above.
+                    if (uvRepeatX > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+                    if (uvRepeatY > 0)
+                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+                }
+
+                // Restore the tile model matrix so later passes stay aligned.
+                GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+
+            if (pCull)
+                GL.Enable(Const.GL_CULL_FACE);
+        }
+
+        // ── Collision helper boxes: one translucent box per tile flagged for collision,
+        //    sticking OUT of the grid plane toward the viewer so the player can "stand"
+        //    on it (like Unreal's collision previews). A tile whose ID has NO collision
+        //    flag draws NO box. Uses the Map2D tint shader with the shared white texture.
+        if (Map2dShowCollision && !Editor2DAidsHidden && Map2dTilemap != null)
+        {
+            var colLayer = Map2dActiveLayer >= 0 && Map2dActiveLayer < Map2dTilemap.Layers.Count
+                ? Map2dTilemap.Layers[Map2dActiveLayer]
+                : (Map2dTilemap.Layers.Count > 0 ? Map2dTilemap.Layers[0] : null);
+
+            if (colLayer != null && colLayer.CollisionTileIds.Count > 0)
+            {
+                EnsureMap2DShader();
+                if (_map2dShader != 0)
+                {
+                    EnsurePbrWhiteTex();
+
+                    GL.UseProgram(_map2dShader);
+                    var view = camera.GetViewMatrix();
+                    var proj = camera.GetProjectionMatrix();
+                    GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+                    GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+
+                    GL.ActiveTexture(Const.GL_TEXTURE0);
+                    GL.BindTexture(Const.GL_TEXTURE_2D, _pbrWhiteTex);
+                    GL.Uniform1i(_map2dLocTex, 0);
+                    // NOTE: the map2d shader has no "tint" uniform — color reaches the
+                    // GPU only via the per-vertex tint attribute (baked below).
+
+                    GL.Enable(Const.GL_BLEND);
+                    GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+                    bool cullCol = GL.IsEnabled(Const.GL_CULL_FACE);
+                    GL.Disable(Const.GL_CULL_FACE);
+
+                    // One FULL 3D box per collision tile: translucent shaded faces +
+                    // bright edges so the collision volume reads from any angle (like
+                    // Unreal's collision previews). The box is CENTERED on the grid
+                    // plane — the 2D tile sits exactly in the middle of the box, half
+                    // the depth in front of the plane, half behind it. Local -Y maps
+                    // to world +Z through the -90° X rotation. Vertices stay in the
+                    // plane's local space so the same translate+rotate model matrix as
+                    // the tile mesh positions them.
+                    float boxDepth = cell * 0.5f;
+                    float halfDepth = boxDepth * 0.5f;
+                    float cR = Map2dCollisionColor.X, cG = Map2dCollisionColor.Y, cB = Map2dCollisionColor.Z;
+                    float cA = Math.Clamp(Map2dCollisionColor.W, 0.05f, 1f);
+                    var boxVerts = new List<Map2DVertex>(36 * 16);
+                    var edgeVerts = new List<Vector3>(24 * 16);
+
+                    void ColFace(float m, float ax, float ay, float az, float bx, float by, float bz,
+                                 float cx, float cy, float cz, float dx, float dy, float dz)
+                    {
+                        boxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(bx, by, bz, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, cR * m, cG * m, cB * m, cA));
+                        boxVerts.Add(new Map2DVertex(dx, dy, dz, 0, 0, cR * m, cG * m, cB * m, cA));
+                    }
+
+                    for (int ty = 0; ty < mapH; ty++)
+                    {
+                        for (int tx = 0; tx < mapW; tx++)
+                        {
+                            int tileId = colLayer.GetTile(tx, ty);
+                            if (tileId < 0 || !colLayer.TileHasCollision(tileId)) continue;
+
+                            float wx0 = tx * cell;
+                            float wx1 = wx0 + cell;
+                            // Row 0 = top row → world Y flipped (same as the tile mesh)
+                            float wy0 = (mapH - 1 - ty) * cell;
+                            float wy1 = wy0 + cell;
+                            float yN = -halfDepth; // near face → world +Z (in front of grid)
+                            float yF = +halfDepth; // far face → world -Z (behind grid) — tile centered
+
+                            // 6 shaded faces (top brightest, sides dimmer → 3D depth cue)
+                            ColFace(1.25f, wx0, yN, wy1, wx1, yN, wy1, wx1, yF, wy1, wx0, yF, wy1); // top
+                            ColFace(0.55f, wx0, yN, wy0, wx1, yN, wy0, wx1, yF, wy0, wx0, yF, wy0); // bottom
+                            ColFace(0.80f, wx0, yN, wy0, wx0, yN, wy1, wx0, yF, wy1, wx0, yF, wy0); // left
+                            ColFace(0.80f, wx1, yN, wy0, wx1, yN, wy1, wx1, yF, wy1, wx1, yF, wy0); // right
+                            ColFace(1.00f, wx0, yN, wy0, wx1, yN, wy0, wx1, yN, wy1, wx0, yN, wy1); // near
+                            ColFace(0.45f, wx0, yF, wy0, wx1, yF, wy0, wx1, yF, wy1, wx0, yF, wy1); // far
+
+                            // 12 world-space edges (bright outline, drawn after the faces)
+                            float zF = layerZ - halfDepth, zN = layerZ + halfDepth;
+                            edgeVerts.Add(new Vector3(wx0, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy0, zF));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy1, zF));
+                            edgeVerts.Add(new Vector3(wx1, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy1, zF));
+                            edgeVerts.Add(new Vector3(wx0, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy0, zF));
+                            edgeVerts.Add(new Vector3(wx0, wy0, zN)); edgeVerts.Add(new Vector3(wx1, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zN)); edgeVerts.Add(new Vector3(wx1, wy1, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy1, zN)); edgeVerts.Add(new Vector3(wx0, wy1, zN));
+                            edgeVerts.Add(new Vector3(wx0, wy1, zN)); edgeVerts.Add(new Vector3(wx0, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx0, wy0, zF)); edgeVerts.Add(new Vector3(wx0, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy1, zF)); edgeVerts.Add(new Vector3(wx1, wy1, zN));
+                            edgeVerts.Add(new Vector3(wx0, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy1, zN));
+                        }
+                    }
+
+                    if (boxVerts.Count > 0)
+                    {
+                        if (_parallaxVAO == 0)
+                        {
+                            uint vao = 0, vbo = 0;
+                            GL.GenVertexArrays(1, &vao);
+                            GL.BindVertexArray(vao);
+                            GL.GenBuffers(1, &vbo);
+                            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                            GL.EnableVertexAttribArray(0);
+                            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+                            GL.EnableVertexAttribArray(1);
+                            GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+                            GL.EnableVertexAttribArray(2);
+                            GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+                            GL.BindVertexArray(0);
+                            _parallaxVAO = vao;
+                            _parallaxVBO = vbo;
+                        }
+
+                        // Boxes are baked in the plane's local space → the same
+                        // translate+rotate model matrix as the tile mesh positions them.
+                        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+
+                        fixed (Map2DVertex* p = boxVerts.ToArray())
+                        {
+                            GL.BindVertexArray(_parallaxVAO);
+                            GL.BindBuffer(Const.GL_ARRAY_BUFFER, _parallaxVBO);
+                            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(boxVerts.Count * sizeof(Map2DVertex)), p, Const.GL_DYNAMIC_DRAW);
+                            GL.DrawArrays(Const.GL_TRIANGLES, 0, boxVerts.Count);
+                            GL.BindVertexArray(0);
+                        }
+
+                        // Bright edges: solid lines over the translucent faces so each
+                        // box outline is clearly visible from any camera angle.
+                        if (edgeVerts.Count > 0)
+                        {
+                            var edgeCol = new Vector3(
+                                MathF.Min(1f, cR * 1.5f + 0.2f),
+                                MathF.Min(1f, cG * 1.5f + 0.2f),
+                                MathF.Min(1f, cB * 1.5f + 0.2f));
+                            Terrains.TerrainChunk.DrawLineSegments(edgeVerts, edgeCol, camera, 0.95f);
+                        }
+
+                        // Restore the tile model matrix so later passes stay aligned.
+                        GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+                    }
+
+                    GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+                    GL.Disable(Const.GL_BLEND);
+                    if (cullCol)
+                        GL.Enable(Const.GL_CULL_FACE);
+                }
+            }
+        }
+
+        // ── Trigger area boxes: translucent AMBER volumes for the map's pass-through
+        //    event zones (save points, checkpoints, map-change doors…). The player
+        //    walks THROUGH these — they detect, not block. Visual language: collision
+        //    boxes = solid red-edged 3D boxes that block; triggers = dimmer amber
+        //    wireframe volumes the player passes through. Editor aid only — hidden
+        //    in-game via Editor2DAidsHidden so gameplay never renders them.
+        if (Map2dShowTriggers && !Editor2DAidsHidden && Map2dTilemap?.TriggerAreas is { Count: > 0 })
+        {
+            var mapRef = Map2dTilemap;
+            EnsureMap2DShader();
+            if (_map2dShader != 0)
+            {
+                EnsurePbrWhiteTex();
+
+                GL.UseProgram(_map2dShader);
+                var view = camera.GetViewMatrix();
+                var proj = camera.GetProjectionMatrix();
+                GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+                GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _pbrWhiteTex);
+                GL.Uniform1i(_map2dLocTex, 0);
+
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+
+                bool cullTrg = GL.IsEnabled(Const.GL_CULL_FACE);
+                GL.Disable(Const.GL_CULL_FACE);
+
+                float trigDepth = cell * 0.5f;
+                float trigHalfDepth = trigDepth * 0.5f;
+                var trgBoxVerts = new List<Map2DVertex>(36 * 8);
+                var trgEdgeVerts = new List<Vector3>(24 * 8);
+                float tR = 1.0f, tG = 0.62f, tB = 0.05f; // amber
+
+                void TrgFace(float m, float ax, float ay, float az, float bx, float by, float bz,
+                             float cx, float cy, float cz, float dx, float dy, float dz,
+                             float alpha)
+                {
+                    trgBoxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(bx, by, bz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(ax, ay, az, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(cx, cy, cz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                    trgBoxVerts.Add(new Map2DVertex(dx, dy, dz, 0, 0, tR * m, tG * m, tB * m, alpha));
+                }
+
+                foreach (var trig in mapRef.TriggerAreas)
+                {
+                    if (trig == null || trig.WidthPx <= 0f || trig.HeightPx <= 0f) continue;
+                    if (!trig.IsEnabled) continue; // disabled triggers don't render
+
+                    // Pixel rect → plane-local coords. X: left px × WorldScale. Y (local
+                    // up = world up here): TopPx counts DOWN from the map top — the top
+                    // edge sits at extentH - TopPx, bottom edge at extentH - TopPx - HeightPx.
+                    float lx0 = trig.LeftPx * Tilemap2D.WorldScale;
+                    float lx1 = (trig.LeftPx + trig.WidthPx) * Tilemap2D.WorldScale;
+                    float lyTop = extentH - trig.TopPx * Tilemap2D.WorldScale;
+                    float lyBot = extentH - (trig.TopPx + trig.HeightPx) * Tilemap2D.WorldScale;
+                    float yN = -trigHalfDepth;
+                    float yF = +trigHalfDepth;
+                    // Selected triggers pulse slightly brighter + tighter alpha so the
+                    // editor shows which trigger the Triggers UI refers to.
+                    bool isSel = ReferenceEquals(SelectedTriggerForHighlight, trig);
+                    float faceA = isSel ? 0.30f : 0.16f;
+
+                    TrgFace(1.25f, lx0, yN, lyTop, lx1, yN, lyTop, lx1, yF, lyTop, lx0, yF, lyTop, faceA); // top
+                    TrgFace(0.55f, lx0, yN, lyBot, lx1, yN, lyBot, lx1, yF, lyBot, lx0, yF, lyBot, faceA); // bottom
+                    TrgFace(0.80f, lx0, yN, lyBot, lx0, yN, lyTop, lx0, yF, lyTop, lx0, yF, lyBot, faceA); // left
+                    TrgFace(0.80f, lx1, yN, lyBot, lx1, yN, lyTop, lx1, yF, lyTop, lx1, yF, lyBot, faceA); // right
+                    TrgFace(1.00f, lx0, yN, lyBot, lx1, yN, lyBot, lx1, yN, lyTop, lx0, yN, lyTop, faceA); // near
+                    TrgFace(0.45f, lx0, yF, lyBot, lx1, yF, lyBot, lx1, yF, lyTop, lx0, yF, lyTop, faceA); // far
+
+                    float tzF = layerZ - trigHalfDepth, tzN = layerZ + trigHalfDepth;
+                    // Edge list per trigger: 12 edges of the box.
+                    void TrgEdge(float x0, float y0, float x1, float y1)
+                    {
+                        trgEdgeVerts.Add(new Vector3(x0, y0, tzF)); trgEdgeVerts.Add(new Vector3(x1, y1, tzF));
+                        trgEdgeVerts.Add(new Vector3(x0, y0, tzN)); trgEdgeVerts.Add(new Vector3(x1, y1, tzN));
+                        trgEdgeVerts.Add(new Vector3(x0, y0, tzF)); trgEdgeVerts.Add(new Vector3(x0, y0, tzN));
+                    }
+                    // bottom face rect
+                    TrgEdge(lx0, lyBot, lx1, lyBot); TrgEdge(lx1, lyBot, lx1, lyTop);
+                    TrgEdge(lx1, lyTop, lx0, lyTop); TrgEdge(lx0, lyTop, lx0, lyBot);
+                    // top face rect
+                    TrgEdge(lx0, lyBot, lx1, lyBot); TrgEdge(lx1, lyBot, lx1, lyTop);
+                    TrgEdge(lx1, lyTop, lx0, lyTop); TrgEdge(lx0, lyTop, lx0, lyBot);
+                    // vertical connectors
+                    TrgEdge(lx0, lyBot, lx0, lyBot); TrgEdge(lx1, lyBot, lx1, lyBot);
+                    TrgEdge(lx1, lyTop, lx1, lyTop); TrgEdge(lx0, lyTop, lx0, lyTop);
+
+                    // Label flag: a small vertical stem above the box so the designer can
+                    // tell triggers apart from collision boxes at a glance.
+                    var stem = new List<Vector3>
+                    {
+                        new((lx0 + lx1) * 0.5f, lyTop, layerZ),
+                        new((lx0 + lx1) * 0.5f, lyTop + cell * 0.6f, layerZ)
+                    };
+                    Terrains.TerrainChunk.DrawLineSegments(stem,
+                        new Vector3(tR, tG, tB), camera, isSel ? 1f : 0.8f);
+                }
+
+                if (trgBoxVerts.Count > 0)
+                {
+                    if (_parallaxVAO == 0)
+                    {
+                        uint vao = 0, vbo = 0;
+                        GL.GenVertexArrays(1, &vao);
+                        GL.BindVertexArray(vao);
+                        GL.GenBuffers(1, &vbo);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                        GL.EnableVertexAttribArray(0);
+                        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+                        GL.EnableVertexAttribArray(1);
+                        GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+                        GL.EnableVertexAttribArray(2);
+                        GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+                        GL.BindVertexArray(0);
+                        _parallaxVAO = vao;
+                        _parallaxVBO = vbo;
+                    }
+
+                    GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+
+                    fixed (Map2DVertex* p = trgBoxVerts.ToArray())
+                    {
+                        GL.BindVertexArray(_parallaxVAO);
+                        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _parallaxVBO);
+                        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(trgBoxVerts.Count * sizeof(Map2DVertex)), p, Const.GL_DYNAMIC_DRAW);
+                        GL.DrawArrays(Const.GL_TRIANGLES, 0, trgBoxVerts.Count);
+                        GL.BindVertexArray(0);
+                    }
+
+                    var trgEdgeCol = new Vector3(1f, 0.75f, 0.15f);
+                    Terrains.TerrainChunk.DrawLineSegments(trgEdgeVerts, trgEdgeCol, camera, 0.9f);
+                    GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
+                }
+
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+                GL.Disable(Const.GL_BLEND);
+                if (cullTrg)
+                    GL.Enable(Const.GL_CULL_FACE);
+            }
+        }
+
+        // ── Tile grid: one square per tile, drawn in world space on the same upright
+        //    plane (and depth) the paint/hover highlight uses, so the grid is always
+        //    exactly under the mouse boxes. Depth test is disabled while drawing so the
+        //    grid reads over the tiles like an editor overlay. Drawn for the whole-map
+        //    object (layer -1) and for layer 0 so a freshly created map always shows it.
+        if (Map2dShowGrid && !Editor2DAidsHidden && Map2dLayerIndex <= 0)
+        {
+            var gridVerts = new List<Vector3>((mapW + mapH + 2) * 2);
+            for (int gx = 0; gx <= mapW; gx++)
+            {
+                float px = gx * cell;
+                gridVerts.Add(new Vector3(px, 0f, layerZ));
+                gridVerts.Add(new Vector3(px, extentH, layerZ));
+            }
+            for (int gy = 0; gy <= mapH; gy++)
+            {
+                float py = gy * cell;
+                gridVerts.Add(new Vector3(0f, py, layerZ));
+                gridVerts.Add(new Vector3(extentW, py, layerZ));
+            }
+
+            bool depthEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
+            GL.Disable(Const.GL_DEPTH_TEST);
+            var gridRgb = new Vector3(Map2dGridColor.X, Map2dGridColor.Y, Map2dGridColor.Z);
+            float gridA = Math.Clamp(Map2dGridColor.W, 0.05f, 1f);
+            Terrains.TerrainChunk.DrawLineSegments(gridVerts, gridRgb, camera, gridA);
+
+            // Outer border: same hue pushed brighter so the map extent reads clearly.
+            var borderRgb = new Vector3(
+                MathF.Min(1f, gridRgb.X + 0.45f),
+                MathF.Min(1f, gridRgb.Y + 0.45f),
+                MathF.Min(1f, gridRgb.Z + 0.45f));
+            var border = new List<Vector3>(8)
+            {
+                new(0f, 0f, layerZ), new(extentW, 0f, layerZ),
+                new(extentW, 0f, layerZ), new(extentW, extentH, layerZ),
+                new(extentW, extentH, layerZ), new(0f, extentH, layerZ),
+                new(0f, extentH, layerZ), new(0f, 0f, layerZ)
+            };
+            Terrains.TerrainChunk.DrawLineSegments(border, borderRgb, camera, 0.8f);
+            if (depthEnabled)
+                GL.Enable(Const.GL_DEPTH_TEST);
+        }
+
+        // ── Player spawn marker: a small cyan cross + box ring at the map's spawn point
+        //    (editor aid — hidden in-game). Y here is height above the map's bottom
+        //    edge, matching Tilemap2D.PlayerSpawn. ──
+        if (Map2dTilemap.HasPlayerSpawn && !Editor2DAidsHidden)
+        {
+            var sp = Map2dTilemap.PlayerSpawn;
+            float sx = Math.Clamp(sp.X, 0f, extentW);
+            float sy = Math.Clamp(sp.Y, 0f, extentH);
+            float arm = cell * 0.4f;
+            var spVerts = new List<Vector3>
+            {
+                new(sx - arm, sy, layerZ), new(sx + arm, sy, layerZ),
+                new(sx, sy - arm, layerZ), new(sx, sy + arm, layerZ)
+            };
+            bool depthSp = GL.IsEnabled(Const.GL_DEPTH_TEST);
+            GL.Disable(Const.GL_DEPTH_TEST);
+            Terrains.TerrainChunk.DrawLineSegments(spVerts, new Vector3(0.2f, 0.95f, 1f), camera, 0.95f);
+            if (depthSp)
+                GL.Enable(Const.GL_DEPTH_TEST);
+        }
+
+        // Restore main shader
+        GL.UseProgram(Shader.GetShaderProgram());
+    }
+
     public void Dispose()
     {
         if (_textureID != 0)
@@ -2675,10 +5147,19 @@ public unsafe class EditorObject
             }
             _textureID = 0;
         }
+        if (_map2dTilesetTex != 0)
+        {
+            uint t = _map2dTilesetTex;
+            GL.DeleteTextures(1, &t);
+            _map2dTilesetTex = 0;
+        }
+        if (_map2dVAO != 0) { uint v = _map2dVAO; GL.DeleteVertexArrays(1, &v); _map2dVAO = 0; }
+        if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
+        if (_player2dVAO != 0) { uint v = _player2dVAO; GL.DeleteVertexArrays(1, &v); _player2dVAO = 0; }
+        if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
         _terrainMesh?.Dispose();
         _terrainMesh = null;
         DisposePbrTextures();
-        // Object3D cleanup is handled externally
         _object3D = null;
     }
 }

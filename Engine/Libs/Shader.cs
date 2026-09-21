@@ -8,13 +8,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint skyShaderProgram;
         static uint invertPassShaderProgram;
         static uint blurPassShaderProgram;
+        static uint dofSpriteMaskShaderProgram;
         static uint outlineShaderProgram;
 
-        // ── AAA post-processing: bloom (bright-pass + separable blur) and final
-        // composite (scene + bloom → ACES tonemap → gamma) ──
+        // ── AAA post-processing: reactive bloom (bright-pass + mip downsample/upsample
+        // chain) and final composite (scene + bloom → ACES tonemap → gamma) ──
         static uint postFxBrightShaderProgram;
-        static uint postFxBlurShaderProgram;
+        static uint postFxBloomDownsampleShaderProgram;
+        static uint postFxBloomUpsampleShaderProgram;
         static uint postFxCompositeShaderProgram;
+
+        // Depth of field — slider-driven focus circle + variable disk blur.
+        static uint postFxDofShaderProgram;
         
         static uint shadowShaderProgram;
         static uint shadowSkinnedShaderProgram;
@@ -79,6 +84,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 "Artifacts/shaders/blur_vertex.glsl",
                 "Artifacts/shaders/blur_fragment.glsl");
 
+            // DoF sprite-shape focus mask (sprite alpha → white silhouette).
+            dofSpriteMaskShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/dof_sprite_mask_fragment.glsl");
+
             outlineShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/outline_vertex.glsl",
                 "Artifacts/shaders/outline_fragment.glsl");
@@ -87,12 +97,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             postFxBrightShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/post_vertex.glsl",
                 "Artifacts/shaders/postFxBright_fragment.glsl");
-            postFxBlurShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+            postFxBloomDownsampleShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/post_vertex.glsl",
-                "Artifacts/shaders/postFxBlur_fragment.glsl");
+                "Artifacts/shaders/postFxBloomDownsample_fragment.glsl");
+            postFxBloomUpsampleShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/postFxBloomUpsample_fragment.glsl");
             postFxCompositeShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/post_vertex.glsl",
                 "Artifacts/shaders/postFxComposite_fragment.glsl");
+            postFxDofShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/post_vertex.glsl",
+                "Artifacts/shaders/dof_fragment.glsl");
 
             shadowShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/shadow_vertex.glsl",
@@ -169,16 +185,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return invertPassShaderProgram;
         }
 
+        /// <summary>Depth-of-field post-process program (focus circle + variable disk blur).</summary>
+        /// <summary>DoF sprite-shape focus mask program (0 = failed to compile — caller skips the mask).</summary>
+        public static uint GetDofSpriteMaskShaderProgram()
+        {
+            if (dofSpriteMaskShaderProgram == 0) Init();
+            return dofSpriteMaskShaderProgram;
+        }
+
+        public static uint GetPostFxDofShaderProgram()
+        {
+            return postFxDofShaderProgram;
+        }
+
         /// <summary>Shader used for the bloom bright-pass extraction.</summary>
         public static uint GetPostFxBrightShaderProgram()
         {
             return postFxBrightShaderProgram;
         }
 
-        /// <summary>Shader used for the separable bloom blur passes.</summary>
-        public static uint GetPostFxBlurShaderProgram()
+        /// <summary>Shader used to downsample one bloom mip into the next (13-tap).</summary>
+        public static uint GetPostFxBloomDownsampleShaderProgram()
         {
-            return postFxBlurShaderProgram;
+            return postFxBloomDownsampleShaderProgram;
+        }
+
+        /// <summary>Shader used to additively upsample a bloom mip into the level below.</summary>
+        public static uint GetPostFxBloomUpsampleShaderProgram()
+        {
+            return postFxBloomUpsampleShaderProgram;
         }
 
         /// <summary>Shader used for the final composite (scene + bloom → ACES → gamma).</summary>

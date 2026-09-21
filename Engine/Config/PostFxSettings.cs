@@ -35,6 +35,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Soft transition width below the threshold (avoids hard bloom edges).</summary>
         public static float BloomSoftKnee = 0.15f;
 
+        /// <summary>Reactive bloom chain length (1..5): how many half-res mips feed the
+        /// additive upsample. More mips = wider, softer halos; fewer = tight hot glow.</summary>
+        public static float BloomMips = 5f;
+
         /// <summary>Exposure multiplier applied before tonemapping (used when
         /// <see cref="AutoExposure"/> is off).</summary>
         public static float Exposure = 1.0f;
@@ -59,6 +63,47 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Adaptation speed (per second) — how fast exposure follows scene brightness.</summary>
         public static float AutoExposureSpeed = 0.6f;
 
+        // ── Depth of Field: everything outside a screen-space focus circle blurs. ──
+        // The focus point is normalized screen coordinates (0..1, Y up from bottom-left
+        // to match the FBO/viewport convention) so it works for 2D sidescrollers and 3D
+        // alike; the sliders live in the Post FX panel.
+        /// <summary>Master switch for the DoF pass.</summary>
+        public static bool DofEnabled = false;
+        /// <summary>Focus point X, normalized screen width (0 = left, 0.5 = center).</summary>
+        public static float DofFocusX = 0.5f;
+        /// <summary>Focus point Y, normalized screen height (0 = bottom, 1 = top).</summary>
+        public static float DofFocusY = 0.45f;
+        /// <summary>Sharp radius around the focus point, as a fraction of screen HEIGHT.</summary>
+        public static float DofRadius = 0.25f;
+        /// <summary>Blur ramp width outside the radius (fraction of screen height).</summary>
+        public static float DofFeather = 0.35f;
+        /// <summary>Maximum blur disk radius at full defocus, in pixels. 12 = clearly
+        /// visible; raise for a heavy tilt-shift look.</summary>
+        public static float DofMaxBlur = 12f;
+        /// <summary>What the focus circle tracks: 0 = manual sliders, 1 = Player2D,
+        /// 2 = hovered map tile, 3 = hovered object, 4 = editor selection.
+        /// See <see cref="Engine.Visual.PostProcessing.DofFocusTarget"/>.</summary>
+        public static int DofFocusTarget = 0;
+        /// <summary>How fast the focus glides after a moving target (1 = lazy, 30 = welded).</summary>
+        public static float DofFollowSpeed = 14f;
+
+        // ── Optional sprite-silhouette focus shape: instead of a circle, the sharp
+        // region is the exact alpha silhouette of Player sprites or Sprite2D objects.
+        /// <summary>DoF focus shape / mask mode: 0=Geometric Circle, 1=Player Sprite, 2=Sprite2D Layer, 3=Player + Sprite2D Layer, 4=Hybrid (Circle + Player).</summary>
+        public static int DofFocusShape = 0;
+        /// <summary>Invert DoF mask: false=subject sharp / background blurred, true=subject blurred / background sharp.</summary>
+        public static bool DofInvertMask = false;
+        /// <summary>Master switch for the sprite-shape focus mask (true when DofFocusShape != 0).</summary>
+        public static bool DofSpriteShapeEnable = false;
+        /// <summary>Which Sprite2D Render Layer forms the sharp silhouette (−10..10 slider).</summary>
+        public static int DofSpriteShapeLayer = 0;
+        /// <summary>Silhouette growth in mask texels (0 = exact alpha, 1–4 = softer edge).</summary>
+        public static float DofSpriteExpandPx = 2f;
+        /// <summary>Raises sprite alpha coverage so semi-transparent pixels stay sharp.</summary>
+        public static float DofSpriteAlphaBias = 0.05f;
+        /// <summary>Debug view: blur the WHOLE scene except the sprite silhouette.</summary>
+        public static bool DofSpriteMaskOnly = false;
+
         /// <summary>Live computed exposure (write-only for the post-FX processor when
         /// auto-exposure is on; the panel shows it read-only). Not persisted.</summary>
         public static float CurrentAutoExposure = 1f;
@@ -69,6 +114,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             BloomIntensity = 1.0f;
             BloomThreshold = 0.5f;
             BloomSoftKnee = 0.15f;
+            BloomMips = 5f;
             Exposure = 1.0f;
             Gamma = 2.2f;
             AutoExposure = true;
@@ -77,6 +123,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
             AutoExposureTargetLuminance = 0.18f;
             AutoExposureSpeed = 0.6f;
             CurrentAutoExposure = 1f;
+            DofEnabled = false;
+            DofFocusX = 0.5f;
+            DofFocusY = 0.45f;
+            DofRadius = 0.25f;
+            DofFeather = 0.35f;
+            DofMaxBlur = 12f;
+            DofFocusTarget = 0;
+            DofFollowSpeed = 14f;
+            DofFocusShape = 0;
+            DofInvertMask = false;
+            DofSpriteShapeEnable = false;
+            DofSpriteShapeLayer = 0;
+            DofSpriteExpandPx = 2f;
+            DofSpriteAlphaBias = 0.05f;
+            DofSpriteMaskOnly = false;
         }
 
         /// <summary>Restore post-FX values from settings.json at startup (called by Program.cs).</summary>
@@ -89,6 +150,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 BloomIntensity = Clamp(s.PostFxBloomIntensity, 0f, 4f);
                 BloomThreshold = Clamp(s.PostFxBloomThreshold, 0f, 2f);
                 BloomSoftKnee = Clamp(s.PostFxBloomSoftKnee, 0f, 1f);
+                BloomMips = Clamp(s.PostFxBloomMips, 1f, 5f);
                 Exposure = Clamp(s.PostFxExposure, 0.1f, 8f);
                 Gamma = Clamp(s.PostFxGamma, 0.4f, 4f);
                 AutoExposure = s.PostFxAutoExposure;
@@ -96,6 +158,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 AutoExposureMaxExposure = Clamp(s.PostFxAutoExposureMax, 0.05f, 8f);
                 AutoExposureTargetLuminance = Clamp(s.PostFxAutoExposureTarget, 0.01f, 1f);
                 AutoExposureSpeed = Clamp(s.PostFxAutoExposureSpeed, 0.01f, 10f);
+                DofEnabled = s.PostFxDofEnabled;
+                DofFocusX = Clamp(s.PostFxDofFocusX, 0f, 1f);
+                DofFocusY = Clamp(s.PostFxDofFocusY, 0f, 1f);
+                DofRadius = Clamp(s.PostFxDofRadius, 0.01f, 1f);
+                DofFeather = Clamp(s.PostFxDofFeather, 0.01f, 1f);
+                DofMaxBlur = Clamp(s.PostFxDofMaxBlur, 0f, 24f);
+                DofFocusTarget = Math.Clamp(s.PostFxDofFocusTarget, 0, 4);
+                DofFollowSpeed = Clamp(s.PostFxDofFollowSpeed, 1f, 30f);
+                DofFocusShape = Math.Clamp(s.PostFxDofFocusShape, 0, 4);
+                if (DofFocusShape == 0 && s.PostFxDofSpriteShapeEnable)
+                    DofFocusShape = s.PostFxDofSpriteMaskOnly ? 2 : 4;
+                DofInvertMask = s.PostFxDofInvertMask;
+                DofSpriteShapeEnable = (DofFocusShape != 0) || s.PostFxDofSpriteShapeEnable;
+                DofSpriteShapeLayer = Math.Clamp(s.PostFxDofSpriteShapeLayer, -10, 10);
+                DofSpriteExpandPx = Clamp(s.PostFxDofSpriteExpandPx, 0f, 6f);
+                DofSpriteAlphaBias = Clamp(s.PostFxDofSpriteAlphaBias, 0f, 0.5f);
+                DofSpriteMaskOnly = s.PostFxDofSpriteMaskOnly;
             }
             catch (Exception ex)
             {
@@ -113,6 +192,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 s.PostFxBloomIntensity = BloomIntensity;
                 s.PostFxBloomThreshold = BloomThreshold;
                 s.PostFxBloomSoftKnee = BloomSoftKnee;
+                s.PostFxBloomMips = BloomMips;
                 s.PostFxExposure = Exposure;
                 s.PostFxGamma = Gamma;
                 s.PostFxAutoExposure = AutoExposure;
@@ -120,6 +200,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 s.PostFxAutoExposureMax = AutoExposureMaxExposure;
                 s.PostFxAutoExposureTarget = AutoExposureTargetLuminance;
                 s.PostFxAutoExposureSpeed = AutoExposureSpeed;
+                s.PostFxDofEnabled = DofEnabled;
+                s.PostFxDofFocusX = DofFocusX;
+                s.PostFxDofFocusY = DofFocusY;
+                s.PostFxDofRadius = DofRadius;
+                s.PostFxDofFeather = DofFeather;
+                s.PostFxDofMaxBlur = DofMaxBlur;
+                s.PostFxDofFocusTarget = DofFocusTarget;
+                s.PostFxDofFollowSpeed = DofFollowSpeed;
+                s.PostFxDofFocusShape = DofFocusShape;
+                s.PostFxDofInvertMask = DofInvertMask;
+                s.PostFxDofSpriteShapeEnable = (DofFocusShape != 0) || DofSpriteShapeEnable;
+                s.PostFxDofSpriteShapeLayer = DofSpriteShapeLayer;
+                s.PostFxDofSpriteExpandPx = DofSpriteExpandPx;
+                s.PostFxDofSpriteAlphaBias = DofSpriteAlphaBias;
+                s.PostFxDofSpriteMaskOnly = DofSpriteMaskOnly;
                 SettingsSave.Save(s);
                 return true;
             }

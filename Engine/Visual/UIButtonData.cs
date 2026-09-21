@@ -77,6 +77,10 @@ public enum UIElementType
     TextBox,
     /// <summary>A radio button for single-choice selection within a group.</summary>
     RadioButton,
+    /// <summary>A progress/status bar drawn from 3 images: background (frame),
+    /// empty (unfilled interior) and progress (filled portion). Driven by Min/Max/Current
+    /// like a slider but non-interactive — e.g. a health bar.</summary>
+    Bar,
 }
 
 /// <summary>
@@ -275,6 +279,60 @@ public class UIElement
     /// <summary>Group name for radio button (same group = mutual exclusion).</summary>
     public string RadioGroup { get; set; } = "default";
 
+    // ── Bar properties ──
+    /// <summary>Image for the bar's outer frame/background (drawn first, full element).</summary>
+    public string BarBackgroundPath { get; set; } = "";
+    /// <summary>Image for the EMPTY interior (drawn between background and progress fill).</summary>
+    public string BarEmptyPath { get; set; } = "";
+    /// <summary>Image for the PROGRESS fill (clipped to the current fraction).</summary>
+    public string BarProgressPath { get; set; } = "";
+    /// <summary>Legacy shared inset (all sides) — kept for old scene files; migrated on
+    /// load into the per-layer offsets below. New content uses the per-layer offsets.</summary>
+    public float BarInset { get; set; } = 0f;
+    /// <summary>Fill direction: 0 = Left→Right, 1 = Right→Left, 2 = Bottom→Top, 3 = Top→Bottom.</summary>
+    public int BarDirection { get; set; } = 0;
+    /// <summary>When set (Health/Mana/Level/Experience/Fitness), the Bar's fraction is
+    /// driven live by Player2DStats instead of the manual CurrentValue — the HUD bar
+    /// follows gameplay. "None" = manual (panel slider).</summary>
+    public string BarStatBinding { get; set; } = "None";
+
+    // ── Bar per-layer edge offsets (scene px, + = grow outward, − = shrink inward) ──
+    // Each layer rect starts at the element rect and its four edges are moved
+    // independently, so the decorated frame can stick out while the fill insets.
+    public float BarBgOffsetLeft { get; set; }
+    public float BarBgOffsetRight { get; set; }
+    public float BarBgOffsetTop { get; set; }
+    public float BarBgOffsetBottom { get; set; }
+    public float BarEmptyOffsetLeft { get; set; }
+    public float BarEmptyOffsetRight { get; set; }
+    public float BarEmptyOffsetTop { get; set; }
+    public float BarEmptyOffsetBottom { get; set; }
+    public float BarProgOffsetLeft { get; set; }
+    public float BarProgOffsetRight { get; set; }
+    public float BarProgOffsetTop { get; set; }
+    public float BarProgOffsetBottom { get; set; }
+
+    // ── Bar per-layer position (scene px translation, applied AFTER the edge offsets) ──
+    // Offsets change a layer's size; position slides the whole (already resized) rect
+    // without touching its dimensions — handy for nudging frame art into place.
+    public float BarBgPosX { get; set; }
+    public float BarBgPosY { get; set; }
+    public float BarEmptyPosX { get; set; }
+    public float BarEmptyPosY { get; set; }
+    public float BarProgPosX { get; set; }
+    public float BarProgPosY { get; set; }
+
+    // ── Bar per-layer fallback colors ──
+    // Each Bar layer draws its image when a path is set; when the path is empty
+    // (or the image fails to load) the layer falls back to this flat color, so a
+    // Bar is still fully visible while authoring.
+    /// <summary>Fill color for the Background layer when BarBackgroundPath is empty.</summary>
+    public Vector3 BarBgColor { get; set; } = new(0.10f, 0.10f, 0.14f);
+    /// <summary>Fill color for the Empty layer when BarEmptyPath is empty.</summary>
+    public Vector3 BarEmptyColor { get; set; } = new(0.05f, 0.05f, 0.08f);
+    /// <summary>Fill color for the Progress fill when BarProgressPath is empty.</summary>
+    public Vector3 BarProgressColor { get; set; } = new(0.30f, 0.70f, 1.00f);
+
     // ── Dropdown colors ──
     /// <summary>Color of the dropdown arrow icon.</summary>
     public Vector3 ArrowColor { get; set; } = new(0.5f, 0.5f, 0.7f);
@@ -361,6 +419,54 @@ public class UIElement
             OnHoverEnter = OnHoverEnter,
             OnHoverExit = OnHoverExit,
         };
+    }
+
+    /// <summary>Resolve one Bar layer's X/Y translation (scene px). See <see cref="GetBarLayerRect"/>.</summary>
+    public (float x, float y) GetBarLayerPosition(BarLayer layer) => layer switch
+    {
+        BarLayer.Background => (BarBgPosX, BarBgPosY),
+        BarLayer.Empty => (BarEmptyPosX, BarEmptyPosY),
+        BarLayer.Progress => (BarProgPosX, BarProgPosY),
+        _ => (0f, 0f),
+    };
+
+    /// <summary>Bar layer identifiers, expressed as named z-indices. Draw order is
+    /// back → front: Background (-3) → Empty (-2) → Progress (-1) → ImagePath (0, top).</summary>
+    public enum BarLayer { Background = -3, Empty = -2, Progress = -1, ImagePath = 0 }
+
+    /// <summary>Resolve the draw rect of one Bar layer: the element rect (in scene
+    /// coordinates, parent/anchor already resolved by the caller) with that layer's
+    /// four edge offsets applied independently — left/right shift the edges
+    /// horizontally, top/bottom vertically. Positive offset = edge moves outward
+    /// (bigger layer), negative = inward. Used identically by the editor preview and
+    /// the in-game HUD renderer so bars are WYSIWYG.</summary>
+    public (float x, float y, float w, float h) GetBarLayerRect(
+        float elemX, float elemY, float elemW, float elemH, BarLayer layer)
+    {
+        float l, r, t, b, px, py;
+        switch (layer)
+        {
+            case BarLayer.Background:
+                l = BarBgOffsetLeft; r = BarBgOffsetRight; t = BarBgOffsetTop; b = BarBgOffsetBottom;
+                px = BarBgPosX; py = BarBgPosY;
+                break;
+            case BarLayer.Empty:
+                l = BarEmptyOffsetLeft; r = BarEmptyOffsetRight; t = BarEmptyOffsetTop; b = BarEmptyOffsetBottom;
+                px = BarEmptyPosX; py = BarEmptyPosY;
+                break;
+            case BarLayer.Progress:
+                l = BarProgOffsetLeft; r = BarProgOffsetRight; t = BarProgOffsetTop; b = BarProgOffsetBottom;
+                px = BarProgPosX; py = BarProgPosY;
+                break;
+            default: // ImagePath (element's own art) — no edge offsets
+                l = 0; r = 0; t = 0; b = 0; px = 0; py = 0;
+                break;
+        }
+        // Edge offsets resize the layer, then the position offsets translate the whole
+        // resized rect — the two are fully independent.
+        return (elemX + px + l, elemY + py + t,
+                MathF.Max(1f, elemW - l + r),
+                MathF.Max(1f, elemH - t + b));
     }
 
     /// <summary>
@@ -537,6 +643,7 @@ public class UIElement
             UIElementType.Dropdown => "[drp]",
             UIElementType.TextBox => "[txt]",
             UIElementType.RadioButton => "[radio]",
+            UIElementType.Bar => "[bar]",
             _ => "❓",
         };
     }

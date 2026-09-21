@@ -251,6 +251,7 @@ public static class SceneAssetSerializer
             "dropdown" => UIElementType.Dropdown,
             "textbox" => UIElementType.TextBox,
             "radiobutton" => UIElementType.RadioButton,
+            "bar" => UIElementType.Bar,
             _ => UIElementType.Button,
         };
 
@@ -357,6 +358,32 @@ public static class SceneAssetSerializer
             RadioSelectedBgColor = ArrayToVec3(data.RadioSelectedBgColor, new Vector3(0.2f, 0.4f, 0.65f)),
             RadioUnselectedBgColor = ArrayToVec3(data.RadioUnselectedBgColor, new Vector3(0.15f, 0.15f, 0.22f)),
             RadioGroup = data.RadioGroup ?? "default",
+
+            // ── Bar ──
+            BarBackgroundPath = PathHelpers.Resolve(data.BarBackgroundPath),
+            BarEmptyPath = PathHelpers.Resolve(data.BarEmptyPath),
+            BarProgressPath = PathHelpers.Resolve(data.BarProgressPath),
+            BarBgColor = ArrayToVec3(data.BarBgColor, new Vector3(0.10f, 0.10f, 0.14f)),
+            BarEmptyColor = ArrayToVec3(data.BarEmptyColor, new Vector3(0.05f, 0.05f, 0.08f)),
+            BarProgressColor = ArrayToVec3(data.BarProgressColor, new Vector3(0.30f, 0.70f, 1.00f)),
+            BarInset = data.BarInset, // legacy — kept for re-save, unused when offsets set
+            BarDirection = data.BarDirection,
+            BarStatBinding = data.BarStatBinding ?? "None",
+
+            // Per-layer edge offsets (+ = outward, − = inward). Legacy BarInset
+            // migrates into the offsets when no explicit offsets were saved yet.
+            BarBgOffsetLeft = data.BarBgOffsetLeft - data.BarInset,
+            BarBgOffsetRight = data.BarBgOffsetRight + data.BarInset,
+            BarBgOffsetTop = data.BarBgOffsetTop - data.BarInset,
+            BarBgOffsetBottom = data.BarBgOffsetBottom + data.BarInset,
+            BarEmptyOffsetLeft = data.BarEmptyOffsetLeft - data.BarInset,
+            BarEmptyOffsetRight = data.BarEmptyOffsetRight + data.BarInset,
+            BarEmptyOffsetTop = data.BarEmptyOffsetTop - data.BarInset,
+            BarEmptyOffsetBottom = data.BarEmptyOffsetBottom + data.BarInset,
+            BarProgOffsetLeft = data.BarProgOffsetLeft - data.BarInset,
+            BarProgOffsetRight = data.BarProgOffsetRight + data.BarInset,
+            BarProgOffsetTop = data.BarProgOffsetTop - data.BarInset,
+            BarProgOffsetBottom = data.BarProgOffsetBottom + data.BarInset,
         };
 
         foreach (var childData in data.Children)
@@ -385,6 +412,7 @@ public static class SceneAssetSerializer
                 UIElementType.Dropdown => "Dropdown",
                 UIElementType.TextBox => "TextBox",
                 UIElementType.RadioButton => "RadioButton",
+                UIElementType.Bar => "Bar",
                 _ => "Button",
             },
             Text = elem.Text,
@@ -474,6 +502,29 @@ public static class SceneAssetSerializer
             RadioSelectedBgColor = Vec3ToArray(elem.RadioSelectedBgColor),
             RadioUnselectedBgColor = Vec3ToArray(elem.RadioUnselectedBgColor),
             RadioGroup = elem.RadioGroup,
+
+            // ── Bar ──
+            BarBackgroundPath = PathHelpers.MakeRelative(elem.BarBackgroundPath),
+            BarEmptyPath = PathHelpers.MakeRelative(elem.BarEmptyPath),
+            BarProgressPath = PathHelpers.MakeRelative(elem.BarProgressPath),
+            BarBgColor = Vec3ToArray(elem.BarBgColor),
+            BarEmptyColor = Vec3ToArray(elem.BarEmptyColor),
+            BarProgressColor = Vec3ToArray(elem.BarProgressColor),
+            BarInset = 0f, // migrated into the per-layer offsets below
+            BarDirection = elem.BarDirection,
+            BarStatBinding = elem.BarStatBinding,
+            BarBgOffsetLeft = elem.BarBgOffsetLeft,
+            BarBgOffsetRight = elem.BarBgOffsetRight,
+            BarBgOffsetTop = elem.BarBgOffsetTop,
+            BarBgOffsetBottom = elem.BarBgOffsetBottom,
+            BarEmptyOffsetLeft = elem.BarEmptyOffsetLeft,
+            BarEmptyOffsetRight = elem.BarEmptyOffsetRight,
+            BarEmptyOffsetTop = elem.BarEmptyOffsetTop,
+            BarEmptyOffsetBottom = elem.BarEmptyOffsetBottom,
+            BarProgOffsetLeft = elem.BarProgOffsetLeft,
+            BarProgOffsetRight = elem.BarProgOffsetRight,
+            BarProgOffsetTop = elem.BarProgOffsetTop,
+            BarProgOffsetBottom = elem.BarProgOffsetBottom,
         };
 
         foreach (var child in elem.Children)

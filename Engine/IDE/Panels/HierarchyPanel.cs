@@ -76,8 +76,8 @@ public class HierarchyPanel
     private static readonly Vector4 ColWarn        = new(1.0f, 0.6f, 0.2f, 1f);
     private static readonly Vector4 ColWarnDim     = new(0.7f, 0.4f, 0.1f, 1f);
 
-    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky"];
-    private const int First3DTypeIdx = 9; // Index in ElementTypeLabels where 3D types start
+    private static readonly string[] ElementTypeLabels = ["Button", "Label", "Container", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton", "Bar", " 3D ", "Plane", "Box", "Sphere", "Camera", "Light", "Sky", "Player 2D", "Start"];
+    private const int First3DTypeIdx = 10; // Index in ElementTypeLabels where 3D types start (after Bar)
 
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
@@ -457,6 +457,7 @@ public class HierarchyPanel
         }
 
         ImGui.Begin("SceneDetail", ref _visible, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        IDE.PanelFocus.Notify("SceneDetail");
 
         var rootElements = _bridge.SceneRootElements;
         bool hasUIElementSelection = _bridge.SelectedUIElement != null;
@@ -511,8 +512,8 @@ public class HierarchyPanel
                 _addNameBuffer = _addTypeIdx switch
                 {
                 0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
-                5 => "chk", 6 => "drp", 7 => "txt",
-                9 => "plane", 10 => "box", 11 => "sphere", 12 => "camera", 13 => "light", 14 => "sky",
+                5 => "chk", 6 => "drp", 7 => "txt", 8 => "radio", 9 => "bar",
+                10 => "plane", 11 => "box", 12 => "sphere", 13 => "camera", 14 => "light", 15 => "sky",
                 _ => "element",
             };
                 _addTypeIdx = 0;
@@ -672,6 +673,63 @@ public class HierarchyPanel
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Sky marker (renders procedural skybox)");
 
                 ImGui.Separator();
+
+                // ── 2D gameplay objects row: Player / Sprite / Start / Cam Start ──
+                {
+                    float btnW2 = (ImGui.GetContentRegionAvail().X - ImGui.GetStyle().ItemSpacing.X * 3f) / 4f;
+
+                    var colPl = new Vector4(0.15f, 0.50f, 0.30f, 1f);
+                    var colPlHov = new Vector4(0.22f, 0.65f, 0.40f, 1f);
+                    ImGui.PushStyleColor(ImGuiCol.Button, colPl);
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colPlHov);
+                    if (ImGui.Button("Player 2D", new Vector2(btnW2, 24)))
+                    {
+                        QuickAdd3D(EditorPrimitiveType.Player2D);
+                    }
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Player2D (capsule collider + animated sprite — set sheet/clip in Inspector)");
+
+                    ImGui.SameLine();
+
+                    var colSp = new Vector4(0.65f, 0.42f, 0.15f, 1f);
+                    var colSpHov = new Vector4(0.8f, 0.55f, 0.25f, 1f);
+                    ImGui.PushStyleColor(ImGuiCol.Button, colSp);
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colSpHov);
+                    if (ImGui.Button("Sprite", new Vector2(btnW2, 24)))
+                    {
+                        QuickAdd3D(EditorPrimitiveType.Sprite2D);
+                    }
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Sprite2D (animated clip sprite — no controller, no physics; assign a clip in Inspector or drag one from Asset Browser > Sprites)");
+
+                    ImGui.SameLine();
+
+                    var colSt = new Vector4(0.45f, 0.35f, 0.55f, 1f);
+                    var colStHov = new Vector4(0.58f, 0.46f, 0.70f, 1f);
+                    ImGui.PushStyleColor(ImGuiCol.Button, colSt);
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colStHov);
+                    if (ImGui.Button("Start", new Vector2(btnW2, 24)))
+                    {
+                        QuickAdd3D(EditorPrimitiveType.Start2D);
+                    }
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Start marker (player spawns here in preview/in-game)");
+
+                    ImGui.SameLine();
+
+                    var colCs = new Vector4(0.2f, 0.55f, 0.75f, 1f);
+                    var colCsHov = new Vector4(0.3f, 0.7f, 0.9f, 1f);
+                    ImGui.PushStyleColor(ImGuiCol.Button, colCs);
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colCsHov);
+                    if (ImGui.Button("Cam Start", new Vector2(btnW2, 24)))
+                    {
+                        QuickAdd3D(EditorPrimitiveType.CameraStart2D);
+                    }
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add a Camera Start marker (play camera begins here, centered; Scale.Y = start zoom)");
+
+                    ImGui.Separator();
+                }
             }
         }
 
@@ -847,6 +905,10 @@ public class HierarchyPanel
                             EditorPrimitiveType.Camera => "",
                             EditorPrimitiveType.Light => "☀",
                             EditorPrimitiveType.Sky => "☁",
+                            EditorPrimitiveType.Map2D => "🗺",
+                            EditorPrimitiveType.Player2D => "🏃",
+                            EditorPrimitiveType.Start2D => "🚩",
+                            EditorPrimitiveType.CameraStart2D => "👁",
                             _ => "",
                         };
 
@@ -947,6 +1009,10 @@ public class HierarchyPanel
                         EditorPrimitiveType.Camera => "",
                         EditorPrimitiveType.Light => "☀",
                         EditorPrimitiveType.Sky => "☁",
+                        EditorPrimitiveType.Map2D => "🗺",
+                        EditorPrimitiveType.Player2D => "🏃",
+                        EditorPrimitiveType.Start2D => "🚩",
+                        EditorPrimitiveType.CameraStart2D => "👁",
                         _ => "",
                     };
                     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen | ImGuiTreeNodeFlags.SpanFullWidth;
@@ -1040,8 +1106,8 @@ public class HierarchyPanel
                         string oldDefault = prevTypeIdx switch
                         {
                             0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
-                            5 => "chk", 6 => "drp", 7 => "txt",
-                            9 => "plane", 10 => "box", 11 => "sphere",
+                            5 => "chk", 6 => "drp", 7 => "txt", 8 => "radio", 9 => "bar",
+                            10 => "plane", 11 => "box", 12 => "sphere",
                             _ => "element",
                         };
                         if (_addNameBuffer == oldDefault)
@@ -1049,8 +1115,8 @@ public class HierarchyPanel
                             _addNameBuffer = ti switch
                             {
                                 0 => "btn", 1 => "lb", 2 => "cont", 3 => "sld", 4 => "sldtxt",
-                                5 => "chk", 6 => "drp", 7 => "txt",
-                                9 => "plane", 10 => "box", 11 => "sphere", 12 => "camera", 13 => "light", 14 => "sky",
+                                5 => "chk", 6 => "drp", 7 => "txt", 8 => "radio", 9 => "bar",
+                                10 => "plane", 11 => "box", 12 => "sphere", 13 => "camera", 14 => "light", 15 => "sky",
                                 _ => "element",
                             };
                         }
@@ -1754,12 +1820,16 @@ public class HierarchyPanel
 
             EditorPrimitiveType primType = typeIdx switch
             {
-                9 => EditorPrimitiveType.Plane,
-                10 => EditorPrimitiveType.Box,
-                11 => EditorPrimitiveType.Sphere,
-                12 => EditorPrimitiveType.Camera,
-                13 => EditorPrimitiveType.Light,
-                14 => EditorPrimitiveType.Sky,
+                10 => EditorPrimitiveType.Plane,
+                11 => EditorPrimitiveType.Box,
+                12 => EditorPrimitiveType.Sphere,
+                13 => EditorPrimitiveType.Camera,
+                14 => EditorPrimitiveType.Light,
+                15 => EditorPrimitiveType.Sky,
+                16 => EditorPrimitiveType.Player2D,
+                19 => EditorPrimitiveType.Sprite2D,
+                17 => EditorPrimitiveType.Start2D,
+                18 => EditorPrimitiveType.CameraStart2D,
                 _ => EditorPrimitiveType.Box,
             };
 
@@ -1787,6 +1857,7 @@ public class HierarchyPanel
             6 => UIElementType.Dropdown,
             7 => UIElementType.TextBox,
             8 => UIElementType.RadioButton,
+            9 => UIElementType.Bar,
             _ => UIElementType.Button,
         };
 
@@ -1871,6 +1942,17 @@ public class HierarchyPanel
             newElem.Height = 36;
             newElem.IsChecked = false;
             newElem.RadioGroup = "default";
+        }
+        else if (elemType == UIElementType.Bar)
+        {
+            newElem.UseHover = false;
+            newElem.Width = 300;
+            newElem.Height = 60;
+            newElem.MinValue = 0;
+            newElem.MaxValue = 100;
+            newElem.CurrentValue = 60; // show a partial fill out of the box
+            newElem.BarInset = 6;
+            newElem.BarDirection = 0;
         }
 
         UIElement? parent;

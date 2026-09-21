@@ -71,6 +71,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             if (!_visible) return;
 
             ImGui.Begin("Shadow Settings", ref _visible);
+            IDE.PanelFocus.Notify("Shadow Settings");
 
             // ── Save-feedback notification (top of the panel so it stays visible while
             // the user tweaks sliders; fades out over ~2.5 s) ──

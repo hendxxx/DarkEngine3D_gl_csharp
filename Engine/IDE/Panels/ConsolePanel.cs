@@ -138,6 +138,7 @@ public class ConsolePanel
         if (!_visible) return;
 
         ImGui.Begin("Console", ref _visible);
+        IDE.PanelFocus.Notify("Console");
 
         // ── Toolbar ──
         ImGui.Checkbox("Auto-scroll", ref _autoScroll);

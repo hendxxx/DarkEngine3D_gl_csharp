@@ -11,6 +11,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE;
 /// </summary>
 public class IDEBridge
 {
+    /// <summary>Host IDE back-reference (set by IDE's constructor) so panels can reach
+    /// sibling panels without new constructor wiring — e.g. ViewportPanel pushing the
+    /// hovered grid cell to the Map Editor for trigger placement.</summary>
+    public IDE? HostIDE { get; set; }
     // ── ImGui Controller (for dynamic font loading) ──
     public ImGuiController? ImGuiCtrl { get; set; }
 
@@ -52,6 +56,11 @@ public class IDEBridge
     public IReadOnlyList<UIButtonData>? SceneUIButtons { get; set; }
     /// <summary>The invisible scene-root container that holds all top-level UI elements.</summary>
     public UIElement? SceneRoot { get; set; }
+    /// <summary>True while a visible overlay (first visible root Container) is shown.
+    /// Modal behavior: the game world (movement, camera freefly, viewport picking) is
+    /// blocked and only elements inside the overlay accept input — the background is
+    /// visible but inert until the overlay closes.</summary>
+    public bool IsOverlayVisible { get; set; }
     /// <summary>Root-level UI elements in the current scene, for hierarchy display (children of SceneRoot).</summary>
     public IReadOnlyList<UIElement>? SceneRootElements { get; set; }
 
@@ -105,6 +114,92 @@ public class IDEBridge
 
     // ── F9 toggle — when false, game input is blocked ──
     public bool InGameActive { get; set; }
+
+    // ── Static sprite-clip registry: lets engine-side objects (Player2D EditorObject)
+    // resolve the Sprite Editor's sheets/clips by name without a panel reference.
+    // Refreshed every frame by SpriteEditorPanel.Render (cheap dictionary fill).
+    private static readonly Dictionary<string, (SpriteSheet sheet, uint texId, int imgW, int imgH)> _spriteSheets = new();
+    private static readonly Dictionary<(string sheet, string clip), AnimationClip2D> _spriteClips = new();
+
+    /// <summary>Replace the static registry contents (called by SpriteEditorPanel every
+    /// frame with its live sheet/clip lists + preview textures).</summary>
+    public static void SyncSpriteRegistry(
+        IEnumerable<SpriteSheet> sheets, Dictionary<string, uint> textures,
+        IEnumerable<AnimationClip2D> clips)
+    {
+        _spriteSheets.Clear();
+        foreach (var s in sheets)
+        {
+            textures.TryGetValue(s.ImagePath, out uint tex);
+            _spriteSheets[s.Name] = (s, tex, s.ImageWidth, s.ImageHeight);
+        }
+        _spriteClips.Clear();
+        foreach (var c in clips)
+            _spriteClips[(c.SpriteSheetName, c.Name)] = c;
+    }
+
+    public static bool TryGetSpriteSheetTexture(string sheetName, out uint texId, out int imgW, out int imgH)
+    {
+        texId = 0; imgW = 0; imgH = 0;
+        if (sheetName != null && _spriteSheets.TryGetValue(sheetName, out var entry))
+        {
+            texId = entry.texId; imgW = entry.imgW; imgH = entry.imgH;
+            return true;
+        }
+        return false;
+    }
+
+    public static List<string> GetSpriteSheetNames()
+        => _spriteSheets.Keys.OrderBy(k => k).ToList();
+
+    /// <summary>Number of animation clips currently registered by the Sprite Editor
+    /// (used by the Asset Browser to decide whether to show the clip boxes).</summary>
+    public static int SpriteClipCount => _spriteClips.Count;
+
+    /// <summary>Enumerate all registered clips with their sheet names (for the Asset
+    /// Browser's clip boxes). Ordered by sheet then clip name for stable UI.</summary>
+    public static IEnumerable<(string Sheet, string Clip)> GetSpriteClipPairs()
+        => _spriteClips.Keys.Select(k => (k.sheet, k.clip)).OrderBy(p => p.sheet).ThenBy(p => p.clip);
+
+    /// <summary>Request a Sprite2D placement from the Asset Browser (clip box click or
+    /// viewport drop). Handler lives in IDE: (sheetName, clipName, dropWorldPos — null
+    /// when the caller has no world position, e.g. a plain click → spawn at camera).</summary>
+    public static Action<string, string, Vector3?>? RequestSprite2DPlacement { get; set; }
+
+    public static List<string> GetClipNames(string sheetName)
+        => _spriteClips.Where(kv => kv.Key.sheet == sheetName).Select(kv => kv.Value.Name).OrderBy(n => n).ToList();
+
+    public static bool TryGetSpriteClip(string sheetName, string clipName, out SpriteSheet? sheet, out AnimationClip2D? clip)
+    {
+        sheet = null; clip = null;
+        if (_spriteClips.TryGetValue((sheetName, clipName), out var c))
+        {
+            clip = c;
+            if (_spriteSheets.TryGetValue(sheetName, out var entry))
+                sheet = entry.sheet;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Get the player spawn point for the active map, if one was placed in the
+    /// Map Editor. Returns false when no map is active or no spawn was set — gameplay
+    /// should fall back to its default spawn behavior in that case. The returned world
+    /// position is upright (x horizontal, y height above the map's bottom edge, z = 0),
+    /// matching the 2D level plane orientation.</summary>
+    public bool TryGetPlayerSpawn(out System.Numerics.Vector3 worldPos)
+    {
+        worldPos = default;
+        if (ActiveTilemap == null || !ActiveTilemap.HasPlayerSpawn) return false;
+        worldPos = new System.Numerics.Vector3(
+            ActiveTilemap.PlayerSpawn.X, ActiveTilemap.PlayerSpawn.Y, 0f);
+        return true;
+    }
+
+    /// <summary>Get the player spawn point for the active map, if one was placed in the
+    /// Map Editor. Returns false when no map is active or no spawn was set — gameplay
+    /// should fall back to its default spawn behavior in that case.</summary>
+    /// <param name=
     // ── Preview mode (F5) — hides editor gizmos/helpers without changing camera behavior ──
     public bool IsPreviewMode { get; set; }
     // ── In-game option: when true, mouse cursor stays visible during in-game mode ──
@@ -112,6 +207,9 @@ public class IDEBridge
 
     // ── Editor debug grid toggle (shown in the viewport while editing) ──
     public bool ShowDebugGrid { get; set; } = true;
+
+    // ── In-game stats overlay toggle (FPS/TRIS/Objects panel while playing) ──
+    public bool ShowInGameStats { get; set; } = true;
 
     // ── Editor viewport shadows toggle (CSM on/off for editor objects) ──
     public bool ShowShadows { get; set; } = true;
@@ -140,6 +238,113 @@ public class IDEBridge
 
     // ── Scene Manager (for SceneManagerPanel to switch scenes) ──
     public SceneManager? SceneManager { get; set; }
+
+    // ── Active Tilemap (for 2D map editor) ──
+    public Tilemap2D? ActiveTilemap { get; set; }
+    public int ActiveTileLayer { get; set; } = 1;
+    public int SelectedTileId { get; set; } = 0;
+    public int TilePaletteSelectionCount { get; set; } = 0;
+    public List<int> TilePaletteSelectedTiles { get; set; } = new();
+    // Width/height of the selected palette REGION (row-major grid in TilePaletteSelectedTiles,
+    // row 0 = top row). Keeps a dragged block's shape when stamped into the grid.
+    public int TilePaletteSelW { get; set; } = 1;
+    public int TilePaletteSelH { get; set; } = 1;
+    public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick, 4=Trigger
+
+    // ── Trigger Area editing (viewport ↔ Map Editor panel) ──
+    /// <summary>Trigger currently selected in the Map Editor's Triggers list. The
+    /// viewport highlights it and routes drags/resize/Delete/Ctrl+D to it.</summary>
+    public Visual.TilemapTriggerArea? SelectedTrigger { get; set; }
+    /// <summary>World position of the map tile under the mouse (0 = none). Updated by
+    /// ViewportPanel every frame while a visible map is hovered — consumed by the DoF
+    /// focus tracker's "Hovered Tile" mode.</summary>
+    public System.Numerics.Vector3? HoveredMapTileWorld { get; set; }
+    /// <summary>Hit point on the object under the mouse (0 = none). Updated by
+    /// ViewportPanel — consumed by the DoF focus tracker's "Hovered Object" mode.</summary>
+    public System.Numerics.Vector3? HoveredEditorObjectWorld { get; set; }
+    // Tilemap painting hooks (wired by IDE.cs to MapEditorPanel).
+    public Action<Vector2>? MapPaintAt { get; set; }
+    public Action<Vector2>? MapFillAt { get; set; }
+    public Action<Vector2>? MapPickAt { get; set; }
+    /// <summary>Tile paint/erase undo-redo (wired to MapEditorPanel.UndoTilePaint/Redo).</summary>
+    public Action? MapUndo { get; set; }
+    public Action? MapRedo { get; set; }
+
+    // ── Map Editor grid settings (synced to ViewportPanel) ──
+
+    // ── 2D Map scene ownership ──
+
+    /// <summary>
+    /// Map2D (tilemap) renderer objects are gameplay content, so they may only live in a
+    /// GameScene editor scene — never in a MainMenu/Loading scene. Call this whenever the
+    /// active editor scene changes (it is cheap, so running it every editor frame is fine):
+    /// any stray Map2D object in a non-GameScene is removed. A level is NEVER auto-created
+    /// here — it only appears when the scene actually contains a Map2D object (restored
+    /// from the .ing file or created by the Map Editor via New Map / Load / Add Layer).
+    /// </summary>
+    public void EnforceMapObjectSceneRule()
+    {
+        if (EditorObjectManager == null) return;
+
+        bool isGameScene = SelectedEditorScene != null
+            && EditorScenes.TryGetValue(SelectedEditorScene, out var editorScene)
+            && editorScene.Type == SceneType.GameScene;
+
+        if (isGameScene) return;
+
+        // Tilemaps belong to gameplay only — drop leftovers from menu/loading scenes.
+        var stray = new List<EditorObject>();
+        foreach (var o in EditorObjectManager.Objects)
+            if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D)
+                stray.Add(o);
+        foreach (var o in stray)
+            EditorObjectManager.Remove(o);
+    }
+
+    /// <summary>Teleport every Player2D object back to the first visible Start2D marker
+    /// (feet anchor), zeroing velocity + animation clock. Called when returning to edit
+    /// mode from preview/in-game so the editor shows players at their spawn point, not
+    /// wherever physics left them. No-op when no Start2D marker exists.</summary>
+    public void ResetPlayersToStart2D()
+    {
+        var mgr = EditorObjectManager;
+        if (mgr == null) return;
+
+        EditorObject? start2d = null;
+        foreach (var o in mgr.Objects)
+        {
+            if (o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Start2D }) { start2d = o; break; }
+        }
+        if (start2d == null) return;
+
+        foreach (var o in mgr.Objects)
+        {
+            if (o is not { PrimitiveType: EditorPrimitiveType.Player2D }) continue;
+            // Capsule-aware: Start2D marks where the COLLIDER stands (physics feet =
+            // Position.Y + capsule offset), so place the object so the capsule — not
+            // the sprite anchor — lands exactly on the marker.
+            o.Position = new System.Numerics.Vector3(
+                start2d.Position.X - o.Player2DCapsuleOffsetX,
+                start2d.Position.Y - o.Player2DCapsuleOffsetY,
+                start2d.Position.Z);
+            o.Player2DVelocityY = 0f;
+            o.Player2DVelocityX = 0f;
+            o.Player2DAnimTime = 0f;
+            // Clear the runtime animation state too — edit mode doesn't run
+            // Player2DSystem.Update, so a stale Moving flag would keep the walk clip
+            // playing in the editor if the user exited in-game while holding A/D.
+            o.Player2DMoving = false;
+            o.Player2DFacingRight = true;
+            // Clear any in-progress action as well, so locomotion restarts cleanly
+            // from the idle state after returning to edit mode. Grounded=true too —
+            // edit mode has no physics, so the resolver must treat the player as
+            // standing (otherwise it picks Jump and idle never plays in the viewport).
+            o.Player2DActionTime = 0f;
+            o.Player2DCurrentAction = "";
+            o.Player2DGrounded = true;
+            Console.WriteLine($"[Bridge] Player2D reset to Start ({o.Position.X:F1}, {o.Position.Y:F1})");
+        }
+    }
 
     // ── Editor Object Manager ──
     private EditorObjectManager? _editorObjectManager;

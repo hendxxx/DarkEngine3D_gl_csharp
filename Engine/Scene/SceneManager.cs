@@ -16,6 +16,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
     public unsafe class SceneManager
     {
         private readonly TransitionManager _transitionManager = new();
+
+        // ── Dialogue overlay (no-scene path) — state only; visuals via ViewportPanel.
+        // Kept for reference: the HUD is no longer used on this path (ImGui overlay
+        // replaced it), so no field needed.
         // Scheduled delayed behaviors (timer actions)
         private record ScheduledBehavior(float Remaining, string Behavior)
         {
@@ -26,6 +30,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private readonly List<ScheduledBehavior> _scheduledBehaviors = new();
         private IScene? _currentScene;
         private IScene? _nextScene;
+        /// <summary>Scene switch parked while a transition is still playing. Applied the
+        /// frame the transition completes — loads run AFTER the overlay, not during it.</summary>
+        private IScene? _deferredTransitionScene;
         private bool _running;
         private bool _altEnterWasDown = false;
 
@@ -227,6 +234,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (startScene != null)
                 SwitchToScene(startScene, true);
 
+            // ── Dialogue HUD (no-scene editor path) — create + bake BEFORE the loop ──
+            // Mid-frame font bakes can land with corrupt GL state (shadow-map units,
+            // MSAA FBO binds…) and produce a GPU-EMPTY atlas: boxes draw but ALL text
+            // is discarded by the shader. Every scene HUD in this engine is created
+            // OUTSIDE the render pass (MainMenu Enter, Loading constructor) and those
+            // all render text fine — so the dialogue HUD follows the same rule and
+            // pre-bakes every theme font up front. Slot 0 = the Default theme's window
+            // font (same proven constructor-bake path as MainMenuScene).
+            // NOTE: SceneHUD is NOT created here on the GameScene path (that scene owns
+            // its HUD via LoadingScene) — this HUD only serves the no-scene viewport.
+            // (Dialogue HUD creation removed — the no-scene path now draws the dialogue
+            // overlay through ImGui (ViewportPanel.DrawImGuiOverlay call) instead of the
+            // HUD/stb pipeline, whose mid-frame font bakes produced empty glyphs here.)
+
             nint window = Glfw.GetWindow();
 
             while (_running && Glfw.GetWindowShouldClose(window) == 0)
@@ -259,7 +280,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_currentScene == null && _ide != null && _ide.IsActive)
                 {
                     var bridge = _ide.Bridge;
-                    if (bridge != null && bridge.IsViewportFocused)
+                    // Modal overlay visible → camera input frozen (background stays inert).
+                    if (bridge != null && bridge.IsViewportFocused && !bridge.IsOverlayVisible)
                     {
                         // Ensure editor camera exists
                         if (_editorCamera == null)
@@ -270,10 +292,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
                         if (_editorLights == null)
                         {
+                            // Fixed 10:00 start — the previous default followed the real
+                            // clock, so opening the IDE at night gave a pitch-dark editor
+                            // viewport with no visible way to change the time. A Sky object
+                            // (SkyTimeOfDay) still overrides this per scene.
                             _editorLights = new Lights(
                                 new Vector3(-0.5f, 0.8f, -0.3f),
                                 new Vector3(0.9f, 0.9f, 0.85f),
-                                _editorCamera.Position);
+                                _editorCamera.Position,
+                                "10:00");
                         }
 
                         bool imguiCapture = ImGuiNET.ImGui.GetIO().WantCaptureMouse;
@@ -305,7 +332,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 // IDE always active — keep update running
                 if (_ide != null)
+                {
                     _ide.Update(dt);
+
+                    // ── Player2D physics for editor objects — runs in preview mode (F7)
+                    // AND in-game mode (F8), regardless of whether an IScene is active.
+                    // Single central call site: GameScene no longer runs its own update,
+                    // so this must also cover sessions where a scene (e.g. GameScene)
+                    // is loaded while editor Player2D objects exist. ──
+                    var bridgeP2d = _ide.Bridge;
+                    if (bridgeP2d != null && (bridgeP2d.InGameActive || bridgeP2d.IsPreviewMode))
+                    {
+                        Visual.Player2DSystem.Update(bridgeP2d.EditorObjectManager, bridgeP2d.ActiveTilemap, dt, bridgeP2d);
+                        // Trigger camera-shake timers decay every frame while a session runs.
+                        bridgeP2d.Camera?.UpdateShake(dt);
+                    }
+                }
 
                 // ── Advance transition animation each frame ──
                 _transitionManager.Update(dt);
@@ -385,6 +427,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             int vpW = br.SceneTextureWidth > 0 ? br.SceneTextureWidth : Glfw.WindowWidth;
                             int vpH = br.SceneTextureHeight > 0 ? br.SceneTextureHeight : Glfw.WindowHeight;
 
+                            // ── Z-order: 2D map grid overlays draw with depth test disabled,
+                            // so they'd paint over the gizmo. Clear depth so the gizmo is
+                            // ALWAYS the frontmost element in the viewport. ──
+                            GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
+
                             // ── Render ONE gizmo at the selection center (group average for
                             // multi-select) — a single gizmo drives the whole selection.
                             // While a multi scale/rotate drag is active, stick to the FROZEN
@@ -446,10 +493,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                     if (_editorLights == null)
                     {
+                        // Same fixed 10:00 default as the no-scene path above — daylight
+                        // editor viewport regardless of when the IDE is opened.
                         _editorLights = new Lights(
                             new Vector3(-0.5f, 0.8f, -0.3f),
                             new Vector3(0.9f, 0.9f, 0.85f),
-                            _editorCamera.Position);
+                            _editorCamera.Position,
+                            "10:00");
                     }
 
                     _editorCamera.UpdateAspectRatio(Glfw.WindowWidth, Glfw.WindowHeight);
@@ -573,6 +623,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             ? bridge.SelectionHighlights.EditorObject : null;
                         bool showGizmos = !(bridge?.IsPreviewMode ?? false);
                         editorObjMgr.Draw(_editorCamera, _editorLights, _editorCsm, wireCol, bridge.SelectedEditorObjects, showEditorGizmos: showGizmos);
+
+                        // ── Z-order: the 2D map grid overlays disable depth test while they
+                        // draw, so they would paint OVER a gizmo drawn earlier. Clear the
+                        // depth buffer now so the transform gizmo below (drawn after this)
+                        // always renders in FRONT of the 2D grid / tile tiles. ──
+                        GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
                     }
 
                     // ── Render ONE gizmo at the selection center (group average for
@@ -639,6 +695,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     bridge.SceneTextureID = _sharedColorTex;
                     bridge.SceneTextureWidth = Glfw.WindowWidth;
                     bridge.SceneTextureHeight = Glfw.WindowHeight;
+
+                    // ── Dialogue state (no-scene path) ──
+                    // The editor-viewport path (2D sidescroller runs as editor objects with
+                    // NO active IScene) has no scene render pass, so nothing ever called
+                    // DialogueSystem.Tick there — conversations logged "Started" but never
+                    // drew. Drawing the overlay via the HUD/stb pipeline here produced
+                    // boxes but no glyphs (mid-frame font bakes land with dirty GL state),
+                    // so the VISUALS for this path moved to ViewportPanel →
+                    // DialogueSystem.DrawImGuiOverlay (the same ImGui draw-list path the
+                    // UI element preview renders through — proven to show text). This pass
+                    // only advances state (typewriter, fades, bubble expiry) and pre-warms
+                    // texture uploads outside the ImGui frame.
+                    if (bridge.InGameActive || bridge.IsPreviewMode)
+                    {
+                        // GameScene normally sets this in its render pass — that pass never
+                        // runs on the no-scene path, so prompts would stay hidden forever.
+                        DialogueSystem.ShowPrompts = true;
+                        DialogueSystem.TickState(dt, _editorCamera, bridge.EditorObjectManager);
+                    }
                 }
 
                 // ── After scene render: ensure viewport texture is set & bind fb 0 for ImGui ──
@@ -650,6 +725,34 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // Viewport panel (and any scene that rendered into the shared FBO)
                     // samples an antialiased, up-to-date frame.
                     ResolveSharedFBO();
+
+                    // Depth of field (slider-driven focus circle, Post FX panel): composite
+                    // IN-PLACE into the shared resolve texture so the editor viewport shows
+                    // the effect live while dragging the sliders — not only during play.
+                    // Only when the viewport actually samples the SHARED texture (edit mode
+                    // or shared-FBO scenes): GameScene owns its own FBO and composites DoF
+                    // in PostProcessStack.RunStack — compositing here too would double it.
+                    if (bridge == null || bridge.SceneTextureID == 0 || bridge.SceneTextureID == _sharedColorTex)
+                    {
+                        if (DepthOfFieldComposite.Apply(_sharedColorTex, _sharedResolveFBO,
+                            Glfw.WindowWidth, Glfw.WindowHeight, "editor-sharedFBO"))
+                        {
+                            // Restore the resolved state so the assignments below keep working.
+                            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        }
+
+                        // Reactive bloom + auto-exposure on the editor viewport texture
+                        // (same shared processor as GameScene — one continuous eye
+                        // adaptation). The outer condition already excludes GameScene
+                        // scenes that graded their own frame in PostProcessStack.RunStack.
+                        {
+                            PostFxProcessor.Shared.ApplyInPlace(_sharedColorTex, _sharedResolveFBO,
+                                Glfw.WindowWidth, Glfw.WindowHeight);
+                            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        }
+                    }
 
                     if (bridge != null && bridge.SceneTextureID == 0)
                     {
@@ -680,11 +783,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // so the old scene isn't destroyed before its render pass.
                 // If SwitchScene() was called during Update(), _nextScene
                 // is set here and applied before the next Update().
+                // SEQUENTIAL WITH TRANSITIONS: while a transition is running, the scene
+                // switch is HELD until the transition finishes — the overlay plays over
+                // the current scene first, then the (potentially heavy) load happens
+                // behind the completed overlay. Previously the midpoint fired the load
+                // mid-transition and its multi-second hitch ate the reveal animation.
                 if (_nextScene != null && _nextScene != _currentScene)
                 {
-                    SwitchToScene(_nextScene, false);
+                    if (_transitionManager.IsActive)
+                    {
+                        // Defer: apply the switch on the frame the transition completes.
+                        _deferredTransitionScene = _nextScene;
+                        _nextScene = null;
+                    }
+                    else
+                    {
+                        SwitchToScene(_nextScene, false);
 
-                    // When InGame mode (IDE off), update cursor for the new scene
+                        // When InGame mode (IDE off), update cursor for the new scene
+                        if (_ide != null && !_ide.IsActive)
+                            UpdateInGameCursor();
+                    }
+                }
+                // A transition just finished over this scene → now do the actual load.
+                else if (_deferredTransitionScene != null && !_transitionManager.IsActive)
+                {
+                    var toLoad = _deferredTransitionScene;
+                    _deferredTransitionScene = null;
+                    SwitchToScene(toLoad, false);
+
                     if (_ide != null && !_ide.IsActive)
                         UpdateInGameCursor();
                 }
@@ -711,6 +838,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             oldScene?.Dispose();
             _currentScene = null;
             _nextScene = null;
+            _deferredTransitionScene = null;
 
             Console.WriteLine("Engine Shutdown.");
         }
@@ -897,6 +1025,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             _currentScene = scene;
             _nextScene = null;
+            _deferredTransitionScene = null; // any parked switch is now superseded
 
             if (!isInitial)
             {

@@ -31,8 +31,21 @@ public class IDE : IDisposable
     private readonly TransitionPanel _transitionPanel;
     private readonly RenderTimePanel _renderTime = null!;
     private readonly ShadowPanel _shadowPanel = null!;
-    // PostFX removed
+    private readonly PostFxPanel _postFxPanel = null!;
+    private readonly FrameBufferDebugPanel _framebufferDebug = null!;
     private readonly PbrPanel _pbrPanel = null!;
+    private readonly PlayerInfoPanel _playerInfo = null!;
+    // ── 2D Sidescroller Panels ──
+    private readonly SpriteEditorPanel _spriteEditor = null!;
+    private readonly MapEditorPanel _mapEditor = null!;
+    private readonly DialogueEditorPanel _dialogueEditor = null!;
+    /// <summary>Intensity handed from the Camera Shake trigger action to BeginShake
+    /// (the runtime fires duration and intensity as two separate callbacks).</summary>
+    private float _pendingShakeIntensity = 1f;
+    /// <summary>Public accessor so ViewportPanel can push the hovered grid cell to
+    /// the Map Editor (used by "+ Add Trigger Area" placement).</summary>
+    public MapEditorPanel MapEditorRef => _mapEditor;
+    private readonly IDESettingsPanel _ideSettings = null!;
     /// <summary>File picker for Model > Add GLB Reference... (.glb models).</summary>
     private readonly ImGuiFileDialog _glbDialog = new();
 
@@ -51,6 +64,32 @@ public class IDE : IDisposable
     private UIElement? _focusedInGameElement = null;
     private int _focusedInGameIndex = -1;
     // ── Project dialogs ──
+
+    // ── Panel focus memory ──
+    // Tracks which editor panel window the user focused LAST (click/title bar) and
+    // restores it on startup, so the IDE reopens on the panel the user was working
+    // in instead of always landing on the same default (e.g. Map Editor).
+    private string _restoreFocusPanel = "";
+    private bool _focusRestoreApplied = false;
+    private const int PanelFocusFramesDelay = 30; // let ImGui layout settle before restoring
+    private int _focusRestoreCountdown = PanelFocusFramesDelay;
+    private double _focusSaveElapsed = 0;
+    private float _lastDeltaTime = 1f / 60f;
+    /// <summary>Set when editor panels must re-focus the last-used panel (startup
+    /// restore or returning from in-game mode — both make all windows "appearing").</summary>
+    private bool _panelFocusRestorePending = false;
+    private int _panelFocusRestoreDelay = 4;
+    /// <summary>Frames remaining where panel focus TRACKING is frozen (transition
+    /// frames — stops the auto-focused window, e.g. Map Editor, from overwriting
+    /// PanelFocus.LastFocused before the restore fires).</summary>
+    private int _focusFreezeFrames = PanelFocusFramesDelay;
+    /// <summary>Panels eligible for focus memory.</summary>
+    private static readonly string[] TrackablePanels =
+    {
+        "Viewport", "Scene View", "Inspector", "SceneDetail", "Console",
+        "Scene Manager", "Asset Browser", "Render Time", "Shadow Settings",
+        "PBR Material", "Transition", "Sprite Editor", "Map Editor", "IDE Settings"
+    };
     private bool _showNewProjectDialog = false;
     private bool _showOpenProjectDialog = false;
     private byte[] _newProjectNameBuf = new byte[256];
@@ -87,23 +126,45 @@ public class IDE : IDisposable
                         _sceneManagerPanel.SelectEditorScenePublic(previousScene);
                     }
                     Bridge.InGameActive = true;
+                    // Camera mouse-control now follows the IN-GAME toggle (the IDE
+                    // Settings panel shows the option while playing).
+                    Visual.Camera.InGameSessionActive = true;
+                    // Hide editor-only 2D aids (tile grid overlay, collision boxes) so
+                    // the running game renders clean.
+                    Engine.Objects.EditorObject.Editor2DAidsHidden = true;
                     _viewport.SetFullscreen(true);
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
 
                     // ── Enable freefly + preview mode for in-game navigation ──
+                    // (2D level scenes keep freefly OFF — see SyncLevelCamera.)
                     _viewport.PreviewMode = true;
-                    if (Bridge.Camera != null)
+                    if (Bridge.Camera != null && Bridge.ActiveTilemap == null)
                         Bridge.Camera.FlyMouseLook = true;
 
                     // ── Switch editor camera to the first Camera object in the scene ──
                     _lastInGameSceneName = Bridge.SelectedEditorScene;
                     SwitchToGameCamera();
+
+                    // 2D level scenes stay in ortho FRONT view (anchored to the map's
+                    // bottom-left) even in-game — re-anchor over any Camera marker.
+                    _levelCameraReframePending = Bridge.ActiveTilemap != null;
+
+                    // ── Player2D: spawn at the Start2D marker on the first update frame —
+                    // deferred because the .ing reload above re-creates objects async. ──
+                    Engine.Objects.EditorObject.Player2DSpawnPending = true;
                 }
                 else
                 {
                     // Reset fullscreen mode when exiting in-game mode
                     Bridge.InGameActive = false;
+                    // Camera mouse-control returns to the EDITOR toggle.
+                    Visual.Camera.InGameSessionActive = false;
+                    // Restore editor-only 2D aids (tile grid overlay, collision boxes).
+                    Engine.Objects.EditorObject.Editor2DAidsHidden = false;
+                    // Return players to their Start2D marker — physics may have moved
+                    // them anywhere during play; edit mode shows the spawn point again.
+                    Bridge.ResetPlayersToStart2D();
                     _viewport.SetFullscreen(false);
                     _viewport.PreviewMode = false;
                     if (Bridge.Camera != null)
@@ -111,6 +172,13 @@ public class IDE : IDisposable
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
                     _lastInGameSceneName = null;
+                    // Return focus to the panel the user was working in (e.g. the
+                    // Inspector while editing the player). Without this, every panel
+                    // becomes "appearing" again after in-game mode and the LAST-Begun
+                    // window (Map Editor) steals focus on the next frame.
+                    _panelFocusRestorePending = true;
+                    _panelFocusRestoreDelay = 4;
+                    _focusFreezeFrames = 8; // keep tracking frozen across the transition
                 }
                 Console.WriteLine($"[IDE] In-Game Mode: {_inGameMode}");
             }
@@ -137,6 +205,8 @@ public class IDE : IDisposable
 
         // Set in-game mode directly — skip save, just set flags
         _inGameMode = true;
+        // Hide editor-only 2D aids (tile grid overlay, collision boxes).
+        Engine.Objects.EditorObject.Editor2DAidsHidden = true;
         _viewport.SetFullscreen(true);
         _focusedInGameElement = null;
         _focusedInGameIndex = -1;
@@ -150,6 +220,13 @@ public class IDE : IDisposable
         _lastInGameSceneName = Bridge.SelectedEditorScene;
         SwitchToGameCamera();
 
+        // 2D level scenes need the ortho front re-anchor, exactly like F8 in-game entry.
+        // The tilemap may not be adopted until the first frames run (scene load is async
+        // through LoadingScene), so also set the flag lazily in SyncLevelCamera when the
+        // level first appears with no camera applied yet.
+        _levelCameraReframePending = Bridge.ActiveTilemap != null;
+        _levelCameraApplied = false;
+
         Console.WriteLine($"[IDE] Startup in-game mode active ({Bridge.EditorScenes.Count} scene(s) from '{loadPath}')");
     }
 
@@ -162,10 +239,43 @@ public class IDE : IDisposable
         Console.WriteLine($"[IDE] Reloaded ({Bridge.EditorScenes.Count} scenes)");
     }
 
+    /// <summary>
+    /// Route an undo/redo request to the LAST FOCUSED undo-capable context:
+    /// Sprite Editor (snapshot stack) → Map Editor (tile-paint stack) → hierarchy
+    /// (UI elements + editor objects). Falls through in priority order when the
+    /// focused panel has nothing to undo, so Ctrl+Z always does the most sensible thing.
+    /// </summary>
+    private void RouteUndoRedo(bool undo)
+    {
+        string focused = PanelFocus.LastFocused ?? "";
+        if (undo)
+        {
+            if (focused == "Sprite Editor") { if (_spriteEditor.CanUndo) { _spriteEditor.Undo(); return; } }
+            else if (focused == "Map Editor") { if (_mapEditor.CanUndoTiles) { _mapEditor.UndoTilePaint(); return; } }
+            if (_hierarchy.CanUndo) { _hierarchy.Undo(); return; }
+            if (_spriteEditor.CanUndo) { _spriteEditor.Undo(); return; }
+            if (_mapEditor.CanUndoTiles) { _mapEditor.UndoTilePaint(); return; }
+        }
+        else
+        {
+            if (focused == "Sprite Editor") { if (_spriteEditor.CanRedo) { _spriteEditor.Redo(); return; } }
+            else if (focused == "Map Editor") { if (_mapEditor.CanRedoTiles) { _mapEditor.RedoTilePaint(); return; } }
+            if (_hierarchy.CanRedo) { _hierarchy.Redo(); return; }
+            if (_spriteEditor.CanRedo) { _spriteEditor.Redo(); return; }
+            if (_mapEditor.CanRedoTiles) { _mapEditor.RedoTilePaint(); return; }
+        }
+    }
+
     /// <summary>Auto-load game.ing when a project is opened or closed.</summary>
     private void OnProjectChanged()
     {
         Console.WriteLine($"[IDE] OnProjectChanged: IsProjectLoaded={Engine.Project.ProjectManager.IsProjectLoaded}, ProjectRoot='{Engine.Project.ProjectManager.ProjectRoot}'");
+        // imgui.ini follows the active project — the ImGuiController constructor runs
+        // BEFORE any project is open, so without this re-point the layout would save
+        // to the exe folder forever and never load the project's saved layout.
+        _imgui.SetIniPath(Engine.Project.ProjectManager.IsProjectLoaded
+            ? System.IO.Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "imgui.ini")
+            : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "imgui.ini"));
         if (Engine.Project.ProjectManager.IsProjectLoaded)
         {
             string gameIng = Engine.Project.ProjectManager.GameIngPath;
@@ -199,6 +309,33 @@ public class IDE : IDisposable
                     Console.WriteLine($"[IDE] No .ing files found in project, starting fresh.");
                 }
             }
+            // Update Asset Browser to project root
+            _assetBrowser?.SetProjectRoot(Engine.Project.ProjectManager.ProjectRoot);
+            // Auto-load sprite sheets + Map Editor grid/palette prefs
+            _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
+            _mapEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
+            // Re-apply per-project ortho zoom limits. The IDE constructor applied
+            // these BEFORE any project was open (exe-fallback settings), so without
+            // this reload the project's settings.json range (e.g. 25–50 for pixel-art)
+            // never took effect until restart. Also clamp the camera's current zoom
+            // into the new range so an out-of-range OrthoSize snaps to the boundary.
+            var projSettings = SettingsSave.Load();
+            Visual.Camera.ApplyZoomLimits(projSettings.OrthoZoomMin, projSettings.OrthoZoomMax);
+            // Mouse camera control toggles are per project too (editor + in-game).
+            Visual.Camera.MouseCameraControl = projSettings.MouseCameraControl;
+            Visual.Camera.InGameMouseCameraControl = projSettings.InGameMouseCameraControl;
+            Bridge.ShowInGameStats = projSettings.ShowInGameStats;
+            if (Bridge.Camera != null)
+                Bridge.Camera.OrthoSize = Math.Clamp(Bridge.Camera.OrthoSize, Visual.Camera.OrthoZoomMin, Visual.Camera.OrthoZoomMax);
+            // Re-apply post-FX (bloom/auto-exposure/DoF) from the PROJECT's settings.
+            // Program.cs applied the exe-fallback file before any project existed —
+            // without this reload the project's saved FX look never took effect
+            // (panel/slider states always snapped back to the fallback values).
+            Config.PostFxSettings.Apply(projSettings);
+            _postFxPanel?.OnProjectChanged();
+            // 2D level maps live INSIDE each scene's .ing (Map2D object payload saved/restored
+            // by SceneManagerPanel). A scene only shows its level when the file contains one,
+            // so there is no project-wide map auto-load anymore.
         }
         else
         {
@@ -212,6 +349,222 @@ public class IDE : IDisposable
             Bridge.SelectedUIElement = null;
             Bridge.SelectedUIElements.Clear();
             Bridge.SelectedEditorObjects.Clear();
+            Bridge.ActiveTilemap = null;
+            // Reset Asset Browser to default
+            _assetBrowser?.SetProjectRoot(null);
+            // Zoom limits follow the active settings file — with no project open this
+            // reads the exe-fallback settings.json (IsProjectLoaded already false here).
+            var fallbackSettings = SettingsSave.Load();
+            Visual.Camera.ApplyZoomLimits(fallbackSettings.OrthoZoomMin, fallbackSettings.OrthoZoomMax);
+            // Follow the active settings file back to the exe fallback after close.
+            Config.PostFxSettings.Apply(fallbackSettings);
+            _postFxPanel?.OnProjectChanged();
+            // Clear sprite sheets + map editor state
+            _spriteEditor?.OnProjectChanged(null);
+            _mapEditor?.AutoLoadMap(null);
+        }
+    }
+
+    /// <summary>
+    /// When a level (visible Map2D object bound to the active tilemap) is shown in the
+    /// editor, switch the camera once to an orthographic FRONT view that is reset so the
+    /// map's bottom-left corner sits at the bottom-left of the viewport — a natural 2D
+    /// tile-editor framing. The camera is only moved on level transitions; afterwards the
+    /// user can pan/zoom freely. When the level is removed / a non-level scene is selected,
+    /// the previous perspective camera is restored.
+    /// </summary>
+    private void SyncLevelCamera()
+    {
+        var cam = Bridge.Camera;
+        if (cam == null) return;
+
+        // Carry the scene Camera object's 2D view offset into the runtime camera so the
+        // 2D follow code can apply it on top of the framed position (mirrored from the
+        // in-game switch path at SwitchToGameCamera).
+        {
+            var mgr = Bridge.EditorObjectManager;
+            if (mgr != null)
+            {
+                var gameCam = mgr.Objects.FirstOrDefault(o =>
+                    o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Camera });
+                if (gameCam != null)
+                    cam.ViewOffset = gameCam.CameraViewOffset;
+            }
+        }
+
+        // Find the level currently shown: a VISIBLE Map2D object in the active scene's
+        // manager that is bound to the active tilemap.
+        Visual.Tilemap2D? level = IsLevelShown() ? Bridge.ActiveTilemap : null;
+
+        if (level == null)
+        {
+            // No level shown — undo level mode if it was active.
+            if (_levelCameraApplied)
+            {
+                cam.IsOrthographic = _levelCameraSavedOrtho;
+                cam.OrthoSize = _levelCameraSavedOrthoSize;
+                cam.IsFlyMode = _levelCameraSavedFly;
+                cam.FlyMouseLook = _levelCameraSavedFlyLook;
+                cam.LockTranslation = false;
+                cam.SetEditorViewTransform(
+                    _levelCameraSavedPos, _levelCameraSavedYaw, _levelCameraSavedPitch, cam.FoV);
+                _levelCameraApplied = false;
+                _levelCameraMap = null;
+                Console.WriteLine("[IDE] Level camera: restored previous view");
+            }
+            _levelCameraReframePending = false;
+            return;
+        }
+
+        // Already framed for this exact level — leave the user's pan/zoom alone,
+        // unless a reframe was requested (e.g. entering in-game mode over the level).
+        if (_levelCameraApplied && ReferenceEquals(_levelCameraMap, level) && !_levelCameraReframePending)
+        {
+            // PLAYING (F5 preview / F8 in-game): the camera is owned by the Player2D
+            // follow — no freefly, no mouse-look, and WASD locked so the camera never
+            // eats the player's own A/D input.
+            // EDIT MODE: WASD + freefly stay AVAILABLE for navigating the level — only
+            // the translation lock is cleared (it is a play-mode-only restriction).
+            bool playing = _inGameMode || Bridge.IsPreviewMode;
+            if (playing)
+            {
+                cam.IsFlyMode = false;
+                cam.FlyMouseLook = false;
+                cam.LockTranslation = true;
+            }
+            else
+            {
+                cam.LockTranslation = false;
+            }
+            return;
+        }
+
+        if (!_levelCameraApplied)
+        {
+            // Remember the current view so we can come back to it later.
+            _levelCameraSavedPos = cam.Position;
+            _levelCameraSavedYaw = cam.Yaw;
+            _levelCameraSavedPitch = cam.Pitch;
+            _levelCameraSavedOrtho = cam.IsOrthographic;
+            _levelCameraSavedOrthoSize = cam.OrthoSize;
+            _levelCameraSavedFly = cam.IsFlyMode;
+            _levelCameraSavedFlyLook = cam.FlyMouseLook;
+
+            // A level appearing for the first time while ALREADY in-game (startup load:
+            // the tilemap is adopted asynchronously after EnterInGameModeFromStartup ran)
+            // must still get the in-game re-anchor — otherwise the camera stays at the
+            // scene's default perspective view and the level renders framed wrong.
+            if (_inGameMode)
+                _levelCameraReframePending = true;
+        }
+        // Consume the pending flag BEFORE the branch below clears it, and remember why
+        // we're framing: entering in-game restores the map's saved camera start, while
+        // first-show in the editor keeps the default bottom-left framing.
+        bool framingForInGame = _levelCameraReframePending;
+        _levelCameraReframePending = false;
+
+        // Play in Preview / in-game re-entry: restore the map's SAVED camera start so
+        // previewing begins from the same anchored view as when it was captured.
+        if (level.HasCameraStart && framingForInGame)
+        {
+            cam.IsOrthographic = true;
+            cam.OrthoSize = level.CameraStartOrthoSize > 0f ? level.CameraStartOrthoSize : cam.OrthoSize;
+            cam.SetEditorViewTransform(level.CameraStartPos, level.CameraStartYaw, level.CameraStartPitch, cam.FoV);
+            cam.IsFlyMode = false;
+            cam.FlyMouseLook = false;
+            cam.LockTranslation = true; // play frame: camera owned by the 2D follow
+            _levelCameraApplied = true;
+            _levelCameraMap = level;
+            Console.WriteLine($"[IDE] Level camera: restored saved camera start for '{level.Name}'");
+            return;
+        }
+
+        // No saved start yet — frame the whole map in ortho, anchored so world (0,0) —
+        // the map's bottom-left corner — is at the bottom-left of the viewport. The map
+        // plane is upright at z = layer index, spanning x/y in [0, W*cell] × [0, H*cell].
+        float cell = level.TileSize * Visual.Tilemap2D.WorldScale;
+        float extentW = level.Width * cell;
+        float extentH = level.Height * cell;
+        int vw = Bridge.SceneTextureWidth;
+        int vh = Bridge.SceneTextureHeight;
+        float aspect = vw > 0 && vh > 0 ? (float)vw / vh : 16f / 9f;
+
+        // Half-height chosen so the whole map fits the viewport at the current aspect.
+        float margin = cell * 0.5f;
+        float halfH = MathF.Max(extentH, extentW / aspect) * 0.5f + margin;
+        float halfW = halfH * aspect;
+        float lookZ = MathF.Max(60f, extentW + extentH + halfW);
+
+        cam.IsOrthographic = true;
+        cam.OrthoSize = halfH;
+        cam.SetEditorViewTransform(new Vector3(halfW, halfH, lookZ), 180f, 0f, cam.FoV);
+
+        // Clean ortho start: mouse-look off so the front framing survives; the user can
+        // re-enable ✈ Fly freely in edit mode. While PLAYING, fly + WASD stay locked
+        // (the camera is owned by the Player2D follow); in edit mode they stay free.
+        cam.FlyMouseLook = false;
+        bool playingFrame = _inGameMode || Bridge.IsPreviewMode;
+        if (playingFrame)
+        {
+            cam.IsFlyMode = false;
+            cam.LockTranslation = true;
+        }
+        else
+        {
+            cam.LockTranslation = false;
+        }
+
+        _levelCameraApplied = true;
+        _levelCameraMap = level;
+
+        // Remember this framing as the map's camera start if none saved yet — Play in
+        // Preview then begins exactly where the level view is anchored. A user-captured
+        // start (Map Editor → Set Camera Start) is never overwritten by auto-framing.
+        if (!level.HasCameraStart)
+        {
+            level.CameraStartPos = cam.Position;
+            level.CameraStartYaw = cam.Yaw;
+            level.CameraStartPitch = cam.Pitch;
+            level.CameraStartOrthoSize = cam.OrthoSize;
+            level.HasCameraStart = true;
+        }
+
+        Console.WriteLine($"[IDE] Level camera: ortho front view for '{level.Name}' " +
+            $"({extentW:F0}x{extentH:F0} units, origin at bottom-left)");
+    }
+
+    /// <summary>True while a level is shown: a VISIBLE Map2D object bound to the active
+    /// tilemap exists in the current scene's object manager. Used to keep the in-game
+    /// camera in ortho/front and disable freefly for 2D scenes.</summary>
+    private bool IsLevelShown()
+    {
+        if (Bridge.ActiveTilemap == null || Bridge.EditorObjectManager == null) return false;
+        foreach (var o in Bridge.EditorObjectManager.Objects)
+        {
+            if (o != null && o.PrimitiveType == EditorPrimitiveType.Map2D
+                && o.IsVisible && ReferenceEquals(o.Map2dTilemap, Bridge.ActiveTilemap))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Persist all current editor data before the project is closed or the app
+    /// exits: sprite sheets + animation clips (Assets/Sprites), the active level's map
+    /// file (Assets/Maps) and the editor scenes (.ing, which also carries the level).
+    /// Ran BEFORE ProjectManager clears the project root.</summary>
+    private void PersistEditorData()
+    {
+        if (!Engine.Project.ProjectManager.IsProjectLoaded) return;
+        try
+        {
+            _spriteEditor?.SaveAllSheets();
+            _mapEditor?.SaveMap();
+            _sceneManagerPanel?.SaveAllScenes();
+            DialogueLibrary.Save(); // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[IDE] PersistEditorData failed: {ex.Message}");
         }
     }
 
@@ -222,6 +575,21 @@ public class IDE : IDisposable
     /// <summary>Tracks the last in-game scene so we can switch camera when the user
     /// navigates to a different scene via in-game UI buttons.</summary>
     private string? _lastInGameSceneName = null;
+
+    // ── Auto ortho + Front camera for the 2D level editor ──
+    /// <summary>Whether the level camera (orthographic front view anchored to the map's
+    /// bottom-left corner) is currently applied.</summary>
+    private bool _levelCameraApplied;
+    /// <summary>Set when entering in-game mode over a level so the camera is re-anchored to
+    /// the ortho front/bottom-left view (SwitchToGameCamera may have moved it).</summary>
+    private bool _levelCameraReframePending;
+    /// <summary>The level the camera was framed for (re-frames when a different map loads).</summary>
+    private Visual.Tilemap2D? _levelCameraMap;
+    // Camera state saved when level mode started, so leaving the level restores the view.
+    private System.Numerics.Vector3 _levelCameraSavedPos;
+    private float _levelCameraSavedYaw, _levelCameraSavedPitch, _levelCameraSavedOrthoSize;
+    private bool _levelCameraSavedOrtho;
+    private bool _levelCameraSavedFly, _levelCameraSavedFlyLook;
 
     /// <summary>Switch the editor freefly camera to the first placed Camera object in the current scene.
     /// If no Camera object exists, shows a warning overlay for 5 seconds.
@@ -280,6 +648,10 @@ public class IDE : IDisposable
 
         cam.Position = gameCamera.Position;
 
+        // Carry the Camera object's 2D view offset into the runtime camera so the 2D
+        // follow code (Player2DSystem) can apply it on top of the framed position.
+        cam.ViewOffset = gameCamera.CameraViewOffset;
+
         // Convert the Camera object's Euler rotation to editor fly-camera Yaw/Pitch.
         // Both use CreateFromYawPitchRoll convention: Y = yaw, X = pitch (positive = look up).
         cam.Yaw = gameCamera.RotationEuler.Y;
@@ -321,6 +693,7 @@ public class IDE : IDisposable
             Console.WriteLine("[IDE] Creating ImGuiController...");
             _imgui = new ImGuiController(window);
             Bridge.ImGuiCtrl = _imgui;
+            Bridge.HostIDE = this;
             Console.WriteLine("[IDE] ImGuiController OK");
 
             _viewport = new ViewportPanel(Bridge);
@@ -334,7 +707,83 @@ public class IDE : IDisposable
             _transitionPanel = new TransitionPanel(Bridge);
             _renderTime = new RenderTimePanel(Bridge);
             _shadowPanel = new ShadowPanel(Bridge);
+            _postFxPanel = new PostFxPanel(Bridge);
+            _framebufferDebug = new FrameBufferDebugPanel(Bridge);
+            // DoF focus tracker reads the live bridge (camera, player, hover targets)
+            // from inside the composite, which runs in both render paths.
+            Visual.PostProcessing.DepthOfFieldFocusTracker.Bridge = Bridge;
             _pbrPanel = new PbrPanel(Bridge);
+            _playerInfo = new PlayerInfoPanel(Bridge);
+            _spriteEditor = new SpriteEditorPanel(Bridge);
+            _mapEditor = new MapEditorPanel(Bridge);
+            _dialogueEditor = new DialogueEditorPanel(Bridge);
+            _ideSettings = new IDESettingsPanel(Bridge);
+
+            // Wire tilemap painting: viewport raycasts → panel paint/fill/pick handlers.
+            // (Declared on the bridge but this connection was never made — without it,
+            // clicking/dragging tiles in the viewport did nothing.)
+            Bridge.MapPaintAt = pos => _mapEditor.PaintAtWorldPosition(pos);
+            Bridge.MapFillAt = pos => _mapEditor.FillAtWorldPosition(pos);
+            Bridge.MapPickAt = pos => _mapEditor.PickAtWorldPosition(pos);
+            Bridge.MapUndo = () => _mapEditor.UndoTilePaint();
+            Bridge.MapRedo = () => _mapEditor.RedoTilePaint();
+
+            // Trigger Area runtime wiring: "Change Map" actions load from the project's
+            // Assets/Maps folder via the Map Editor's loader; "Camera Shake" nudges the
+            // active camera (small decaying offsets applied in Camera.Update).
+            Visual.TriggerEventSystem.OnChangeMap = mapName =>
+            {
+                string rel = Path.Combine("Assets", "Maps", mapName + ".tilemap.json");
+                string path = Project.ProjectManager.IsProjectLoaded
+                    ? Path.Combine(Project.ProjectManager.ProjectRoot!, rel)
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, rel);
+                if (!File.Exists(path))
+                {
+                    Console.WriteLine($"[Trigger] Map file not found: {path}");
+                    return false;
+                }
+                _mapEditor.LoadMapFromFile(path);
+                Visual.TriggerEventSystem.ResetRuntime(Bridge.ActiveTilemap);
+                return true;
+            };
+            Visual.TriggerEventSystem.OnCameraShake = duration =>
+            {
+                // Earthquake: long default (1.2s) so the jolt actually reads.
+                if (Bridge.Camera != null)
+                    Bridge.Camera.BeginShake(MathF.Max(0.1f, duration), _pendingShakeIntensity);
+            };
+            Visual.TriggerEventSystem.RequestShakeIntensity = intensity =>
+                _pendingShakeIntensity = Math.Clamp(intensity, 0.1f, 5f);
+
+            // Sprite2D placement from the Asset Browser clip boxes (click / drop):
+            // creates a decorative animated sprite (Player2D rendering, no controller,
+            // no physics, no camera). worldPos null → spawn at the camera position.
+            IDEBridge.RequestSprite2DPlacement = (sheetName, clipName, worldPos) =>
+            {
+                var mgr = Bridge.EditorObjectManager;
+                if (mgr == null) return;
+                var pos = worldPos ?? (Bridge.Camera != null
+                    ? new Vector3(Bridge.Camera.Position.X, Bridge.Camera.Position.Y, 0f)
+                    : new Vector3(0f, 1f, 0f));
+                var obj = mgr.AddPrimitive(EditorPrimitiveType.Sprite2D, pos);
+                obj.Name = obj.Name; // sprite counter name (sprite1, sprite2, ...)
+                obj.Player2DSpriteSheet = sheetName;
+                obj.Player2DAnimationClip = clipName;
+                obj.IsVisible = true;
+                Bridge.SelectEditorObject(obj);
+                Console.WriteLine($"[IDE] Sprite2D placed: {sheetName}/{clipName} at ({pos.X:F1}, {pos.Y:F1})");
+            };
+
+            // Remember the panel the user was last focused on (persisted per project).
+            var bootSettings = SettingsSave.Load();
+            _restoreFocusPanel = bootSettings.LastFocusedPanel ?? "";
+            PanelFocus.LastFocused = _restoreFocusPanel;
+
+            // Apply per-project ortho zoom limits (settings.json → Camera constants).
+            Visual.Camera.ApplyZoomLimits(bootSettings.OrthoZoomMin, bootSettings.OrthoZoomMax);
+            Visual.Camera.MouseCameraControl = bootSettings.MouseCameraControl;
+            Visual.Camera.InGameMouseCameraControl = bootSettings.InGameMouseCameraControl;
+            Bridge.ShowInGameStats = bootSettings.ShowInGameStats;
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
@@ -368,6 +817,7 @@ public class IDE : IDisposable
     public void Update(float deltaTime)
     {
         if (!IsHealthy) return;
+        _lastDeltaTime = deltaTime;
         _imgui.NewFrame(deltaTime);
     }
 
@@ -376,9 +826,29 @@ public class IDE : IDisposable
     {
         if (!IsHealthy) return;
 
+        // Persist "last focused panel" (debounced) so startup reopens on it.
+        SavePanelFocusIfDirty(_lastDeltaTime);
+
         // ── F8 shortcut: toggle between IDE Mode and In-Game Mode ──
         if (ImGui.IsKeyReleased(ImGuiKey.F8))
             ToggleInGameMode();
+
+        // ── F5 shortcut: toggle Preview Mode (edit-mode helper hiding) ──
+        // Inactive while in-game (matches the View menu, where the item is disabled).
+        if (!_inGameMode && ImGui.IsKeyReleased(ImGuiKey.F5))
+            _viewport.TogglePreviewMode();
+
+        // A level (Map2D) keeps the camera in orthographic FRONT view even while in-game:
+        // this must run for both editor frames and in-game frames (before the early return).
+        SyncLevelCamera();
+
+        // In-game/preview frames skip the panel Render()s below — keep the Map Editor's
+        // tilemap adoption + parallax layer/texture sync running so parallax renders
+        // correctly in Play in Preview (textures load on first use here too).
+        _mapEditor?.SyncForGameplay();
+        // Keep the sprite-sheet/clip registry fresh in in-game mode too (Player2D
+        // resolves its animated sprite through it — a stale registry = frozen sprite).
+        _spriteEditor?.SyncRegistry();
 
         // ── In-Game Mode: render full-screen viewport with no ImGui chrome ──
         if (_inGameMode)
@@ -419,6 +889,10 @@ public class IDE : IDisposable
                 Bridge.SelectedEditorObject = null;
             }
         }
+
+        // Map2D / tilemap renderers only belong in GameScene — rebind the active map to
+        // the current scene's object manager (or strip it from menu/loading scenes).
+        Bridge.EnforceMapObjectSceneRule();
 
         // ── Model > Add GLB Reference... file dialog + placement ──
         _glbDialog.Render();
@@ -493,6 +967,8 @@ public class IDE : IDisposable
                     ImGui.TextDisabled($"  {Engine.Project.ProjectManager.ProjectRoot}");
                     if (ImGui.MenuItem("Close Project"))
                     {
+                        // Persist everything before the project root is cleared.
+                        PersistEditorData();
                         Engine.Project.ProjectManager.CloseProject();
                         Console.WriteLine("[IDE] Project closed");
                     }
@@ -536,11 +1012,16 @@ public class IDE : IDisposable
 
                 ImGui.Separator();
 
-                // Save (Save All)
+                // Save (Save All) — scenes (.ing incl. level) + sprite sheets/anim data
                 bool hasEditorScenes = Bridge.EditorScenes.Count > 0;
                 ImGui.BeginDisabled(!hasEditorScenes);
                 if (ImGui.MenuItem("Save", "Ctrl+S"))
+                {
+                    _spriteEditor?.SaveAllSheets();
+                    _mapEditor?.SaveMap();
                     _sceneManagerPanel.SaveAllScenes();
+                    DialogueLibrary.Save(); // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
+                }
                 ImGui.EndDisabled();
 
                 // Save As...
@@ -552,6 +1033,7 @@ public class IDE : IDisposable
                 if (ImGui.MenuItem("Exit"))
                 {
                     Console.WriteLine("Exiting via File > Exit");
+                    PersistEditorData();
                     nint exitWindow = Glfw.GetWindow();
                     if (exitWindow != nint.Zero)
                         Glfw.SetWindowShouldClose(exitWindow, 1);
@@ -620,19 +1102,32 @@ public class IDE : IDisposable
             }
 
             // ════════════════════════════════════════════════════
+            //  2D Menu
+            // ════════════════════════════════════════════════════
+            if (ImGui.BeginMenu("2D"))
+            {
+                if (ImGui.MenuItem("New Tilemap"))
+                    _mapEditor.CreateNewMap();
+                if (ImGui.MenuItem("Add Parallax Layer"))
+                    _mapEditor.AddParallaxLayer();
+                ImGui.EndMenu();
+            }
+
+            // ════════════════════════════════════════════════════
             //  Edit Menu
             // ════════════════════════════════════════════════════
             if (ImGui.BeginMenu("Edit"))
             {
-                // Undo / Redo
-                ImGui.BeginDisabled(!_hierarchy.CanUndo);
+                // Undo / Redo — routed to the LAST FOCUSED context
+                // (Sprite Editor / Map Editor / hierarchy) via shared routing below.
+                ImGui.BeginDisabled(!(_spriteEditor.CanUndo || _mapEditor.CanUndoTiles || _hierarchy.CanUndo));
                 if (ImGui.MenuItem("Undo", "Ctrl+Z"))
-                    _hierarchy.Undo();
+                    RouteUndoRedo(undo: true);
                 ImGui.EndDisabled();
 
-                ImGui.BeginDisabled(!_hierarchy.CanRedo);
+                ImGui.BeginDisabled(!(_spriteEditor.CanRedo || _mapEditor.CanRedoTiles || _hierarchy.CanRedo));
                 if (ImGui.MenuItem("Redo", "Ctrl+Y"))
-                    _hierarchy.Redo();
+                    RouteUndoRedo(undo: false);
                 ImGui.EndDisabled();
 
                 ImGui.Separator();
@@ -701,7 +1196,7 @@ public class IDE : IDisposable
                 ImGui.BeginDisabled(_inGameMode);
                 bool isPreview = _viewport.PreviewMode;
                 if (ImGui.MenuItem("Preview Mode", "F5", isPreview, !_inGameMode))
-                    _viewport.PreviewMode = !isPreview;
+                    _viewport.TogglePreviewMode();
                 ImGui.EndDisabled();
 
                 ImGui.Separator();
@@ -741,10 +1236,20 @@ public class IDE : IDisposable
                 _hierarchy.ShowInMenu();
                 _renderTime.ShowInMenu();
                 _shadowPanel.ShowInMenu();
+                _postFxPanel.ShowInMenu();
+                _framebufferDebug.ShowInMenu();
                 _pbrPanel.ShowInMenu();
+                _playerInfo.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
                 _transitionPanel.ShowInMenu();
+                ImGui.Separator();
+                // ── 2D Sidescroller Panels ──
+                _spriteEditor.ShowInMenu();
+                _mapEditor.ShowInMenu();
+                _dialogueEditor.ShowInMenu();
+                ImGui.Separator();
+                _ideSettings.ShowInMenu();
 
                 // ── IDE Font selector ──
                 ImGui.Separator();
@@ -818,12 +1323,35 @@ public class IDE : IDisposable
         _inspector.Render();
         _renderTime.Render();
         _shadowPanel.Render();
+        _postFxPanel.Render();
+        _framebufferDebug.Render();
         _pbrPanel.Render();
+        _playerInfo.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
         _console.Render();
         _sceneManagerPanel.Render();
         _transitionPanel.Render();
+        // ── 2D Sidescroller Panels ──
+        _spriteEditor.Render();
+        _mapEditor.Render();
+        _dialogueEditor.Render();
+        _ideSettings.Render();
+
+        // ── Global undo/redo routing (after panels, before popups) ──
+        // Route by LAST FOCUSED panel so the same Ctrl+Z works everywhere without
+        // stealing keys from each other (each consumer checks its own availability):
+        //   Sprite Editor / Map Editor → their snapshot & tile-paint stacks
+        //   anything else              → hierarchy (UI elements + editor objects)
+        // Skipped in in-game mode (F8) — gameplay keys must stay untouched.
+        if (!_inGameMode && ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
+            RouteUndoRedo(undo: true);
+        if (!_inGameMode && ImGui.GetIO().KeyCtrl &&
+            (ImGui.IsKeyPressed(ImGuiKey.Y, false) ||
+             (ImGui.GetIO().KeyShift && ImGui.IsKeyPressed(ImGuiKey.Z, false))))
+            RouteUndoRedo(undo: false);
+
+        TrackAndRestorePanelFocus();
 
         // ── Project popups (rendered after panels, so window context exists) ──
         RenderProjectPopups();
@@ -837,6 +1365,93 @@ public class IDE : IDisposable
         catch { }
 
         _imgui.Render();
+    }
+
+    /// <summary>Re-focuses the panel persisted as last-focused. Runs ONCE at startup
+    /// (docking/layout settled) and AGAIN every time we return from in-game mode —
+    /// both transitions reset ImGui's "appearing" state on all windows, and without
+    /// this the LAST-Begun window (Map Editor) always steals focus.</summary>
+    private void TrackAndRestorePanelFocus()
+    {
+        // Freeze tracking during transition frames so whatever window ImGui auto-focuses
+        // while re-appearing (Map Editor) can NOT overwrite the remembered panel.
+        if (_focusFreezeFrames > 0)
+        {
+            _focusFreezeFrames--;
+            PanelFocus.Frozen = true;
+        }
+        else
+        {
+            PanelFocus.Frozen = false;
+        }
+
+        if (_panelFocusRestorePending)
+        {
+            // Wait a few frames after exiting in-game mode so the panel Begin()s have
+            // re-registered before we push focus back.
+            _panelFocusRestoreDelay--;
+            if (_panelFocusRestoreDelay > 0) return;
+            _panelFocusRestorePending = false;
+            FocusPanel(PanelFocus.LastFocused);
+        }
+        else if (!_focusRestoreApplied)
+        {
+            if (_focusRestoreCountdown > 0)
+            {
+                _focusRestoreCountdown--;
+                return;
+            }
+            _focusRestoreApplied = true;
+            FocusPanel(_restoreFocusPanel);
+        }
+    }
+
+    private void FocusPanel(string name)
+    {
+        if (string.IsNullOrEmpty(name) || Array.IndexOf(TrackablePanels, name) < 0) return;
+        ImGui.SetWindowFocus(name);
+        PanelFocus.LastFocused = name;
+        Console.WriteLine($"[IDE] Restored panel focus: {name}");
+    }
+
+    /// <summary>Persist PanelFocus.LastFocused to settings.json when it changed
+    /// (called from Update with delta time; writes at most every few seconds).</summary>
+    private void SavePanelFocusIfDirty(double dt)
+    {
+        if (!PanelFocus.Dirty) return;
+        _focusSaveElapsed += dt;
+        if (_focusSaveElapsed < 1.5) return; // debounce: wait until the user stops switching
+        _focusSaveElapsed = 0;
+        PanelFocus.Dirty = false;
+        try
+        {
+            var s = SettingsSave.Load();
+            if (!string.Equals(s.LastFocusedPanel, PanelFocus.LastFocused, StringComparison.Ordinal))
+            {
+                s.LastFocusedPanel = PanelFocus.LastFocused;
+                SettingsSave.Save(s);
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>Static focus tracker: each panel calls Notify right after Begin with
+    /// its window name; the call records the window only when it currently HAS focus.</summary>
+    internal static class PanelFocus
+    {
+        public static string LastFocused = "";
+        public static bool Dirty;
+        /// <summary>True during mode transitions — tracking is suspended.</summary>
+        public static bool Frozen;
+        public static void Notify(string name)
+        {
+            if (Frozen) return;
+            if (ImGui.IsWindowFocused(ImGuiFocusedFlags.None) && LastFocused != name)
+            {
+                LastFocused = name;
+                Dirty = true;
+            }
+        }
     }
 
     /// <summary>Render project management popups (New/Open Project, Folder Picker).
@@ -1012,7 +1627,7 @@ public class IDE : IDisposable
         }
     }
 
-    private void RenderInGameMode()
+    private unsafe void RenderInGameMode()
     {
         // In fullscreen mode the viewport IS the entire screen — always report focused
         // so the free-fly camera (WASD + mouse look) processes keyboard/mouse input.
@@ -1108,8 +1723,28 @@ public class IDE : IDisposable
         var cam = Bridge.Camera;
         if (cam != null)
         {
+            // 2D level scenes match edit mode: ortho/front, freefly OFF, cursor visible.
+            // A visible overlay is modal: freefly stays off while it's up (the overlay
+            // owns the cursor; camera must not spin/drift behind it).
+            bool levelMode = IsLevelShown();
+            bool overlayModal = Bridge.IsOverlayVisible;
+            // EDIT mode: a 2D level and freefly coexist — the ✈ Fly toggle is user
+            // state, so it is left alone. Fly is force-off only while PLAYING a 2D
+            // level (the camera is owned by the Player2D follow) or when a modal
+            // overlay is up (the overlay owns the cursor; camera must not spin/drift
+            // behind it).
+            bool playing2d = levelMode && (_inGameMode || Bridge.IsPreviewMode);
+            if (playing2d || overlayModal)
+            {
+                if (cam.FlyMouseLook || cam.IsFlyMode)
+                {
+                    cam.FlyMouseLook = false;
+                    cam.IsFlyMode = false;
+                }
+                Mouse.ShowMouse(true);
+            }
             // ShowCursorInGame option overrides: always show cursor in-game mode
-            if (Bridge.ShowCursorInGame)
+            else if (Bridge.ShowCursorInGame)
             {
                 if (cam.FlyMouseLook)
                 {
@@ -1367,11 +2002,20 @@ public class IDE : IDisposable
         {
             _lastInGameSceneName = currentScene;
             SwitchToGameCamera();
+
+            // 2D level scenes must re-anchor to the ortho FRONT view after an in-game
+            // scene switch too (main-menu "goto scene" navigation) — same as F8
+            // in-game entry. Without this the camera keeps the placed Camera object's
+            // orientation and the level renders from BEHIND the map plane.
+            _levelCameraReframePending = Bridge.ActiveTilemap != null;
         }
 
-        // ── Stats overlay (in-game mode) — always visible, drawn last so it sits on top ──
-        // Mirrors the GameScene debug HUD: FPS/frame-time, triangles, object counts,
-        // and camera position. Reads the bridge values SceneManager refreshes every frame.
+        // ── Stats overlay (in-game mode) — drawn last so it sits on top; visibility
+        // governed by Bridge.ShowInGameStats (IDE Settings → Gameplay, or click the
+        // panel itself while in-game). Mirrors the GameScene debug HUD: FPS/frame-time,
+        // triangles, object counts, and camera position. Reads the bridge values
+        // SceneManager refreshes every frame. ──
+        if (Bridge.ShowInGameStats)
         {
             float fps = Bridge.Fps;
             float frameMs = Bridge.FrameMs;
@@ -1399,7 +2043,11 @@ public class IDE : IDisposable
                 $"Render: t={Bridge.RenderTerrainMs:N1}ms  o={Bridge.RenderObjectsMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
                 $"POS: X={camPos.X:N2}  Y={camPos.Y:N2}  Z={camPos.Z:N2}",
                 $"Yaw: {Bridge.CameraYaw:F1}°  Pitch: {Bridge.CameraPitch:F1}°",
+                // Clickable in-game option: mouse camera control (drag-pan / fly look)
+                // only affects PLAY mode — the editor preference stays untouched.
+                $"[ ] Mouse Camera  {(Visual.Camera.InGameMouseCameraControl ? "ON — drag-pan + fly look" : "OFF — mouse belongs to the game")}",
             ];
+            int mouseCamLine = lines.Length - 1;
 
             var font = ImGui.GetFont();
             float fontSize = 18f;
@@ -1417,6 +2065,11 @@ public class IDE : IDisposable
 
             var bgMin = new Vector2(10f, 10f);
             var bgMax = new Vector2(10f + panelW + pad * 2f, 10f + panelH);
+            // Hit tests: the Mouse Camera row (its own handler) and the whole panel
+            // (click empty area = hide the stats overlay).
+            bool mouseCamHovered = false;
+            bool hoveredPanel = io.MousePos.X >= bgMin.X && io.MousePos.X <= bgMax.X
+                             && io.MousePos.Y >= bgMin.Y && io.MousePos.Y <= bgMax.Y;
             drawList.AddRectFilled(bgMin, bgMax,
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.45f)), 6f);
             drawList.AddRect(bgMin, bgMax,
@@ -1439,11 +2092,81 @@ public class IDE : IDisposable
                     ImGui.ColorConvertFloat4ToU32(col), lines[li]);
                 ty += lineHeight;
             }
-        }
 
-        // ── Camera warning overlay (shown when no Camera object found) ──
+            // ── Clickable "Mouse Camera" toggle row (last line of the stats panel) ──
+            // In-game mode renders no ImGui windows, so the toggle is a hit-tested
+            // rect over the foreground draw list. Clicking flips the in-game toggle
+            // and persists it to the project settings.json immediately.
+            {
+                float lineW = font.CalcTextSizeA(fontSize, float.MaxValue, 0f, lines[mouseCamLine]).X;
+                var btnMin = new Vector2(bgMin.X, bgMin.Y + pad + lineHeight * mouseCamLine);
+                var btnMax = new Vector2(bgMin.X + pad + lineW, btnMin.Y + lineHeight);
+                var mousePos = io.MousePos;
+                bool hovered = mousePos.X >= btnMin.X && mousePos.X <= btnMax.X
+                            && mousePos.Y >= btnMin.Y && mousePos.Y <= btnMax.Y;
+                mouseCamHovered = hovered;
+
+                // Highlight when hovered so it reads as clickable.
+                if (hovered)
+                    drawList.AddRectFilled(btnMin, btnMax,
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.10f)), 4f);
+
+                if (hovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.WantCaptureMouse)
+                {
+                    bool newVal = !Visual.Camera.InGameMouseCameraControl;
+                    Visual.Camera.InGameMouseCameraControl = newVal;
+                    try
+                    {
+                        var s = Config.SettingsSave.Load();
+                        s.InGameMouseCameraControl = newVal;
+                        Config.SettingsSave.Save(s);
+                    }
+                    catch { }
+                    Console.WriteLine($"[IDE] In-game mouse camera control: {(newVal ? "ON" : "OFF")}");
+                }
+
+                // Click anywhere else on the panel → toggle the stats overlay itself.
+                // Persisted to settings.json so the choice survives restarts.
+                if (!mouseCamHovered && hoveredPanel && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && !io.WantCaptureMouse)
+                {
+                    Bridge.ShowInGameStats = false;
+                    try
+                    {
+                        var s = Config.SettingsSave.Load();
+                        s.ShowInGameStats = false;
+                        Config.SettingsSave.Save(s);
+                    }
+                    catch { }
+                    Console.WriteLine("[IDE] In-game stats overlay: OFF (click panel to re-enable in IDE Settings → Gameplay)");
+                }
+            }
+        }
         float dt = io.DeltaTime;
         RenderInGameWarning(dt);
+
+        // ── Dialogue overlay (in-game F8, fullscreen path) ──
+        // RenderInGameMode early-returns before ViewportPanel.Render(), so the        // viewport-panel overlay never draws here. Draw it on the same FOREGROUND        // draw list the scene texture uses, mapping scene pixels → the letterboxed        // image rect (same fit math as the AddImage above). State ticks already run        // in SceneManager/Player2DSystem — this is visuals + choice mouse picking only.
+        if (Bridge.SceneTextureID != 0
+            && DialogueSystem.HudDrawFrameId != Glfw.FrameId) // GameScene HUD drew this frame → no double draw
+        {
+            float texW = Bridge.SceneTextureWidth > 0 ? Bridge.SceneTextureWidth : 1f;
+            float texH = Bridge.SceneTextureHeight > 0 ? Bridge.SceneTextureHeight : 1f;
+            float panelAspect = screenW / screenH;
+            float texAspect = texW / texH;
+            Vector2 dImgSize = panelAspect > texAspect
+                ? new Vector2(screenH * texAspect, screenH)
+                : new Vector2(screenW, screenW / texAspect);
+            Vector2 dImgMin = new((screenW - dImgSize.X) * 0.5f, (screenH - dImgSize.Y) * 0.5f);
+
+            var rawFont = _imgui?.GetFont(
+                Visual.DialogueLibrary.GetTheme("Default")?.FontPath ?? "", 16f);
+            ImFontPtr? dialogueFont = rawFont != null && (nint)rawFont != IntPtr.Zero
+                ? new ImFontPtr(rawFont) : null;
+            Visual.DialogueSystem.DrawImGuiOverlay(drawList, Bridge.Camera, Bridge.EditorObjectManager,
+                (int)texW, (int)texH,
+                p => new Vector2(dImgMin.X + p.X / texW * dImgSize.X, dImgMin.Y + p.Y / texH * dImgSize.Y),
+                dialogueFont);
+        }
 
         // ── Render transition overlay (if any) while ImGui frame is active ──
         try

@@ -18,11 +18,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public const int MapTypes = 7;
 
         // Index 0 = albedo (the base file itself, never auto-replaced).
+        // Covers common texture-pack conventions: PolyHaven (`_1K-JPG_Metalness`),
+        // ambientOcclusion packs (`AmbientOcclusion`), GL/DX normal suffixes.
         public static readonly string[][] Tokens =
         [
             [],                                              // 0 albedo
             ["normal", "nor", "nrm"],                        // 1 normal
-            ["metallic", "metal", "met"],                    // 2 metallic
+            ["metallic", "metal", "met", "metalness"],       // 2 metallic
             ["rough", "roughness"],                          // 3 roughness
             ["ao", "occlusion", "ambient"],                  // 4 ambient occlusion
             ["height", "heightmap", "disp", "displacement"], // 5 height / displacement
@@ -56,28 +58,37 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             try { files = Directory.GetFiles(dir, "*.*", SearchOption.TopDirectoryOnly); }
             catch { return result; }
 
+            // Tokenize every sibling ONCE, then pick the BEST match per map type —
+            // the longest matched token wins, not the alphabetically-first file.
+            // Without this, `MetalPlates013.png` (a base-color with the token
+            // "metal" inside its name) would steal the metallic slot from
+            // `..._Metalness.jpg` just by sorting earlier.
+            var candidates = new List<(string file, List<string> tokens)>();
             foreach (var file in files)
             {
                 string ext = Path.GetExtension(file);
                 if (SkipExts.Contains(ext)) continue;
                 if (string.Equals(Path.GetFileName(file), Path.GetFileName(resolved), StringComparison.OrdinalIgnoreCase))
                     continue;
-
                 var tokens = SplitTokens(Path.GetFileNameWithoutExtension(file));
                 if (tokens.Count == 0) continue;
+                candidates.Add((file, tokens));
+            }
 
-                for (int t = 1; t < MapTypes; t++)
+            for (int t = 1; t < MapTypes; t++)
+            {
+                string bestFile = "";
+                int bestLen = 0;
+                foreach (var (file, tokens) in candidates)
                 {
-                    if (!string.IsNullOrEmpty(result[t])) continue;
                     foreach (var tok in tokens)
                     {
-                        if (Array.IndexOf(Tokens[t], tok) >= 0)
-                        {
-                            result[t] = file;
-                            break;
-                        }
+                        if (Array.IndexOf(Tokens[t], tok) < 0) continue;
+                        if (tok.Length > bestLen) { bestLen = tok.Length; bestFile = file; }
+                        break;
                     }
                 }
+                result[t] = bestFile;
             }
             return result;
         }
@@ -85,10 +96,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private static List<string> SplitTokens(string name)
         {
             var list = new List<string>();
-            foreach (var part in name.Split(['_', '-'], StringSplitOptions.RemoveEmptyEntries))
+            foreach (var part in name.Split(['_', '-', ' ', '.'], StringSplitOptions.RemoveEmptyEntries))
             {
-                string p = part.Trim();
-                if (p.Length > 0) list.Add(p.ToLowerInvariant());
+                // CamelCase compounds must split BEFORE matching: `AmbientOcclusion` →
+                // [ambient, occlusion], `NormalGL` → [normal, gl], `BaseColor` → [base,
+                // color]. Without this, an exact-token match can never see the keyword
+                // hidden inside the compound (the whole point of auto-detect).
+                int start = 0;
+                for (int i = 1; i <= part.Length; i++)
+                {
+                    bool boundary = i == part.Length
+                        || (char.IsUpper(part[i]) && !char.IsUpper(part[i - 1]));
+                    if (!boundary) continue;
+                    string p = part[start..i].Trim().ToLowerInvariant();
+                    if (p.Length > 0) list.Add(p);
+                    start = i;
+                }
             }
             return list;
         }

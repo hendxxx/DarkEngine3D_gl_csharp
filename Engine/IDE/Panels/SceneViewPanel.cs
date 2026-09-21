@@ -22,6 +22,7 @@ public class SceneViewPanel
         if (!_visible) return;
 
         ImGui.Begin("Scene View", ref _visible);
+        IDE.PanelFocus.Notify("Scene View");
 
         // ── Performance ──
         if (ImGui.CollapsingHeader("Performance", ImGuiTreeNodeFlags.DefaultOpen))

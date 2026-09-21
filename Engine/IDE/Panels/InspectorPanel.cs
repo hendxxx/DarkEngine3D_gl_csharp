@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Config;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
@@ -34,7 +35,7 @@ public class InspectorPanel
 
     //  Element type labels (mirrors UIElementType order) 
     private static readonly string[] ElementTypeNames =
-        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton"];
+        ["Scene", "Container", "Button", "Label", "SliderNumber", "SliderText", "Checkbox", "Dropdown", "TextBox", "RadioButton", "Bar"];
 
     public InspectorPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -45,6 +46,7 @@ public class InspectorPanel
         if (!_visible) return;
 
         ImGui.Begin("Inspector", ref _visible);
+        IDE.PanelFocus.Notify("Inspector");
 
         // Use a child region for scrollable content  ImGui handles scroll-on-hover
         // automatically for child regions, so no click is needed.
@@ -1002,6 +1004,97 @@ public class InspectorPanel
                 }
                 break;
 
+            case UIElementType.Bar:
+                if (ImGui.CollapsingHeader("Bar Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    // Value range — same Min/Max/CurrentValue as a slider, non-interactive.
+                    ImGui.BeginDisabled(elem.BarStatBinding != PlayerStatNames.None); // manual value irrelevant while bound
+                    float barMin = elem.MinValue;
+                    if (ImGui.DragFloat("Min Value", ref barMin, 0.1f))
+                        elem.MinValue = barMin;
+
+                    float barMax = elem.MaxValue;
+                    if (ImGui.DragFloat("Max Value", ref barMax, 0.1f))
+                        elem.MaxValue = Math.Max(elem.MinValue + 0.001f, barMax);
+
+                    float barCur = elem.CurrentValue;
+                    if (ImGui.SliderFloat("Current Value", ref barCur, elem.MinValue, elem.MaxValue))
+                        elem.CurrentValue = barCur;
+                    ImGui.EndDisabled();
+
+                    float fracPreview = (elem.MaxValue - elem.MinValue) > 0.001f
+                        ? Math.Clamp((elem.CurrentValue - elem.MinValue) / (elem.MaxValue - elem.MinValue), 0f, 1f) : 0f;
+
+                    // ── Stat binding: drive the fill from Player2DStats (live) ──
+                    string[] statNames = PlayerStatNames.All;
+                    int statIdx = Array.IndexOf(statNames,
+                        string.IsNullOrEmpty(elem.BarStatBinding) ? PlayerStatNames.None : elem.BarStatBinding);
+                    if (statIdx < 0) statIdx = 0;
+                    if (ImGui.Combo("Stat Binding", ref statIdx, statNames, statNames.Length))
+                        elem.BarStatBinding = statNames[statIdx];
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Mirror a player stat (HP/MP/Level/EXP/Fitness) live — see the Player Info panel. 'None' = manual Current Value.");
+
+                    bool bound = elem.BarStatBinding != PlayerStatNames.None;
+                    if (bound)
+                    {
+                        float liveFrac = Player2DStats.GetFraction(elem.BarStatBinding);
+                        ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.4f, 1f),
+                            $"  {elem.BarStatBinding}: {Player2DStats.GetCurrent(elem.BarStatBinding):F0}/{Player2DStats.GetMax(elem.BarStatBinding):F0} ({liveFrac * 100f:F0}%)");
+                    }
+                    else
+                    {
+                        ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f), $"Fill: {fracPreview * 100f:F1}%");
+                    }
+
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Images (drag from Asset Browser)");
+                    DrawImagePathInput("Background", "##bar_bg", elem, v => elem.BarBackgroundPath = v);
+                    DrawImagePathInput("Empty", "##bar_empty", elem, v => elem.BarEmptyPath = v);
+                    DrawImagePathInput("Progress", "##bar_prog", elem, v => elem.BarProgressPath = v);
+
+                    // ── Per-layer colors ──
+                    // Used as the layer fill when that layer has no image assigned.
+                    ImGui.Separator();
+                    ImGui.TextColored(new Vector4(0.7f, 0.9f, 0.7f, 1f), "Colors (used when a layer has no image)");
+                    DrawColorPicker("Background Color", "bar_bgc", elem.BarBgColor, c => elem.BarBgColor = c,
+                        defaultColor: new(0.10f, 0.10f, 0.14f));
+                    DrawColorPicker("Empty Color", "bar_bec", elem.BarEmptyColor, c => elem.BarEmptyColor = c,
+                        defaultColor: new(0.05f, 0.05f, 0.08f));
+                    DrawColorPicker("Progress Color", "bar_bpc", elem.BarProgressColor, c => elem.BarProgressColor = c,
+                        defaultColor: new(0.30f, 0.70f, 1.00f));
+
+                    ImGui.Separator();
+                    string[] barDirs = ["Left to Right", "Right to Left", "Bottom to Top", "Top to Bottom"];
+                    int barDir = Math.Clamp(elem.BarDirection, 0, 3);
+                    if (ImGui.Combo("Fill Direction", ref barDir, barDirs, barDirs.Length))
+                        elem.BarDirection = barDir;
+
+                    // ── Per-layer edge offsets ──
+                    // Each layer = the element rect with its own left/right/top/bottom
+                    // offsets applied independently (+ = edge outward, − = inward).
+                    DrawBarLayerOffsets("Background Offsets", "bgb", elem.BarBgOffsetLeft, elem.BarBgOffsetRight,
+                        elem.BarBgOffsetTop, elem.BarBgOffsetBottom,
+                        (l, r, t, b) => { elem.BarBgOffsetLeft = l; elem.BarBgOffsetRight = r; elem.BarBgOffsetTop = t; elem.BarBgOffsetBottom = b; });
+                    DrawBarLayerOffsets("Empty Offsets", "beo", elem.BarEmptyOffsetLeft, elem.BarEmptyOffsetRight,
+                        elem.BarEmptyOffsetTop, elem.BarEmptyOffsetBottom,
+                        (l, r, t, b) => { elem.BarEmptyOffsetLeft = l; elem.BarEmptyOffsetRight = r; elem.BarEmptyOffsetTop = t; elem.BarEmptyOffsetBottom = b; });
+                    DrawBarLayerOffsets("Progress Offsets", "bpo", elem.BarProgOffsetLeft, elem.BarProgOffsetRight,
+                        elem.BarProgOffsetTop, elem.BarProgOffsetBottom,
+                        (l, r, t, b) => { elem.BarProgOffsetLeft = l; elem.BarProgOffsetRight = r; elem.BarProgOffsetTop = t; elem.BarProgOffsetBottom = b; });
+
+                    // ── Per-layer position ──
+                    // Pure X/Y translation of a layer's whole rect: size stays whatever the
+                    // edge offsets above made it, so the two controls never fight each other.
+                    DrawBarLayerPosition("Background Position", "bgp", elem.BarBgPosX, elem.BarBgPosY,
+                        (x, y) => { elem.BarBgPosX = x; elem.BarBgPosY = y; });
+                    DrawBarLayerPosition("Empty Position", "bep", elem.BarEmptyPosX, elem.BarEmptyPosY,
+                        (x, y) => { elem.BarEmptyPosX = x; elem.BarEmptyPosY = y; });
+                    DrawBarLayerPosition("Progress Position", "bpp", elem.BarProgPosX, elem.BarProgPosY,
+                        (x, y) => { elem.BarProgPosX = x; elem.BarProgPosY = y; });
+                }
+                break;
+
             case UIElementType.Container:
                 if (elem.ContentHeight > elem.Height)
                 {
@@ -1490,6 +1583,93 @@ public class InspectorPanel
         }
     }
 
+    /// <summary>One Bar layer's edge-offset editors inside a collapsing header:
+    /// Left / Right / Top / Bottom drag floats (scene px). + moves that edge OUTWARD
+    /// (layer grows), − pulls it INWARD (layer shrinks) — applied per edge
+    /// independently so frame art can overhang while the fill insets.</summary>
+    private static void DrawBarLayerOffsets(string header, string idSuffix,
+        float left, float right, float top, float bottom,
+        Action<float, float, float, float> apply)
+    {
+        if (!ImGui.CollapsingHeader(header))
+            return;
+
+        ImGui.Indent();
+        float l = left, r = right, t = top, b = bottom;
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Left{idSuffix}", ref l, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Right{idSuffix}", ref r, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Top{idSuffix}", ref t, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Bottom{idSuffix}", ref b, 0.5f, -200f, 200f, "%.1f")) apply(l, r, t, b);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("+ = edge moves outward (layer grows), − = inward (layer shrinks). Scene px.");
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"R{ idSuffix}"))
+            apply(0f, 0f, 0f, 0f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Reset this layer's offsets to zero (layer = element rect)");
+        ImGui.Unindent();
+    }
+
+    /// <summary>One Bar layer's X/Y position editors inside a collapsing header.
+    /// Translates the layer's whole rect in scene px (+X right, +Y down) and leaves
+    /// its size untouched — pair with <see cref="DrawBarLayerOffsets"/> to size it.</summary>
+    private static void DrawBarLayerPosition(string header, string idSuffix,
+        float x, float y, Action<float, float> apply)
+    {
+        if (!ImGui.CollapsingHeader(header))
+            return;
+
+        ImGui.Indent();
+        float nx = x, ny = y;
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"X{idSuffix}", ref nx, 0.5f, -2000f, 2000f, "%.1f")) apply(nx, ny);
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.DragFloat($"Y{idSuffix}", ref ny, 0.5f, -2000f, 2000f, "%.1f")) apply(nx, ny);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Translate this layer in scene px (+X right, +Y down). Size is unchanged — use the offsets above for that.");
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"R{ idSuffix}"))
+            apply(0f, 0f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Reset this layer's position to (0, 0)");
+        ImGui.Unindent();
+    }
+
+    /// <summary>Image path input + Asset Browser drag-drop target for one Bar image
+    /// slot (Background / Empty / Progress). Mirrors the main Image section's
+    /// drag-drop payload so dropping an image onto any slot just works.</summary>
+    private static unsafe void DrawImagePathInput(string label, string id, UIElement elem, Action<string> setter)
+    {
+        ImGui.Text(label);
+        ImGui.SetNextItemWidth(-1);
+        string path = label switch
+        {
+            "Background" => elem.BarBackgroundPath,
+            "Empty" => elem.BarEmptyPath,
+            _ => elem.BarProgressPath,
+        };
+        if (ImGui.InputText(id, ref path, 512))
+            setter(path);
+
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+            {
+                setter(AssetBrowserPanel._dragImagePath);
+                Console.WriteLine($"[Inspector] Set Bar {label} on '{elem.Name}' → {AssetBrowserPanel._dragImagePath}");
+                AssetBrowserPanel._dragImagePath = null;
+            }
+            ImGui.EndDragDropTarget();
+        }
+    }
+
     /// <summary>Draw a color picker with label + colored square + eyedropper.
     /// Uses ImGui ColorEdit3 with NoInputs flag  click the colored square to open the
     /// picker popup, then use the eyedropper pipette icon to sample from screen.
@@ -1587,6 +1767,10 @@ public class InspectorPanel
                 EditorPrimitiveType.Camera => "Camera",
                 EditorPrimitiveType.Light => "Light",
                 EditorPrimitiveType.Sky => "Sky",
+                EditorPrimitiveType.Map2D => "Map2D (Tilemap)",
+                EditorPrimitiveType.Player2D => "Player2D",
+                EditorPrimitiveType.Start2D => "Spawn Player",
+                EditorPrimitiveType.CameraStart2D => "Camera Start",
                 _ => "Unknown"
             };
             ImGui.Text($"Type: {typeStr}");
@@ -1596,6 +1780,18 @@ public class InspectorPanel
             }
             ImGui.Separator();
         }
+
+        // ── Player2D: sprite animation + capsule + physics ──
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Player2D)
+            RenderPlayer2DInspector(editorObj);
+
+        // ── Sprite2D: decorative animated clip sprite (no controller) ──
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Sprite2D)
+            RenderSprite2DInspector(editorObj);
+
+        // ── NPC Dialogue: bind a dialogue asset + interaction range (Dialogue System) ──
+        if (editorObj.PrimitiveType is EditorPrimitiveType.Sprite2D or EditorPrimitiveType.Player2D)
+            RenderNpcDialogueInspector(editorObj);
 
         //  Transform 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
@@ -1726,6 +1922,21 @@ public class InspectorPanel
             float far = editorObj.CameraFar;
             if (ImGui.DragFloat("Far Clip", ref far, 1f, 10f, 5000f, "%.0f"))
                 editorObj.CameraFar = far;
+
+            // ── 2D view offset (nudge the ortho framing without moving the follow anchor) ──
+            ImGui.TextDisabled("View Offset (2D ortho only — default 0,0,0)");
+            {
+                var off = editorObj.CameraViewOffset;
+                if (ImGui.DragFloat3("Offset", ref off, 0.1f, -500f, 500f, "%.2f"))
+                    editorObj.CameraViewOffset = off;
+                if (ImGui.IsItemHovered() && editorObj.CameraViewOffset == Vector3.Zero)
+                    ImGui.SetTooltip("Nudge the 2D viewport position. Added after the camera follow/frame math.");
+                if (ImGui.SmallButton("Reset Offset"))
+                {
+                    editorObj.CameraViewOffset = new Vector3(0, 0, 0);
+                    ImGui.SetItemDefaultFocus();
+                }
+            }
 
             bool showFrustum = editorObj.ShowFrustum;
             if (ImGui.Checkbox("Show Frustum", ref showFrustum))
@@ -2354,9 +2565,10 @@ public class InspectorPanel
         //  Texture Settings: min/mag filter, mipmapping & advanced filters (anisotropy,
         //    LOD bias), common presets, wrapping, and UV tiling/offset. PER TEXTURE  pick
         //    which texture slot to edit: Simple (TexturePath) or one of the 7 PBR maps.
-        //    Box/Sphere only  a Plane always renders as terrain, so its per-texture
-        //    sampling lives in the Terrain section ("Texture Sampling", per layer). 
+        //    Box/Sphere/Plane — the PBR shader path is type-agnostic (flat plane renders
+        //    through the same objectPbr_fragment.glsl, two-sided).
         if (editorObj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere
+            or EditorPrimitiveType.Plane
             && ImGui.CollapsingHeader("Texture Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
             if (!ReferenceEquals(_texSettingsObj, editorObj))
@@ -2408,6 +2620,665 @@ public class InspectorPanel
             bool shadow = editorObj.CastShadow;
             if (ImGui.Checkbox("Cast Shadow", ref shadow))
                 editorObj.CastShadow = shadow;
+        }
+    }
+
+    /// <summary>Player2D settings: sprite sheet + animation clip pickers (from the
+    /// Sprite Editor), sprite size, capsule collider tuning, and gameplay physics
+    /// (gravity). Sheet/clip lists come from the IDEBridge static sprite registry.</summary>
+    /// <summary>Inspector for Sprite2D: sheet/clip pickers (or drag a clip box from the
+    /// Asset Browser onto this Inspector), render height, loop/speed/offset playback.</summary>
+    private unsafe void RenderSprite2DInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Sprite 2D", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var sheets = IDEBridge.GetSpriteSheetNames();
+        var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+
+        // NOTE: NPC Dialogue section is rendered once by the main dispatcher
+        // (RenderNpcDialogueInspector for Sprite2D/Player2D). Do NOT call it here —
+        // a second call produces duplicate ImGui IDs ("conflicting ID" error).
+
+        // Sheet combo (auto-select index 0 — dropdown rule).
+        string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : ["(no sheets — import in Sprite Editor)"];
+        int sheetIdx = 0;
+        for (int i = 0; i < sheetArr.Length; i++)
+            if (sheetArr[i] == editorObj.Player2DSpriteSheet) { sheetIdx = i; break; }
+        if (ImGui.BeginCombo("Sprite Sheet", sheets.Count == 0 ? sheetArr[0]
+            : (sheetIdx > 0 ? sheetArr[sheetIdx] : (string.IsNullOrEmpty(editorObj.Player2DSpriteSheet) ? sheetArr[0] : editorObj.Player2DSpriteSheet))))
+        {
+            for (int i = 0; i < sheetArr.Length; i++)
+            {
+                if (sheets.Count == 0) break;
+                bool sel = i == sheetIdx;
+                if (ImGui.Selectable(sheetArr[i], sel))
+                {
+                    editorObj.Player2DSpriteSheet = sheetArr[i];
+                    var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+                    editorObj.Player2DAnimationClip = newClips.Count > 0 ? newClips[0] : "";
+                    editorObj.Sprite2DAnimTime = 0;
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+
+        // Clip combo.
+        string[] clipArr = clips.Count > 0 ? clips.ToArray() : ["(no clips — create in Sprite Editor)"];
+        int clipIdx = 0;
+        for (int i = 0; i < clipArr.Length; i++)
+            if (clipArr[i] == editorObj.Player2DAnimationClip) { clipIdx = i; break; }
+        if (ImGui.BeginCombo("Animation Clip", clips.Count == 0 ? clipArr[0]
+            : (clipIdx > 0 ? clipArr[clipIdx] : (string.IsNullOrEmpty(editorObj.Player2DAnimationClip) ? clipArr[0] : editorObj.Player2DAnimationClip))))
+        {
+            for (int i = 0; i < clipArr.Length; i++)
+            {
+                if (clips.Count == 0) break;
+                bool sel = i == clipIdx;
+                if (ImGui.Selectable(clipArr[i], sel))
+                {
+                    editorObj.Player2DAnimationClip = clipArr[i];
+                    editorObj.Sprite2DAnimTime = 0;
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Or drag a clip box from Asset Browser > Assets/Sprites onto this Inspector");
+
+        // Drag-drop target: clip box → assign (same as dropping on the viewport with
+        // this object selected).
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload(AssetBrowserPanel.SpriteClipPayload);
+            if (payload.NativePtr != null && AssetBrowserPanel._dragSpriteClip != null)
+            {
+                var parts = AssetBrowserPanel._dragSpriteClip.Split('|');
+                AssetBrowserPanel._dragSpriteClip = null;
+                if (parts.Length == 2)
+                {
+                    editorObj.Player2DSpriteSheet = parts[0];
+                    editorObj.Player2DAnimationClip = parts[1];
+                    editorObj.Sprite2DAnimTime = 0;
+                }
+            }
+            ImGui.EndDragDropTarget();
+        }
+
+        if (editorObj.TryGetPlayer2DClip(out var _, out var clipInfo) && clipInfo != null)
+            ImGui.TextDisabled($"{clipInfo.FrameIndices.Count} frames @ {clipInfo.FPS * clipInfo.SpeedMultiplier * MathF.Max(0.01f, editorObj.Sprite2DSpeed):0.#} fps, {(editorObj.Sprite2DLoop ? "loop" : "once")}");
+
+        float hgt = editorObj.Player2DHeight;
+        if (ImGui.DragFloat("Render Height", ref hgt, 0.05f, 0.1f, 500f, "%.2f"))
+            editorObj.Player2DHeight = MathF.Max(0.1f, hgt);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Sprite height in world units (same scaling rule as Player2D)");
+
+        bool loop = editorObj.Sprite2DLoop;
+        if (ImGui.Checkbox("Loop", ref loop))
+            editorObj.Sprite2DLoop = loop;
+
+        float spd = editorObj.Sprite2DSpeed;
+        if (ImGui.SliderFloat("Speed", ref spd, 0.1f, 4f, "%.2fx"))
+            editorObj.Sprite2DSpeed = MathF.Max(0.01f, spd);
+
+        float soff = editorObj.Sprite2DStartOffset;
+        if (ImGui.DragFloat("Start Offset", ref soff, 0.05f, 0f, 60f, "%.2f s"))
+            editorObj.Sprite2DStartOffset = MathF.Max(0f, soff);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Playback offset in seconds — desynchronize several copies sharing one clip (e.g. campfires)");
+
+        bool faceR = editorObj.Sprite2DFacingRight;
+        if (ImGui.Checkbox("Facing Right", ref faceR))
+            editorObj.Sprite2DFacingRight = faceR;
+
+        // Per-sprite glow (emissive): boosts the sprite's bright pixels above the
+        // Post FX bloom threshold so only fire/lava/candles glow — the rest of the
+        // sprite and the rest of the scene stay normal. Requires Post FX ON.
+        float glow = editorObj.Sprite2DGlow;
+        if (ImGui.SliderFloat("Glow (bloom)", ref glow, 0f, 1f, glow <= 0f ? "off" : "%.2f"))
+            editorObj.Sprite2DGlow = glow;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Emissive boost for this sprite only.\nBright pixels (fire, lava, candles) glow via bloom;\ndark pixels stay normal. Requires Post FX enabled\nin the Post FX panel.");
+        // Glow tint — colors the bloom (e.g. blue fire). Brightest channel is
+        // normalized to 1 at render, so any brightness of the hue works.
+        var glowCol = editorObj.Sprite2DGlowColor;
+        if (ImGui.ColorEdit3("Glow Tint", ref glowCol))
+            editorObj.Sprite2DGlowColor = glowCol;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Color of the glow/bloom for this sprite.\nWhite = natural colors; pick blue for blue fire.\nOnly affects pixels bright enough to bloom.");
+        // Fire flicker: glow intensity pulses organically over time.
+        bool gflick = editorObj.Sprite2DGlowFlicker;
+        if (ImGui.Checkbox("Flicker##glow", ref gflick))
+            editorObj.Sprite2DGlowFlicker = gflick;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Fire-like flicker: the glow intensity breathes\norganically over time instead of staying steady.\nRequires Glow > 0.");
+
+        // Render layer: linked with Map Editor layers when available
+        var map = _bridge.ActiveTilemap ?? _bridge.EditorObjectManager?.Objects.FirstOrDefault(o => o?.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)?.Map2dTilemap;
+        int layer = editorObj.Sprite2DRenderLayer;
+
+        if (map != null && map.Layers.Count > 0)
+        {
+            string currentLayerLabel = (layer >= 0 && layer < map.Layers.Count)
+                ? $"[{layer}] {map.Layers[layer].Name}"
+                : $"Custom ({layer})";
+
+            if (ImGui.BeginCombo("Map / Render Layer", currentLayerLabel))
+            {
+                for (int i = 0; i < map.Layers.Count; i++)
+                {
+                    bool isSel = (layer == i);
+                    if (ImGui.Selectable($"[{i}] {map.Layers[i].Name}", isSel))
+                    {
+                        editorObj.Sprite2DRenderLayer = i;
+                    }
+                    if (isSel) ImGui.SetItemDefaultFocus();
+                }
+
+                ImGui.Separator();
+                if (ImGui.Selectable("Custom (Behind Map, -1)", layer == -1))
+                    editorObj.Sprite2DRenderLayer = -1;
+                if (ImGui.Selectable("Custom (Foreground, 99)", layer == 99))
+                    editorObj.Sprite2DRenderLayer = 99;
+
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Pilih layer Map Editor tempat sprite ini ditempatkan.\nSprite animasi pada layer yang sama akan mendapatkan perlakuan DoF yang sama dengan layer map tersebut.");
+
+            if (ImGui.SliderInt("Layer Offset", ref layer, -10, 10))
+                editorObj.Sprite2DRenderLayer = layer;
+        }
+        else
+        {
+            if (ImGui.SliderInt("Render Layer", ref layer, -10, 10))
+                editorObj.Sprite2DRenderLayer = layer;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Draw order between overlapping sprites: higher layers draw ON TOP of lower ones.\nEach layer also steps 0.01 world units closer to the camera. Default 0 = base layer.");
+        }
+    }
+
+    /// <summary>NPC Dialogue binding: choose the dialogue asset (from the Dialogue    /// Editor) started when the player presses E nearby, plus the interaction range.
+    /// Also shows a quick preview button. Available for Sprite2D and Player2D objects
+    /// — any visible object with a dialogue becomes an interactable NPC.</summary>
+    private unsafe void RenderNpcDialogueInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("NPC Dialogue"))
+            return;
+
+        var assetIds = Visual.DialogueLibrary.GetAssetIds();
+        string[] arr = assetIds.Count > 0 ? assetIds.ToArray() : ["(no assets — create in Dialogue Editor)"];
+
+        int idx = 0;
+        for (int i = 0; i < arr.Length; i++)
+            if (arr[i] == editorObj.NpcDialogueId) { idx = i; break; }
+        bool missing = !string.IsNullOrEmpty(editorObj.NpcDialogueId)
+            && !assetIds.Contains(editorObj.NpcDialogueId);
+
+        string label = missing ? $"{editorObj.NpcDialogueId} (missing)"
+            : string.IsNullOrEmpty(editorObj.NpcDialogueId) ? arr[0]
+            : (idx > 0 ? arr[idx] : arr[0]);
+
+        if (ImGui.BeginCombo("Dialogue Asset", label))
+        {
+            // "(none)" clears the NPC binding.
+            if (ImGui.Selectable("(none)", string.IsNullOrEmpty(editorObj.NpcDialogueId)))
+                editorObj.NpcDialogueId = "";
+            for (int i = 0; i < arr.Length; i++)
+            {
+                if (assetIds.Count == 0) break;
+                bool sel = arr[i] == editorObj.NpcDialogueId;
+                if (ImGui.Selectable(arr[i], sel))
+                    editorObj.NpcDialogueId = arr[i];
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Dialogue played when the player presses E within range.\nAssets are created in the Dialogue Editor (2D Sidescroller menu).\nEmpty = this object is not an NPC.");
+
+        if (missing)
+            ImGui.TextColored(new Vector4(1f, 0.5f, 0.3f, 1f),
+                $"Asset '{editorObj.NpcDialogueId}' not found — create it in the Dialogue Editor");
+
+        float range = Visual.DialogueSystem.InteractionRange;
+        if (ImGui.DragFloat("Interaction Range", ref range, 0.1f, 0.5f, 15f, "%.1f"))
+            Visual.DialogueSystem.InteractionRange = MathF.Max(0.5f, range);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("World-unit distance at which the [E] Talk prompt appears.\nGlobal for all NPCs (0.5–15).");
+
+        // ── Alert image ("!" replacement): drag from the Asset Browser ──
+        // Replaces the default text "!" bubble with any icon (quest mark, alert art).
+        // Drop target MUST sit directly on the input item — ImGui's BeginDragDropTarget
+        // applies to the last submitted item, so anything in between (X button) steals it.
+        ImGui.Text("Alert Image");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(-60f);
+        string alertPath = editorObj.NpcAlertImagePath;
+        if (ImGui.InputText("##alertimg", ref alertPath, 512))
+            editorObj.NpcAlertImagePath = alertPath.Trim();
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+            {
+                editorObj.NpcAlertImagePath = Helpers.PathHelpers.MakeRelative(AssetBrowserPanel._dragImagePath);
+                AssetBrowserPanel._dragImagePath = null;
+            }
+            ImGui.EndDragDropTarget();
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("X##alertimgx") && !string.IsNullOrEmpty(editorObj.NpcAlertImagePath))
+            editorObj.NpcAlertImagePath = "";
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clear the alert image (back to the default text '!' bubble)");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Image drawn above the NPC instead of the text '!' bubble.\nDrag from the Asset Browser. Empty = default '!'.");
+
+        // Quick preview: start the bound conversation immediately.
+        if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))
+            Visual.DialogueSystem.StartConversation(editorObj.NpcDialogueId, editorObj);
+    }
+
+    private void RenderPlayer2DInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Player 2D", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var sheets = IDEBridge.GetSpriteSheetNames();
+        var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+
+        // ── Sprite Sheet combo (auto-select index 0 — dropdown rule) ──
+        string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : ["(no sheets — import in Sprite Editor)"];
+        int sheetIdx = 0;
+        for (int i = 0; i < sheetArr.Length; i++)
+            if (sheetArr[i] == editorObj.Player2DSpriteSheet) { sheetIdx = i; break; }
+        bool sheetMissing = sheetIdx == 0 && editorObj.Player2DSpriteSheet != sheetArr[0] && sheets.Count > 0;
+        if (sheetMissing) { /* stored name not in list — keep showing stored name */ }
+        if (ImGui.BeginCombo("Sprite Sheet", sheets.Count == 0 ? sheetArr[0]
+            : (sheetIdx > 0 ? sheetArr[sheetIdx] : (string.IsNullOrEmpty(editorObj.Player2DSpriteSheet) ? sheetArr[0] : editorObj.Player2DSpriteSheet))))
+        {
+            for (int i = 0; i < sheetArr.Length; i++)
+            {
+                if (sheets.Count == 0) break;
+                bool sel = i == sheetIdx;
+                if (ImGui.Selectable(sheetArr[i], sel))
+                {
+                    editorObj.Player2DSpriteSheet = sheetArr[i];
+                    // Auto-select the first clip of the new sheet (dropdown rule).
+                    var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+                    editorObj.Player2DAnimationClip = newClips.Count > 0 ? newClips[0] : "";
+                    editorObj.Player2DAnimTime = 0;
+                    // Keep default locomotion actions bound to the same sheet.
+                    foreach (var act in editorObj.Actions)
+                    {
+                        if (string.IsNullOrEmpty(act.SpriteSheet))
+                            act.Clip = editorObj.Player2DAnimationClip;
+                    }
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Sprite sheet imported in the Sprite Editor panel");
+
+        // ── Animation Clip combo (auto-select index 0 when empty/sheet changed) ──
+        string[] clipArr = clips.Count > 0 ? clips.ToArray() : ["(no clips — create in Sprite Editor)"];
+        int clipIdx = 0;
+        for (int i = 0; i < clipArr.Length; i++)
+            if (clipArr[i] == editorObj.Player2DAnimationClip) { clipIdx = i; break; }
+        if (ImGui.BeginCombo("Animation Clip", clips.Count == 0 ? clipArr[0]
+            : (clipIdx > 0 ? clipArr[clipIdx] : (string.IsNullOrEmpty(editorObj.Player2DAnimationClip) ? clipArr[0] : editorObj.Player2DAnimationClip))))
+        {
+            for (int i = 0; i < clipArr.Length; i++)
+            {
+                if (clips.Count == 0) break;
+                bool sel = i == clipIdx;
+                if (ImGui.Selectable(clipArr[i], sel))
+                {
+                    editorObj.Player2DAnimationClip = clipArr[i];
+                    editorObj.Player2DAnimTime = 0;
+                }
+                if (sel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings)");
+
+        ImGui.TextDisabled("Walk/Run/Jump clips → configure in Animation Actions below");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("The base clip above plays when no action is active; state animations live in the Animation Actions system");
+
+        // Show clip summary when resolvable.
+        if (editorObj.TryGetPlayer2DClip(out var _, out var clipInfo) && clipInfo != null)
+        {
+            ImGui.TextDisabled($"{clipInfo.FrameIndices.Count} frames @ {clipInfo.FPS * clipInfo.SpeedMultiplier:0.#} fps, {(clipInfo.Loop ? "loop" : "once")}{(clipInfo.Reverse ? ", reverse" : "")}");
+        }
+        else if (!string.IsNullOrEmpty(editorObj.Player2DSpriteSheet))
+        {
+            ImGui.TextColored(new Vector4(1f, 0.5f, 0.3f, 1f), "Sheet/clip not found — check Sprite Editor");
+        }
+
+        ImGui.Separator();
+
+        // ── Sprite sizing ──
+        float h = editorObj.Player2DHeight;
+        if (ImGui.DragFloat("Sprite Height", ref h, 0.05f, 0.1f, 50f, "%.2f"))
+            editorObj.Player2DHeight = MathF.Max(0.1f, h);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("World height the MASTER size maps to. Set each sheet's Master Height + Render Offset in the Sprite Editor (Sheet Settings → Render Normalization) so all animations share one visual size.");
+
+
+
+        // ── Capsule collider ──
+        float r = editorObj.Player2DCapsuleRadius;
+        if (ImGui.DragFloat("Capsule Radius", ref r, 0.01f, 0.05f, 5f, "%.2f"))
+            editorObj.Player2DCapsuleRadius = MathF.Max(0.05f, r);
+
+        float ch = editorObj.Player2DCapsuleHeight;
+        if (ImGui.DragFloat("Capsule Height", ref ch, 0.05f, 0.1f, 50f, "%.2f"))
+            editorObj.Player2DCapsuleHeight = MathF.Max(0.2f, ch);
+
+        // Capsule offset: shifts the collider relative to the object position so it
+        // hugs the visible character (same values drive the gizmo AND the physics).
+        float capOffX = editorObj.Player2DCapsuleOffsetX;
+        if (ImGui.DragFloat("Capsule Offset X", ref capOffX, 0.02f, -20f, 20f, "%.2f"))
+            editorObj.Player2DCapsuleOffsetX = Math.Clamp(capOffX, -20f, 20f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Shifts the capsule right/left from the object position (left-bottom sprite anchor). Gizmo and physics both use this.");
+
+        float capOffY = editorObj.Player2DCapsuleOffsetY;
+        if (ImGui.DragFloat("Capsule Offset Y", ref capOffY, 0.02f, -20f, 20f, "%.2f"))
+            editorObj.Player2DCapsuleOffsetY = Math.Clamp(capOffY, -20f, 20f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Lifts the capsule base off the ground line (positive = up). Feet land at Position.Y + this offset.");
+
+        bool showCap = editorObj.Player2DShowCapsule;
+        if (ImGui.Checkbox("Show Capsule##player", ref showCap))
+            editorObj.Player2DShowCapsule = showCap;
+
+        // Per-sprite glow (emissive) — same as Sprite2D glow: bright pixels bloom.
+        float pGlow = editorObj.Player2DGlow;
+        if (ImGui.SliderFloat("Glow (bloom)##player", ref pGlow, 0f, 1f, pGlow <= 0f ? "off" : "%.2f"))
+            editorObj.Player2DGlow = pGlow;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Emissive boost for the player sprite only.\nBright pixels glow via bloom. Requires Post FX enabled.");
+        var pGlowCol = editorObj.Player2DGlowColor;
+        if (ImGui.ColorEdit3("Glow Tint##player", ref pGlowCol))
+            editorObj.Player2DGlowColor = pGlowCol;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Color of the player's glow/bloom.\nWhite = natural colors.\nOnly affects pixels bright enough to bloom.");
+        bool pFlick = editorObj.Player2DGlowFlicker;
+        if (ImGui.Checkbox("Flicker##glowplayer", ref pFlick))
+            editorObj.Player2DGlowFlicker = pFlick;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Fire-like flicker for the player's glow.\nRequires Glow > 0.");
+
+        // ── Gameplay physics ──
+        float g = editorObj.Player2DGravity;
+        if (ImGui.DragFloat("Gravity", ref g, 0.5f, 0f, 100f, "%.1f"))
+            editorObj.Player2DGravity = MathF.Max(0f, g);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Downward acceleration (units/s²) applied in preview/in-game against collision tiles");
+
+        // ── Movement tuning ──
+        if (ImGui.CollapsingHeader("Movement", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            float mv = editorObj.Player2DMoveSpeed;
+            if (ImGui.DragFloat("Move Speed", ref mv, 0.1f, 0.1f, 100f, "%.1f"))
+                editorObj.Player2DMoveSpeed = MathF.Max(0.1f, mv);
+
+            float rv = editorObj.Player2DRunSpeed;
+            if (ImGui.DragFloat("Run Speed", ref rv, 0.1f, 0.1f, 200f, "%.1f"))
+                editorObj.Player2DRunSpeed = MathF.Max(0.1f, rv);
+
+            float jf = editorObj.Player2DJumpForce;
+            if (ImGui.DragFloat("Jump Force", ref jf, 0.1f, 0.1f, 1000f, "%.1f"))
+                editorObj.Player2DJumpForce = MathF.Max(0.1f, jf);
+
+            float gs = editorObj.Player2DGravityScale;
+            if (ImGui.DragFloat("Gravity Scale", ref gs, 0.05f, 0f, 1000f, "%.2f"))
+                editorObj.Player2DGravityScale = MathF.Max(0f, gs);
+
+            float ac = editorObj.Player2DAcceleration;
+            if (ImGui.DragFloat("Acceleration", ref ac, 1f, 0f, 500f, "%.0f"))
+                editorObj.Player2DAcceleration = MathF.Max(0f, ac);
+
+            float dc = editorObj.Player2DDeceleration;
+            if (ImGui.DragFloat("Deceleration", ref dc, 1f, 0f, 500f, "%.0f"))
+                editorObj.Player2DDeceleration = MathF.Max(0f, dc);
+
+            float air = editorObj.Player2DAirControl;
+            if (ImGui.SliderFloat("Air Control", ref air, 0f, 1f, "%.2f"))
+                editorObj.Player2DAirControl = air;
+
+            float coyote = editorObj.Player2DCoyoteTime;
+            if (ImGui.SliderFloat("Coyote Time", ref coyote, 0f, 0.3f, "%.2f s"))
+                editorObj.Player2DCoyoteTime = MathF.Max(0f, coyote);
+
+            float jbuf = editorObj.Player2DJumpBuffer;
+            if (ImGui.SliderFloat("Jump Buffer", ref jbuf, 0f, 0.3f, "%.2f s"))
+                editorObj.Player2DJumpBuffer = MathF.Max(0f, jbuf);
+
+            float jcut = editorObj.Player2DJumpCutMultiplier;
+            if (ImGui.SliderFloat("Jump Cut", ref jcut, 0.05f, 1f, "%.2f"))
+                editorObj.Player2DJumpCutMultiplier = jcut;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Velocity multiplier applied once when the jump key is released mid-rise.\nShort tap = short hop, hold = full height. 1.0 = fixed arc (off).");
+
+            // Quick-preset the whole movement block using the project's tuning formula:
+            //   Jump Force    = 2 × Move Speed
+            //   Gravity Scale = Move Speed + (Move Speed / 4)  (= 1.25 × Move Speed)
+            // Run, Acceleration and Deceleration scale linearly with Move Speed so the
+            // suggestion stays tuned at any horizontal speed; Air Control stays low so
+            // mid-air steering stays minimal.
+            if (ImGui.SmallButton("Suggest Platformer Defaults"))
+            {
+                float ms = MathF.Max(0.1f, editorObj.Player2DMoveSpeed);
+                editorObj.Player2DRunSpeed = ms * 1.75f;
+                // Preset formula: Gravity 25, Jump Force = 2× walk speed,
+                // Gravity Scale = 2× (arc scales with speed, gravity base fixed).
+                editorObj.Player2DJumpForce = ms * 2f;
+                editorObj.Player2DGravity = 25f;
+                editorObj.Player2DGravityScale = 2f;
+                editorObj.Player2DAcceleration = ms * 25f;
+                editorObj.Player2DDeceleration = ms * 27.5f;
+                editorObj.Player2DAirControl = 0.25f;
+                // Jump-feel defaults ride along so the preset configures the full feel.
+                editorObj.Player2DCoyoteTime = 0.1f;
+                editorObj.Player2DJumpBuffer = 0.12f;
+                editorObj.Player2DJumpCutMultiplier = 0.5f;
+                ImGui.SetItemDefaultFocus();
+            }
+            ImGui.SameLine();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Snaps Run/Accel/Decel to a platformer ratio based on the current Move Speed and applies: Gravity = 25, Jump Force = 2 x Move Speed, Gravity Scale = 2; AirControl stays low so mid-air steering stays minimal");
+        }
+
+        // ── Camera follow tuning ──
+        if (ImGui.CollapsingHeader("Camera Follow"))
+        {
+            float fs = editorObj.CameraFollowSpeed;
+            if (ImGui.SliderFloat("Follow Speed", ref fs, 0.5f, 30f, "%.1f"))
+                editorObj.CameraFollowSpeed = fs;
+
+            float dzW = editorObj.CameraDeadZoneWidth;
+            if (ImGui.DragFloat("Dead Zone Width", ref dzW, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraDeadZoneWidth = MathF.Max(0f, dzW);
+
+            float dzH = editorObj.CameraDeadZoneHeight;
+            if (ImGui.DragFloat("Dead Zone Height", ref dzH, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraDeadZoneHeight = MathF.Max(0f, dzH);
+
+            float vt = editorObj.CameraVerticalThreshold;
+            if (ImGui.DragFloat("Vertical Threshold", ref vt, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraVerticalThreshold = MathF.Max(0f, vt);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Camera rises only when the player climbs above this height (small jumps don't move the camera)");
+
+            float rs = editorObj.CameraReturnSpeed;
+            if (ImGui.SliderFloat("Return To Player Speed", ref rs, 0.5f, 20f, "%.1f"))
+                editorObj.CameraReturnSpeed = rs;
+
+            float la = editorObj.CameraLookAhead;
+            if (ImGui.DragFloat("Look Ahead", ref la, 1f, 0f, 2000f, "%.0f px"))
+                editorObj.CameraLookAhead = MathF.Max(0f, la);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Camera looks ahead in the movement direction so obstacles appear earlier");
+        }
+
+        // ── Animation actions ──
+        RenderPlayer2DActionsInspector(editorObj);
+    }
+
+    /// <summary>Animation action editor: add/rename/remove actions, assign sheet + clip,
+    /// keyboard binding and priority. The same list drives Player2DSystem in-game.</summary>
+    private void RenderPlayer2DActionsInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Animation Actions"))
+            return;
+
+        editorObj.EnsureDefaultActions();
+        var sheets = IDEBridge.GetSpriteSheetNames();
+
+        ImGui.TextDisabled("Bind keys + clips; higher priority interrupts lower (Dead=100 cancels all)");
+
+        int removeIdx = -1;
+        for (int i = 0; i < editorObj.Actions.Count; i++)
+        {
+            var act = editorObj.Actions[i];
+            ImGui.PushID($"p2dact{i}");
+            // Stable widget ID: the label's visible part changes while typing, but the
+            // ID comes from the text after '##' — without it, renaming changed the ID
+            // every keystroke, ImGui rebuilt the TreeNode and the InputText lost focus.
+            if (ImGui.TreeNodeEx($"{act.Name}##p2dact{i}", ImGuiTreeNodeFlags.FramePadding))
+            {
+                string name = act.Name;
+                // Commit on Enter/defocus (not per keystroke) so renaming doesn't
+                // retrigger lookups (current-action reference, locomotion binding)
+                // while the text is still being typed.
+                ImGui.InputText("Action Name", ref name, 64, ImGuiInputTextFlags.EnterReturnsTrue);
+                if (ImGui.IsItemDeactivatedAfterEdit() || ImGui.IsKeyPressed(ImGuiKey.Enter))
+                {
+                    string trimmed = name.Trim();
+                    if (trimmed.Length > 0 && trimmed != act.Name)
+                    {
+                        // Keep references in sync: currently-playing action + key lookups.
+                        if (editorObj.Player2DCurrentAction == act.Name)
+                            editorObj.Player2DCurrentAction = trimmed;
+                        act.Name = trimmed;
+                    }
+                }
+
+                // Sheet dropdown (auto-select first — dropdown rule)
+                string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : [""];
+                int sheetIdx = 0;
+                for (int s = 0; s < sheetArr.Length; s++)
+                    if (sheetArr[s] == act.SpriteSheet) { sheetIdx = s; break; }
+                if (ImGui.BeginCombo("Sheet", sheetArr[sheetIdx]))
+                {
+                    for (int s = 0; s < sheetArr.Length; s++)
+                    {
+                        bool sel = s == sheetIdx;
+                        if (ImGui.Selectable(sheetArr[s], sel))
+                        {
+                            act.SpriteSheet = sheetArr[s];
+                            var clipNames = IDEBridge.GetClipNames(act.SpriteSheet);
+                            act.Clip = clipNames.Count > 0 ? clipNames[0] : "";
+                        }
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+
+                // Clip dropdown (resolves against the action's sheet or the player's sheet)
+                var clips = IDEBridge.GetClipNames(string.IsNullOrEmpty(act.SpriteSheet)
+                    ? editorObj.Player2DSpriteSheet : act.SpriteSheet);
+                string[] clipArr = clips.Count > 0 ? clips.ToArray() : [""];
+                int clipIdx = 0;
+                for (int c = 0; c < clipArr.Length; c++)
+                    if (clipArr[c] == act.Clip) { clipIdx = c; break; }
+                if (ImGui.BeginCombo("Clip", clipArr[clipIdx]))
+                {
+                    for (int c = 0; c < clipArr.Length; c++)
+                    {
+                        bool sel = c == clipIdx;
+                        if (ImGui.Selectable(clipArr[c], sel))
+                            act.Clip = clipArr[c];
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+
+                bool loop = act.Loop;
+                if (ImGui.Checkbox("Loop", ref loop))
+                    act.Loop = loop;
+
+                // Stop on Frame End: non-loop action finishes → HOLD the last frame
+                // until any key is pressed. The action's own key does nothing (no
+                // replay); a different action's key releases the hold and starts it.
+                bool stopEnd = act.StopOnFrameEnd;
+                if (ImGui.Checkbox("Stop on Frame End", ref stopEnd))
+                    act.StopOnFrameEnd = stopEnd;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("When the clip finishes (Loop off): hold the last frame. Any key releases the hold\nback to idle — the action's own key is ignored (no replay); a different action's key starts it.");
+
+                int prio = act.Priority;
+                if (ImGui.InputInt("Priority", ref prio))
+                    act.Priority = prio;
+
+                // Keyboard binding: pick from common keys
+                string[] keys = ["None", "J", "K", "L", "U", "I", "O", "E", "F", "Q", "R", "T", "Z", "X", "C", "V", "B", "N", "M"];
+                int keyIdx = 0;
+                for (int k = 0; k < keys.Length; k++)
+                    if (keys[k] == act.KeyBinding) { keyIdx = k; break; }
+                if (ImGui.BeginCombo("Key", act.KeyBinding))
+                {
+                    for (int k = 0; k < keys.Length; k++)
+                    {
+                        bool sel = k == keyIdx;
+                        if (ImGui.Selectable(keys[k], sel))
+                            act.KeyBinding = keys[k];
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }                    ImGui.EndCombo();
+                }
+
+                // When the binding fires: on press (hold-style), on release (impulse),
+                // once on press requiring release, or once on release requiring re-press.
+                string[] triggers = ["KeyDown", "KeyUp", "KeyDownOnce", "KeyUpOnce"];
+                int trigIdx = act.IsKeyUpOnceTrigger ? 3 : act.IsKeyDownOnceTrigger ? 2 : act.IsKeyUpTrigger ? 1 : 0;
+                if (ImGui.BeginCombo("Trigger", triggers[trigIdx]))
+                {
+                    for (int t = 0; t < triggers.Length; t++)
+                    {
+                        bool sel = t == trigIdx;
+                        if (ImGui.Selectable(triggers[t], sel))
+                            act.KeyTrigger = triggers[t];
+                        if (sel) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("KeyDown = fires when the key is pressed (hold J = keep playing, release = back to idle).\nKeyUp = fires when the key is RELEASED (press-impulse: the action plays out regardless of hold length).\nKeyDownOnce = fires once on press; user must release the key before it can fire another time.\nKeyUpOnce = fires once on release; user must press the key again before it can fire another time.");
+
+                if (ImGui.SmallButton("Test"))
+                    editorObj.TryStartAction(act.Name);
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Remove"))                    removeIdx = i;
+                ImGui.TreePop();
+            }
+            ImGui.PopID();
+        }
+
+        if (removeIdx >= 0)
+            editorObj.Actions.RemoveAt(removeIdx);
+
+        if (ImGui.Button("[+] Add Action"))
+        {
+            int n = editorObj.Actions.Count + 1;
+            editorObj.Actions.Add(new Player2DAction
+            {
+                Name = $"Action{n}",
+                SpriteSheet = editorObj.Player2DSpriteSheet,
+                Clip = editorObj.Player2DAnimationClip,
+                Priority = 5,
+            });
         }
     }
 

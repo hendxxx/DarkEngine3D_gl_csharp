@@ -14,11 +14,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
         public uint SceneColorTex;
         public uint SceneDepthRBO;
 
+        /// <summary>The most recently constructed stack — GameScene creates exactly one,
+        /// so the FrameBuffer Debug panel can reach the live game-scene textures.</summary>
+        public static PostProcessStack? Active { get; private set; }
+
+        /// <summary>Size of the scene render target in pixels (for debug panels).</summary>
+        public int Width => _width;
+        public int Height => _height;
+
         private uint _msaaColorRBO = 0;
         private uint _resolveFBO = 0;
         private int _samples;
 
-        // PostFX removed.
+        // ── Reactive bloom + auto-exposure (AAA post-FX). Uses the SHARED processor
+        // so the GameScene path and the IDE editor shared-FBO path keep ONE continuous
+        // auto-exposure adaptation state and one set of GPU targets. ──
+        private static PostFxProcessor PostFx => PostFxProcessor.Shared;
 
         private int _width, _height;
         private uint _simpleVAO, _simpleVBO;
@@ -29,6 +40,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
         public PostProcessStack(int width, int height)
         {
+            Active = this;
             _width = width;
             _height = height;
 
@@ -183,14 +195,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
             // MSAA resolve: SceneFBO (multisampled) → SceneColorTex (single-sample).
             Resolve();
 
+            // Depth of field (slider-driven focus circle): composited IN-PLACE into
+            // SceneColorTex BEFORE the display path — every consumer of the scene
+            // texture sees the effect, with or without other passes registered.
+            // Shared helper — the IDE edit-mode path (SceneManager SharedFBO) uses it too.
+            DepthOfFieldComposite.Apply(SceneColorTex, _resolveFBO, _width, _height, "gamescene");
+
+            // Reactive bloom + auto-exposure: when enabled, this REPLACES the plain
+            // passthrough — the graded (bloomed + tonemapped) result is composited back
+            // INTO SceneColorTex so the display path, passes and the Viewport panel all
+            // sample the final image. Runs on the game FBO path (GameScene in-game and
+            // IDE preview of a GameScene); the no-scene editor path uses ApplyTo.
+            if (PostFxSettings.Enabled)
+            {
+                PostFx.Run(SceneColorTex, _resolveFBO, _width, _height);
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            }
+
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
             GL.Viewport(0, 0, windowWidth, windowHeight);
             GL.Disable(Const.GL_DEPTH_TEST);
 
-            // AAA post-FX chain (bloom → ACES tonemap → gamma). When enabled it replaces
-            // PostFX removed.
-
-            // If no passes, just render the scene texture as-is
+            // If no passes, just render the scene texture as-is (already graded when
+            // post-FX is on — the passthrough shader is a straight sample).
             if (_passes.Count == 0)
             {
                 RenderTextureToScreen(SceneColorTex, Shader.GetBlurPassShaderProgram(), windowWidth, windowHeight, 0f);
@@ -211,6 +238,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
 
             GL.Enable(Const.GL_DEPTH_TEST); 
         }
+
 
         /// <summary>Render the scene color texture to the screen using the blur shader.
         /// Called instead of the normal passthrough when the pause menu is active.</summary>

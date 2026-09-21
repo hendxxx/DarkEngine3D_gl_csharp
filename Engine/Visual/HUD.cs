@@ -140,6 +140,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // 2. Create initial font slot (slot 0 = default)
             GetOrCreateFontSlot(fontPath, fontSize);
+            PrimaryFontPath = PathHelpers.Resolve(fontPath);
+            PrimaryFontSize = fontSize;
         }
 
         // ════════════════════════════════════════════
@@ -184,11 +186,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             byte[] ttfData = File.ReadAllBytes(slot.FontPath);
             byte[] tempBitmap = new byte[AtlasSize * AtlasSize];
 
+            int baked;
             fixed (byte* pTtf = ttfData)
             fixed (byte* pTemp = tempBitmap)
             fixed (StbTrueType.stbtt_bakedchar* pChars = slot.BakedChars)
             {
-                StbTrueType.stbtt_BakeFontBitmap(pTtf, 0, slot.FontSize, pTemp, AtlasSize, AtlasSize, 32, 96, pChars);
+                baked = StbTrueType.stbtt_BakeFontBitmap(pTtf, 0, slot.FontSize, pTemp, AtlasSize, AtlasSize, 32, 96, pChars);
+            }
+
+            // stbtt returns <=0 on failure and leaves the bitmap zeroed — the slot then
+            // produces zero-size extents (shrunken windows) and text that the shader
+            // discards entirely (alpha < 0.1). Log loudly: this previously failed
+            // SILENTLY and looked like "boxes draw but no text ever appears".
+            int nonZero = 0;
+            for (int i = 0; i < tempBitmap.Length; i++)
+                if (tempBitmap[i] != 0) nonZero++;
+            if (baked <= 0 || nonZero == 0)
+            {
+                Console.WriteLine($"[HUD] FONT BAKE FAILED for '{slot.FontPath}' @ {slot.FontSize}px " +
+                    $"(stbtt result={baked}, nonZeroBytes={nonZero}, ttfBytes={ttfData.Length}) — text will be invisible!");
             }
 
             byte[] rgbaBitmap = new byte[AtlasSize * AtlasSize * 4];
@@ -847,6 +863,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public IReadOnlyList<ButtonDef> Buttons => _buttons;
         public int ButtonCount => _buttons.Count;
         public ButtonDef GetButton(int index) => index >= 0 && index < _buttons.Count ? _buttons[index] : default;
+        /// <summary>Number of baked font slots (external systems validate cached slot indexes against this).</summary>
+        public int FontSlotCount => _fontSlots.Count;
+
+        /// <summary>Total queued items (boxes+text+images) — diagnostics.</summary>
+        public int QueuedItemCount => _boxQueue.Count + _textQueue.Count + _imageQueue.Count;
+
+        /// <summary>The (font,size) pair this HUD was CONSTRUCTED with → always slot 0.
+        /// Slot 0 is baked by the constructor before the render loop (clean GL state) and
+        /// is the only bake path proven to produce a working atlas — mid-frame bakes can
+        /// land with corrupt GL state and yield a GPU-empty atlas (invisible text).</summary>
+        public string PrimaryFontPath { get; private set; } = "";
+        public float PrimaryFontSize { get; private set; }
+
+        /// <summary>True when (fontPath,fontSize) maps to this HUD's constructor slot 0.</summary>
+        public bool IsPrimarySlot(string fontPath, float fontSize)
+        {
+            return MathF.Abs(fontSize - PrimaryFontSize) < 0.01f &&
+                   string.Equals(Helpers.PathHelpers.Normalize(fontPath),
+                                 Helpers.PathHelpers.Normalize(PrimaryFontPath),
+                                 StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>One-shot bake log de-dup (same font+size can be baked by several HUDs).</summary>
 
         /// <summary>Delete all font slot GPU textures and clear the cache. Keeps scratch textures intact.</summary>
         public void ClearFontSlots()

@@ -44,6 +44,9 @@ public unsafe class ImGuiController : IDisposable
     /// (bin) instead of ImGui's CWD-relative default "imgui.ini" so the IDE layout is
     /// loaded/saved next to the executable and never pollutes the project folder.</summary>
     private byte* _iniFilenamePtr;
+    /// <summary>Managed mirror of the pinned ini path (for comparisons + re-save on
+    /// project switch — the pinned pointer alone is not readable back safely).</summary>
+    private string _iniPath = "";
 
     private readonly Dictionary<int, ImGuiKey> _glfwToImGuiKey = [];
 
@@ -80,6 +83,7 @@ public unsafe class ImGuiController : IDisposable
         _iniFilenamePtr = (byte*)Marshal.StringToCoTaskMemUTF8(iniPath);
         io.NativePtr->IniFilename = _iniFilenamePtr;
         Console.WriteLine($"[ImGui] imgui.ini: {iniPath}");
+        _iniPath = iniPath;
 
         _hasVtxOffset = GL.DrawElementsBaseVertexPtr != IntPtr.Zero;
         if (_hasVtxOffset)
@@ -199,6 +203,12 @@ public unsafe class ImGuiController : IDisposable
             try
             {
                 var font = io.Fonts.AddFontFromFileTTF(path, size);
+                // Guard: a null/stale native pointer cached here poisoned every consumer                // (dialogue overlay crashed with NRE in ImFontPtr.get_FontSize). Don't cache                // failures — they'll retry next time the font is requested.
+                if ((nint)font.NativePtr == 0)
+                {
+                    Console.WriteLine($"[ImGui] Font load returned NULL for '{Path.GetFileName(path)}' @ {size}px — not cached");
+                    continue;
+                }
                 _customFontCache[key] = (nint)font.NativePtr;
                 Console.WriteLine($"[ImGui] Loaded font: {Path.GetFileName(path)} @ {size}px");
             }
@@ -326,6 +336,39 @@ public unsafe class ImGuiController : IDisposable
         Console.WriteLine($"[ImGui] Default font: ImGui built-in @ {fontSize}px (size ignored)");
     }
 
+    /// <summary>Re-point imgui.ini when the active project changes (project folder ↔
+    /// exe fallback). The constructor runs BEFORE any project is open, so without this
+    /// the layout would forever save to the exe folder and never to the project.
+    /// Saves the current layout to the OLD path first, then loads the new path's
+    /// layout when that file exists — opening a project restores ITS saved layout.</summary>
+    public void SetIniPath(string iniPath)
+    {
+        if (string.Equals(_iniPath, iniPath, StringComparison.OrdinalIgnoreCase)) return;
+        try
+        {
+            if (!string.IsNullOrEmpty(_iniPath))
+                ImGui.SaveIniSettingsToDisk(_iniPath);
+        }
+        catch (Exception ex) { Console.WriteLine($"[ImGui] Ini save before switch failed: {ex.Message}"); }
+
+        if (_iniFilenamePtr != null)
+        {
+            Marshal.FreeCoTaskMem((nint)_iniFilenamePtr);
+            _iniFilenamePtr = null;
+        }
+        _iniFilenamePtr = (byte*)Marshal.StringToCoTaskMemUTF8(iniPath);
+        ImGui.GetIO().NativePtr->IniFilename = _iniFilenamePtr;
+        _iniPath = iniPath;
+
+        try
+        {
+            if (File.Exists(iniPath))
+                ImGui.LoadIniSettingsFromDisk(iniPath);
+            Console.WriteLine($"[ImGui] imgui.ini switched to: {iniPath}");
+        }
+        catch (Exception ex) { Console.WriteLine($"[ImGui] Ini load failed: {ex.Message}"); }
+    }
+
     public void Dispose()
     {
         if (_vao != 0) { fixed (uint* p = &_vao) GL.DeleteVertexArrays(1, p); _vao = 0; }
@@ -370,6 +413,18 @@ public unsafe class ImGuiController : IDisposable
                                          Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_ALT));
         io.AddKeyEvent(ImGuiKey.ModSuper, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_SUPER) ||
                                            Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_SUPER));
+        // Modifier keys must ALSO be posted as their named key slots (LeftShift/LeftCtrl/…
+        // /LeftAlt/LeftSuper) — ModShift alone only feeds the modifier bitmask and never
+        // sets the named key's down state, so ImGui.IsKeyDown(ImGuiKey.LeftShift) stays
+        // false forever. The official imgui_impl_glfw backend posts both forms.
+        io.AddKeyEvent(ImGuiKey.LeftShift, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_SHIFT));
+        io.AddKeyEvent(ImGuiKey.RightShift, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_SHIFT));
+        io.AddKeyEvent(ImGuiKey.LeftCtrl, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_CONTROL));
+        io.AddKeyEvent(ImGuiKey.RightCtrl, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_CONTROL));
+        io.AddKeyEvent(ImGuiKey.LeftAlt, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_ALT));
+        io.AddKeyEvent(ImGuiKey.RightAlt, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_ALT));
+        io.AddKeyEvent(ImGuiKey.LeftSuper, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_LEFT_SUPER));
+        io.AddKeyEvent(ImGuiKey.RightSuper, Keyboard.IsKeyDown(_window, Const.GLFW_KEY_RIGHT_SUPER));
         foreach (var kvp in _glfwToImGuiKey)
             io.AddKeyEvent(kvp.Value, Keyboard.IsKeyDown(_window, kvp.Key));
 

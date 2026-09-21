@@ -511,7 +511,8 @@ void main()
 
             float softEdgeMask = smoothstep(1.0, 0.92, localR);
 
-            vec3 litMoonColor = textureMoonColor * vec3(0.90, 0.95, 1.0) * 1.25 * tMalam;
+            // Dimmer moon disc (was 1.25) — nights were washing out the scene.
+            vec3 litMoonColor = textureMoonColor * vec3(0.90, 0.95, 1.0) * 0.9 * tMalam;
             litMoonColor += moonGlow * 0.25;
 
             float moonVisibilityFactor = mix(0.95, 0.7, weatherMode);

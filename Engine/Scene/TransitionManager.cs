@@ -35,7 +35,6 @@ public class TransitionManager
     {
         if (!_active || _def == null) return;
         _elapsed += dt;
-        try { Console.WriteLine($"[Transition] Update: elapsed={_elapsed:F3}/{_def.Duration:F2} active={_active}"); } catch { }
         float half = _def.Duration * 0.5f;
         if (!_midpointCalled && _elapsed >= half)
         {
@@ -70,7 +69,6 @@ public class TransitionManager
             try { Console.WriteLine($"[Transition] DrawOverlay failed to get draw list: {ex.Message}"); } catch { }
             return;
         }
-        try { Console.WriteLine($"[Transition] DrawOverlay: elapsed={_elapsed:F3} active={_active}"); } catch { }
         float w = io.DisplaySize.X;
         float h = io.DisplaySize.Y;
             float t = _elapsed / Math.Max(0.0001f, _def.Duration);
@@ -86,7 +84,20 @@ public class TransitionManager
         {
             case TransitionType.Fade:
                 {
-                    float alpha = (float)(1.0 - Math.Abs(2f * t - 1f)); // peak at midpoint
+                    // Cover (first half): fade in with the scene's easing (carried by t).
+                    // Reveal (second half): ease-out cubic — alpha drops FAST right after
+                    // the scene switch so the new scene appears quickly, then settles
+                    // smoothly to 0 instead of lingering under a slow linear fade tail.
+                    float alpha;
+                    if (t <= 0.5f)
+                    {
+                        alpha = t / 0.5f;
+                    }
+                    else
+                    {
+                        float u = (t - 0.5f) / 0.5f; // 0..1 reveal progress
+                        alpha = (1f - u) * (1f - u) * (1f - u);
+                    }
                     var fill = new System.Numerics.Vector4(c.X, c.Y, c.Z, alpha);
                     draw.AddRectFilled(new System.Numerics.Vector2(0, 0), new System.Numerics.Vector2(w, h), ImGui.ColorConvertFloat4ToU32(fill));
                 }
@@ -94,14 +105,17 @@ public class TransitionManager
 
             case TransitionType.SlideLeft:
                 {
-                    float frac = t; // 0..1 (already eased)
+                    // Wipe completes by 80% of the duration (accelerating slightly),
+                    // then a short fully-covered hold — feels snappier than a constant
+                    // crawl that only finishes at the very last frame.
+                    float frac = MathF.Min(1f, t / 0.8f);
                     draw.AddRectFilled(new System.Numerics.Vector2(0, 0), new System.Numerics.Vector2(w * frac, h), ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(c.X, c.Y, c.Z, 1f)));
                 }
                 break;
 
             case TransitionType.SlideRight:
                 {
-                    float frac = t;
+                    float frac = MathF.Min(1f, t / 0.8f);
                     draw.AddRectFilled(new System.Numerics.Vector2(w * (1f - frac), 0), new System.Numerics.Vector2(w, h), ImGui.ColorConvertFloat4ToU32(new System.Numerics.Vector4(c.X, c.Y, c.Z, 1f)));
                 }
                 break;

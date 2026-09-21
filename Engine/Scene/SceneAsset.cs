@@ -117,6 +117,35 @@ public class SceneElementData
     public float[] RadioUnselectedBgColor { get; set; } = [0.15f, 0.15f, 0.22f];
     public string RadioGroup { get; set; } = "default";
 
+    // ── Bar visual style ──
+    public string BarBackgroundPath { get; set; } = "";
+    public string BarEmptyPath { get; set; } = "";
+    public string BarProgressPath { get; set; } = "";
+    /// <summary>Solid fill color of each Bar layer (RGB 0..1).</summary>
+    public float[] BarBgColor { get; set; } = [0.10f, 0.10f, 0.14f];
+    public float[] BarEmptyColor { get; set; } = [0.05f, 0.05f, 0.08f];
+    public float[] BarProgressColor { get; set; } = [0.30f, 0.70f, 1.00f];
+    /// <summary>Legacy shared inset — migrated into the per-layer offsets on load.</summary>
+    public float BarInset { get; set; } = 0f;
+    /// <summary>0 = Left→Right, 1 = Right→Left, 2 = Bottom→Top, 3 = Top→Bottom.</summary>
+    public int BarDirection { get; set; } = 0;
+    /// <summary>Player2DStats slot this bar mirrors (None = manual CurrentValue).</summary>
+    public string BarStatBinding { get; set; } = "None";
+
+    // ── Bar per-layer edge offsets (scene px, + = outward, − = inward) ──
+    public float BarBgOffsetLeft { get; set; }
+    public float BarBgOffsetRight { get; set; }
+    public float BarBgOffsetTop { get; set; }
+    public float BarBgOffsetBottom { get; set; }
+    public float BarEmptyOffsetLeft { get; set; }
+    public float BarEmptyOffsetRight { get; set; }
+    public float BarEmptyOffsetTop { get; set; }
+    public float BarEmptyOffsetBottom { get; set; }
+    public float BarProgOffsetLeft { get; set; }
+    public float BarProgOffsetRight { get; set; }
+    public float BarProgOffsetTop { get; set; }
+    public float BarProgOffsetBottom { get; set; }
+
     // Recursive children
     public List<SceneElementData> Children { get; set; } = [];
 }
@@ -144,7 +173,18 @@ public class BackgroundObjectData
 public class EditorObjectData
 {
     public string Name { get; set; } = "EditorObject";
-    public string PrimitiveType { get; set; } = "Box"; // Box, Sphere, Plane, GlbReference
+    public string PrimitiveType { get; set; } = "Box"; // Box, Sphere, Plane, GlbReference, Map2D
+    /// <summary>Serialized tilemap payload — only used when PrimitiveType == Map2D.
+    /// Keeping the level inside the scene file means a scene only shows its level when
+    /// the .ing actually contains it (no blanket auto-load).</summary>
+    public Visual.Tilemap2DData? Tilemap { get; set; }
+    public bool TilemapShowGrid { get; set; } = true;
+    /// <summary>Whether the map's trigger areas render as editor aids (amber boxes).</summary>
+    public bool TilemapShowTriggers { get; set; } = true;
+    public float TilemapGridColorR { get; set; } = 0.4f;   // 3D map grid overlay color
+    public float TilemapGridColorG { get; set; } = 0.5f;
+    public float TilemapGridColorB { get; set; } = 0.68f;
+    public float TilemapGridColorA { get; set; } = 0.5f;
     /// <summary>GLB model path (only used when PrimitiveType == GlbReference). Stored relative to the exe.</summary>
     public string GlbFilePath { get; set; } = "";
     public float PosX { get; set; }
@@ -161,6 +201,75 @@ public class EditorObjectData
     public float ColorB { get; set; } = 0.9f;
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
+
+    // ── NPC dialogue binding (Dialogue System) ──
+    /// <summary>Dialogue asset id (Dialogue Editor) started when the player presses
+    /// E within range. Empty = not an NPC. Persisted per object.</summary>
+    public string NpcDialogueId { get; set; } = "";
+    /// <summary>Optional alert/exclamation image drawn above the NPC instead of the
+    /// text "!" bubble. Empty = default text marker. Persisted per object.</summary>
+    public string NpcAlertImagePath { get; set; } = "";
+
+    // ── Player2D (animated sprite + capsule collider) ──
+    public string Player2DSpriteSheet { get; set; } = "";
+    public string Player2DAnimationClip { get; set; } = "";
+    public string Player2DWalkSheet { get; set; } = "";
+    public string Player2DWalkClip { get; set; } = "";
+    public float Player2DHeight { get; set; } = 2f;
+    public float Player2DCapsuleRadius { get; set; } = 0.35f;
+    public float Player2DCapsuleHeight { get; set; } = 1.8f;
+    public float Player2DCapsuleOffsetX { get; set; } = 0f;
+    public float Player2DCapsuleOffsetY { get; set; } = 0f;
+    public bool Player2DShowCapsule { get; set; } = true;
+    public float Player2DGravity { get; set; } = 25f;
+    // ── Player2D movement tuning (Inspector-editable, used by Player2DSystem) ──
+    public float Player2DMoveSpeed { get; set; } = 5f;
+    public float Player2DRunSpeed { get; set; } = 9f;
+    public float Player2DJumpForce { get; set; } = 11f;
+    public float Player2DGravityScale { get; set; } = 1f;
+    public float Player2DAcceleration { get; set; } = 60f;
+    public float Player2DDeceleration { get; set; } = 80f;
+    public float Player2DAirControl { get; set; } = 0.65f;
+    // ── Platformer jump feel ──
+    public float Player2DCoyoteTime { get; set; } = 0.1f;
+    public float Player2DJumpBuffer { get; set; } = 0.12f;
+    public float Player2DJumpCutMultiplier { get; set; } = 0.5f;
+    // ── Sprite2D decorative sprite (Player2D fields reused for sheet/clip/height) ──
+    public bool Sprite2DLoop { get; set; } = true;
+    public float Sprite2DSpeed { get; set; } = 1f;
+    public float Sprite2DStartOffset { get; set; } = 0f;
+    public bool Sprite2DFacingRight { get; set; } = true;
+    /// <summary>Per-sprite emissive boost (0 = none, 1 = full) — drives per-sprite
+    /// bloom. Player objects use Player2DGlow.</summary>
+    public float Sprite2DGlow { get; set; } = 0f;
+    public float Player2DGlow { get; set; } = 0f;
+    /// <summary>Glow color tint components (0-1). The brightest channel is
+    /// normalized to 1 at render time; white (1,1,1) = natural sprite colors.
+    /// Serialized per-component (X/Y/Z) like the rest of this class.</summary>
+    public float Sprite2DGlowColorX { get; set; } = 1f;
+    public float Sprite2DGlowColorY { get; set; } = 1f;
+    public float Sprite2DGlowColorZ { get; set; } = 1f;
+    public float Player2DGlowColorX { get; set; } = 1f;
+    public float Player2DGlowColorY { get; set; } = 1f;
+    public float Player2DGlowColorZ { get; set; } = 1f;
+    /// <summary>Organic flicker for the per-sprite glow (fire breathing). Player
+    /// objects use Player2DGlowFlicker.</summary>
+    public bool Sprite2DGlowFlicker { get; set; }
+    public bool Player2DGlowFlicker { get; set; }
+    /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
+    public int Sprite2DRenderLayer { get; set; } = 0;
+    // ── Player2D camera-follow tuning ──
+    public float CameraFollowSpeed { get; set; } = 6f;
+    public float CameraDeadZoneWidth { get; set; } = 96f;
+    public float CameraDeadZoneHeight { get; set; } = 64f;
+    public float CameraVerticalThreshold { get; set; } = 64f;
+    public float CameraReturnSpeed { get; set; } = 3f;
+    public float CameraLookAhead { get; set; } = 150f;
+    /// <summary>Optional per-camera 2D view offset (persisted with the object).</summary>
+    public Vector3 CameraViewOffset { get; set; } = new(0, 0, 0);
+    /// <summary>Animation actions (name + sheet/clip + key binding + priority). Persisted
+    /// via the object data so designer-built action sets survive reloads.</summary>
+    public List<Player2DActionData>? Actions { get; set; }
 
     // ── Type-specific properties (Camera / Light / Sky) ──
     /// <summary>Vertical FOV in degrees (Camera).</summary>
@@ -407,4 +516,21 @@ public class SceneManifest
     public float? EditorCameraYaw { get; set; }
     /// <summary>Legacy global editor camera pitch (degrees).</summary>
     public float? EditorCameraPitch { get; set; }
+}
+
+/// <summary>Serializable form of <see cref="Player2DAction"/> (animation action binding).</summary>
+public class Player2DActionData
+{
+    public string Name { get; set; } = "";
+    public string SpriteSheet { get; set; } = "";
+    public string Clip { get; set; } = "";
+    public bool Loop { get; set; } = true;
+    public bool StopOnFrameEnd { get; set; }
+    public int Priority { get; set; } = 5;
+    public string KeyBinding { get; set; } = "None";
+    /// <summary>"KeyDown" (fire on press), "KeyUp" (fire on release), "KeyDownOnce"
+    /// (fire once on press, requires release to fire again), or "KeyUpOnce"
+    /// (fire once on release, requires re-press to fire again). Default keeps
+    /// old scenes behaving exactly as before.</summary>
+    public string KeyTrigger { get; set; } = "KeyDown";
 }

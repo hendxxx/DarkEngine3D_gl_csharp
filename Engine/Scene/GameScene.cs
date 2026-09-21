@@ -163,6 +163,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             IsVisible = false,
         };
 
+        // ── Dialogue System modal overlay (IsOverlayVisible gate) ──
+        // Registered into the scene root so ViewportPanel's overlay scan sees a visible
+        // Container while a conversation runs: editor fly/click/paint freeze behind the
+        // window exactly like authored UI overlays. Kept hidden when no conversation.
+        private readonly UIElement _dialogueOverlay = new()
+        {
+            Name = "DialogueOverlay",
+            Type = UIElementType.Container,
+            IsVisible = false,
+            Width = 0f,
+            Height = 0f,
+        };
+
         private int _renderedTris;
 
         //  IDE focus-camera state
@@ -484,6 +497,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 return;
             }
 
+            // For 2D levels, start from the same editor reset view so the in-game camera
+            // matches the editor reset view position/orientation.
+            ResetCameraToEditor2DView();
+
             _shaderProgram = Shader.GetShaderProgram();
             _projectionLocation = GL.GetUniformLocation(_shaderProgram, "projection");
             _viewLocation = GL.GetUniformLocation(_shaderProgram, "view");
@@ -601,14 +618,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
 
+            // ── Per-map player spawn: place the character at the spawn point saved in
+            // the Map Editor (TryGetPlayerSpawn returns the upright world position).
+            // Skipped when a save slot just loaded (the save's own position wins) and
+            // when no spawn was placed (default origin/terrain behavior is kept). ──
+            if (PendingLoadSlot < 0 && _sceneManager.Bridge?.TryGetPlayerSpawn(out Vector3 spawnPos) == true
+                && _objectManager?.PlayerAgent != null && _objectManager.PlayerObject != null)
+            {
+                _objectManager.PlayerAgent.Position = spawnPos;
+                _objectManager.PlayerObject.Position = spawnPos;
+                Console.WriteLine($"[GameScene] Player spawned at map spawn point ({spawnPos.X:F1}, {spawnPos.Y:F1})");
+            }
+
+            // ── Player2D spawn: handled by Player2DSystem on the first update frame via
+            // the Player2DSpawnPending flag (set when in-game mode begins — spawning here
+            // would be overwritten by the async .ing object reload that follows Enter()).
+            Objects.EditorObject.Player2DSpawnPending = true;
+
             // ── Scene starts blank! No .ing file is loaded automatically. ──
             // User can create UI via the IDE SceneDetail panel (+ Add button),
             // or use the "↻ Reload" button to load from a previously saved .ing file.
             _sceneRoot.ClearChildren();
+            _sceneRoot.AddChild(_dialogueOverlay); // modal gate for conversations (kept hidden)
 
             // ── Register scene root for IDE Save All ──
             SceneAssetSerializer.RegisterSceneRoot("GameScene", _sceneRoot);
-
+            ResetCameraToEditor2DView();
             Mouse.ShowMouse(false);
             _prevCursorShown = false;
 
@@ -646,9 +681,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 goto SkipInput;
             }
 
-                //  ESCAPE: always toggle pause (ESC always opens/closes the menu) 
+                //  ESCAPE: toggle pause — UNLESS a dialogue conversation is open, in
+                // which case ESC closes the conversation first (dialogue owns input).
                 bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
-                if (escapeDown && !_escapeWasDown && !_confirmingExit)
+                bool dialogueOwnsEsc = Visual.DialogueSystem.IsConversationActive;
+                if (escapeDown && !_escapeWasDown && !_confirmingExit && dialogueOwnsEsc)
+                {
+                    // Consumed by DialogueSystem.UpdateInteraction (EndConversation).
+                }
+                else if (escapeDown && !_escapeWasDown && !_confirmingExit)
                 {
                     _paused = !_paused;
                     if (_paused)
@@ -753,8 +794,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         SkipInput:
             // ── Editor fly mode: when viewport is focused, use WASD + mouse look
-            // (fly mode) for camera navigation — works in both editor and in-game mode.
-            bool editorFlyMode = _sceneManager.Bridge?.IsViewportFocused ?? false;
+            // (fly mode) for camera navigation — EDIT MODE ONLY. While playing
+            // (F5 preview / F8 in-game) the session owns the input: WASD goes to the
+            // 2D player, the camera is owned by the Player2D follow, so fly is off.
+            // Modal: a visible UI overlay disables editor fly mode (background inert).
+            var ideGate = _sceneManager.Bridge;
+            bool playingSession = ideGate is { InGameActive: true } || ideGate is { IsPreviewMode: true };
+            bool editorFlyMode = !playingSession
+                && (ideGate?.IsViewportFocused ?? false) && !(ideGate?.IsOverlayVisible ?? false);
 
             // ── Gizmo size shortcuts: = to increase, - to decrease ──
             // Only active when viewport is focused (not during gameplay or when typing in other panels).
@@ -1332,8 +1379,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 float notifY = Glfw.WindowHeight * 0.15f;
                 _hud.DrawText(_saveNotification, notifX, notifY, new Vector3(0.3f, 0.9f, 0.4f) * fade);
             }
-            //  HUD debug overlay — hidden in preview/in-game mode for a clean view
-            if (!isPreviewMode)
+            // ── Dialogue System: bubbles + conversation window (all modes — preview
+            // shows it too so the designer can tune the window live). The hidden
+            // DialogueOverlay container doubles as the IsOverlayVisible modal gate so
+            // editor fly/pick/paint freeze while a conversation is open. ──
+            _dialogueOverlay.IsVisible = DialogueSystem.IsConversationActive;
+            DialogueSystem.ShowPrompts = isPreviewMode;
+            DialogueSystem.Tick(_deltaTime, _hud, _camera, _sceneManager.Bridge?.EditorObjectManager);
+
+            //  HUD debug overlay — hidden in preview/in-game mode for a clean view.
+            // Visibility also honors the "Show In-Game Stats" preference (IDE Settings
+            // → Gameplay / Bridge.ShowInGameStats) so the F8 stats panel and this HUD
+            // hide together.
+            if (!isPreviewMode && (_sceneManager.Bridge?.ShowInGameStats ?? true))
             {
                 _hud.DrawText(title1, 10, 60, new Vector3(1, 0, 0));
                 float debugLineH = _hud.MeasureTextHeight(title1) + 6f;
@@ -1345,7 +1403,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             // ── Flush all queued HUD commands ──
+            // IDE docked: the Viewport panel displays the SCENE TEXTURE, so HUD flushed
+            // to the screen paints the dialogue window / [E] Talk prompt / pause menu
+            // BEHIND the dock — invisible. Use the proven LoadingScene/MainMenuScene
+            // path instead: composite the finished frame into the SHARED FBO (one HUD
+            // DrawImage), flush the HUD on top of it, then point the Viewport panel at
+            // SharedColorTex (SceneManager resolves the MSAA shared FBO every frame).
+            // Fullscreen (non-IDE) shows the screen directly — flush there as before.
+            bool hudToSharedFbo = ideActive && !wireframeMode && _ppStack != null;
+            if (hudToSharedFbo)
+            {
+                _sceneManager.EnsureSharedFBOExists();
+                hudToSharedFbo = _sceneManager.SharedFBO != 0;
+            }
+            if (hudToSharedFbo)
+            {
+                // Copy the finished frame into the shared FBO so the HUD overlays it.
+                // While paused the scene FBO still holds the last rendered frame —
+                // composite that (the blurred-to-screen pass stays docked-invisible).
+                _hud.DrawImage(0, 0, Glfw.WindowWidth, Glfw.WindowHeight, _ppStack.SceneColorTex);
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sceneManager.SharedFBO);
+                GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+            }
             _hud.Flush();
+            if (hudToSharedFbo)
+            {
+                // The Viewport panel samples the shared resolve texture (same as
+                // LoadingScene / MainMenuScene expose for their HUDs).
+                var hudBridge = _sceneManager.Bridge;
+                if (hudBridge != null)
+                {
+                    hudBridge.SceneTextureID = _sceneManager.SharedColorTex;
+                    hudBridge.SceneTextureWidth = Glfw.WindowWidth;
+                    hudBridge.SceneTextureHeight = Glfw.WindowHeight;
+                }
+                GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+            }
 
             // NOTE: The rolling FPS counter is driven by SceneManager's central main loop
             // (Glfw.UpdateFPS) so it stays live in every scene — do NOT call Glfw.ShowFPS
@@ -1552,6 +1645,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 CameraYaw = _camera.Yaw,
                 CameraPitch = _camera.Pitch,
                 WorldTime = _light.WorldTime,
+
+                // Dialogue progress (restored on load — quest flags survive saves).
+                DialogueCompleted = DialogueSystem.CaptureState().completed,
+                DialogueFlags = DialogueSystem.CaptureState().flags,
+                DialogueVariables = DialogueSystem.CaptureState().vars,
+
                 SaveTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
 
@@ -1610,6 +1709,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Restore world time
             _light.WorldTime = data.WorldTime;
+
+            // Restore dialogue progress (completed conversations, flags, variables).
+            DialogueSystem.RestoreState(data.DialogueCompleted, data.DialogueFlags, data.DialogueVariables);
 
             _saveNotification = $"Game loaded from Slot {slotIndex + 1}!";
             _saveNotificationTimer = 3f;
@@ -2133,7 +2235,44 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _hud.DrawText(label, sx - _hud.GetTextExtents(label).Width * 0.5f, sy - 18f, color, new Vector3(0f, 0f, 0f), 1.5f);
         }
 
-        /// <summary>Spawn random colored cubes above terrain so they fall with gravity.</summary>
+        /// <summary>Load UI hierarchy from a game.ing scene asset into this scene's root.
+        /// Used by the loading path so a main-menu goto-game-scene can enter with the same
+        /// UI hierarchy / scene root as the editor in-game path.
+        /// </summary>
+        public void LoadUIHierarchyFromAsset(SceneAsset asset)
+        {
+            if (asset?.Elements == null) return;
+
+            _sceneRoot.ClearChildren();
+            foreach (var elemData in asset.Elements)
+            {
+                var child = SceneAssetSerializer.ToUIElement(elemData);
+                _sceneRoot.AddChild(child);
+            }
+
+            // Keep scene root itself hidden in-game unless the asset explicitly wants it visible.
+            _sceneRoot.IsVisible = asset.Elements.Count > 0 && asset.Elements.Any(e => e.IsVisible);
+        }
+
+        /// <summary>For 2D levels, snap the camera to the same editor reset view used by the
+        /// editor so the in-game view starts from the same position/orientation as reset view.
+        /// Only applied when the scene has an active 2D tilemap (Map2D).
+        /// </summary>
+        private void ResetCameraToEditor2DView()
+        {
+            var bridge = _sceneManager.Bridge;
+            if (bridge == null || bridge.ActiveTilemap == null) return;
+
+            // Editor reset view for 2D: front view over the origin (top-down-ish front).
+            // This matches the editor's reset view for 2D level work.
+            _camera.SetEditorViewPreset(Camera.EditorViewPreset.Front);
+            _camera.SyncSmoothVectors();
+            _camera.UpdateVectors();
+            _camera.UpdateAspectRatio(Glfw.WindowWidth, Glfw.WindowHeight);
+
+            Console.WriteLine("[GameScene] Reset camera to editor 2D view (Front) for level.");
+        }
+
         /// <summary>Clear existing physics cubes and respawn new ones above terrain.</summary>
         public void Exit()
         {

@@ -45,6 +45,7 @@ public class RenderTimePanel
         if (!_visible) return;
 
         ImGui.Begin("Render Time", ref _visible);
+        IDE.PanelFocus.Notify("Render Time");
         // Sync the capture flag in case the user closed the window via the X button
         _bridge.CaptureRenderTimings = _visible;
 
@@ -215,7 +216,7 @@ public class RenderTimePanel
             _perfFramesOff = 0;
         }
 
-        float dtMs = Glfw.GetDeltaTime() * 1000f;
+        float dtMs = Glfw.PeekDeltaTime() * 1000f; // peek: read-only, doesn't slice the shared clock
         // Guard against pathological frame spikes so one hitch doesn't poison the average.
         if (dtMs <= 0f || dtMs > 250f) return;
 

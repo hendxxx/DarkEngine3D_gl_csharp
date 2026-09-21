@@ -39,6 +39,55 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Font size for the viewport toolbar buttons (px).</summary>
         public float ToolbarFontSize { get; set; } = 14f;
 
+        // ── Map Editor grid/palette UI prefs (2D sidescroller editor). Persisted so
+        // the Map Editor comes back with the same Show Grid / grid colors / palette
+        // columns+cell after restarting or reopening the project. ──
+        public bool MapEditorShowGrid { get; set; } = true;
+        public bool MapEditorShowCollision { get; set; } = true;
+        public float MapEditorGridColorR { get; set; } = 0.4f;   // 3D map grid lines
+        public float MapEditorGridColorG { get; set; } = 0.5f;
+        public float MapEditorGridColorB { get; set; } = 0.68f;
+        public float MapEditorGridColorA { get; set; } = 0.5f;
+        public bool MapEditorShowWorldGrid { get; set; } = true;
+        public float MapEditorWorldGridSize { get; set; } = 128f;
+        public float MapEditorWorldGridColorR { get; set; } = 1f;
+        public float MapEditorWorldGridColorG { get; set; } = 1f;
+        public float MapEditorWorldGridColorB { get; set; } = 1f;
+        public float MapEditorWorldGridColorA { get; set; } = 0.12f;
+        public bool MapEditorShowPaletteGrid { get; set; } = true;
+        public float MapEditorPaletteGridColorR { get; set; } = 1f;
+        public float MapEditorPaletteGridColorG { get; set; } = 1f;
+        public float MapEditorPaletteGridColorB { get; set; } = 1f;
+        public float MapEditorPaletteGridColorA { get; set; } = 0.25f;
+        public int MapEditorPaletteCols { get; set; } = 8;
+        public float MapEditorPaletteCell { get; set; } = 32f;
+
+        // ── IDE panel focus (persisted so the editor reopens on the panel the user
+        // was last working in, instead of always focusing the same default panel) ──
+        public string LastFocusedPanel { get; set; } = "";
+
+        // ── Ortho zoom limits (per project: pixel-art levels can tighten the range,
+        // large 3D worlds can widen it). Applies to scroll-wheel AND the Ortho Zoom
+        // slider in the camera options popup. ──
+        public float OrthoZoomMin { get; set; } = 2f;
+        public float OrthoZoomMax { get; set; } = 200f;
+
+        // ── Mouse camera control master toggle (IDE Settings → Camera). When false,
+        // drag-pan and fly mouse-look never move the editor camera — keyboard/scroll
+        // still work. Persisted per project; default true = classic behavior. ──
+        public bool MouseCameraControl { get; set; } = true;
+
+        // ── In-game mouse camera toggle (IDE Settings → Camera, applies to Play In
+        // Preview / In-Game mode only). When false, drag-pan and fly mouse-look never
+        // move the camera while PLAYING — mouse input goes to the game instead.
+        // Persisted per project; the editor toggle above still governs edit mode. ──
+        public bool InGameMouseCameraControl { get; set; } = true;
+
+        // ── In-game stats overlay (FPS/TRIS/Objects/POS panel + GameScene debug HUD).
+        // Shown while playing (F8 / preview). Persisted per project; toggle in
+        // IDE Settings → Gameplay, or click the panel itself while in-game. ──
+        public bool ShowInGameStats { get; set; } = true;
+
         // ── Transition defaults (persisted from TransitionPanel's "Apply Global Default") ──
         public int DefaultTransitionType { get; set; } = 0; // 0=Fade, 1=SlideLeft, 2=SlideRight
         public float DefaultTransitionDuration { get; set; } = 0.6f;
@@ -92,6 +141,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float PostFxBloomIntensity { get; set; } = 0.8f;
         public float PostFxBloomThreshold { get; set; } = 0.45f;
         public float PostFxBloomSoftKnee { get; set; } = 0.15f;
+        /// <summary>Reactive bloom mip chain length (1..5). More = wider halos.</summary>
+        public float PostFxBloomMips { get; set; } = 5f;
         public float PostFxExposure { get; set; } = 1.0f;
         public float PostFxGamma { get; set; } = 2.2f;
         public bool PostFxAutoExposure { get; set; } = true;
@@ -99,6 +150,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float PostFxAutoExposureMax { get; set; } = 4f;
         public float PostFxAutoExposureTarget { get; set; } = 0.18f;
         public float PostFxAutoExposureSpeed { get; set; } = 0.6f;
+
+        // ── Depth of Field (slider-driven focus point; everything outside the focus
+        // circle blurs — tuned live via PostFxSettings) ──
+        public bool PostFxDofEnabled { get; set; } = false;
+        public float PostFxDofFocusX { get; set; } = 0.5f;
+        public float PostFxDofFocusY { get; set; } = 0.45f;
+        public float PostFxDofRadius { get; set; } = 0.25f;
+        public float PostFxDofFeather { get; set; } = 0.35f;
+        public float PostFxDofMaxBlur { get; set; } = 6f;
+        /// <summary>DoF focus tracker: 0=manual, 1=player, 2=hovered tile, 3=hovered object, 4=selection.</summary>
+        public int PostFxDofFocusTarget { get; set; } = 0;
+        /// <summary>How fast the focus glides after a moving target (higher = tighter lock).</summary>
+        public float PostFxDofFollowSpeed { get; set; } = 14f;
+        /// <summary>DoF focus shape follows the SPRITE silhouette on a render layer (not a circle).</summary>
+        public bool PostFxDofSpriteShapeEnable { get; set; } = false;
+        /// <summary>DoF focus shape / mask mode: 0=Geometric Circle, 1=Player Sprite, 2=Sprite2D Layer, 3=Player + Sprite2D Layer, 4=Hybrid (Circle + Player).</summary>
+        public int PostFxDofFocusShape { get; set; } = 0;
+        /// <summary>Invert DoF mask: false=subject sharp / background blurred, true=subject blurred / background sharp.</summary>
+        public bool PostFxDofInvertMask { get; set; } = false;
+        /// <summary>Which Sprite2D Render Layer forms the sharp silhouette.</summary>
+        public int PostFxDofSpriteShapeLayer { get; set; } = 0;
+        /// <summary>Silhouette growth in mask texels (softens the sprite-shaped edge).</summary>
+        public float PostFxDofSpriteExpandPx { get; set; } = 2f;
+        /// <summary>Raises sprite alpha coverage (semi-transparent pixels count as inside).</summary>
+        public float PostFxDofSpriteAlphaBias { get; set; } = 0.05f;
+        /// <summary>Debug: blur EVERYWHERE except the sprite silhouette.</summary>
+        public bool PostFxDofSpriteMaskOnly { get; set; } = false;
 
         // ── Fog (Inspector "Fog" section) ──
         public bool FogEnabled { get; set; } = true;

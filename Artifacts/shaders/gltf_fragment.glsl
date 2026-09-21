@@ -452,7 +452,10 @@ void main()
     // ── Night/Day Transition ──────────────────────────────────────────────
     float nightBlend = smoothstep(0.15, 0.0, sunDir.y);
     vec3 moonDir = normalize(vec3(-sunDir.x, 0.7, -sunDir.z));
-    vec3 moonColor = vec3(0.25, 0.30, 0.45);
+    // Dark moon tint matching Lights.cs nightLight — the CPU already fades lightColor
+    // to this at night, so this only guards stale/bright overrides. The old bright
+    // (0.25,0.30,0.45) made models glow at night while the sky stayed dark.
+    vec3 moonColor = vec3(0.05, 0.07, 0.14);
     vec3 L = normalize(mix(normalize(sunDir), moonDir, nightBlend));
     vec3 activeColor = mix(lightColor, moonColor, nightBlend);
     float ambientStrength = mix(0.25, 0.18, nightBlend);

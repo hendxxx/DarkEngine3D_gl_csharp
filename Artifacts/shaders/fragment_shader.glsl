@@ -433,10 +433,11 @@ void main() {
     // arah cahaya untuk SHADOW (sudah diputuskan di CPU)
     vec3 shadowLightDir = normalize(shadowDir);
     
-    vec3 moonColor = vec3(0.08, 0.12, 0.25);
-    vec3 targetNightColor = (length(lightColor) < 0.1) ? moonColor : lightColor;
-
-    vec3 activeLightColor = mix(lightColor, targetNightColor, nightBlendFactor);
+    // Moonlight brightness is owned by Lights.cs (nightBrightness — the CPU fades
+    // lightColor to a dark blue moon tint after all overrides). The old shader-side
+    // moonColor fallback REPLACED the dim CPU color with a 2-3x brighter value,
+    // making nights read as bright as an overcast day — do not brighten it back here.
+    vec3 activeLightColor = lightColor;
     float ambientStrength = mix(0.15, 0.04, nightBlendFactor);
 
     vec3 ambient = ambientStrength * activeLightColor;

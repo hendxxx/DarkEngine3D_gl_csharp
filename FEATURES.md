@@ -83,16 +83,21 @@ ProjectRoot/
 |-------|---------|--------------|
 | **SceneView** | 3D viewport | Gizmo translate/rotate/scale, selection highlight, grid |
 | **Hierarchy** | Object tree | Add/delete/rename objects, drag reorder |
-| **Inspector** | Property editor | Context-sensitive per object type (see §2.3) |
+| **Inspector** | Property editor | Context-sensitive per object type (see §2.6) |
 | **AssetBrowser** | File browser | Drag-drop images/models to Inspector |
 | **Console** | Log output | Stdout/stderr capture |
 | **SceneManager** | Scene list | Add/remove/switch scenes, save/load, scene rename sync |
 | **ShadowSettings** | Shadow config | CSM bias/blend, local light shadows |
-| **PostFxPanel** | Post-processing | Bloom, tonemapping, auto-exposure, gamma |
+| **PostFxPanel** | Post-processing | Reactive bloom (mip chain), auto-exposure, tonemapping, gamma, DoF |
+| **FrameBufferDebugPanel** | Debug | Live thumbnails of every FBO: scene targets, DoF scratch/mask, Post FX stages (composite/output/luma/bloom mips) + completeness validation |
 | **TerrainBrush** | Terrain tools | Brush size/strength/softness, paint layers, sculpt |
 | **PbrPanel** | PBR material | Per-object texture slots + tuning (see §5) |
 | **RenderTime** | Performance | FPS, frame time, GPU timing |
 | **FramebufferViewer** | Debug | View any FBO texture |
+| **SpriteEditor** | 2D sprite sheets | Auto-detect frames, interactive slicing, animation clips, zoom, drag-drop import (see §2.4) |
+| **MapEditor** | 2D tilemap editor | Tile painting, layers, palette, collision flags, parallax layers (see §2.5) |
+| **CollisionEditor** | 2D collision shapes | Shape list + per-shape editing |
+| **IDESettings** | Editor settings | VSync, MSAA antialiasing, debug grid, font sizes — changes apply instantly |
 
 ### 2.2.1 UI Editor — Container & Selection Features
 
@@ -107,7 +112,62 @@ ProjectRoot/
 | **Marquee Selection** | Rubber-band selection for multiple UI elements |
 | **GroupMove with Undo** | Group drag records undo per-element for single Ctrl+Z restore |
 
-### 2.3 Inspector — Object Types
+### 2.4 Sprite Editor (2D)
+
+Panel for slicing sprite sheets and building 2D animation clips.
+
+| Feature | Description |
+|---------|-------------|
+| **Sheet Import** | File dialog or drag-drop image from Asset Browser |
+| **Auto-Detect Frames** | Guesses frame size/columns from image dimensions; preview grid overlays the sheet |
+| **Interactive Mode** | Click-drag on the sheet to define frame rect manually (no numeric input needed) |
+| **Zoom** | Independent zoom for sheet preview and animation preview (default 1x) |
+| **Animation Clips** | Create clip from frame range (Start/End), FPS control, play/stop preview |
+| **Frame Thumbnails** | Selected frame image shown in Frame Properties |
+| **Persistence** | All sheets + clips saved to `Assets/Sprites/sprites.sheets.json`, auto-loaded on project open |
+| **Play Integration** | Play in Preview loads the selected animation clip |
+
+### 2.5 Map Editor (2D Tilemap)
+
+Tilemap editor rendering into the 3D viewport as an upright textured plane (`EditorObject` type `Map2D`). The grid appears at world origin; camera auto-switches to orthographic front view.
+
+| Feature | Description |
+|---------|-------------|
+| **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise) |
+| **Tile Palette** | Auto-detected cols/rows from tileset image (read-only); multi-select (marquee) preserves block shape when stamping |
+| **Tools** | Paint, Erase (with brush size), Fill (flood), Pick (default), Collision, Trigger — paint directly in the 3D viewport |
+| **Layers** | Multiple tile layers, visibility/lock per layer, all visible layers render (stacked in depth, tiny lift per layer) |
+| **Undo/Redo** | Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y over the 2D level (per-tile granularity) |
+| **Collision Flags** | Per-tile-id collision toggles; dedicated Collision paint tool (click/drag toggles, hover preview shows add vs remove); full 3D translucent boxes with bright edges CENTERED on the tile; per-layer `CollisionTileIds` persist in the tilemap json; Show Collision checkbox persisted in settings |
+| **Parallax Layers** | Image layers behind/in front of the grid: ScrollFactor, ZPosition, Alpha (per-vertex tint), WidthPx/HeightPx (0 = proportional to image aspect), RepeatX/Y (GL_REPEAT), TopPx offset, TileHorizontal wrapping |
+| **Parallax Preview** | Panning the editor camera slides each layer by `-camX × ScrollFactor` (fractional UV phase = seamless wrap) |
+| **Grid Overlay** | Show/hide tile grid + grid color, real-time; auto-hidden in preview/in-game |
+| **Camera Start** | Per-map saved view; "Set Current View"/"Reset" in Grid Settings; Play in Preview restores it; auto-captured on first framing |
+| **Player Spawn** | Draggable cyan cross marker in viewport (or "Set at Hover"); GameScene places the player there on Enter (unless a save slot loads) |
+| **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles + parallax + spawn + camera start) and canonical scene `.ing`; autoload first map on project open |
+| **Trigger Areas** | Dedicated Trigger tool: click-drag on the grid draws a snap-to-tile box; drag body to move, 8 handles to resize; Delete / Ctrl+C/X/V / Ctrl+D supported; amber translucent boxes (selected = brighter + white handles); edited in the Trigger Areas panel (see §2.9) |
+| **In-Game Parity** | Parallax layers/textures sync every frame in preview mode; startup `-load=` in-game re-anchors camera (lazy reframe when tilemap adopts late) |
+
+### 2.6 Player2D System (2D Character)
+
+Player character object with capsule collider + animated sprite, spawned from a Start marker.
+
+| Feature | Description |
+|---------|-------------|
+| **Player 2D Object** | `EditorPrimitiveType.Player2D` — added from the Hierarchy toolbar or Add-element dropdown (🏃 icon) |
+| **Capsule Collider** | Feet-anchored capsule (Position.Y = capsule bottom), radius/height/visibility tunable in Inspector; rendered as a world-upright blue outline in edit mode (hidden in-game via `Editor2DAidsHidden`) |
+| **Animated Sprite** | Sprite Sheet + Animation Clip pickers (from the Sprite Editor via the static `IDEBridge` registry, refreshed every frame in all modes); clip FPS/loop/reverse/speed respected; animation previews live in edit mode |
+| **Sprite UV** | Frame UVs converted (`v' = 1 − v_raw`) for the top-row-first texture upload — sprite stands upright |
+| **Start Object** | `EditorPrimitiveType.Start2D` (🚩 arrow marker) — the spawn point; Player2D teleports there (velocity + anim clock reset) when in-game mode begins |
+| **Deferred Spawn** | `EditorObject.Player2DSpawnPending` static flag set on in-game entry; consumed by `Player2DSystem.Update` on the first frame AFTER the .ing reload re-creates objects |
+| **Physics** | `Player2DSystem` — gravity (tunable per-player) + capsule-AABB vs collision-tile resolution (ground/ceiling on the active layer); runs only in preview/in-game |
+| **Persistence** | Sheet/clip/height/capsule/gravity saved in the scene `.ing` via `EditorObjectData` |
+
+### 2.7 Gizmo Z-Order
+
+The transform gizmo is ALWAYS frontmost: 2D overlays (tile grid, hover highlight, collision box edges) draw with depth test disabled and would paint over an earlier gizmo, so the depth buffer is cleared after `EditorObjectManager.Draw()` and before `gizmo.Render()` in both the editor (no-scene) and in-scene render paths.
+
+### 2.8 Inspector — Object Types
 
 **Box/Sphere/Plane**:
 - Transform: Position (XYZ), Rotation (Euler XYZ), Scale (XYZ)
@@ -136,6 +196,67 @@ ProjectRoot/
 - Model path, Position, Rotation, Scale
 - Cast Shadow toggle
 - PBR Maps + Tuning (same as primitives)
+
+**Map2D (2D Level)**:
+- Tilemap binding (auto-created from Map Editor "New Map" / scene `.ing` restore)
+- Tileset cols/rows + FlipV (read-only, auto-detected)
+- Show Grid + Grid Color, Show Collision + Collision Color
+- Grid Settings: camera start capture/reset, spawn info
+- Rendered as upright world-space plane; object transform intentionally not applied
+
+**Player 2D**:
+- Sprite Sheet + Animation Clip combos (auto-select first item; clip summary shown when resolvable)
+- Sprite Height, Capsule Radius/Height, Show Capsule, Gravity
+- Glow (bloom) slider + Glow Tint picker + Flicker checkbox (see §2.10)
+- Selection shows via line gizmos (no stencil outline — no solid mesh)
+
+### 2.9 Trigger Area / Event System
+
+Non-blocking event volumes on the tilemap: the player passes through them; entering/staying/exiting fires an ordered list of actions.
+
+| Feature | Description |
+|---------|-------------|
+| **Trigger Area** | Rectangle in grid pixel coords (LeftPx/TopPx/WidthPx/HeightPx) on the tilemap; no physical collision — detection only |
+| **Conditions** | On Enter / On Stay (with repeat interval in seconds) / On Exit; optional gate "only when moving right" |
+| **Actions (18 types)** | Save Game, Save Checkpoint, Load Checkpoint, Change Map, Play Sound, Play Music, Spawn Effect, Spawn Object, Start Dialogue, Show Bubble, Hide Bubble, Start Cutscene, Camera Shake, Unlock Door, Give Item, Activate Quest, Complete Quest, Run Script — each with Param/Param2/Delay |
+| **Wired Runtime** | Save Game (next empty slot), Save Checkpoint (records player position), Load Checkpoint (teleport to checkpoint, fallback = start point), Change Map (loads `Assets/Maps/{name}.tilemap.json` in place), Camera Shake (earthquake-style, intensity × duration), Start Dialogue (opens the Dialogue System conversation), Show/Hide Bubble (player-following speech bubble; Param2 = `type\|duration`) |
+| **Checkpoint Chain** | Save Checkpoint → player position stored for the session; Load Checkpoint zeroed velocity + grounded reset; pit-death respawn prefers the checkpoint; checkpoint state resets on each new play session |
+| **Camera Shake** | View-height-relative amplitude (7% × intensity), 3-layer noise + ±1.2° camera roll, quadratic decay, random seed per shake |
+| **Visual Editor** | Trigger tool: drag-create (snaps to tile bounds), move by dragging the body, resize via 8 handles, Delete/Ctrl+C/X/V/Ctrl+D; "Show Triggers" checkbox (persisted); Trigger Areas panel: list + rename + enable, conditions, per-action editor with contextual params + reorder, precise geometry |
+| **Rendering** | Amber translucent boxes drawn in edit mode only (hidden in-game via `Editor2DAidsHidden`); overlay projected via `SceneToScreen` so it sticks to the viewport image |
+| **Persistence** | `Assets/Maps/{map}.tilemap.json` AND scene `.ing` (`Tilemap2DData.TriggerAreas`) — triggers load with the project |
+
+### 2.10 Per-Sprite Glow (Emissive Post-FX)
+
+Per-sprite emissive boost so only bright sprite pixels (fire, lava, candles) cross the bloom threshold — the rest of the sprite and scene stay normal. Requires Post FX enabled.
+
+| Feature | Description |
+|---------|-------------|
+| **Glow (bloom)** | `Sprite2DGlow` / `Player2DGlow` (0-1) — vertex color multiplied ×1..×4; bright pixels bloom, dark pixels untouched |
+| **Glow Tint** | `Sprite2DGlowColor` / `Player2DGlowColor` — colors the bloom (e.g. blue fire); brightest channel normalized to 1 at render, so any brightness of the hue works; white = natural colors |
+| **Flicker** | `Sprite2DGlowFlicker` / `Player2DGlowFlicker` — organic fire breathing: 3 out-of-phase sine layers over absolute engine time (±22% around the Glow value), per-object seed from the name hash (two fires never sync), frame-gated via `Glfw.FrameId` for multi-pass consistency |
+| **Baked to Vertices** | Boost/tint/flicker multiply the per-vertex tint (`aTint`) — the map2d shader has no tint uniform by design |
+| **Inspector** | "Glow (bloom)" slider + "Glow Tint" picker + "Flicker" checkbox in both the Sprite2D and Player2D sections |
+| **Persistence** | Saved in the scene `.ing` via `EditorObjectData` (Glow + GlowColorX/Y/Z + Flicker), symmetric save/load |
+
+### 2.11 Dialogue System (Conversation + Bubble)
+
+Data-driven dialogue: RPG conversation window + world-space speech bubbles, authored entirely in the editor.
+
+| Feature | Description |
+|---------|-------------|
+| **Dialogue Assets** | `DialogueAsset` (Id, Name, StartNodeId, ThemeName) with `DialogueNode` pages — text, speaker, portrait, emotion, choices, auto-advance, per-node start/end actions; branching via NextNodeId / choice targets (empty = end). Stored in `Assets/Dialogue/dialogues.json` |
+| **Dialogue Editor** | Panel (2D Sidescroller menu): asset list + add/duplicate/delete, node editor (speaker/emotion/portrait/text/next/choices/actions), speaker manager, theme editor (colors, fonts, typewriter speed), language dropdown + translation table, ▶ Start/■ Stop preview |
+| **Conversation Runtime** | `DialogueSystem` — bottom window with portrait frame, colored speaker name, typewriter text, numbered choices (1-9 / arrows + E / Space next / Esc close); closes with a fade; freezes player input + editor camera via the `DialogueOverlay` modal gate |
+| **Speakers** | Reusable `SpeakerData` (Id, Name, portrait, name color); portraits support emotion variants (`<name>_Happy.png` tried before the base) |
+| **Themes** | `DialogueThemeData` with optional parent inheritance — window/border/name/text/choice/bubble colors, fonts, typewriter speed, optional background image; built-in Default + Medieval |
+| **Bubbles** | `ShowBubble/HideBubble` follow any object (player/NPC) with fade in/out, auto-hide on duration/distance, type-tinted borders (Speech/Thought/Quest/Warning); also fired from trigger actions |
+| **NPC Interaction** | `EditorObject.NpcDialogueId` (Inspector: NPC Dialogue section) — Sprite2D/Player2D with a dialogue id shows an "[E] Talk" prompt in range and starts the conversation on E |
+| **Conditions** | Choice conditions: `level:5`, `flag:name`, `item:potion`, `quest:id`, `questdone:id`, `gold:100`, `var:name:10` — unknown conditions fail closed |
+| **Actions** | Choices/nodes execute trigger-catalog actions (Give Item, Activate Quest, Change Map, Play Sound, Camera Shake…) — no new action types needed |
+| **Localization** | `DialogueLibrary.CurrentLanguage` + per-language override tables (English/Indonesia/Japanese/Chinese/Korean/Thai/Vietnamese); untranslated text passes through |
+| **Save/Load** | `SaveData.DialogueCompleted/Flags/Variables` captured on save, restored on load; session state resets on new play sessions |
+| **Trigger Integration** | Start Dialogue (Param = asset id), Show Bubble (Param = text, Param2 = `type\|seconds`), Hide Bubble — wired in `TriggerEventSystem` |
 
 ---
 
@@ -166,7 +287,14 @@ Scene files use `.ing` extension — **JSON** format with `.ing` extension.
 ```json
 {
   "Name": "Box1",
-  "PrimitiveType": "Box|Sphere|Plane|Camera|Light|Sky|GlbReference",
+  "PrimitiveType": "Box|Sphere|Plane|Camera|Light|Sky|GlbReference|Map2D|Player2D|Start2D",
+  "Player2DSpriteSheet": "", "Player2DAnimationClip": "",
+  "Player2DHeight": 2.0, "Player2DCapsuleRadius": 0.35, "Player2DCapsuleHeight": 1.8,
+  "Player2DShowCapsule": true, "Player2DGravity": 25.0,
+  "Sprite2DGlow": 0.0, "Player2DGlow": 0.0,
+  "Sprite2DGlowColorX": 1.0, "Sprite2DGlowColorY": 1.0, "Sprite2DGlowColorZ": 1.0,
+  "Player2DGlowColorX": 1.0, "Player2DGlowColorY": 1.0, "Player2DGlowColorZ": 1.0,
+  "Sprite2DGlowFlicker": false, "Player2DGlowFlicker": false,
   "GlbFilePath": "",
   "PosX": 0, "PosY": 0, "PosZ": 0,
   "RotX": 0, "RotY": 0, "RotZ": 0,
@@ -342,7 +470,8 @@ File
 | HUD | `hudVertex_shader.glsl` | `hudFragment_shader.glsl` | UI elements |
 | Outline | `outline_vertex.glsl` | `outline_fragment.glsl` | Selection outline |
 | PostFX Bright | `post_vertex.glsl` | `postFxBright_fragment.glsl` | Bloom bright pass |
-| PostFX Blur | `post_vertex.glsl` | `postFxBlur_fragment.glsl` | Bloom gaussian blur |
+| PostFX Downsample | `post_vertex.glsl` | `postFxBloomDownsample_fragment.glsl` | Reactive bloom 13-tap downsample/soften |
+| PostFX Upsample | `post_vertex.glsl` | `postFxBloomUpsample_fragment.glsl` | Reactive bloom additive Catmull-Rom upsample |
 | PostFX Composite | `post_vertex.glsl` | `postFxComposite_fragment.glsl` | Final composite |
 
 ### 4.2 Rendering Flow (per frame)
@@ -363,9 +492,9 @@ File
 
 4. PostFX Chain (if enabled)
    ├── Auto-exposure (luminance measurement)
-   ├── Bloom (bright extract → blur → composite)
+   ├── Reactive Bloom (bright extract → 5-mip chain → additive upsample → composite)
    ├── ACES Tonemapping
-   └── Gamma correction
+   └── Gamma correction → quad-draw copy back to scene texture
 
 5. IDE Overlay
    ├── ImGui panels (Inspector, Hierarchy, etc.)
@@ -382,9 +511,9 @@ File
 | ShadowMap0/1/2 | DEPTH24 | CSM cascade 0/1/2 |
 | LocalShadowPoint[] | DEPTH24 | Per-point-light cube depth |
 | LocalShadowSpot[] | DEPTH24 | Per-spotlight projective depth |
-| BloomBright | RGBA16F | Bloom bright extraction |
-| BloomBlurA/B | RGBA16F | Ping-pong gaussian blur |
-| AutoExposureLuma | R16F | Luminance measurement |
+| BloomBright | RGBA8 half-res | Bloom bright extraction (mip 0 of the chain) |
+| BloomMip0-4 | RGBA8 ½→1/32 | Reactive bloom mip chain (ping-pong soften scratch per level) |
+| AutoExposureLuma | RGBA8 1/16 | Luminance measurement (mipmapped) |
 
 ---
 
@@ -575,21 +704,33 @@ Uploaded via `ShadowUniforms.UploadMain()`:
 ### 8.1 Pipeline
 
 ```
-SceneColorTex → Bright Extract → Gaussian Blur (ping-pong) → Bloom Composite
-             → Auto-Exposure → ACES Tonemapping → Gamma Correction
+SceneColorTex → Bright Extract → 5-Mip Reactive Chain (downsample → soften →
+               additive upsample) → Bloom Composite → Auto-Exposure →
+               ACES Tonemapping → Gamma → quad-draw copy back to scene texture
 ```
 
-### 8.2 Bloom
+- **One shared processor**: `PostFxProcessor.Shared` serves both render paths
+  (GameScene `PostProcessStack.RunStack` AND the editor shared-FBO viewport via
+  `ApplyInPlace`) — auto-exposure keeps one continuous adaptation state.
+- **Quad-draw copy-back**: the final result is copied with a passthrough quad draw,
+  NEVER `glBlitFramebuffer` (the wrapper silently no-ops when the wgl pointer fails
+  to load — this caused "effect works in debug panel but not in viewport").
+
+### 8.2 Reactive Bloom
 
 | Parameter | Default | Range |
 |-----------|---------|-------|
-| `BloomIntensity` | 1.0 | 0-4 |
+| `BloomIntensity` | 1.0 | 0-2 |
 | `BloomThreshold` | 0.5 | 0-2 |
-| `BloomSoftKnee` | 0.15 | 0-1 |
+| `BloomSoftKnee` | 0.15 | 0-0.5 |
+| `BloomMips` (Radius) | 5 | 1-5 |
 
-- Bright extraction: pixels above threshold + soft knee
-- Gaussian blur: configurable blur radius
-- Composite: additive blend with scene
+- Bright extraction: pixels above threshold + soft knee (half res)
+- **Mip chain**: 5 levels (½ → 1/32 res), each softened with 13-tap box blurs via
+  ping-pong scratch targets (never sampling and writing the same texture)
+- **Additive upsample**: Catmull-Rom 9-tap, blended ONE/ONE back down the chain —
+  lower mips contribute tight hot cores, upper mips wide soft halos
+- `BloomMips` truncates the chain: fewer mips = tight glow, more = cinematic halos
 
 ### 8.3 Auto-Exposure
 
@@ -601,9 +742,10 @@ SceneColorTex → Bright Extract → Gaussian Blur (ping-pong) → Bloom Composi
 | `AutoExposureTargetLuminance` | 0.18 | 0.01-1 |
 | `AutoExposureSpeed` | 0.6 | 0.01-10 |
 
-- Measures scene average luminance
-- Adapts exposure smoothly over time
-- Clamps to min/max range
+- Measures scene average luminance via a dedicated 1/16-res luma texture (mip
+  readback of its smallest level)
+- Adapts exposure smoothly over time (exponential smoothing)
+- Clamps to min/max range; live value shown in the Post FX panel
 
 ### 8.4 Tonemapping
 
@@ -615,7 +757,17 @@ SceneColorTex → Bright Extract → Gaussian Blur (ping-pong) → Bloom Composi
 | Parameter | Default | Range |
 |-----------|---------|-------|
 | `Gamma` | 2.2 | 0.4-4 |
-| `Exposure` | 1.0 | 0.1-8 |
+| `Exposure` | 1.0 | 0.1-4 (ignored while Auto Exposure is on) |
+
+### 8.6 FX Debug Views
+
+- **Viewport toolbar "FX Debug"** button cycles Scene → Composite → Output →
+  Luma (auto-exposure input) → Bloom Mip 0-4, drawn in place of the scene texture
+  with an amber stage badge (falls back to the scene when Post FX is off)
+- **FrameBuffer Debug panel** shows live thumbnails of every intermediate target
+  (composite, output, luma, all 5 bloom mips) plus a `Post FX chain:` liveness line
+- All Post FX parameters persist symmetrically: panel changes → `settings.json`
+  (project), project open → re-applied via `PostFxSettings.Apply`
 
 ---
 
@@ -715,6 +867,7 @@ Modes: Linear (1), Exponential (2), Exp2 + height blend (3)
   "PostFxBloomIntensity": 1.0,
   "PostFxBloomThreshold": 0.5,
   "PostFxBloomSoftKnee": 0.15,
+  "PostFxBloomMips": 5.0,
   "PostFxExposure": 1.0,
   "PostFxGamma": 2.2,
   "PostFxAutoExposure": true,

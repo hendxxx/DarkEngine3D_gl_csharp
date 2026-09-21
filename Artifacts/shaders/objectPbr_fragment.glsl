@@ -313,6 +313,15 @@ float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, f
 // ======================================================
 void main() {
     vec3 norm = normalize(Normal);
+    // ── TWO-SIDED SHADING: flat planes are a single CCW quad drawn with culling
+    //    disabled (see EditorObject.DrawPbrPrimitive), so their back side IS
+    //    rendered when the camera looks from below. The attribute normal still
+    //    points up there — lighting + the derivative tangent basis built from it
+    //    would shade the underside inverted (dark, relief flipped). Flipping the
+    //    geometry normal here flips the whole T/B basis with it (T/B derive from
+    //    cross products against norm), so both sides shade correctly. Closed
+    //    meshes (Box/Sphere) never see backfaces — no change for them.
+    if (!gl_FrontFacing) norm = -norm;
     float slope = 1.0 - norm.y;
     vec3 viewDir = normalize(viewPos - FragPos);
     // Per-map UV transforms (each map has its own tiling/offset in TextureSettings).
@@ -407,7 +416,12 @@ void main() {
     ao = clamp(ao * u_aoTuning.x + u_aoTuning.y, 0.0, 1.0);
 
     // ── PBR DIRECT LIGHTING (Cook-Torrance, sun as the directional light) ──
-    vec3 L = normalize(sunDir);
+    // Sun below the horizon → key light flips to the MOON direction (opposite the
+    // sun) so primitives keep a soft directional moon key instead of losing all
+    // direct light (NdotL of a down-pointing sun is ≤ 0). Radiance dimming itself
+    // is owned by Lights.cs — lightColor arrives already faded to the moon tint.
+    float nightBlendPbr = smoothstep(0.15, 0.0, sunDir.y);
+    vec3 L = normalize(mix(normalize(sunDir), normalize(-sunDir), nightBlendPbr));
     vec3 V = viewDir;
     vec3 H = normalize(V + L);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
