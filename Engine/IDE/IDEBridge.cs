@@ -605,6 +605,18 @@ public class IDEBridge
     /// Passes the painted object plus the splat snapshots taken BEFORE and AFTER the stroke.</summary>
     public Action<EditorObject, byte[], byte[]>? OnTerrainLayerPainted { get; set; }
 
+    // ── PBR splat terrain (paintable multi-texture plane) ──
+    /// <summary>Brush targets the PBR-plane splat/sculpt system instead of the legacy terrain.</summary>
+    public bool PbrSplatBrushActive { get; set; }
+    /// <summary>0 = Sculpt height (raise/lower with Ctrl), 1 = Paint layer, 2 = Smooth, 3 = Flatten.</summary>
+    public int PbrSplatBrushMode { get; set; } = 0;
+    /// <summary>Layer painted by the splat brush (0..3).</summary>
+    public int PbrSplatPaintLayerIndex { get; set; } = 0;
+    /// <summary>Splat-paint stroke ended (undo) — splat snapshots before/after.</summary>
+    public Action<EditorObject, byte[], byte[]>? OnPbrSplatPainted { get; set; }
+    /// <summary>Sculpt stroke ended (undo) — height snapshots before/after.</summary>
+    public Action<EditorObject, float[], float[]>? OnPbrSculpted { get; set; }
+
     // ── Viewport mouse state (tracked per frame for 3D gizmo interaction) ──
     /// <summary>True when the left mouse button is held down over the viewport.</summary>
     public bool IsViewportMouseDown { get; set; }

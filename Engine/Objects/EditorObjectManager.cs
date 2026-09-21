@@ -376,6 +376,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 TerrainLayers = source.TerrainLayers == null || source.TerrainLayers.Length != 5
                     ? [new(), new(), new(), new(), new()]
                     : Array.ConvertAll(source.TerrainLayers, l => (l ?? new TerrainPbrLayerData()).Clone()),
+                // ── PBR splat terrain (paintable multi-texture plane) ──
+                SplatLayers = source.SplatLayers == null || source.SplatLayers.Length != 4
+                    ? [new(), new(), new(), new()]
+                    : Array.ConvertAll(source.SplatLayers, l => (l ?? new PbrSplatLayerData()).Clone()),
+                SplatPaintLayerIndex = source.SplatPaintLayerIndex,
+                SplatPaintStrength = source.SplatPaintStrength,
+                SplatTiling = source.SplatTiling,
+                SplatPaintedData = source.SplatPaintedData,   // carried paint/sculpt (decode side)
+                SculptPaintedData = source.SculptPaintedData,
+                PbrLodEnabled = source.PbrLodEnabled,
+                PbrLodDistance = source.PbrLodDistance,
+                PbrLodDistance2 = source.PbrLodDistance2,
+                PbrOcclusionEnabled = source.PbrOcclusionEnabled,
                 // ── PBR material (Box/Sphere/flat plane) ──
                 PbrAlbedoPath = source.PbrAlbedoPath,
                 PbrNormalPath = source.PbrNormalPath,

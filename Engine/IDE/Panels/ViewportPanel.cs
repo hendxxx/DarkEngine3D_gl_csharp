@@ -135,6 +135,9 @@ public unsafe class ViewportPanel
     private Vector3? _skySunDragOldLightDir = null;
     /// <summary>Splat snapshot taken when the stroke began (for undo,  mode).</summary>
     private byte[]? _brushSplatBefore = null;
+    // PBR-plane splat terrain brush state (parallel to the legacy terrain brush).
+    private byte[]? _pbrSplatBefore = null;
+    private float[]? _pbrHeightBefore = null;
     /// <summary>Terrain currently showing the 3D brush ring (cleared when the hover moves
     /// or the brush tool is turned off, so no stale ring is left behind).</summary>
     private EditorObject? _brushIndicatorObj = null;
@@ -169,6 +172,8 @@ public unsafe class ViewportPanel
         _brushObj = null;
         _brushBefore = null;
         _brushSplatBefore = null;
+        _pbrSplatBefore = null;
+        _pbrHeightBefore = null;
         _flattenTargetNorm = 0f;
         _flattenTargetReady = false;
         // Abort any in-flight sky sun drag  the brush owns the mouse now.
@@ -192,6 +197,8 @@ public unsafe class ViewportPanel
             _brushObj = null;
             _brushBefore = null;
             _brushSplatBefore = null;
+        _pbrSplatBefore = null;
+        _pbrHeightBefore = null;
             _flattenTargetNorm = 0f;
             _flattenTargetReady = false;
             ClearBrushIndicator();
@@ -4289,6 +4296,156 @@ ImGui.SameLine();
                 _bridge.HoveredEditorObjectWorld = null; // while the cursor is in the viewport
             }
 
+            // ══ PBR SPLAT TERRAIN BRUSH — click-drag to sculpt height / paint splat
+            //    layers on the PBR plane (paintable multi-texture). Same viewport
+            //    integration as the legacy terrain brush: runs before selection so a
+            //    stroke never changes it, Ctrl inverts (lower/erase), Shift = fine.
+            if (!_previewMode && _bridge.PbrSplatBrushActive && hasSceneTexture
+                && _bridge.EditorObjectManager != null && _bridge.Camera != null
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                && !suppressInput && !worldInputBlocked && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
+            {
+                var cam = _bridge.Camera;
+                var mgr = _bridge.EditorObjectManager;
+                int vpw = _bridge.SceneTextureWidth;
+                int vph = _bridge.SceneTextureHeight;
+
+                _bridge.IsViewportClicked = false;   // brush owns the click
+
+                float glMouseY = vph - _bridge.ViewportMouseY;
+                cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
+                    out Vector3 rayOrigin, out Vector3 rayDir);
+
+                EditorObject? hoverSplat = null;
+                Vector3? hoverSplatPoint = null;
+                float bestSplatDist = float.MaxValue;
+                foreach (var o in mgr.Objects)
+                {
+                    if (o == null || !o.IsVisible || !o.SplatPaintSupported) continue;
+                    if (o.RaycastPbrPlaneSurface(rayOrigin, rayDir) is Vector3 pt)
+                    {
+                        float d = Vector3.DistanceSquared(cam.Position, pt);
+                        if (d < bestSplatDist)
+                        {
+                            bestSplatDist = d;
+                            hoverSplat = o;
+                            hoverSplatPoint = pt;
+                        }
+                    }
+                }
+
+                bool mouseInView = mouseOverImage && _bridge.ViewportMouseX >= 0f && _bridge.ViewportMouseY >= 0f;
+                bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+                bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+                int splatMode = _bridge.PbrSplatBrushMode;
+                bool paintMode = splatMode == 1;
+
+                float brushDt = Math.Clamp(ImGui.GetIO().DeltaTime, 0.004f, 0.1f);
+                float fineMult = ImGui.GetIO().KeyShift ? 0.15f : 1f;
+                float brushSpeed = brushDt * 60f * fineMult;
+
+                if (leftDown && mouseInView && hoverSplatPoint.HasValue && hoverSplat != null)
+                {
+                    if (_brushObj == null)
+                    {
+                        _brushObj = hoverSplat;
+                        if (paintMode)
+                        {
+                            _pbrSplatBefore = hoverSplat.CaptureSplat();
+                            hoverSplat.SplatPaintLayerIndex = _bridge.PbrSplatPaintLayerIndex;
+                        }
+                        else
+                        {
+                            _pbrHeightBefore = hoverSplat.CapturePbrHeights() ?? [];
+                            if (splatMode == 0)
+                                hoverSplat.EnableSculpt();   // first sculpt stroke builds the runtime buffer
+                        }
+                        if (splatMode == 3 && hoverSplat.TryGetPbrNormalizedHeight(rayOrigin, rayDir, out float flatNorm))
+                        {
+                            _flattenTargetNorm = flatNorm;
+                            _flattenTargetReady = true;
+                        }
+                        _bridge.SelectEditorObject(hoverSplat);
+                        _bridge.SelectedUIElement = null;
+                        Console.WriteLine($"[Viewport] PBR splat stroke started on '{hoverSplat.Name}' (mode {splatMode})");
+                    }
+                    if (_brushObj == hoverSplat)
+                    {
+                        switch (splatMode)
+                        {
+                            case 1: // paint layer — Ctrl erases the layer's weight
+                            {
+                                bool erase = ImGui.GetIO().KeyCtrl;
+                                hoverSplat.TryPaintSplatSurface(rayOrigin, rayDir,
+                                    _bridge.PbrSplatPaintLayerIndex, hoverSplat.SplatPaintStrength, erase, out _);
+                                break;
+                            }
+                            case 2: // smooth
+                                hoverSplat.TrySmoothPbrHeight(rayOrigin, rayDir,
+                                    hoverSplat.TerrainBrushStrength * brushSpeed * 0.1f, out _);
+                                break;
+                            case 3: // flatten toward the stroke-start height
+                                if (_flattenTargetReady)
+                                    hoverSplat.TryFlattenPbrHeight(rayOrigin, rayDir, _flattenTargetNorm,
+                                        hoverSplat.TerrainBrushStrength * brushSpeed * 0.1f, out _);
+                                break;
+                            default: // sculpt — drag raises, Ctrl lowers
+                            {
+                                bool lowering = ImGui.GetIO().KeyCtrl;
+                                float delta = (lowering ? -1f : 1f) * hoverSplat.TerrainBrushStrength * brushSpeed * 0.02f;
+                                hoverSplat.TryPaintPbrHeight(rayOrigin, rayDir, delta, out _);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (_brushObj != null && (!leftDown || leftReleased))
+                {
+                    if (paintMode)
+                    {
+                        var afterSplat = _brushObj.CaptureSplat();
+                        if (_pbrSplatBefore != null && afterSplat != null)
+                            _bridge.OnPbrSplatPainted?.Invoke(_brushObj, _pbrSplatBefore, afterSplat);
+                    }
+                    else if (_pbrHeightBefore is { Length: > 0 })
+                    {
+                        var after = _brushObj.CapturePbrHeights();
+                        if (after != null)
+                            _bridge.OnPbrSculpted?.Invoke(_brushObj, _pbrHeightBefore, after);
+                    }
+                    _brushObj = null;
+                    _pbrSplatBefore = null;
+                    _pbrHeightBefore = null;
+                }
+
+                // 3D brush ring on the displaced surface + Ctrl+scroll resize.
+                if (hoverSplat != null && hoverSplatPoint.HasValue)
+                {
+                    hoverSplat.BrushIndicatorPos = hoverSplatPoint.Value;
+                    hoverSplat.ShowBrushIndicator = true;
+                    if (_brushIndicatorObj != null && _brushIndicatorObj != hoverSplat)
+                        _brushIndicatorObj.ShowBrushIndicator = false;
+                    _brushIndicatorObj = hoverSplat;
+
+                    bool brushScroll = _bridge.ViewportCtrlHeld;
+                    if (brushScroll)
+                    {
+                        float wheel = ImGui.GetIO().MouseWheel;
+                        if (wheel != 0f)
+                        {
+                            hoverSplat.TerrainBrushSize = Math.Clamp(
+                                hoverSplat.TerrainBrushSize * (1f + wheel * 0.08f), 0.02f, 5f);
+                        }
+                    }
+                }
+                else if (_brushIndicatorObj != null)
+                {
+                    _brushIndicatorObj.ShowBrushIndicator = false;
+                    _brushIndicatorObj = null;
+                }
+            }
+
             //  Terrain brush: click-drag to raise/lower terrain height in real-time 
             // Runs before marquee/select/gizmo so a paint stroke never changes the selection.
             // Skipped when: popup/menu is open or just closed (modal mode),
@@ -4423,6 +4580,8 @@ ImGui.SameLine();
                     _brushObj = null;
                     _brushBefore = null;
                     _brushSplatBefore = null;
+        _pbrSplatBefore = null;
+        _pbrHeightBefore = null;
                 }
 
                 //  3D brush ring ON the terrain surface + Ctrl+scroll resize 

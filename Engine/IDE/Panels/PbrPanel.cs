@@ -270,6 +270,115 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 }
             }
 
+            // ══ PBR SPLAT TERRAIN — painted multi-texture + viewport sculpt ══
+            unsafe
+            {
+                if (obj is { PrimitiveType: EditorPrimitiveType.Plane })
+            {
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "PBR Splat Terrain (paintable multi-texture)");
+                ImGui.TextDisabled("Paint up to 4 albedo layers + sculpt height in the viewport brush.");
+
+                // ── Layer slots: albedo path (drag-drop / browse / clear) + tint ──
+                for (int i = 0; i < EditorObject.MaxSplatLayers; i++)
+                {
+                    var layer = obj.EnsureSplatLayer(i);
+                    ImGui.PushID($"splat_{i}");
+                    bool active = i == 0 || !string.IsNullOrEmpty(layer.AlbedoPath);
+                    if (!active)
+                    {
+                        ImGui.TextDisabled($"Layer {i + 1} (empty):");
+                        ImGui.SameLine();
+                        if (ImGui.SmallButton("+ assign")) { /* opens via browse below */ }
+                        else if (ImGui.IsItemClicked()) { }
+                    }
+                    string tmp = layer.AlbedoPath ?? "";
+                    ImGui.Text($"Layer {i + 1}:");
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(-70);
+                    if (ImGui.InputText("##albedo", ref tmp, 512))
+                    {
+                        layer.AlbedoPath = tmp.Trim();
+                        obj.InvalidatePbrSplatTextures();
+                    }
+                    if (ImGui.BeginDragDropTarget())
+                    {
+                        var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                        if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                        {
+                            layer.AlbedoPath = PathHelpers.MakeRelative(AssetBrowserPanel._dragImagePath);
+                            AssetBrowserPanel._dragImagePath = null;
+                            obj.InvalidatePbrSplatTextures();
+                        }
+                        ImGui.EndDragDropTarget();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("X"))
+                    {
+                        layer.AlbedoPath = "";
+                        obj.InvalidatePbrSplatTextures();
+                    }
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear this layer's albedo.");
+
+                    Vector3 tint = layer.Tint;
+                    if (ImGui.ColorEdit3("Tint", ref tint, ImGuiColorEditFlags.NoInputs))
+                    {
+                        layer.TintR = tint.X; layer.TintG = tint.Y; layer.TintB = tint.Z;
+                    }
+                    ImGui.PopID();
+                }
+
+                // ── Height layers: auto-terrain bands by ELEVATION (valley→peak) ──
+                ImGui.Separator();
+                bool hAuto = obj.SplatHeightLayersEnabled;
+                if (ImGui.Checkbox("Height Layers (auto by elevation)", ref hAuto))
+                    obj.SplatHeightLayersEnabled = hAuto;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Layers auto-assigned by height map elevation: layer 1 = valleys ... layer N = peaks.\nBrush paint still overrides locally.");
+                if (hAuto)
+                {
+                    int hc = obj.SplatHeightLayerCount;
+                    if (ImGui.SliderInt("Active bands##hlayer", ref hc, 1, 4)) obj.SplatHeightLayerCount = hc;
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("How many elevation bands are active (1-4).\nLayer 1 = lowest band ... layer N = highest.");
+                    float hf = obj.SplatHeightLayerFeather;
+                    if (ImGui.SliderFloat("Band feather##hlayer", ref hf, 0.01f, 0.5f)) obj.SplatHeightLayerFeather = hf;
+                    if (string.IsNullOrEmpty(obj.PbrHeightPath) && obj._sculptHeights == null)
+                        ImGui.TextColored(new Vector4(1f, 0.8f, 0.4f, 1f), "Assign a Height map (above) — bands need elevation data.");
+                    else
+                        ImGui.TextDisabled($"Bands: layer 1 = low ... layer {Math.Clamp(obj.SplatHeightLayerCount, 1, 4)} = high elevation");
+                }
+
+                float stiling = obj.SplatTiling;
+                if (ImGui.DragFloat("Splat Tiling##splat", ref stiling, 0.05f, 0.05f, 16f)) obj.SplatTiling = stiling;
+                float sstrength = obj.SplatPaintStrength;
+                if (ImGui.DragFloat("Paint Strength##splat", ref sstrength, 0.05f, 0f, 1f)) obj.SplatPaintStrength = sstrength;
+
+                if (ImGui.Button("Clear splat paint"))
+                    obj.ClearSplat(-1);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Erase ALL painted layer weights (albedo paths are kept).");
+
+                ImGui.Spacing();
+                ImGui.TextDisabled("Dynamic terrain (optimization):");
+                bool lod = obj.PbrLodEnabled;
+                if (ImGui.Checkbox("Per-chunk LOD (dynamic terrain)", ref lod)) obj.PbrLodEnabled = lod;
+                if (lod)
+                {
+                    float d1 = obj.PbrLodDistance;
+                    if (ImGui.DragFloat("LOD distance##lod", ref d1, 1f, 2f, 400f)) obj.PbrLodDistance = d1;
+                    float d2 = obj.PbrLodDistance2;
+                    if (ImGui.DragFloat("LOD distance 2##lod", ref d2, 1f, 4f, 800f)) obj.PbrLodDistance2 = d2;
+                    if (obj.PbrChunkCount > 1)
+                        ImGui.TextDisabled($"LOD drawn: {obj.PbrLodCulled}/{obj.PbrChunkCount} chunks at reduced detail last frame");
+                    else
+                        ImGui.TextDisabled("Needs Chunks per side > 1 (Vertex Displacement section above).");
+                }
+                bool occ = obj.PbrOcclusionEnabled;
+                if (ImGui.Checkbox("Occlusion culling (GPU queries)", ref occ)) obj.PbrOcclusionEnabled = occ;
+                if (occ && obj.PbrChunkCount > 1)
+                    ImGui.TextDisabled($"Occluded: {obj.PbrOccluded}/{obj.PbrChunkCount} chunks skipped behind geometry");
+            }
+            }
+
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(1f, 0.95f, 0.55f, 1f), "Emission");
             float ei = obj.TerrainPbrEmissionIntensity; Tune("Intensity##emission", ref ei, 0.05f, 0f, 5f); obj.TerrainPbrEmissionIntensity = ei;

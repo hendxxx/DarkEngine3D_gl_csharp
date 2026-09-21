@@ -1035,6 +1035,17 @@ public class SceneManagerPanel
                         TerrainPbrHeightBlur = obj.TerrainPbrHeightBlur,
                         TerrainPbrEmissionIntensity = obj.TerrainPbrEmissionIntensity,
                         TerrainLayers = obj.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithRelativePaths()).ToArray(),
+                        // ── PBR splat terrain (paintable multi-texture plane) ──
+                        PbrSplatLayers = (obj.SplatLayers ?? Array.Empty<PbrSplatLayerData>()).Select(l => (l ?? new PbrSplatLayerData()).ToAsset()).ToArray(),
+                        PbrSplatPaintLayerIndex = obj.SplatPaintLayerIndex,
+                        PbrSplatPaintStrength = obj.SplatPaintStrength,
+                        PbrSplatTiling = obj.SplatTiling,
+                        PbrSplatData = obj.SplatPaintedData,
+                        PbrSculptData = obj.SculptPaintedData,
+                        PbrLodEnabled = obj.PbrLodEnabled,
+                        PbrLodDistance = obj.PbrLodDistance,
+                        PbrLodDistance2 = obj.PbrLodDistance2,
+                        PbrOcclusionEnabled = obj.PbrOcclusionEnabled,
                         //  PBR material (Box/Sphere/flat plane) 
                         PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                         PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
@@ -1480,6 +1491,21 @@ public class SceneManagerPanel
                         obj.TerrainPbrHeightInvert = objData.TerrainPbrHeightInvert;
                         obj.TerrainPbrHeightBlur = objData.TerrainPbrHeightBlur;
                         obj.TerrainPbrEmissionIntensity = objData.TerrainPbrEmissionIntensity;
+                        // ── PBR splat terrain (paintable multi-texture plane) ──
+                        if (objData.PbrSplatLayers != null)
+                        {
+                            obj.SplatLayers = objData.PbrSplatLayers
+                                .Select(PbrSplatLayerData.FromAsset).Concat(Enumerable.Repeat(new PbrSplatLayerData(), 4))
+                                .Take(4).ToArray();
+                        }
+                        obj.SplatPaintLayerIndex = objData.PbrSplatPaintLayerIndex;
+                        obj.SplatPaintStrength = objData.PbrSplatPaintStrength;
+                        obj.SplatTiling = objData.PbrSplatTiling;
+                        obj.SplatPaintedData = objData.PbrSplatData;   // decodes the RGBA weights
+                        obj.PbrLodEnabled = objData.PbrLodEnabled;
+                        obj.PbrLodDistance = objData.PbrLodDistance;
+                        obj.PbrLodDistance2 = objData.PbrLodDistance2;
+                        obj.PbrOcclusionEnabled = objData.PbrOcclusionEnabled;
                         //  Per-layer PBR (PBR is per texture) 
                         obj.TerrainLayers = objData.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithResolvedPaths()).ToArray()
                             ?? obj.TerrainLayers;
@@ -1515,6 +1541,10 @@ public class SceneManagerPanel
                         obj.PbrAoPath = PathHelpers.Resolve(objData.PbrAoPath);
                         obj.PbrHeightPath = PathHelpers.Resolve(objData.PbrHeightPath);
                         obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
+                        // AFTER the height path: the setter clears the sculpt buffer, so
+                        // decoding the persisted sculpt data must come last or the loaded
+                        // sculpt edits would be wiped by the path assignment.
+                        obj.SculptPaintedData = objData.PbrSculptData;
                         obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
                         obj.PbrParallaxScale = Math.Clamp(objData.PbrParallaxScale, 0f, 0.5f);
                         obj.PbrPomShadowStrength = Math.Clamp(objData.PbrPomShadowStrength, 0f, 1f);
@@ -1951,6 +1981,17 @@ public class SceneManagerPanel
                             TerrainPbrHeightBlur = obj.TerrainPbrHeightBlur,
                             TerrainPbrEmissionIntensity = obj.TerrainPbrEmissionIntensity,
                             TerrainLayers = obj.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithRelativePaths()).ToArray(),
+                            // ── PBR splat terrain (paintable multi-texture plane) ──
+                            PbrSplatLayers = (obj.SplatLayers ?? Array.Empty<PbrSplatLayerData>()).Select(l => (l ?? new PbrSplatLayerData()).ToAsset()).ToArray(),
+                            PbrSplatPaintLayerIndex = obj.SplatPaintLayerIndex,
+                            PbrSplatPaintStrength = obj.SplatPaintStrength,
+                            PbrSplatTiling = obj.SplatTiling,
+                            PbrSplatData = obj.SplatPaintedData,
+                            PbrSculptData = obj.SculptPaintedData,
+                            PbrLodEnabled = obj.PbrLodEnabled,
+                            PbrLodDistance = obj.PbrLodDistance,
+                            PbrLodDistance2 = obj.PbrLodDistance2,
+                            PbrOcclusionEnabled = obj.PbrOcclusionEnabled,
                             PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                             PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
                             PbrMetallicPath = PathHelpers.MakeRelative(obj.PbrMetallicPath),

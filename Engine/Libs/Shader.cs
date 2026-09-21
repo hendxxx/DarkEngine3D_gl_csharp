@@ -33,6 +33,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // program with 7 optional maps + tuning (reuses the shared vertex shader).
         static uint objectPbrShaderProgram;
         static uint objectPbrDisplaceShaderProgram;
+        static uint objectPbrSplatShaderProgram;
+        static uint objectPbrSplatDisplaceShaderProgram;
 
 #pragma warning disable CS0649
         static uint rainStreakShaderProgram;
@@ -139,6 +141,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             objectPbrDisplaceShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/pbrDisplace_vertex.glsl",
                 "Artifacts/shaders/objectPbr_fragment.glsl");
+
+            // PBR object shader with SPLAT painting (4-layer painted multi-texture):
+            // same objectPbr fragment pipeline plus a splat-map albedo blend. Loaded
+            // flat AND displaced — the splat add-on must survive the Vertex
+            // Displacement toggle (displaced variant shares pbrDisplace vertex stage).
+            objectPbrSplatShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/vertex_shader.glsl",
+                "Artifacts/shaders/objectPbrSplat_fragment.glsl");
+            objectPbrSplatDisplaceShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/pbrDisplace_vertex.glsl",
+                "Artifacts/shaders/objectPbrSplat_fragment.glsl");
         }
 
         public void Use()
@@ -180,6 +193,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         {
             return objectPbrDisplaceShaderProgram;
         }
+
+        /// <summary>PBR object shader + painted 4-layer splat blend (plane terrain).</summary>
+        public static uint GetObjectPbrSplatShaderProgram() => objectPbrSplatShaderProgram;
+
+        /// <summary>Splat + geometric displacement variant (dense painted planes).</summary>
+        public static uint GetObjectPbrSplatDisplaceShaderProgram() => objectPbrSplatDisplaceShaderProgram;
 
         public static uint GetRainStreakShaderProgram()
         {

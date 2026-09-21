@@ -9,6 +9,7 @@ using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
+using StbImageSharp; // splat terrain: decode the authored height map into the sculpt buffer
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects;
 
@@ -206,7 +207,12 @@ public class TerrainLayer
     }
 
     public string? GetPbrPath(int mapType) => mapType >= 0 && mapType < MaxPbrMaps ? PbrPaths[mapType] : null;
-    public void SetPbrPath(int mapType, string? path) { if (mapType >= 0 && mapType < MaxPbrMaps) PbrPaths[mapType] = path; }
+    public void SetPbrPath(int mapType, string? path)
+    {
+        if (mapType < 0 || mapType >= MaxPbrMaps) return;
+        if (PbrPaths[mapType] == path) return;
+        PbrPaths[mapType] = path;
+    }
 
     public TerrainLayer WithRelativePaths()
     {
@@ -225,6 +231,52 @@ public class TerrainLayer
             if (c.PbrPaths[i] != null) c.PbrPaths[i] = PathHelpers.Resolve(c.PbrPaths[i]!);
         return c;
     }
+}
+
+/// <summary>
+/// One paintable splat layer of the PBR-plane terrain: its own albedo texture
+/// (painted with the viewport brush onto the splat map) plus a tint. The shared
+/// objectPbr pipeline (normal / metallic / roughness / AO / height / emission +
+/// POM + CSM shadows) stays the single source of the surface's material response —
+/// a splat layer only swaps the ALBEDO, so the PBR look the plane already has is
+/// preserved exactly.
+/// </summary>
+public class PbrSplatLayerData
+{
+    public string AlbedoPath { get; set; } = "";
+    public float TintR { get; set; } = 1f;
+    public float TintG { get; set; } = 1f;
+    public float TintB { get; set; } = 1f;
+
+    public Vector3 Tint => new(TintR, TintG, TintB);
+
+    public PbrSplatLayerData Clone() => (PbrSplatLayerData)MemberwiseClone();
+
+    /// <summary>Clone with the albedo path stored relative to the exe (for saving).</summary>
+    public PbrSplatLayerData WithRelativePaths()
+    {
+        var c = Clone();
+        c.AlbedoPath = string.IsNullOrEmpty(AlbedoPath) ? AlbedoPath : PathHelpers.MakeRelative(AlbedoPath);
+        return c;
+    }
+
+    /// <summary>Clone with the albedo path resolved to absolute (for loading).</summary>
+    public PbrSplatLayerData WithResolvedPaths()
+    {
+        var c = Clone();
+        c.AlbedoPath = string.IsNullOrEmpty(AlbedoPath) ? AlbedoPath : PathHelpers.Resolve(AlbedoPath);
+        return c;
+    }
+
+    public DarkEngine3D_gl_csharp.Engine.Scene.PbrSplatLayerDataAsset ToAsset() => new()
+    {
+        AlbedoPath = AlbedoPath, TintR = TintR, TintG = TintG, TintB = TintB
+    };
+
+    public static PbrSplatLayerData FromAsset(DarkEngine3D_gl_csharp.Engine.Scene.PbrSplatLayerDataAsset a) => new()
+    {
+        AlbedoPath = a.AlbedoPath ?? "", TintR = a.TintR, TintG = a.TintG, TintB = a.TintB
+    };
 }
 
 /// <summary>
@@ -630,7 +682,22 @@ public unsafe class EditorObject
     /// <summary>Ambient-occlusion map (R channel) (optional; 1 when absent).</summary>
     public string PbrAoPath { get; set; } = "";
     /// <summary>Height / displacement map (R channel, 0.5 = flat) (optional; drives parallax).</summary>
-    public string PbrHeightPath { get; set; } = "";
+    private string _pbrHeightPath = "";
+    public string PbrHeightPath
+    {
+        get => _pbrHeightPath;
+        set
+        {
+            if (_pbrHeightPath == value) return;
+            _pbrHeightPath = value;
+            // Height source changed: drop the CPU height caches so raycasting and a
+            // later Enable Sculpt decode the NEW map (stale caches would raycast the
+            // old terrain and sculpt on top of a discarded base).
+            _baseHeightCache = null;
+            _sculptHeights = null;
+            _sculptDirty = true;
+        }
+    }
     /// <summary>Emissive color map (optional; 0 when absent).</summary>
     public string PbrEmissionPath { get; set; } = "";
     /// <summary>UV tiling multiplier for all PBR maps on this object (legacy — new scenes
@@ -993,6 +1060,646 @@ public unsafe class EditorObject
     public int TerrainPaintLayerIndex { get; set; } = 0;
     /// <summary>Weight added to the painted layer per brush stamp (0..1).</summary>
     public float TerrainPaintStrength { get; set; } = 0.45f;
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  PBR SPLAT TERRAIN (plane) — painted multi-texture + sculpt + LOD + occlusion
+    //  An ADD-ON to the objectPbr pipeline: an RGBA splat map blends up to 4
+    //  painted albedo layers (shader objectPbrSplat), and a runtime 512² height
+    //  buffer replaces the height-map source once sculpted (binding swap, zero
+    //  shader changes — displacement AND POM see the live surface). Per-chunk
+    //  LOD meshes + hardware occlusion queries make the displaced plane behave
+    //  like a dynamic terrain while keeping the exact PBR material response.
+    // ══════════════════════════════════════════════════════════════════════
+    public const int MaxSplatLayers = 4;
+    /// <summary>Per-layer albedo path + tint (0..3). Empty path = layer 0 paints the
+    /// albedo MAP, empty layers 1+ paint black.</summary>
+    public PbrSplatLayerData[] SplatLayers { get; set; } = [new(), new(), new(), new()];
+    /// <summary>Layer the paint brush writes into (0..3).</summary>
+    public int SplatPaintLayerIndex { get; set; } = 0;
+    /// <summary>Weight added per splat brush stamp (0..1).</summary>
+    public float SplatPaintStrength { get; set; } = 0.45f;
+    /// <summary>World UV tiling of the splat layers (multiplied into the height-map UV scale).</summary>
+    public float SplatTiling { get; set; } = 0.5f;
+
+    // ── Runtime sculpt buffer (512² normalized height; decodes the authored height map once) ──
+    internal const int SculptRes = 512;
+    internal float[]? _sculptHeights;
+    internal bool _sculptDirty;
+    internal float _sculptMin = 0f, _sculptMax = 1f;   // live amplitude (AABB pad)
+    /// <summary>True when this plane has been edited by the splat/sculpt brush this session.</summary>
+    public bool SplatIsPainted { get; internal set; }
+
+    // ── Height layers: auto-terrain bands driven by the elevation (height map) ──
+    /// <summary>ON = the 4 splat layers are auto-assigned by ELEVATION (layer 1 = valleys
+    /// … layer N = peaks) so a terrain look comes free; manual brush paint still overrides
+    /// locally (max blend).</summary>
+    public bool SplatHeightLayersEnabled { get; set; }
+    /// <summary>Number of active elevation bands (1..4) in height-layer mode.</summary>
+    public int SplatHeightLayerCount { get; set; } = 4;
+    /// <summary>Softness of the transition between elevation bands (0.01..0.5).</summary>
+    public float SplatHeightLayerFeather { get; set; } = 0.08f;
+
+    // ── Splat data (RGBA weight map, painted → dynamic 3D texture) ──
+    internal const int SplatRes = 16;
+    internal byte[] _splatData = new byte[SplatRes * SplatRes * SplatRes * 4];
+    internal string? _splatPaintedCache;
+    internal bool _splatDirty = true;
+    internal uint _splatTex;
+    internal readonly uint[] _splatAlbedoTex = new uint[MaxSplatLayers];
+    internal readonly string?[] _splatAlbedoKey = new string?[MaxSplatLayers];
+
+    // ── LOD ──
+    /// <summary>Dynamic terrain mode: per-chunk LOD by distance + hardware occlusion queries.</summary>
+    public bool PbrLodEnabled { get; set; } = false;
+    /// <summary>Camera distance where chunks drop from full to mid LOD (world units).</summary>
+    public float PbrLodDistance { get; set; } = 40f;
+    /// <summary>Distance beyond which chunks use the coarse LOD (world units).</summary>
+    public float PbrLodDistance2 { get; set; } = 120f;
+    /// <summary>Hardware occlusion queries (GL_ANY_SAMPLES_PASSED) per 2×2 chunk block —
+    /// chunks hidden behind other geometry skip their draw.</summary>
+    public bool PbrOcclusionEnabled { get; set; } = false;
+    internal uint[]? _occQueries;
+    internal byte[]? _occResult;      // 1 = visible (last completed result)
+    internal byte[]? _occPending;     // 1 = query in flight, result not harvested yet
+    internal byte[]? _occForceDraw;   // forced redraw frames after a miss (stale-result guard)
+    internal const int OccForceFrame = 2;
+
+    // ── LOD meshes (standalone VAO/VBO per level; level 0 = the main Object3D) ──
+    internal readonly uint[] _lodVao = new uint[3];
+    internal readonly uint[] _lodVbo = new uint[3];
+    internal readonly int[] _lodVertCount = new int[3];
+    internal bool _lodBuilt;
+    private PbrUniformSet? _pbrUniformsSplat, _pbrUniformsSplatDisp;
+    internal int _lodSegsBuilt;
+    internal float[]? _baseHeightCache;   // 128² downsample of the authored height map (raycast)
+
+    /// <summary>Stats: chunks drawn at reduced LOD + occluded last frame (Inspector info).</summary>
+    public int PbrLodCulled { get; private set; }
+    public int PbrOccluded { get; private set; }
+
+    /// <summary>True when the viewport paint brush should target this plane (PBR splat terrain).</summary>
+    public bool SplatPaintSupported => PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial;
+
+    /// <summary>Get (creating if needed) the splat data for layer 0..3.</summary>
+    public PbrSplatLayerData EnsureSplatLayer(int index)
+    {
+        if (SplatLayers == null || SplatLayers.Length != MaxSplatLayers)
+            SplatLayers = [new(), new(), new(), new()];
+        return SplatLayers[Math.Clamp(index, 0, MaxSplatLayers - 1)] ??= new PbrSplatLayerData();
+    }
+
+    /// <summary>Drop the cached splat layer textures (after a layer path changed).</summary>
+    public void InvalidatePbrSplatTextures()
+    {
+        for (int i = 0; i < MaxSplatLayers; i++)
+        {
+            if (_splatAlbedoTex[i] != 0)
+            {
+                fixed (uint* p = &_splatAlbedoTex[i]) GL.DeleteTextures(1, p);
+                _splatAlbedoTex[i] = 0;
+            }
+            _splatAlbedoKey[i] = null;
+        }
+    }
+
+    /// <summary>Create (once) the 512² runtime sculpt buffer. When an authored height
+    /// map exists it is decoded into the buffer, so brush edits REFINE the authored
+    /// terrain; a blank plane starts flat (0) and sculpts up from there.</summary>
+    public void EnableSculpt()
+    {
+        EnsureSculptBuffer();
+        // The dense grid only pays off once there is a height source — (re)build now.
+        _vertexCache = null;
+        MarkDirty();
+    }
+
+    internal float[] EnsureSculptBuffer()
+    {
+        if (_sculptHeights != null) return _sculptHeights;
+        var h = new float[SculptRes * SculptRes];
+        if (!string.IsNullOrEmpty(PbrHeightPath))
+        {
+            try
+            {
+                var resolved = PathHelpers.Resolve(PbrHeightPath);
+                if (File.Exists(resolved))
+                {
+                    using var stream = File.OpenRead(resolved);
+                    var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlue);
+                    for (int y = 0; y < SculptRes; y++)
+                    {
+                        int sy = Math.Min(img.Height - 1, y * img.Height / SculptRes);
+                        for (int x = 0; x < SculptRes; x++)
+                        {
+                            int sx = Math.Min(img.Width - 1, x * img.Width / SculptRes);
+                            h[y * SculptRes + x] = img.Data[sy * img.Width + sx] / 255f;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[PbrSplat] '{Name}' height decode failed: {ex.Message}"); }
+        }
+        _sculptHeights = h;
+        _sculptDirty = true;
+        return h;
+    }
+
+    /// <summary>Viewport-facing gate for the PBR-plane sculpt/paint brush (public:
+    /// the ViewportPanel has no access to internals).</summary>
+    public Vector3? RaycastPbrPlaneSurface(Vector3 rayOrigin, Vector3 rayDir) => RaycastPbrSurface(rayOrigin, rayDir);
+
+    /// <summary>128² downsample of the authored height map for CPU raycasting
+    /// (decoded once; null when no usable map).</summary>
+    internal float[]? GetBaseHeightCache()
+    {
+        if (_baseHeightCache != null) return _baseHeightCache;
+        if (string.IsNullOrEmpty(PbrHeightPath)) return null;
+        try
+        {
+            var resolved = PathHelpers.Resolve(PbrHeightPath);
+            if (!File.Exists(resolved)) return null;
+            using var stream = File.OpenRead(resolved);
+            var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlue);
+            var cache = new float[128 * 128];
+            for (int y = 0; y < 128; y++)
+            {
+                int sy = Math.Min(img.Height - 1, y * img.Height / 128);
+                for (int x = 0; x < 128; x++)
+                {
+                    int sx = Math.Min(img.Width - 1, x * img.Width / 128);
+                    cache[y * 128 + x] = img.Data[sy * img.Width + sx] / 255f;
+                }
+            }
+            _baseHeightCache = cache;
+        }
+        catch { }
+        return _baseHeightCache;
+    }
+
+    /// <summary>Normalized sculpt height at a local XZ point (−0.5..0.5) — CPU copy
+    /// used by raycasting, brush math and the chunk AABB pad.</summary>
+    internal float SculptHeightAt(float x, float z)
+    {
+        if (_sculptHeights == null) return 0f;
+        int ix = Math.Clamp((int)((x + 0.5f) * SculptRes), 0, SculptRes - 1);
+        int iz = Math.Clamp((int)((z + 0.5f) * SculptRes), 0, SculptRes - 1);
+        return _sculptHeights[iz * SculptRes + ix];
+    }
+
+    /// <summary>Mirror of the shader's height calibration (strength/invert/contrast/
+    /// center/offset/scale-center) so CPU raycasting matches what the GPU displays.</summary>
+    internal float CalibrateHeight(float h)
+    {
+        h = (h - 0.5f) * TerrainPbrHeightStrength + 0.5f;
+        if (TerrainPbrHeightInvert) h = 1f - h;
+        h = (h - PbrHeightContrastCenter) * PbrHeightContrast + PbrHeightContrastCenter;
+        h += PbrHeightOffset;
+        return Math.Clamp(h - PbrHeightScaleCenter, 0f, 1f);
+    }
+
+    /// <summary>Raycast the PBR plane's displaced surface: the live sculpt buffer when
+    /// active, the authored height map otherwise. Used by the viewport brush so the
+    /// cursor follows the REAL displaced geometry.</summary>
+    public Vector3? RaycastPbrSurface(Vector3 rayOrigin, Vector3 rayDir)
+    {
+        if (PrimitiveType != EditorPrimitiveType.Plane || !HasPbrMaterial) return null;
+        var model = WorldMatrix;
+        if (!Matrix4x4.Invert(model, out var inv)) return null;
+        if (!AABB.RayIntersectsAABB(rayOrigin, rayDir, GetWorldAABB(), out _, out _)) return null;
+        var o = Vector3.Transform(rayOrigin, inv);
+        var d = Vector3.TransformNormal(rayDir, inv);
+        if (MathF.Abs(d.Y) < 1e-6f) return null;
+        float t = -o.Y / d.Y;
+        if (t <= 0f) return null;
+        var hit = o + d * t;
+        if (hit.X < -0.6f || hit.X > 0.6f || hit.Z < -0.6f || hit.Z > 0.6f) return null;
+
+        bool disp = PbrVertexDisplace && (_pbrTex[5] != 0 || _sculptHeights != null);
+        float h = 0f;
+        if (disp)
+        {
+            h = _sculptHeights != null
+                ? SculptHeightAt(hit.X, hit.Z)
+                : SampleBaseHeight(hit.X, hit.Z);
+            h = CalibrateHeight(h) * Math.Clamp(PbrVertexDisplaceScale, 0f, 2f);
+        }
+        return Vector3.Transform(new Vector3(hit.X, h, hit.Z), model);
+    }
+
+    private float SampleBaseHeight(float x, float z)
+    {
+        var cache = GetBaseHeightCache();
+        if (cache == null) return 0f;
+        int ix = Math.Clamp((int)((x + 0.5f) * 128), 0, 127);
+        int iz = Math.Clamp((int)((z + 0.5f) * 128), 0, 127);
+        return cache[iz * 128 + ix];
+    }
+
+    /// <summary>Normalized surface height under the cursor (flatten-brush target).</summary>
+    public bool TryGetPbrNormalizedHeight(Vector3 rayOrigin, Vector3 rayDir, out float norm)
+    {
+        norm = 0f;
+        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
+        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
+        var local = Vector3.Transform(hit, inv);
+        norm = CalibrateHeight(_sculptHeights != null ? SculptHeightAt(local.X, local.Z) : SampleBaseHeight(local.X, local.Z));
+        return true;
+    }
+
+    // ── Splat paint (RGBA weights, painted onto the dynamic splat texture) ──
+    public bool TryPaintSplatSurface(Vector3 rayOrigin, Vector3 rayDir, int layerIndex, float strength, bool erase, out Vector3 worldHit)
+    {
+        worldHit = default;
+        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
+        worldHit = hit;
+        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
+        var local = Vector3.Transform(hit, inv);
+        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;   // plane footprint = 1 world unit
+        float u = local.X + 0.5f, v = local.Z + 0.5f;
+        int x0 = Math.Max(0, (int)MathF.Floor((u - radiusLocal) * SplatRes));
+        int x1 = Math.Min(SplatRes - 1, (int)MathF.Ceiling((u + radiusLocal) * SplatRes));
+        int z0 = Math.Max(0, (int)MathF.Floor((v - radiusLocal) * SplatRes));
+        int z1 = Math.Min(SplatRes - 1, (int)MathF.Ceiling((v + radiusLocal) * SplatRes));
+        int li = Math.Clamp(layerIndex, 0, MaxSplatLayers - 1);
+        float soft = Math.Clamp(TerrainBrushSoftness, 0.05f, 1f);
+        float amt = Math.Clamp(strength, 0f, 1f);
+        bool any = false;
+        for (int z = z0; z <= z1; z++)
+        {
+            float dz = (z + 0.5f) / SplatRes - v;
+            for (int x = x0; x <= x1; x++)
+            {
+                float dx = (x + 0.5f) / SplatRes - u;
+                float dist = MathF.Sqrt(dx * dx + dz * dz) / MathF.Max(radiusLocal, 1e-4f);
+                if (dist > 1f) continue;
+                float tt = 1f - dist;
+                float w = tt * tt * (3f - 2f * tt) * soft + tt * (1f - soft);
+                int b = (z * SplatRes + x) * 4 + li;
+                _splatData[b] = (byte)Math.Clamp(_splatData[b] + (erase ? -amt : amt) * w * 255f, 0f, 255f);
+                any = true;
+            }
+        }
+        if (any) { _splatDirty = true; SplatIsPainted = true; }
+        return any;
+    }
+
+    /// <summary>Clear the whole splat map (or just one layer when index ≥ 0).</summary>
+    public void ClearSplat(int layerIndex = -1)
+    {
+        if (layerIndex < 0) Array.Clear(_splatData);
+        else
+        {
+            int li = Math.Clamp(layerIndex, 0, MaxSplatLayers - 1);
+            for (int i = li; i < _splatData.Length; i += 4) _splatData[i] = 0;
+        }
+        _splatDirty = true;
+        _splatPaintedCache = null;
+        SplatIsPainted = _splatData.AsSpan().IndexOfAnyExcept((byte)0) >= 0;
+    }
+
+    public byte[]? CaptureSplat() => (byte[]?)_splatData.Clone();
+
+    public void RestoreSplat(byte[]? splat)
+    {
+        if (splat == null || splat.Length != _splatData.Length) return;
+        Array.Copy(splat, _splatData, splat.Length);
+        _splatDirty = true;
+        _splatPaintedCache = null;
+        SplatIsPainted = _splatData.AsSpan().IndexOfAnyExcept((byte)0) >= 0;
+    }
+
+    /// <summary>Base64 RGBA splat blob for scene persistence. Empty = untouched
+    /// (no paint bytes stored for blank planes).</summary>
+    public string SplatPaintedData
+    {
+        get
+        {
+            if (SplatIsPainted)
+            {
+                _splatPaintedCache = Convert.ToBase64String(_splatData);
+                _splatDirty = false;
+                return _splatPaintedCache;
+            }
+            return "";
+        }
+        set
+        {
+            _splatPaintedCache = null;
+            if (string.IsNullOrEmpty(value)) return;
+            try
+            {
+                var raw = Convert.FromBase64String(value);
+                if (raw.Length == _splatData.Length)
+                {
+                    _splatData = raw;
+                    _splatDirty = true;
+                    SplatIsPainted = true;
+                }
+            }
+            catch { /* corrupt blob → keep the blank splat */ }
+        }
+    }
+
+    // ── Sculpt paint (runtime height field; replaces the height-map source while active) ──
+    public bool TryPaintPbrHeight(Vector3 rayOrigin, Vector3 rayDir, float deltaNorm, out Vector3 worldHit)
+    {
+        worldHit = default;
+        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
+        worldHit = hit;
+        var h = EnsureSculptBuffer();
+        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
+        var local = Vector3.Transform(hit, inv);
+        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;
+        bool any = StampHeight(h, local.X, local.Z, radiusLocal, (ref float cur, float w, int idx) =>
+            cur = Math.Clamp(cur + deltaNorm * w, 0f, 1f));
+        if (any) { _sculptDirty = true; SplatIsPainted = true; }
+        return any;
+    }
+
+    public bool TrySmoothPbrHeight(Vector3 rayOrigin, Vector3 rayDir, float strength, out Vector3 worldHit)
+    {
+        worldHit = default;
+        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
+        worldHit = hit;
+        var h = EnsureSculptBuffer();
+        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
+        var local = Vector3.Transform(hit, inv);
+        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;
+        bool any = StampHeight(h, local.X, local.Z, radiusLocal, (ref float cur, float w, int idx) =>
+        {
+            float sum = 0f;
+            for (int oz = -1; oz <= 1; oz++)
+                for (int ox = -1; ox <= 1; ox++)
+                    sum += SampleSculptClamped(h, idx, ox, oz);
+            cur += ((sum / 9f) - cur) * Math.Clamp(strength, 0f, 1f) * w;
+        });
+        if (any) { _sculptDirty = true; SplatIsPainted = true; }
+        return any;
+    }
+
+    public bool TryFlattenPbrHeight(Vector3 rayOrigin, Vector3 rayDir, float targetNorm, float strength, out Vector3 worldHit)
+    {
+        worldHit = default;
+        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
+        worldHit = hit;
+        var h = EnsureSculptBuffer();
+        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
+        var local = Vector3.Transform(hit, inv);
+        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;
+        bool any = StampHeight(h, local.X, local.Z, radiusLocal, (ref float cur, float w, int idx) =>
+            cur += (targetNorm - cur) * Math.Clamp(strength, 0f, 1f) * w);
+        if (any) { _sculptDirty = true; SplatIsPainted = true; }
+        return any;
+    }
+
+    private delegate void HeightStamp(ref float cur, float weight, int index);
+
+    private bool StampHeight(float[] h, float u, float v, float radiusLocal, HeightStamp stamp)
+    {
+        int x0 = Math.Max(0, (int)MathF.Floor((u - radiusLocal) * SculptRes));
+        int x1 = Math.Min(SculptRes - 1, (int)MathF.Ceiling((u + radiusLocal) * SculptRes));
+        int z0 = Math.Max(0, (int)MathF.Floor((v - radiusLocal) * SculptRes));
+        int z1 = Math.Min(SculptRes - 1, (int)MathF.Ceiling((v + radiusLocal) * SculptRes));
+        float soft = Math.Clamp(TerrainBrushSoftness, 0.05f, 1f);
+        bool any = false;
+        for (int z = z0; z <= z1; z++)
+        {
+            float dz = (z + 0.5f) / SculptRes - v;
+            for (int x = x0; x <= x1; x++)
+            {
+                float dx = (x + 0.5f) / SculptRes - u;
+                float dist = MathF.Sqrt(dx * dx + dz * dz) / MathF.Max(radiusLocal, 1e-4f);
+                if (dist > 1f) continue;
+                float tt = 1f - dist;
+                float w = tt * tt * (3f - 2f * tt) * soft + tt * (1f - soft);
+                stamp(ref h[z * SculptRes + x], w, z * SculptRes + x);
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    private static float SampleSculptClamped(float[] h, int idx, int ox, int oz)
+    {
+        int x = Math.Clamp(idx % SculptRes + ox, 0, SculptRes - 1);
+        int z = Math.Clamp(idx / SculptRes + oz, 0, SculptRes - 1);
+        return h[z * SculptRes + x];
+    }
+
+    public float[]? CapturePbrHeights() => _sculptHeights == null ? null : (float[])_sculptHeights.Clone();
+
+    public void RestorePbrHeights(float[]? heights)
+    {
+        if (heights == null || heights.Length != SculptRes * SculptRes) return;
+        _sculptHeights = (float[])heights.Clone();
+        _sculptDirty = true;
+        SplatIsPainted = true;
+    }
+
+    /// <summary>Base64 sculpt height blob (R8 bytes, 512²) for scene persistence.</summary>
+    public string SculptPaintedData
+    {
+        get
+        {
+            if (_sculptHeights == null || !SplatIsPainted) return "";
+            var bytes = new byte[SculptRes * SculptRes];
+            for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(Math.Clamp(_sculptHeights[i], 0f, 1f) * 255f);
+            return Convert.ToBase64String(bytes);
+        }
+        set
+        {
+            if (string.IsNullOrEmpty(value)) return;
+            try
+            {
+                var raw = Convert.FromBase64String(value);
+                if (raw.Length != SculptRes * SculptRes) return;
+                var h = EnsureSculptBuffer();
+                for (int i = 0; i < raw.Length; i++) h[i] = raw[i] / 255f;
+                _sculptDirty = true;
+                SplatIsPainted = true;
+            }
+            catch { /* corrupt blob → keep the decoded base */ }
+        }
+    }
+
+    // ── Dynamic GPU textures ──
+    internal uint _sculptTex;
+
+    internal uint EnsureSculptTexture()
+    {
+        if (_sculptTex == 0)
+        {
+            uint t;
+            GL.GenTextures(1, &t);
+            _sculptTex = t;
+            GL.BindTexture(Const.GL_TEXTURE_2D, _sculptTex);
+            GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_R8, SculptRes, SculptRes, 0,
+                Const.GL_RED, Const.GL_UNSIGNED_BYTE, (void*)0);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+        }
+        return _sculptTex;
+    }
+
+    /// <summary>Upload the sculpt heights to the R8 texture (after brush strokes) and
+    /// refresh the live amplitude range used by the chunk AABB pad.</summary>
+    internal void UploadSculptTexture()
+    {
+        if (_sculptHeights == null || !_sculptDirty) return;
+        uint tex = EnsureSculptTexture();
+        var bytes = new byte[SculptRes * SculptRes];
+        float mn = 1f, mx = 0f;
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            float val = Math.Clamp(_sculptHeights[i], 0f, 1f);
+            bytes[i] = (byte)(val * 255f);
+            mn = MathF.Min(mn, val);
+            mx = MathF.Max(mx, val);
+        }
+        GL.BindTexture(Const.GL_TEXTURE_2D, tex);
+        fixed (byte* p = bytes)
+            GL.TexSubImage2D(Const.GL_TEXTURE_2D, 0, 0, 0, SculptRes, SculptRes, Const.GL_RED, Const.GL_UNSIGNED_BYTE, p);
+        _sculptMin = mn;
+        _sculptMax = mx;
+        _sculptDirty = false;
+    }
+
+    internal uint EnsureSplatTexture()
+    {
+        if (_splatTex == 0)
+        {
+            uint t;
+            GL.GenTextures(1, &t);
+            _splatTex = t;
+            GL.BindTexture(Const.GL_TEXTURE_3D, _splatTex);
+            fixed (byte* p = _splatData)
+                GL.TexImage3D(Const.GL_TEXTURE_3D, 0, (int)Const.GL_RGBA8, SplatRes, SplatRes, SplatRes, 0,
+                    Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, p);
+            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_WRAP_R, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+        }
+        return _splatTex;
+    }
+
+    internal void UploadSplatTexture()
+    {
+        uint tex = EnsureSplatTexture();
+        GL.BindTexture(Const.GL_TEXTURE_3D, tex);
+        fixed (byte* p = _splatData)
+            GL.TexSubImage3D(Const.GL_TEXTURE_3D, 0, 0, 0, 0, SplatRes, SplatRes, SplatRes, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, p);
+        _splatDirty = false;
+    }
+
+    // ── LOD meshes ──
+    /// <summary>Build the mid/coarse LOD meshes from the full CPU vertex cache.
+    /// Same chunk ordering (row-major cz·chunks+cx) so the draw path swaps the VAO
+    /// per chunk without touching the vertex ranges; level 0 draws the main VBO.</summary>
+    private void BuildLodMeshes()
+    {
+        DisposeLodMeshes();
+        int fullSegs = PbrPlaneSegmentsBuilt;
+        var src = _vertexCache;
+        if (fullSegs <= 1 || src == null || src.Length == 0 || _object3D == null)
+        {
+            _lodBuilt = false;
+            return;
+        }
+        int chunks = Math.Max(1, PbrVertexChunk);
+        int perChunk = fullSegs / chunks;
+        for (int li = 1; li < 3; li++)
+        {
+            int lodSegs = Math.Max(1, perChunk / (li == 1 ? 2 : 4));
+            var dst = new List<Vertex>(src.Length / (2 * li));
+            for (int cz = 0; cz < chunks; cz++)
+            {
+                for (int cx = 0; cx < chunks; cx++)
+                {
+                    float u0 = cx * perChunk / (float)fullSegs, v0 = cz * perChunk / (float)fullSegs;
+                    float step = 1f / fullSegs, cell = lodSegs * step;
+                    for (int iz = 0; iz < lodSegs; iz++)
+                        for (int ix = 0; ix < lodSegs; ix++)
+                            EmitPlaneQuad(dst, u0 + ix * cell, v0 + iz * cell, cell);
+                }
+            }
+            var arr = dst.ToArray();
+            // Standalone VAO with the same Vertex layout (mirrors Object3D's setup).
+            uint vao, vbo;
+            GL.GenVertexArrays(1, &vao);
+            GL.GenBuffers(1, &vbo);
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+            fixed (Vertex* p = arr)
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(arr.Length * sizeof(Vertex)), p, Const.GL_STATIC_DRAW);
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Vertex), (void*)0);
+            GL.EnableVertexAttribArray(1);
+            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, sizeof(Vertex), (void*)12);
+            GL.EnableVertexAttribArray(2);
+            GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, sizeof(Vertex), (void*)24);
+            GL.EnableVertexAttribArray(3);
+            GL.VertexAttribPointer(3, 2, Const.GL_FLOAT, false, sizeof(Vertex), (void*)36);
+            GL.BindVertexArray(0);
+            _lodVao[li] = vao;
+            _lodVbo[li] = vbo;
+            _lodVertCount[li] = arr.Length;
+        }
+        _lodVertCount[0] = _object3D.VertexCount;
+        _lodBuilt = true;
+        _lodSegsBuilt = fullSegs;
+    }
+
+    private void DisposeLodMeshes()
+    {
+        for (int i = 1; i < 3; i++)
+        {
+            if (_lodVao[i] != 0) { uint v = _lodVao[i]; GL.DeleteVertexArrays(1, &v); _lodVao[i] = 0; }
+            if (_lodVbo[i] != 0) { uint b = _lodVbo[i]; GL.DeleteBuffers(1, &b); _lodVbo[i] = 0; }
+            _lodVertCount[i] = 0;
+        }
+    }
+
+    // ── Occlusion queries ──
+    private void EnsureOcclusionQueries()
+    {
+        int n = PbrChunkCount;
+        if (n <= 0) { DisposeOcclusionQueries(); return; }
+        if (_occQueries != null && _occQueries.Length == (n + 3) / 4) return;
+        DisposeOcclusionQueries();
+        int qn = (n + 3) / 4;   // one query covers a 2×2 chunk block
+        _occQueries = new uint[qn];
+        _occResult = new byte[qn];
+        _occPending = new byte[qn];
+        _occForceDraw = new byte[qn];
+        fixed (uint* p = _occQueries) GL.GenQueries(qn, p);
+        for (int i = 0; i < qn; i++) _occForceDraw[i] = 1;
+    }
+
+    private void DisposeOcclusionQueries()
+    {
+        if (_occQueries != null)
+            fixed (uint* p = _occQueries)
+                GL.DeleteQueries(_occQueries.Length, p);
+        _occQueries = null;
+        _occResult = null;
+        _occPending = null;
+        _occForceDraw = null;
+    }
+
+    /// <summary>Release every GPU resource this add-on owns (called from Dispose).</summary>
+    public void DisposePbrSplatResources()
+    {
+        DisposeLodMeshes();
+        DisposeOcclusionQueries();
+        if (_sculptTex != 0) { fixed (uint* p = &_sculptTex) GL.DeleteTextures(1, p); _sculptTex = 0; }
+        if (_splatTex != 0) { fixed (uint* p = &_splatTex) GL.DeleteTextures(1, p); _splatTex = 0; }
+        InvalidatePbrSplatTextures();
+        _lodBuilt = false;
+    }
 
     // ── Per-paint-layer textures (independent from terrain auto-layers) ──
     public const int MaxPaintLayers = 4;
@@ -1549,12 +2256,13 @@ public unsafe class EditorObject
                     _vertexCache = null;
                     break;
                 }
-                // "Vertex Displacement" ON → tessellate into a dense grid so the
-                // vertex shader has vertices to move (true geometric displacement).
-                // Grid size is user-tunable; optionally split into chunk×chunk vertex
-                // blocks so off-screen chunks skip the draw entirely.
-                int segs = PbrVertexDisplace && !string.IsNullOrEmpty(PbrHeightPath)
-                    ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
+                // Dense grid when the vertex shader has vertices to move (Vertex
+                // Displacement + a height source) OR when chunks are requested — a
+                // chunked grid gives per-chunk frustum culling even on a FLAT plane
+                // (multi-texture splat terrain without displacement still culls).
+                bool dense = (PbrVertexDisplace && (!string.IsNullOrEmpty(PbrHeightPath) || _sculptHeights != null))
+                             || PbrVertexChunk > 1;
+                int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
                 if (verts == null)
                 {
@@ -1564,6 +2272,9 @@ public unsafe class EditorObject
                 }
                 _vertexCache = verts;
                 PbrPlaneSegmentsBuilt = segs > 1 ? segs : 0;
+                // Sculpt/LOD resources are derived from the mesh — rebuild on grid change.
+                if (_lodBuilt && _lodSegsBuilt != PbrPlaneSegmentsBuilt)
+                    DisposeLodMeshes();
                 break;
             }
             case EditorPrimitiveType.Box:
@@ -1750,6 +2461,13 @@ public unsafe class EditorObject
         /// world-AABB padding so per-chunk frustum culling never culls displaced peaks.</summary>
         public float HeightAdvancePad = 0.5f;
         public int VertexDisplace, DispScale, DispGrid;
+        // ── Splat terrain add-on (objectPbrSplat fragment stage; -1 when absent) ──
+        public int SplatMap, SplatCount, SplatAny, SplatTiling, SplatTint0, SplatTint1, SplatTint2, SplatTint3;
+        public int SplatLayer0IsMap;
+        // Height-layer auto-terrain bands (u_heightLayer* in the splat shader).
+        public int SplatHeightLayerMode, SplatHeightLayerCount, SplatHeightLayerFeather;
+        public int SplatHasAlbedo;
+        public readonly int[] SplatAlbedo = new int[MaxSplatLayers];
 
         public PbrUniformSet(uint program)
         {
@@ -1800,6 +2518,21 @@ public unsafe class EditorObject
             VertexDisplace = GL.GetUniformLocation(Program, "u_vertexDisplace");
             DispScale = GL.GetUniformLocation(Program, "u_dispScale");
             DispGrid = GL.GetUniformLocation(Program, "u_dispGrid");
+            SplatMap = GL.GetUniformLocation(Program, "u_splatMap");
+            SplatCount = GL.GetUniformLocation(Program, "u_splatCount");
+            SplatAny = GL.GetUniformLocation(Program, "u_splatAny");
+            SplatLayer0IsMap = GL.GetUniformLocation(Program, "u_splatLayer0IsMap");
+            SplatTiling = GL.GetUniformLocation(Program, "u_splatTiling");
+            SplatTint0 = GL.GetUniformLocation(Program, "u_splatTint0");
+            SplatTint1 = GL.GetUniformLocation(Program, "u_splatTint1");
+            SplatTint2 = GL.GetUniformLocation(Program, "u_splatTint2");
+            SplatTint3 = GL.GetUniformLocation(Program, "u_splatTint3");
+            SplatHeightLayerMode = GL.GetUniformLocation(Program, "u_heightLayerMode");
+            SplatHeightLayerCount = GL.GetUniformLocation(Program, "u_heightLayerCount");
+            SplatHeightLayerFeather = GL.GetUniformLocation(Program, "u_heightLayerFeather");
+            SplatHasAlbedo = GL.GetUniformLocation(Program, "u_splatHasAlbedo");
+            for (int i = 0; i < MaxSplatLayers; i++)
+                SplatAlbedo[i] = GL.GetUniformLocation(Program, $"u_splatAlbedo{i}");
         }
     }
 
@@ -1821,7 +2554,10 @@ public unsafe class EditorObject
     private bool BuildChunkedPlaneMesh(ref int segs, uint shader, out Vertex[]? fullVerts)
     {
         fullVerts = null;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !PbrVertexDisplace || string.IsNullOrEmpty(PbrHeightPath))
+        // Chunk grid builds whenever Chunks per side > 1 — displacement NOT required.
+        // A flat multi-texture plane still benefits: each chunk is frustum-culled
+        // against the camera independently ("optimasi berjalan per frustum camera").
+        if (PrimitiveType != EditorPrimitiveType.Plane || PbrVertexChunk <= 1)
             return false;
         if (PbrVertexChunk <= 1)
         {
@@ -1890,6 +2626,126 @@ public unsafe class EditorObject
         // Corner order matches CreatePlaneVertices (CCW from above).
         P(x0, z0, u, v); P(x1, z1, u + step, v + step); P(x1, z0, u + step, v);
         P(x0, z0, u, v); P(x0, z1, u, v + step); P(x1, z1, u + step, v + step);
+    }
+
+    /// <summary>Dynamic-terrain draw: per-chunk LOD + hardware occlusion queries on top
+    /// of the existing frustum-culled chunk path. Chunks far from the camera draw the
+    /// mid/coarse LOD mesh (same chunk ordering as the full VBO — sub-ranges stay
+    /// valid); 2×2 chunk blocks hidden behind other geometry skip their draw entirely
+    /// (GL_ANY_SAMPLES_PASSED queried with color+depth writes off, result applied the
+    /// next frame). NEVER returns a blank frame: any failure degrades to drawing MORE
+    /// (full LOD, force-draw frames after a miss, or the flat chunked path).</summary>
+    private void DrawChunkedDynamic(Matrix4x4 model, Matrix4x4 viewProj, bool twoSided, Vector3 camPos,
+        float dispScale, float pad)
+    {
+        if (!_lodBuilt || _lodSegsBuilt != PbrPlaneSegmentsBuilt)
+            BuildLodMeshes();
+        if (!_lodBuilt || _object3D == null || _chunkAABBs.Count != PbrChunkCount)
+        {
+            DrawChunkedPlane(model, viewProj, dispScale, pad, twoSided);
+            return;
+        }
+        bool cullWasOn = GL.IsEnabled(Const.GL_CULL_FACE);
+        if (twoSided) GL.Disable(Const.GL_CULL_FACE);
+
+        bool occlusion = PbrOcclusionEnabled;
+        if (occlusion) EnsureOcclusionQueries();
+        else DisposeOcclusionQueries();
+
+        int chunkSide = Math.Max(1, PbrVertexChunk);
+        int perChunk = Math.Max(1, PbrPlaneSegmentsBuilt / chunkSide);
+        int qSide = (chunkSide + 1) / 2;
+        int qn = _occQueries?.Length ?? 0;
+        int lodDrawn = 0, occluded = 0, frustumCulled = 0;
+        for (int c = 0; c < PbrChunkCount; c++)
+        {
+            var local = _chunkAABBs[c];
+            // World AABB from ALL 8 corners (rotation-safe — same rule as DrawChunkedPlane).
+            Vector3 wMin = new(float.MaxValue), wMax = new(float.MinValue);
+            for (int ci = 0; ci < 8; ci++)
+            {
+                var corner = Vector3.Transform(new Vector3(
+                    (ci & 1) != 0 ? local.Max.X : local.Min.X,
+                    (ci & 2) != 0 ? local.Max.Y : local.Min.Y,
+                    (ci & 4) != 0 ? local.Max.Z : local.Min.Z), model);
+                wMin = Vector3.Min(wMin, corner);
+                wMax = Vector3.Max(wMax, corner);
+            }
+            float padY = MathF.Max(0.05f, dispScale * pad + 0.05f);
+            var aabb = new AABB(
+                new Vector3(wMin.X, wMin.Y - padY, wMin.Z),
+                new Vector3(wMax.X, wMax.Y + padY, wMax.Z));
+            if (!IsAABBInFrustum(viewProj, aabb))
+            {
+                frustumCulled++;
+                continue;
+            }
+
+            int cx = c % chunkSide, cz = c / chunkSide;
+            int q = cz / 2 * qSide + cx / 2;
+
+            bool queryVisible = true;
+            if (occlusion && q < qn && _occResult != null && _occPending != null && _occForceDraw != null)
+            {
+                // Harvest the PREVIOUS frame's result when it has completed — never stall.
+                if (_occPending[q] != 0)
+                {
+                    int available = 0;
+                    GL.GetQueryObjectiv(_occQueries[q], Const.GL_QUERY_RESULT_AVAILABLE, &available);
+                    if (available != 0)
+                    {
+                        uint samples = 0;
+                        GL.GetQueryObjectuiv(_occQueries[q], Const.GL_QUERY_RESULT, &samples);
+                        _occResult[q] = samples > 0 ? (byte)1 : (byte)0;
+                        _occPending[q] = 0;
+                        // A miss earns a couple of forced-draw frames — the occluder may
+                        // have moved since the query was issued.
+                        if (_occResult[q] == 0) _occForceDraw[q] = OccForceFrame;
+                    }
+                }
+                queryVisible = _occResult[q] != 0 || _occForceDraw[q] > 0;
+                if (_occForceDraw != null && _occForceDraw[q] > 0 && _occPending[q] == 0) _occForceDraw[q]--;
+            }
+
+            if (!queryVisible) { occluded++; continue; }
+
+            // LOD pick by camera distance to the chunk center.
+            Vector3 center = Vector3.Transform((local.Min + local.Max) * 0.5f, model);
+            float dist = Vector3.Distance(camPos, center);
+            int lod = dist > MathF.Max(PbrLodDistance2, PbrLodDistance + 1f) ? 2 : dist > PbrLodDistance ? 1 : 0;
+            uint vao = _object3D.VAO;
+            int start = _chunkStarts[c], count = _chunkCounts[c];
+            if (lod > 0 && _lodVao[lod] != 0)
+            {
+                int lodSegs = Math.Max(1, perChunk / (lod == 1 ? 2 : 4));
+                int lodCount = lodSegs * lodSegs * 6;
+                vao = _lodVao[lod];
+                start = c * lodCount;   // LOD chunks are uniform + built in the same order
+                count = lodCount;
+                lodDrawn++;
+                GL.BindVertexArray(vao);
+            }
+            GL.DrawArrays(Const.GL_TRIANGLES, start, count);
+
+            // Occlusion query: redraw this chunk invisibly so the GPU records whether
+            // any pixel survives the depth test ( TerrainChunk-style 1-frame latency).
+            if (occlusion && q < qn && _occPending != null)
+            {
+                GL.ColorMask(false, false, false, false);
+                GL.DepthMask(false);
+                GL.BeginQuery(Const.GL_ANY_SAMPLES_PASSED, _occQueries[q]);
+                GL.DrawArrays(Const.GL_TRIANGLES, start, count);
+                GL.EndQuery(Const.GL_ANY_SAMPLES_PASSED);
+                GL.DepthMask(true);
+                GL.ColorMask(true, true, true, true);
+                _occPending[q] = 1;
+            }
+        }
+        if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
+        PbrLodCulled = lodDrawn;
+        PbrOccluded = occluded;
+        PbrChunksCulled = frustumCulled;
+        GL.BindVertexArray(_object3D.VAO);
     }
 
     /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
@@ -1988,10 +2844,21 @@ public unsafe class EditorObject
         // Program choice: planes with "Vertex Displacement" on use the geometric-
         // displacement vertex stage (true moving geometry); everything else the
         // standard one. Both share the objectPbr fragment stage.
+        // Program choice: planes with "Vertex Displacement" on use the geometric-
+        // displacement vertex stage (true moving geometry); everything else the
+        // standard one. Painted splat planes use the objectPbrSplat fragment stage
+        // (same PBR pipeline + 4-layer albedo blend) in BOTH variants, so the
+        // splat add-on survives the displacement toggle.
+        bool splat = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial && SplatIsPainted;
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && PbrVertexDisplace && _pbrTex[5] != 0;
-        var u = displaced ? _pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram())
-                          : _pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram());
+                         && PbrVertexDisplace && (_pbrTex[5] != 0 || _sculptHeights != null);
+        var u = (displaced, splat) switch
+        {
+            (true, true) => _pbrUniformsSplatDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatDisplaceShaderProgram()),
+            (true, false) => _pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()),
+            (false, true) => _pbrUniformsSplat ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatShaderProgram()),
+            _ => _pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()),
+        };
         uint pbr = u.Program;
         if (pbr == 0)
         {
@@ -2099,7 +2966,66 @@ public unsafe class EditorObject
         if (u.ParallaxScale >= 0) GL.Uniform1f(u.ParallaxScale, PbrParallaxScale);
         if (u.PomShadowStrength >= 0) GL.Uniform1f(u.PomShadowStrength, Math.Clamp(PbrPomShadowStrength, 0f, 1f));
 
+        // ── Splat terrain: dynamic textures + blending uniforms (units 10..14) ──
+        bool splatActive = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial
+                           && (SplatIsPainted || SplatHeightLayersEnabled);
+        if (splatActive && u.SplatMap >= 0)
+        {
+            if (_sculptHeights != null)
+                UploadSculptTexture();
+            if (_splatDirty)
+                UploadSplatTexture();
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 10);
+            GL.BindTexture(Const.GL_TEXTURE_3D, EnsureSplatTexture());
+            GL.Uniform1i(u.SplatMap, 10);
+            GL.Uniform1i(u.SplatCount, MaxSplatLayers);
+            GL.Uniform1i(u.SplatAny, 1);
+            GL.Uniform1i(u.SplatLayer0IsMap, string.IsNullOrEmpty(EnsureSplatLayer(0).AlbedoPath) ? 1 : 0);
+            GL.Uniform1f(u.SplatTiling, Math.Clamp(SplatTiling, 0.01f, 64f));
+            // Height-layer bands + which layers actually have a texture (a texture-less
+            // band must contribute ZERO weight, not a white stripe, in auto-terrain mode).
+            if (u.SplatHeightLayerMode >= 0) GL.Uniform1i(u.SplatHeightLayerMode, SplatHeightLayersEnabled ? 1 : 0);
+            if (u.SplatHeightLayerCount >= 0) GL.Uniform1i(u.SplatHeightLayerCount, Math.Clamp(SplatHeightLayerCount, 1, 4));
+            if (u.SplatHeightLayerFeather >= 0) GL.Uniform1f(u.SplatHeightLayerFeather, Math.Clamp(SplatHeightLayerFeather, 0.01f, 0.5f));
+            if (u.SplatHasAlbedo >= 0)
+            {
+                GL.Uniform1i(u.SplatHasAlbedo, HasSplatTexture(0));
+                GL.Uniform1i(u.SplatHasAlbedo + 1, HasSplatTexture(1));
+                GL.Uniform1i(u.SplatHasAlbedo + 2, HasSplatTexture(2));
+                GL.Uniform1i(u.SplatHasAlbedo + 3, HasSplatTexture(3));
+            }
+            for (int i = 0; i < MaxSplatLayers; i++)
+            {
+                var layer = EnsureSplatLayer(i);
+                uint lt = EnsureSplatAlbedoTex(i);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 11 + (uint)i);
+                GL.BindTexture(Const.GL_TEXTURE_2D, lt != 0 ? lt : white);
+                if (u.SplatAlbedo[i] >= 0) GL.Uniform1i(u.SplatAlbedo[i], 11 + i);
+                int tintLoc = i switch { 0 => u.SplatTint0, 1 => u.SplatTint1, 2 => u.SplatTint2, _ => u.SplatTint3 };
+                if (tintLoc >= 0) GL.Uniform3f(tintLoc, layer.TintR, layer.TintG, layer.TintB);
+            }
+        }
+
         GL.BindVertexArray(_object3D!.VAO);
+        // ── DYNAMIC TERRAIN PATH — per-chunk LOD + occlusion queries. Picked per
+        //    frame from the cheapest safe option: only with LOD on, a chunked grid
+        //    and built LOD meshes; any failure falls through to the flat path below.
+        // Configuration-only guard — _lodBuilt is set INSIDE DrawChunkedDynamic on its
+        // first call, so testing it here would be a chicken-and-egg that permanently
+        // disables the dynamic path.
+        bool dynamicMode = PrimitiveType == EditorPrimitiveType.Plane
+                           && PbrLodEnabled && PbrChunkCount > 1 && PbrPlaneSegmentsBuilt > 1;
+        if (dynamicMode)
+        {
+            try { DrawChunkedDynamic(model, view * proj, true, camera.Position, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f), u.HeightAdvancePad); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PBR] Dynamic draw FAILED on '{Name}' → flat fallback: {ex.Message}");
+                dynamicMode = false;
+            }
+        }
+        if (!dynamicMode)
+        {
         // ── Flat planes: single CCW quad → culled (invisible) from below. Draw PBR
         //    planes two-sided like the derivative-TBN shader expects; boxes/spheres
         //    are closed meshes and keep the scene's culling state untouched.
@@ -2128,6 +3054,7 @@ public unsafe class EditorObject
             if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
             PbrChunksCulled = 0;
         }
+        }
         GL.BindVertexArray(0);
 
         // ── Restore: main shader + its shadow bindings at units 6/7/8 (the main pass
@@ -2141,8 +3068,51 @@ public unsafe class EditorObject
             GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
             GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
         }
+        // ── Restore: splat bindings clobbered units 10..14 ──
+        if (splatActive)
+        {
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 10);
+            GL.BindTexture(Const.GL_TEXTURE_3D, 0);
+            for (int i = 0; i < MaxSplatLayers; i++)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 11 + (uint)i);
+                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            }
+        }
         GL.ActiveTexture(Const.GL_TEXTURE0);
         GL.UseProgram(Shader.GetShaderProgram());
+    }
+
+    /// <summary>True when splat layer i has an albedo texture assigned (shader bands
+    /// with no texture contribute zero weight in height-layer mode).</summary>
+    internal int HasSplatTexture(int i) =>
+        i == 0 ? 1 : (string.IsNullOrEmpty(SplatLayers[i]?.AlbedoPath) ? 0 : 1);
+
+    /// <summary>Load (once per path) a splat layer's albedo texture. Empty path = 0 —
+    /// the shader falls back to the albedo MAP for layer 0 and black for layers 1+.</summary>
+    internal uint EnsureSplatAlbedoTex(int i)
+    {
+        string path = SplatLayers[i]?.AlbedoPath ?? "";
+        if (_splatAlbedoTex[i] != 0 && _splatAlbedoKey[i] == path) return _splatAlbedoTex[i];
+        if (_splatAlbedoTex[i] != 0)
+        {
+            fixed (uint* p = &_splatAlbedoTex[i]) GL.DeleteTextures(1, p);
+            _splatAlbedoTex[i] = 0;
+        }
+        _splatAlbedoKey[i] = path;
+        if (string.IsNullOrEmpty(path)) return 0;
+        try
+        {
+            string resolved = PathHelpers.Resolve(path);
+            if (!File.Exists(resolved)) return 0;
+            _splatAlbedoTex[i] = new Texture(resolved).ID;
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PbrSplat] '{Name}' splat layer {i} albedo load failed: {ex.Message}");
+        }
+        return _splatAlbedoTex[i];
     }
 
     // ════════════════════════════════════════════════════════════════════

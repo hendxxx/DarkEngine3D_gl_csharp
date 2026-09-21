@@ -446,6 +446,23 @@ public class EditorObjectData
     public bool[] PaintLayerStochastic { get; set; } = [false, false, false, false];
     public int PaintLayerCount { get; set; } = 1;
 
+    // ── PBR splat terrain (paintable multi-texture plane + sculpt + LOD) ──
+    /// <summary>Per-splat-layer albedo path + tint. Null = legacy scene (blank layers).</summary>
+    public PbrSplatLayerDataAsset[]? PbrSplatLayers { get; set; }
+    public int PbrSplatPaintLayerIndex { get; set; } = 0;
+    public float PbrSplatPaintStrength { get; set; } = 0.45f;
+    public float PbrSplatTiling { get; set; } = 0.5f;
+    /// <summary>Base64 RGBA splat weights (empty = never painted — no bloat).</summary>
+    public string PbrSplatData { get; set; } = "";
+    /// <summary>Base64 sculpt height bytes (R8, 512²; empty = no sculpt edits).</summary>
+    public string PbrSculptData { get; set; } = "";
+    /// <summary>Per-chunk LOD by camera distance (dynamic terrain mode).</summary>
+    public bool PbrLodEnabled { get; set; } = false;
+    public float PbrLodDistance { get; set; } = 40f;
+    public float PbrLodDistance2 { get; set; } = 120f;
+    /// <summary>Hardware occlusion queries for the chunked displaced plane.</summary>
+    public bool PbrOcclusionEnabled { get; set; } = false;
+
     // ── Dynamic terrain layers (per-layer texture, tiling, height range, PBR, stochastic) ──
     /// <summary>Saved dynamic terrain layers. Null/empty = migrate from legacy 4-layer on load.</summary>
     public List<TerrainLayer>? TerrainLayerList { get; set; }
@@ -456,6 +473,17 @@ public class EditorObjectData
 
 }
 
+
+/// <summary>
+/// Serializable mirror of <see cref="PbrSplatLayerData"/> for .ing scene files.
+/// </summary>
+public class PbrSplatLayerDataAsset
+{
+    public string AlbedoPath { get; set; } = "";
+    public float TintR { get; set; } = 1f;
+    public float TintG { get; set; } = 1f;
+    public float TintB { get; set; } = 1f;
+}
 
 /// <summary>
 /// A complete scene definition stored in a .ing file.

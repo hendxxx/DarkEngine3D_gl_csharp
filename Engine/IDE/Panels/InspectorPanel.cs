@@ -2635,6 +2635,28 @@ public class InspectorPanel
                 int chunks = editorObj.PbrVertexChunk;
                 if (ImGui.SliderInt("Chunks per side##insp", ref chunks, 1, 16))
                     editorObj.PbrVertexChunk = chunks; // property clamps + MarkDirty (mesh rebuild)
+
+                //  Height map PNG — editable here too (drag from Asset Browser)  
+                string hp = editorObj.PbrHeightPath;
+                ImGui.Text("Height map:");
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(-60);
+                if (ImGui.InputText("##heightpath", ref hp, 512))
+                    editorObj.PbrHeightPath = hp.Trim(); // setter drops CPU height caches
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    {
+                        editorObj.PbrHeightPath = PathHelpers.MakeRelative(AssetBrowserPanel._dragImagePath);
+                        AssetBrowserPanel._dragImagePath = null;
+                    }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##heightclear") && !string.IsNullOrEmpty(editorObj.PbrHeightPath))
+                    editorObj.PbrHeightPath = "";
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear the height map.");
                 if (editorObj.PbrChunkCount > 1)
                 {
                     int per = editorObj.PbrPlaneSegmentsBuilt / Math.Max(1, editorObj.PbrVertexChunk);
