@@ -264,9 +264,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             if (pz >= Height) pz = Height - 1;
 
             int idx = (pz * Width + px) * channels;
-            float r = _pixels[idx] / 255f;
-            float g = _pixels[idx + 1] / 255f;
-            float b = _pixels[idx + 2] / 255f;
+            float r = _pixels[idx] / 65535f;
+            float g = _pixels[idx + 1] / 65535f;
+            float b = _pixels[idx + 2] / 65535f;
 
 
             // // bagi jadi 4 level warna berdasarkan nilai r (grayscale) untuk memberikan variasi warna yang lebih menarik
@@ -290,16 +290,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
             // contrastStrength: 1.0 = normal, 2.0 = 2x lebih kontras, 3.0 = 3x lebih kontras
             for (int i = 0; i < _pixels.Length; i += channels)
             {
-                // Ambil nilai grayscale dari R channel
-                float gray = _pixels[i] / 255f;
+                // Ambil nilai grayscale dari R channel (normalized 0..1)
+                float gray = _pixels[i] / 65535f;
 
                 // Pindahkan nilai ke 0.5 sebagai pivot, kemudian perkuat
                 float centered = gray - 0.5f;
                 float enhanced = centered * contrastStrength;
                 float result = enhanced + 0.5f;
 
-                // Clamp ke 0-1 dan konversi ke byte
-                byte newValue = (byte)(Math.Clamp(result, 0f, 1f) * 255f);
+                // Clamp ke 0-1 dan konversi kembali ke 16-bit
+                ushort newValue = (ushort)(Math.Clamp(result, 0f, 1f) * 65535f);
 
                 // Update semua channel (R, G, B)
                 _pixels[i] = newValue;
@@ -311,14 +311,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
         // Method untuk equalize histogram (lebih agresif)
         public void EqualizeHistogram()
         {
-            // Hitung histogram
+            // Downsample 16-bit pixels into a 256-bin histogram (top 8 bits of each value).
             int[] histogram = new int[256];
             for (int i = 0; i < _pixels.Length; i += channels)
             {
-                histogram[_pixels[i]]++;
+                histogram[_pixels[i] >> 8]++;
             }
 
-            // Hitung CDF (Cumulative Distribution Function)
+            // Compute cumulative distribution function
             int[] cdf = new int[256];
             cdf[0] = histogram[0];
             for (int i = 1; i < 256; i++)
@@ -326,24 +326,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Terrains
                 cdf[i] = cdf[i - 1] + histogram[i];
             }
 
-            // Normalisasi CDF
+            // Normalize CDF into a 256-entry lookup table mapping bin -> 0..255 output
             float cdfMin = cdf[0];
             int pixelCount = Width * Height;
 
             byte[] lookupTable = new byte[256];
             for (int i = 0; i < 256; i++)
             {
-                lookupTable[i] = (byte)((cdf[i] - cdfMin) * 255f / (pixelCount - 1));
+                lookupTable[i] = (byte)Math.Clamp((cdf[i] - cdfMin) * 255f / (pixelCount - 1), 0f, 255f);
             }
 
-            // Apply lookup table
+            // Apply LUT and rescale back to 16-bit range
             for (int i = 0; i < _pixels.Length; i += channels)
             {
-                byte originalValue = (byte)_pixels[i];
-                byte newValue = lookupTable[originalValue];
-                _pixels[i] = (ushort)(newValue * 257); // Scale back to 16-bit
-                _pixels[i + 1] = (ushort)(newValue * 257);
-                _pixels[i + 2] = (ushort)(newValue * 257);
+                int bucket = _pixels[i] >> 8;
+                ushort newValue = (ushort)(lookupTable[bucket] * 257); // 255*257 == 65535
+                _pixels[i] = newValue;
+                _pixels[i + 1] = newValue;
+                _pixels[i + 2] = newValue;
             }
         }
 
