@@ -389,6 +389,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 PbrLodDistance = source.PbrLodDistance,
                 PbrLodDistance2 = source.PbrLodDistance2,
                 PbrOcclusionEnabled = source.PbrOcclusionEnabled,
+                SplatHeightLayersEnabled = source.SplatHeightLayersEnabled,
+                SplatHeightLayerCount = source.SplatHeightLayerCount,
+                SplatHeightLayerFeather = source.SplatHeightLayerFeather,
                 // ── PBR material (Box/Sphere/flat plane) ──
                 PbrAlbedoPath = source.PbrAlbedoPath,
                 PbrNormalPath = source.PbrNormalPath,

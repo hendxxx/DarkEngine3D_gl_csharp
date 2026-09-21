@@ -1046,6 +1046,9 @@ public class SceneManagerPanel
                         PbrLodDistance = obj.PbrLodDistance,
                         PbrLodDistance2 = obj.PbrLodDistance2,
                         PbrOcclusionEnabled = obj.PbrOcclusionEnabled,
+                        SplatHeightLayersEnabled = obj.SplatHeightLayersEnabled,
+                        SplatHeightLayerCount = obj.SplatHeightLayerCount,
+                        SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
                         //  PBR material (Box/Sphere/flat plane) 
                         PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                         PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
@@ -1506,6 +1509,9 @@ public class SceneManagerPanel
                         obj.PbrLodDistance = objData.PbrLodDistance;
                         obj.PbrLodDistance2 = objData.PbrLodDistance2;
                         obj.PbrOcclusionEnabled = objData.PbrOcclusionEnabled;
+                        obj.SplatHeightLayersEnabled = objData.SplatHeightLayersEnabled;
+                        obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
+                        obj.SplatHeightLayerFeather = Math.Clamp(objData.SplatHeightLayerFeather, 0.01f, 0.5f);
                         //  Per-layer PBR (PBR is per texture) 
                         obj.TerrainLayers = objData.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithResolvedPaths()).ToArray()
                             ?? obj.TerrainLayers;
@@ -1992,6 +1998,9 @@ public class SceneManagerPanel
                             PbrLodDistance = obj.PbrLodDistance,
                             PbrLodDistance2 = obj.PbrLodDistance2,
                             PbrOcclusionEnabled = obj.PbrOcclusionEnabled,
+                            SplatHeightLayersEnabled = obj.SplatHeightLayersEnabled,
+                            SplatHeightLayerCount = obj.SplatHeightLayerCount,
+                            SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
                             PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                             PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
                             PbrMetallicPath = PathHelpers.MakeRelative(obj.PbrMetallicPath),

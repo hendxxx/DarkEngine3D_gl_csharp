@@ -462,6 +462,12 @@ public class EditorObjectData
     public float PbrLodDistance2 { get; set; } = 120f;
     /// <summary>Hardware occlusion queries for the chunked displaced plane.</summary>
     public bool PbrOcclusionEnabled { get; set; } = false;
+    /// <summary>Height layers: auto-assign splat layer weights by elevation bands.</summary>
+    public bool SplatHeightLayersEnabled { get; set; } = false;
+    /// <summary>Active elevation bands (1..4) in height-layer mode.</summary>
+    public int SplatHeightLayerCount { get; set; } = 4;
+    /// <summary>Band transition softness (0.01..0.5).</summary>
+    public float SplatHeightLayerFeather { get; set; } = 0.08f;
 
     // ── Dynamic terrain layers (per-layer texture, tiling, height range, PBR, stochastic) ──
     /// <summary>Saved dynamic terrain layers. Null/empty = migrate from legacy 4-layer on load.</summary>

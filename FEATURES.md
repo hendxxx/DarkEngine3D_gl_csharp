@@ -91,7 +91,7 @@ ProjectRoot/
 | **PostFxPanel** | Post-processing | Reactive bloom (mip chain), auto-exposure, tonemapping, gamma, DoF |
 | **FrameBufferDebugPanel** | Debug | Live thumbnails of every FBO: scene targets, DoF scratch/mask, Post FX stages (composite/output/luma/bloom mips) + completeness validation |
 | **TerrainBrush** | Terrain tools | Brush size/strength/softness, paint layers, sculpt |
-| **PbrPanel** | PBR material | Per-object texture slots + tuning (see §5) |
+| **PbrPanel** | PBR material | Per-object texture slots + tuning + PBR Splat Terrain (4-layer paint, height sculpt, LOD/occlusion, height layers — see §5.5) |
 | **RenderTime** | Performance | FPS, frame time, GPU timing |
 | **FramebufferViewer** | Debug | View any FBO texture |
 | **SpriteEditor** | 2D sprite sheets | Auto-detect frames, interactive slicing, animation clips, zoom, drag-drop import (see §2.4) |
@@ -608,6 +608,70 @@ float spec = pow(max(dot(N, H), 0.0), 24.0) * 0.6;  // Terrain
 vec3 specular = D * G * F / (4.0 * NdotV * NdotL);    // Objects
 ```
 
+### 5.5 PBR Splat Terrain (paintable multi-texture plane)
+
+An add-on layer over the objectPbr pipeline (never a replacement): an RGBA splat map
+blends up to **4 albedo layers** while normal/metallic/roughness/AO/POM/CSM come from the
+unchanged objectPbr shader. A plane with no paint and height layers off renders pixel-
+identical to the standard look (zero regression).
+
+**Shader**: `objectPbrSplat_fragment.glsl` (flat + displaced variants; programs
+`GetObjectPbrSplatShaderProgram` / `GetObjectPbrSplatDisplaceShaderProgram`).
+
+**Texture units**:
+
+| Unit | Texture |
+|------|---------|
+| 0-6 | Standard PBR maps (albedo/normal/metallic/roughness/AO/height/emission) |
+| 7/8/9 | CSM shadow cascades |
+| 10 | Splat map — `GL_TEXTURE_3D` 16×16×16 RGBA, dynamic |
+| 11-14 | Splat layer albedo × 4 |
+
+**Layer painting** (PBR Material panel → "PBR Splat Terrain"):
+- 4 layer slots: albedo texture (drag-drop from Asset Browser / browse / clear) + tint (ColorEdit3)
+- `SplatTiling` — per-layer world tiling; `SplatPaintStrength` — brush strength
+- Layer 0 without its own texture falls back to the object's albedo MAP (never blank white)
+- Empty layer slots contribute zero weight (uniform `u_splatHasAlbedo`)
+
+**Height Layers (auto-terrain by elevation)**:
+- `SplatHeightLayersEnabled` — layer weights are auto-assigned by height-map elevation:
+  layer 1 = valleys … layer N = peaks (soft smoothstep bands, `SplatHeightLayerCount`
+  active bands 1-4, `SplatHeightLayerFeather` transition softness)
+- Manual brush paint overrides locally (max blend), so the base terrain look is free
+- Works without any paint; needs a height map (or sculpt buffer) for elevation data
+
+**Height sculpting (user-drawable)**:
+- Runtime R8 buffer 512² (`EnsureSculptBuffer` decodes the authored height map once —
+  sculpt SMOOTHS the authored terrain, it does not replace it)
+- Dynamic texture (`GL_R8` + `TexSubImage2D`) replaces the height unit while sculpted →
+  displacement + POM see the live surface with no shader changes
+- Viewport brush modes: **Sculpt** (drag raise, Ctrl lower), **Paint layer** (Ctrl erase),
+  **Smooth**, **Flatten** — Shift = soft, Ctrl+scroll = brush size; 3D ring follows the
+  displaced surface (CPU raycast mirrors the shader height calibration)
+- Per-stroke undo via bridge events (`OnPbrSplatPainted` / `OnPbrSculpted`)
+
+**Optimizations (all per-plane, Inspector/PbrPanel toggles)**:
+- **Per-chunk frustum culling** — chunk grid builds whenever `Chunks per side > 1`
+  (flat splat planes included); Gribb–Hartmann AABB test from the view-projection matrix,
+  analytic chunk bounds + Y padding so displaced peaks never pop at screen edges
+- **Per-chunk LOD** (`PbrLodEnabled`) — LOD1/LOD2 meshes at ½/¼ segments; each chunk picks
+  its level per frame from camera distance (`PbrLodDistance`, `PbrLodDistance2`)
+- **GPU occlusion culling** (`PbrOcclusionEnabled`) — `GL_ANY_SAMPLES_PASSED` queries per
+  2×2 chunk block, drawn invisible with color+depth writes off; results applied next frame
+  (never stalls), miss = 2 force-draw frames
+- Live info: chunks/cull counts in the Inspector ("Frustum cull: N/M skipped"),
+  "LOD drawn" and "Occluded" lines in the PBR panel
+
+**Height map input**: PBR panel slot (browse / auto-detect) **or** Inspector
+"Displaced Plane Grid" → drag-drop a PNG straight from the Asset Browser (path setter
+drops the CPU height caches so raycast/sculpt always see the new map)
+
+**Persistence** (symmetric across SceneAsset, SceneManagerPanel save/load ×3 sites, object clone):
+- `PbrSplatLayers` (albedo path + tint per layer)
+- `SplatPaintedData` / `PbrSculptData` — base64, empty = never painted (no size cost)
+- `PbrLodEnabled` / `PbrLodDistance` / `PbrLodDistance2` / `PbrOcclusionEnabled`
+- `SplatHeightLayersEnabled` / `SplatHeightLayerCount` / `SplatHeightLayerFeather`
+
 ---
 
 ## 6. Terrain System
@@ -980,6 +1044,11 @@ All elements support:
 
 - **MSAA**: Configurable multi-sample anti-aliasing
 - **Frustum culling**: Objects outside camera frustum skipped
+- **Per-chunk frustum culling**: PBR plane chunk grids (Chunks per side > 1) culled
+  individually from the view-projection matrix — flat multi-texture planes included
+- **Per-chunk LOD**: PBR-plane terrain chunks pick ½/¼-segment meshes by camera distance
+- **GPU occlusion culling**: `GL_ANY_SAMPLES_PASSED` per 2×2 chunk block on PBR planes
+  (async result harvest, no pipeline stalls)
 - **LOD**: Distance-based detail reduction
 - **Shadow map caching**: Only rebuilds when light moves
 - **Texture caching**: GPU texture IDs cached, no duplicate loads
