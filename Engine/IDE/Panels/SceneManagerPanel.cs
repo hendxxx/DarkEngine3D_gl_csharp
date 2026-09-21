@@ -1052,6 +1052,8 @@ public class SceneManagerPanel
                         PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
                         PbrVertexDisplace = obj.PbrVertexDisplace,
                         PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
+                        PbrVertexSegments = obj.PbrVertexSegments,
+                        PbrVertexChunk = obj.PbrVertexChunk,
                         TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                         PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                         TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
@@ -1522,6 +1524,8 @@ public class SceneManagerPanel
                         obj.PbrHeightScaleCenter = Math.Clamp(objData.PbrHeightScaleCenter, 0f, 1f);
                         obj.PbrVertexDisplace = objData.PbrVertexDisplace;
                         obj.PbrVertexDisplaceScale = Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 2f);
+                        if (objData.PbrVertexSegments is int s && s > 0) obj.PbrVertexSegments = Math.Clamp(s, 16, 512);
+                        if (objData.PbrVertexChunk is int ck && ck > 0) obj.PbrVertexChunk = Math.Clamp(ck, 1, 16);
                         if (obj.PbrVertexDisplace) obj.MarkDirty(); // plane needs the dense grid
                         // Per-texture sampling settings (min/mag, mipmap, wrapping, UV
                         // tiling/offset). Legacy scenes have no TexSettings → fall back to
@@ -1963,6 +1967,8 @@ public class SceneManagerPanel
                             PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
                             PbrVertexDisplace = obj.PbrVertexDisplace,
                             PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
+                            PbrVertexSegments = obj.PbrVertexSegments,
+                            PbrVertexChunk = obj.PbrVertexChunk,
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                             PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                             TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),

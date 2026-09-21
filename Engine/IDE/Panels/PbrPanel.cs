@@ -253,7 +253,21 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             if (vd)
             {
                 float vds = obj.PbrVertexDisplaceScale; Tune("Displace Height##vdisp", ref vds, 0.005f, 0f, 2f); obj.PbrVertexDisplaceScale = vds;
-                ImGui.TextDisabled($"Mesh: {EditorObject.PbrDisplaceSegments}×{EditorObject.PbrDisplaceSegments} grid");
+                // Grid resolution + chunk split (MarkDirty on the property rebuilds the mesh).
+                int seg = obj.PbrVertexSegments;
+                if (ImGui.SliderInt("Segments##vdisp", ref seg, 16, 512)) obj.PbrVertexSegments = seg;
+                int chunk = obj.PbrVertexChunk;
+                if (ImGui.SliderInt("Chunks per side##vdisp", ref chunk, 1, 16)) obj.PbrVertexChunk = chunk;
+                if (obj.PbrChunkCount > 1)
+                {
+                    int per = obj.PbrPlaneSegmentsBuilt / obj.PbrVertexChunk;
+                    ImGui.TextDisabled($"Mesh: {obj.PbrChunkCount} chunks ({per}×{per} segs each, {obj.PbrPlaneSegmentsBuilt}×{obj.PbrPlaneSegmentsBuilt} total)");
+                    ImGui.TextDisabled($"Frustum cull: {obj.PbrChunksCulled}/{obj.PbrChunkCount} chunks skipped last draw");
+                }
+                else
+                {
+                    ImGui.TextDisabled($"Mesh: {obj.PbrPlaneSegmentsBuilt}×{obj.PbrPlaneSegmentsBuilt} grid (1 draw)");
+                }
             }
 
             ImGui.Spacing();
@@ -276,7 +290,8 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 obj.TerrainPbrAoStrength = 1f; obj.TerrainPbrAoBrightness = 0f;
                 obj.TerrainPbrHeightStrength = 1f; obj.TerrainPbrHeightInvert = false; obj.TerrainPbrHeightBlur = 0f;
                 obj.PbrHeightContrast = 1f; obj.PbrHeightContrastCenter = 0.5f; obj.PbrHeightOffset = 0f; obj.PbrHeightScaleCenter = 0.5f;
-                obj.PbrVertexDisplace = false; obj.PbrVertexDisplaceScale = 0.15f; obj.MarkDirty();
+                obj.PbrVertexDisplace = false; obj.PbrVertexDisplaceScale = 0.15f;
+                obj.PbrVertexSegments = EditorObject.PbrDisplaceSegments; obj.PbrVertexChunk = 1; obj.MarkDirty();
                 obj.TerrainPbrEmissionIntensity = 1f;
                 obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0.15f; obj.PbrPomShadowStrength = 0.6f;
             }

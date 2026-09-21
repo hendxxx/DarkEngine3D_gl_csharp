@@ -393,6 +393,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 PbrHeightScaleCenter = source.PbrHeightScaleCenter,
                 PbrVertexDisplace = source.PbrVertexDisplace,
                 PbrVertexDisplaceScale = source.PbrVertexDisplaceScale,
+                PbrVertexSegments = source.PbrVertexSegments,
+                PbrVertexChunk = source.PbrVertexChunk,
                 TerrainBrushSize = source.TerrainBrushSize,
                 TerrainBrushStrength = source.TerrainBrushStrength,
                 TerrainBrushSoftness = source.TerrainBrushSoftness,

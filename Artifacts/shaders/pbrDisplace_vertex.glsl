@@ -31,8 +31,8 @@ uniform vec2 u_uvOffset[7];
 
 // Same calibration pipeline as the fragment's sampleHeight() so displaced
 // geometry and shading agree on where the surface sits. A small fixed blur
-// (Marmoset: "smooth microscopic surface noise to prevent displacement
-tearing across polygon vertices") keeps vertices from spiking on per-pixel
+// (Marmoset: smooth microscopic surface noise to prevent displacement
+// tearing across polygon vertices) keeps vertices from spiking on per-pixel
 // 4K noise the 256² grid can't represent anyway.
 float dispHeight(vec2 uv) {
     vec2 o = 0.75 / vec2(textureSize(heightMap, 0));

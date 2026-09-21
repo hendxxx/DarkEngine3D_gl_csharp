@@ -659,8 +659,36 @@ public unsafe class EditorObject
     // Lazy uniform-location sets for the two PBR programs (standard / vertex-displaced).
     private PbrUniformSet? _pbrUniformsStd;
     private PbrUniformSet? _pbrUniformsDisp;
-    /// <summary>Tessellation segments per side for the displaced plane grid.</summary>
+    /// <summary>One-shot diagnostic latch (per object): which program was last seen as 0
+    /// (bit0 = standard, bit1 = displaced) — prevents console spam every frame.</summary>
+    private int _warnedDispProgramZero;
+    /// <summary>Legacy tessellation constant (kept for shader default + legacy scenes).</summary>
     public const int PbrDisplaceSegments = 256;
+    // ── Chunked vertex grid (PBR displaced planes) ──
+    // The displaced plane is a dense grid of quads; splitting it into chunks lets the
+    // frustum cull whole blocks of geometry instead of always drawing the full mesh.
+    private int _pbrVertexSegments = PbrDisplaceSegments;
+    private int _pbrVertexChunk = 1;
+    /// <summary>Tessellation segments per side for the displaced plane grid (16..512).
+    /// More segments = finer displacement detail, heavier mesh.</summary>
+    public int PbrVertexSegments
+    {
+        get => _pbrVertexSegments;
+        set { var v = Math.Clamp(value, 16, 512); if (_pbrVertexSegments != v) { _pbrVertexSegments = v; MarkDirty(); } }
+    }
+    /// <summary>Split the displaced grid into chunk×chunk vertex blocks (1 = one mesh).
+    /// Each chunk is frustum-culled independently at draw time.</summary>
+    public int PbrVertexChunk
+    {
+        get => _pbrVertexChunk;
+        set { var v = Math.Clamp(value, 1, 16); if (_pbrVertexChunk != v) { _pbrVertexChunk = v; MarkDirty(); } }
+    }
+    /// <summary>Segments per side actually built last rebuild (0 = not a displaced plane).</summary>
+    public int PbrPlaneSegmentsBuilt { get; private set; }
+    /// <summary>Number of vertex chunks built last rebuild (0 = single unchunked mesh).</summary>
+    public int PbrChunkCount { get; private set; }
+    /// <summary>Chunks skipped by the frustum cull on the last PBR draw (diagnostics).</summary>
+    public int PbrChunksCulled { get; private set; }
     /// <summary>Sampling settings for the SIMPLE texture (<see cref="TexturePath"/>):
     /// min/mag filter, mipmapping & anisotropy, wrapping, UV tiling/offset.</summary>
     public Libs.TextureSettings TexSettings { get; set; } = new();
@@ -1523,12 +1551,19 @@ public unsafe class EditorObject
                 }
                 // "Vertex Displacement" ON → tessellate into a dense grid so the
                 // vertex shader has vertices to move (true geometric displacement).
-                // 256×256 = 131k tris per plane, plenty for 4K height maps.
-                int segs = PbrVertexDisplace && !string.IsNullOrEmpty(PbrHeightPath) ? 256 : 1;
-                var verts = Object3D.CreatePlaneVertices(1f, 1f, Color, segs, segs);
-                _object3D = new Object3D(0, 0, 0);
-                _object3D.Generate(shader, verts);
+                // Grid size is user-tunable; optionally split into chunk×chunk vertex
+                // blocks so off-screen chunks skip the draw entirely.
+                int segs = PbrVertexDisplace && !string.IsNullOrEmpty(PbrHeightPath)
+                    ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
+                BuildChunkedPlaneMesh(ref segs, shader, out var verts);
+                if (verts == null)
+                {
+                    verts = Object3D.CreatePlaneVertices(1f, 1f, Color, segs, segs);
+                    _object3D = new Object3D(0, 0, 0);
+                    _object3D.Generate(shader, verts);
+                }
                 _vertexCache = verts;
+                PbrPlaneSegmentsBuilt = segs > 1 ? segs : 0;
                 break;
             }
             case EditorPrimitiveType.Box:
@@ -1711,6 +1746,9 @@ public unsafe class EditorObject
         public int ParallaxScale;
         public int PomShadowStrength;
         public int HeightAdvance;
+        /// <summary>Calibrated zero-displacement baseline (u_heightAdvance.w) — used as the
+        /// world-AABB padding so per-chunk frustum culling never culls displaced peaks.</summary>
+        public float HeightAdvancePad = 0.5f;
         public int VertexDisplace, DispScale, DispGrid;
 
         public PbrUniformSet(uint program)
@@ -1767,6 +1805,181 @@ public unsafe class EditorObject
 
     /// <summary>Render this primitive with the PBR material shader (maps on units 0-6,
     /// CSM shadows on units 7/8/9). Restores the main shader and its shadow bindings so
+    // ── Chunked vertex grid (PBR displaced planes) ──
+    // Contiguous (chunkStart, chunkCount) draw ranges into the reordered VBO — one
+    // range per chunk, row-major by chunk index (cz * chunks + cx).
+    private readonly List<int> _chunkStarts = [];
+    private readonly List<int> _chunkCounts = [];
+    private readonly List<AABB> _chunkAABBs = [];
+
+    /// <summary>Build the displaced-plane grid split into chunk×chunk vertex blocks.
+    /// Each chunk becomes a CONTIGUOUS vertex range inside a single VBO (reordered
+    /// row-major), so a chunk draw is just a sub-range of the full mesh — one upload,
+    /// independent frustum culling per block. Shared edges are duplicated per chunk
+    /// (no cracks: positions are identical, the shader is stateless).
+    /// On success the mesh is uploaded into _object3D and true is returned.</summary>
+    private bool BuildChunkedPlaneMesh(ref int segs, uint shader, out Vertex[]? fullVerts)
+    {
+        fullVerts = null;
+        if (PrimitiveType != EditorPrimitiveType.Plane || !PbrVertexDisplace || string.IsNullOrEmpty(PbrHeightPath))
+            return false;
+        if (PbrVertexChunk <= 1)
+        {
+            _chunkStarts.Clear(); _chunkCounts.Clear(); _chunkAABBs.Clear();
+            PbrChunkCount = 0;
+            return false; // unchunked: caller builds the plain grid
+        }
+        int chunks = PbrVertexChunk;
+        // Per-chunk segment count (evenly split; segs stays the global resolution).
+        int perChunk = Math.Max(1, segs / chunks);
+        segs = perChunk * chunks;
+        float step = 1f / segs;      // cell size in mesh-UV units
+        float chunkSpan = perChunk * step;
+        var all = new List<Vertex>(segs * segs * 6);
+        _chunkStarts.Clear(); _chunkCounts.Clear(); _chunkAABBs.Clear();
+        for (int cz = 0; cz < chunks; cz++)
+        {
+            for (int cx = 0; cx < chunks; cx++)
+            {
+                int start = all.Count;
+                float u0 = cx * chunkSpan, v0 = cz * chunkSpan;
+                for (int iz = 0; iz < perChunk; iz++)
+                {
+                    for (int ix = 0; ix < perChunk; ix++)
+                    {
+                        float u = u0 + ix * step, v = v0 + iz * step;
+                        EmitPlaneQuad(all, u, v, step);
+                    }
+                }
+                _chunkStarts.Add(start);
+                _chunkCounts.Add(all.Count - start);
+                // Local AABB of the block — computed ANALYTICALLY from the chunk span
+                // (u0..u0+chunkSpan, v0..v0+chunkSpan in mesh-UV units; mesh spans
+                // −0.5..0.5). Accumulating per-vertex through EmitPlaneQuad CANNOT work:
+                // Vector3 is a struct, so passing min/max by value silently wrote the
+                // bounds into a copy → every chunk got an inverted garbage AABB → the
+                // frustum test rejected ALL chunks → plane vanished when displacement
+                // was ON (bug report: "Displaced Plane Grid = on, plane hilang").
+                // Flat plane pre-displacement; the draw pass inflates Y by the
+                // displacement height so off-screen peaks stay culled correctly.
+                var bMin = new Vector3(u0 - 0.5f, 0f, v0 - 0.5f);
+                var bMax = new Vector3(u0 + chunkSpan - 0.5f, 0f, v0 + chunkSpan - 0.5f);
+                _chunkAABBs.Add(new AABB(bMin - new Vector3(0.5f, 0f, 0.5f), bMax + new Vector3(0.5f, 0f, 0.5f)));
+            }
+        }
+        fullVerts = [.. all];
+        _object3D = new Object3D(0, 0, 0);
+        _object3D.Generate(shader, fullVerts);
+        PbrChunkCount = chunks * chunks;
+        return true;
+    }
+
+    /// <summary>Emit one CCW quad (2 tris, shared corners) at (u, v) in mesh-UV units
+    /// (mesh spans −0.5..0.5 in X/Z). NOTE: bounds accumulation intentionally REMOVED —
+    /// Vector3 params are copied by value; chunk AABBs are computed analytically in
+    /// <see cref="BuildChunkedPlaneMesh"/> instead.</summary>
+    private static void EmitPlaneQuad(List<Vertex> verts, float u, float v, float step)
+    {
+        float x0 = u - 0.5f, x1 = u + step - 0.5f;
+        float z0 = v - 0.5f, z1 = v + step - 0.5f;
+        Vector3 n = Vector3.UnitY;
+        void P(float x, float z, float uu, float vv)
+        {
+            verts.Add(new Vertex(x, 0, z, n.X, n.Y, n.Z, 1f, 1f, 1f, uu, vv));
+        }
+        // Corner order matches CreatePlaneVertices (CCW from above).
+        P(x0, z0, u, v); P(x1, z1, u + step, v + step); P(x1, z0, u + step, v);
+        P(x0, z0, u, v); P(x0, z1, u, v + step); P(x1, z1, u + step, v + step);
+    }
+
+    /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
+    /// Returns false when there is nothing chunked (caller falls back to one full draw).</summary>
+    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, float dispScale, float dispHeightNorm, bool twoSided)
+    {
+        if (PbrChunkCount <= 1 || _object3D == null || _chunkAABBs.Count != PbrChunkCount)
+            return false;
+        // Displacement pushes vertices UP along +Y by up to dispScale — widen the
+        // world AABB so peaks never disappear while looking at the flat block edge.
+        float pad = MathF.Max(0.05f, dispScale * dispHeightNorm + 0.05f);
+        int culled = 0;
+        int drawn = 0;
+        // Capture the incoming cull state BEFORE disabling — checking GL.IsEnabled after
+        // our own Disable is always false and the scene's culling never came back.
+        bool cullWasOn = GL.IsEnabled(Const.GL_CULL_FACE);
+        if (twoSided) GL.Disable(Const.GL_CULL_FACE);
+        for (int c = 0; c < PbrChunkCount; c++)
+        {
+            var local = _chunkAABBs[c];
+            // Chunk AABB is stored in mesh space — transform ALL 8 corners to world and
+            // re-min/max. Two corners + componentwise min/max is only correct for
+            // scale/translate; a rotated plane under-covers its box and visible chunks
+            // get culled at odd angles.
+            Vector3 wMin = new(float.MaxValue), wMax = new(float.MinValue);
+            for (int ci = 0; ci < 8; ci++)
+            {
+                var corner = Vector3.Transform(new Vector3(
+                    (ci & 1) != 0 ? local.Max.X : local.Min.X,
+                    (ci & 2) != 0 ? local.Max.Y : local.Min.Y,
+                    (ci & 4) != 0 ? local.Max.Z : local.Min.Z), model);
+                wMin = Vector3.Min(wMin, corner);
+                wMax = Vector3.Max(wMax, corner);
+            }
+            var aabb = new AABB(
+                new Vector3(wMin.X, wMin.Y - pad, wMin.Z),
+                new Vector3(wMax.X, wMax.Y + pad, wMax.Z));
+            if (!IsAABBInFrustum(viewProj, aabb))
+            {
+                culled++;
+                continue;
+            }
+            GL.DrawArrays(Const.GL_TRIANGLES, _chunkStarts[c], _chunkCounts[c]);
+            drawn++;
+        }
+        if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
+        PbrChunksCulled = culled;
+        // SAFETY NET: when EVERY chunk was culled the plane is (theoretically) fully
+        // off-screen — drawing the whole mesh is then visually free and guarantees a
+        // frustum/culling math bug can never blank the plane entirely again
+        // ("Displaced Plane Grid = on → hilang" class of bugs becomes impossible).
+        if (drawn == 0 && twoSided)
+        {
+            bool cullWasOn2 = GL.IsEnabled(Const.GL_CULL_FACE);
+            GL.Disable(Const.GL_CULL_FACE);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D!.VertexCount);
+            if (cullWasOn2) GL.Enable(Const.GL_CULL_FACE);
+        }
+        return true;
+    }
+
+    /// <summary>Conservative positive-side AABB-vs-viewProj test (same math as
+    /// ObjectManager.IsAABBInFrustum but from the combined view-projection matrix —
+    /// GAPI planes extracted from vp rows, y-flip convention included).</summary>
+    private static bool IsAABBInFrustum(Matrix4x4 vp, AABB aabb)
+    {
+        // Six planes from the rows of vp (Gribb–Hartmann; System.Numerics is row-major
+        // and matrices are transposed on upload, hence M11/M12/M13 with ±).
+        Span<Vector4> p = stackalloc Vector4[6];
+        p[0] = new Vector4(vp.M14 + vp.M11, vp.M24 + vp.M21, vp.M34 + vp.M31, vp.M44 + vp.M41); // left
+        p[1] = new Vector4(vp.M14 - vp.M11, vp.M24 - vp.M21, vp.M34 - vp.M31, vp.M44 - vp.M41); // right
+        p[2] = new Vector4(vp.M14 + vp.M12, vp.M24 + vp.M22, vp.M34 + vp.M32, vp.M44 + vp.M42); // bottom
+        p[3] = new Vector4(vp.M14 - vp.M12, vp.M24 - vp.M22, vp.M34 - vp.M32, vp.M44 - vp.M42); // top
+        p[4] = new Vector4(vp.M14 + vp.M13, vp.M24 + vp.M23, vp.M34 + vp.M33, vp.M44 + vp.M43); // near
+        p[5] = new Vector4(vp.M14 - vp.M13, vp.M24 - vp.M23, vp.M34 - vp.M33, vp.M44 - vp.M43); // far
+        for (int i = 0; i < 6; i++)
+        {
+            float len = MathF.Sqrt(p[i].X * p[i].X + p[i].Y * p[i].Y + p[i].Z * p[i].Z);
+            if (len <= 0f) continue;
+            var pl = p[i] / len;
+            var pv = new Vector3(
+                pl.X >= 0 ? aabb.Max.X : aabb.Min.X,
+                pl.Y >= 0 ? aabb.Max.Y : aabb.Min.Y,
+                pl.Z >= 0 ? aabb.Max.Z : aabb.Min.Z);
+            if (pv.X * pl.X + pv.Y * pl.Y + pv.Z * pl.Z + pl.W < 0f)
+                return false;
+        }
+        return true;
+    }
+
     /// the next object in the editor pass renders exactly as before.</summary>
     private void DrawPbrPrimitive(Camera camera, Lights light, CSM? csm)
     {
@@ -1780,7 +1993,18 @@ public unsafe class EditorObject
         var u = displaced ? _pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram())
                           : _pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram());
         uint pbr = u.Program;
-        if (pbr == 0) return;
+        if (pbr == 0)
+        {
+            // ONE-SHOT diagnostic — a silent return here is EXACTLY the "plane vanishes
+            // when displacement is ON" symptom (shader file missing from bin, link fail).
+            bool warned = displaced ? _warnedDispProgramZero == 2 : _warnedDispProgramZero == 1;
+            if (!warned)
+            {
+                _warnedDispProgramZero = displaced ? 2 : 1;
+                Console.WriteLine($"[PBR] {(displaced ? "DISPLACED" : "STANDARD")} shader program == 0 (failed to load/link) — '{Name}' will NOT render. Check '[Shader]' logs above.");
+            }
+            return;
+        }
 
         GL.UseProgram(pbr);
 
@@ -1863,12 +2087,14 @@ public unsafe class EditorObject
         GL.Uniform3f(u.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
         if (u.VertexDisplace >= 0) GL.Uniform1f(u.VertexDisplace, displaced ? 1f : 0f);
         if (u.DispScale >= 0) GL.Uniform1f(u.DispScale, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f));
-        if (u.DispGrid >= 0) GL.Uniform1f(u.DispGrid, PbrDisplaceSegments);
+        if (u.DispGrid >= 0) GL.Uniform1f(u.DispGrid, PbrPlaneSegmentsBuilt > 0 ? PbrPlaneSegmentsBuilt : PbrDisplaceSegments);
         GL.Uniform4f(u.HeightAdvance,
             Math.Clamp(PbrHeightContrast, 0.1f, 4f),
             Math.Clamp(PbrHeightContrastCenter, 0f, 1f),
             Math.Clamp(PbrHeightOffset, -0.5f, 0.5f),
             Math.Clamp(PbrHeightScaleCenter, 0f, 1f));
+        // Cache the zero-displacement baseline as the culling padding (see DrawChunkedPlane).
+        u.HeightAdvancePad = Math.Clamp(PbrHeightScaleCenter, 0f, 1f);
         GL.Uniform1f(u.EmissionIntensity, TerrainPbrEmissionIntensity);
         if (u.ParallaxScale >= 0) GL.Uniform1f(u.ParallaxScale, PbrParallaxScale);
         if (u.PomShadowStrength >= 0) GL.Uniform1f(u.PomShadowStrength, Math.Clamp(PbrPomShadowStrength, 0f, 1f));
@@ -1878,9 +2104,30 @@ public unsafe class EditorObject
         //    planes two-sided like the derivative-TBN shader expects; boxes/spheres
         //    are closed meshes and keep the scene's culling state untouched.
         bool twoSided = PrimitiveType == EditorPrimitiveType.Plane;
-        if (twoSided) GL.Disable(Const.GL_CULL_FACE);
-        GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
-        if (twoSided && GL.IsEnabled(Const.GL_CULL_FACE)) GL.Enable(Const.GL_CULL_FACE);
+        bool cullWasOn = GL.IsEnabled(Const.GL_CULL_FACE);
+        // Chunked grid (displaced plane) → per-chunk frustum culling; otherwise one full
+        // draw. The fallback MUST run whenever the chunked path did NOT draw — the old
+        // `if (count > 1 && !Draw())` guard skipped the draw entirely for unchunked
+        // meshes (count == 0 → condition false → nothing rendered → "plane missing").
+        // Wrapped in try/catch: ANY unexpected failure in the chunked path degrades to
+        // the plain full draw — geometry can never silently vanish again.
+        bool drewChunks = false;
+        if (PbrChunkCount > 1)
+        {
+            try { drewChunks = DrawChunkedPlane(model, view * proj, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f), u.HeightAdvancePad, twoSided); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PBR] Chunked draw FAILED on '{Name}' → full-draw fallback: {ex.Message}");
+                drewChunks = false;
+            }
+        }
+        if (!drewChunks)
+        {
+            if (twoSided) GL.Disable(Const.GL_CULL_FACE);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+            if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
+            PbrChunksCulled = 0;
+        }
         GL.BindVertexArray(0);
 
         // ── Restore: main shader + its shadow bindings at units 6/7/8 (the main pass

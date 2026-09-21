@@ -399,6 +399,12 @@ public class EditorObjectData
     public bool PbrVertexDisplace { get; set; } = false;
     /// <summary>Peak displacement height in world units for vertex displacement.</summary>
     public float PbrVertexDisplaceScale { get; set; } = 0.15f;
+    /// <summary>Tessellation segments per side for the displaced plane grid (16..512).
+    /// Null/absent = legacy scene → <see cref="EditorObject.PbrDisplaceSegments"/> (256).</summary>
+    public int? PbrVertexSegments { get; set; }
+    /// <summary>Split the displaced grid into chunk×chunk vertex blocks (1..16), each
+    /// frustum-culled independently at draw time. Null/absent = 1 (single mesh).</summary>
+    public int? PbrVertexChunk { get; set; }
     /// <summary>Sampling settings for the SIMPLE texture (min/mag filter, mipmapping,
     /// anisotropy, wrapping, UV tiling/offset). Null/absent = legacy scene → defaults
     /// (tiling falls back to <see cref="PbrTexTiling"/>).</summary>

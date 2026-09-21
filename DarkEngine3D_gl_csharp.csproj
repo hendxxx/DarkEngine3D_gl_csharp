@@ -493,6 +493,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\pbrDisplace_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Artifacts\shaders\vertex_shader.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
