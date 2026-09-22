@@ -76,7 +76,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public int CulledObjects { get; private set; }
         public int CulledByFrustum { get; private set; }
         public int CulledByOcclusion { get; private set; }
-        /// <summary>Total triangles rendered this frame (animated + static objects, excludes terrain).</summary>
+        /// <summary>Total triangles rendered this frame (animated + static objects).</summary>
         public int RenderedTriangles { get; private set; }
         /// <summary>Total available triangles for ALL objects (animated + static) at full LOD0 detail.</summary>
         public int TotalObjectTriangles { get; private set; }
@@ -140,7 +140,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _hasEmissiveTextureLoc = GL.GetUniformLocation(_shaderProgram, "hasEmissiveTexture");
         }
 
-        public void Init(Camera camera,TerrainChunk gameTerrainChunk)
+        public void Init(Camera camera)
         {
             string xbotPath = "Artifacts\\objects\\Ybot.glb";
             var rng = new Random();
@@ -189,7 +189,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 var obj = AddObject(xbotPath, new Vector3(px, 0, pz), yaw, 1.0f);
                 obj.CastShadow = true;
-                SnapToTerrain(obj, gameTerrainChunk);
 
                 float phase = (i + 1) / (float)NumberOfAI;
                 OnLoadProgress?.Invoke(phase * 0.10f, $"AI: spawning character {i+1}/{NumberOfAI}");
@@ -216,9 +215,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 new Vector3(45f, 0.0f, 0f),  // world position
                 0f,                          // yaw
                 0.05f,                       // scale
-                isScene: false,              // ASSET mode: RemoveWorldTransform ON
-                gameTerrainChunk,            // terrain for snapping
-                yOffset: 0f);                // additional Y offset
+                isScene: false);             // ASSET mode: RemoveWorldTransform ON
 
             wallManager.UseBillboards = true;
             wallManager.BillboardMgr = new BillboardManager();
@@ -227,7 +224,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             wallManager.UseAlpha = true;
             wallManager.CullAtMaxLOD = false;
             wallManager.EnableSpatialGrid = true;
-            wallManager.UseTerrainGrid = true;
             wallManager.BuildSpatialGrid();
             wallManager.BakeAllBillboards();
 
@@ -246,8 +242,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 treesManager, treesPath,
                 new Vector3(0, 0, 0), 0f, 1.0f,
                 isScene: false,
-                gameTerrainChunk,
-                yOffset: 0f,
                 autoCreateInstances: false);
 
             // Set up billboard system BEFORE CreateRandomInstances so that
@@ -259,7 +253,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 GlbLoader.CreateRandomInstances(
                     treesManager, treesAsset, treeVariants, treeCount, treeRadius,
-                    terrain: gameTerrainChunk,
                     progressMin: 0.18f, progressMax: 0.22f,
                     progressLabel: treesName,
 
@@ -275,7 +268,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             treesManager.UseAlpha = true;
             treesManager.CullAtMaxLOD = false;
             treesManager.EnableSpatialGrid = true;
-            treesManager.UseTerrainGrid = true;
             treesManager.BuildSpatialGrid();
             treesManager.BakeAllBillboards();
 
@@ -289,13 +281,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             string playerPath = "Artifacts\\objects\\Xbot.glb";
             float playerX = 0f;
             float playerZ = 0f;
-            float playerY = gameTerrainChunk.GetHeightAt(playerX, playerZ);
             float initialHeading = Config.PlayerConfig.InitialHeading;
 
-            PlayerObject = AddObject(playerPath, new Vector3(playerX, playerY, playerZ), 0.0f, 1.0f);
+            PlayerObject = AddObject(playerPath, new Vector3(playerX, 0, playerZ), 0.0f, 1.0f);
             PlayerObject.IsPlayer = true;
             PlayerObject.CastShadow = true; 
-            SnapToTerrain(PlayerObject, gameTerrainChunk);
             PlayerObject.SetFacing(initialHeading);
 
             PlayerAgent = new CharacterAgent(PlayerObject, _agentRng)
@@ -360,7 +350,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null, TerrainChunk? terrainForSnap = null, bool snapToTerrain = false)
+        public GltfObject AddObject(string modelPath, Vector3 position, float yawDegrees = 0f, float scale = 1f, string? animPath = null)
         {
             var gpuData = LoadModel(modelPath);
             var q = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f);
@@ -375,17 +365,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     obj.IsPlayer = false;
                     obj.ApplyExternalAnimation(animData);
                     obj.Update(0f);
-                    if (terrainForSnap != null) obj.AlignToTerrain(terrainForSnap);
                 }
             }
             else
             {
                 obj.Update(0f);
             }
-
-            // Snap to terrain height if requested
-            if (snapToTerrain && terrainForSnap != null)
-                SnapToTerrain(obj, terrainForSnap);
 
             return obj;
         }
@@ -405,24 +390,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return obj;
         }
 
-        public void AddRandomStaticObjects(string modelPath, int count, Vector3 center, float radius, TerrainChunk terrain)
+        public void AddRandomStaticObjects(string modelPath, int count, Vector3 center, float radius, float boundMin = -2048f, float boundMax = 2048f)
         {
             var rng = new Random();
             var spawned = new List<Vector3>();
             float minDistance = 2.0f;
 
-            // Compute terrain map bounds using the same formula as TerrainChunk.
-            float halfMapWorld = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize / 2f) * TerrainChunk.TerrainScale;
-            float margin = halfMapWorld * 0.01f;
-            float boundMin = -halfMapWorld + margin;
-            float boundMax = halfMapWorld - margin;
-
             for (int i = 0; i < count; i++)
             {
                 for (int attempts = 0; attempts < 50; attempts++)
                 {
-                    // Retry up to 32 times to find a position inside map bounds
-                    // (sama dengan pola di CreateRandomInstances)
+                    // Retry up to 32 times to find a position inside bounds
                     float x, z;
                     int boundAttempts = 0;
                     do
@@ -434,7 +412,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         boundAttempts++;
                     } while (boundAttempts < 32 && (x < boundMin || x > boundMax || z < boundMin || z > boundMax));
 
-                    // Fallback: clamp to map bounds if all attempts failed
+                    // Fallback: clamp to bounds if all attempts failed
                     x = Math.Clamp(x, boundMin, boundMax);
                     z = Math.Clamp(z, boundMin, boundMax);
 
@@ -443,8 +421,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     bool overlap = spawned.Any(s => Vector3.Distance(s, pos) < minDistance);
                     if (!overlap)
                     {
-                        var obj = AddStaticObject(modelPath, pos);
-                        SnapToTerrain(obj, terrain);
+                        AddStaticObject(modelPath, pos);
                         spawned.Add(pos);
                         break;
                     }
@@ -521,7 +498,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // AAA-style: AI + movement + collisions, tanpa double-update animasi
-        public void UpdateAgents(nint window, float dt, TerrainChunk? terrain, Camera camera)
+        public void UpdateAgents(nint window, float dt, Camera camera)
         {
             if (_agents.Count == 0) return;
 
@@ -582,7 +559,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 a.UpdateBehavior(dt, _agents);
 
             foreach (var a in _agents)
-                a.Move(window, camera, dt, terrain, WanderCenter, WanderRadius);
+                a.Move(window, camera, dt, WanderCenter, WanderRadius);
 
             // 3) Respawn — use for-loop to track index for Jolt physics sync
             for (int i = 0; i < _agents.Count; i++)
@@ -594,7 +571,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     float dist = (float)(_agentRng.NextDouble() * WanderRadius);
                     float x = WanderCenter.X + MathF.Cos(ang) * dist;
                     float z = WanderCenter.Z + MathF.Sin(ang) * dist;
-                    var newPos = new Vector3(x, terrain.GetHeightAt(x, z), z);
+                    var newPos = new Vector3(x, 0, z);
                     a.Respawn(newPos);
                 }
             }
@@ -946,17 +923,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public static void SnapToTerrain(GltfObject obj, TerrainChunk terrain)
-        {
-            // Gunakan AlignToTerrain yang sudah benar — compute world AABB, cari bottom Y, sesuaikan posisi
-            obj.AlignToTerrain(terrain);
-        }
-
-        public void SnapAllToTerrain(TerrainChunk terrain)
-        {
-            foreach (var obj in _objects) SnapToTerrain(obj, terrain);
-        }
-
         public List<GltfObject> GetObjects() => _objects;
 
         /// <summary>
@@ -1011,7 +977,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
 
                 var color = IsAABBInFrustum(frustum, obj.WorldAABB) ? insideColor : outsideColor;
-                TerrainChunk.DrawCapsuleWireframe(pos, capRadius, capHeight, color, camera);
+                Helpers.DebugDraw.DrawCapsuleWireframe(pos, capRadius, capHeight, color, camera);
             }
 
             foreach (var manager in staticObjectManagers)
@@ -1021,7 +987,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     foreach (var sobj in manager.GetObjects())
                     {
                         var color = IsAABBInFrustum(frustum, sobj.CachedWorldAABB) ? insideColor : outsideColor;
-                        TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, color, camera);
+                        Helpers.DebugDraw.DrawAABBWireframe(sobj.CachedWorldAABB, color, camera);
                     }
                 }
             }

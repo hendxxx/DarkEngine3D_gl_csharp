@@ -28,8 +28,6 @@ public class IDEBridge
     public int StaticObjectCount { get; set; }
     public float Fps { get; set; }
     public float FrameMs { get; set; }
-    /// <summary>Terrain render time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
-    public float RenderTerrainMs { get; set; }
     /// <summary>Objects render time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
     public float RenderObjectsMs { get; set; }
     /// <summary>Post-process pass time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
@@ -493,28 +491,6 @@ public class IDEBridge
         }
     }
 
-    /// <summary>Resolve the terrain the height-overlay toggles (heatmap/contours) should act
-    /// on. Returns the currently selected terrain if there is one; otherwise auto-selects the
-    /// first visible terrain-enabled plane so the toggles work without manually selecting the
-    /// plane first. Shared by the viewport toolbar (Shade/Contours) and the Inspector.</summary>
-    public EditorObject? ResolveTerrainForOverlay()
-    {
-        if (SelectedEditorObject is { TerrainEnabled: true } sObj)
-            return sObj;
-
-        if (EditorObjectManager != null)
-        {
-            foreach (var obj in EditorObjectManager.Objects)
-            {
-                if (obj is { TerrainEnabled: true, IsVisible: true })
-                {
-                    SelectEditorObject(obj);
-                    return obj;
-                }
-            }
-        }
-        return null;
-    }
 
     /// <summary>Toggle an object in the multi-selection set (Ctrl+Click). If the removed object
     /// was the primary, the last remaining member becomes the new primary.</summary>
@@ -587,35 +563,6 @@ public class IDEBridge
     /// old/new world direction ride along so Ctrl+Z can revert both. HierarchyPanel records
     /// this as an undo/redo action.</summary>
     public Action<EditorObject, float?, float?, float?, float?, EditorObject?, Vector3?, Vector3?>? OnSkySunChanged { get; set; }
-
-    // ── Terrain brush paint tool (ViewportPanel) ──
-    /// <summary>True while the terrain brush tool is active in the viewport
-    /// (toolbar button only — keyboard shortcuts are disabled). Left-drag raises,
-    /// Ctrl+left-drag lowers.</summary>
-    public bool TerrainBrushActive { get; set; }
-    /// <summary>Active brush tool: 0 = sculpt (raise/lower), 1 = paint, 2 = smooth, 3 = flatten.</summary>
-    public int TerrainBrushMode { get; set; } = 0;
-    /// <summary>Active paint layer index (0-3).</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 0;
-    /// <summary>Called by ViewportPanel when a terrain height-paint stroke ends (for undo support).
-    /// Passes the painted object plus the height snapshots taken BEFORE and AFTER the stroke
-    /// (a no-op stroke with identical arrays is filtered out by HierarchyPanel).</summary>
-    public Action<EditorObject, float[], float[]>? OnTerrainPainted { get; set; }
-    /// <summary>Called by ViewportPanel when a terrain LAYER-paint stroke ends (for undo support).
-    /// Passes the painted object plus the splat snapshots taken BEFORE and AFTER the stroke.</summary>
-    public Action<EditorObject, byte[], byte[]>? OnTerrainLayerPainted { get; set; }
-
-    // ── PBR splat terrain (paintable multi-texture plane) ──
-    /// <summary>Brush targets the PBR-plane splat/sculpt system instead of the legacy terrain.</summary>
-    public bool PbrSplatBrushActive { get; set; }
-    /// <summary>0 = Sculpt height (raise/lower with Ctrl), 1 = Paint layer, 2 = Smooth, 3 = Flatten.</summary>
-    public int PbrSplatBrushMode { get; set; } = 0;
-    /// <summary>Layer painted by the splat brush (0..3).</summary>
-    public int PbrSplatPaintLayerIndex { get; set; } = 0;
-    /// <summary>Splat-paint stroke ended (undo) — splat snapshots before/after.</summary>
-    public Action<EditorObject, byte[], byte[]>? OnPbrSplatPainted { get; set; }
-    /// <summary>Sculpt stroke ended (undo) — height snapshots before/after.</summary>
-    public Action<EditorObject, float[], float[]>? OnPbrSculpted { get; set; }
 
     // ── Viewport mouse state (tracked per frame for 3D gizmo interaction) ──
     /// <summary>True when the left mouse button is held down over the viewport.</summary>

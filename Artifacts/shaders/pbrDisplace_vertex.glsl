@@ -21,8 +21,6 @@ uniform mat4 view;
 uniform mat4 projection;
 
 uniform sampler2D heightMap;                 // unit 5 (bound by DrawPbrPrimitive)
-uniform sampler2D terrainHeightMap;          // unit 15 — TERRAIN elevation (separate from the POM map)
-uniform float u_terrainDisplace = 0.0;       // 1 = displacement reads terrainHeightMap instead of heightMap
 uniform float u_vertexDisplace = 0.0;        // 1 = displace this draw
 uniform float u_dispScale = 0.15;            // peak height in world units
 uniform float u_dispGrid = 256.0;            // tessellation segments per side
@@ -36,9 +34,8 @@ uniform vec2 u_uvOffset[7];
 // (Marmoset: smooth microscopic surface noise to prevent displacement
 // tearing across polygon vertices) keeps vertices from spiking on per-pixel
 // 4K noise the 256² grid can't represent anyway.
-// Height sampling for DISPLACEMENT. Two sources: the POM height map (unit 5, full
-// Marmoset calibration) and the TERRAIN elevation (unit 15, RAW 0..1 — an authored
-// terrain heightmap IS the elevation, it must not be re-calibrated as a detail map).
+// Height sampling for DISPLACEMENT — the POM height map (unit 5) with full
+// Marmoset calibration.
 float dispHeightRaw(sampler2D tex, vec2 uv) {
     vec2 o = 0.75 / vec2(textureSize(tex, 0));
     return (texture(tex, uv).r * 2.0
@@ -57,13 +54,9 @@ float dispHeight(vec2 uv) {
     return clamp(h - u_heightAdvance.w, 0.0, 1.0);
 }
 
-float terrainHeight(vec2 uv) {
-    return clamp(dispHeightRaw(terrainHeightMap, uv), 0.0, 1.0);
-}
-
-// Active displacement source (terrain elevation wins when the plane has one).
+// Active displacement source.
 float displaceSource(vec2 uv) {
-    return u_terrainDisplace > 0.5 ? terrainHeight(uv) : dispHeight(uv);
+    return dispHeight(uv);
 }
 
 void main() {

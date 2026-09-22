@@ -48,7 +48,7 @@ void main()
 
     // Anti-acne: push the vertex slightly along its WORLD-space normal AFTER the model
     // transform. Extruding in model space (aPos + n*bias, then × model) makes the world
-    // offset anisotropic under non-uniform scale — a terrain scaled (500,1,500) gets a
+    // offset anisotropic under non-uniform scale — a plane scaled (500,1,500) gets a
     // 500× larger XZ extrusion than Y, so no single bias value fixes both acne (needs
     // more Y) and peter-panning (XZ detaches the shadow). World-space extrusion is
     // uniform in every direction, so u_NormalBias is directly in world units.

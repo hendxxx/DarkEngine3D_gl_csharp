@@ -8,7 +8,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 /// <summary>
 /// Render Time panel — shows a detailed breakdown of how long each object took
 /// to render in the last frame, plus the overall render-stage timings
-/// (terrain / objects / post-process / total). Useful for finding perf hotspots.
+/// (objects / post-process / total). Useful for finding perf hotspots.
 /// </summary>
 public class RenderTimePanel
 {
@@ -52,13 +52,10 @@ public class RenderTimePanel
         // ── Overall render-stage breakdown ──
         if (ImGui.CollapsingHeader("Stage Breakdown", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            float terrain = _bridge.RenderTerrainMs;
             float objects = _bridge.RenderObjectsMs;
             float total = _bridge.RenderTotalMs;
-            if (total < 0.0001f) total = terrain + objects;
+            if (total < 0.0001f) total = objects;
 
-            DrawStageRow("Terrain", terrain, total);
-            DrawTerrainStatsDetail();
             DrawStageRow("Objects", objects, total);
             ImGui.Separator();
             DrawStageRow("Total", total, total, bold: true);
@@ -229,45 +226,6 @@ public class RenderTimePanel
         {
             _perfSumOff += dtMs;
             _perfFramesOff++;
-        }
-    }
-
-    /// <summary>Show the editor terrain mesh stats under the Terrain stage row: total
-    /// triangles across all terrain planes, plane count, and a per-plane breakdown when
-    /// a plane is selected (triangles + chunk layout). Lets you see how much detail the
-    /// terrain mesh actually carries, next to its render time.</summary>
-    private void DrawTerrainStatsDetail()
-    {
-        var mgr = _bridge.EditorObjectManager;
-        if (mgr == null || mgr.Objects.Count == 0)
-        {
-            ImGui.TextDisabled("  No terrain planes in this editor scene");
-            return;
-        }
-
-        int totalTri = 0;
-        int planeCount = 0;
-        EditorObject? selected = null;
-        foreach (var obj in mgr.Objects)
-        {
-            if (obj.PrimitiveType != EditorPrimitiveType.Plane || !obj.TerrainEnabled) continue;
-            planeCount++;
-            totalTri += obj.TerrainTriangleCount;
-            if (_bridge.SelectedEditorObjects.Contains(obj))
-                selected = obj;
-        }
-
-        if (planeCount == 0)
-        {
-            ImGui.TextDisabled("  No terrain planes in this editor scene");
-            return;
-        }
-
-        ImGui.TextDisabled($"  Triangles: {totalTri:N0}  ·  {planeCount} plane(s)");
-        if (selected != null)
-        {
-            ImGui.TextDisabled($"  Selected '{selected.Name}': {selected.TerrainTriangleCount:N0} tris");
-            ImGui.TextDisabled($"    {selected.TerrainChunksPerSide}×{selected.TerrainChunksPerSide} chunks × {selected.TerrainChunkSize}×{selected.TerrainChunkSize} grid");
         }
     }
 

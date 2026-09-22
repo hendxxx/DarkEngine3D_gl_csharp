@@ -25,16 +25,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         static uint shadowSkinnedShaderProgram;
         static uint shadowStaticAlphaShaderProgram;
 
-        // Editor terrain (Plane → advanced terrain) — separate program so the game's
-        // terrain fragment shader (with hardcoded height/slope bands) stays untouched.
-        static uint editorTerrainShaderProgram;
-
         // Editor primitives with a PBR material (Box/Sphere/flat plane) — dedicated
         // program with 7 optional maps + tuning (reuses the shared vertex shader).
         static uint objectPbrShaderProgram;
         static uint objectPbrDisplaceShaderProgram;
-        static uint objectPbrSplatShaderProgram;
-        static uint objectPbrSplatDisplaceShaderProgram;
 
 #pragma warning disable CS0649
         static uint rainStreakShaderProgram;
@@ -125,11 +119,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
                 "Artifacts/shaders/shadow_static_vertex.glsl",
                 "Artifacts/shaders/shadow_static_alpha_fragment.glsl");
 
-            // Terrain editor shader
-            editorTerrainShaderProgram = Helpers.ShaderHelpers.SafeLoad(
-                "Artifacts/shaders/vertex_shader.glsl",
-                "Artifacts/shaders/terrainEditor_fragment.glsl");
-
             // PBR object shader
             objectPbrShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/vertex_shader.glsl",
@@ -141,17 +130,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             objectPbrDisplaceShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/pbrDisplace_vertex.glsl",
                 "Artifacts/shaders/objectPbr_fragment.glsl");
-
-            // PBR object shader with SPLAT painting (4-layer painted multi-texture):
-            // same objectPbr fragment pipeline plus a splat-map albedo blend. Loaded
-            // flat AND displaced — the splat add-on must survive the Vertex
-            // Displacement toggle (displaced variant shares pbrDisplace vertex stage).
-            objectPbrSplatShaderProgram = Helpers.ShaderHelpers.SafeLoad(
-                "Artifacts/shaders/vertex_shader.glsl",
-                "Artifacts/shaders/objectPbrSplat_fragment.glsl");
-            objectPbrSplatDisplaceShaderProgram = Helpers.ShaderHelpers.SafeLoad(
-                "Artifacts/shaders/pbrDisplace_vertex.glsl",
-                "Artifacts/shaders/objectPbrSplat_fragment.glsl");
         }
 
         public void Use()
@@ -174,12 +152,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             return shadowStaticAlphaShaderProgram;
         }
 
-        /// <summary>Shader program used to render editor terrain planes (custom 4-layer texturing).</summary>
-        public static uint GetEditorTerrainShaderProgram()
-        {
-            return editorTerrainShaderProgram;
-        }
-
         /// <summary>Shader program used to render editor primitives with a PBR material
         /// (optional albedo/normal/metallic/roughness/AO/height/emission maps + tuning).</summary>
         public static uint GetObjectPbrShaderProgram()
@@ -193,12 +165,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         {
             return objectPbrDisplaceShaderProgram;
         }
-
-        /// <summary>PBR object shader + painted 4-layer splat blend (plane terrain).</summary>
-        public static uint GetObjectPbrSplatShaderProgram() => objectPbrSplatShaderProgram;
-
-        /// <summary>Splat + geometric displacement variant (dense painted planes).</summary>
-        public static uint GetObjectPbrSplatDisplaceShaderProgram() => objectPbrSplatDisplaceShaderProgram;
 
         public static uint GetRainStreakShaderProgram()
         {

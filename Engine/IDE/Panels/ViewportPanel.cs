@@ -109,17 +109,8 @@ public unsafe class ViewportPanel
     private const int FxDebugLuma = 3;
     private const int FxDebugMipBase = 4;
 
-    //  Terrain brush paint state 
     /// <summary>Object being painted in the current brush stroke (null = no stroke).</summary>
-    private EditorObject? _brushObj = null;
     /// <summary>Height snapshot taken when the stroke began (for undo, // modes).</summary>
-    private float[]? _brushBefore = null;
-    /// <summary>Target (normalized 0..1) height captured from the first stamp of the current
-    ///  flatten stroke  the terrain is leveled toward it (Unreal-style flatten).</summary>
-    private float _flattenTargetNorm = 0f;
-    /// <summary>True once <see cref="_flattenTargetNorm"/> was captured for the current stroke
-    /// (guard: never flatten toward a stale/zero target if the capture ray missed).</summary>
-    private bool _flattenTargetReady = false;
 
     //  Sky sun gizmo drag state 
     /// <summary>Sky object whose sun handle is being dragged (null = not dragging).</summary>
@@ -133,82 +124,6 @@ public unsafe class ViewportPanel
     private EditorObject? _skySunDragLightObj = null;
     /// <summary>Light marker direction captured when the drag started (for undo).</summary>
     private Vector3? _skySunDragOldLightDir = null;
-    /// <summary>Splat snapshot taken when the stroke began (for undo,  mode).</summary>
-    private byte[]? _brushSplatBefore = null;
-    // PBR-plane splat terrain brush state (parallel to the legacy terrain brush).
-    private byte[]? _pbrSplatBefore = null;
-    private float[]? _pbrHeightBefore = null;
-    /// <summary>Terrain currently showing the 3D brush ring (cleared when the hover moves
-    /// or the brush tool is turned off, so no stale ring is left behind).</summary>
-    private EditorObject? _brushIndicatorObj = null;
-
-    /// <summary>Colors of the 4 paintable layers  used for the
-    /// toolbar chips and the brush cursor while painting.</summary>
-    private static readonly Vector4[] TerrainLayerColors =
-    [
-        new(0.20f, 0.50f, 0.85f, 1f), // Layer 1
-        new(0.60f, 0.45f, 0.28f, 1f), // Layer 2
-        new(0.30f, 0.65f, 0.30f, 1f), // Layer 3
-        new(0.90f, 0.93f, 0.98f, 1f), // Layer 4
-    ];
-
-    /// <summary>Hide the 3D brush ring on whichever terrain is currently showing it.</summary>
-    private void ClearBrushIndicator()
-    {
-        if (_brushIndicatorObj != null)
-        {
-            _brushIndicatorObj.ShowBrushIndicator = false;
-            _brushIndicatorObj = null;
-        }
-    }
-
-    /// <summary>Activate the terrain brush tool in the given mode (0= sculpt, 1= layer
-    /// paint, 2= smooth, 3= flatten), clearing any in-progress stroke and disabling fly
-    /// mouse-look (both use the mouse, so painting must never rotate the camera).</summary>
-    private void EnableTerrainBrush(int mode)
-    {
-        _bridge.TerrainBrushMode = mode;
-        _bridge.TerrainBrushActive = true;
-        _brushObj = null;
-        _brushBefore = null;
-        _brushSplatBefore = null;
-        _pbrSplatBefore = null;
-        _pbrHeightBefore = null;
-        _flattenTargetNorm = 0f;
-        _flattenTargetReady = false;
-        // Abort any in-flight sky sun drag  the brush owns the mouse now.
-        _skySunDragObj = null;
-        _skySunDragOldPitch = null;
-        _skySunDragOldYaw = null;
-        _skySunDragLightObj = null;
-        _skySunDragOldLightDir = null;
-        ClearBrushIndicator();
-        if (_bridge.Camera != null)
-            _bridge.Camera.FlyMouseLook = false;
-    }
-
-    /// <summary>Toggle a terrain brush tool on/off (mode: 0= sculpt, 1= paint,
-    /// 2= smooth, 3= flatten). Turning the active tool off clears the stroke state.</summary>
-    private void ToggleTerrainBrushMode(int mode)
-    {
-        if (_bridge.TerrainBrushActive && _bridge.TerrainBrushMode == mode)
-        {
-            _bridge.TerrainBrushActive = false;
-            _brushObj = null;
-            _brushBefore = null;
-            _brushSplatBefore = null;
-        _pbrSplatBefore = null;
-        _pbrHeightBefore = null;
-            _flattenTargetNorm = 0f;
-            _flattenTargetReady = false;
-            ClearBrushIndicator();
-        }
-        else
-        {
-            EnableTerrainBrush(mode);
-        }
-    }
-
 
     //  Cached conversion data (set each frame in overlay) 
     private Vector2 _imageMin, _imageMax, _imageSize;
@@ -1901,15 +1816,12 @@ public unsafe class ViewportPanel
             ResetSceneOverlays();
             // Return players to their Start2D marker before showing the editor again.
             _bridge.ResetPlayersToStart2D();
-            _bridge.TerrainBrushActive = false;
-            _bridge.TerrainBrushMode = 0;
             _bridge.GizmoMode = 0;
             if (_bridge.EditorGizmo != null)
             {
                 _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
                 _bridge.EditorGizmo.EndDrag();
             }
-            ClearBrushIndicator();
         }
         else if (_bridge.InGameActive)
         {
@@ -2291,23 +2203,17 @@ public unsafe class ViewportPanel
             {
                 //  Entering Preview mode 
                 ResetSceneOverlays();
-                ClearBrushIndicator();
-                _bridge.TerrainBrushActive = false;
-                _bridge.TerrainBrushMode = 0;
             }
             else if (!value && _previewMode)
             {
                 //  Exiting Preview mode (back to Edit) 
                 // Reset all edit-mode actions to default/off
-                _bridge.TerrainBrushActive = false;
-                _bridge.TerrainBrushMode = 0;
                 _bridge.GizmoMode = 0; // Translate (default)
                 if (_bridge.EditorGizmo != null)
                 {
                     _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
                     _bridge.EditorGizmo.EndDrag();
                 }
-                ClearBrushIndicator();
             }
             _previewMode = value;
             // Set preview mode flag  hides editor gizmos/helpers without changing camera behavior.
@@ -2349,24 +2255,17 @@ public unsafe class ViewportPanel
             // ── Entering Preview mode ──
             ResetSceneOverlays();
             // Hide brush ring so it can't leak into game view
-            ClearBrushIndicator();
-            // Turn off terrain brush in preview
-            _bridge.TerrainBrushActive = false;
-            _bridge.TerrainBrushMode = 0;
         }
         else
         {
             // ── Exiting Preview mode (back to Edit) ──
             // Reset all edit-mode actions to default/off
-            _bridge.TerrainBrushActive = false;
-            _bridge.TerrainBrushMode = 0;
             _bridge.GizmoMode = 0; // Translate (default)
             if (_bridge.EditorGizmo != null)
             {
                 _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
                 _bridge.EditorGizmo.EndDrag();
             }
-            ClearBrushIndicator();
         }
         PreviewMode = !_previewMode;
     }
@@ -3165,7 +3064,6 @@ ImGui.TextColored(new Vector4(0.3f, 0.9f, 1.0f, 1f),
                         $"{selReadout.GetIcon()} ({selReadout.X:F0},{selReadout.Y:F0}) [{selReadout.Width:F0}{selReadout.Height:F0}] S:{selReadout.FontSize:F0}");
                 }
 
-                //  Editor tool buttons (gizmo mode, fly, reset, snap, terrain brushes,
                 // shade/contours, grid, shadow) moved to the floating LEFT toolbar 
                 // see DrawViewportLeftToolbar(). Camera view presets also live there via
                 // the floating  Views overlay. 
@@ -3465,15 +3363,12 @@ ImGui.SameLine();
                     // Return players to their Start2D marker before showing the editor again.
                     _bridge.ResetPlayersToStart2D();
                     // Reset all edit-mode actions to default/off
-                    _bridge.TerrainBrushActive = false;
-                    _bridge.TerrainBrushMode = 0;
                     _bridge.GizmoMode = 0; // Translate (default)
                     if (_bridge.EditorGizmo != null)
                     {
                         _bridge.EditorGizmo.Mode = TransformGizmo.GizmoMode.Translate;
                         _bridge.EditorGizmo.EndDrag();
                     }
-                    ClearBrushIndicator();
                     Console.WriteLine("[Viewport] Exited preview mode via badge click");
                 }
             } // end if (_previewMode) badge block
@@ -4170,7 +4065,6 @@ ImGui.SameLine();
 
             //  Popup suppress: block all scene interactions when a popup/menu
             // is open, AND for 2 frames after it closes (prevents the click that
-            // closed the menu from leaking into the terrain brush, gizmo, etc.) 
             bool anyPopupOpen = ImGui.IsPopupOpen(null, ImGuiPopupFlags.AnyPopupId);
             if (anyPopupOpen) _wasPopupOpen = true;
             if (_wasPopupOpen && !anyPopupOpen && _postPopupFrames <= 0)
@@ -4187,7 +4081,6 @@ ImGui.SameLine();
                                   viewportMouseScreen.Y >= _imageMin.Y && viewportMouseScreen.Y <= _imageMax.Y;
 
             // Modal overlay: a visible root-level Container owns ALL input — the 3D
-            // world behind it (picking, painting, sculpting, gizmo, marquee) is inert.
             bool worldInputBlocked = _bridge.IsOverlayVisible;
 
             if (mouseOverImage)
@@ -4294,353 +4187,6 @@ ImGui.SameLine();
                 _bridge.IsViewportClicked = false;
                 _bridge.HoveredMapTileWorld = null;   // DoF focus targets only track
                 _bridge.HoveredEditorObjectWorld = null; // while the cursor is in the viewport
-            }
-
-            // ══ PBR SPLAT TERRAIN BRUSH — click-drag to sculpt height / paint splat
-            //    layers on the PBR plane (paintable multi-texture). Same viewport
-            //    integration as the legacy terrain brush: runs before selection so a
-            //    stroke never changes it, Ctrl inverts (lower/erase), Shift = fine.
-            if (!_previewMode && _bridge.PbrSplatBrushActive && hasSceneTexture
-                && _bridge.EditorObjectManager != null && _bridge.Camera != null
-                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
-                && !suppressInput && !worldInputBlocked && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
-            {
-                var cam = _bridge.Camera;
-                var mgr = _bridge.EditorObjectManager;
-                int vpw = _bridge.SceneTextureWidth;
-                int vph = _bridge.SceneTextureHeight;
-
-                _bridge.IsViewportClicked = false;   // brush owns the click
-
-                float glMouseY = vph - _bridge.ViewportMouseY;
-                cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
-                    out Vector3 rayOrigin, out Vector3 rayDir);
-
-                EditorObject? hoverSplat = null;
-                Vector3? hoverSplatPoint = null;
-                float bestSplatDist = float.MaxValue;
-                foreach (var o in mgr.Objects)
-                {
-                    if (o == null || !o.IsVisible || !o.SplatPaintSupported) continue;
-                    if (o.RaycastPbrPlaneSurface(rayOrigin, rayDir) is Vector3 pt)
-                    {
-                        float d = Vector3.DistanceSquared(cam.Position, pt);
-                        if (d < bestSplatDist)
-                        {
-                            bestSplatDist = d;
-                            hoverSplat = o;
-                            hoverSplatPoint = pt;
-                        }
-                    }
-                }
-
-                bool mouseInView = mouseOverImage && _bridge.ViewportMouseX >= 0f && _bridge.ViewportMouseY >= 0f;
-                bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
-                bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
-                int splatMode = _bridge.PbrSplatBrushMode;
-                bool paintMode = splatMode == 1;
-
-                float brushDt = Math.Clamp(ImGui.GetIO().DeltaTime, 0.004f, 0.1f);
-                float fineMult = ImGui.GetIO().KeyShift ? 0.15f : 1f;
-                float brushSpeed = brushDt * 60f * fineMult;
-
-                if (leftDown && mouseInView && hoverSplatPoint.HasValue && hoverSplat != null)
-                {
-                    if (_brushObj == null)
-                    {
-                        _brushObj = hoverSplat;
-                        if (paintMode)
-                        {
-                            _pbrSplatBefore = hoverSplat.CaptureSplat();
-                            hoverSplat.SplatPaintLayerIndex = _bridge.PbrSplatPaintLayerIndex;
-                        }
-                        else
-                        {
-                            _pbrHeightBefore = hoverSplat.CapturePbrHeights() ?? [];
-                            if (splatMode == 0)
-                                hoverSplat.EnableSculpt();   // first sculpt stroke builds the runtime buffer
-                        }
-                        if (splatMode == 3 && hoverSplat.TryGetPbrNormalizedHeight(rayOrigin, rayDir, out float flatNorm))
-                        {
-                            _flattenTargetNorm = flatNorm;
-                            _flattenTargetReady = true;
-                        }
-                        _bridge.SelectEditorObject(hoverSplat);
-                        _bridge.SelectedUIElement = null;
-                        Console.WriteLine($"[Viewport] PBR splat stroke started on '{hoverSplat.Name}' (mode {splatMode})");
-                    }
-                    if (_brushObj == hoverSplat)
-                    {
-                        switch (splatMode)
-                        {
-                            case 1: // paint layer — Ctrl erases the layer's weight
-                            {
-                                bool erase = ImGui.GetIO().KeyCtrl;
-                                hoverSplat.TryPaintSplatSurface(rayOrigin, rayDir,
-                                    _bridge.PbrSplatPaintLayerIndex, hoverSplat.SplatPaintStrength, erase, out _);
-                                break;
-                            }
-                            case 2: // smooth
-                                hoverSplat.TrySmoothPbrHeight(rayOrigin, rayDir,
-                                    hoverSplat.TerrainBrushStrength * brushSpeed * 0.1f, out _);
-                                break;
-                            case 3: // flatten toward the stroke-start height
-                                if (_flattenTargetReady)
-                                    hoverSplat.TryFlattenPbrHeight(rayOrigin, rayDir, _flattenTargetNorm,
-                                        hoverSplat.TerrainBrushStrength * brushSpeed * 0.1f, out _);
-                                break;
-                            default: // sculpt — drag raises, Ctrl lowers
-                            {
-                                bool lowering = ImGui.GetIO().KeyCtrl;
-                                float delta = (lowering ? -1f : 1f) * hoverSplat.TerrainBrushStrength * brushSpeed * 0.02f;
-                                hoverSplat.TryPaintPbrHeight(rayOrigin, rayDir, delta, out _);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (_brushObj != null && (!leftDown || leftReleased))
-                {
-                    if (paintMode)
-                    {
-                        var afterSplat = _brushObj.CaptureSplat();
-                        if (_pbrSplatBefore != null && afterSplat != null)
-                            _bridge.OnPbrSplatPainted?.Invoke(_brushObj, _pbrSplatBefore, afterSplat);
-                    }
-                    else if (_pbrHeightBefore is { Length: > 0 })
-                    {
-                        var after = _brushObj.CapturePbrHeights();
-                        if (after != null)
-                            _bridge.OnPbrSculpted?.Invoke(_brushObj, _pbrHeightBefore, after);
-                    }
-                    _brushObj = null;
-                    _pbrSplatBefore = null;
-                    _pbrHeightBefore = null;
-                }
-
-                // 3D brush ring on the displaced surface + Ctrl+scroll resize.
-                if (hoverSplat != null && hoverSplatPoint.HasValue)
-                {
-                    hoverSplat.BrushIndicatorPos = hoverSplatPoint.Value;
-                    hoverSplat.ShowBrushIndicator = true;
-                    if (_brushIndicatorObj != null && _brushIndicatorObj != hoverSplat)
-                        _brushIndicatorObj.ShowBrushIndicator = false;
-                    _brushIndicatorObj = hoverSplat;
-
-                    bool brushScroll = _bridge.ViewportCtrlHeld;
-                    if (brushScroll)
-                    {
-                        float wheel = ImGui.GetIO().MouseWheel;
-                        if (wheel != 0f)
-                        {
-                            hoverSplat.TerrainBrushSize = Math.Clamp(
-                                hoverSplat.TerrainBrushSize * (1f + wheel * 0.08f), 0.02f, 5f);
-                        }
-                    }
-                }
-                else if (_brushIndicatorObj != null)
-                {
-                    _brushIndicatorObj.ShowBrushIndicator = false;
-                    _brushIndicatorObj = null;
-                }
-            }
-
-            //  Terrain brush: click-drag to raise/lower terrain height in real-time 
-            // Runs before marquee/select/gizmo so a paint stroke never changes the selection.
-            // Skipped when: popup/menu is open or just closed (modal mode),
-            // or mouse is over the left toolbar / Views button (toolbar clicks must not sculpt).
-            if (!_previewMode && _bridge.TerrainBrushActive && hasSceneTexture
-                && _bridge.EditorObjectManager != null && _bridge.Camera != null
-                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
-                && !suppressInput && !worldInputBlocked && !IsMouseOverLeftToolbar() && !IsMouseOverViewportViewsButton())
-            {
-                var cam = _bridge.Camera;
-                var mgr = _bridge.EditorObjectManager;
-                int vpw = _bridge.SceneTextureWidth;
-                int vph = _bridge.SceneTextureHeight;
-
-                // Brush tool on → clicks never select/deselect.
-                _bridge.IsViewportClicked = false;
-
-                // Ray under the cursor (GL Y-up).
-                float glMouseY = vph - _bridge.ViewportMouseY;
-                cam.ScreenToRay(_bridge.ViewportMouseX, glMouseY, vpw, vph,
-                    out Vector3 rayOrigin, out Vector3 rayDir);
-
-                // Closest advanced-terrain surface under the cursor (ignores other objects).
-                EditorObject? hoverTerrain = null;
-                Vector3? hoverPoint = null;
-                float bestDist = float.MaxValue;
-                foreach (var o in mgr.Objects)
-                {
-                    if (o == null || !o.IsVisible || !o.TerrainEnabled) continue;
-                    if (o.RaycastTerrainSurface(rayOrigin, rayDir) is Vector3 pt)
-                    {
-                        float d = Vector3.DistanceSquared(cam.Position, pt);
-                        if (d < bestDist)
-                        {
-                            bestDist = d;
-                            hoverTerrain = o;
-                            hoverPoint = pt;
-                        }
-                    }
-                }
-
-                bool mouseInView = mouseOverImage && _bridge.ViewportMouseX >= 0f && _bridge.ViewportMouseY >= 0f;
-                bool leftDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
-                bool leftReleased = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
-                int brushMode = _bridge.TerrainBrushMode;
-                bool paintMode = brushMode == 1;
-
-                // Frame-rate independent stamping (Unreal-style): strength is defined per
-                // 60fps-frame, so the same drag speed sculpts the same amount at any FPS.
-                // Holding Shift scales strength down for fine, precise strokes.
-                float brushDt = Math.Clamp(ImGui.GetIO().DeltaTime, 0.004f, 0.1f);
-                float fineMult = ImGui.GetIO().KeyShift ? 0.15f : 1f;
-                float brushSpeed = brushDt * 60f * fineMult;
-
-                // Begin a paint stroke on first press over a terrain.
-                if (leftDown && mouseInView && hoverPoint.HasValue && hoverTerrain != null)
-                {
-                    if (_brushObj == null)
-                    {
-                        _brushObj = hoverTerrain;
-                        if (paintMode)
-                        {
-                            _brushSplatBefore = hoverTerrain.CaptureTerrainSplat();
-                            // Remember the active layer on this terrain too.
-                            hoverTerrain.TerrainPaintLayerIndex = _bridge.TerrainPaintLayerIndex;
-                        }
-                        else
-                        {
-                            _brushBefore = hoverTerrain.CaptureTerrainHeights();
-                        }
-                        // Flatten levels toward the height of the FIRST stamp of the stroke.
-                        if (brushMode == 3 && hoverTerrain.TryGetTerrainNormalizedHeight(rayOrigin, rayDir, out float flattenNorm))
-                        {
-                            _flattenTargetNorm = flattenNorm;
-                            _flattenTargetReady = true;
-                        }
-                        // Select the painted terrain so its settings show in the Inspector.
-                        _bridge.SelectEditorObject(hoverTerrain);
-                        _bridge.SelectedUIElement = null;
-                        Console.WriteLine($"[Viewport] Brush stroke started on '{hoverTerrain.Name}' (mode {brushMode})");
-                    }
-                    if (_brushObj == hoverTerrain)
-                    {
-                        switch (brushMode)
-                        {
-                            case 1: //  layer paint  Ctrl erases (decays weights).
-                            {
-                                bool erase = ImGui.GetIO().KeyCtrl;
-                                hoverTerrain.TryPaintLayerSurface(rayOrigin, rayDir,
-                                    _bridge.TerrainPaintLayerIndex, hoverTerrain.TerrainPaintStrength, erase, out _);
-                                break;
-                            }
-                            case 2: //  smooth  blend heights toward their local average.
-                            {
-                                hoverTerrain.TrySmoothTerrainSurface(rayOrigin, rayDir,
-                                    hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
-                                break;
-                            }
-                            case 3: //  flatten  blend toward the stroke's target height.
-                            {
-                                if (_flattenTargetReady)
-                                    hoverTerrain.TryFlattenTerrainSurface(rayOrigin, rayDir, _flattenTargetNorm,
-                                        hoverTerrain.TerrainBrushStrength * brushSpeed, out _);
-                                break;
-                            }
-                            default: //  sculpt  Ctrl lowers, plain drag raises.
-                            {
-                                bool lowering = ImGui.GetIO().KeyCtrl;
-                                float delta = (lowering ? -1f : 1f) * hoverTerrain.TerrainBrushStrength * brushSpeed;
-                                hoverTerrain.TryPaintTerrainSurface(rayOrigin, rayDir, delta, out _);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // End the stroke: capture the after-state and record undo.
-                if (_brushObj != null && (!leftDown || leftReleased))
-                {
-                    if (paintMode)
-                    {
-                        var afterSplat = _brushObj.CaptureTerrainSplat();
-                        if (_brushSplatBefore != null && afterSplat != null)
-                            _bridge.OnTerrainLayerPainted?.Invoke(_brushObj, _brushSplatBefore, afterSplat);
-                    }
-                    else
-                    {
-                        var after = _brushObj.CaptureTerrainHeights();
-                        if (_brushBefore != null && after != null)
-                            _bridge.OnTerrainPainted?.Invoke(_brushObj, _brushBefore, after);
-                    }
-                    _brushObj = null;
-                    _brushBefore = null;
-                    _brushSplatBefore = null;
-        _pbrSplatBefore = null;
-        _pbrHeightBefore = null;
-                }
-
-                //  3D brush ring ON the terrain surface + Ctrl+scroll resize 
-                {
-                    // The ring color + transparency come from the terrain's own properties
-                    // (editable in the Terrain Brush panel and saved with the scene)  the
-                    // viewport no longer overrides them per tool.
-                    if (hoverTerrain != null && hoverPoint.HasValue)
-                    {
-                        hoverTerrain.BrushIndicatorPos = hoverPoint.Value;
-                        hoverTerrain.ShowBrushIndicator = true;
-                        if (_brushIndicatorObj != null && _brushIndicatorObj != hoverTerrain)
-                            _brushIndicatorObj.ShowBrushIndicator = false;
-                        _brushIndicatorObj = hoverTerrain;
-
-                        // Ctrl + scroll = bigger / smaller brush. Only intercept scroll when
-                        // the brush tool is actually active AND Ctrl is held; otherwise let
-                        // scroll pass through to camera zoom.
-                        bool brushScroll = _bridge.TerrainBrushActive && _bridge.ViewportCtrlHeld;
-                        if (brushScroll)
-                        {
-                            float wheel = ImGui.GetIO().MouseWheel;
-                            if (wheel != 0f)
-                            {
-                                hoverTerrain.TerrainBrushSize = Math.Clamp(
-                                    hoverTerrain.TerrainBrushSize * (1f + wheel * 0.08f), 0.5f, 200f);
-                                Console.WriteLine($"[Viewport] Brush size → {hoverTerrain.TerrainBrushSize:F1}");
-                            }
-                        }
-                    }
-                    else if (_brushIndicatorObj != null)
-                    {
-                        _brushIndicatorObj.ShowBrushIndicator = false;
-                        _brushIndicatorObj = null;
-                    }
-                }
-
-                //  Brush cursor overlay: the ortho (screen-space) circle is GONE  only
-                // the 3D translucent ring on the terrain surface (DrawTerrainBrushIndicator)
-                // shows the brush area, using the user-editable ring color. A tiny center
-                // dot + size readout remain so the exact hover point and radius are visible.
-                if (hoverPoint.HasValue && hoverTerrain != null)
-                {
-                    var p = TransformGizmo.ProjectToScreen(cam, hoverPoint.Value, vpw, vph);
-                    if (p.X >= 0f && p.X <= vpw && p.Y >= 0f && p.Y <= vph)
-                    {
-                        var center = SceneToScreen(p.X, vph - p.Y);
-                        uint col = ImGui.ColorConvertFloat4ToU32(
-                            new Vector4(hoverTerrain.BrushIndicatorColor, 0.95f));
-                        var dl = ImGui.GetWindowDrawList();
-                        dl.AddCircleFilled(center, 2.5f, col);
-
-                        // Brush size readout under the cursor (resize with Ctrl+scroll).
-                        string sizeLabel = $"Brush {hoverTerrain.TerrainBrushSize:F1}  Ctrl+Scroll";
-                        var sizeSize = ImGui.CalcTextSize(sizeLabel);
-                        dl.AddText(center + new Vector2(-sizeSize.X * 0.5f, 14f),
-                            ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.95f)), sizeLabel);
-                    }
-                }
             }
 
             //  Player spawn marker drag: runs BEFORE tilemap paint so grabbing the
@@ -4864,9 +4410,8 @@ ImGui.SameLine();
 
                 // Start the marquee: press on the image while NOT grabbing the gizmo,
                 // NOT hovering the views button, NOT dragging a UI element, and NOT
-                // painting with the terrain brush.
                 if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
-                    && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
+                    && !_mapPaintActive
                     && !_spawnDragActive && !_spawnHover && !_triggerHover
                     && _triggerDrag == TriggerDragMode.None
                     && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null
@@ -4923,7 +4468,7 @@ ImGui.SameLine();
             // (selection stays on the already-selected object) so you can drag it even when it
             // overlaps another object. Only when the gizmo is NOT hit does the nearest ray win.
             if (!_previewMode && _bridge.EditorObjectManager != null && _bridge.Camera != null
-                && _bridge.IsViewportClicked && !_bridge.TerrainBrushActive
+                && _bridge.IsViewportClicked
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
                 var cam = _bridge.Camera;
@@ -4986,7 +4531,6 @@ ImGui.SameLine();
             // Runs before the transform gizmo so grabbing the sun never moves the marker.
             // The drag continues even if the cursor leaves the image (release always ends it).
             if (!_previewMode && _bridge.Camera != null
-                && !_bridge.TerrainBrushActive && _brushObj == null
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
                 var cam = _bridge.Camera;
@@ -5092,7 +4636,7 @@ ImGui.SameLine();
             // Uses screen-space coordinates  gizmo renders at bottom-center of viewport
             if (!_previewMode && _bridge.Camera != null && _bridge.EditorGizmo != null
                 && _bridge.SelectedEditorObject != null && mouseOverImage
-                && !_bridge.TerrainBrushActive && _brushObj == null && !_mapPaintActive
+                    && !_mapPaintActive
                 && _skySunDragObj == null && SkySunHandleAtMouse() == null
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
                 && !worldInputBlocked)
@@ -5196,8 +4740,6 @@ ImGui.SameLine();
         //  Active view label (Top / Front / Left / )  top-right corner 
         DrawViewportViewLabel(hasSceneTexture);
 
-        //  Terrain triangle-count HUD (bottom-left corner, edit mode only) 
-        DrawViewportTerrainStats(hasSceneTexture);
 
         //  Type labels above placed Camera markers (edit mode only) 
         DrawEditorObjectTypeLabels(hasSceneTexture);
@@ -5298,14 +4840,10 @@ ImGui.SameLine();
         if (ImGui.GetIO().WantTextInput) return;
         // Don't snap the camera while the user is mid-gizmo-drag
         if (_bridge.EditorGizmo?.IsDragging == true) return;
-        // Don't snap the camera while terrain brush tools are active
-        if (_bridge.TerrainBrushActive) return;
         // Don't snap while any popup/menu is open or just closed
         if (_bridge.SuppressViewportInput) return;
 
-        // Terrain brush tools are toolbar-only (no keyboard shortcuts)  the previous
         // B/C/S/F toggles were removed because S collided with fly-camera movement and the
-        // user wanted terrain-editor key assignments disabled entirely.
 
         for (int i = 0; i < CameraViewShortcuts.Length; i++)
         {
@@ -5389,73 +4927,6 @@ ImGui.SameLine();
         dl.AddRect(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.15f)), 4f, ImDrawFlags.None, 1f);
         dl.AddText(font, fontSize, bgMin + new Vector2(pad, pad * 0.5f),
             ImGui.ColorConvertFloat4ToU32(col), text);
-    }
-
-    /// <summary>Draw a compact terrain-stats HUD in the bottom-left corner of the viewport
-    /// image (edit mode only): total triangles of ALL terrain planes in the editor scene,
-    /// plus a per-terrain breakdown when a plane is selected. Hidden in preview mode.</summary>
-    private void DrawViewportTerrainStats(bool hasSceneTexture)
-    {
-        if (_previewMode || !hasSceneTexture) return;
-        if (_imageSize.X <= 0f || _imageSize.Y <= 0f) return;
-
-        var mgr = _bridge.EditorObjectManager;
-        if (mgr == null || mgr.Objects.Count == 0) return;
-
-        // Collect terrain planes: total triangles + the selected one (if any).
-        int totalTri = 0;
-        int terrainCount = 0;
-        EditorObject? selected = null;
-        foreach (var obj in mgr.Objects)
-        {
-            if (obj.PrimitiveType != EditorPrimitiveType.Plane || !obj.TerrainEnabled) continue;
-            terrainCount++;
-            totalTri += obj.TerrainTriangleCount;
-            if (_bridge.SelectedEditorObjects.Contains(obj))
-                selected = obj;
-        }
-        if (terrainCount == 0) return;
-
-        var font = ImGui.GetFont();
-        float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 15f;
-        float lineHeight = fontSize * 1.3f;
-        float pad = 6f;
-
-        string[] lines =
-        [
-            $"Terrain TRIS: {totalTri:N0}",
-            $"Planes: {terrainCount}",
-        ];
-        if (selected != null)
-        {
-            lines = [
-                $"Terrain TRIS: {totalTri:N0}",
-                $"Planes: {terrainCount}",
-                $"Selected '{selected.Name}': {selected.TerrainTriangleCount:N0}  ({selected.TerrainChunksPerSide}{selected.TerrainChunksPerSide} chunks)",
-            ];
-        }
-
-        float panelW = 0f;
-        for (int li = 0; li < lines.Length; li++)
-            panelW = MathF.Max(panelW, font.CalcTextSizeA(fontSize, float.MaxValue, 0f, lines[li]).X);
-        float panelH = lineHeight * lines.Length + pad * 2f;
-
-        // Bottom-left corner of the rendered image.
-        var dl = ImGui.GetWindowDrawList();
-        var bgMin = new Vector2(_imageMin.X + 8f, _imageMax.Y - panelH - 8f);
-        var bgMax = new Vector2(bgMin.X + panelW + pad * 2f, bgMin.Y + panelH);
-        dl.AddRectFilled(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.45f)), 5f);
-        dl.AddRect(bgMin, bgMax, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.12f)), 5f, ImDrawFlags.None, 1f);
-
-        float ty = bgMin.Y + pad;
-        for (int li = 0; li < lines.Length; li++)
-        {
-            var col = li == 0
-                ? ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.7f, 0.3f, 1f))   // total tris (orange, like TRIS stat)
-                : ImGui.ColorConvertFloat4ToU32(new Vector4(0.7f, 0.7f, 0.8f, 1f));
-            dl.AddText(font, fontSize, new Vector2(bgMin.X + pad, ty), col, lines[li]);
-            ty += lineHeight;
-        }
     }
 
     /// <summary>Render a compact "▲ Views" menu floating in the top-left corner of the
@@ -5732,7 +5203,7 @@ ImGui.SameLine();
         if (_leftToolbarCollapsed)
         {
             if (ToolButton("☰ Tools", false, new Vector4(0.30f, 0.45f, 0.62f, 0.95f),
-                "Expand the full left toolbar (Move/Rotate/Scale/terrain tools)", out y))
+                "Expand the full left toolbar (Move/Rotate/Scale tools)", out y))
             {
                 _leftToolbarCollapsed = false;
             }
@@ -5826,81 +5297,6 @@ ImGui.SameLine();
                 _fxDebugView = (_fxDebugView + 1) % fxCount;
                 Console.WriteLine($"[Viewport] FX debug view → {fxStages[Math.Clamp(_fxDebugView, 0, fxCount - 1)]}");
             }
-        }
-
-        //  Terrain brush tools 
-        bool sculptTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 0;
-        if (ToolButton(sculptTool ? "▲ Sculpt ON" : "▲ Sculpt", sculptTool, new Vector4(0.80f, 0.55f, 0.15f, 0.95f),
-            "Sculpt: left-drag RAISES, Ctrl+left-drag LOWERS.\nHold Shift for fine control  Ctrl+scroll resizes the brush.", out y))
-        {
-            ToggleTerrainBrushMode(0);
-            Console.WriteLine($"[Viewport]  Sculpt brush → {_bridge.TerrainBrushActive}");
-        }
-
-        bool paintTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 1;
-        if (ToolButton(paintTool ? "▲ Paint ON" : "▲ Paint", paintTool, new Vector4(0.85f, 0.35f, 0.45f, 0.95f),
-            "Layer paint: paints the selected layer texture.\nLeft-drag = paint, Ctrl+left-drag = erase  Ctrl+scroll resizes the brush.", out y))
-        {
-            ToggleTerrainBrushMode(1);
-            Console.WriteLine($"[Viewport]  Layer paint → {_bridge.TerrainBrushActive}");
-        }
-
-        bool smoothTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 2;
-        if (ToolButton(smoothTool ? "▲ Smooth ON" : "▲ Smooth", smoothTool, new Vector4(0.45f, 0.30f, 0.75f, 0.95f),
-            "Smooth: averages the heights in the brush area  removes spikes and terraced steps.\nHold Shift for fine control.", out y))
-        {
-            ToggleTerrainBrushMode(2);
-            Console.WriteLine($"[Viewport]  Smooth brush → {_bridge.TerrainBrushActive}");
-        }
-
-        bool flattenTool = _bridge.TerrainBrushActive && _bridge.TerrainBrushMode == 3;
-        if (ToolButton(flattenTool ? "▲ Flatten ON" : "▲ Flatten", flattenTool, new Vector4(0.75f, 0.60f, 0.15f, 0.95f),
-            "Flatten: levels the terrain to the height of the FIRST click of the stroke,\nlike Unreal's flatten tool. Hold Shift for fine control.", out y))
-        {
-            ToggleTerrainBrushMode(3);
-            Console.WriteLine($"[Viewport]  Flatten brush → {_bridge.TerrainBrushActive}");
-        }
-
-        //  Height shading + contours overlays 
-        var shadedSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } sObj ? sObj : null;
-        bool shadeOn = shadedSel?.TerrainShowHeatmap ?? false;
-        if (ToolButton(shadeOn ? "☀ Shade ON" : "☀ Shade", shadeOn, new Vector4(0.75f, 0.55f, 0.15f, 0.95f),
-            "Colorize the selected terrain by height (low=blue → high=red) + contour lines,\nlit by the sun  makes high/low areas obvious while sculpting.\nAuto-selects the first terrain plane if none is selected (also in the Inspector).", out y))
-        {
-            var shadeTerrain = _bridge.ResolveTerrainForOverlay();
-            if (shadeTerrain != null)
-            {
-                shadeTerrain.TerrainShowHeatmap = !shadeTerrain.TerrainShowHeatmap;
-                Console.WriteLine($"[Viewport] Height shading on '{shadeTerrain.Name}' → {shadeTerrain.TerrainShowHeatmap}");
-            }
-            else
-            {
-                Console.WriteLine("[Viewport] No terrain plane found to toggle height shading");
-            }
-        }
-
-        var contourSel = _bridge.SelectedEditorObject is { TerrainEnabled: true } cObj ? cObj : null;
-        bool contourOn = contourSel?.TerrainShowContours ?? false;
-        if (ToolButton(contourOn ? "☁ Contours ON" : "☁ Contours", contourOn, new Vector4(0.45f, 0.55f, 0.30f, 0.95f),
-            "Draw dark topographic contour lines every 10% height on the selected terrain\n(no heatmap colors  the texture stays fully visible).\nGreat for sculpting precision  auto-selects the first terrain plane if none is selected.", out y))
-        {
-            var contourTerrain = _bridge.ResolveTerrainForOverlay();
-            if (contourTerrain != null)
-            {
-                contourTerrain.TerrainShowContours = !contourTerrain.TerrainShowContours;
-                Console.WriteLine($"[Viewport] Height contours on '{contourTerrain.Name}' → {contourTerrain.TerrainShowContours}");
-            }
-            else
-            {
-                Console.WriteLine("[Viewport] No terrain plane found to toggle height contours");
-            }
-        }
-
-        //  Paint tool hint (paint texture is set in Terrain Brush panel) 
-        if (paintTool)
-        {
-            Vector4 chipCol = TerrainLayerColors[0];
-            ToolButton("Paint", true, chipCol, "Paint texture assigned in Terrain Brush panel. Left-drag to paint.", out y);
         }
 
         //  Debug grid + shadow toggles 

@@ -110,19 +110,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private static float LOD3_Dist => DarkEngine3D_gl_csharp.Engine.Config.LODConfig.ObjectLOD3_Distance;
 
         public bool CullAtMaxLOD = false;
-        // Skip terrain ray-march test untuk object kecil di tanah (daisies, grass, dll)
-        // — object tetap ikut AABB occlusion test terhadap wall/occluders (Phase 2B)
-        public bool SkipTerrainRayMarch = false;
 
         /// <summary>Enable spatial grid optimization for this manager (reduces per-frame iteration).</summary>
         public bool EnableSpatialGrid = false;
-
-        /// <summary>
-        /// If true, use TerrainChunk chunk dimensions for the grid instead of computing
-        /// bounds from object positions. Set for objects placed on terrain (daisies, grass).
-        /// Grid dimensions become ChunksPerSide × ChunksPerSide with cell size = ChunkSize × TerrainScale.
-        /// </summary>
-        public bool UseTerrainGrid = false;
 
 
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
@@ -337,7 +327,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _modelGroups[path] = groups;
         }
 
-        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", bool snapToTerrain = false, TerrainChunk? terrain = null, string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
+        public void AddObject(string path, Vector3 pos, float yaw = 0, float scale = 1.0f, string groupName = "", string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
         {
             if (!_modelCache.TryGetValue(path, out var gpuData))
             {
@@ -493,34 +483,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float rz = RotationCorrection.Z * MathF.PI / 180f;
             var corrQuat = Quaternion.CreateFromYawPitchRoll(ry, rx, rz);
 
-
-            // Snap to terrain — use LOD0-only AABB for accurate ground contact.
-            // Combined AABB (all LODs) may include LOD3 merged meshes with different
-            // node transforms that inflate the bottom Y, causing floating/sinking.
-            if (snapToTerrain && terrain != null)
-            {
-                float terrainY = terrain.GetHeightAt(pos.X, pos.Z);
-
-                // noTrans = Scale * Correction * Yaw (matching CachedBaseWorldMat order)
-                var yawQuat = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw * MathF.PI / 180f);
-                var noTrans = Matrix4x4.CreateScale(scale)
-                            * Matrix4x4.CreateFromQuaternion(corrQuat)
-                            * Matrix4x4.CreateFromQuaternion(yawQuat);
-
-                // Compute AABB from LOD0 meshes only — these are the original high-detail
-                // meshes whose node transforms match the actual object ground position.
-                AABB snapAABB;
-                if (selectedGroup.Lods.TryGetValue(0, out var lod0Meshes) && lod0Meshes.Count > 0)
-                    snapAABB = ComputeGroupAABB([.. lod0Meshes], gpuData.MeshToNode, gpuData.Data.Nodes, gpuData.Data.Meshes, UseNodeHierarchy);
-                else
-                    snapAABB = selectedGroup.LocalAABB; // fallback to combined
-
-                var rotatedAABB = snapAABB.Transform(noTrans);
-                pos.Y = terrainY - rotatedAABB.Min.Y;  //+ pos.Y;
-
-                //Console.WriteLine($"[Snap] group='{selectedGroup.BaseName}' lod0AABB.Min.Y={snapAABB.Min.Y:F4} max.Y={snapAABB.Max.Y:F4} " + $"(combined bottom={selectedGroup.LocalAABB.Min.Y:F4}) terrainY={terrainY:F4} -> pos.Y={pos.Y:F4}");
-            }
-
             var sobj = new StaticObject(gpuData, selectedGroup, pos, yaw, scale);
             sobj.CorrectionQuat = corrQuat;
             // Pre-compute cached values (static objects never move)
@@ -602,22 +564,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
         }
 
-        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, TerrainChunk terrain, Action<float>? onProgress = null, string groupName = "", string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f)
+        public void AddRandomObjects(string path, int count, Vector3 center, float radius, float scale, Action<float>? onProgress = null, string groupName = "", string? collisionPart = null, float overrideCollisionSizeX = 0f, float overrideCollisionSizeZ = 0f, float boundMin = -2048f, float boundMax = 2048f)
         {
-            // Compute terrain map bounds in world space to prevent spawning outside the map.
-            // Uses the same formula as TerrainChunk.IsChunkInFrustum:
-            //   halfMapSize = (ChunksPerSide * ChunkSize) / 2
-            //   world extent = ±halfMapSize * TerrainScale
-            float halfMapWorld = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize / 2f) * TerrainChunk.TerrainScale;
-            float margin = halfMapWorld * 0.01f;
-            float boundMin = -halfMapWorld + margin;
-            float boundMax = halfMapWorld - margin;
-
+            // Spawn inside [boundMin, boundMax] on both X and Z (pass explicit bounds per level).
             var rng = new Random();
             int reportInterval = Math.Max(count / 100, 1); // report ~100x selama loading
             for (int i = 0; i < count; i++)
             {
-                // Keep generating until we find a position inside map bounds (max 32 attempts)
+                // Keep generating until we find a position inside bounds (max 32 attempts)
                 float x, z;
                 int attempts = 0;
                 do
@@ -629,12 +583,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     attempts++;
                 } while (attempts < 32 && (x < boundMin || x > boundMax || z < boundMin || z > boundMax));
 
-                // Fallback: clamp to map bounds if all attempts failed
+                // Fallback: clamp to bounds if all attempts failed
                 x = Math.Clamp(x, boundMin, boundMax);
                 z = Math.Clamp(z, boundMin, boundMax);
 
-                float y = terrain.GetHeightAt(x, z);
-                AddObject(path, new Vector3(x, y, z), (float)(rng.NextDouble() * 360), scale, groupName, true, terrain, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ);
+                AddObject(path, new Vector3(x, 0, z), (float)(rng.NextDouble() * 360), scale, groupName, collisionPart: collisionPart, overrideCollisionSizeX: overrideCollisionSizeX, overrideCollisionSizeZ: overrideCollisionSizeZ);
 
                 if (onProgress != null && (i % reportInterval == 0 || i == count - 1))
                     onProgress((float)(i + 1) / count);
@@ -672,17 +625,6 @@ public void BuildSpatialGrid()
             int gridW, gridH;
             float originX, originZ;
 
-            if (UseTerrainGrid && TerrainChunk.ChunksPerSide > 0)
-            {
-                // Use terrain chunk grid — ChunksPerSide × ChunksPerSide
-                // (e.g. 16×16 = 256 cells for a 256×256 map)
-                gridW = TerrainChunk.ChunksPerSide;
-                gridH = TerrainChunk.ChunksPerSide;
-                int halfMapSize = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize) / 2;
-                originX = -halfMapSize * TerrainChunk.TerrainScale;
-                originZ = -halfMapSize * TerrainChunk.TerrainScale;
-            }
-            else
             {
                 // Compute world bounds from actual object positions
                 float minX = float.MaxValue, maxX = float.MinValue;

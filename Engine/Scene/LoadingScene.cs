@@ -8,7 +8,7 @@ using System.Numerics;
 namespace DarkEngine3D_gl_csharp.Engine.Scene
 {
     /// <summary>
-    /// Loading screen scene. Handles all synchronous resource loading (terrain, objects, etc.)
+    /// Loading screen scene. Handles all synchronous resource loading (objects, textures, etc.)
     /// while rendering a loading animation with progress feedback each frame.
     /// When loading completes, switches to the GameScene on the next frame's Render()
     /// so the Viewport panel gets a chance to display the loading screen.
@@ -41,7 +41,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _loadingComplete = false;
 
         // Game resources that will be created during loading
-        private TerrainChunk? _gameTerrainChunk;
         private Skybox? _skybox;
         private ObjectManager? _objectManager;
         private Texture[]? _skyTextures;
@@ -93,15 +92,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             RenderFrame("Loading engine ...");
             Thread.Sleep(500);
 
-            // ── Terrain textures ──
-            Texture[] TerrainTextures =
-            [
-                new("Artifacts\\\\textures\\\\aerial grass\\\\aerial_grass_rock_diff_4k.jpg"),
-                new("Artifacts\\\\textures\\\\aerial rock\\\\aerial_rocks_04_diff_4k.jpg"),
-                new("Artifacts\\\\textures\\\\snow\\\\snow_01_diff_4k.jpg"),
-                new("Artifacts\\\\textures\\\\cliff side\\\\cliff_side_diff_4k.jpg"),
-            ];
-
             // ── Sky textures ──
             Texture[] SkyTextures =
             [
@@ -109,32 +99,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ];
             _skyTextures = SkyTextures;
 
-            // ── TerrainChunk setup ──
-            TerrainChunk.GlobalLODLevel = 1;
-            TerrainChunk.ChunksPerSide = 16;
-            TerrainChunk.HeightScale = 50.0f;
-            TerrainChunk.TerrainScale = 1.0f;
-            TerrainChunk.OnLoadProgress += (progress) =>
+            // ── Load progress UI (shared by object loading phases) ──
+            Action<float> onLoadProgressUI = (progress) =>
             {
                 int filled = (int)(progress * 20);
                 string bar = new string('#', filled) + new string('-', 20 - filled);
-                Console.Write($"\rTerrain Loading: [{bar}] {progress * 100:F1}%");
+                Console.Write($"\rLoading: [{bar}] {progress * 100:F1}%");
 
-                RenderFrame($"Loading Terrain {progress * 100:F1}%");
+                RenderFrame($"Loading {progress * 100:F1}%");
 
                 if (progress >= 1.0f)
                     Console.WriteLine();
             };
-
-            // Generate heightmap if it doesn't exist
-            string mapPath = "Artifacts\\\\maps\\\\map.png";
-            if (!File.Exists(mapPath))
-            {
-                MapLoader.GeneratePhotorealHeightmap(mapPath, 513);
-            }
-
-            TerrainChunk gameTerrainChunk = new(mapPath, TerrainTextures);
-            _gameTerrainChunk = gameTerrainChunk;
 
             // ── Skybox ──
             Skybox skybox = new();
@@ -155,7 +131,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (progress >= 1.0f)
                     Console.WriteLine();
             };
-            objectManager.Init(_camera!, gameTerrainChunk);
+            objectManager.Init(_camera!);
             _objectManager = objectManager;
 
             Thread.Sleep(500);
@@ -186,7 +162,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // ── Finalize: create GameScene and set loaded resources ──
             var gameScene = new GameScene(_sceneManager, _camera, _light);
-            gameScene.SetResources(_skyTextures, _gameTerrainChunk, _skybox, _hud, _objectManager);
+            gameScene.SetResources(_skyTextures, _skybox, _hud, _objectManager);
             _gameScene = gameScene;
 
             // ── If we restored a real game scene from game.ing, also load its UI hierarchy

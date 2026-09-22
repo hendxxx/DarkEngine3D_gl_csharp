@@ -810,10 +810,6 @@ public class SceneManagerPanel
             _bridge.EditorGizmo.EndDrag();
         }
 
-        //  Reset terrain brush 
-        _bridge.TerrainBrushActive = false;
-        _bridge.TerrainBrushMode = 0;
-
         //  No scene created — truly empty state.
         //  User adds scenes via + Add button, or opens a saved .ing file.
         Console.WriteLine("[SceneManagerPanel] Everything cleared — no active file.");
@@ -1001,64 +997,6 @@ public class SceneManagerPanel
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
                         PivotOverrideY = obj.GizmoPivotOverride?.Y,
                         PivotOverrideZ = obj.GizmoPivotOverride?.Z,
-                        TerrainEnabled = obj.TerrainEnabled,
-                        TerrainHeightmapPath = PathHelpers.MakeRelative(obj.TerrainHeightmapPath),
-                        TerrainChunkSize = obj.TerrainChunkSize,
-                        TerrainChunksPerSide = obj.TerrainChunksPerSide,
-                        TerrainHeightScale = obj.TerrainHeightScale,
-                        TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
-                        TerrainTexTiling = obj.TerrainTexTiling,
-                        TerrainSlopeTexTiling = obj.TerrainSlopeTexTiling,
-                        TerrainParallaxScale = obj.TerrainParallaxScale,
-                        TerrainPomSteps = obj.TerrainPomSteps,
-                        TerrainUseStochasticSampling = obj.TerrainUseStochasticSampling,
-                        TerrainLayerAirTop = obj.TerrainLayerAirTop,
-                        TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
-                        TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
-                        TerrainLayerSnowTop = obj.TerrainLayerSnowTop,
-                        TerrainTextureAirPath = PathHelpers.MakeRelative(obj.TerrainTextureAirPath),
-                        TerrainTextureDirtPath = PathHelpers.MakeRelative(obj.TerrainTextureDirtPath),
-                        TerrainTextureGrassPath = PathHelpers.MakeRelative(obj.TerrainTextureGrassPath),
-                        TerrainTextureSnowPath = PathHelpers.MakeRelative(obj.TerrainTextureSnowPath),
-                        TerrainTextureSlopePath = PathHelpers.MakeRelative(obj.TerrainTextureSlopePath),
-                        TerrainPbrAlbedoBrightness = obj.TerrainPbrAlbedoBrightness,
-                        TerrainPbrAlbedoSaturation = obj.TerrainPbrAlbedoSaturation,
-                        TerrainPbrAlbedoContrast = obj.TerrainPbrAlbedoContrast,
-                        TerrainPbrNormalStrength = obj.TerrainPbrNormalStrength,
-                        TerrainPbrNormalBlur = obj.TerrainPbrNormalBlur,
-                        TerrainPbrMetallicThreshold = obj.TerrainPbrMetallicThreshold,
-                        TerrainPbrMetallicSoftness = obj.TerrainPbrMetallicSoftness,
-                        TerrainPbrMetallicStrength = obj.TerrainPbrMetallicStrength,
-                        TerrainPbrRoughnessStrength = obj.TerrainPbrRoughnessStrength,
-                        TerrainPbrRoughnessInvert = obj.TerrainPbrRoughnessInvert,
-                        TerrainPbrAoStrength = obj.TerrainPbrAoStrength,
-                        TerrainPbrAoBrightness = obj.TerrainPbrAoBrightness,
-                        TerrainPbrHeightStrength = obj.TerrainPbrHeightStrength,
-                        TerrainPbrHeightInvert = obj.TerrainPbrHeightInvert,
-                        TerrainPbrHeightBlur = obj.TerrainPbrHeightBlur,
-                        TerrainPbrEmissionIntensity = obj.TerrainPbrEmissionIntensity,
-                        TerrainLayers = obj.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithRelativePaths()).ToArray(),
-                        // ── PBR splat terrain (paintable multi-texture plane) ──
-                        PbrSplatLayers = (obj.SplatLayers ?? Array.Empty<PbrSplatLayerData>()).Select(l => (l ?? new PbrSplatLayerData()).ToAsset()).ToArray(),
-                        PbrSplatPaintLayerIndex = obj.SplatPaintLayerIndex,
-                        PbrSplatPaintStrength = obj.SplatPaintStrength,
-                        PbrSplatTiling = obj.SplatTiling,
-                        PbrSplatData = obj.SplatPaintedData,
-                        PbrSculptData = obj.SculptPaintedData,
-                        PbrLodEnabled = obj.PbrLodEnabled,
-                        PbrLodDistance = obj.PbrLodDistance,
-                        PbrLodDistance2 = obj.PbrLodDistance2,
-                        PbrOcclusionEnabled = obj.PbrOcclusionEnabled,
-                        SplatHeightLayersEnabled = obj.SplatHeightLayersEnabled,
-                        SplatHeightLayerCount = obj.SplatHeightLayerCount,
-                        SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
-                        SplatHeightBands = (float[])obj.SplatHeightBands.Clone(),
-                        SplatSlopeTiling = obj.SplatSlopeTiling,
-                        SplatSlopeEnabled = obj.SplatSlopeEnabled,
-                        SplatSlopeLayer = obj.SplatSlopeLayer,
-                        SplatSlopeThreshold = obj.SplatSlopeThreshold,
-                        SplatSlopeFeather = obj.SplatSlopeFeather,
-                        SplatTriplanar = obj.SplatTriplanar,
                         //  PBR material (Box/Sphere/flat plane) 
                         PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                         PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
@@ -1066,11 +1004,6 @@ public class SceneManagerPanel
                         PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
                         PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
                         PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
-                        // Plane terrain heightmap (separate from the POM map). Migration:
-                        // scenes authored BEFORE the split stored the terrain map in
-                        // PbrHeightPath — keep it working both ways.
-                        TerrainHeightPath = PathHelpers.MakeRelative(
-                            !string.IsNullOrEmpty(obj.TerrainHeightPath) ? obj.TerrainHeightPath : obj.PbrHeightPath),
                         PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
@@ -1084,26 +1017,6 @@ public class SceneManagerPanel
                         PbrVertexChunk = obj.PbrVertexChunk,
                         TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                         PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
-                        TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
-                        TerrainBrushSize = obj.TerrainBrushSize,
-                        TerrainBrushStrength = obj.TerrainBrushStrength,
-                        TerrainBrushSoftness = obj.TerrainBrushSoftness,
-                        TerrainBrushFalloff = obj.TerrainBrushFalloff,
-                        TerrainBrushColor = [obj.BrushIndicatorColor.X, obj.BrushIndicatorColor.Y, obj.BrushIndicatorColor.Z],
-                        TerrainBrushAlpha = obj.BrushIndicatorAlpha,
-                        TerrainPaintedData = obj.TerrainPaintedData,
-                        TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
-                        TerrainPaintStrength = obj.TerrainPaintStrength,
-                        TerrainSplatData = obj.TerrainSplatData,
-                        PaintLayerTextures = [PathHelpers.MakeRelative(obj.GetPaintLayerTexture(0)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(1)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(2)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(3))],
-                        PaintLayerTilingX = [obj.PaintLayerTiling[0].X, obj.PaintLayerTiling[1].X, obj.PaintLayerTiling[2].X, obj.PaintLayerTiling[3].X],
-                        PaintLayerTilingY = [obj.PaintLayerTiling[0].Y, obj.PaintLayerTiling[1].Y, obj.PaintLayerTiling[2].Y, obj.PaintLayerTiling[3].Y],
-                        PaintLayerStochastic = [obj.PaintLayerStochastic[0], obj.PaintLayerStochastic[1], obj.PaintLayerStochastic[2], obj.PaintLayerStochastic[3]],
-                        PaintLayerCount = obj.PaintLayerCount,
-                        // Dynamic terrain layers + slope
-                        TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
-                        TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
-                        TerrainSlopeEnabled = obj.TerrainSlopeEnabled
                     });
                 }
             }
@@ -1472,96 +1385,6 @@ public class SceneManagerPanel
                         if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)
                             obj.GizmoPivotOverride = new Vector3(objData.PivotOverrideX.Value, objData.PivotOverrideY.Value, objData.PivotOverrideZ.Value);
 
-                        //  Restore advanced terrain settings (Plane)  backward compatible 
-                        obj.TerrainEnabled = objData.TerrainEnabled;
-                        if (!string.IsNullOrEmpty(objData.TerrainHeightmapPath))
-                            obj.TerrainHeightmapPath = PathHelpers.Resolve(objData.TerrainHeightmapPath);
-                        obj.TerrainChunkSize = objData.TerrainChunkSize;
-                        obj.TerrainChunksPerSide = objData.TerrainChunksPerSide;
-                        obj.TerrainHeightScale = objData.TerrainHeightScale;
-                        obj.TerrainSlopeThreshold = objData.TerrainSlopeThreshold;
-                        obj.TerrainTexTiling = objData.TerrainTexTiling;
-                        obj.TerrainSlopeTexTiling = objData.TerrainSlopeTexTiling;
-                        obj.TerrainParallaxScale = objData.TerrainParallaxScale;
-                        obj.TerrainPomSteps = objData.TerrainPomSteps;
-                        obj.TerrainUseStochasticSampling = objData.TerrainUseStochasticSampling;
-                        obj.TerrainLayerAirTop = objData.TerrainLayerAirTop;
-                        obj.TerrainLayerDirtTop = objData.TerrainLayerDirtTop;
-                        obj.TerrainLayerGrassTop = objData.TerrainLayerGrassTop;
-                        obj.TerrainLayerSnowTop = objData.TerrainLayerSnowTop;
-                        obj.TerrainTextureAirPath = PathHelpers.Resolve(objData.TerrainTextureAirPath);
-                        obj.TerrainTextureDirtPath = PathHelpers.Resolve(objData.TerrainTextureDirtPath);
-                        obj.TerrainTextureGrassPath = PathHelpers.Resolve(objData.TerrainTextureGrassPath);
-                        obj.TerrainTextureSnowPath = PathHelpers.Resolve(objData.TerrainTextureSnowPath);
-                        obj.TerrainTextureSlopePath = PathHelpers.Resolve(objData.TerrainTextureSlopePath);
-                        obj.TerrainPbrAlbedoBrightness = objData.TerrainPbrAlbedoBrightness;
-                        obj.TerrainPbrAlbedoSaturation = objData.TerrainPbrAlbedoSaturation;
-                        obj.TerrainPbrAlbedoContrast = objData.TerrainPbrAlbedoContrast;
-                        obj.TerrainPbrNormalStrength = objData.TerrainPbrNormalStrength;
-                        obj.TerrainPbrNormalBlur = objData.TerrainPbrNormalBlur;
-                        obj.TerrainPbrMetallicThreshold = objData.TerrainPbrMetallicThreshold;
-                        obj.TerrainPbrMetallicSoftness = objData.TerrainPbrMetallicSoftness;
-                        obj.TerrainPbrMetallicStrength = objData.TerrainPbrMetallicStrength;
-                        obj.TerrainPbrRoughnessStrength = objData.TerrainPbrRoughnessStrength;
-                        obj.TerrainPbrRoughnessInvert = objData.TerrainPbrRoughnessInvert;
-                        obj.TerrainPbrAoStrength = objData.TerrainPbrAoStrength;
-                        obj.TerrainPbrAoBrightness = objData.TerrainPbrAoBrightness;
-                        obj.TerrainPbrHeightStrength = objData.TerrainPbrHeightStrength;
-                        obj.TerrainPbrHeightInvert = objData.TerrainPbrHeightInvert;
-                        obj.TerrainPbrHeightBlur = objData.TerrainPbrHeightBlur;
-                        obj.TerrainPbrEmissionIntensity = objData.TerrainPbrEmissionIntensity;
-                        // ── PBR splat terrain (paintable multi-texture plane) ──
-                        if (objData.PbrSplatLayers != null)
-                        {
-                            obj.SplatLayers = objData.PbrSplatLayers
-                                .Select(PbrSplatLayerData.FromAsset).Concat(Enumerable.Repeat(new PbrSplatLayerData(), 4))
-                                .Take(4).ToArray();
-                        }
-                        obj.SplatPaintLayerIndex = objData.PbrSplatPaintLayerIndex;
-                        obj.SplatPaintStrength = objData.PbrSplatPaintStrength;
-                        obj.SplatTiling = objData.PbrSplatTiling;
-                        obj.SplatPaintedData = objData.PbrSplatData;   // decodes the RGBA weights
-                        obj.PbrLodEnabled = objData.PbrLodEnabled;
-                        obj.PbrLodDistance = objData.PbrLodDistance;
-                        obj.PbrLodDistance2 = objData.PbrLodDistance2;
-                        obj.PbrOcclusionEnabled = objData.PbrOcclusionEnabled;
-                        obj.SplatHeightLayersEnabled = objData.SplatHeightLayersEnabled;
-                        obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
-                        obj.SplatHeightLayerFeather = Math.Clamp(objData.SplatHeightLayerFeather, 0.01f, 0.5f);
-                        if (objData.SplatHeightBands != null && objData.SplatHeightBands.Length == 8) Array.Copy(objData.SplatHeightBands, obj.SplatHeightBands, 8);
-                        obj.SplatSlopeTiling = Math.Clamp(objData.SplatSlopeTiling, 0.01f, 64f);
-                        obj.SplatSlopeEnabled = objData.SplatSlopeEnabled;
-                        obj.SplatSlopeLayer = Math.Clamp(objData.SplatSlopeLayer, 0, 3);
-                        obj.SplatSlopeThreshold = Math.Clamp(objData.SplatSlopeThreshold, 0f, 1f);
-                        obj.SplatSlopeFeather = Math.Clamp(objData.SplatSlopeFeather, 0.01f, 0.5f);
-                        obj.SplatTriplanar = objData.SplatTriplanar;
-                        //  Per-layer PBR (PBR is per texture) 
-                        obj.TerrainLayers = objData.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithResolvedPaths()).ToArray()
-                            ?? obj.TerrainLayers;
-                        // Legacy scenes were saved with a single global tuning  push it into
-                        // every layer so the per-layer system keeps the previously tuned look.
-                        if (objData.TerrainLayers == null && obj.TerrainLayers is { Length: 5 } legacyLayers)
-                        {
-                            foreach (var l in legacyLayers)
-                            {
-                                l.AlbedoBrightness = objData.TerrainPbrAlbedoBrightness;
-                                l.AlbedoSaturation = objData.TerrainPbrAlbedoSaturation;
-                                l.AlbedoContrast = objData.TerrainPbrAlbedoContrast;
-                                l.NormalStrength = objData.TerrainPbrNormalStrength;
-                                l.NormalBlur = objData.TerrainPbrNormalBlur;
-                                l.MetallicThreshold = objData.TerrainPbrMetallicThreshold;
-                                l.MetallicSoftness = objData.TerrainPbrMetallicSoftness;
-                                l.MetallicStrength = objData.TerrainPbrMetallicStrength;
-                                l.RoughnessStrength = objData.TerrainPbrRoughnessStrength;
-                                l.RoughnessInvert = objData.TerrainPbrRoughnessInvert;
-                                l.AoStrength = objData.TerrainPbrAoStrength;
-                                l.AoBrightness = objData.TerrainPbrAoBrightness;
-                                l.HeightStrength = objData.TerrainPbrHeightStrength;
-                                l.HeightInvert = objData.TerrainPbrHeightInvert;
-                                l.HeightBlur = objData.TerrainPbrHeightBlur;
-                                l.EmissionIntensity = objData.TerrainPbrEmissionIntensity;
-                            }
-                        }
                         //  PBR material (Box/Sphere/flat plane) 
                         obj.PbrAlbedoPath = PathHelpers.Resolve(objData.PbrAlbedoPath);
                         obj.PbrNormalPath = PathHelpers.Resolve(objData.PbrNormalPath);
@@ -1569,17 +1392,7 @@ public class SceneManagerPanel
                         obj.PbrRoughnessPath = PathHelpers.Resolve(objData.PbrRoughnessPath);
                         obj.PbrAoPath = PathHelpers.Resolve(objData.PbrAoPath);
                         obj.PbrHeightPath = PathHelpers.Resolve(objData.PbrHeightPath);
-                        // Terrain heightmap: prefer the new field; fall back to the legacy
-                        // PbrHeightPath (scenes authored before the split) — but only when
-                        // this is a PLANE (only planes have terrain displacement).
-                        obj.TerrainHeightPath = !string.IsNullOrEmpty(objData.TerrainHeightPath)
-                            ? PathHelpers.Resolve(objData.TerrainHeightPath)
-                            : (obj.PrimitiveType == EditorPrimitiveType.Plane ? obj.PbrHeightPath : "");
                         obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
-                        // AFTER the height path: the setter clears the sculpt buffer, so
-                        // decoding the persisted sculpt data must come last or the loaded
-                        // sculpt edits would be wiped by the path assignment.
-                        obj.SculptPaintedData = objData.PbrSculptData;
                         obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
                         obj.PbrParallaxScale = Math.Clamp(objData.PbrParallaxScale, 0f, 0.5f);
                         obj.PbrPomShadowStrength = Math.Clamp(objData.PbrPomShadowStrength, 0f, 1f);
@@ -1601,45 +1414,8 @@ public class SceneManagerPanel
                         // legacy scenes fall back to the shared TexSettings for every slot.
                         if (objData.PbrTexSettings is { Length: 7 } pbr)
                             obj.PbrTexSettings = pbr.Select(Libs.TextureSettingsData.ToSettings).ToArray();
-                        if (objData.TerrainLayerSettings is { Length: 4 } tls)
-                            obj.TerrainLayerSettings = tls.Select(Libs.TextureSettingsData.ToSettings).ToArray();
-                        obj.TerrainBrushSize = objData.TerrainBrushSize;
-                        obj.TerrainBrushStrength = objData.TerrainBrushStrength;
-                        obj.TerrainBrushSoftness = objData.TerrainBrushSoftness;
-                        obj.TerrainBrushFalloff = objData.TerrainBrushFalloff;
-                        if (objData.TerrainBrushColor is { Length: 3 } brushCol)
-                        {
-                            obj.BrushIndicatorColor = new Vector3(brushCol[0], brushCol[1], brushCol[2]);
-                            obj.BrushIndicatorAlpha = Math.Clamp(objData.TerrainBrushAlpha, 0f, 1f);
-                        }
-                        if (!string.IsNullOrEmpty(objData.TerrainPaintedData))
-                            obj.TerrainPaintedData = objData.TerrainPaintedData; // applied after heightmap path is set
-                        obj.TerrainPaintLayerIndex = objData.TerrainPaintLayerIndex;
-                        obj.TerrainPaintStrength = objData.TerrainPaintStrength;
-                        if (!string.IsNullOrEmpty(objData.TerrainSplatData))
-                            obj.TerrainSplatData = objData.TerrainSplatData;
 
-                        // Per-paint-layer textures + tiling
-                        if (objData.PaintLayerTextures is { Length: >= 4 })
-                        {
-                            for (int i = 0; i < 4; i++)
-                                obj.SetPaintLayerTexture(i, PathHelpers.Resolve(objData.PaintLayerTextures[i]));
-                        }
-                        if (objData.PaintLayerTilingX is { Length: >= 4 } && objData.PaintLayerTilingY is { Length: >= 4 })
-                        {
-                            for (int i = 0; i < 4; i++)
-                                obj.PaintLayerTiling[i] = new System.Numerics.Vector2(objData.PaintLayerTilingX[i], objData.PaintLayerTilingY[i]);
-                        }
-                        if (objData.PaintLayerStochastic is { Length: >= 4 })
-                        {
-                            for (int i = 0; i < 4; i++)
-                                obj.PaintLayerStochastic[i] = objData.PaintLayerStochastic[i];
-                        }
-                        obj.PaintLayerCount = Math.Clamp(objData.PaintLayerCount, 1, 4);
 
-                        // Dynamic terrain layers + slope
-                        if (objData.TerrainLayerList is { Count: > 0 } savedLayers)
-                            obj.TerrainLayerList = savedLayers.Select(l => l.Clone().WithResolvedPaths()).ToList();
 
                         // ── Player2D: restore sprite animation + capsule settings ──
                         obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
@@ -1704,11 +1480,6 @@ public class SceneManagerPanel
                             }).ToList();
                         else
                             obj.EnsureDefaultActions();
-                        if (objData.TerrainSlopeLayer != null)
-                        {
-                            obj.TerrainSlopeLayer = objData.TerrainSlopeLayer.Clone().WithResolvedPaths();
-                            obj.TerrainSlopeEnabled = objData.TerrainSlopeEnabled;
-                        }
 
                         // 2D Map (level): rebind the tilemap payload saved in the scene file.
                         // A level is only shown for scenes that actually contain one.
@@ -1738,7 +1509,6 @@ public class SceneManagerPanel
                         obj.MarkDirty();
                         // Migrate old fixed-layer format to new dynamic layers
                         if (primType == EditorPrimitiveType.Plane)
-                            obj.MigrateTerrainLayers();
 
                         Console.WriteLine($"[SceneManagerPanel] Restored 3D object '{obj.Name}' ({primType})");
                     }
@@ -1980,64 +1750,12 @@ public class SceneManagerPanel
                             PivotOverrideX = obj.GizmoPivotOverride?.X,
                             PivotOverrideY = obj.GizmoPivotOverride?.Y,
                             PivotOverrideZ = obj.GizmoPivotOverride?.Z,
-                            TerrainEnabled = obj.TerrainEnabled,
-                            TerrainHeightmapPath = PathHelpers.MakeRelative(obj.TerrainHeightmapPath),
-                            TerrainChunkSize = obj.TerrainChunkSize,
-                            TerrainChunksPerSide = obj.TerrainChunksPerSide,
-                            TerrainHeightScale = obj.TerrainHeightScale,
-                            TerrainSlopeThreshold = obj.TerrainSlopeThreshold,
-                            TerrainTexTiling = obj.TerrainTexTiling,
-                            TerrainSlopeTexTiling = obj.TerrainSlopeTexTiling,
-                            TerrainUseStochasticSampling = obj.TerrainUseStochasticSampling,
-                            TerrainLayerAirTop = obj.TerrainLayerAirTop,
-                            TerrainLayerDirtTop = obj.TerrainLayerDirtTop,
-                            TerrainLayerGrassTop = obj.TerrainLayerGrassTop,
-                            TerrainLayerSnowTop = obj.TerrainLayerSnowTop,
-                            TerrainTextureAirPath = PathHelpers.MakeRelative(obj.TerrainTextureAirPath),
-                            TerrainTextureDirtPath = PathHelpers.MakeRelative(obj.TerrainTextureDirtPath),
-                            TerrainTextureGrassPath = PathHelpers.MakeRelative(obj.TerrainTextureGrassPath),
-                            TerrainTextureSnowPath = PathHelpers.MakeRelative(obj.TerrainTextureSnowPath),
-                            TerrainTextureSlopePath = PathHelpers.MakeRelative(obj.TerrainTextureSlopePath),
-                            TerrainPbrAlbedoBrightness = obj.TerrainPbrAlbedoBrightness,
-                            TerrainPbrAlbedoSaturation = obj.TerrainPbrAlbedoSaturation,
-                            TerrainPbrAlbedoContrast = obj.TerrainPbrAlbedoContrast,
-                            TerrainPbrNormalStrength = obj.TerrainPbrNormalStrength,
-                            TerrainPbrNormalBlur = obj.TerrainPbrNormalBlur,
-                            TerrainPbrMetallicThreshold = obj.TerrainPbrMetallicThreshold,
-                            TerrainPbrMetallicSoftness = obj.TerrainPbrMetallicSoftness,
-                            TerrainPbrMetallicStrength = obj.TerrainPbrMetallicStrength,
-                            TerrainPbrRoughnessStrength = obj.TerrainPbrRoughnessStrength,
-                            TerrainPbrRoughnessInvert = obj.TerrainPbrRoughnessInvert,
-                            TerrainPbrAoStrength = obj.TerrainPbrAoStrength,
-                            TerrainPbrAoBrightness = obj.TerrainPbrAoBrightness,
-                            TerrainPbrHeightStrength = obj.TerrainPbrHeightStrength,
-                            TerrainPbrHeightInvert = obj.TerrainPbrHeightInvert,
-                            TerrainPbrHeightBlur = obj.TerrainPbrHeightBlur,
-                            TerrainPbrEmissionIntensity = obj.TerrainPbrEmissionIntensity,
-                            TerrainLayers = obj.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithRelativePaths()).ToArray(),
-                            // ── PBR splat terrain (paintable multi-texture plane) ──
-                            PbrSplatLayers = (obj.SplatLayers ?? Array.Empty<PbrSplatLayerData>()).Select(l => (l ?? new PbrSplatLayerData()).ToAsset()).ToArray(),
-                            PbrSplatPaintLayerIndex = obj.SplatPaintLayerIndex,
-                            PbrSplatPaintStrength = obj.SplatPaintStrength,
-                            PbrSplatTiling = obj.SplatTiling,
-                            PbrSplatData = obj.SplatPaintedData,
-                            PbrSculptData = obj.SculptPaintedData,
-                            PbrLodEnabled = obj.PbrLodEnabled,
-                            PbrLodDistance = obj.PbrLodDistance,
-                            PbrLodDistance2 = obj.PbrLodDistance2,
-                            PbrOcclusionEnabled = obj.PbrOcclusionEnabled,
-                            SplatHeightLayersEnabled = obj.SplatHeightLayersEnabled,
-                            SplatHeightLayerCount = obj.SplatHeightLayerCount,
-                            SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
-                            SplatHeightBands = (float[])obj.SplatHeightBands.Clone(),
-                            SplatSlopeTiling = obj.SplatSlopeTiling,
                             PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                             PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
                             PbrMetallicPath = PathHelpers.MakeRelative(obj.PbrMetallicPath),
                             PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
                             PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
                             PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
-                            TerrainHeightPath = PathHelpers.MakeRelative(obj.TerrainHeightPath),
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,
@@ -2051,25 +1769,6 @@ public class SceneManagerPanel
                             PbrVertexChunk = obj.PbrVertexChunk,
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                             PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
-                            TerrainLayerSettings = obj.TerrainLayerSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
-                            TerrainBrushSize = obj.TerrainBrushSize,
-                            TerrainBrushStrength = obj.TerrainBrushStrength,
-                            TerrainBrushSoftness = obj.TerrainBrushSoftness,
-                            TerrainBrushFalloff = obj.TerrainBrushFalloff,
-                            TerrainBrushColor = [obj.BrushIndicatorColor.X, obj.BrushIndicatorColor.Y, obj.BrushIndicatorColor.Z],
-                            TerrainBrushAlpha = obj.BrushIndicatorAlpha,
-                            TerrainPaintedData = obj.TerrainPaintedData,
-                            TerrainPaintLayerIndex = obj.TerrainPaintLayerIndex,
-                            TerrainPaintStrength = obj.TerrainPaintStrength,
-                            TerrainSplatData = obj.TerrainSplatData,
-                            PaintLayerTextures = [PathHelpers.MakeRelative(obj.GetPaintLayerTexture(0)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(1)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(2)), PathHelpers.MakeRelative(obj.GetPaintLayerTexture(3))],
-                            PaintLayerTilingX = [obj.PaintLayerTiling[0].X, obj.PaintLayerTiling[1].X, obj.PaintLayerTiling[2].X, obj.PaintLayerTiling[3].X],
-                            PaintLayerTilingY = [obj.PaintLayerTiling[0].Y, obj.PaintLayerTiling[1].Y, obj.PaintLayerTiling[2].Y, obj.PaintLayerTiling[3].Y],
-                            PaintLayerStochastic = [obj.PaintLayerStochastic[0], obj.PaintLayerStochastic[1], obj.PaintLayerStochastic[2], obj.PaintLayerStochastic[3]],
-                            PaintLayerCount = obj.PaintLayerCount,
-                            TerrainLayerList = obj.TerrainLayerList?.Select(l => l.Clone().WithRelativePaths()).ToList(),
-                            TerrainSlopeLayer = obj.TerrainSlopeLayer?.Clone().WithRelativePaths(),
-                            TerrainSlopeEnabled = obj.TerrainSlopeEnabled
                         });
                     }
                 }

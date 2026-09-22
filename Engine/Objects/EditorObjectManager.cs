@@ -212,11 +212,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _ => new Vector3(0.8f, 0.8f, 0.8f),
                 }
             };
-            // Planes default to the PBR material path so the PBR panel's forced
-            // vertex displacement (Height / Displacement map = real geometry) works
-            // like before. The standalone heightmap terrain is opt-in via the
-            // Terrain panel — enabling it takes over the draw path for that plane.
-
             if (type != EditorPrimitiveType.GlbReference)
                 obj.InitGPU();
             _objects.Add(obj);
@@ -328,106 +323,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 ShowSkyGizmo = source.ShowSkyGizmo,
                 SkySettings = source.SkySettings.Clone(),
                 GizmoPivotOverride = null,
-                // ── Terrain (Plane) ──
-                TerrainEnabled = source.TerrainEnabled,
-                TerrainHeightmapPath = source.TerrainHeightmapPath,
-                TerrainChunkSize = source.TerrainChunkSize,
-                TerrainChunksPerSide = source.TerrainChunksPerSide,
-                TerrainHeightScale = source.TerrainHeightScale,
-                TerrainSlopeThreshold = source.TerrainSlopeThreshold,
-                TerrainTexTiling = source.TerrainTexTiling,
-                TerrainSlopeTexTiling = source.TerrainSlopeTexTiling,
-                TerrainUseStochasticSampling = source.TerrainUseStochasticSampling,
-                TerrainLayerAirTop = source.TerrainLayerAirTop,
-                TerrainLayerDirtTop = source.TerrainLayerDirtTop,
-                TerrainLayerGrassTop = source.TerrainLayerGrassTop,
-                TerrainLayerSnowTop = source.TerrainLayerSnowTop,
-                TerrainTextureAirPath = source.TerrainTextureAirPath,
-                TerrainTextureDirtPath = source.TerrainTextureDirtPath,
-                TerrainTextureGrassPath = source.TerrainTextureGrassPath,
-                TerrainTextureSnowPath = source.TerrainTextureSnowPath,
-                TerrainTextureSlopePath = source.TerrainTextureSlopePath,
-                TerrainPbrAlbedoBrightness = source.TerrainPbrAlbedoBrightness,
-                TerrainPbrAlbedoSaturation = source.TerrainPbrAlbedoSaturation,
-                TerrainPbrAlbedoContrast = source.TerrainPbrAlbedoContrast,
-                TerrainPbrNormalStrength = source.TerrainPbrNormalStrength,
-                TerrainPbrNormalBlur = source.TerrainPbrNormalBlur,
-                TerrainPbrMetallicThreshold = source.TerrainPbrMetallicThreshold,
-                TerrainPbrMetallicSoftness = source.TerrainPbrMetallicSoftness,
-                TerrainPbrMetallicStrength = source.TerrainPbrMetallicStrength,
-                TerrainPbrRoughnessStrength = source.TerrainPbrRoughnessStrength,
-                TerrainPbrRoughnessInvert = source.TerrainPbrRoughnessInvert,
-                TerrainPbrAoStrength = source.TerrainPbrAoStrength,
-                TerrainPbrAoBrightness = source.TerrainPbrAoBrightness,
-                TerrainPbrHeightStrength = source.TerrainPbrHeightStrength,
-                TerrainPbrHeightInvert = source.TerrainPbrHeightInvert,
-                TerrainPbrHeightBlur = source.TerrainPbrHeightBlur,
-                TerrainPbrEmissionIntensity = source.TerrainPbrEmissionIntensity,
-                TerrainLayers = source.TerrainLayers == null || source.TerrainLayers.Length != 5
-                    ? [new(), new(), new(), new(), new()]
-                    : Array.ConvertAll(source.TerrainLayers, l => (l ?? new TerrainPbrLayerData()).Clone()),
-                // ── PBR splat terrain (paintable multi-texture plane) ──
-                SplatLayers = source.SplatLayers == null || source.SplatLayers.Length != 4
-                    ? [new(), new(), new(), new()]
-                    : Array.ConvertAll(source.SplatLayers, l => (l ?? new PbrSplatLayerData()).Clone()),
-                SplatPaintLayerIndex = source.SplatPaintLayerIndex,
-                SplatPaintStrength = source.SplatPaintStrength,
-                SplatTiling = source.SplatTiling,
-                SplatPaintedData = source.SplatPaintedData,   // carried paint/sculpt (decode side)
-                SculptPaintedData = source.SculptPaintedData,
-                PbrLodEnabled = source.PbrLodEnabled,
-                PbrLodDistance = source.PbrLodDistance,
-                PbrLodDistance2 = source.PbrLodDistance2,
-                PbrOcclusionEnabled = source.PbrOcclusionEnabled,
-                TerrainHeightPath = source.TerrainHeightPath,
-                SplatHeightLayersEnabled = source.SplatHeightLayersEnabled,
-                SplatHeightLayerCount = source.SplatHeightLayerCount,
-                SplatHeightLayerFeather = source.SplatHeightLayerFeather,
-                SplatHeightBands = (float[])source.SplatHeightBands.Clone(),
-                SplatSlopeTiling = source.SplatSlopeTiling,
-                SplatSlopeEnabled = source.SplatSlopeEnabled,
-                SplatSlopeLayer = source.SplatSlopeLayer,
-                SplatSlopeThreshold = source.SplatSlopeThreshold,
-                SplatSlopeFeather = source.SplatSlopeFeather,
-                SplatTriplanar = source.SplatTriplanar,
-                // ── PBR material (Box/Sphere/flat plane) ──
-                PbrAlbedoPath = source.PbrAlbedoPath,
-                PbrNormalPath = source.PbrNormalPath,
-                PbrMetallicPath = source.PbrMetallicPath,
-                PbrRoughnessPath = source.PbrRoughnessPath,
-                PbrAoPath = source.PbrAoPath,
-                PbrHeightPath = source.PbrHeightPath,
-                PbrEmissionPath = source.PbrEmissionPath,
-                PbrTexTiling = source.PbrTexTiling,
-                PbrParallaxScale = source.PbrParallaxScale,
-                PbrPomShadowStrength = source.PbrPomShadowStrength,
-                PbrHeightContrast = source.PbrHeightContrast,
-                PbrHeightContrastCenter = source.PbrHeightContrastCenter,
-                PbrHeightOffset = source.PbrHeightOffset,
-                PbrHeightScaleCenter = source.PbrHeightScaleCenter,
-                PbrVertexDisplaceScale = source.PbrVertexDisplaceScale,
-                PbrVertexSegments = source.PbrVertexSegments,
-                PbrVertexChunk = source.PbrVertexChunk,
-                TerrainBrushSize = source.TerrainBrushSize,
-                TerrainBrushStrength = source.TerrainBrushStrength,
-                TerrainBrushSoftness = source.TerrainBrushSoftness,
-                TerrainBrushFalloff = source.TerrainBrushFalloff,
-                BrushIndicatorColor = source.BrushIndicatorColor,
-                BrushIndicatorAlpha = source.BrushIndicatorAlpha,
-                TerrainPaintedData = source.TerrainPaintedData,
-                TerrainPaintLayerIndex = source.TerrainPaintLayerIndex,
-                TerrainPaintStrength = source.TerrainPaintStrength,
-                TerrainSplatData = source.TerrainSplatData,
-                PaintLayerTexture0 = source.PaintLayerTexture0,
-                PaintLayerTexture1 = source.PaintLayerTexture1,
-                PaintLayerTexture2 = source.PaintLayerTexture2,
-                PaintLayerTexture3 = source.PaintLayerTexture3,
-                PaintLayerTiling = source.PaintLayerTiling.ToArray(),
-                PaintLayerStochastic = source.PaintLayerStochastic.ToArray(),
-                PaintLayerCount = source.PaintLayerCount,
                 TexSettings = source.TexSettings.Clone(),
                 PbrTexSettings = source.PbrTexSettings.Select(s => s.Clone()).ToArray(),
-                TerrainLayerSettings = source.TerrainLayerSettings.Select(s => s.Clone()).ToArray(),
 
             };
             if (clone.PrimitiveType != EditorPrimitiveType.GlbReference)
@@ -532,7 +429,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // ── Editor gizmos for special marker types (drawn after the solid objects so
             // the wireframe lines always render on top; depth test is disabled internally
-            // so they show through terrain): real-camera frustum for cameras, a direction
+            // so they show through geometry): real-camera frustum for cameras, a direction
             // ray + spotlight cone for lights, and a horizon + sun icon for skies. ──
             foreach (var obj in _objects)
             {
@@ -824,13 +721,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var obj = _objects[i];
                 if (!obj.CastShadow || !obj.IsVisible) continue;
 
-                // Simple frustum culling for shadow. Terrain-enabled planes are huge
-                // ground surfaces (default 25×25 footprint) — a point-sphere test around
-                // their center would cull them whenever the camera sits near the terrain
-                // edge, so they are always kept in the shadow pass. GLB references use a
-                // radius derived from their actual mesh AABB.
-                if (planes != null
-                    && !(obj.PrimitiveType == EditorPrimitiveType.Plane && obj.TerrainEnabled))
+                // Simple frustum culling for shadow passes. GLB references use a
+                // radius derived from their actual mesh AABB; primitives use a fixed
+                // conservative radius.
+                if (planes != null)
                 {
                     float boundRadius = obj.PrimitiveType == EditorPrimitiveType.GlbReference
                         ? obj.GetGlbBoundRadius()

@@ -60,9 +60,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         private Matrix4x4 _projection;
         private bool _projectionDirty = true;
 
-        // Terrain clamp
-        private float lastTerrainY = 0f;
-
         // Camera mode — property dibacking oleh _cameraMode agar HUD dan logic selalu sinkron
         private CameraMode _cameraMode = CameraMode.Orbit;
         public CameraMode CurrentMode
@@ -734,20 +731,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             smoothCamPos = newPos;
         }
 
-        public void ClampToTerrain(MapLoader mapLoader, float dt)
-        {
-            float minHeight = 1.0f;
-
-            float terrainY = mapLoader.GetHeightInterpolated(Position.X, Position.Z);
-            float targetY = terrainY + minHeight;
-
-            lastTerrainY = lastTerrainY * 0.9f + targetY * 0.1f;
-
-            float smooth = 12f;
-            Position.Y = Helpers.OGLMath.Lerp(Position.Y, lastTerrainY, 1f - MathF.Exp(-smooth * dt));
-        }
-
-        public void SetCamera(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null, bool processInput = true)
+        public void SetCamera(nint window, Vector3 position, float dt, List<StaticObjectManager>? staticManagers = null, bool processInput = true)
         {
             // Prevent scroll accumulation when viewport is not focused (applies to all camera modes)
             if (!processInput)
@@ -767,12 +751,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             } 
 
             if (_cameraMode == CameraMode.FirstPerson)
-                SetCameraFirstPerson(window, position, gameTerrainChunk, dt, processInput);
+                SetCameraFirstPerson(window, position, dt, processInput);
             else
-                SetCameraThirdPerson(window, position, gameTerrainChunk, dt, staticManagers, processInput);
+                SetCameraThirdPerson(window, position, dt, staticManagers, processInput);
         }
 
-        private void SetCameraThirdPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, List<StaticObjectManager>? staticManagers = null, bool processInput = true)
+        private void SetCameraThirdPerson(nint window, Vector3 position, float dt, List<StaticObjectManager>? staticManagers = null, bool processInput = true)
         {
             var preset = CurrentPreset;
             if (preset == null) return;
@@ -915,42 +899,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Vector3 camOffset = Vector3.TransformNormal(offset, rot);
             Vector3 idealPos = pivotPos + camOffset;
 
-            Vector3 idealDir = Vector3.Normalize(idealPos - pivotPos);
-            float idealDist = Vector3.Distance(pivotPos, idealPos);
-
-            float terrainY = gameTerrainChunk.GetHeightAt(idealPos.X, idealPos.Z);
-            float minHeight = 0.1f;
-
             Vector3 finalPos = idealPos;
-
-            // Collision detection: raycast from pivot to ideal position
-            if (idealPos.Y < terrainY + minHeight)
-            {
-                if (idealDir.Y < -0.05f) // Camera is below the pivot
-                {
-                    // Calculate distance along idealDir where it intersects the terrain plane
-                    float t = (terrainY + minHeight - pivotPos.Y) / idealDir.Y;
-                    if (t < 0) t = minDist; // If terrain is above pivot, zoom fully in
-
-                    float newDist = MathF.Max(minDist, t - collisionPush);
-                    newDist = MathF.Min(newDist, idealDist);
-
-                    finalPos = pivotPos + idealDir * newDist;
-                    
-                    // Fallback safety
-                    if (finalPos.Y < terrainY + minHeight)
-                        finalPos.Y = terrainY + minHeight;
-                }
-                else
-                {
-                    // Camera is above the pivot but hitting a slope/cliff
-                    float newDist = idealDist - collisionPush;
-                    newDist = MathF.Max(minDist, newDist);
-
-                    finalPos = pivotPos + idealDir * newDist;
-                    finalPos.Y = terrainY + minHeight;
-                }
-            }
 
             // Smooth camera movement
             float lag = 6f;
@@ -981,7 +930,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Up = Vector3.Normalize(Vector3.Cross(Right, Front));
         }
          
-        private void SetCameraFirstPerson(nint window, Vector3 position, TerrainChunk gameTerrainChunk, float dt, bool processInput = true)
+        private void SetCameraFirstPerson(nint window, Vector3 position, float dt, bool processInput = true)
         {
             float camScale = 1.0f;
             if (ScaleConfig.ScaleCamera)

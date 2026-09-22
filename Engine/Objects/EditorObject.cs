@@ -9,7 +9,7 @@ using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
-using StbImageSharp; // splat terrain: decode the authored height map into the sculpt buffer
+using StbImageSharp;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects;
 
@@ -135,237 +135,6 @@ public enum LightType
     Spotlight = 2    // Directional spotlight with cone angle
 }
 
-/// <summary>
-/// Represents a user-placed 3D object in the editor scene.
-/// Can be a Plane, Box, Sphere, or a reference to a .glb file.
-/// Contains all properties needed for rendering, shadow casting, and gizmo interaction.
-/// </summary>
-/// <summary>
-/// A single dynamic terrain layer. Contains albedo texture, PBR maps, tiling,
-/// height blending range, and texture sampling settings.
-/// Layers stack from bottom (index 0) to top. HeightMin/HeightMax define where
-/// this layer blends in (smooth transition at edges).
-/// </summary>
-public class TerrainLayer
-{
-    public const int MaxPbrMaps = 6; // normal, metallic, roughness, ao, height, emission
-
-    // ── Identity ──
-    public string Name { get; set; } = "Base";
-    public bool Visible { get; set; } = true;
-
-    // ── Albedo ──
-    public string AlbedoPath { get; set; } = "Artifacts/Textures/default.jpg";
-
-    // ── PBR maps (index 0=normal, 1=metallic, 2=roughness, 3=ao, 4=height, 5=emission) ──
-    public string?[] PbrPaths { get; set; } = new string?[MaxPbrMaps];
-
-    // ── Tiling ──
-    public float TilingX { get; set; } = 0.5f;
-    public float TilingY { get; set; } = 0.5f;
-
-    // ── Height blending (normalized 0..1) ──
-    public float HeightMin { get; set; } = 0.0f;
-    public float HeightMax { get; set; } = 1.0f;
-    public float BlendSharpness { get; set; } = 2.0f; // 1=smooth, higher=sharper
-
-    // ── Texture sampling ──
-    public Libs.TextureSettings? TextureSettings { get; set; } = null;
-    public bool StochasticSampling { get; set; } = false;
-
-    // ── PBR tuning (per layer) ──
-    public float NormalStrength { get; set; } = 1.0f;
-    public float NormalBlur { get; set; } = 0.0f;
-    public float MetallicThreshold { get; set; } = 0.5f;
-    public float MetallicSoftness { get; set; } = 0.1f;
-    public float MetallicStrength { get; set; } = 1.0f;
-    public float RoughnessStrength { get; set; } = 1.0f;
-    public bool RoughnessInvert { get; set; } = false;
-    public float AoStrength { get; set; } = 1.0f;
-    public float AoBrightness { get; set; } = 0.0f;
-    public float HeightStrength { get; set; } = 1.0f;
-    public bool HeightInvert { get; set; } = false;
-    public float HeightBlur { get; set; } = 0.0f;
-    public float EmissionIntensity { get; set; } = 1.0f;
-    public float AlbedoBrightness { get; set; } = 1.0f;
-    public float AlbedoSaturation { get; set; } = 1.0f;
-    public float AlbedoContrast { get; set; } = 1.0f;
-
-    // ── Slope-specific ──
-    public float SlopeThreshold { get; set; } = 0.35f; // only used for slope layer
-
-    // ── Factory ──
-    public static TerrainLayer CreateDefault() => new() { Name = "Layer 1", HeightMin = 0f, HeightMax = 1f };
-    public static TerrainLayer CreateSlope() => new() { Name = "Slope", HeightMin = 0f, HeightMax = 1f, SlopeThreshold = 0.35f };
-
-    public TerrainLayer Clone()
-    {
-        var c = (TerrainLayer)MemberwiseClone();
-        c.PbrPaths = (string?[])PbrPaths.Clone();
-        c.TextureSettings = TextureSettings?.Clone();
-        return c;
-    }
-
-    public string? GetPbrPath(int mapType) => mapType >= 0 && mapType < MaxPbrMaps ? PbrPaths[mapType] : null;
-    public void SetPbrPath(int mapType, string? path)
-    {
-        if (mapType < 0 || mapType >= MaxPbrMaps) return;
-        if (PbrPaths[mapType] == path) return;
-        PbrPaths[mapType] = path;
-    }
-
-    public TerrainLayer WithRelativePaths()
-    {
-        var c = Clone();
-        c.AlbedoPath = PathHelpers.MakeRelative(c.AlbedoPath);
-        for (int i = 0; i < MaxPbrMaps; i++)
-            if (c.PbrPaths[i] != null) c.PbrPaths[i] = PathHelpers.MakeRelative(c.PbrPaths[i]!);
-        return c;
-    }
-
-    public TerrainLayer WithResolvedPaths()
-    {
-        var c = Clone();
-        c.AlbedoPath = PathHelpers.Resolve(c.AlbedoPath);
-        for (int i = 0; i < MaxPbrMaps; i++)
-            if (c.PbrPaths[i] != null) c.PbrPaths[i] = PathHelpers.Resolve(c.PbrPaths[i]!);
-        return c;
-    }
-}
-
-/// <summary>
-/// One paintable splat layer of the PBR-plane terrain: its own albedo texture
-/// (painted with the viewport brush onto the splat map) plus a tint. The shared
-/// objectPbr pipeline (normal / metallic / roughness / AO / height / emission +
-/// POM + CSM shadows) stays the single source of the surface's material response —
-/// a splat layer only swaps the ALBEDO, so the PBR look the plane already has is
-/// preserved exactly.
-/// </summary>
-public class PbrSplatLayerData
-{
-    public string AlbedoPath { get; set; } = "";
-    public float TintR { get; set; } = 1f;
-    public float TintG { get; set; } = 1f;
-    public float TintB { get; set; } = 1f;
-
-    public Vector3 Tint => new(TintR, TintG, TintB);
-
-    public PbrSplatLayerData Clone() => (PbrSplatLayerData)MemberwiseClone();
-
-    /// <summary>Clone with the albedo path stored relative to the exe (for saving).</summary>
-    public PbrSplatLayerData WithRelativePaths()
-    {
-        var c = Clone();
-        c.AlbedoPath = string.IsNullOrEmpty(AlbedoPath) ? AlbedoPath : PathHelpers.MakeRelative(AlbedoPath);
-        return c;
-    }
-
-    /// <summary>Clone with the albedo path resolved to absolute (for loading).</summary>
-    public PbrSplatLayerData WithResolvedPaths()
-    {
-        var c = Clone();
-        c.AlbedoPath = string.IsNullOrEmpty(AlbedoPath) ? AlbedoPath : PathHelpers.Resolve(AlbedoPath);
-        return c;
-    }
-
-    public DarkEngine3D_gl_csharp.Engine.Scene.PbrSplatLayerDataAsset ToAsset() => new()
-    {
-        AlbedoPath = AlbedoPath, TintR = TintR, TintG = TintG, TintB = TintB
-    };
-
-    public static PbrSplatLayerData FromAsset(DarkEngine3D_gl_csharp.Engine.Scene.PbrSplatLayerDataAsset a) => new()
-    {
-        AlbedoPath = a.AlbedoPath ?? "", TintR = a.TintR, TintG = a.TintG, TintB = a.TintB
-    };
-}
-
-/// <summary>
-/// Per-layer PBR configuration for advanced terrain. PBR is per texture: each of the
-/// 5 layers (air, dirt, grass, snow, slope) owns its own 6 companion maps (normal /
-/// metallic / roughness / AO / height / emission) and its own unique tuning values —
-/// there is no shared "global" PBR look anymore. A layer's albedo lives in the matching
-/// TerrainTexture*Path property.
-/// <para>Map paths are nullable: <c>null</c> = not set yet (auto-discovered next to the
-/// albedo when the terrain builds), <c>""</c> = explicitly cleared (neutral default, no
-/// map loaded), any other value = explicit path.</para>
-/// </summary>
-public class TerrainPbrLayerData
-{
-    public string? NormalPath { get; set; }
-    public string? MetallicPath { get; set; }
-    public string? RoughnessPath { get; set; }
-    public string? AoPath { get; set; }
-    public string? HeightPath { get; set; }
-    public string? EmissionPath { get; set; }
-
-    public float AlbedoBrightness { get; set; } = 1f;
-    public float AlbedoSaturation { get; set; } = 1f;
-    public float AlbedoContrast { get; set; } = 1f;
-    public float NormalStrength { get; set; } = 1f;
-    public float NormalBlur { get; set; } = 0f;
-    public float MetallicThreshold { get; set; } = 0.5f;
-    public float MetallicSoftness { get; set; } = 0.1f;
-    public float MetallicStrength { get; set; } = 1f;
-    public float RoughnessStrength { get; set; } = 1f;
-    public bool RoughnessInvert { get; set; } = false;
-    public float AoStrength { get; set; } = 1f;
-    public float AoBrightness { get; set; } = 0f;
-    public float HeightStrength { get; set; } = 1f;
-    public bool HeightInvert { get; set; } = false;
-    public float HeightBlur { get; set; } = 0f;
-    public float EmissionIntensity { get; set; } = 1f;
-
-    public TerrainPbrLayerData Clone() => (TerrainPbrLayerData)MemberwiseClone();
-
-    /// <summary>Map type index → path (1=normal … 6=emission). 0 = albedo — lives in the
-    /// matching TerrainTexture*Path property, so it returns null here.</summary>
-    public string? GetPath(int t) => t switch
-    {
-        0 => null,
-        1 => NormalPath, 2 => MetallicPath, 3 => RoughnessPath,
-        4 => AoPath, 5 => HeightPath, _ => EmissionPath,
-    };
-
-    public void SetPath(int t, string? path)
-    {
-        switch (t)
-        {
-            case 0: return; // albedo lives in the matching TerrainTexture*Path property
-            case 1: NormalPath = path; break;
-            case 2: MetallicPath = path; break;
-            case 3: RoughnessPath = path; break;
-            case 4: AoPath = path; break;
-            case 5: HeightPath = path; break;
-            default: EmissionPath = path; break;
-        }
-    }
-
-    /// <summary>Clone with all map paths stored relative to the exe (for saving).</summary>
-    public TerrainPbrLayerData WithRelativePaths()
-    {
-        var c = Clone();
-        c.NormalPath = NormalPath == null ? null : PathHelpers.MakeRelative(NormalPath);
-        c.MetallicPath = MetallicPath == null ? null : PathHelpers.MakeRelative(MetallicPath);
-        c.RoughnessPath = RoughnessPath == null ? null : PathHelpers.MakeRelative(RoughnessPath);
-        c.AoPath = AoPath == null ? null : PathHelpers.MakeRelative(AoPath);
-        c.HeightPath = HeightPath == null ? null : PathHelpers.MakeRelative(HeightPath);
-        c.EmissionPath = EmissionPath == null ? null : PathHelpers.MakeRelative(EmissionPath);
-        return c;
-    }
-
-    /// <summary>Clone with all map paths resolved to absolute (for loading).</summary>
-    public TerrainPbrLayerData WithResolvedPaths()
-    {
-        var c = Clone();
-        c.NormalPath = NormalPath == null ? null : PathHelpers.Resolve(NormalPath);
-        c.MetallicPath = MetallicPath == null ? null : PathHelpers.Resolve(MetallicPath);
-        c.RoughnessPath = RoughnessPath == null ? null : PathHelpers.Resolve(RoughnessPath);
-        c.AoPath = AoPath == null ? null : PathHelpers.Resolve(AoPath);
-        c.HeightPath = HeightPath == null ? null : PathHelpers.Resolve(HeightPath);
-        c.EmissionPath = EmissionPath == null ? null : PathHelpers.Resolve(EmissionPath);
-        return c;
-    }
-}/// <summary>Runtime render data for one Map2D parallax layer. The Map Editor panel
 /// pushes these onto <see cref="EditorObject.Map2dParallaxLayers"/> each time a layer is
 /// added/edited; <see cref="DrawMap2D"/> draws each as an upright textured quad at a
 /// world Z offset derived from the layer's ZPosition (positive = in front of the grid,
@@ -556,7 +325,8 @@ public unsafe class EditorObject
     /// own while everything else stays normal. Persisted with the scene.</summary>
     public float Sprite2DGlow { get; set; } = 0f;
     /// <summary>Color tint of the per-sprite glow (Sprite2DGlow): the boosted
-    /// (emissive) sprite color is multiplied by this, so the bloom takes the chosen    /// hue — e.g. blue for blue fire. White = natural sprite colors. Normalized so
+    /// (emissive) sprite color is multiplied by this, so the bloom takes the chosen
+    /// hue — e.g. blue for blue fire. White = natural sprite colors. Normalized so
     /// its brightest channel is 1 at render time.</summary>
     public Vector3 Sprite2DGlowColor { get; set; } = Vector3.One;
     /// <summary>Player variant of the per-sprite glow (same mechanism).</summary>
@@ -681,9 +451,7 @@ public unsafe class EditorObject
     public string PbrRoughnessPath { get; set; } = "";
     /// <summary>Ambient-occlusion map (R channel) (optional; 1 when absent).</summary>
     public string PbrAoPath { get; set; } = "";
-    /// <summary>Height / displacement map (R channel, 0.5 = flat) (optional; drives parallax).
-    /// For PLANES this slot is ALSO the terrain elevation source (user decision: the heightmap
-    /// input lives here in the PBR panel — see <see cref="TerrainHeightSourcePath"/>).</summary>
+    /// <summary>Height / displacement map (R channel, 0.5 = flat) (optional; drives parallax).</summary>
     private string _pbrHeightPath = "";
     public string PbrHeightPath
     {
@@ -692,42 +460,6 @@ public unsafe class EditorObject
         {
             if (_pbrHeightPath == value) return;
             _pbrHeightPath = value;
-            // Height source changed: drop the CPU height caches so raycasting and a
-            // later Enable Sculpt decode the NEW map (stale caches would raycast the
-            // old terrain and sculpt on top of a discarded base).
-            _baseHeightCache = null;
-            _sculptHeights = null;
-            _sculptDirty = true;
-            _terrainHeightTex = 0;
-            _terrainHeightTexKey = null;
-        }
-    }
-    /// <summary>EFFECTIVE terrain elevation source for planes: the dedicated
-    /// <see cref="TerrainHeightPath"/> when set (scenes saved with the split UI),
-    /// otherwise the PBR panel "Height / Displacement" slot (<see cref="PbrHeightPath"/>)
-    /// — the heightmap input deliberately lives ONLY in the PBR panel. Non-planes never
-    /// fall back (their height slot stays parallax-only).</summary>
-    public string TerrainHeightSourcePath =>
-        !string.IsNullOrEmpty(TerrainHeightPath) ? TerrainHeightPath
-        : (PrimitiveType == EditorPrimitiveType.Plane ? PbrHeightPath : "");
-    /// <summary>TERRAIN height map for planes (vertex displacement source, sculpt base,
-    /// height-band splat auto-layers, brush raycast). DELIBERATELY SEPARATE from
-    /// <see cref="PbrHeightPath"/> — that one is the POM parallax DETAIL map on the PBR
-    /// panel; this one makes the plane an actual terrain. Setter drops the CPU height
-    /// caches + GPU texture so raycast/sculpt/displacement always see the NEW map.</summary>
-    private string _terrainHeightPath = "";
-    public string TerrainHeightPath
-    {
-        get => _terrainHeightPath;
-        set
-        {
-            if (_terrainHeightPath == value) return;
-            _terrainHeightPath = value;
-            _baseHeightCache = null;
-            _sculptHeights = null;
-            _sculptDirty = true;
-            _terrainHeightTex = 0;
-            _terrainHeightTexKey = null;
         }
     }
     /// <summary>Emissive color map (optional; 0 when absent).</summary>
@@ -753,6 +485,26 @@ public unsafe class EditorObject
     /// Vertex displacement is always active whenever a height source exists —
     /// there is no longer a boolean toggle gating it.</summary>
     public float PbrVertexDisplaceScale { get; set; } = 0.15f;
+
+    // ── PBR map tuning (per map type, applies to the sampled map only; uniform-only
+    //    uploads, so changing these never reloads a texture) ──
+    public float PbrAlbedoBrightness { get; set; } = 1f;
+    public float PbrAlbedoSaturation { get; set; } = 1f;
+    public float PbrAlbedoContrast { get; set; } = 1f;
+    public float PbrNormalStrength { get; set; } = 1f;
+    public float PbrNormalBlur { get; set; } = 0f;
+    public float PbrMetallicThreshold { get; set; } = 0.5f;
+    public float PbrMetallicSoftness { get; set; } = 0.1f;
+    public float PbrMetallicStrength { get; set; } = 1f;
+    public float PbrRoughnessStrength { get; set; } = 1f;
+    public bool PbrRoughnessInvert { get; set; } = false;
+    public float PbrAoStrength { get; set; } = 1f;
+    public float PbrAoBrightness { get; set; } = 0f;
+    public float PbrHeightStrength { get; set; } = 1f;
+    public bool PbrHeightInvert { get; set; } = false;
+    public float PbrHeightBlur { get; set; } = 0f;
+    public float PbrEmissionIntensity { get; set; } = 1f;
+
     // Lazy uniform-location sets for the two PBR programs (standard / vertex-displaced).
     private PbrUniformSet? _pbrUniformsStd;
     private PbrUniformSet? _pbrUniformsDisp;
@@ -800,15 +552,6 @@ public unsafe class EditorObject
         set => _pbrTexSettings = value;
     }
 
-    private Libs.TextureSettings[]? _terrainLayerSettings;
-    /// <summary>Per-terrain-layer sampling settings (index 0..3 = air, dirt, grass, snow).
-    /// Lazily cloned from <see cref="TexSettings"/> so legacy objects keep defaults.</summary>
-    public Libs.TextureSettings[] TerrainLayerSettings
-    {
-        get => _terrainLayerSettings ??= InitSlotSettings(4);
-        set => _terrainLayerSettings = value;
-    }
-
     private Libs.TextureSettings[] InitSlotSettings(int count)
     {
         var arr = new Libs.TextureSettings[count];
@@ -821,7 +564,6 @@ public unsafe class EditorObject
         !string.IsNullOrEmpty(PbrAlbedoPath) || !string.IsNullOrEmpty(PbrNormalPath) ||
         !string.IsNullOrEmpty(PbrMetallicPath) || !string.IsNullOrEmpty(PbrRoughnessPath) ||
         !string.IsNullOrEmpty(PbrAoPath) || !string.IsNullOrEmpty(PbrHeightPath) ||
-        !string.IsNullOrEmpty(TerrainHeightPath) ||
         !string.IsNullOrEmpty(PbrEmissionPath);
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
@@ -916,936 +658,14 @@ public unsafe class EditorObject
     public LightType LightTypeEnum { get; set; } = LightType.Direct;
     /// <summary>For Point lights: falloff distance in world units (0 = no falloff, uses intensity only).</summary>
     public float LightPointRadius { get; set; } = 50f;
-
-    // ── Terrain removed — planes render as flat PBR primitives ──
-    private bool _terrainEnabled = false;
-    public bool TerrainEnabled
-    {
-        get => false; // terrain rendering disabled — flat plane only
-        set => _terrainEnabled = false; // always false
-    }
-    /// <summary>Heightmap file (.raw 8-bit or any image). Empty = flat plane (height 0 everywhere).</summary>
-    public string TerrainHeightmapPath { get; set; } = "";
-    /// <summary>Grid resolution per side (4..256). Higher = more detail, more triangles.</summary>
-    public int TerrainChunkSize { get; set; } = 32;
-    /// <summary>How many chunk sub-meshes per side (1..128). The terrain is split into
-    /// ChunksPerSide × ChunksPerSide chunks, each one a grid of TerrainChunkSize quads —
-    /// more chunks = more sub-meshes and more total triangles = more detail.</summary>
-    public int TerrainChunksPerSide { get; set; } = 1;
-    /// <summary>Vertical exaggeration of the heightmap (world units for full white).</summary>
-    public float TerrainHeightScale { get; set; } = 30f;
-    /// <summary>Slope steepness (1 - normal.y) above which the dirt/rock layer takes over.</summary>
-    public float TerrainSlopeThreshold { get; set; } = 0.35f;
-    /// <summary>World-space tiling frequency of the layer textures.</summary>
-    public float TerrainTexTiling { get; set; } = 0.5f;
-    /// <summary>Texture tiling for steep slope/cliff surfaces (triplanar).</summary>
-    public float TerrainSlopeTexTiling { get; set; } = 0.3f;
-    /// <summary>Parallax occlusion mapping strength (0 = off, 0.02 = subtle, 0.06 = strong).</summary>
-    public float TerrainParallaxScale { get; set; } = 0.0f;
-    /// <summary>Number of POM ray-march steps (8-32, higher = more accurate but slower).</summary>
-    public int TerrainPomSteps { get; set; } = 16;
-    /// <summary>Stochastic (random per-tile) sampling — OFF by default so the default plane
-    /// tiles deterministically. ON breaks up the repeating pattern.</summary>
-    public bool TerrainUseStochasticSampling { get; set; } = false;
-    /// <summary>Normalized height where the air layer ends (water level).</summary>
-    public float TerrainLayerAirTop { get; set; } = 0.18f;
-    /// <summary>Normalized height where the dirt layer ends.</summary>
-    public float TerrainLayerDirtTop { get; set; } = 0.45f;
-    /// <summary>Normalized height where the grass layer ends (snow starts after).</summary>
-    public float TerrainLayerGrassTop { get; set; } = 0.75f;
-    /// <summary>Normalized height where the snow layer is fully dominant.</summary>
-    public float TerrainLayerSnowTop { get; set; } = 1.0f;
-    /// <summary>Texture for layer 1 — air / water. Defaults to default.jpg for new planes.</summary>
-    public string TerrainTextureAirPath { get; set; } = "Artifacts/Textures/default.jpg";
-    /// <summary>Texture for layer 2 — tanah / dirt.</summary>
-    public string TerrainTextureDirtPath { get; set; } = "";
-    /// <summary>Texture for layer 3 — rumput / grass.</summary>
-    public string TerrainTextureGrassPath { get; set; } = "";
-    /// <summary>Texture for layer 4 — salju / snow.</summary>
-    public string TerrainTextureSnowPath { get; set; } = "";
-    /// <summary>Texture for layer 5 — lereng / slope (steep cliffs). Replaces the dirt
-    /// layer on steep faces so cliffs get their own rock texture.</summary>
-    public string TerrainTextureSlopePath { get; set; } = "";
-
-    // ── PBR map tuning (global per map type — applies to ALL layers; uniforms only,
-    //    so editing these never triggers an expensive terrain rebuild) ──
-    /// <summary>Albedo brightness multiplier (0..2).</summary>
-    public float TerrainPbrAlbedoBrightness { get; set; } = 1f;
-    /// <summary>Albedo saturation (0 = grayscale, 1 = original, 2 = oversaturated).</summary>
-    public float TerrainPbrAlbedoSaturation { get; set; } = 1f;
-    /// <summary>Albedo contrast (1 = original, 0 = flat gray, 2 = high contrast).</summary>
-    public float TerrainPbrAlbedoContrast { get; set; } = 1f;
-    /// <summary>Normal map strength (0 = off, 1 = full, 2 = overdriven).</summary>
-    public float TerrainPbrNormalStrength { get; set; } = 1f;
-    /// <summary>Normal map blur in texels (0 = sharp, up to 8 = soft).</summary>
-    public float TerrainPbrNormalBlur { get; set; } = 0f;
-    /// <summary>Metallic mask threshold — values above become metal.</summary>
-    public float TerrainPbrMetallicThreshold { get; set; } = 0.5f;
-    /// <summary>Metallic threshold transition softness (0 = hard cut, 0.3 = wide blend).</summary>
-    public float TerrainPbrMetallicSoftness { get; set; } = 0.1f;
-    /// <summary>Metallic final strength (0 = never metal, 1 = as masked).</summary>
-    public float TerrainPbrMetallicStrength { get; set; } = 1f;
-    /// <summary>Roughness multiplier (0 = glossy, 1 = as mapped, 2 = very rough).</summary>
-    public float TerrainPbrRoughnessStrength { get; set; } = 1f;
-    /// <summary>Invert roughness (for smoothness maps that store gloss instead).</summary>
-    public bool TerrainPbrRoughnessInvert { get; set; } = false;
-    /// <summary>Ambient occlusion strength (0 = no AO, 1 = as mapped).</summary>
-    public float TerrainPbrAoStrength { get; set; } = 1f;
-    /// <summary>Ambient occlusion brightness offset (0 = as mapped, 1 = fully bright).</summary>
-    public float TerrainPbrAoBrightness { get; set; } = 0f;
-    /// <summary>Height / parallax strength (0 = flat, 1 = full displacement offset).</summary>
-    public float TerrainPbrHeightStrength { get; set; } = 1f;
-    /// <summary>Invert the height map (swap valleys/peaks).</summary>
-    public bool TerrainPbrHeightInvert { get; set; } = false;
-    /// <summary>Height map blur in texels (0 = sharp, up to 8 = soft).</summary>
-    public float TerrainPbrHeightBlur { get; set; } = 0f;
-    /// <summary>Emission intensity multiplier (0 = off, 1 = as mapped).</summary>
-    public float TerrainPbrEmissionIntensity { get; set; } = 1f;
-    /// <summary>Per-layer PBR data for the legacy 5 terrain layers (kept for backward compat).
-    /// New code should use <see cref="TerrainLayerList"/> instead.</summary>
-    public TerrainPbrLayerData[] TerrainLayers { get; set; } = [new(), new(), new(), new(), new()];
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  NEW DYNAMIC TERRAIN LAYER SYSTEM
-    // ══════════════════════════════════════════════════════════════════════
-    /// <summary>Dynamic terrain layers. Default: 1 layer (Base). User can add more.</summary>
-    public List<TerrainLayer> TerrainLayerList { get; set; } = [TerrainLayer.CreateDefault()];
-    /// <summary>Slope layer: applies on steep faces. Toggle on/off.</summary>
-    public TerrainLayer? TerrainSlopeLayer { get; set; } = null;
-    /// <summary>Slope layer data serialized separately (so slope can be null = disabled).</summary>
-    public bool TerrainSlopeEnabled { get; set; } = false;
-
-    /// <summary>Max layers supported (GPU texture unit limit).</summary>
-    public const int MaxTerrainLayers = 8;
-    /// <summary>Migrate old fixed-layer properties to the new TerrainLayerList.
-    /// Called after deserialization for scenes saved with the old format.
-    /// If TerrainLayerList already has real layers (count > 1 or non-default), skip.</summary>
-    public void MigrateTerrainLayers()
-    {
-        if (TerrainLayerList.Count > 1) return; // already migrated or user added layers
-        var only = TerrainLayerList[0];
-        bool isDefault = only.AlbedoPath == "Artifacts/Textures/default.jpg"
-            && only.HeightMin == 0f && only.HeightMax == 1f && only.TilingX == 0.5f;
-        if (!isDefault) return; // user customized the single layer
-
-        // Check if old properties have meaningful data
-        bool hasOldData = !string.IsNullOrEmpty(TerrainTextureDirtPath)
-            || !string.IsNullOrEmpty(TerrainTextureGrassPath)
-            || !string.IsNullOrEmpty(TerrainTextureSnowPath)
-            || TerrainLayerAirTop != 0.18f || TerrainLayerDirtTop != 0.45f;
-        if (!hasOldData) return;
-
-        // Migrate old 4 layers → new dynamic layers
-        TerrainLayerList.Clear();
-        var l1 = TerrainLayer.CreateDefault();
-        l1.Name = "Layer 1"; l1.AlbedoPath = TerrainTextureAirPath;
-        l1.HeightMin = 0f; l1.HeightMax = TerrainLayerAirTop;
-        l1.TilingX = TerrainTexTiling; l1.TilingY = TerrainTexTiling;
-        TerrainLayerList.Add(l1);
-
-        if (!string.IsNullOrEmpty(TerrainTextureDirtPath))
-        {
-            var l2 = TerrainLayer.CreateDefault();
-            l2.Name = "Layer 2"; l2.AlbedoPath = TerrainTextureDirtPath;
-            l2.HeightMin = TerrainLayerAirTop; l2.HeightMax = TerrainLayerDirtTop;
-            l2.TilingX = TerrainTexTiling; l2.TilingY = TerrainTexTiling;
-            TerrainLayerList.Add(l2);
-        }
-        if (!string.IsNullOrEmpty(TerrainTextureGrassPath))
-        {
-            var l3 = TerrainLayer.CreateDefault();
-            l3.Name = "Layer 3"; l3.AlbedoPath = TerrainTextureGrassPath;
-            l3.HeightMin = TerrainLayerDirtTop; l3.HeightMax = TerrainLayerGrassTop;
-            l3.TilingX = TerrainTexTiling; l3.TilingY = TerrainTexTiling;
-            TerrainLayerList.Add(l3);
-        }
-        if (!string.IsNullOrEmpty(TerrainTextureSnowPath))
-        {
-            var l4 = TerrainLayer.CreateDefault();
-            l4.Name = "Layer 4"; l4.AlbedoPath = TerrainTextureSnowPath;
-            l4.HeightMin = TerrainLayerGrassTop; l4.HeightMax = TerrainLayerSnowTop;
-            l4.TilingX = TerrainTexTiling; l4.TilingY = TerrainTexTiling;
-            TerrainLayerList.Add(l4);
-        }
-
-        // Migrate slope
-        if (TerrainSlopeEnabled && !string.IsNullOrEmpty(TerrainTextureSlopePath))
-        {
-            TerrainSlopeLayer = TerrainLayer.CreateSlope();
-            TerrainSlopeLayer.AlbedoPath = TerrainTextureSlopePath;
-            TerrainSlopeLayer.TilingX = TerrainSlopeTexTiling;
-            TerrainSlopeLayer.TilingY = TerrainSlopeTexTiling;
-            TerrainSlopeLayer.SlopeThreshold = TerrainSlopeThreshold;
-        }
-
-        Console.WriteLine($"[EditorObject] Migrated {TerrainLayerList.Count} terrain layers from legacy format");
-    }
-
-    /// <summary>Brush radius in world units (viewport paint tool).</summary>
-    public float TerrainBrushSize { get; set; } = 10f; 
-    /// <summary>Height delta per painted frame, in world units (viewport paint tool).</summary>
-    public float TerrainBrushStrength { get; set; } = 1f;
-    /// <summary>Weight for a stamp at normalized radius dist (0 = center, 1 = edge).
-    /// `soft` = the existing softness 0..1; profile = TerrainBrushFalloff
-    /// (0=Linear, 1=Smooth, 2=Sharp — shared with the legacy terrain brush).</summary>
-    internal float BrushWeight(float dist, float soft)
-    {
-        float tt = 1f - dist;
-        float profile = TerrainBrushFalloff switch
-        {
-            0 => tt,                                              // Linear
-            2 => tt * tt * tt,                                    // Sharp (cubic-in)
-            _ => tt * tt * (3f - 2f * tt),                        // Smooth
-        };
-        return profile * soft + tt * (1f - soft);
-    }
-    /// <summary>Brush edge falloff 0..1 (0 = hard edge, 1 = very soft).</summary>
-    public float TerrainBrushSoftness { get; set; } = 1f;
-    /// <summary>Layer painted with the texture brush: 0-3.</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 0;
-    /// <summary>Weight added to the painted layer per brush stamp (0..1).</summary>
-    public float TerrainPaintStrength { get; set; } = 0.45f;
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  PBR SPLAT TERRAIN (plane) — painted multi-texture + sculpt + LOD + occlusion
-    //  An ADD-ON to the objectPbr pipeline: an RGBA splat map blends up to 4
-    //  painted albedo layers (shader objectPbrSplat), and a runtime 512² height
-    //  buffer replaces the height-map source once sculpted (binding swap, zero
-    //  shader changes — displacement AND POM see the live surface). Per-chunk
-    //  LOD meshes + hardware occlusion queries make the displaced plane behave
-    //  like a dynamic terrain while keeping the exact PBR material response.
-    // ══════════════════════════════════════════════════════════════════════
-    public const int MaxSplatLayers = 4;
-    /// <summary>Per-layer albedo path + tint (0..3). Empty path = layer 0 paints the
-    /// albedo MAP, empty layers 1+ paint black.</summary>
-    public PbrSplatLayerData[] SplatLayers { get; set; } = [new(), new(), new(), new()];
-    /// <summary>Layer the paint brush writes into (0..3).</summary>
-    public int SplatPaintLayerIndex { get; set; } = 0;
-    /// <summary>Weight added per splat brush stamp (0..1).</summary>
-    public float SplatPaintStrength { get; set; } = 0.45f;
-    /// <summary>World UV tiling of the splat layers (multiplied into the height-map UV scale).</summary>
-    public float SplatTiling { get; set; } = 0.5f;
-
-    // ── Runtime sculpt buffer (512² normalized height; decodes the authored height map once) ──
-    internal const int SculptRes = 512;
-    internal float[]? _sculptHeights;
-    internal bool _sculptDirty;
-    internal float _sculptMin = 0f, _sculptMax = 1f;   // live amplitude (AABB pad)
-    /// <summary>True when this plane has been edited by the splat/sculpt brush this session.</summary>
-    public bool SplatIsPainted { get; internal set; }
-
-    // ── Height layers: auto-terrain bands driven by the elevation (height map) ──
-    /// <summary>ON = the 4 splat layers are auto-assigned by ELEVATION (layer 1 = valleys
-    /// … layer N = peaks) so a terrain look comes free; manual brush paint still overrides
-    /// locally (max blend).</summary>
-    public bool SplatHeightLayersEnabled { get; set; }
-    /// <summary>Number of active elevation bands (1..4) in height-layer mode.</summary>
-    public int SplatHeightLayerCount { get; set; } = 4;
-    /// <summary>Softness of the transition between elevation bands (0.01..0.5).</summary>
-    public float SplatHeightLayerFeather { get; set; } = 0.08f;
-
-    // ── Slope auto-paint: one splat layer takes over steep terrain (rock/cliff) ──
-    /// <summary>ON = the selected splat layer auto-blends onto STEEP geometry (computed
-    /// from the displaced surface normal — no brush painting needed).</summary>
-    public bool SplatSlopeEnabled { get; set; }
-    /// <summary>Which splat layer (0..3) carries the rock/cliff texture for slope auto-paint.</summary>
-    public int SplatSlopeLayer { get; set; } = 1;
-    /// <summary>Slope where the rock layer starts taking over (0 = any incline, 1 = vertical).</summary>
-    public float SplatSlopeThreshold { get; set; } = 0.35f;
-    /// <summary>Transition softness above the slope threshold (0.01..0.5).</summary>
-    public float SplatSlopeFeather { get; set; } = 0.15f;
-    /// <summary>Editor-only: heatmap overlay of the slope mask (blue = flat, green =
-    /// approaching threshold, red = full rock) for visually tuning the threshold.
-    /// Transient — never persisted with the scene.</summary>
-    public bool SplatShowSlopeMask { get; set; }
-    /// <summary>ON = splat layers sample in world-space triplanar — cliff/vertical faces
-    /// get a side projection instead of the top texture stretched. Planar fallback on
-    /// overhangs (no axis swimming).</summary>
-    public bool SplatTriplanar { get; set; }
-
-    // ── Per-layer height bands (legacy-terrain parity): each splat layer auto-blends
-    //    in an elevation range [min,max] (normalized 0..1 of the TERRAIN heightmap)
-    //    with a sharpness control. Bands 0..3 pair with the splat layer slots. ──
-    /// <summary>8 floats = 4 × (HeightMin, HeightMax). -1 range = band OFF for that layer.
-    /// Overlaps between adjacent bands blend smoothly (layers cross-fade).</summary>
-    public float[] SplatHeightBands { get; set; } = [-1f, -1f, -1f, -1f, -1f, -1f, -1f, -1f];
-    /// <summary>Which splat layer the Inspector band editor is currently showing (editor-only).</summary>
-    public int SplatBandEditLayer { get; set; } = 0;
-    /// <summary>Slope-layer world tiling — separate from the base SplatTiling (cliff rock
-    /// usually needs a different density than ground textures).</summary>
-    public float SplatSlopeTiling { get; set; } = 0.5f;
-    /// <summary>Editor-only: overlay the ACTIVE layer's weight (brush + auto bands) as a
-    /// blue→green→red heatmap so band ranges can be tuned visually. Transient.</summary>
-    public bool SplatShowLayerHeatmap { get; set; }
-
-    // ── Splat data (RGBA weight map, painted → dynamic 3D texture) ──
-    internal const int SplatRes = 16;
-    internal byte[] _splatData = new byte[SplatRes * SplatRes * SplatRes * 4];
-    internal string? _splatPaintedCache;
-    internal bool _splatDirty = true;
-    internal uint _splatTex;
-    internal readonly uint[] _splatAlbedoTex = new uint[MaxSplatLayers];
-    internal readonly string?[] _splatAlbedoKey = new string?[MaxSplatLayers];
-
-    // ── LOD ──
-    /// <summary>Dynamic terrain mode: per-chunk LOD by distance + hardware occlusion queries.</summary>
-    public bool PbrLodEnabled { get; set; } = false;
-    /// <summary>Camera distance where chunks drop from full to mid LOD (world units).</summary>
-    public float PbrLodDistance { get; set; } = 40f;
-    /// <summary>Distance beyond which chunks use the coarse LOD (world units).</summary>
-    public float PbrLodDistance2 { get; set; } = 120f;
-    /// <summary>Hardware occlusion queries (GL_ANY_SAMPLES_PASSED) per 2×2 chunk block —
-    /// chunks hidden behind other geometry skip their draw.</summary>
-    public bool PbrOcclusionEnabled { get; set; } = false;
-    internal uint[]? _occQueries;
-    internal byte[]? _occResult;      // 1 = visible (last completed result)
-    internal byte[]? _occPending;     // 1 = query in flight, result not harvested yet
-    internal byte[]? _occForceDraw;   // forced redraw frames after a miss (stale-result guard)
-    internal const int OccForceFrame = 2;
-
-    // ── LOD meshes (standalone VAO/VBO per level; level 0 = the main Object3D) ──
-    internal readonly uint[] _lodVao = new uint[3];
-    internal readonly uint[] _lodVbo = new uint[3];
-    internal readonly int[] _lodVertCount = new int[3];
-    internal bool _lodBuilt;
-    private PbrUniformSet? _pbrUniformsSplat, _pbrUniformsSplatDisp;
-    internal int _lodSegsBuilt;
-    internal float[]? _baseHeightCache;   // 128² downsample of the authored height map (raycast)
-
-    /// <summary>Stats: chunks drawn at reduced LOD + occluded last frame (Inspector info).</summary>
-    public int PbrLodCulled { get; private set; }
-    public int PbrOccluded { get; private set; }
-
-    /// <summary>True when the viewport paint brush should target this plane (PBR splat terrain).</summary>
-    public bool SplatPaintSupported => PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial;
-
-    /// <summary>Get (creating if needed) the splat data for layer 0..3.</summary>
-    public PbrSplatLayerData EnsureSplatLayer(int index)
-    {
-        if (SplatLayers == null || SplatLayers.Length != MaxSplatLayers)
-            SplatLayers = [new(), new(), new(), new()];
-        return SplatLayers[Math.Clamp(index, 0, MaxSplatLayers - 1)] ??= new PbrSplatLayerData();
-    }
-
-    /// <summary>Drop the cached splat layer textures (after a layer path changed).</summary>
-    public void InvalidatePbrSplatTextures()
-    {
-        for (int i = 0; i < MaxSplatLayers; i++)
-        {
-            if (_splatAlbedoTex[i] != 0)
-            {
-                fixed (uint* p = &_splatAlbedoTex[i]) GL.DeleteTextures(1, p);
-                _splatAlbedoTex[i] = 0;
-            }
-            _splatAlbedoKey[i] = null;
-        }
-    }
-
-    /// <summary>Create (once) the 512² runtime sculpt buffer. When an authored height
-    /// map exists it is decoded into the buffer, so brush edits REFINE the authored
-    /// terrain; a blank plane starts flat (0) and sculpts up from there.</summary>
-    public void EnableSculpt()
-    {
-        EnsureSculptBuffer();
-        // The dense grid only pays off once there is a height source — (re)build now.
-        _vertexCache = null;
-        MarkDirty();
-    }
-
-    internal float[] EnsureSculptBuffer()
-    {
-        if (_sculptHeights != null) return _sculptHeights;
-        var h = new float[SculptRes * SculptRes];
-        if (!string.IsNullOrEmpty(TerrainHeightSourcePath))
-        {
-            try
-            {
-                var resolved = PathHelpers.Resolve(TerrainHeightSourcePath);
-                if (File.Exists(resolved))
-                {
-                    using var stream = File.OpenRead(resolved);
-                    var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlue);
-                    for (int y = 0; y < SculptRes; y++)
-                    {
-                        int sy = Math.Min(img.Height - 1, y * img.Height / SculptRes);
-                        for (int x = 0; x < SculptRes; x++)
-                        {
-                            int sx = Math.Min(img.Width - 1, x * img.Width / SculptRes);
-                            h[y * SculptRes + x] = img.Data[sy * img.Width + sx] / 255f;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex) { Console.WriteLine($"[PbrSplat] '{Name}' height decode failed: {ex.Message}"); }
-        }
-        _sculptHeights = h;
-        _sculptDirty = true;
-        return h;
-    }
-
-    /// <summary>Viewport-facing gate for the PBR-plane sculpt/paint brush (public:
-    /// the ViewportPanel has no access to internals).</summary>
-    public Vector3? RaycastPbrPlaneSurface(Vector3 rayOrigin, Vector3 rayDir) => RaycastPbrSurface(rayOrigin, rayDir);
-
-    /// <summary>128² downsample of the authored height map for CPU raycasting
-    /// (decoded once; null when no usable map).</summary>
-    internal float[]? GetBaseHeightCache()
-    {
-        if (_baseHeightCache != null) return _baseHeightCache;
-        if (string.IsNullOrEmpty(TerrainHeightSourcePath)) return null;
-        try
-        {                var resolved = PathHelpers.Resolve(TerrainHeightSourcePath);
-            if (!File.Exists(resolved)) return null;
-            using var stream = File.OpenRead(resolved);
-            var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlue);
-            var cache = new float[128 * 128];
-            for (int y = 0; y < 128; y++)
-            {
-                int sy = Math.Min(img.Height - 1, y * img.Height / 128);
-                for (int x = 0; x < 128; x++)
-                {
-                    int sx = Math.Min(img.Width - 1, x * img.Width / 128);
-                    cache[y * 128 + x] = img.Data[sy * img.Width + sx] / 255f;
-                }
-            }
-            _baseHeightCache = cache;
-        }
-        catch { }
-        return _baseHeightCache;
-    }
-
-    /// <summary>Normalized sculpt height at a local XZ point (−0.5..0.5) — CPU copy
-    /// used by raycasting, brush math and the chunk AABB pad.</summary>
-    internal float SculptHeightAt(float x, float z)
-    {
-        if (_sculptHeights == null) return 0f;
-        int ix = Math.Clamp((int)((x + 0.5f) * SculptRes), 0, SculptRes - 1);
-        int iz = Math.Clamp((int)((z + 0.5f) * SculptRes), 0, SculptRes - 1);
-        return _sculptHeights[iz * SculptRes + ix];
-    }
-
-    /// <summary>Mirror of the shader's height calibration (strength/invert/contrast/
-    /// center/offset/scale-center) so CPU raycasting matches what the GPU displays.</summary>
-    internal float CalibrateHeight(float h)
-    {
-        h = (h - 0.5f) * TerrainPbrHeightStrength + 0.5f;
-        if (TerrainPbrHeightInvert) h = 1f - h;
-        h = (h - PbrHeightContrastCenter) * PbrHeightContrast + PbrHeightContrastCenter;
-        h += PbrHeightOffset;
-        return Math.Clamp(h - PbrHeightScaleCenter, 0f, 1f);
-    }
-
-    /// <summary>Raycast the PBR plane's displaced surface: the live sculpt buffer when
-    /// active, the authored height map otherwise. Used by the viewport brush so the
-    /// cursor follows the REAL displaced geometry.</summary>
-    public Vector3? RaycastPbrSurface(Vector3 rayOrigin, Vector3 rayDir)
-    {
-        if (PrimitiveType != EditorPrimitiveType.Plane || !HasPbrMaterial) return null;
-        var model = WorldMatrix;
-        if (!Matrix4x4.Invert(model, out var inv)) return null;
-        if (!AABB.RayIntersectsAABB(rayOrigin, rayDir, GetWorldAABB(), out _, out _)) return null;
-        var o = Vector3.Transform(rayOrigin, inv);
-        var d = Vector3.TransformNormal(rayDir, inv);
-        if (MathF.Abs(d.Y) < 1e-6f) return null;
-        float t = -o.Y / d.Y;
-        if (t <= 0f) return null;
-        var hit = o + d * t;
-        if (hit.X < -0.6f || hit.X > 0.6f || hit.Z < -0.6f || hit.Z > 0.6f) return null;
-
-        // Vertex displacement is unconditional: any plane with a height source
-        // (Height / Displacement map or sculpt strokes) displaces real geometry.
-        bool disp = !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null;
-        float h = 0f;
-        if (disp)
-        {
-            h = _sculptHeights != null
-                ? SculptHeightAt(hit.X, hit.Z)
-                : SampleBaseHeight(hit.X, hit.Z);
-            // RAW height (matches the shader's terrainHeight): terrain elevation is
-            // never re-calibrated as a POM detail map.
-            h = Math.Clamp(h, 0f, 1f) * Math.Clamp(PbrVertexDisplaceScale, 0f, 2f);
-        }
-        return Vector3.Transform(new Vector3(hit.X, h, hit.Z), model);
-    }
-
-    private float SampleBaseHeight(float x, float z)
-    {
-        var cache = GetBaseHeightCache();
-        if (cache == null) return 0f;
-        int ix = Math.Clamp((int)((x + 0.5f) * 128), 0, 127);
-        int iz = Math.Clamp((int)((z + 0.5f) * 128), 0, 127);
-        return cache[iz * 128 + ix];
-    }
-
-    /// <summary>Normalized surface height under the cursor (flatten-brush target).</summary>
-    public bool TryGetPbrNormalizedHeight(Vector3 rayOrigin, Vector3 rayDir, out float norm)
-    {
-        norm = 0f;
-        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
-        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
-        var local = Vector3.Transform(hit, inv);
-        norm = Math.Clamp(_sculptHeights != null ? SculptHeightAt(local.X, local.Z) : SampleBaseHeight(local.X, local.Z), 0f, 1f);
-        return true;
-    }
-
-    // ── Splat paint (RGBA weights, painted onto the dynamic splat texture) ──
-    public bool TryPaintSplatSurface(Vector3 rayOrigin, Vector3 rayDir, int layerIndex, float strength, bool erase, out Vector3 worldHit)
-    {
-        worldHit = default;
-        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
-        worldHit = hit;
-        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
-        var local = Vector3.Transform(hit, inv);
-        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;   // plane footprint = 1 world unit
-        float u = local.X + 0.5f, v = local.Z + 0.5f;
-        int x0 = Math.Max(0, (int)MathF.Floor((u - radiusLocal) * SplatRes));
-        int x1 = Math.Min(SplatRes - 1, (int)MathF.Ceiling((u + radiusLocal) * SplatRes));
-        int z0 = Math.Max(0, (int)MathF.Floor((v - radiusLocal) * SplatRes));
-        int z1 = Math.Min(SplatRes - 1, (int)MathF.Ceiling((v + radiusLocal) * SplatRes));
-        int li = Math.Clamp(layerIndex, 0, MaxSplatLayers - 1);
-        float soft = Math.Clamp(TerrainBrushSoftness, 0.05f, 1f);
-        float amt = Math.Clamp(strength, 0f, 1f);
-        bool any = false;
-        for (int z = z0; z <= z1; z++)
-        {
-            float dz = (z + 0.5f) / SplatRes - v;
-            for (int x = x0; x <= x1; x++)
-            {
-                float dx = (x + 0.5f) / SplatRes - u;
-                float dist = MathF.Sqrt(dx * dx + dz * dz) / MathF.Max(radiusLocal, 1e-4f);
-                if (dist > 1f) continue;
-                int b = (z * SplatRes + x) * 4 + li;
-                _splatData[b] = (byte)Math.Clamp(_splatData[b] + (erase ? -amt : amt) * BrushWeight(dist, soft) * 255f, 0f, 255f);
-                any = true;
-            }
-        }
-        if (any) { _splatDirty = true; SplatIsPainted = true; }
-        return any;
-    }
-
-    /// <summary>Clear the whole splat map (or just one layer when index ≥ 0).</summary>
-    public void ClearSplat(int layerIndex = -1)
-    {
-        if (layerIndex < 0) Array.Clear(_splatData);
-        else
-        {
-            int li = Math.Clamp(layerIndex, 0, MaxSplatLayers - 1);
-            for (int i = li; i < _splatData.Length; i += 4) _splatData[i] = 0;
-        }
-        _splatDirty = true;
-        _splatPaintedCache = null;
-        SplatIsPainted = _splatData.AsSpan().IndexOfAnyExcept((byte)0) >= 0;
-    }
-
-    public byte[]? CaptureSplat() => (byte[]?)_splatData.Clone();
-
-    public void RestoreSplat(byte[]? splat)
-    {
-        if (splat == null || splat.Length != _splatData.Length) return;
-        Array.Copy(splat, _splatData, splat.Length);
-        _splatDirty = true;
-        _splatPaintedCache = null;
-        SplatIsPainted = _splatData.AsSpan().IndexOfAnyExcept((byte)0) >= 0;
-    }
-
-    /// <summary>Base64 RGBA splat blob for scene persistence. Empty = untouched
-    /// (no paint bytes stored for blank planes).</summary>
-    public string SplatPaintedData
-    {
-        get
-        {
-            if (SplatIsPainted)
-            {
-                _splatPaintedCache = Convert.ToBase64String(_splatData);
-                _splatDirty = false;
-                return _splatPaintedCache;
-            }
-            return "";
-        }
-        set
-        {
-            _splatPaintedCache = null;
-            if (string.IsNullOrEmpty(value)) return;
-            try
-            {
-                var raw = Convert.FromBase64String(value);
-                if (raw.Length == _splatData.Length)
-                {
-                    _splatData = raw;
-                    _splatDirty = true;
-                    SplatIsPainted = true;
-                }
-            }
-            catch { /* corrupt blob → keep the blank splat */ }
-        }
-    }
-
-    // ── Sculpt paint (runtime height field; replaces the height-map source while active) ──
-    public bool TryPaintPbrHeight(Vector3 rayOrigin, Vector3 rayDir, float deltaNorm, out Vector3 worldHit)
-    {
-        worldHit = default;
-        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
-        worldHit = hit;
-        var h = EnsureSculptBuffer();
-        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
-        var local = Vector3.Transform(hit, inv);
-        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;
-        bool any = StampHeight(h, local.X, local.Z, radiusLocal, (ref float cur, float w, int idx) =>
-            cur = Math.Clamp(cur + deltaNorm * w, 0f, 1f));
-        if (any) { _sculptDirty = true; SplatIsPainted = true; }
-        return any;
-    }
-
-    public bool TrySmoothPbrHeight(Vector3 rayOrigin, Vector3 rayDir, float strength, out Vector3 worldHit)
-    {
-        worldHit = default;
-        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
-        worldHit = hit;
-        var h = EnsureSculptBuffer();
-        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
-        var local = Vector3.Transform(hit, inv);
-        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;
-        bool any = StampHeight(h, local.X, local.Z, radiusLocal, (ref float cur, float w, int idx) =>
-        {
-            float sum = 0f;
-            for (int oz = -1; oz <= 1; oz++)
-                for (int ox = -1; ox <= 1; ox++)
-                    sum += SampleSculptClamped(h, idx, ox, oz);
-            cur += ((sum / 9f) - cur) * Math.Clamp(strength, 0f, 1f) * w;
-        });
-        if (any) { _sculptDirty = true; SplatIsPainted = true; }
-        return any;
-    }
-
-    public bool TryFlattenPbrHeight(Vector3 rayOrigin, Vector3 rayDir, float targetNorm, float strength, out Vector3 worldHit)
-    {
-        worldHit = default;
-        if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
-        worldHit = hit;
-        var h = EnsureSculptBuffer();
-        if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
-        var local = Vector3.Transform(hit, inv);
-        float radiusLocal = MathF.Max(TerrainBrushSize, 0.05f) * 0.5f;
-        bool any = StampHeight(h, local.X, local.Z, radiusLocal, (ref float cur, float w, int idx) =>
-            cur += (targetNorm - cur) * Math.Clamp(strength, 0f, 1f) * w);
-        if (any) { _sculptDirty = true; SplatIsPainted = true; }
-        return any;
-    }
-
-    private delegate void HeightStamp(ref float cur, float weight, int index);
-
-    private bool StampHeight(float[] h, float u, float v, float radiusLocal, HeightStamp stamp)
-    {
-        int x0 = Math.Max(0, (int)MathF.Floor((u - radiusLocal) * SculptRes));
-        int x1 = Math.Min(SculptRes - 1, (int)MathF.Ceiling((u + radiusLocal) * SculptRes));
-        int z0 = Math.Max(0, (int)MathF.Floor((v - radiusLocal) * SculptRes));
-        int z1 = Math.Min(SculptRes - 1, (int)MathF.Ceiling((v + radiusLocal) * SculptRes));
-        float soft = Math.Clamp(TerrainBrushSoftness, 0.05f, 1f);
-        bool any = false;
-        for (int z = z0; z <= z1; z++)
-        {
-            float dz = (z + 0.5f) / SculptRes - v;
-            for (int x = x0; x <= x1; x++)
-            {
-                float dx = (x + 0.5f) / SculptRes - u;
-                float dist = MathF.Sqrt(dx * dx + dz * dz) / MathF.Max(radiusLocal, 1e-4f);
-                if (dist > 1f) continue;
-                stamp(ref h[z * SculptRes + x], BrushWeight(dist, soft), z * SculptRes + x);
-                any = true;
-            }
-        }
-        return any;
-    }
-
-    private static float SampleSculptClamped(float[] h, int idx, int ox, int oz)
-    {
-        int x = Math.Clamp(idx % SculptRes + ox, 0, SculptRes - 1);
-        int z = Math.Clamp(idx / SculptRes + oz, 0, SculptRes - 1);
-        return h[z * SculptRes + x];
-    }
-
-    public float[]? CapturePbrHeights() => _sculptHeights == null ? null : (float[])_sculptHeights.Clone();
-
-    public void RestorePbrHeights(float[]? heights)
-    {
-        if (heights == null || heights.Length != SculptRes * SculptRes) return;
-        _sculptHeights = (float[])heights.Clone();
-        _sculptDirty = true;
-        SplatIsPainted = true;
-    }
-
-    /// <summary>Base64 sculpt height blob (R8 bytes, 512²) for scene persistence.</summary>
-    public string SculptPaintedData
-    {
-        get
-        {
-            if (_sculptHeights == null || !SplatIsPainted) return "";
-            var bytes = new byte[SculptRes * SculptRes];
-            for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(Math.Clamp(_sculptHeights[i], 0f, 1f) * 255f);
-            return Convert.ToBase64String(bytes);
-        }
-        set
-        {
-            if (string.IsNullOrEmpty(value)) return;
-            try
-            {
-                var raw = Convert.FromBase64String(value);
-                if (raw.Length != SculptRes * SculptRes) return;
-                var h = EnsureSculptBuffer();
-                for (int i = 0; i < raw.Length; i++) h[i] = raw[i] / 255f;
-                _sculptDirty = true;
-                SplatIsPainted = true;
-            }
-            catch { /* corrupt blob → keep the decoded base */ }
-        }
-    }
-
-    // ── Dynamic GPU textures ──
-    internal uint _sculptTex;
-
-    // ── TERRAIN height GPU texture (unit 15) — separate from the POM height (unit 5) ──
-    internal uint _terrainHeightTex;
-    internal string? _terrainHeightTexKey;
-
-    /// <summary>GPU texture of the TERRAIN height source (vertex displacement + splat
-    /// height bands). While sculpting, the live R8 sculpt texture REPLACES it so the
-    /// displacement + bands see the edited surface. Distinct from the POM map (unit 5).</summary>
-    internal uint EnsureTerrainHeightTexture()
-    {
-        if (_sculptHeights != null)
-        {
-            UploadSculptTexture();          // uploads only when dirty
-            return _sculptTex;
-        }
-        if (string.IsNullOrEmpty(TerrainHeightSourcePath)) return 0;
-        if (_terrainHeightTex != 0 && _terrainHeightTexKey == TerrainHeightSourcePath) return _terrainHeightTex;
-        _terrainHeightTex = new Texture(PathHelpers.Resolve(TerrainHeightSourcePath)).ID;
-        _terrainHeightTexKey = TerrainHeightSourcePath;
-        return _terrainHeightTex;
-    }
-
-    internal uint EnsureSculptTexture()
-    {
-        if (_sculptTex == 0)
-        {
-            uint t;
-            GL.GenTextures(1, &t);
-            _sculptTex = t;
-            GL.BindTexture(Const.GL_TEXTURE_2D, _sculptTex);
-            GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_R8, SculptRes, SculptRes, 0,
-                Const.GL_RED, Const.GL_UNSIGNED_BYTE, (void*)0);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
-        }
-        return _sculptTex;
-    }
-
-    /// <summary>Upload the sculpt heights to the R8 texture (after brush strokes) and
-    /// refresh the live amplitude range used by the chunk AABB pad.</summary>
-    internal void UploadSculptTexture()
-    {
-        if (_sculptHeights == null || !_sculptDirty) return;
-        uint tex = EnsureSculptTexture();
-        var bytes = new byte[SculptRes * SculptRes];
-        float mn = 1f, mx = 0f;
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            float val = Math.Clamp(_sculptHeights[i], 0f, 1f);
-            bytes[i] = (byte)(val * 255f);
-            mn = MathF.Min(mn, val);
-            mx = MathF.Max(mx, val);
-        }
-        GL.BindTexture(Const.GL_TEXTURE_2D, tex);
-        fixed (byte* p = bytes)
-            GL.TexSubImage2D(Const.GL_TEXTURE_2D, 0, 0, 0, SculptRes, SculptRes, Const.GL_RED, Const.GL_UNSIGNED_BYTE, p);
-        _sculptMin = mn;
-        _sculptMax = mx;
-        _sculptDirty = false;
-    }
-
-    internal uint EnsureSplatTexture()
-    {
-        if (_splatTex == 0)
-        {
-            uint t;
-            GL.GenTextures(1, &t);
-            _splatTex = t;
-            GL.BindTexture(Const.GL_TEXTURE_3D, _splatTex);
-            fixed (byte* p = _splatData)
-                GL.TexImage3D(Const.GL_TEXTURE_3D, 0, (int)Const.GL_RGBA8, SplatRes, SplatRes, SplatRes, 0,
-                    Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, p);
-            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_WRAP_R, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
-            GL.TexParameteri(Const.GL_TEXTURE_3D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
-        }
-        return _splatTex;
-    }
-
-    internal void UploadSplatTexture()
-    {
-        uint tex = EnsureSplatTexture();
-        GL.BindTexture(Const.GL_TEXTURE_3D, tex);
-        fixed (byte* p = _splatData)
-            GL.TexSubImage3D(Const.GL_TEXTURE_3D, 0, 0, 0, 0, SplatRes, SplatRes, SplatRes, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, p);
-        _splatDirty = false;
-    }
-
-    // ── LOD meshes ──
-    /// <summary>Build the mid/coarse LOD meshes from the full CPU vertex cache.
-    /// Same chunk ordering (row-major cz·chunks+cx) so the draw path swaps the VAO
-    /// per chunk without touching the vertex ranges; level 0 draws the main VBO.</summary>
-    private void BuildLodMeshes()
-    {
-        DisposeLodMeshes();
-        int fullSegs = PbrPlaneSegmentsBuilt;
-        var src = _vertexCache;
-        if (fullSegs <= 1 || src == null || src.Length == 0 || _object3D == null)
-        {
-            _lodBuilt = false;
-            return;
-        }
-        int chunks = Math.Max(1, PbrVertexChunk);
-        int perChunk = fullSegs / chunks;
-        for (int li = 1; li < 3; li++)
-        {
-            int lodSegs = Math.Max(1, perChunk / (li == 1 ? 2 : 4));
-            var dst = new List<Vertex>(src.Length / (2 * li));
-            for (int cz = 0; cz < chunks; cz++)
-            {
-                for (int cx = 0; cx < chunks; cx++)
-                {
-                    float u0 = cx * perChunk / (float)fullSegs, v0 = cz * perChunk / (float)fullSegs;
-                    float step = 1f / fullSegs, cell = lodSegs * step;
-                    for (int iz = 0; iz < lodSegs; iz++)
-                        for (int ix = 0; ix < lodSegs; ix++)
-                            EmitPlaneQuad(dst, u0 + ix * cell, v0 + iz * cell, cell);
-                }
-            }
-            var arr = dst.ToArray();
-            // Standalone VAO with the same Vertex layout (mirrors Object3D's setup).
-            uint vao, vbo;
-            GL.GenVertexArrays(1, &vao);
-            GL.GenBuffers(1, &vbo);
-            GL.BindVertexArray(vao);
-            GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
-            fixed (Vertex* p = arr)
-                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(arr.Length * sizeof(Vertex)), p, Const.GL_STATIC_DRAW);
-            GL.EnableVertexAttribArray(0);
-            GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Vertex), (void*)0);
-            GL.EnableVertexAttribArray(1);
-            GL.VertexAttribPointer(1, 3, Const.GL_FLOAT, false, sizeof(Vertex), (void*)12);
-            GL.EnableVertexAttribArray(2);
-            GL.VertexAttribPointer(2, 3, Const.GL_FLOAT, false, sizeof(Vertex), (void*)24);
-            GL.EnableVertexAttribArray(3);
-            GL.VertexAttribPointer(3, 2, Const.GL_FLOAT, false, sizeof(Vertex), (void*)36);
-            GL.BindVertexArray(0);
-            _lodVao[li] = vao;
-            _lodVbo[li] = vbo;
-            _lodVertCount[li] = arr.Length;
-        }
-        _lodVertCount[0] = _object3D.VertexCount;
-        _lodBuilt = true;
-        _lodSegsBuilt = fullSegs;
-    }
-
-    private void DisposeLodMeshes()
-    {
-        for (int i = 1; i < 3; i++)
-        {
-            if (_lodVao[i] != 0) { uint v = _lodVao[i]; GL.DeleteVertexArrays(1, &v); _lodVao[i] = 0; }
-            if (_lodVbo[i] != 0) { uint b = _lodVbo[i]; GL.DeleteBuffers(1, &b); _lodVbo[i] = 0; }
-            _lodVertCount[i] = 0;
-        }
-    }
-
-    // ── Occlusion queries ──
-    private void EnsureOcclusionQueries()
-    {
-        int n = PbrChunkCount;
-        if (n <= 0) { DisposeOcclusionQueries(); return; }
-        if (_occQueries != null && _occQueries.Length == (n + 3) / 4) return;
-        DisposeOcclusionQueries();
-        int qn = (n + 3) / 4;   // one query covers a 2×2 chunk block
-        _occQueries = new uint[qn];
-        _occResult = new byte[qn];
-        _occPending = new byte[qn];
-        _occForceDraw = new byte[qn];
-        fixed (uint* p = _occQueries) GL.GenQueries(qn, p);
-        for (int i = 0; i < qn; i++) _occForceDraw[i] = 1;
-    }
-
-    private void DisposeOcclusionQueries()
-    {
-        if (_occQueries != null)
-            fixed (uint* p = _occQueries)
-                GL.DeleteQueries(_occQueries.Length, p);
-        _occQueries = null;
-        _occResult = null;
-        _occPending = null;
-        _occForceDraw = null;
-    }
-
-    /// <summary>Release every GPU resource this add-on owns (called from Dispose).</summary>
-    public void DisposePbrSplatResources()
-    {
-        DisposeLodMeshes();
-        DisposeOcclusionQueries();
-        if (_sculptTex != 0) { fixed (uint* p = &_sculptTex) GL.DeleteTextures(1, p); _sculptTex = 0; }
-        if (_terrainHeightTex != 0) { fixed (uint* p = &_terrainHeightTex) GL.DeleteTextures(1, p); _terrainHeightTex = 0; _terrainHeightTexKey = null; }
-        if (_splatTex != 0) { fixed (uint* p = &_splatTex) GL.DeleteTextures(1, p); _splatTex = 0; }
-        InvalidatePbrSplatTextures();
-        _lodBuilt = false;
-    }
-
-    // ── Per-paint-layer textures (independent from terrain auto-layers) ──
-    public const int MaxPaintLayers = 4;
-    /// <summary>Texture path for paint layer 0.</summary>
-    public string PaintLayerTexture0 { get; set; } = "";
-    /// <summary>Texture path for paint layer 1.</summary>
-    public string PaintLayerTexture1 { get; set; } = "";
-    /// <summary>Texture path for paint layer 2.</summary>
-    public string PaintLayerTexture2 { get; set; } = "";
-    /// <summary>Texture path for paint layer 3.</summary>
-    public string PaintLayerTexture3 { get; set; } = "";
-    /// <summary>Per-paint-layer tiling (X, Y).</summary>
-    public Vector2[] PaintLayerTiling { get; set; } = [new(0.5f, 0.5f), new(0.5f, 0.5f), new(0.5f, 0.5f), new(0.5f, 0.5f)];
-    /// <summary>Per-paint-layer random tile (stochastic sampling) flag.</summary>
-    public bool[] PaintLayerStochastic { get; set; } = [false, false, false, false];
-    /// <summary>Number of active paint layers (1..4). Splat map RGBA limits us to 4.</summary>
-    public int PaintLayerCount { get; set; } = 1;
-    /// <summary>Helper: get/set paint layer texture by index.</summary>
-    public string GetPaintLayerTexture(int idx) => idx switch { 0 => PaintLayerTexture0, 1 => PaintLayerTexture1, 2 => PaintLayerTexture2, 3 => PaintLayerTexture3, _ => "" };
-    public void SetPaintLayerTexture(int idx, string path)
-    {
-        switch (idx) { case 0: PaintLayerTexture0 = path; break; case 1: PaintLayerTexture1 = path; break; case 2: PaintLayerTexture2 = path; break; case 3: PaintLayerTexture3 = path; break; }
-    }
-    /// <summary>Brush falloff curve used by every brush tool: 0=Linear, 1=Smooth,
-    /// 2=Sharp, 3=Spherical, 4=Soft.</summary>
-    public int TerrainBrushFalloff { get; set; } = 1;
-    /// <summary>Bitmask controlling which terrain layers the brush affects.
-    /// Bit 0 = layer 0, bit 1 = layer 1, etc. 0 = all layers.</summary>
-    public int TerrainBrushMask { get; set; } = 0;
-    /// <summary>Editor-only overlay: colorize the terrain by height (low=blue → high=red)
-    /// with contour lines so the relief reads clearly. Transient — not saved to the scene.</summary>
-    public bool TerrainShowHeatmap { get; set; } = false;
-    /// <summary>Editor-only overlay: draw dark topographic contour lines every 10% height
-    /// WITHOUT the heatmap colors — the terrain texture stays fully visible while the
-    /// relief reads clearly. Transient — not saved to the scene.</summary>
-    public bool TerrainShowContours { get; set; } = false;
-
-    // ── Brush ring indicator (set by ViewportPanel each frame while the brush tool hovers
-    // this terrain; color + alpha are user-editable and SAVED with the scene) ──
-    /// <summary>World-space brush center on this terrain's surface (null = hide ring).</summary>
+    // ── Brush ring indicator (editor-only highlight, set by tooling while hovering) ──
+    /// <summary>World-space brush center on this object's surface (null = hide ring).</summary>
     public Vector3? BrushIndicatorPos { get; set; }
     /// <summary>Ring color: green = height brush, layer color = 🎨 paint, red = Ctrl (lower/erase).</summary>
     public Vector3 BrushIndicatorColor { get; set; } = new(0.3f, 0.9f, 0.5f);
     /// <summary>Ring transparency 0..1 (0 = invisible, 1 = opaque). Default 0.35 = translucent highlight.</summary>
     public float BrushIndicatorAlpha { get; set; } = 0.35f;
-    /// <summary>Whether the brush ring should be drawn on this terrain.</summary>
+    /// <summary>Whether the brush ring should be drawn on this object.</summary>
     public bool ShowBrushIndicator { get; set; }
 
     // ── Sky (only used when PrimitiveType == Sky) ──
@@ -1886,23 +706,6 @@ public unsafe class EditorObject
     private readonly uint[] _pbrTex = new uint[7];
     private string _pbrCacheKey = "";
     private static uint _pbrWhiteTex = 0;
-
-    // ── Advanced terrain resources (Plane only) ──
-    private EditorTerrainMesh? _terrainMesh;
-    private string _terrainCacheKey = "";
-    /// <summary>Base64-encoded painted heightmap blob (persisted in the scene file so
-    /// brush edits survive save/load). Empty = no user edits.</summary>
-    private byte[]? _terrainPaintedCache;
-    /// <summary>Heightmap path the painted cache belongs to — only restored when the
-    /// terrain still points at the same heightmap (switching maps discards old edits).</summary>
-    private string? _terrainPaintedSourcePath;
-    /// <summary>Heightmap path the CURRENT mesh was actually built from. Used when
-    /// stashing the painted cache on rebuild so the cache is keyed to the OLD path,
-    /// not the (possibly changed) TerrainHeightmapPath property.</summary>
-    private string _terrainLoadedPath = "";
-    /// <summary>Serialized manual layer-paint blob (persisted in the scene file). Carried
-    /// across mesh rebuilds independently of the heightmap path.</summary>
-    private byte[]? _terrainSplatCache;
 
     // ── Vertex cache for wireframe outline rendering ──
     private Vertex[]? _vertexCache;
@@ -2174,33 +977,12 @@ public unsafe class EditorObject
         }
     }
 
-    /// <summary>Model matrix for the advanced terrain mesh: XZ footprint follows
-    /// Scale.X/Z (the thin Scale.Y must NOT flatten the terrain), Y keeps world height.
-    /// Shared by rendering, AABB and brush raycasting so they all agree.</summary>
-    private Matrix4x4 TerrainModelMatrix =>
-        Matrix4x4.CreateScale(Scale.X, 1f, Scale.Z)
-        * Matrix4x4.CreateFromYawPitchRoll(
-            RotationEuler.Y * MathF.PI / 180f,
-            RotationEuler.X * MathF.PI / 180f,
-            RotationEuler.Z * MathF.PI / 180f)
-        * Matrix4x4.CreateTranslation(Position);
-
     /// <summary>Compute world-space AABB for selection/culling.
     /// Accounts for scale and rotation (transforms 8 corners through WorldMatrix).</summary>
     public AABB WorldAABB
     {
         get
         {
-            // Advanced terrain: heightmap mesh spans the full Scale footprint and rises up
-            // to TerrainHeightScale — transform with the same model used for rendering.
-            if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
-            {
-                var terrainModel = TerrainModelMatrix;
-                float top = Math.Max(1f, TerrainHeightScale);
-                return new AABB(new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, top, 0.5f))
-                    .Transform(terrainModel);
-            }
-
             // Local-space AABB for each primitive type (before transform)
             AABB localAABB = PrimitiveType switch
             {
@@ -2230,97 +1012,9 @@ public unsafe class EditorObject
         }
     }
 
-    /// <summary>Compute a cache key from the mesh-affecting terrain settings so the mesh is
-    /// only rebuilt when something actually changed (Inspector edits, scale, textures).
-    /// Uniform-only settings (slope, tiling, height bands) are deliberately excluded — they
-    /// don't change the mesh, so editing them must NOT trigger an expensive rebuild.</summary>
-    private string TerrainMeshCacheKey
-    {
-        get
-        {
-            string dynLayerKey = string.Join("|", TerrainLayerList.Select(l => l.AlbedoPath ?? ""));
-            string slopeKey = TerrainSlopeEnabled && TerrainSlopeLayer != null ? TerrainSlopeLayer.AlbedoPath ?? "" : "";
-            return $"{TerrainEnabled}|{TerrainHeightmapPath}|{TerrainChunkSize}|{TerrainChunksPerSide}|{TerrainHeightScale:F2}|"
-                 + $"{Scale.X:F2}|{Scale.Z:F2}|{dynLayerKey}|{slopeKey}";
-        }
-    }
-
-    /// <summary>Build (or rebuild) the advanced terrain mesh when TerrainEnabled.
-    /// Returns true if a valid terrain mesh is available, false if it fell back to flat.</summary>
-    private bool EnsureTerrainMesh()
-    {
-        string key = TerrainMeshCacheKey;
-        if (_terrainMesh != null && _terrainCacheKey == key)
-            return true;
-
-        // Keep user brush edits across mesh rebuilds (chunk size / scale / texture edits):
-        // stash the painted blob before tearing down, restore it after the fresh load
-        // as long as the heightmap path didn't change (switching maps discards edits).
-        // NOTE: tag the cache with the OLD loaded path — TerrainHeightmapPath may already
-        // point at a NEW file (e.g. the user just changed it in the Inspector).
-        if (_terrainMesh is { IsModified: true } oldMesh)
-        {
-            _terrainPaintedCache = oldMesh.GetModifiedRaw();
-            _terrainPaintedSourcePath = _terrainLoadedPath;
-        }
-        // Layer paint (splat) is independent of the heightmap — always carry it over.
-        if (_terrainMesh is { SplatModified: true } oldMesh2)
-            _terrainSplatCache = oldMesh2.GetModifiedSplatRaw();
-
-        _terrainMesh?.Dispose();
-        _terrainMesh = null;
-        _terrainCacheKey = key;
-
-        if (!TerrainEnabled) return false;
-
-        var mesh = new EditorTerrainMesh();
-        if (!mesh.LoadHeightmap(TerrainHeightmapPath))
-        {
-            Console.WriteLine($"[EditorObject] '{Name}': heightmap not found — rendering flat plane ({TerrainHeightmapPath})");
-            mesh.Dispose();
-            _terrainCacheKey = "";
-            return false;
-        }
-        if (_terrainPaintedCache != null && _terrainPaintedSourcePath == TerrainHeightmapPath)
-            mesh.RestoreModifiedRaw(_terrainPaintedCache);
-        if (_terrainSplatCache != null)
-            mesh.RestoreModifiedSplatRaw(_terrainSplatCache);
-        _terrainLoadedPath = TerrainHeightmapPath;
-        mesh.SetLayerTextures(TerrainTextureAirPath, TerrainTextureDirtPath, TerrainTextureGrassPath, TerrainTextureSnowPath);
-        mesh.SetDynLayerTextures(TerrainLayerList, TerrainSlopeEnabled ? TerrainSlopeLayer : null);
-        mesh.SetDynLayerPbrTextures(TerrainLayerList, TerrainSlopeEnabled ? TerrainSlopeLayer : null);
-        mesh.Generate(TerrainChunkSize, TerrainChunksPerSide, TerrainHeightScale, Math.Max(0.1f, Scale.X), Math.Max(0.1f, Scale.Z));
-        mesh.ApplyTextureSettings(TerrainLayerSettings);
-        _terrainMesh = mesh;
-
-        // When switching a plane to terrain mode, release the flat-plane Object3D so it
-        // doesn't linger on the GPU until Dispose().
-        if (_object3D != null)
-        {
-            if (_object3D.VAO != 0)
-            {
-                uint vao = _object3D.VAO;
-                GL.DeleteVertexArrays(1, &vao);
-            }
-            if (_object3D.VBO != 0)
-            {
-                uint vbo = _object3D.VBO;
-                GL.DeleteBuffers(1, &vbo);
-            }
-            _object3D = null;
-        }
-        return true;
-    }
-
     /// <summary>Initialize GPU resources (VAO, VBO) if needed.</summary>
     public void EnsureResources()
     {
-        // Advanced terrain planes use a dedicated mesh + shader, not Object3D.
-        // If the heightmap is missing we fall back to a flat plane (EnsureTerrainMesh
-        // returns false), so continue into the normal primitive path below.
-        if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && EnsureTerrainMesh())
-            return;
-
         if (_object3D != null && !_dirty) return;
 
         // Cleanup old GPU resources (VAO/VBO) so repeated color changes don't leak buffers.
@@ -2347,20 +1041,10 @@ public unsafe class EditorObject
         {
             case EditorPrimitiveType.Plane:
             {
-                // If terrain mode is active AND a valid terrain mesh exists, the mesh is
-                // managed by EnsureTerrainMesh() — no flat Object3D is needed. Otherwise
-                // (terrain disabled, or heightmap missing) build the classic flat plane.
-                if (TerrainEnabled && _terrainMesh is { IsReady: true })
-                {
-                    _object3D = null;
-                    _vertexCache = null;
-                    break;
-                }
                 // FORCED displacement: dense grid whenever a height source exists
                 // (or chunks are requested — a chunked grid gives per-chunk frustum
                 // culling even on a FLAT plane).
-                bool dense = (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null)
-                             || PbrVertexChunk > 1;
+                bool dense = PbrVertexChunk > 1;
                 int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
                 if (verts == null)
@@ -2371,9 +1055,6 @@ public unsafe class EditorObject
                 }
                 _vertexCache = verts;
                 PbrPlaneSegmentsBuilt = segs > 1 ? segs : 0;
-                // Sculpt/LOD resources are derived from the mesh — rebuild on grid change.
-                if (_lodBuilt && _lodSegsBuilt != PbrPlaneSegmentsBuilt)
-                    DisposeLodMeshes();
                 break;
             }
             case EditorPrimitiveType.Box:
@@ -2453,10 +1134,9 @@ public unsafe class EditorObject
     public void InvalidatePbrTextures() => _pbrCacheKey = "";
 
     /// <summary>Re-apply the per-texture sampling settings (filter / wrapping / mipmapping)
-    /// to every GPU texture this object owns: the simple texture uses <see cref="TexSettings"/>,
-    /// each PBR map uses its own slot in <see cref="PbrTexSettings"/> and each terrain layer
-    /// uses its own slot in <see cref="TerrainLayerSettings"/>. Called by the Inspector when
-    /// the settings change — no reload needed.</summary>
+    /// to every GPU texture this object owns: the simple texture uses <see cref="TexSettings"/>
+    /// and each PBR map uses its own slot in <see cref="PbrTexSettings"/>. Called by the
+    /// Inspector when the settings change — no reload needed.</summary>
     public void ApplyTextureSettings()
     {
         if (_textureID != 0)
@@ -2470,8 +1150,6 @@ public unsafe class EditorObject
             PbrTexSettings[i].Apply(_pbrTex[i]);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
         }
-        if (_terrainMesh != null)
-            _terrainMesh.ApplyTextureSettings(TerrainLayerSettings);
     }
 
     private void EnsurePbrTextures()
@@ -2560,25 +1238,6 @@ public unsafe class EditorObject
         /// world-AABB padding so per-chunk frustum culling never culls displaced peaks.</summary>
         public float HeightAdvancePad = 0.5f;
         public int VertexDisplace, DispScale, DispGrid;
-        // ── Splat terrain add-on (objectPbrSplat fragment stage; -1 when absent) ──
-        public int SplatMap, SplatCount, SplatAny, SplatTiling, SplatTint0, SplatTint1, SplatTint2, SplatTint3;
-        public int SplatLayer0IsMap;
-        // Height-layer auto-terrain bands (u_heightLayer* in the splat shader).
-        public int SplatHeightLayerMode, SplatHeightLayerCount, SplatHeightLayerFeather;
-        // Slope auto-paint (u_slopeLayer* in the splat shader) — rock on steep terrain.
-        public int SplatSlopeMode, SplatSlopeLayer, SplatSlopeThreshold, SplatSlopeFeather;
-        public int SplatSlopeDebug;
-        public int SplatLayerHeatmap;  // u_layerHeatmap — per-layer band weight overlay
-        public int SplatTriplanar;
-        public int SplatHeightBandsMin; // vec4 — per-layer band elevation MIN (x=layer0..w=layer3)
-        public int SplatHeightBandsMax; // vec4 — per-layer band elevation MAX
-        public int SplatSlopeTilingLoc; // slope-layer world tiling (separate from the base tiling)
-        public int SplatHasAlbedo;
-        public int TerrainHeightMap;   // unit 15 — terrain elevation (vertex displace + height bands); -1 when absent
-        public int TerrainDisplace;    // u_terrainDisplace — displacement samples terrainHeightMap
-        public int TerrainElev;        // u_terrainElev — height bands sample terrainHeightMap
-        public readonly int[] SplatAlbedo = new int[MaxSplatLayers];
-
         public PbrUniformSet(uint program)
         {
             Program = program;
@@ -2628,34 +1287,6 @@ public unsafe class EditorObject
             VertexDisplace = GL.GetUniformLocation(Program, "u_vertexDisplace");
             DispScale = GL.GetUniformLocation(Program, "u_dispScale");
             DispGrid = GL.GetUniformLocation(Program, "u_dispGrid");
-            SplatMap = GL.GetUniformLocation(Program, "u_splatMap");
-            SplatCount = GL.GetUniformLocation(Program, "u_splatCount");
-            SplatAny = GL.GetUniformLocation(Program, "u_splatAny");
-            SplatLayer0IsMap = GL.GetUniformLocation(Program, "u_splatLayer0IsMap");
-            SplatTiling = GL.GetUniformLocation(Program, "u_splatTiling");
-            SplatTint0 = GL.GetUniformLocation(Program, "u_splatTint0");
-            SplatTint1 = GL.GetUniformLocation(Program, "u_splatTint1");
-            SplatTint2 = GL.GetUniformLocation(Program, "u_splatTint2");
-            SplatTint3 = GL.GetUniformLocation(Program, "u_splatTint3");
-            SplatHeightLayerMode = GL.GetUniformLocation(Program, "u_heightLayerMode");
-            SplatHeightLayerCount = GL.GetUniformLocation(Program, "u_heightLayerCount");
-            SplatHeightLayerFeather = GL.GetUniformLocation(Program, "u_heightLayerFeather");
-            SplatSlopeMode = GL.GetUniformLocation(Program, "u_slopeLayerMode");
-            SplatSlopeLayer = GL.GetUniformLocation(Program, "u_slopeLayer");
-            SplatSlopeThreshold = GL.GetUniformLocation(Program, "u_slopeThreshold");
-            SplatSlopeFeather = GL.GetUniformLocation(Program, "u_slopeFeather");
-            SplatSlopeDebug = GL.GetUniformLocation(Program, "u_slopeDebug");
-            SplatLayerHeatmap = GL.GetUniformLocation(Program, "u_layerHeatmap");
-            SplatTriplanar = GL.GetUniformLocation(Program, "u_splatTriplanar");
-            SplatHeightBandsMin = GL.GetUniformLocation(Program, "u_bandMin");
-            SplatHeightBandsMax = GL.GetUniformLocation(Program, "u_bandMax");
-            SplatSlopeTilingLoc = GL.GetUniformLocation(Program, "u_slopeTiling");
-            SplatHasAlbedo = GL.GetUniformLocation(Program, "u_splatHasAlbedo");
-            TerrainHeightMap = GL.GetUniformLocation(Program, "terrainHeightMap");
-            TerrainDisplace = GL.GetUniformLocation(Program, "u_terrainDisplace");
-            TerrainElev = GL.GetUniformLocation(Program, "u_terrainElev");
-            for (int i = 0; i < MaxSplatLayers; i++)
-                SplatAlbedo[i] = GL.GetUniformLocation(Program, $"u_splatAlbedo{i}");
         }
     }
 
@@ -2750,127 +1381,6 @@ public unsafe class EditorObject
         P(x0, z0, u, v); P(x1, z1, u + step, v + step); P(x1, z0, u + step, v);
         P(x0, z0, u, v); P(x0, z1, u, v + step); P(x1, z1, u + step, v + step);
     }
-
-    /// <summary>Dynamic-terrain draw: per-chunk LOD + hardware occlusion queries on top
-    /// of the existing frustum-culled chunk path. Chunks far from the camera draw the
-    /// mid/coarse LOD mesh (same chunk ordering as the full VBO — sub-ranges stay
-    /// valid); 2×2 chunk blocks hidden behind other geometry skip their draw entirely
-    /// (GL_ANY_SAMPLES_PASSED queried with color+depth writes off, result applied the
-    /// next frame). NEVER returns a blank frame: any failure degrades to drawing MORE
-    /// (full LOD, force-draw frames after a miss, or the flat chunked path).</summary>
-    private void DrawChunkedDynamic(Matrix4x4 model, Matrix4x4 viewProj, bool twoSided, Vector3 camPos,
-        float dispScale, float pad)
-    {
-        if (!_lodBuilt || _lodSegsBuilt != PbrPlaneSegmentsBuilt)
-            BuildLodMeshes();
-        if (!_lodBuilt || _object3D == null || _chunkAABBs.Count != PbrChunkCount)
-        {
-            DrawChunkedPlane(model, viewProj, dispScale, pad, twoSided);
-            return;
-        }
-        bool cullWasOn = GL.IsEnabled(Const.GL_CULL_FACE);
-        if (twoSided) GL.Disable(Const.GL_CULL_FACE);
-
-        bool occlusion = PbrOcclusionEnabled;
-        if (occlusion) EnsureOcclusionQueries();
-        else DisposeOcclusionQueries();
-
-        int chunkSide = Math.Max(1, PbrVertexChunk);
-        int perChunk = Math.Max(1, PbrPlaneSegmentsBuilt / chunkSide);
-        int qSide = (chunkSide + 1) / 2;
-        int qn = _occQueries?.Length ?? 0;
-        int lodDrawn = 0, occluded = 0, frustumCulled = 0;
-        for (int c = 0; c < PbrChunkCount; c++)
-        {
-            var local = _chunkAABBs[c];
-            // World AABB from ALL 8 corners (rotation-safe — same rule as DrawChunkedPlane).
-            Vector3 wMin = new(float.MaxValue), wMax = new(float.MinValue);
-            for (int ci = 0; ci < 8; ci++)
-            {
-                var corner = Vector3.Transform(new Vector3(
-                    (ci & 1) != 0 ? local.Max.X : local.Min.X,
-                    (ci & 2) != 0 ? local.Max.Y : local.Min.Y,
-                    (ci & 4) != 0 ? local.Max.Z : local.Min.Z), model);
-                wMin = Vector3.Min(wMin, corner);
-                wMax = Vector3.Max(wMax, corner);
-            }
-            float padY = MathF.Max(0.05f, dispScale * pad + 0.05f);
-            var aabb = new AABB(
-                new Vector3(wMin.X, wMin.Y - padY, wMin.Z),
-                new Vector3(wMax.X, wMax.Y + padY, wMax.Z));
-            if (!IsAABBInFrustum(viewProj, aabb))
-            {
-                frustumCulled++;
-                continue;
-            }
-
-            int cx = c % chunkSide, cz = c / chunkSide;
-            int q = cz / 2 * qSide + cx / 2;
-
-            bool queryVisible = true;
-            if (occlusion && q < qn && _occResult != null && _occPending != null && _occForceDraw != null)
-            {
-                // Harvest the PREVIOUS frame's result when it has completed — never stall.
-                if (_occPending[q] != 0)
-                {
-                    int available = 0;
-                    GL.GetQueryObjectiv(_occQueries[q], Const.GL_QUERY_RESULT_AVAILABLE, &available);
-                    if (available != 0)
-                    {
-                        uint samples = 0;
-                        GL.GetQueryObjectuiv(_occQueries[q], Const.GL_QUERY_RESULT, &samples);
-                        _occResult[q] = samples > 0 ? (byte)1 : (byte)0;
-                        _occPending[q] = 0;
-                        // A miss earns a couple of forced-draw frames — the occluder may
-                        // have moved since the query was issued.
-                        if (_occResult[q] == 0) _occForceDraw[q] = OccForceFrame;
-                    }
-                }
-                queryVisible = _occResult[q] != 0 || _occForceDraw[q] > 0;
-                if (_occForceDraw != null && _occForceDraw[q] > 0 && _occPending[q] == 0) _occForceDraw[q]--;
-            }
-
-            if (!queryVisible) { occluded++; continue; }
-
-            // LOD pick by camera distance to the chunk center.
-            Vector3 center = Vector3.Transform((local.Min + local.Max) * 0.5f, model);
-            float dist = Vector3.Distance(camPos, center);
-            int lod = dist > MathF.Max(PbrLodDistance2, PbrLodDistance + 1f) ? 2 : dist > PbrLodDistance ? 1 : 0;
-            uint vao = _object3D.VAO;
-            int start = _chunkStarts[c], count = _chunkCounts[c];
-            if (lod > 0 && _lodVao[lod] != 0)
-            {
-                int lodSegs = Math.Max(1, perChunk / (lod == 1 ? 2 : 4));
-                int lodCount = lodSegs * lodSegs * 6;
-                vao = _lodVao[lod];
-                start = c * lodCount;   // LOD chunks are uniform + built in the same order
-                count = lodCount;
-                lodDrawn++;
-                GL.BindVertexArray(vao);
-            }
-            GL.DrawArrays(Const.GL_TRIANGLES, start, count);
-
-            // Occlusion query: redraw this chunk invisibly so the GPU records whether
-            // any pixel survives the depth test ( TerrainChunk-style 1-frame latency).
-            if (occlusion && q < qn && _occPending != null)
-            {
-                GL.ColorMask(false, false, false, false);
-                GL.DepthMask(false);
-                GL.BeginQuery(Const.GL_ANY_SAMPLES_PASSED, _occQueries[q]);
-                GL.DrawArrays(Const.GL_TRIANGLES, start, count);
-                GL.EndQuery(Const.GL_ANY_SAMPLES_PASSED);
-                GL.DepthMask(true);
-                GL.ColorMask(true, true, true, true);
-                _occPending[q] = 1;
-            }
-        }
-        if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
-        PbrLodCulled = lodDrawn;
-        PbrOccluded = occluded;
-        PbrChunksCulled = frustumCulled;
-        GL.BindVertexArray(_object3D.VAO);
-    }
-
     /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
     /// Returns false when there is nothing chunked (caller falls back to one full draw).</summary>
     private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, float dispScale, float dispHeightNorm, bool twoSided)
@@ -2967,22 +1477,11 @@ public unsafe class EditorObject
         // Program choice: planes with "Vertex Displacement" on use the geometric-
         // displacement vertex stage (true moving geometry); everything else the
         // standard one. Both share the objectPbr fragment stage.
-        // Program choice: planes with "Vertex Displacement" on use the geometric-
-        // displacement vertex stage (true moving geometry); everything else the
-        // standard one. Painted splat planes use the objectPbrSplat fragment stage
-        // (same PBR pipeline + 4-layer albedo blend) in BOTH variants, so the
-        // splat add-on survives the displacement toggle.
-        bool splat = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial && SplatIsPainted;
-        // Height source present = displaced program (always forced).
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
-        var u = (displaced, splat) switch
-        {
-            (true, true) => _pbrUniformsSplatDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatDisplaceShaderProgram()),
-            (true, false) => _pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()),
-            (false, true) => _pbrUniformsSplat ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatShaderProgram()),
-            _ => _pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()),
-        };
+                         && !string.IsNullOrEmpty(PbrHeightPath);
+        var u = displaced
+            ? (_pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()))
+            : (_pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()));
         uint pbr = u.Program;
         if (pbr == 0)
         {
@@ -3059,21 +1558,6 @@ public unsafe class EditorObject
             GL.Uniform1i(u.UseMaps[i], _pbrTex[i] != 0 ? 1 : 0);
         }
 
-        // ── TERRAIN height (unit 15) — the plane-terrain elevation source. Separate
-        //    from the POM height map (unit 5): vertex displacement + splat height
-        //    bands sample HERE; the PBR panel's Height map stays parallax-only.
-        //    While sculpting, the live R8 sculpt texture replaces it (see
-        //    EnsureTerrainHeightTexture) — sculpt strokes reach the GPU every frame. ──
-        bool terrainActive = PrimitiveType == EditorPrimitiveType.Plane
-                             && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
-        if (terrainActive && u.TerrainHeightMap >= 0)
-        {
-            uint terrainTex = EnsureTerrainHeightTexture();
-            GL.ActiveTexture(Const.GL_TEXTURE0 + 15);
-            GL.BindTexture(Const.GL_TEXTURE_2D, terrainTex != 0 ? terrainTex : white);
-            GL.Uniform1i(u.TerrainHeightMap, 15);
-        }
-
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
         // Global PbrTexTiling multiplies into each per-map tiling so the slider
         // scales all maps uniformly in real-time.
@@ -3085,16 +1569,12 @@ public unsafe class EditorObject
             if (u.UvOffset[i] >= 0)
                 GL.Uniform2f(u.UvOffset[i], PbrTexSettings[i].OffsetX, PbrTexSettings[i].OffsetY);
         }
-        GL.Uniform3f(u.AlbedoTune, TerrainPbrAlbedoBrightness, TerrainPbrAlbedoSaturation, TerrainPbrAlbedoContrast);
-        GL.Uniform2f(u.NormalTune, TerrainPbrNormalStrength, TerrainPbrNormalBlur);
-        GL.Uniform3f(u.MetallicTune, TerrainPbrMetallicThreshold, TerrainPbrMetallicSoftness, TerrainPbrMetallicStrength);
-        GL.Uniform2f(u.RoughnessTune, TerrainPbrRoughnessStrength, TerrainPbrRoughnessInvert ? 1f : 0f);
-        GL.Uniform2f(u.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
-        GL.Uniform3f(u.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
-        // Terrain/POM source selection (see unit-15 binding above): displacement +
-        // height bands read the TERRAIN elevation; the POM parallax keeps unit 5.
-        if (u.TerrainDisplace >= 0) GL.Uniform1f(u.TerrainDisplace, terrainActive && displaced ? 1f : 0f);
-        if (u.TerrainElev >= 0) GL.Uniform1i(u.TerrainElev, terrainActive ? 1 : 0);
+        GL.Uniform3f(u.AlbedoTune, PbrAlbedoBrightness, PbrAlbedoSaturation, PbrAlbedoContrast);
+        GL.Uniform2f(u.NormalTune, PbrNormalStrength, PbrNormalBlur);
+        GL.Uniform3f(u.MetallicTune, PbrMetallicThreshold, PbrMetallicSoftness, PbrMetallicStrength);
+        GL.Uniform2f(u.RoughnessTune, PbrRoughnessStrength, PbrRoughnessInvert ? 1f : 0f);
+        GL.Uniform2f(u.AoTune, PbrAoStrength, PbrAoBrightness);
+        GL.Uniform3f(u.HeightTune, PbrHeightStrength, PbrHeightInvert ? 1f : 0f, PbrHeightBlur);
         if (u.VertexDisplace >= 0) GL.Uniform1f(u.VertexDisplace, displaced ? 1f : 0f);
         if (u.DispScale >= 0) GL.Uniform1f(u.DispScale, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f));
         if (u.DispGrid >= 0) GL.Uniform1f(u.DispGrid, PbrPlaneSegmentsBuilt > 0 ? PbrPlaneSegmentsBuilt : PbrDisplaceSegments);
@@ -3105,95 +1585,11 @@ public unsafe class EditorObject
             Math.Clamp(PbrHeightScaleCenter, 0f, 1f));
         // Cache the zero-displacement baseline as the culling padding (see DrawChunkedPlane).
         u.HeightAdvancePad = Math.Clamp(PbrHeightScaleCenter, 0f, 1f);
-        GL.Uniform1f(u.EmissionIntensity, TerrainPbrEmissionIntensity);
+        GL.Uniform1f(u.EmissionIntensity, PbrEmissionIntensity);
         if (u.ParallaxScale >= 0) GL.Uniform1f(u.ParallaxScale, PbrParallaxScale);
         if (u.PomShadowStrength >= 0) GL.Uniform1f(u.PomShadowStrength, Math.Clamp(PbrPomShadowStrength, 0f, 1f));
 
-        // ── Splat terrain: dynamic textures + blending uniforms (units 10..14) ──
-        bool splatActive = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial
-                           && (SplatIsPainted || SplatHeightLayersEnabled || SplatSlopeEnabled);
-        if (splatActive && u.SplatMap >= 0)
-        {
-            if (_sculptHeights != null)
-                UploadSculptTexture();
-            if (_splatDirty)
-                UploadSplatTexture();
-            GL.ActiveTexture(Const.GL_TEXTURE0 + 10);
-            GL.BindTexture(Const.GL_TEXTURE_3D, EnsureSplatTexture());
-            GL.Uniform1i(u.SplatMap, 10);
-            GL.Uniform1i(u.SplatCount, MaxSplatLayers);
-            GL.Uniform1i(u.SplatAny, 1);
-            GL.Uniform1i(u.SplatLayer0IsMap, string.IsNullOrEmpty(EnsureSplatLayer(0).AlbedoPath) ? 1 : 0);
-            GL.Uniform1f(u.SplatTiling, Math.Clamp(SplatTiling, 0.01f, 64f));
-            // Height-layer bands + which layers actually have a texture (a texture-less
-            // band must contribute ZERO weight, not a white stripe, in auto-terrain mode).
-            // Height bands sample the terrain elevation — without a terrain height
-            // source they would read unit-0 garbage, so the mode only enables with one.
-            if (u.SplatHeightLayerMode >= 0) GL.Uniform1i(u.SplatHeightLayerMode,
-                SplatHeightLayersEnabled && (terrainActive || _sculptHeights != null) ? 1 : 0);
-            if (u.SplatHeightLayerCount >= 0) GL.Uniform1i(u.SplatHeightLayerCount, Math.Clamp(SplatHeightLayerCount, 1, 4));
-            if (u.SplatHeightLayerFeather >= 0) GL.Uniform1f(u.SplatHeightLayerFeather, Math.Clamp(SplatHeightLayerFeather, 0.01f, 0.5f));
-            // Slope auto-paint: rock layer takes over steep geometry (no brush needed).
-            if (u.SplatSlopeMode >= 0) GL.Uniform1i(u.SplatSlopeMode, SplatSlopeEnabled ? 1 : 0);
-            if (u.SplatSlopeLayer >= 0) GL.Uniform1i(u.SplatSlopeLayer, Math.Clamp(SplatSlopeLayer, 0, 3));
-            if (u.SplatSlopeThreshold >= 0) GL.Uniform1f(u.SplatSlopeThreshold, Math.Clamp(SplatSlopeThreshold, 0f, 1f));
-            if (u.SplatSlopeFeather >= 0) GL.Uniform1f(u.SplatSlopeFeather, Math.Clamp(SplatSlopeFeather, 0.01f, 0.5f));
-            if (u.SplatSlopeDebug >= 0) GL.Uniform1i(u.SplatSlopeDebug, SplatShowSlopeMask ? 1 : 0);
-            if (u.SplatTriplanar >= 0) GL.Uniform1i(u.SplatTriplanar, SplatTriplanar ? 1 : 0);
-            // Per-layer elevation bands (legacy-terrain parity): 4 × (min,max) as two
-            // vec4 uploads. min==max == -1 disables that layer's band. Bands sample the
-            // SAME elevation source as the auto-bands mode (terrain unit 15 / sculpt).
-            if (u.SplatHeightBandsMin >= 0)
-            {
-                unsafe
-                {
-                    Span<float> mn = [SplatHeightBands[0], SplatHeightBands[2], SplatHeightBands[4], SplatHeightBands[6]];
-                    Span<float> mx = [SplatHeightBands[1], SplatHeightBands[3], SplatHeightBands[5], SplatHeightBands[7]];
-                    GL.Uniform4f(u.SplatHeightBandsMin, mn[0], mn[1], mn[2], mn[3]);
-                    GL.Uniform4f(u.SplatHeightBandsMax, mx[0], mx[1], mx[2], mx[3]);
-                }
-            }
-            if (u.SplatSlopeTilingLoc >= 0) GL.Uniform1f(u.SplatSlopeTilingLoc, Math.Clamp(SplatSlopeTiling, 0.01f, 64f));
-            if (u.SplatLayerHeatmap >= 0) GL.Uniform1i(u.SplatLayerHeatmap, SplatShowLayerHeatmap ? 1 : 0);
-            if (u.SplatHasAlbedo >= 0)
-            {
-                GL.Uniform1i(u.SplatHasAlbedo, HasSplatTexture(0));
-                GL.Uniform1i(u.SplatHasAlbedo + 1, HasSplatTexture(1));
-                GL.Uniform1i(u.SplatHasAlbedo + 2, HasSplatTexture(2));
-                GL.Uniform1i(u.SplatHasAlbedo + 3, HasSplatTexture(3));
-            }
-            for (int i = 0; i < MaxSplatLayers; i++)
-            {
-                var layer = EnsureSplatLayer(i);
-                uint lt = EnsureSplatAlbedoTex(i);
-                GL.ActiveTexture(Const.GL_TEXTURE0 + 11 + (uint)i);
-                GL.BindTexture(Const.GL_TEXTURE_2D, lt != 0 ? lt : white);
-                if (u.SplatAlbedo[i] >= 0) GL.Uniform1i(u.SplatAlbedo[i], 11 + i);
-                int tintLoc = i switch { 0 => u.SplatTint0, 1 => u.SplatTint1, 2 => u.SplatTint2, _ => u.SplatTint3 };
-                if (tintLoc >= 0) GL.Uniform3f(tintLoc, layer.TintR, layer.TintG, layer.TintB);
-            }
-        }
-
         GL.BindVertexArray(_object3D!.VAO);
-        // ── DYNAMIC TERRAIN PATH — per-chunk LOD + occlusion queries. Picked per
-        //    frame from the cheapest safe option: only with LOD on, a chunked grid
-        //    and built LOD meshes; any failure falls through to the flat path below.
-        // Configuration-only guard — _lodBuilt is set INSIDE DrawChunkedDynamic on its
-        // first call, so testing it here would be a chicken-and-egg that permanently
-        // disables the dynamic path.
-        bool dynamicMode = PrimitiveType == EditorPrimitiveType.Plane
-                           && PbrLodEnabled && PbrChunkCount > 1 && PbrPlaneSegmentsBuilt > 1;
-        if (dynamicMode)
-        {
-            try { DrawChunkedDynamic(model, view * proj, true, camera.Position, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f), u.HeightAdvancePad); }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PBR] Dynamic draw FAILED on '{Name}' → flat fallback: {ex.Message}");
-                dynamicMode = false;
-            }
-        }
-        if (!dynamicMode)
-        {
         // ── Flat planes: single CCW quad → culled (invisible) from below. Draw PBR
         //    planes two-sided like the derivative-TBN shader expects; boxes/spheres
         //    are closed meshes and keep the scene's culling state untouched.
@@ -3222,7 +1618,6 @@ public unsafe class EditorObject
             if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
             PbrChunksCulled = 0;
         }
-        }
         GL.BindVertexArray(0);
 
         // ── Restore: main shader + its shadow bindings at units 6/7/8 (the main pass
@@ -3236,365 +1631,10 @@ public unsafe class EditorObject
             GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
             GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
         }
-        // ── Restore: splat bindings clobbered units 10..14 ──
-        if (splatActive)
-        {
-            GL.ActiveTexture(Const.GL_TEXTURE0 + 10);
-            GL.BindTexture(Const.GL_TEXTURE_3D, 0);
-            for (int i = 0; i < MaxSplatLayers; i++)
-            {
-                GL.ActiveTexture(Const.GL_TEXTURE0 + 11 + (uint)i);
-                GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-            }
-        }
         GL.ActiveTexture(Const.GL_TEXTURE0);
         GL.UseProgram(Shader.GetShaderProgram());
     }
 
-    /// <summary>True when splat layer i has an albedo texture assigned (shader bands
-    /// with no texture contribute zero weight in height-layer mode).</summary>
-    internal int HasSplatTexture(int i) =>
-        i == 0 ? 1 : (string.IsNullOrEmpty(SplatLayers[i]?.AlbedoPath) ? 0 : 1);
-
-    /// <summary>Load (once per path) a splat layer's albedo texture. Empty path = 0 —
-    /// the shader falls back to the albedo MAP for layer 0 and black for layers 1+.</summary>
-    internal uint EnsureSplatAlbedoTex(int i)
-    {
-        string path = SplatLayers[i]?.AlbedoPath ?? "";
-        if (_splatAlbedoTex[i] != 0 && _splatAlbedoKey[i] == path) return _splatAlbedoTex[i];
-        if (_splatAlbedoTex[i] != 0)
-        {
-            fixed (uint* p = &_splatAlbedoTex[i]) GL.DeleteTextures(1, p);
-            _splatAlbedoTex[i] = 0;
-        }
-        _splatAlbedoKey[i] = path;
-        if (string.IsNullOrEmpty(path)) return 0;
-        try
-        {
-            string resolved = PathHelpers.Resolve(path);
-            if (!File.Exists(resolved)) return 0;
-            _splatAlbedoTex[i] = new Texture(resolved).ID;
-            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[PbrSplat] '{Name}' splat layer {i} albedo load failed: {ex.Message}");
-        }
-        return _splatAlbedoTex[i];
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  Terrain brush paint (viewport tool) + painted-data persistence
-    // ════════════════════════════════════════════════════════════════════
-
-    /// <summary>True when this terrain has been edited with the paint brush.</summary>
-    public bool TerrainIsModified => _terrainMesh is { IsModified: true };
-
-    /// <summary>Total triangles of this terrain mesh (sum over ALL chunk sub-meshes).
-    /// 0 when this object is not an active terrain.</summary>
-    public int TerrainTriangleCount => _terrainMesh is { IsReady: true } m ? m.TriangleCount : 0;
-
-
-    /// <summary>Base64-encoded painted heightmap blob for scene persistence.
-    /// Empty string = no user edits (nothing to save).</summary>
-    public string TerrainPaintedData
-    {
-        get
-        {
-            // Live-capture from the mesh so edits made this session are always current.
-            if (_terrainMesh is { IsModified: true } m)
-            {
-                _terrainPaintedCache = m.GetModifiedRaw();
-                _terrainPaintedSourcePath = TerrainHeightmapPath;
-            }
-            // Never persist a cache that belongs to a different heightmap file.
-            if (_terrainPaintedCache == null || _terrainPaintedSourcePath != TerrainHeightmapPath)
-                return "";
-            return Convert.ToBase64String(_terrainPaintedCache);
-        }
-        set
-        {
-            _terrainPaintedCache = null;
-            if (string.IsNullOrEmpty(value)) return;
-            try
-            {
-                _terrainPaintedCache = Convert.FromBase64String(value);
-                // Only restored while the terrain points at the same heightmap file.
-                _terrainPaintedSourcePath = TerrainHeightmapPath;
-            }
-            catch
-            {
-                _terrainPaintedCache = null;
-            }
-        }
-    }
-
-    /// <summary>Raycast this terrain's surface. Returns the world-space surface point
-    /// (brush cursor / placement) or null when the ray misses the footprint.</summary>
-    /// <summary>Transform the ray into this terrain's local space and intersect the Y=0 base
-    /// plane. Returns the local XZ point (in [-0.5, 0.5]²) when the ray hits the footprint.
-    /// Shared by every brush operation so ray math stays consistent.</summary>
-    private bool TryGetTerrainLocalPoint(Vector3 rayOrigin, Vector3 rayDir, out Vector2 local)
-    {
-        local = Vector2.Zero;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true })
-            return false;
-        var model = TerrainModelMatrix;
-        if (!Matrix4x4.Invert(model, out var invModel))
-            return false;
-        var localOrigin = Vector3.Transform(rayOrigin, invModel);
-        var localDir = Vector3.TransformNormal(rayDir, invModel);
-        if (Math.Abs(localDir.Y) < 1e-6f)
-            return false;
-        float t = -localOrigin.Y / localDir.Y;
-        if (t <= 0f)
-            return false;
-        var localHit = localOrigin + localDir * t;
-        if (localHit.X < -0.5f || localHit.X > 0.5f || localHit.Z < -0.5f || localHit.Z > 0.5f)
-            return false;
-        local = new Vector2(localHit.X, localHit.Z);
-        return true;
-    }
-
-    /// <summary>Brush radius converted to local units (world brush size ÷ footprint).</summary>
-    private float LocalBrushRadius =>
-        Math.Max(0.02f, TerrainBrushSize) / MathF.Max(MathF.Max(0.1f, Scale.X), MathF.Max(0.1f, Scale.Z));
-
-    /// <summary>World-space surface point under the ray (brush cursor / placement).</summary>
-    public Vector3? RaycastTerrainSurface(Vector3 rayOrigin, Vector3 rayDir)
-    {
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return null;
-        // Quick reject against the world AABB before the precise intersection.
-        if (!AABB.RayIntersectsAABB(rayOrigin, rayDir, GetWorldAABB(), out _, out _))
-            return null;
-        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
-            return null;
-        float h = m.SampleLocalHeight(local.X, local.Y);
-        return Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
-    }
-
-    /// <summary>Paint one brush stamp into the terrain at the ray's intersection.
-    /// <paramref name="deltaWorld"/> is the height delta in world units (positive =
-    /// raise, negative = lower). Returns true + the world hit point when painted.</summary>
-    public bool TryPaintTerrainSurface(Vector3 rayOrigin, Vector3 rayDir, float deltaWorld, out Vector3 worldHitPoint)
-    {
-        worldHitPoint = Vector3.Zero;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return false;
-        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
-            return false;
-        // Convert the world delta (sculpt strength in world units) to normalized height.
-        float deltaNorm = deltaWorld / Math.Max(1f, TerrainHeightScale);
-        m.PaintHeight(local.X, local.Y, LocalBrushRadius, deltaNorm, TerrainBrushSoftness, TerrainBrushFalloff);
-
-        float h = m.SampleLocalHeight(local.X, local.Y);
-        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
-        return true;
-    }
-
-    /// <summary>Smooth one brush stamp at the ray's terrain intersection (averages the
-    /// heights in the brush area). <paramref name="strength"/> 0..1 blend per stamp.</summary>
-    public bool TrySmoothTerrainSurface(Vector3 rayOrigin, Vector3 rayDir, float strength, out Vector3 worldHitPoint)
-    {
-        worldHitPoint = Vector3.Zero;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return false;
-        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
-            return false;
-        m.SmoothHeight(local.X, local.Y, LocalBrushRadius, strength, TerrainBrushFalloff);
-
-        float h = m.SampleLocalHeight(local.X, local.Y);
-        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
-        return true;
-    }
-
-    /// <summary>Flatten one brush stamp at the ray's terrain intersection toward
-    /// <paramref name="targetNorm"/> (normalized 0..1 height). <paramref name="strength"/>
-    /// 0..1 blend per stamp.</summary>
-    public bool TryFlattenTerrainSurface(Vector3 rayOrigin, Vector3 rayDir, float targetNorm, float strength, out Vector3 worldHitPoint)
-    {
-        worldHitPoint = Vector3.Zero;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return false;
-        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
-            return false;
-        m.FlattenHeight(local.X, local.Y, LocalBrushRadius, targetNorm, strength, TerrainBrushFalloff);
-
-        float h = m.SampleLocalHeight(local.X, local.Y);
-        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
-        return true;
-    }
-
-    /// <summary>Smooth the ENTIRE terrain heightmap in one pass.
-    /// Used by the "Smooth All" suggestion button in the Terrain Brush panel.</summary>
-    public void SmoothAllTerrain(int passes = 2, float strength = 0.4f)
-    {
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return;
-        m.SmoothAllHeights(passes, strength);
-        Console.WriteLine($"[TerrainBrush] Smoothed entire heightmap on '{Name}' ({passes} passes, strength={strength:F2})");
-    }
-
-    /// <summary>Normalized (0..1) terrain height under the ray — the flatten tool captures
-    /// this from the first stamp of a stroke as its level target.</summary>
-    public bool TryGetTerrainNormalizedHeight(Vector3 rayOrigin, Vector3 rayDir, out float targetNorm)
-    {
-        targetNorm = 0f;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return false;
-        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
-            return false;
-        targetNorm = m.SampleLocalHeightNorm(local.X, local.Y);
-        return true;
-    }
-
-    /// <summary>Snapshot the terrain's height array (undo support).</summary>
-    public float[]? CaptureTerrainHeights() => _terrainMesh?.GetHeightSnapshot();
-
-    /// <summary>Restore a height snapshot (undo/redo) and rebuild the GPU mesh.</summary>
-    public void RestoreTerrainHeights(float[]? heights)
-    {
-        if (_terrainMesh != null && heights != null)
-            _terrainMesh.RestoreHeightSnapshot(heights);
-    }
-
-    /// <summary>Write the current painted heights to a .raw file (returns success).</summary>
-    public bool SaveTerrainHeightmap(string path)
-    {
-        if (_terrainMesh == null || string.IsNullOrEmpty(path)) return false;
-        bool ok = _terrainMesh.SaveHeightmapFile(path);
-        if (ok)
-        {
-            // Point the terrain at the saved file so future rebuilds read the edits.
-            TerrainHeightmapPath = path;
-            MarkDirty();
-        }
-        return ok;
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    //  Manual layer paint (splat) — 🎨 brush
-    // ════════════════════════════════════════════════════════════════════
-
-    /// <summary>True when this terrain has manual layer paint to show.</summary>
-    public bool TerrainSplatIsModified => _terrainMesh is { SplatModified: true };
-
-    /// <summary>Serialized splat blob (base64) for scene persistence. Empty = no paint.</summary>
-    public string TerrainSplatData
-    {
-        get
-        {
-            if (_terrainMesh is { SplatModified: true } m)
-                _terrainSplatCache = m.GetModifiedSplatRaw();
-            return _terrainSplatCache == null ? "" : Convert.ToBase64String(_terrainSplatCache);
-        }
-        set
-        {
-            _terrainSplatCache = null;
-            if (string.IsNullOrEmpty(value)) return;
-            try { _terrainSplatCache = Convert.FromBase64String(value); }
-            catch { _terrainSplatCache = null; }
-        }
-    }
-
-    /// <summary>Paint one splat stamp (layer 0..3) at the ray's terrain intersection.
-    /// <paramref name="erase"/> decays painted weights back toward automatic texturing.
-    /// Returns true + the world hit point when painted.</summary>
-    public bool TryPaintLayerSurface(Vector3 rayOrigin, Vector3 rayDir, int layerIndex, float strength, bool erase, out Vector3 worldHitPoint)
-    {
-        worldHitPoint = Vector3.Zero;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return false;
-        if (!TryGetTerrainLocalPoint(rayOrigin, rayDir, out var local))
-            return false;
-        m.PaintLayer(local.X, local.Y, LocalBrushRadius, layerIndex, strength, TerrainBrushSoftness, TerrainBrushFalloff, erase);
-
-        float h = m.SampleLocalHeight(local.X, local.Y);
-        worldHitPoint = Vector3.Transform(new Vector3(local.X, h, local.Y), TerrainModelMatrix);
-        return true;
-    }
-
-    /// <summary>Snapshot the splat bytes (undo support).</summary>
-    public byte[]? CaptureTerrainSplat() => _terrainMesh?.GetSplatSnapshot();
-
-    /// <summary>Restore a splat snapshot (undo/redo).</summary>
-    public void RestoreTerrainSplat(byte[]? splat)
-    {
-        if (_terrainMesh != null && splat != null)
-            _terrainMesh.RestoreSplatSnapshot(splat);
-    }
-
-    /// <summary>Clear ALL manual layer paint (back to automatic height+slope texturing).</summary>
-    public void ClearTerrainLayerPaint()
-    {
-        _terrainMesh?.ClearSplatPaint();
-    }
-
-    /// <summary>
-    /// Draw the brush ring ON this terrain's surface — a translucent highlight disc that
-    /// follows the heightmap (sampled every segment), so the user sees exactly which area
-    /// of the plane the brush will affect. Ring radius = TerrainBrushSize (same footprint
-    /// mapping as painting). Depth test is disabled so the ring never z-fights with the
-    /// terrain mesh. Color + transparency come from BrushIndicatorColor/BrushIndicatorAlpha
-    /// (editable in the Terrain Brush panel and saved with the scene).
-    /// </summary>
-    public void DrawTerrainBrushIndicator(Camera camera)
-    {
-        if (!ShowBrushIndicator || BrushIndicatorPos is not Vector3 center)
-            return;
-        if (PrimitiveType != EditorPrimitiveType.Plane || !TerrainEnabled || _terrainMesh is not { IsReady: true } m)
-            return;
-
-        var model = TerrainModelMatrix;
-        if (!Matrix4x4.Invert(model, out var invModel))
-            return;
-        var localCenter = Vector3.Transform(center, invModel);
-
-        float footprint = MathF.Max(MathF.Max(0.1f, Scale.X), MathF.Max(0.1f, Scale.Z));
-        float rLocal = Math.Max(0.02f, TerrainBrushSize) / footprint;
-
-        const int Segments = 48;
-
-        // Sample the ring points ON the terrain surface (height-following).
-        var ringPts = new List<Vector3>(Segments + 1);
-        for (int i = 0; i <= Segments; i++)
-        {
-            float a = (float)i / Segments * MathF.PI * 2f;
-            float lx = Math.Clamp(localCenter.X + MathF.Cos(a) * rLocal, -0.5f, 0.5f);
-            float lz = Math.Clamp(localCenter.Z + MathF.Sin(a) * rLocal, -0.5f, 0.5f);
-            float h = m.SampleLocalHeight(lx, lz);
-            ringPts.Add(Vector3.Transform(new Vector3(lx, h, lz), model));
-        }
-        // The last point (segment Segments == point 0) closes the loop.
-
-        // ── Translucent fill: spokes from the brush center to every ring point. Drawing
-        // them as semi-transparent lines makes the whole disc read as a soft highlight
-        // instead of a hard wire circle. The center height is sampled at the hover point.
-        float hCenter = m.SampleLocalHeight(localCenter.X, localCenter.Z);
-        var centerWorld = Vector3.Transform(new Vector3(localCenter.X, hCenter, localCenter.Z), model);
-        var fill = new List<Vector3>(Segments * 2);
-        for (int i = 0; i < Segments; i++)
-        {
-            fill.Add(centerWorld);
-            fill.Add(ringPts[i]);
-        }
-
-        // ── Bright outline: the ring edge itself, drawn on top of the fill. ──
-        var outline = new List<Vector3>(Segments * 2);
-        for (int i = 0; i < Segments; i++)
-        {
-            outline.Add(ringPts[i]);
-            outline.Add(ringPts[i + 1]);
-        }
-
-        GL.Disable(Const.GL_DEPTH_TEST);
-        float fillAlpha = Math.Clamp(BrushIndicatorAlpha * 0.6f, 0f, 0.85f);
-        float outlineAlpha = Math.Clamp(BrushIndicatorAlpha + 0.35f, 0f, 1f);
-        Terrains.TerrainChunk.DrawLineSegments(fill, BrushIndicatorColor, camera, fillAlpha);
-        Terrains.TerrainChunk.DrawLineSegments(outline, BrushIndicatorColor, camera, outlineAlpha);
-        GL.Enable(Const.GL_DEPTH_TEST);
-    }
     /// <summary>Draw using individual uniform locations (matching EditorObjectManager's call pattern).</summary>
         public void Draw(
             int modelLoc, int viewLoc, int projLoc,
@@ -3607,26 +1647,6 @@ public unsafe class EditorObject
             // Rebuild GPU resources if MarkDirty() was called (e.g. color changed in the
             // Inspector) — otherwise the old vertices/color would keep rendering forever.
             EnsureResources();
-
-            // ── Advanced terrain plane: render with the dedicated terrain shader. ──
-            if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
-            {
-                // XZ footprint follows Scale.X/Z; Y stays at real world height (the
-                // plane's thin Scale.Y must NOT flatten the terrain).
-                _terrainMesh.Draw(TerrainModelMatrix, camera, light, this, csm);
-
-                // ── Brush ring indicator ON the terrain surface (while the brush tool
-                // hovers this terrain) — drawn after the mesh so it's always on top. ──
-                DrawTerrainBrushIndicator(camera);
-
-                // The terrain shader switches the active program — restore the main
-                // shader so subsequent editor objects render correctly.
-                GL.UseProgram(Shader.GetShaderProgram());
-                return;
-            }
-
-            // Terrain enabled but no valid mesh (missing heightmap): fall back to the
-            // flat plane mesh so the object stays visible and editable.
 
             // ── 2D Map: render as textured plane with tile images ──
             if (PrimitiveType == EditorPrimitiveType.Map2D)
@@ -3670,7 +1690,7 @@ public unsafe class EditorObject
     /// built from <see cref="CameraFov"/>, <see cref="CameraNear"/> and <see cref="CameraFar"/>.
     /// The frustum follows the object's rotation (Yaw/Pitch/Roll) so rotating the marker
     /// points the frustum the same way. Depth test is disabled so the wireframe shows
-    /// through terrain and other geometry (like other editor helpers).
+    /// through geometry (like other editor helpers).
     /// </summary>
     public unsafe void DrawCameraFrustum(Camera camera)
     {
@@ -3769,7 +1789,7 @@ public unsafe class EditorObject
     {
         if (verts == null || verts.Count == 0) return;
         GL.Disable(Const.GL_DEPTH_TEST);
-        Terrains.TerrainChunk.DrawLineSegments(verts, lineColor, camera);
+        Helpers.DebugDraw.DrawLineSegments(verts, lineColor, camera);
         GL.Enable(Const.GL_DEPTH_TEST);
     }
 
@@ -4301,7 +2321,7 @@ public unsafe class EditorObject
 
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
         GL.Disable(Const.GL_DEPTH_TEST);
-        Terrains.TerrainChunk.DrawLineSegments(verts, lineColor, camera, alpha);
+        Helpers.DebugDraw.DrawLineSegments(verts, lineColor, camera, alpha);
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
     }
 
@@ -5251,7 +3271,7 @@ public unsafe class EditorObject
         if (lineVerts.Count == 0) return;
 
         GL.Disable(Const.GL_DEPTH_TEST);
-        Terrains.TerrainChunk.DrawLineSegments(lineVerts, lineColor, camera);
+        Helpers.DebugDraw.DrawLineSegments(lineVerts, lineColor, camera);
         GL.Enable(Const.GL_DEPTH_TEST);
     }
 
@@ -5491,13 +3511,6 @@ public unsafe class EditorObject
     {
         if (!IsVisible || !CastShadow) return;
 
-        // ── Advanced terrain planes cast shadows through their dedicated mesh. ──
-        if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
-        {
-            _terrainMesh.RenderShadow(TerrainModelMatrix, csm, cascadeIndex);
-            return;
-        }
-
         // ── GLB reference: skinned shadow shader (matches the animated pose). ──
         if (PrimitiveType == EditorPrimitiveType.GlbReference)
         {
@@ -5528,16 +3541,6 @@ public unsafe class EditorObject
     {
         _dirty = true;
         _vertexCache = null; // Invalidate wireframe cache until EnsureResources() rebuilds it
-        // Terrain cache key is compared against the live settings, so a rebuild happens
-        // automatically next time EnsureResources() runs if anything changed.
-    }
-
-    /// <summary>Get (creating if needed) the PBR data for terrain layer 0..4.</summary>
-    public TerrainPbrLayerData EnsureTerrainLayer(int index)
-    {
-        if (TerrainLayers == null || TerrainLayers.Length != 5)
-            TerrainLayers = [new(), new(), new(), new(), new()];
-        return TerrainLayers[index] ??= new TerrainPbrLayerData();
     }
 
 
@@ -5564,13 +3567,6 @@ public unsafe class EditorObject
     public void RenderShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
     {
         if (!IsVisible || !CastShadow) return;
-
-        // ── Advanced terrain planes cast shadows through their dedicated mesh. ──
-        if (PrimitiveType == EditorPrimitiveType.Plane && TerrainEnabled && _terrainMesh is { IsReady: true })
-        {
-            _terrainMesh.RenderShadow(TerrainModelMatrix, csm, cascadeIndex);
-            return;
-        }
 
         // ── GLB reference: skinned shadow shader (matches the animated pose). ──
         if (PrimitiveType == EditorPrimitiveType.GlbReference)
@@ -5610,7 +3606,7 @@ public unsafe class EditorObject
     // ════════════════════════════════════════════════════════════════════
     //  2D Map rendering — textured plane with per-tile UV mapping
     //  Uses a dedicated inline shader (similar to Sprite2D) for simple
-    //  textured rendering without the complex terrain lighting.
+    //  textured rendering without the complex PBR lighting.
     // ════════════════════════════════════════════════════════════════════
 
     // Dedicated shader for Map2D (simple textured quad with per-vertex alpha)
@@ -6343,7 +4339,7 @@ void main() {
                                 MathF.Min(1f, cR * 1.5f + 0.2f),
                                 MathF.Min(1f, cG * 1.5f + 0.2f),
                                 MathF.Min(1f, cB * 1.5f + 0.2f));
-                            Terrains.TerrainChunk.DrawLineSegments(edgeVerts, edgeCol, camera, 0.95f);
+                            Helpers.DebugDraw.DrawLineSegments(edgeVerts, edgeCol, camera, 0.95f);
                         }
 
                         // Restore the tile model matrix so later passes stay aligned.
@@ -6457,7 +4453,7 @@ void main() {
                         new((lx0 + lx1) * 0.5f, lyTop, layerZ),
                         new((lx0 + lx1) * 0.5f, lyTop + cell * 0.6f, layerZ)
                     };
-                    Terrains.TerrainChunk.DrawLineSegments(stem,
+                    Helpers.DebugDraw.DrawLineSegments(stem,
                         new Vector3(tR, tG, tB), camera, isSel ? 1f : 0.8f);
                 }
 
@@ -6493,7 +4489,7 @@ void main() {
                     }
 
                     var trgEdgeCol = new Vector3(1f, 0.75f, 0.15f);
-                    Terrains.TerrainChunk.DrawLineSegments(trgEdgeVerts, trgEdgeCol, camera, 0.9f);
+                    Helpers.DebugDraw.DrawLineSegments(trgEdgeVerts, trgEdgeCol, camera, 0.9f);
                     GL.UniformMatrix4fv(_map2dLocModel, 1, false, &model.M11);
                 }
 
@@ -6529,7 +4525,7 @@ void main() {
             GL.Disable(Const.GL_DEPTH_TEST);
             var gridRgb = new Vector3(Map2dGridColor.X, Map2dGridColor.Y, Map2dGridColor.Z);
             float gridA = Math.Clamp(Map2dGridColor.W, 0.05f, 1f);
-            Terrains.TerrainChunk.DrawLineSegments(gridVerts, gridRgb, camera, gridA);
+            Helpers.DebugDraw.DrawLineSegments(gridVerts, gridRgb, camera, gridA);
 
             // Outer border: same hue pushed brighter so the map extent reads clearly.
             var borderRgb = new Vector3(
@@ -6543,7 +4539,7 @@ void main() {
                 new(extentW, extentH, layerZ), new(0f, extentH, layerZ),
                 new(0f, extentH, layerZ), new(0f, 0f, layerZ)
             };
-            Terrains.TerrainChunk.DrawLineSegments(border, borderRgb, camera, 0.8f);
+            Helpers.DebugDraw.DrawLineSegments(border, borderRgb, camera, 0.8f);
             if (depthEnabled)
                 GL.Enable(Const.GL_DEPTH_TEST);
         }
@@ -6564,7 +4560,7 @@ void main() {
             };
             bool depthSp = GL.IsEnabled(Const.GL_DEPTH_TEST);
             GL.Disable(Const.GL_DEPTH_TEST);
-            Terrains.TerrainChunk.DrawLineSegments(spVerts, new Vector3(0.2f, 0.95f, 1f), camera, 0.95f);
+            Helpers.DebugDraw.DrawLineSegments(spVerts, new Vector3(0.2f, 0.95f, 1f), camera, 0.95f);
             if (depthSp)
                 GL.Enable(Const.GL_DEPTH_TEST);
         }
@@ -6593,8 +4589,6 @@ void main() {
         if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
         if (_player2dVAO != 0) { uint v = _player2dVAO; GL.DeleteVertexArrays(1, &v); _player2dVAO = 0; }
         if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
-        _terrainMesh?.Dispose();
-        _terrainMesh = null;
         DisposePbrTextures();
         _object3D = null;
     }

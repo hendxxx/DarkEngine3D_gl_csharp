@@ -24,7 +24,7 @@ float calcFogFactor(float dist, vec3 worldPos) {
     } else if (u_fogMode == 2) { // Exponential
         return exp(-dist * u_fogDensity);
     }
-    // Exp2 + height blend (default — matches the original terrain fog)
+    // Exp2 + height blend (default)
     float d = exp(-pow(dist * u_fogDensity, 2.0));
     float heightFactor = clamp(1.0 - (worldPos.y - u_fogHeight) / max(u_fogHeightRange, 0.001), 0.0, 1.0);
     heightFactor = pow(heightFactor, 2.0);
@@ -284,7 +284,7 @@ void main()
     // ── Combine ────────────────────────────────────────────────────────────
     vec3 result = ambient + Lo;
 
-    // ── Fog (pre-tonemap, matching gltf_fragment & terrain order) ──────────
+    // ── Fog (pre-tonemap, matching gltf_fragment order) ──────────
     if (useFog == 1)
     {
         float dist = length(viewPos - center);

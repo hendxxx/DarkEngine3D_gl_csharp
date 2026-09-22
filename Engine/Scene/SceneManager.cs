@@ -540,7 +540,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         {
                             if (_editorSkybox != null && _editorSkyTextures != null && _editorLights != null)
                             {
-                                _editorSkybox.Draw(_editorCamera, _editorLights, dt, _editorSkyTextures, null);
+                                _editorSkybox.Draw(_editorCamera, _editorLights, dt, _editorSkyTextures);
                             }
                         }
                     }

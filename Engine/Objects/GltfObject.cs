@@ -3,6 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 { 
@@ -1113,7 +1114,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (allLineVerts.Count == 0) return;
 
             GL.Disable(Const.GL_DEPTH_TEST);
-            DrawLineSegmentsLocal(allLineVerts, lineColor, camera);
+            DebugDraw.DrawLineSegments(allLineVerts, lineColor, camera);
             GL.Enable(Const.GL_DEPTH_TEST);
         }
 

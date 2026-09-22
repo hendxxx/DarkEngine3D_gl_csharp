@@ -26,7 +26,7 @@ float calcFogFactor(float dist, vec3 worldPos) {
     } else if (u_fogMode == 2) { // Exponential
         return exp(-dist * u_fogDensity);
     }
-    // Exp2 + height blend (default — matches the original terrain fog)
+    // Exp2 + height blend (default)
     float d = exp(-pow(dist * u_fogDensity, 2.0));
     float heightFactor = clamp(1.0 - (worldPos.y - u_fogHeight) / max(u_fogHeightRange, 0.001), 0.0, 1.0);
     heightFactor = pow(heightFactor, 2.0);
@@ -75,7 +75,7 @@ uniform mat4 lightSpaceMatrices[3];
 uniform float cascadeEnds[3];
 uniform vec3 shadowDir;
 
-// ── LIVE SHADOW TUNING (Shadow Settings panel — same uniform names as the terrain /
+// ── LIVE SHADOW TUNING (Shadow Settings panel — same uniform names as the gltf /
 //    main shaders so ShadowUniforms.UploadMain fills them; defaults are the fallback) ──
 uniform float u_ConstantBias = 0.00005;
 uniform float u_SlopeBias = 0.00005;
@@ -158,7 +158,7 @@ float sampleHeight(sampler2D tex, vec2 uv, float blurTexels) {
 }
 
 // ======================================================
-// PBR BRDF (Cook-Torrance — same math as the terrain / gltf shaders)
+// PBR BRDF (Cook-Torrance — same math as the gltf shaders)
 // ======================================================
 const float PI = 3.14159265359;
 
@@ -286,7 +286,7 @@ vec3 calcLocalLights(vec3 N, vec3 V, vec3 albedo, float roughness, float metalli
 }
 
 // ======================================================
-// SHADOW — Poisson PCF (same math as the terrain shader)
+// SHADOW — Poisson PCF (shared line-for-line with the gltf shader)
 // ======================================================
 float randomAngle(vec2 uv) {
     return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
@@ -625,7 +625,7 @@ void main() {
         result = mix(fogColor, result, fogFactor);
     }
 
-    // ── DEBUG CSM COLOR (transparent cascade overlay, same palette as the terrain shader) ──
+    // ── DEBUG CSM COLOR (transparent cascade overlay) ──
     if (showCSMCascadeColor == 1) {
         vec3 cascadeColors[3] = vec3[](
             vec3(0.0, 1.0, 1.0),   // cyan   — cascade 0

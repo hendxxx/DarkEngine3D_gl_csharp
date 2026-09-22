@@ -149,9 +149,8 @@ Console.WriteLine($"[SMOKE] GL context {glMajor}.{glMinor}");
 string e1 = "", e2 = "", e3 = "";
 (uint Program, string Name, string Err)[] checks =
 [
-    (Compile("Artifacts/shaders/vertex_shader.glsl", "Artifacts/shaders/objectPbrSplat_fragment.glsl", out e1), "objectPbrSplat (flat)", e1),
-    (Compile("Artifacts/shaders/pbrDisplace_vertex.glsl", "Artifacts/shaders/objectPbrSplat_fragment.glsl", out e2), "objectPbrSplat (displaced)", e2),
-    (Compile("Artifacts/shaders/vertex_shader.glsl", "Artifacts/shaders/objectPbr_fragment.glsl", out e3), "objectPbr", e3),
+    (Compile("Artifacts/shaders/vertex_shader.glsl", "Artifacts/shaders/objectPbr_fragment.glsl", out e1), "objectPbr", e1),
+    (Compile("Artifacts/shaders/pbrDisplace_vertex.glsl", "Artifacts/shaders/objectPbr_fragment.glsl", out e2), "objectPbr (displaced)", e2),
 ];
 
 int failures = 0;

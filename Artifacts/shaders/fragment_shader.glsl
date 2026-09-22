@@ -54,7 +54,7 @@ float calcFogFactor(float dist, vec3 worldPos) {
     } else if (u_fogMode == 2) { // Exponential
         return exp(-dist * u_fogDensity);
     }
-    // Exp2 + height blend (default — matches the original terrain fog)
+    // Exp2 + height blend (default)
     float d = exp(-pow(dist * u_fogDensity, 2.0));
     float heightFactor = clamp(1.0 - (worldPos.y - u_fogHeight) / max(u_fogHeightRange, 0.001), 0.0, 1.0);
     heightFactor = pow(heightFactor, 2.0);
@@ -502,7 +502,7 @@ void main() {
 
     vec3 result;
     if (useTexture == 1) {
-        // Textured terrain: per-pixel normal-dependent lighting
+        // Textured: per-pixel normal-dependent lighting
         result = (ambient + diffuse) * texColor;
     } else {
         // Vertex-colored: flat shading with shadows. The surface's facing toward the
@@ -525,7 +525,7 @@ void main() {
     // DEBUG CSM COLOR
     if (showCSMCascadeColor == 1) {
         // High-contrast palette (cyan / yellow / magenta) — distinct from the scene's
-        // green/brown terrain and sky, so the cascade bands pop even at 15% overlay.
+        // green/brown ground and sky, so the cascade bands pop even at 15% overlay.
         vec3 cascadeColors[3] = vec3[](
             vec3(0.0, 1.0, 1.0),   // cyan   — cascade 0
             vec3(1.0, 1.0, 0.0),   // yellow — cascade 1
@@ -558,21 +558,21 @@ void main() {
     // ======================================================
     // FOG
     // ======================================================
-    vec3 terrainWithFog;
+    vec3 resultWithFog;
 
     if (useFog == 1) {
         float dist = length(viewPos - FragPos);
         float fogFactor = calcFogFactor(dist, FragPos);
-        terrainWithFog = mix(fogColor, result, fogFactor);
+        resultWithFog = mix(fogColor, result, fogFactor);
     }
     else {
-        terrainWithFog = result;
+        resultWithFog = result;
     }
 
     // ======================================================
     // TONEMAP + GAMMA
     // ======================================================
-    vec3 mapped = terrainWithFog / (terrainWithFog + vec3(1.0));
+    vec3 mapped = resultWithFog / (resultWithFog + vec3(1.0));
     mapped = pow(mapped, vec3(1.0 / 2.2));
 
     FragColor = vec4(mapped, 1.0);

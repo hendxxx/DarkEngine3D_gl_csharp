@@ -363,16 +363,7 @@ public class EditorObjectData
 }
 
 
-/// <summary>
-/// Serializable mirror of <see cref="PbrSplatLayerData"/> for .ing scene files.
-/// </summary>
-public class PbrSplatLayerDataAsset
-{
-    public string AlbedoPath { get; set; } = "";
-    public float TintR { get; set; } = 1f;
-    public float TintG { get; set; } = 1f;
-    public float TintB { get; set; } = 1f;
-}
+
 
 /// <summary>
 /// A complete scene definition stored in a .ing file.

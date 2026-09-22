@@ -10,7 +10,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     //  Pipeline:
     //    GLB → Import Nodes → Store Hierarchy → Store Meshes (RemoveWorldTransform)
     //    → Store Materials (PBR) → Store Textures → Scene Instance
-    //    → Snap To Terrain → Y Offset
     //
     //  For "asset" mode: RemoveWorldTransform is applied, so node transforms are
     //    baked into vertex positions and the model sits at origin. Individual meshes
@@ -101,8 +100,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     //  GlbLoader — static helper for the revamped GLB loading pipeline
     //
     //  Usage:
-    //    var asset = GlbLoader.Load(manager, "path.glb", pos, 0f, 1f, false, terrain, 0f);
-    //    var house = GlbLoader.CreateInstance(manager, asset, "House01", pos, 0f, 1f, terrain, 0f);
+    //    var asset = GlbLoader.Load(manager, "path.glb", pos, 0f, 1f, false);
+    //    var house = GlbLoader.CreateInstance(manager, asset, "House01", pos, 0f, 1f);
     // ===========================================================================
     public static class GlbLoader
     {
@@ -111,15 +110,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         ///
         /// Pipeline: GLB → Import Nodes → Store Hierarchy → Store Meshes
         ///   (RemoveWorldTransform if asset) → Store Materials (PBR) → Store Textures
-        ///   → Scene Instance → Snap To Terrain → Y Offset
+        ///   → Scene Instance
         ///
-        /// Scenario 1 (asset): obj = loadobj(x, terrainHeight + offset, y, asset)
+        /// Scenario 1 (asset): obj = loadobj(x, y, z, asset)
         ///   → use LoadGlb(manager, pos, ... isScene: false)
         /// 
         /// Scenario 2 (asset + instance): city = loadobj(...); CreateInstance(city.GetMesh("House01"))
         ///   → use LoadGlb(manager, pos, ... isScene: false) then CreateInstance(manager, asset, "House01", ...)
         ///
-        /// Scenario 3 (scene): cityBig = loadobj(x, terrainHeight + offset, y, scene)
+        /// Scenario 3 (scene): cityBig = loadobj(x, y, z, scene)
         ///   → use LoadGlb(manager, pos, ... isScene: true)
         /// </summary>
         /// <param name="manager">The StaticObjectManager to add objects to.</param>
@@ -128,8 +127,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <param name="yawDegrees">Yaw rotation in degrees.</param>
         /// <param name="scale">Uniform scale.</param>
         /// <param name="isScene">True = scene mode (keep transforms), false = asset mode (RemoveWorldTransform).</param>
-        /// <param name="terrain">Terrain for snapping (optional).</param>
-        /// <param name="yOffset">Additional Y offset applied after terrain snap.</param>
         /// <returns>A GlbAsset representing the loaded file, or null on failure.</returns>
         public static GlbAsset? Load(
             StaticObjectManager manager,
@@ -139,8 +136,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float yawDegrees = 0f,
             float scale = 1.0f,
             bool isScene = false,
-            TerrainChunk? terrain = null,
-            float yOffset = 0f,
             bool autoCreateInstances = true)
         {
             if (manager == null) return null;
@@ -198,18 +193,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             // 6. Create instances (unless autoCreateInstances is false):
             //    Scene mode → one StaticObject per mesh group (preserves node hierarchy)
-            //    Asset mode  → one StaticObject with all meshes (root group), snapped to terrain
+            //    Asset mode  → one StaticObject with all meshes (root group)
             if (autoCreateInstances)
             {
                 if (isScene)
                 {
-                    CreateSceneInstance(manager, asset, position, yawDegrees, scale, terrain, yOffset);
+                    CreateSceneInstance(manager, asset, position, yawDegrees, scale);
                 }
                 else
                 {
                     // Asset mode: create a single root object containing ALL meshes,
                     // with RemoveWorldTransform already baked into vertices.
-                    CreateAssetInstance(manager, asset, position, yawDegrees, scale, terrain, yOffset);
+                    CreateAssetInstance(manager, asset, position, yawDegrees, scale);
                 }
             }
 
@@ -220,11 +215,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// Create a static object instance from a named mesh in a loaded GlbAsset.
         ///
         /// Scenario 2: city = loadobj(x, y, z, asset); CreateInstance(city.GetMesh("House01"))
-        ///
-        /// Terrain snapping uses the ROOT group's AABB (all meshes) so the instance
-        /// sits at the correct Y relative to the bottom of the entire model, regardless
-        /// of which individual mesh is being placed (e.g. "Roof" whose AABB min Y
-        /// is above the floor).
         /// </summary>
         /// <param name="manager">The StaticObjectManager to add the instance to.</param>
         /// <param name="asset">The loaded asset.</param>
@@ -232,8 +222,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <param name="position">World position.</param>
         /// <param name="yawDegrees">Yaw rotation.</param>
         /// <param name="scale">Scale.</param>
-        /// <param name="terrain">Terrain for snapping.</param>
-        /// <param name="yOffset">Y offset after terrain snap.</param>
         /// <returns>The created StaticObject, or null if mesh not found.</returns>
         public static StaticObject? CreateInstance(
             StaticObjectManager manager,
@@ -241,9 +229,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             string meshName,
             Vector3 position,
             float yawDegrees = 0f,
-            float scale = 1.0f,
-            TerrainChunk? terrain = null,
-            float yOffset = 0f)
+            float scale = 1.0f)
         {
             if (manager == null || asset == null) return null;
 
@@ -339,20 +325,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
 
 
-            // ── Compute terrain snap using the VARIANT's group AABB ──
-            // Using the ROOT group's AABB (which spans ALL variants) would give a Min.Y
-            // lower than the actual variant's bottom, making the instance float above terrain.
-            // Each variant has its own centered AABB — use that for accurate ground contact.
+            // ── Place the instance at the requested position ──
             Vector3 finalPos = position;
-            if (terrain != null)
-            {
-                float terrainY = terrain.GetHeightAt(finalPos.X, finalPos.Z);
-
-                var snapNoTrans = Matrix4x4.CreateScale(scale)
-                                * Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f));
-                var snapRotatedAABB = group.LocalAABB.Transform(snapNoTrans);
-                finalPos.Y = terrainY - snapRotatedAABB.Min.Y + yOffset;
-            }
 
             // Create via StaticObjectManager's AddObject (reuse the existing API)
             var sobj = new StaticObject(asset.GpuData, group, finalPos, yawDegrees, scale);
@@ -369,30 +343,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>
         /// Create a single StaticObject from the root group (all meshes) for asset mode.
         /// RemoveWorldTransform was already applied, so the root group AABB and vertex
-        /// positions are in a unified local space. The object is snapped to terrain.
+        /// positions are in a unified local space.
         /// </summary>
         private static void CreateAssetInstance(
             StaticObjectManager manager,
             GlbAsset asset,
             Vector3 position,
             float yawDegrees,
-            float scale,
-            TerrainChunk? terrain,
-            float yOffset)
+            float scale)
         {
             // Use the root group (contains ALL meshes)
             var rootGroup = asset.Groups.FirstOrDefault(g => g.BaseName.Equals("root", StringComparison.OrdinalIgnoreCase));
             if (rootGroup == null) return;
 
             Vector3 finalPos = position;
-            if (terrain != null)
-            {
-                float terrainY = terrain.GetHeightAt(finalPos.X, finalPos.Z);
-                var noTrans = Matrix4x4.CreateScale(scale)
-                            * Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f));
-                var rotatedAABB = rootGroup.LocalAABB.Transform(noTrans);
-                finalPos.Y = terrainY - rotatedAABB.Min.Y + yOffset;
-            }
 
             var sobj = new StaticObject(asset.GpuData, rootGroup, finalPos, yawDegrees, scale);
             sobj.CachedBaseWorldMat = Matrix4x4.CreateScale(sobj.Scale) *
@@ -407,38 +371,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>
         /// Create scene instances from a loaded GlbAsset (scene mode).
         /// Creates one StaticObject per named mesh group, preserving the GLB's layout.
-        ///
-        /// Terrain snapping is applied ONCE using the ROOT group's AABB (all meshes),
-        /// then the same Y offset is used for all mesh instances. This prevents
-        /// individual mesh groups from drifting apart vertically.
         /// </summary>
         private static void CreateSceneInstance(
             StaticObjectManager manager,
             GlbAsset asset,
             Vector3 position,
             float yawDegrees,
-            float scale,
-            TerrainChunk? terrain,
-            float yOffset)
+            float scale)
         {
             // Scene mode requires node hierarchy for correct rendering
             manager.UseNodeHierarchy = true;
 
-            // ── Compute terrain snap ONCE using the root group AABB ──
+            // All instances share the same Y so the GLB's relative layout is preserved.
             float snapY = position.Y;
-            if (terrain != null)
-            {
-                // Find the root group (all meshes combined)
-                var rootGroup = asset.Groups.FirstOrDefault(g => g.BaseName.Equals("root", StringComparison.OrdinalIgnoreCase));
-                if (rootGroup != null)
-                {
-                    float terrainY = terrain.GetHeightAt(position.X, position.Z);
-                    var noTrans = Matrix4x4.CreateScale(scale)
-                                * Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDegrees * MathF.PI / 180f));
-                    var rotatedAABB = rootGroup.LocalAABB.Transform(noTrans);
-                    snapY = terrainY - rotatedAABB.Min.Y + yOffset;
-                }
-            }
 
             // ── Create one StaticObject per named mesh group ──
             // All use the same snapY to preserve the GLB's relative Y layout.
@@ -658,7 +603,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <summary>
         /// Create multiple random instances of named meshes from a loaded asset.
         /// Each instance is placed at a random position within a circular radius,
-        /// with a random yaw rotation. Uses a spatial grid (terrain chunk dimensions)
+        /// with a random yaw rotation. Uses a spatial grid
         /// for O(n) overlap detection + Parallel.For for multi-threaded position generation.
         /// </summary>
         /// <param name="manager">The StaticObjectManager to add objects to.</param>
@@ -667,8 +612,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         /// <param name="count">Number of instances to create.</param>
         /// <param name="radius">Maximum distance from center for random placement.</param>
         /// <param name="center">Center of the circular placement area. Defaults to (0,0,0).</param>
-        /// <param name="terrain">Terrain for snapping (optional).</param>
-        /// <param name="yOffset">Y offset after terrain snap.</param>
+        /// <param name="boundMin">World-space placement bound (both axes). Default -2048.</param>
+        /// <param name="boundMax">World-space placement bound (both axes). Default +2048.</param>
         /// <param name="progressMin">Progress value at start (0 instances created).</param>
         /// <param name="progressMax">Progress value at end (all instances created).</param>
         /// <param name="progressLabel">Label used in progress messages (e.g. "trees").</param>
@@ -699,8 +644,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             int count,
             float radius,
             Vector3? center = null,
-            TerrainChunk? terrain = null,
-            float yOffset = 0f,
             float progressMin = 0f,
             float progressMax = 1f,
             string progressLabel = "",
@@ -712,18 +655,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             float collisionSizeX = 0f,
             float collisionSizeZ = 0f,
             bool allowOverlap = false,
-            float scale = 1f)
+            float scale = 1f,
+            float boundMin = -2048f,
+            float boundMax = 2048f)
         {
             if (manager == null || asset == null || meshVariants == null || meshVariants.Length == 0)
                 return;
 
             Vector3 ctr = center ?? Vector3.Zero;
-
-            // Compute terrain map bounds
-            float halfMapWorld = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize / 2f) * TerrainChunk.TerrainScale;
-            float mapMargin = halfMapWorld * 0.01f;
-            float boundMin = -halfMapWorld + mapMargin;
-            float boundMax = halfMapWorld - mapMargin;
+            float mapMargin = (boundMax - boundMin) * 0.01f;
+            boundMin += mapMargin;
+            boundMax -= mapMargin;
 
             // Pre-compute collision radius for each variant from its local AABB
             var variantRadii = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
@@ -742,12 +684,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
 
             // ── Phase 1: Parallel position generation with spatial grid ──
-            // Build grid matching terrain chunk dimensions
-            int gridCells = TerrainChunk.ChunksPerSide;
-            float cellSize = TerrainChunk.ChunkSize * TerrainChunk.TerrainScale;
-            int halfMapSize = (TerrainChunk.ChunksPerSide * TerrainChunk.ChunkSize) / 2;
-            float originX = -halfMapSize * TerrainChunk.TerrainScale;
-            float originZ = -halfMapSize * TerrainChunk.TerrainScale;
+            // Fixed grid covering the placement bounds
+            int gridCells = 64;
+            float cellSize = (boundMax - boundMin) / gridCells;
+            float originX = boundMin;
+            float originZ = boundMin;
             float invCellSize = 1f / cellSize;
 
             var grid = new List<int>[gridCells, gridCells];
@@ -883,7 +824,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 var sobj = CreateInstance(
                     manager, asset, resultVariants[i],
                     new Vector3(resultPosX[i], 0, resultPosZ[i]),
-                    resultYaw[i], scale, terrain, yOffset);
+                    resultYaw[i], scale);
 
                 if (sobj != null)
                 {

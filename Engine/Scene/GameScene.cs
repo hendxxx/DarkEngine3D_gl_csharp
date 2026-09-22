@@ -39,7 +39,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private Camera _camera;
         private Lights _light;
         private Texture[]? _skyTextures;
-        private TerrainChunk? _gameTerrainChunk;
         private Skybox? _skybox;
         private HUD? _hud;
         private ObjectManager? _objectManager;
@@ -47,11 +46,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         //  Render state (initialized in Enter) 
         private PostProcessStack? _ppStack;
         private CSM? _csm;
-        // Shader uniform locations (terrain)
-        private uint _terrainShader;
-        private int _terrainShadowMap0Loc, _terrainShadowMap1Loc, _terrainShadowMap2Loc;
-        private int _terrainLightSpaceLoc0, _terrainLightSpaceLoc1, _terrainLightSpaceLoc2;
-        private int _terrainCascadeEndsLoc0, _terrainCascadeEndsLoc1, _terrainCascadeEndsLoc2;
 
         // Shader uniform locations (gltf)
         private uint _gltfShader;
@@ -190,7 +184,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         //  Per-frame render timing (ms) 
         private System.Diagnostics.Stopwatch _renderTimer = new();
         private System.Diagnostics.Stopwatch _frameTotalTimer = new();
-        private double _terrainTimeMs;
         private double _objectsTimeMs;
         private double _postProcessTimeMs;
         private double _totalRenderTimeMs;
@@ -213,7 +206,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bridge.FrameMs = deltaTime * 1000f;
 
             // Render-time breakdown (ms) for the in-game overlay debug panel
-            bridge.RenderTerrainMs = (float)_terrainTimeMs;
             bridge.RenderObjectsMs = (float)_objectsTimeMs;
             // PostFX removed
             bridge.RenderTotalMs = (float)_totalRenderTimeMs;
@@ -399,8 +391,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 bridge.StaticObjectCount = _objectManager.staticObjectManagers?.Sum(m => m?.GetTotalObject ?? 0) ?? 0;
                 bridge.TotalObjects = _objectManager.TotalObjects;
                 bridge.DrawnObjects = _objectManager.DrawnObjects;
-                bridge.TotalTriangles = (_objectManager.TotalObjectTriangles) + (TerrainChunk.GetTotalMapTriangles());
-                bridge.RenderedTriangles = (_objectManager.RenderedTriangles) + (_renderedTris);
+                bridge.TotalTriangles = _objectManager.TotalObjectTriangles;
+                bridge.RenderedTriangles = _objectManager.RenderedTriangles;
                 bridge.AllAgents = _objectManager.Agents;
                 bridge.AllObjects = _objectManager.GetObjects();
 
@@ -476,13 +468,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// </summary>
         public void SetResources(
             Texture[] skyTextures,
-            TerrainChunk terrain,
             Skybox skybox,
             HUD hud,
             ObjectManager objectManager)
         {
             _skyTextures = skyTextures;
-            _gameTerrainChunk = terrain;
             _skybox = skybox;
             _hud = hud;
             _objectManager = objectManager;
@@ -490,7 +480,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         public void Enter()
         {
-            if (_skyTextures == null || _gameTerrainChunk == null || _skybox == null || _hud == null || _objectManager == null)
+            if (_skyTextures == null || _skybox == null || _hud == null || _objectManager == null)
             {
                 Console.Error.WriteLine("[GameScene] Error: Resources not set before Enter()!");
                 return;
@@ -511,18 +501,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             //  CSM
             _csm = new CSM(Config.ShadowSettings.CascadeSizes[0]);
-
-            // Cache terrain shader uniform locations
-            _terrainShader = Shader.GetShaderProgram();
-            _terrainShadowMap0Loc = GL.GetUniformLocation(_terrainShader, "shadowMap0");
-            _terrainShadowMap1Loc = GL.GetUniformLocation(_terrainShader, "shadowMap1");
-            _terrainShadowMap2Loc = GL.GetUniformLocation(_terrainShader, "shadowMap2");
-            _terrainLightSpaceLoc0 = GL.GetUniformLocation(_terrainShader, "lightSpaceMatrices[0]");
-            _terrainLightSpaceLoc1 = GL.GetUniformLocation(_terrainShader, "lightSpaceMatrices[1]");
-            _terrainLightSpaceLoc2 = GL.GetUniformLocation(_terrainShader, "lightSpaceMatrices[2]");
-            _terrainCascadeEndsLoc0 = GL.GetUniformLocation(_terrainShader, "cascadeEnds[0]");
-            _terrainCascadeEndsLoc1 = GL.GetUniformLocation(_terrainShader, "cascadeEnds[1]");
-            _terrainCascadeEndsLoc2 = GL.GetUniformLocation(_terrainShader, "cascadeEnds[2]");
 
             // Cache gltf shader uniform locations
             _gltfShader = GltfShader.GetShaderProgram();
@@ -620,7 +598,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Per-map player spawn: place the character at the spawn point saved in
             // the Map Editor (TryGetPlayerSpawn returns the upright world position).
             // Skipped when a save slot just loaded (the save's own position wins) and
-            // when no spawn was placed (default origin/terrain behavior is kept). ──
+            // when no spawn was placed (default origin behavior is kept). ──
             if (PendingLoadSlot < 0 && _sceneManager.Bridge?.TryGetPlayerSpawn(out Vector3 spawnPos) == true
                 && _objectManager?.PlayerAgent != null && _objectManager.PlayerObject != null)
             {
@@ -778,7 +756,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         _objectManager.PlayerAgent.Heading = _camera.Yaw;
 
                     // 3. Update keyboard
-                    Keyboard.Update(window, _light, _camera, deltaTime, _gameTerrainChunk);
+                    Keyboard.Update(window, _light, _camera, deltaTime);
 
 
 
@@ -844,13 +822,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // 4A. Update player movement — skip when in editor fly mode
                 if (!editorFlyMode && !_paused && _inputCooldown <= 0f)
                 {
-                    _objectManager.PlayerAgent.Move(window, _camera, deltaTime, _gameTerrainChunk, Vector3.Zero, 0f);
+                    _objectManager.PlayerAgent.Move(window, _camera, deltaTime, Vector3.Zero, 0f);
                 }
 
                 // 4B. Update NPC AI + movement — skip when in editor fly mode
                 if (!editorFlyMode)
                 {
-                    _objectManager.UpdateAgents(window, deltaTime, _gameTerrainChunk, _camera);
+                    _objectManager.UpdateAgents(window, deltaTime, _camera);
                 }
 
                 // 5. Camera — use fly mode in editor, game camera otherwise
@@ -869,7 +847,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 else
                 {
                     Vector3 camPivot = _cameraFocusPivot ?? _objectManager.PlayerAgent.Position;
-                    _camera.SetCamera(window, camPivot, _gameTerrainChunk, deltaTime, null);
+                    _camera.SetCamera(window, camPivot, deltaTime, null);
 
                     // 5A. Focus hold timer: decrement and release back to player
                     if (_focusHoldTimer > 0f)
@@ -898,7 +876,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 EditorObject.ApplyEnvironmentMarkers(lightM, skyM, _light, _skybox, deltaTime);
 
                 // ── Collect Point/Spot Light markers as local lights so they illuminate
-                //    every object in the game (terrain, models, primitives) ──
+                //    every object in the game (models, primitives) ──
                 _light.CollectLocalLights(envMgr.Objects);
             }
             else
@@ -942,8 +920,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             _shadowSkinnedShader, _shadowSkinnedModelLoc, _shadowSkinnedJointsLoc,
                             _shadowStaticAlphaShader, _shadowStaticAlphaModelLoc);
 
-                    _gameTerrainChunk?.RenderShadow(_camera, _csm, i, _shadowShader, _shadowModelLoc);
-
                     // ── EditorObjectManager shadow pass (skipped when the viewport
                     // "Shadow" toggle is off — editor objects stop casting shadows). ──
                     var editorObjMgr = _sceneManager.Bridge?.EditorObjectManager;
@@ -966,7 +942,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         _objectManager?.RenderShadow(_camera, csm, ci,
                             _shadowSkinnedShader, _shadowSkinnedModelLoc, _shadowSkinnedJointsLoc,
                             _shadowStaticAlphaShader, _shadowStaticAlphaModelLoc);
-                        _gameTerrainChunk?.RenderShadow(_camera, csm, ci, _shadowShader, _shadowModelLoc);
                         var eo = _sceneManager.Bridge?.EditorObjectManager;
                         if (eo != null && (_sceneManager.Bridge?.ShowShadows ?? true))
                             eo.RenderShadow(_camera, csm, ci);
@@ -1008,7 +983,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             // 3. Draw Skybox
-            _skybox.Draw(_camera, _light, _deltaTime, _skyTextures!, _gameTerrainChunk);
+            _skybox.Draw(_camera, _light, _deltaTime, _skyTextures!);
 
             //  Bind CSM Shadow Maps 
             GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
@@ -1019,25 +994,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
             GL.BindTexture(Const.GL_TEXTURE_2D, _csm.ShadowTextures[2]);
-
-            // Upload shadow uniforms for Terrain
-            GL.UseProgram(_terrainShader);
-            GL.Uniform1i(_terrainShadowMap0Loc, 6);
-            GL.Uniform1i(_terrainShadowMap1Loc, 7);
-            GL.Uniform1i(_terrainShadowMap2Loc, 8);
-
-            unsafe
-            {
-                fixed (float* p0 = &_csm.LightSpaceMatrices[0].M11)
-                    GL.UniformMatrix4fv(_terrainLightSpaceLoc0, 1, false, p0);
-                fixed (float* p1 = &_csm.LightSpaceMatrices[1].M11)
-                    GL.UniformMatrix4fv(_terrainLightSpaceLoc1, 1, false, p1);
-                fixed (float* p2 = &_csm.LightSpaceMatrices[2].M11)
-                    GL.UniformMatrix4fv(_terrainLightSpaceLoc2, 1, false, p2);
-            }
-            GL.Uniform1f(_terrainCascadeEndsLoc0, _csm.CascadeEnds[0]);
-            GL.Uniform1f(_terrainCascadeEndsLoc1, _csm.CascadeEnds[1]);
-            GL.Uniform1f(_terrainCascadeEndsLoc2, _csm.CascadeEnds[2]);
 
             // Upload shadow uniforms for glTF
             GL.UseProgram(_gltfShader);
@@ -1058,30 +1014,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             GL.Uniform1f(_gltfCascadeEndsLoc1, _csm.CascadeEnds[1]);
             GL.Uniform1f(_gltfCascadeEndsLoc2, _csm.CascadeEnds[2]);
 
-            // 4. Ensure terrain shader has view/projection uniforms
+            // 4. Ensure shader has view/projection uniforms
             _camera.SetViewAndProjection(_viewLocation, _projectionLocation);
 
-            //  Timing: terrain render start
-            _renderTimer.Restart();
             _renderedTris = 0;
             //  Determine preview mode early so debug visualizations can be hidden
             //  Preview mode hides editor gizmos/helpers but keeps WASD camera fly working.
             bool isPreviewMode = _sceneManager.Bridge?.IsPreviewMode ?? false;
-            if (_gameTerrainChunk != null)
-            {
-                Plane[]? cullFreezePlanes = null;
-                if (Keyboard.GetCullFreezeMode())
-                {
-                    var freezeVP = Keyboard.GetCullFreezeViewProj();
-                    cullFreezePlanes = TerrainChunk.ExtractFrustumPlanes(freezeVP);
-                }
 
-                _renderedTris = _gameTerrainChunk.Render(_camera, _gameTerrainChunk.GetFrozenPlanes(), cullFreezePlanes, skipDebug: isPreviewMode);
-                 
-            }
-
-            //  Record terrain timing, start object timing
-            _terrainTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
             _renderTimer.Restart();
 
             //  glTF Object Manager — always-run frustum + distance cull for static objects
@@ -1138,7 +1078,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Editor debug grid (edit mode only, toggled from the viewport toolbar) ──
             if (editorMgrBridge is { ShowDebugGrid: true } && !isPreviewMode)
             {
-                TerrainChunk.DrawDebugGrid(_camera);
+                Helpers.DebugDraw.DrawDebugGrid(_camera);
             }
 
             //  Record objects timing, start post-process timing
@@ -1218,7 +1158,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             Vector3 debugColor = isCulled ? new Vector3(1f, 0f, 0f)
                                 : (mi == 1 ? new Vector3(1f, 0f, 1f) : new Vector3(1f, 1f, 0f));
 
-                            TerrainChunk.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, _camera);
+                            Helpers.DebugDraw.DrawAABBWireframe(sobj.CachedWorldAABB, debugColor, _camera);
 
                             // LOD label for static objects
                             Vector3 sobjCenter = (sobj.CachedWorldAABB.Min + sobj.CachedWorldAABB.Max) * 0.5f;
@@ -1292,7 +1232,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _verts.Add(_frozenCorners[3]); _verts.Add(_frozenCorners[7]);
 
                 // Draw in cyan
-                TerrainChunk.DrawLineSegments(_verts, new Vector3(0f, 1f, 1f), _camera);
+                Helpers.DebugDraw.DrawLineSegments(_verts, new Vector3(0f, 1f, 1f), _camera);
                 GL.Enable(Const.GL_DEPTH_TEST);
             }
 
@@ -1342,19 +1282,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _totalRenderTimeMs = _frameTotalTimer.Elapsed.TotalMilliseconds;
 
             // HUD 
-            int totalMapTris = TerrainChunk.GetTotalMapTriangles();
             int totalObjTris = _objectManager?.TotalObjectTriangles ?? 0;
             int renderedObjTris = _objectManager?.RenderedTriangles ?? 0;
-            int totalAllTris = totalMapTris + totalObjTris;
-            int renderedAllTris = _renderedTris + renderedObjTris;
+            int totalAllTris = totalObjTris;
+            int renderedAllTris = renderedObjTris;
             string gTime = _light.GetFormattedTime();
 
             string title1 = $" [ {gTime} ]";
             float frameMs = _deltaTime * 1000f;
-            string title2 = $" FPS: {Glfw.GetLastFPS()}  ({frameMs:F1}ms)  | t={_terrainTimeMs:N1}ms  o={_objectsTimeMs:N1}ms  fx={_postProcessTimeMs:N1}ms  tot={_totalRenderTimeMs:N1}ms";
+            string title2 = $" FPS: {Glfw.GetLastFPS()}  ({frameMs:F1}ms)  | o={_objectsTimeMs:N1}ms  fx={_postProcessTimeMs:N1}ms  tot={_totalRenderTimeMs:N1}ms";
             string freeze = Keyboard.GetCullFreezeMode() ? " [CULL FREEZE]" : "";
             string title3 = $" MODE: {_camera.CurrentMode}{freeze}";
-            string title4 = $" TRIS: {renderedAllTris:N0} / {totalAllTris:N0}  (terrain {_renderedTris:N0} | objects {renderedObjTris:N0})";
+            string title4 = $"█ TRIS: {renderedAllTris:N0} / {totalAllTris:N0}";
             string title5 = $" POS: X ={_camera.Position.X:N2} Y={_camera.Position.Y:N2} Z={_camera.Position.Z:N2}";
             string title6 = "";
             if (_objectManager != null)
@@ -2272,7 +2211,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             Console.WriteLine("[GameScene] Reset camera to editor 2D view (Front) for level.");
         }
 
-        /// <summary>Clear existing physics cubes and respawn new ones above terrain.</summary>
+        /// <summary>Clear existing physics cubes and respawn new ones above origin.</summary>
         public void Exit()
         {
             Glfw.OnWindowResized -= OnWindowResized;
@@ -2300,7 +2239,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _csm?.Dispose();
             _light?.DisposeLocalShadow();
             _objectManager?.Dispose();
-            _gameTerrainChunk?.Dispose();
             Console.WriteLine("[GameScene] Disposed.");
         }
     }

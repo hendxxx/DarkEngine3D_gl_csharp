@@ -205,39 +205,37 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             // "Blur (texels)" repeat across map types — without the suffix ImGui would
             // treat them as the SAME widget and conflict).
             ImGui.TextColored(new Vector4(1f, 0.85f, 0.6f, 1f), "Albedo / Base Color");
-            float b = obj.TerrainPbrAlbedoBrightness; Tune("Brightness##albedo", ref b, 0.01f, 0f, 2f); obj.TerrainPbrAlbedoBrightness = b;
-            float sat = obj.TerrainPbrAlbedoSaturation; Tune("Saturation##albedo", ref sat, 0.01f, 0f, 2f); obj.TerrainPbrAlbedoSaturation = sat;
-            float ct = obj.TerrainPbrAlbedoContrast; Tune("Contrast##albedo", ref ct, 0.01f, 0f, 2f); obj.TerrainPbrAlbedoContrast = ct;
+            float b = obj.PbrAlbedoBrightness; Tune("Brightness##albedo", ref b, 0.01f, 0f, 2f); obj.PbrAlbedoBrightness = b;
+            float sat = obj.PbrAlbedoSaturation; Tune("Saturation##albedo", ref sat, 0.01f, 0f, 2f); obj.PbrAlbedoSaturation = sat;
+            float ct = obj.PbrAlbedoContrast; Tune("Contrast##albedo", ref ct, 0.01f, 0f, 2f); obj.PbrAlbedoContrast = ct;
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.7f, 0.9f, 1f, 1f), "Normal Map");
-            float ns = obj.TerrainPbrNormalStrength; Tune("Strength##normal", ref ns, 0.01f, 0f, 2f); obj.TerrainPbrNormalStrength = ns;
-            float nb = obj.TerrainPbrNormalBlur; Tune("Blur (texels)##normal", ref nb, 0.05f, 0f, 8f); obj.TerrainPbrNormalBlur = nb;
+            float ns = obj.PbrNormalStrength; Tune("Strength##normal", ref ns, 0.01f, 0f, 2f); obj.PbrNormalStrength = ns;
+            float nb = obj.PbrNormalBlur; Tune("Blur (texels)##normal", ref nb, 0.05f, 0f, 8f); obj.PbrNormalBlur = nb;
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.9f, 0.8f, 0.7f, 1f), "Metallic");
-            float mt = obj.TerrainPbrMetallicThreshold; Tune("Threshold##metallic", ref mt, 0.01f, 0f, 1f); obj.TerrainPbrMetallicThreshold = mt;
-            float ms = obj.TerrainPbrMetallicSoftness; Tune("Softness##metallic", ref ms, 0.01f, 0f, 0.5f); obj.TerrainPbrMetallicSoftness = ms;
-            float mst = obj.TerrainPbrMetallicStrength; Tune("Strength##metallic", ref mst, 0.01f, 0f, 1f); obj.TerrainPbrMetallicStrength = mst;
+            float mt = obj.PbrMetallicThreshold; Tune("Threshold##metallic", ref mt, 0.01f, 0f, 1f); obj.PbrMetallicThreshold = mt;
+            float ms = obj.PbrMetallicSoftness; Tune("Softness##metallic", ref ms, 0.01f, 0f, 0.5f); obj.PbrMetallicSoftness = ms;
+            float mst = obj.PbrMetallicStrength; Tune("Strength##metallic", ref mst, 0.01f, 0f, 1f); obj.PbrMetallicStrength = mst;
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.8f, 0.9f, 0.7f, 1f), "Roughness");
-            float rs = obj.TerrainPbrRoughnessStrength; Tune("Strength##roughness", ref rs, 0.01f, 0f, 2f); obj.TerrainPbrRoughnessStrength = rs;
-            bool ri = obj.TerrainPbrRoughnessInvert;
-            if (ImGui.Checkbox("Invert (smoothness map)##roughness", ref ri)) obj.TerrainPbrRoughnessInvert = ri;
+            float rs = obj.PbrRoughnessStrength; Tune("Strength##roughness", ref rs, 0.01f, 0f, 2f); obj.PbrRoughnessStrength = rs;
+            bool ri = obj.PbrRoughnessInvert;
+            if (ImGui.Checkbox("Invert (smoothness map)##roughness", ref ri)) obj.PbrRoughnessInvert = ri;
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.7f, 0.8f, 0.9f, 1f), "Ambient Occlusion");
-            float aos = obj.TerrainPbrAoStrength; Tune("Strength##ao", ref aos, 0.01f, 0f, 2f); obj.TerrainPbrAoStrength = aos;
-            float aob = obj.TerrainPbrAoBrightness; Tune("Brightness##ao", ref aob, 0.01f, 0f, 1f); obj.TerrainPbrAoBrightness = aob;
+            float aos = obj.PbrAoStrength; Tune("Strength##ao", ref aos, 0.01f, 0f, 2f); obj.PbrAoStrength = aos;
+            float aob = obj.PbrAoBrightness; Tune("Brightness##ao", ref aob, 0.01f, 0f, 1f); obj.PbrAoBrightness = aob;
 
             ImGui.Spacing();
             if (obj.PrimitiveType == EditorPrimitiveType.Plane)
             {
-                // ── DISPLACED PLANE GRID (replaces the old "Height / Displacement"
-                //    POM tuning for planes): the Height / Displacement map IS the
-                //    terrain elevation — displacement is FORCED and sampled RAW, so
-                //    Strength/Invert/Blur + Marmoset calibration no longer apply. ──
+                // ── DISPLACED PLANE GRID: the Height / Displacement map drives the
+                //    real geometry via the vertex-displacement stage. ──
                 ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "Displaced Plane Grid");
                 float vds = obj.PbrVertexDisplaceScale; Tune("Displace Height##vdisp", ref vds, 0.005f, 0f, 2f); obj.PbrVertexDisplaceScale = vds;
                 // Grid resolution + chunk split (MarkDirty on the property rebuilds the mesh).
@@ -255,7 +253,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 {
                     ImGui.TextDisabled($"Mesh: {obj.PbrPlaneSegmentsBuilt}×{obj.PbrPlaneSegmentsBuilt} grid (1 draw)");
                 }
-                if (string.IsNullOrEmpty(obj.TerrainHeightSourcePath) && obj._sculptHeights == null)
+                if (string.IsNullOrEmpty(obj.PbrHeightPath))
                     ImGui.TextDisabled("Flat plane — no height source yet.");
                 else
                     ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Vertex displacement ACTIVE (forced — map present).");
@@ -265,10 +263,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 // Box/Sphere keep the POM height-detail tuning (parallax only — no
                 // vertex displacement on closed primitives).
                 ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.9f, 1f), "Height / Displacement (POM detail)");
-                float hs = obj.TerrainPbrHeightStrength; Tune("Strength##height", ref hs, 0.01f, 0f, 2f); obj.TerrainPbrHeightStrength = hs;
-                bool hi = obj.TerrainPbrHeightInvert;
-                if (ImGui.Checkbox("Invert (valleys/peaks)##height", ref hi)) obj.TerrainPbrHeightInvert = hi;
-                float hb = obj.TerrainPbrHeightBlur; Tune("Blur (texels)##height", ref hb, 0.05f, 0f, 8f); obj.TerrainPbrHeightBlur = hb;
+                float hs = obj.PbrHeightStrength; Tune("Strength##height", ref hs, 0.01f, 0f, 2f); obj.PbrHeightStrength = hs;
+                bool hi = obj.PbrHeightInvert;
+                if (ImGui.Checkbox("Invert (valleys/peaks)##height", ref hi)) obj.PbrHeightInvert = hi;
+                float hb = obj.PbrHeightBlur; Tune("Blur (texels)##height", ref hb, 0.05f, 0f, 8f); obj.PbrHeightBlur = hb;
                 ImGui.Separator();
                 ImGui.TextDisabled("Calibration (Marmoset-style)");
                 float hsc = obj.PbrHeightScaleCenter; Tune("Scale Center##height", ref hsc, 0.005f, 0f, 1f); obj.PbrHeightScaleCenter = hsc;
@@ -279,7 +277,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(1f, 0.95f, 0.55f, 1f), "Emission");
-            float ei = obj.TerrainPbrEmissionIntensity; Tune("Intensity##emission", ref ei, 0.05f, 0f, 5f); obj.TerrainPbrEmissionIntensity = ei;
+            float ei = obj.PbrEmissionIntensity; Tune("Intensity##emission", ref ei, 0.05f, 0f, 5f); obj.PbrEmissionIntensity = ei;
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.7f, 0.75f, 0.85f, 1f), "Mapping");
@@ -290,16 +288,16 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             ImGui.Spacing();
             if (ImGui.Button("Reset tuning to defaults"))
             {
-                obj.TerrainPbrAlbedoBrightness = 1f; obj.TerrainPbrAlbedoSaturation = 1f; obj.TerrainPbrAlbedoContrast = 1f;
-                obj.TerrainPbrNormalStrength = 1f; obj.TerrainPbrNormalBlur = 0f;
-                obj.TerrainPbrMetallicThreshold = 0.5f; obj.TerrainPbrMetallicSoftness = 0.1f; obj.TerrainPbrMetallicStrength = 1f;
-                obj.TerrainPbrRoughnessStrength = 1f; obj.TerrainPbrRoughnessInvert = false;
-                obj.TerrainPbrAoStrength = 1f; obj.TerrainPbrAoBrightness = 0f;
-                obj.TerrainPbrHeightStrength = 1f; obj.TerrainPbrHeightInvert = false; obj.TerrainPbrHeightBlur = 0f;
+                obj.PbrAlbedoBrightness = 1f; obj.PbrAlbedoSaturation = 1f; obj.PbrAlbedoContrast = 1f;
+                obj.PbrNormalStrength = 1f; obj.PbrNormalBlur = 0f;
+                obj.PbrMetallicThreshold = 0.5f; obj.PbrMetallicSoftness = 0.1f; obj.PbrMetallicStrength = 1f;
+                obj.PbrRoughnessStrength = 1f; obj.PbrRoughnessInvert = false;
+                obj.PbrAoStrength = 1f; obj.PbrAoBrightness = 0f;
+                obj.PbrHeightStrength = 1f; obj.PbrHeightInvert = false; obj.PbrHeightBlur = 0f;
                 obj.PbrHeightContrast = 1f; obj.PbrHeightContrastCenter = 0.5f; obj.PbrHeightOffset = 0f; obj.PbrHeightScaleCenter = 0.5f;
                 obj.PbrVertexDisplaceScale = 0.15f;
                 obj.PbrVertexSegments = EditorObject.PbrDisplaceSegments; obj.PbrVertexChunk = 1; obj.MarkDirty();
-                obj.TerrainPbrEmissionIntensity = 1f;
+                obj.PbrEmissionIntensity = 1f;
                 obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0.15f; obj.PbrPomShadowStrength = 0.6f;
             }
         }

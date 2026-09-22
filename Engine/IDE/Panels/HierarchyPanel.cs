@@ -82,7 +82,7 @@ public class HierarchyPanel
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
     {
-        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform, EditorTransformGroup, EditorPivotChange, SkySunChange, TerrainPaint, TerrainLayerPaint }
+        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform, EditorTransformGroup, EditorPivotChange, SkySunChange }
         public ActionType Type;
 
         // For Add / Delete / Move: the element involved
@@ -120,11 +120,7 @@ public class HierarchyPanel
         public Vector3[]? NewPositions, NewRotations, NewScales;
         public Vector3?[]? OldPivots, NewPivots;
 
-        // For TerrainPaint (height brush stroke on an advanced terrain plane).
-        public EditorObject? TerrainObj;
         public float[]? OldHeights, NewHeights; // height snapshots before / after the stroke
-        // For TerrainLayerPaint ( layer brush stroke)  splat snapshots.
-        public byte[]? OldSplat, NewSplat;
         // For SkySunChange (sun drag on the sky gizmo)  pitch/yaw before/after (null = time-of-day),
         // plus the Light marker whose direction follows the sun drag (null = none).
         public float? OldPitch, NewPitch, OldYaw, NewYaw;
@@ -270,55 +266,6 @@ public class HierarchyPanel
             });
         };
 
-        // Wire up the terrain brush delegate so ViewportPanel paint strokes record an
-        // undo/redo (restores the full height snapshots taken before/after the stroke).
-        _bridge.OnTerrainPainted = (obj, before, after) =>
-        {
-            if (obj == null || before == null || after == null) return;
-            if (before.Length != after.Length) return;
-
-            // Skip no-op strokes (mouse moved but no height actually changed).
-            bool same = true;
-            for (int i = 0; i < before.Length; i++)
-            {
-                if (before[i] != after[i]) { same = false; break; }
-            }
-            if (same) return;
-
-            PushUndo(new UndoRedoAction
-            {
-                Type = UndoRedoAction.ActionType.TerrainPaint,
-                TerrainObj = obj,
-                OldHeights = before,
-                NewHeights = after,
-            });
-            Console.WriteLine($"[SceneDetail] Recorded terrain paint undo for '{obj.Name}' ({before.Length} heights)");
-        };
-
-        // Wire up the terrain LAYER paint delegate so  brush strokes record an undo/redo
-        // (restores the full splat snapshots taken before/after the stroke).
-        _bridge.OnTerrainLayerPainted = (obj, before, after) =>
-        {
-            if (obj == null || before == null || after == null) return;
-            if (before.Length != after.Length) return;
-
-            // Skip no-op strokes (painted with the eraser on a clean area, etc.).
-            bool same = true;
-            for (int i = 0; i < before.Length; i++)
-            {
-                if (before[i] != after[i]) { same = false; break; }
-            }
-            if (same) return;
-
-            PushUndo(new UndoRedoAction
-            {
-                Type = UndoRedoAction.ActionType.TerrainLayerPaint,
-                TerrainObj = obj,
-                OldSplat = before,
-                NewSplat = after,
-            });
-            Console.WriteLine($"[SceneDetail] Recorded terrain layer-paint undo for '{obj.Name}' ({before.Length} splat bytes)");
-        };
     }
 
     public void ShowInMenu() => ImGui.MenuItem("SceneDetail", null, ref _visible);
@@ -2549,25 +2496,6 @@ public class HierarchyPanel
                 }
                 break;
 
-            case UndoRedoAction.ActionType.TerrainPaint:
-                // Restore the terrain's heightmap to its pre-stroke state.
-                if (action.TerrainObj != null && action.OldHeights != null)
-                {
-                    action.TerrainObj.RestoreTerrainHeights(action.OldHeights);
-                    Console.WriteLine($"[SceneDetail] Undo Terrain Paint: '{action.TerrainObj.Name}' heights restored");
-                    _bridge.SelectEditorObject(action.TerrainObj);
-                }
-                break;
-
-            case UndoRedoAction.ActionType.TerrainLayerPaint:
-                // Restore the terrain's splat map to its pre-stroke state.
-                if (action.TerrainObj != null && action.OldSplat != null)
-                {
-                    action.TerrainObj.RestoreTerrainSplat(action.OldSplat);
-                    Console.WriteLine($"[SceneDetail] Undo Terrain Layer Paint: '{action.TerrainObj.Name}' splat restored");
-                    _bridge.SelectEditorObject(action.TerrainObj);
-                }
-                break;
         }
 
         // Push onto redo stack for redo
@@ -2730,26 +2658,6 @@ public class HierarchyPanel
                 {
                     action.LightObj.LightDirection = action.NewLightDir.Value;
                     Console.WriteLine($"[SceneDetail] Redo Sky Sun light: '{action.LightObj.Name}' direction re-applied");
-                }
-                break;
-
-            case UndoRedoAction.ActionType.TerrainPaint:
-                // Re-apply the terrain's post-stroke heights.
-                if (action.TerrainObj != null && action.NewHeights != null)
-                {
-                    action.TerrainObj.RestoreTerrainHeights(action.NewHeights);
-                    Console.WriteLine($"[SceneDetail] Redo Terrain Paint: '{action.TerrainObj.Name}' heights re-applied");
-                    _bridge.SelectEditorObject(action.TerrainObj);
-                }
-                break;
-
-            case UndoRedoAction.ActionType.TerrainLayerPaint:
-                // Re-apply the terrain's post-stroke splat map.
-                if (action.TerrainObj != null && action.NewSplat != null)
-                {
-                    action.TerrainObj.RestoreTerrainSplat(action.NewSplat);
-                    Console.WriteLine($"[SceneDetail] Redo Terrain Layer Paint: '{action.TerrainObj.Name}' splat re-applied");
-                    _bridge.SelectEditorObject(action.TerrainObj);
                 }
                 break;
         }
