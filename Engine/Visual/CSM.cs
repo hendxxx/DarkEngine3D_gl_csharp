@@ -1,7 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using System;
 using System.Numerics;
-using DarkEngine3D_gl_csharp.Engine.Terrains;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
@@ -244,7 +243,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     prevSplit,
                     nextSplit);
 
-                Vector3[] corners = TerrainChunk.GetFrustumCorners(cameraView, splitProj);
+                // Frustum corners: unproject the 8 NDC cube vertices through inv(view * proj).
+                Matrix4x4 vp = cameraView * splitProj;
+                Matrix4x4.Invert(vp, out Matrix4x4 invVP);
+                var corners = new Vector3[8];
+                for (int ci = 0; ci < 8; ci++)
+                {
+                    float x = (ci & 1) != 0 ? 1f : -1f;
+                    float y = (ci & 2) != 0 ? 1f : -1f;
+                    float z = (ci & 4) != 0 ? 1f : -1f;
+                    Vector4 clip = Vector4.Transform(new Vector4(x, y, z, 1f), invVP);
+                    corners[ci] = new Vector3(clip.X, clip.Y, clip.Z) / clip.W;
+                }
 
                 // Center frustum split.
                 Vector3 center = Vector3.Zero;
@@ -426,7 +436,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             // Shadow pass renders BOTH faces (culling disabled). The old CullFace(GL_FRONT)
             // (render back faces) is the classic anti-acne trick for CLOSED meshes, but it
-            // culled single-sided CCW casters — editor plane/terrain, game terrain, skinned
+            // culled single-sided CCW casters — editor plane, skinned
             // GLB, and mirrored (negative-scale) objects — out of the depth map entirely, so
             // hills never cast shadows on objects behind them. With culling off, every caster
             // contributes; the depth test's LESS keeps the light-facing surface winning for

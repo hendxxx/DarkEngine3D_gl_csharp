@@ -834,7 +834,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         // -----------------------------------------------------------------------
-        //  World-space helpers (positioning / terrain snapping)
+        //  World-space helpers (positioning)
         // -----------------------------------------------------------------------
 
         public void SetBasePosition(Vector3 pos) => Position = pos;
@@ -881,15 +881,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return new AABB(mn, mx);
         }
 
-        public void AlignToTerrain(DarkEngine3D_gl_csharp.Engine.Terrains.TerrainChunk terrain)
-        {
-            var aabb = ComputeWorldAABB();
-            float terrainY = terrain.GetHeightAt(Position.X, Position.Z);
-            float delta = terrainY - aabb.Min.Y;
-            Position = new Vector3(Position.X, Position.Y + delta, Position.Z);
-        }
-
-        // -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
         //  Draw
         // -----------------------------------------------------------------------
         public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc,
@@ -1121,7 +1113,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (allLineVerts.Count == 0) return;
 
             GL.Disable(Const.GL_DEPTH_TEST);
-            Terrains.TerrainChunk.DrawLineSegments(allLineVerts, lineColor, camera);
+            DrawLineSegmentsLocal(allLineVerts, lineColor, camera);
             GL.Enable(Const.GL_DEPTH_TEST);
         }
 

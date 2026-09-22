@@ -1,5 +1,4 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
-using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Diagnostics;
 using System.Numerics;
@@ -169,7 +168,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             return glfwGetKey(window, key) == Const.GLFW_PRESS;
         }
 
-        public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime, TerrainChunk? gameTerrainChunk)
+        public static unsafe void Update(nint window,Lights lights, Camera camera, float deltaTime)
         { 
             //// Tombol ESC untuk Keluar
             //if (glfwGetKey(window, Const.GLFW_KEY_ESCAPE) == Const.GLFW_PRESS)
@@ -367,9 +366,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             //bool shiftPressed = glfwGetKey(window, Const.GLFW_KEY_LEFT_SHIFT) == Const.GLFW_PRESS
             //                    || glfwGetKey(window, Const.GLFW_KEY_RIGHT_SHIFT) == Const.GLFW_PRESS;
 
-            //// ← UBAH: Scale camera speed dengan TerrainScale
-            ////float scaledSpeed = speedCam * TerrainChunk.TerrainScale * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
-            //float scaledSpeed = (speedCam / TerrainChunk.TerrainScale) * deltaTime * (shiftPressed ? Const.SHIFT_SPEED_MULTIPLIER : 1.0f);
+
             
             //Vector3 flatForward = Vector3.Normalize(new Vector3(camera.Front.X, 0f, camera.Front.Z));
 

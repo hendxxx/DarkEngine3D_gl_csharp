@@ -749,11 +749,9 @@ public unsafe class EditorObject
     public float PbrHeightOffset { get; set; } = 0f;
     /// <summary>Height scale center: the baseline gray level treated as zero displacement depth.</summary>
     public float PbrHeightScaleCenter { get; set; } = 0.5f;
-    /// <summary>TRUE geometric displacement for PBR planes: the plane mesh is tessellated
-    /// into a dense grid and its vertices are pushed along the height map (real
-    /// silhouette + parallax + self-occlusion, Marmoset "Height" model).</summary>
-    public bool PbrVertexDisplace { get; set; } = false;
-    /// <summary>Peak displacement height in world units for vertex displacement.</summary>
+    /// <summary>Peak displacement height in world units for vertex displacement.
+    /// Vertex displacement is always active whenever a height source exists —
+    /// there is no longer a boolean toggle gating it.</summary>
     public float PbrVertexDisplaceScale { get; set; } = 0.15f;
     // Lazy uniform-location sets for the two PBR programs (standard / vertex-displaced).
     private PbrUniformSet? _pbrUniformsStd;
@@ -1354,9 +1352,8 @@ public unsafe class EditorObject
         var hit = o + d * t;
         if (hit.X < -0.6f || hit.X > 0.6f || hit.Z < -0.6f || hit.Z > 0.6f) return null;
 
-        // FORCED vertex displacement (user request): any plane with a height source
-        // (Height / Displacement map or sculpt strokes) displaces real geometry —
-        // the old PbrVertexDisplace toggle is no longer consulted.
+        // Vertex displacement is unconditional: any plane with a height source
+        // (Height / Displacement map or sculpt strokes) displaces real geometry.
         bool disp = !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null;
         float h = 0f;
         if (disp)
@@ -2976,8 +2973,7 @@ public unsafe class EditorObject
         // (same PBR pipeline + 4-layer albedo blend) in BOTH variants, so the
         // splat add-on survives the displacement toggle.
         bool splat = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial && SplatIsPainted;
-        // FORCED displacement (user request): height source present = displaced
-        // program. PbrVertexDisplace toggle kept only for scene-file compatibility.
+        // Height source present = displaced program (always forced).
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
                          && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
         var u = (displaced, splat) switch

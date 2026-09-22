@@ -1,6 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
-using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using System.IO;
 using System.Numerics;
@@ -442,7 +441,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// Draw the sky. Delegates to the appropriate renderer based on SkySettings.Type.
         /// </summary>
         public void Draw(Camera camera, Lights lights, float deltaTime, SkySettings skySettings,
-            Texture[]? legacyMoonTextures, TerrainChunk? terrain)
+            Texture[]? legacyMoonTextures)
         {
             _totalTime += deltaTime;
 
@@ -458,7 +457,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     break;
                 case SkyType.Procedural:
                 default:
-                    DrawProcedural(camera, lights, deltaTime, skySettings, legacyMoonTextures, terrain);
+                    DrawProcedural(camera, lights, deltaTime, skySettings, legacyMoonTextures);
                     break;
             }
         }
@@ -598,7 +597,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// Draw the procedural realtime sky with all features.
         /// </summary>
         private void DrawProcedural(Camera camera, Lights lights, float deltaTime,
-            SkySettings settings, Texture[]? legacyMoonTextures, TerrainChunk? terrain)
+            SkySettings settings, Texture[]? legacyMoonTextures)
         {
             GL.UseProgram(_realtimeShader);
 

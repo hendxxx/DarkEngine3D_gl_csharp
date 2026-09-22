@@ -31,7 +31,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// Tuned to the game scene's camera range (game far plane 2800 m).</summary>
         public static float[] CascadeLayer = [50f, 150f, 350f];
 
-        // ── Fragment bias — main shader + terrain-editor shader ──
+        // ── Fragment bias ──
         // bias = max(ConstantBias + SlopeBias * (1 - N·L), MinBias)
         // Values are tuned for the IDE's typical scene (cascade-0 depth range ≈ 400 m,
         // texel ≈ 0.03 m): ~2.5 texels flat (Min), ~4 texels on steep faces (Slope).
@@ -52,21 +52,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Normal bias — vertex extrusion when casting shadows (anti-acne).
         /// Extrusion happens in WORLD space (after the model transform — the shadow vertex
         /// shaders now extrude worldPos, not aPos), so this value is directly in world
-        /// units for identity-model casters (game terrain, primitives); the terrain shadow
-        /// passes multiply it by a size-based boost (EditorTerrainMesh / TerrainChunk) so
-        /// large heightmap surfaces get proportionally more. Scaled per cascade by the
+        /// units for identity-model casters; scaled per cascade by the
         /// texel ratio, but the scale is capped in CSM.LastTexelScale (8×) so the world
         /// extrusion never reaches meters in the far cascades (that would detach the
         /// shadow from the object — the bright "outline" peter-panning artifact).
         /// 0.02 m ≈ 1 texel of the near cascade in the editor viewport — the "standard
-        /// 0.02 extrusion" the terrain-bias comment below references; anything much
+        /// 0.02 extrusion" referenced elsewhere; anything much
         /// smaller lets geometry self-shadow acne through (the fragment bias alone
         /// can't cover texel-size errors on the casters' own surfaces). 0.02 m ≈ 1 texel
         /// of the near cascade — the "standard 0.02 extrusion" — and it's the primary
         /// anti-acne for self-shadowing surfaces (the Tutorial 16 alternative, back-face
         /// culling in the depth pass, can't be used here: this engine's shadow pass
         /// intentionally renders both faces to support single-sided casters like the
-        /// editor plane / game terrain).</summary>
+        /// editor plane).</summary>
         public static float NormalBias = 0.0f;
 
 
@@ -79,7 +77,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// object bases), while cascade 1-2 are loosened (0.4 / 1.5 m) so they keep
         /// ~3-4 texels of anti-acne bias at distance — the previous 0.25 / 1.0 m caps left
         /// them at only ~1.7-2 texels, which is below the recommended 2-4 texel range and
-        /// let acne speckle the terrain/objects in the mid-to-far cascades.
+        /// let acne speckle objects in the mid-to-far cascades.
         /// Set individually in the panel.</summary>
         public static float[] MaxWorldBias = [50.5f, 150.5f, 350.5f];
 

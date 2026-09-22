@@ -34,7 +34,6 @@ public class IDE : IDisposable
     private readonly PostFxPanel _postFxPanel = null!;
     private readonly FrameBufferDebugPanel _framebufferDebug = null!;
     private readonly PbrPanel _pbrPanel = null!;
-    private readonly TerrainPanel _terrainPanel = null!;
     private readonly PlayerInfoPanel _playerInfo = null!;
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
@@ -342,6 +341,10 @@ public class IDE : IDisposable
         {
             // Project closed — reset all editor state (same as New Project)
             Console.WriteLine("[IDE] Project closed, clearing all editor state.");
+            // Dispose GPU resources (VAOs/VBOs/textures/shaders) held by every scene's
+            // object manager BEFORE dropping the dictionary, otherwise they leak per close.
+            foreach (var s in Bridge.EditorScenes.Values)
+                s.ObjectManager?.Dispose();
             Bridge.EditorScenes.Clear();
             Bridge.AvailableScenesInternal.Clear();
             Bridge.SceneRoot = null;
@@ -714,7 +717,6 @@ public class IDE : IDisposable
             // from inside the composite, which runs in both render paths.
             Visual.PostProcessing.DepthOfFieldFocusTracker.Bridge = Bridge;
             _pbrPanel = new PbrPanel(Bridge);
-            _terrainPanel = new TerrainPanel(Bridge);
             _playerInfo = new PlayerInfoPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
@@ -1234,7 +1236,6 @@ public class IDE : IDisposable
                 _postFxPanel.ShowInMenu();
                 _framebufferDebug.ShowInMenu();
                 _pbrPanel.ShowInMenu();
-                _terrainPanel.ShowInMenu();
                 _playerInfo.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
@@ -1322,7 +1323,6 @@ public class IDE : IDisposable
         _postFxPanel.Render();
         _framebufferDebug.Render();
         _pbrPanel.Render();
-        _terrainPanel.Render();
         _playerInfo.Render();
         _assetBrowser.Render();
         _hierarchy.Render();
@@ -2037,7 +2037,7 @@ public class IDE : IDisposable
                 $"FPS: {fps:F0}  ({frameMs:F1} ms)",
                 $"TRIS: {Bridge.RenderedTriangles:N0} / {Bridge.TotalTriangles:N0}",
                 $"Objects: {Bridge.DrawnObjects:N0} / {Bridge.TotalObjects:N0}  (anim {Bridge.AnimatedObjectCount:N0} | static {Bridge.StaticObjectCount:N0})",
-                $"Render: t={Bridge.RenderTerrainMs:N1}ms  o={Bridge.RenderObjectsMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
+                $"Render: o={Bridge.RenderObjectsMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
                 $"POS: X={camPos.X:N2}  Y={camPos.Y:N2}  Z={camPos.Z:N2}",
                 $"Yaw: {Bridge.CameraYaw:F1}°  Pitch: {Bridge.CameraPitch:F1}°",
                 // Clickable in-game option: mouse camera control (drag-pan / fly look)

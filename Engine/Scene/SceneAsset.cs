@@ -318,62 +318,7 @@ public class EditorObjectData
     public float? PivotOverrideY { get; set; }
     public float? PivotOverrideZ { get; set; }
 
-    // ── Advanced terrain (Plane) ──
-    /// <summary>Whether this plane renders as an advanced heightmapped terrain.</summary>
-    public bool TerrainEnabled { get; set; } = false;
-    /// <summary>Heightmap file path (.raw / image).</summary>
-    public string TerrainHeightmapPath { get; set; } = "";
-    /// <summary>Grid resolution per side.</summary>
-    public int TerrainChunkSize { get; set; } = 32;
-    /// <summary>Chunk sub-meshes per side (1..8).</summary>
-    public int TerrainChunksPerSide { get; set; } = 1;
-    /// <summary>Vertical height scale (world units).</summary>
-    public float TerrainHeightScale { get; set; } = 30f;
-    /// <summary>Slope threshold for the dirt/cliff layer.</summary>
-    public float TerrainSlopeThreshold { get; set; } = 0.35f;
-    /// <summary>World-space texture tiling.</summary>
-    public float TerrainTexTiling { get; set; } = 0.5f;
-    /// <summary>Texture tiling for steep slope/cliff surfaces.</summary>
-    public float TerrainSlopeTexTiling { get; set; } = 0.3f;
-    /// <summary>Parallax occlusion mapping strength (0 = off).</summary>
-    public float TerrainParallaxScale { get; set; } = 0.0f;
-    /// <summary>POM ray-march steps (8-32).</summary>
-    public int TerrainPomSteps { get; set; } = 16;
-    /// <summary>Stochastic (random per-tile) sampling toggle — OFF by default.</summary>
-    public bool TerrainUseStochasticSampling { get; set; } = false;
-    /// <summary>Normalized height bands for the 4 layers.</summary>
-    public float TerrainLayerAirTop { get; set; } = 0.18f;
-    public float TerrainLayerDirtTop { get; set; } = 0.45f;
-    public float TerrainLayerGrassTop { get; set; } = 0.75f;
-    public float TerrainLayerSnowTop { get; set; } = 1.0f;
-    /// <summary>Legacy layer texture paths (Layer 1-4 + slope).</summary>
-    public string TerrainTextureAirPath { get; set; } = "";
-    public string TerrainTextureDirtPath { get; set; } = "";
-    public string TerrainTextureGrassPath { get; set; } = "";
-    public string TerrainTextureSnowPath { get; set; } = "";
-    /// <summary>Slope / cliff texture — applied to steep faces (replaces dirt on cliffs).</summary>
-    public string TerrainTextureSlopePath { get; set; } = "";
-    // ── PBR map tuning (global per map type, applies to all layers) ──
-    public float TerrainPbrAlbedoBrightness { get; set; } = 1f;
-    public float TerrainPbrAlbedoSaturation { get; set; } = 1f;
-    public float TerrainPbrAlbedoContrast { get; set; } = 1f;
-    public float TerrainPbrNormalStrength { get; set; } = 1f;
-    public float TerrainPbrNormalBlur { get; set; } = 0f;
-    public float TerrainPbrMetallicThreshold { get; set; } = 0.5f;
-    public float TerrainPbrMetallicSoftness { get; set; } = 0.1f;
-    public float TerrainPbrMetallicStrength { get; set; } = 1f;
-    public float TerrainPbrRoughnessStrength { get; set; } = 1f;
-    public bool TerrainPbrRoughnessInvert { get; set; } = false;
-    public float TerrainPbrAoStrength { get; set; } = 1f;
-    public float TerrainPbrAoBrightness { get; set; } = 0f;
-    public float TerrainPbrHeightStrength { get; set; } = 1f;
-    public bool TerrainPbrHeightInvert { get; set; } = false;
-    public float TerrainPbrHeightBlur { get; set; } = 0f;
-    public float TerrainPbrEmissionIntensity { get; set; } = 1f;
-    /// <summary>Per-layer PBR data — 6 companion maps + unique tuning per terrain layer
-    /// (PBR is per texture). Null/absent = legacy scene: layers auto-discover maps next to
-    /// their albedo and use the global tuning values above.</summary>
-    public TerrainPbrLayerData[]? TerrainLayers { get; set; }
+
     /// <summary>PBR material maps (Box/Sphere/flat plane) — relative to the exe.</summary>
     public string PbrAlbedoPath { get; set; } = "";
     public string PbrNormalPath { get; set; } = "";
@@ -381,9 +326,7 @@ public class EditorObjectData
     public string PbrRoughnessPath { get; set; } = "";
     public string PbrAoPath { get; set; } = "";
     public string PbrHeightPath { get; set; } = "";
-    /// <summary>TERRAIN heightmap for planes — vertex-displacement elevation + sculpt
-    /// base + splat height bands. Separate from PbrHeightPath (POM parallax detail).</summary>
-    public string TerrainHeightPath { get; set; } = "";
+
     public string PbrEmissionPath { get; set; } = "";
     public float PbrTexTiling { get; set; } = 1f;
     /// <summary>Steep POM height-map displacement depth (0 = off).</summary>
@@ -398,9 +341,8 @@ public class EditorObjectData
     public float PbrHeightOffset { get; set; } = 0f;
     /// <summary>Marmoset-style height calibration: baseline gray treated as zero depth.</summary>
     public float PbrHeightScaleCenter { get; set; } = 0.5f;
-    /// <summary>True geometric displacement for PBR planes (dense tessellated grid, moving vertices).</summary>
-    public bool PbrVertexDisplace { get; set; } = false;
-    /// <summary>Peak displacement height in world units for vertex displacement.</summary>
+    /// <summary>Peak displacement height in world units for vertex displacement.
+    /// Vertex displacement is always active whenever a height source exists.</summary>
     public float PbrVertexDisplaceScale { get; set; } = 0.15f;
     /// <summary>Tessellation segments per side for the displaced plane grid (16..512).
     /// Null/absent = legacy scene → <see cref="EditorObject.PbrDisplaceSegments"/> (256).</summary>
@@ -416,83 +358,7 @@ public class EditorObjectData
     /// roughness, ao, height, emission). Null/absent = legacy scene → each map falls back
     /// to <see cref="TexSettings"/> (or default).</summary>
     public TextureSettingsData[]? PbrTexSettings { get; set; }
-    /// <summary>Per-terrain-layer sampling settings (4 entries: air, dirt, grass, snow).
-    /// Null/absent = legacy scene → each layer falls back to <see cref="TexSettings"/>.</summary>
-    public TextureSettingsData[]? TerrainLayerSettings { get; set; }
-    /// <summary>Brush radius in world units (viewport paint tool).</summary>
-    public float TerrainBrushSize { get; set; } = 10f;
-    /// <summary>Height delta per painted frame (world units).</summary>
-    public float TerrainBrushStrength { get; set; } = 1f;
-    /// <summary>Brush edge falloff 0..1.</summary>
-    public float TerrainBrushSoftness { get; set; } = 1f;
-    /// <summary>Brush falloff curve: 0=Linear, 1=Smooth, 2=Sharp, 3=Spherical, 4=Soft.</summary>
-    public int TerrainBrushFalloff { get; set; } = 1;
-    /// <summary>Base64-encoded painted heightmap blob (only set after brush edits, so
-    /// brush paint survives scene save/load without touching the source .raw file).</summary>
-    public string TerrainPaintedData { get; set; } = "";
-    /// <summary>Layer drawn by the paint brush (0-3).</summary>
-    public int TerrainPaintLayerIndex { get; set; } = 0;
-    /// <summary>Weight added to the painted layer per brush stamp (0..1).</summary>
-    public float TerrainPaintStrength { get; set; } = 0.45f;
-    /// <summary>Base64-encoded manual layer-paint splat blob (empty = no manual paint).
-    /// Persisted so layer paint survives scene save/load.</summary>
-    public string TerrainSplatData { get; set; } = "";
-    /// <summary>Brush ring highlight color [r, g, b] — user-editable, saved with the scene.</summary>
-    public float[]? TerrainBrushColor { get; set; }
-    /// <summary>Brush ring highlight transparency 0..1 — user-editable, saved with the scene.</summary>
-    public float TerrainBrushAlpha { get; set; } = 0.35f;
 
-    // ── Per-paint-layer textures (independent from terrain auto-layers) ──
-    public string[] PaintLayerTextures { get; set; } = ["", "", "", ""];
-    public float[] PaintLayerTilingX { get; set; } = [0.5f, 0.5f, 0.5f, 0.5f];
-    public float[] PaintLayerTilingY { get; set; } = [0.5f, 0.5f, 0.5f, 0.5f];
-    public bool[] PaintLayerStochastic { get; set; } = [false, false, false, false];
-    public int PaintLayerCount { get; set; } = 1;
-
-    // ── PBR splat terrain (paintable multi-texture plane + sculpt + LOD) ──
-    /// <summary>Per-splat-layer albedo path + tint. Null = legacy scene (blank layers).</summary>
-    public PbrSplatLayerDataAsset[]? PbrSplatLayers { get; set; }
-    public int PbrSplatPaintLayerIndex { get; set; } = 0;
-    public float PbrSplatPaintStrength { get; set; } = 0.45f;
-    public float PbrSplatTiling { get; set; } = 0.5f;
-    /// <summary>Base64 RGBA splat weights (empty = never painted — no bloat).</summary>
-    public string PbrSplatData { get; set; } = "";
-    /// <summary>Base64 sculpt height bytes (R8, 512²; empty = no sculpt edits).</summary>
-    public string PbrSculptData { get; set; } = "";
-    /// <summary>Per-chunk LOD by camera distance (dynamic terrain mode).</summary>
-    public bool PbrLodEnabled { get; set; } = false;
-    public float PbrLodDistance { get; set; } = 40f;
-    public float PbrLodDistance2 { get; set; } = 120f;
-    /// <summary>Hardware occlusion queries for the chunked displaced plane.</summary>
-    public bool PbrOcclusionEnabled { get; set; } = false;
-    /// <summary>Height layers: auto-assign splat layer weights by elevation bands.</summary>
-    public bool SplatHeightLayersEnabled { get; set; } = false;
-    /// <summary>Active elevation bands (1..4) in height-layer mode.</summary>
-    public int SplatHeightLayerCount { get; set; } = 4;
-    /// <summary>Band transition softness (0.01..0.5).</summary>
-    public float SplatHeightLayerFeather { get; set; } = 0.08f;
-    /// <summary>Per-layer elevation bands: 4 × (HeightMin, HeightMax), -1 = off.</summary>
-    public float[] SplatHeightBands { get; set; } = [-1f, -1f, -1f, -1f, -1f, -1f, -1f, -1f];
-    /// <summary>Slope-layer world tiling (separate from the base SplatTiling).</summary>
-    public float SplatSlopeTiling { get; set; } = 0.5f;
-    /// <summary>Slope auto-paint: one splat layer auto-blends onto steep geometry.</summary>
-    public bool SplatSlopeEnabled { get; set; } = false;
-    /// <summary>Splat layer (0..3) carrying the rock/cliff texture for slope auto-paint.</summary>
-    public int SplatSlopeLayer { get; set; } = 1;
-    /// <summary>Slope where the rock layer starts taking over (0..1).</summary>
-    public float SplatSlopeThreshold { get; set; } = 0.35f;
-    /// <summary>Transition softness above the slope threshold (0.01..0.5).</summary>
-    public float SplatSlopeFeather { get; set; } = 0.15f;
-    /// <summary>Splat layers sample in world-space triplanar (no cliff texture stretch).</summary>
-    public bool SplatTriplanar { get; set; } = false;
-
-    // ── Dynamic terrain layers (per-layer texture, tiling, height range, PBR, stochastic) ──
-    /// <summary>Saved dynamic terrain layers. Null/empty = migrate from legacy 4-layer on load.</summary>
-    public List<TerrainLayer>? TerrainLayerList { get; set; }
-    /// <summary>Slope/cliff layer settings (optional override). Null = no slope layer.</summary>
-    public TerrainLayer? TerrainSlopeLayer { get; set; }
-    /// <summary>Whether the slope layer is enabled.</summary>
-    public bool TerrainSlopeEnabled { get; set; } = false;
 
 }
 

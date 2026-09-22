@@ -654,8 +654,9 @@ public class SceneManagerPanel
                     _bridge.AvailableScenesInternal.RemoveAt(_selectedIdx);
 
                     // Also remove from editor scenes if present
-                    if (_bridge.EditorScenes.ContainsKey(deletedName))
+                    if (_bridge.EditorScenes.TryGetValue(deletedName, out var deletedScene))
                     {
+                        deletedScene.ObjectManager?.Dispose();
                         _bridge.EditorScenes.Remove(deletedName);
                         if (_bridge.SelectedEditorScene == deletedName)
                         {
@@ -772,7 +773,9 @@ public class SceneManagerPanel
     {
         Console.WriteLine("[SceneManagerPanel] Clearing everything...");
 
-        //  Clear all editor scenes & data 
+        //  Clear all editor scenes & data
+        foreach (var s in _bridge.EditorScenes.Values)
+            s.ObjectManager?.Dispose();
         _bridge.EditorScenes.Clear();
         _bridge.AvailableScenesInternal.Clear();
         _bridge.SelectedEditorScene = null;
@@ -1076,7 +1079,6 @@ public class SceneManagerPanel
                         PbrHeightContrastCenter = obj.PbrHeightContrastCenter,
                         PbrHeightOffset = obj.PbrHeightOffset,
                         PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
-                        PbrVertexDisplace = obj.PbrVertexDisplace,
                         PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
                         PbrVertexSegments = obj.PbrVertexSegments,
                         PbrVertexChunk = obj.PbrVertexChunk,
@@ -1313,6 +1315,8 @@ public class SceneManagerPanel
             // Clear existing editor scenes AND the panel's scene list  we're replacing
             // everything with the loaded data. Without clearing AvailableScenes, scenes from
             // a previously loaded file would linger and mix with the newly loaded ones.
+            foreach (var s in _bridge.EditorScenes.Values)
+                s.ObjectManager?.Dispose();
             _bridge.EditorScenes.Clear();
             _bridge.AvailableScenesInternal.Clear();
             _selectedIdx = -1;
@@ -1583,11 +1587,10 @@ public class SceneManagerPanel
                         obj.PbrHeightContrastCenter = Math.Clamp(objData.PbrHeightContrastCenter, 0f, 1f);
                         obj.PbrHeightOffset = Math.Clamp(objData.PbrHeightOffset, -0.5f, 0.5f);
                         obj.PbrHeightScaleCenter = Math.Clamp(objData.PbrHeightScaleCenter, 0f, 1f);
-                        obj.PbrVertexDisplace = objData.PbrVertexDisplace;
                         obj.PbrVertexDisplaceScale = Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 2f);
                         if (objData.PbrVertexSegments is int s && s > 0) obj.PbrVertexSegments = Math.Clamp(s, 16, 512);
                         if (objData.PbrVertexChunk is int ck && ck > 0) obj.PbrVertexChunk = Math.Clamp(ck, 1, 16);
-                        if (obj.PbrVertexDisplace) obj.MarkDirty(); // plane needs the dense grid
+                        obj.MarkDirty(); // displaced planes always need the dense grid
                         // Per-texture sampling settings (min/mag, mipmap, wrapping, UV
                         // tiling/offset). Legacy scenes have no TexSettings → fall back to
                         // the old scalar tiling so existing scenes keep their look.
@@ -2043,7 +2046,6 @@ public class SceneManagerPanel
                             PbrHeightContrastCenter = obj.PbrHeightContrastCenter,
                             PbrHeightOffset = obj.PbrHeightOffset,
                             PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
-                            PbrVertexDisplace = obj.PbrVertexDisplace,
                             PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
                             PbrVertexSegments = obj.PbrVertexSegments,
                             PbrVertexChunk = obj.PbrVertexChunk,

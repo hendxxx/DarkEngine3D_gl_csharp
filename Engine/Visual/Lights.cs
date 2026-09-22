@@ -127,7 +127,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         /// <summary>Upload the local (point/spot) light uniforms to the given program.
-        /// Shared by every render path (main / objectPbr / gltf / terrainEditor) so all
+        /// Shared by every render path (main / objectPbr / gltf) so all
         /// objects are lit by the same light set. Uses scalar calls so no new GL bindings
         /// are needed; only runs when at least one local light exists.</summary>
         public void UploadLocalLights(uint program)
@@ -305,7 +305,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // bright as the marker's day color while the sky went dark. When the ACTIVE
             // sun direction dips below the horizon, fade the final light color toward
             // the dark moon tint — one source of truth for "how bright is moonlight"
-            // shared by terrain, PBR primitives, glTF and impostors.
+            // shared by PBR primitives, glTF and impostors.
             float finalNight = Smoothstep01(0.15f, 0.0f, sunDir.Y);
             if (finalNight > 0f)
             {
@@ -321,7 +321,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             FogColor = horizonFogColor * weatherDim;
             LightColor = lightColor * weatherDim;
 
-            // kirim arah matahari asli (realSunDir) ke terrain shader
+
             int realSunDirLoc = GL.GetUniformLocation(shaderProgram, "realSunDir");
             GL.Uniform3f(realSunDirLoc, sunDir.X, sunDir.Y, sunDir.Z);
 
@@ -343,7 +343,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform1i(shadowFilterMode, Keyboard.GetIsHardShadow());
 
             // ── Live shadow bias / blend tuning (Shadow Settings panel). The main shader
-            // program is shared by game terrain, game primitives and editor objects, so one
+            // program is shared by game primitives and editor objects, so one
             // upload here covers every main-shader render path. ──
             ShadowUniforms.UploadMain(shaderProgram);
 

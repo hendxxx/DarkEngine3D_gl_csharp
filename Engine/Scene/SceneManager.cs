@@ -2,7 +2,6 @@ using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
-using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing;
 using System.Numerics;
@@ -445,30 +444,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             }
 
                             // Draw crosshair indicators on every SELECTED object that has a
-                            // per-object gizmo pivot override (so overrides stay visible).
-                            foreach (var sel in br.SelectedEditorObjects)
-                            {
-                                if (sel == null || sel.GizmoPivotOverride == null) continue;
-                                GL.Disable(Const.GL_DEPTH_TEST);
-                                TerrainChunk.DrawGizmoPivotCrosshair(sel.GizmoPivotOverride.Value, sceneCam);
-                                GL.Enable(Const.GL_DEPTH_TEST);
-                            }
 
-                            // Draw pivot dot indicators for ALL NON-selected objects that have pivot override
-                            var editorMgr = br.EditorObjectManager;
-                            if (editorMgr != null)
-                            {
-                                foreach (var obj in editorMgr.Objects)
-                                {
-                                    if (br.SelectedEditorObjects.Contains(obj)) continue; // already has full gizmo/crosshair
-                                    if (obj.GizmoPivotOverride != null)
-                                    {
-                                        GL.Disable(Const.GL_DEPTH_TEST);
-                                        TerrainChunk.DrawPivotDot(obj.GizmoPivotOverride.Value, sceneCam);
-                                        GL.Enable(Const.GL_DEPTH_TEST);
-                                    }
-                                }
-                            }
                         }
                     }
 
@@ -654,29 +630,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         }
 
                         // Draw crosshair indicators on every SELECTED object that has a
-                        // per-object gizmo pivot override (so overrides stay visible).
-                        foreach (var sel in bridge.SelectedEditorObjects)
-                        {
-                            if (sel == null || sel.GizmoPivotOverride == null) continue;
-                            GL.Disable(Const.GL_DEPTH_TEST);
-                            TerrainChunk.DrawGizmoPivotCrosshair(sel.GizmoPivotOverride.Value, _editorCamera);
-                            GL.Enable(Const.GL_DEPTH_TEST);
-                        }
 
-                        // Draw pivot dot indicators for ALL NON-selected objects that have pivot override
-                        if (bridge.EditorObjectManager != null)
-                        {
-                            foreach (var obj in bridge.EditorObjectManager.Objects)
-                            {
-                                if (bridge.SelectedEditorObjects.Contains(obj)) continue; // already has full gizmo/crosshair
-                                if (obj.GizmoPivotOverride != null)
-                                {
-                                    GL.Disable(Const.GL_DEPTH_TEST);
-                                    TerrainChunk.DrawPivotDot(obj.GizmoPivotOverride.Value, _editorCamera);
-                                    GL.Enable(Const.GL_DEPTH_TEST);
-                                }
-                            }
-                        }
                     }
 
                     // ── Reset PolygonMode to GL_FILL after viewport rendering ──

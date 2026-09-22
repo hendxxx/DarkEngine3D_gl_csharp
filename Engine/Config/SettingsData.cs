@@ -105,7 +105,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float ShadowCascade2 { get; set; } = 350f;
         /// <summary>Always-added fragment bias (all surfaces).</summary>
         public float ShadowConstantBias { get; set; } = 0.00005f;
-        /// <summary>Slope-scaled fragment bias (main + terrain shaders) — Tutorial 16 slope
+        /// <summary>Slope-scaled fragment bias — Tutorial 16 slope
         /// formula: bias ∝ tan(acos(N·L)), so this coefficient ×~20 at grazing angles.</summary>
         public float ShadowSlopeBias { get; set; } = 0.00005f;
         /// <summary>Minimum fragment bias (flat, light-facing surfaces). ~2.5 texels.</summary>

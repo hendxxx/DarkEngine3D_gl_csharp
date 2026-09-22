@@ -66,8 +66,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
         }
 
-        /// <summary>Upload u_ConstantBias / u_SlopeBias / u_MinBias / u_BlendRange
-        /// (fragment_shader + terrainEditor_fragment).</summary>
+        /// <summary>Upload u_ConstantBias / u_SlopeBias / u_MinBias / u_BlendRange.</summary>
         public static void UploadMain(uint program)
         {
             int c = Loc(program, "u_ConstantBias");
@@ -108,9 +107,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// happens in world space, so a fixed value would be a fraction of a texel in the far
         /// cascades (their texels are 10-40× larger) — scaling keeps the WORLD extrusion a
         /// constant texel count at every distance, matching the texel-proportional fragment
-        /// bias. Used by the terrain shadow pass too, which passes a size-boosted base value
-        /// (big heightmaps need more). Default ActiveCascadeIndex=0 / LastTexelWorld=1 → no
-        /// scaling (backward compatible).</summary>
+        /// bias. Default ActiveCascadeIndex=0 / LastTexelWorld=1 → no scaling.</summary>
         public static void UploadNormalBias(uint program, float value)
         {
             int n = Loc(program, "u_NormalBias");
@@ -151,20 +148,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             m[3] = inv.M12; m[4] = inv.M22; m[5] = inv.M32;
             m[6] = inv.M13; m[7] = inv.M23; m[8] = inv.M33;
             GL.UniformMatrix3fv(loc, 1, false, m);
-        }
-
-        /// <summary>Upload the normal bias for a terrain shadow pass, boosted by how much
-        /// larger the terrain is than the baseline (25-unit footprint / 30-unit height —
-        /// the editor terrain defaults). Big heightmap surfaces cover far more world space
-        /// per shadow-map texel than unit-sized primitives, so the standard 0.02 extrusion
-        /// is not enough to keep steep slopes acne-free. Clamped so pathological sizes
-        /// can't peter-pan. Shared by the editor terrain (EditorTerrainMesh) and the game
-        /// terrain (TerrainChunk) so both stay consistent.</summary>
-        public static void UploadTerrainNormalBias(uint program, float footprint, float height)
-        {
-            float boost = MathF.Min(
-                MathF.Max(1f, MathF.Max(footprint / 25f, height / 30f)), 6f);
-            UploadNormalBias(program, ShadowSettings.NormalBias * boost);
         }
     }
 }

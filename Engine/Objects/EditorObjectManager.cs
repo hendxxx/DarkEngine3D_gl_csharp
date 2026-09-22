@@ -405,7 +405,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 PbrHeightContrastCenter = source.PbrHeightContrastCenter,
                 PbrHeightOffset = source.PbrHeightOffset,
                 PbrHeightScaleCenter = source.PbrHeightScaleCenter,
-                PbrVertexDisplace = source.PbrVertexDisplace,
                 PbrVertexDisplaceScale = source.PbrVertexDisplaceScale,
                 PbrVertexSegments = source.PbrVertexSegments,
                 PbrVertexChunk = source.PbrVertexChunk,

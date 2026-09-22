@@ -3,7 +3,6 @@ using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using DarkEngine3D_gl_csharp.Engine.Utils;
-using DarkEngine3D_gl_csharp.Engine.Terrains; // for RandomExtensions.NextFloat
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
@@ -249,13 +248,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return obj;
         }
 
-        public static Object3D[] SpawnFourRandomBigBoxes( TerrainChunk terrain, int seed = 12345, float areaRadius = 60f)
+        public static Object3D[] SpawnFourRandomBigBoxes(int seed = 12345, float areaRadius = 60f)
         {
             var rng = new Random(seed);
             var boxes = new Object3D[4];
             for (int i = 0; i < 4; i++)
             {
-                // use extension NextFloat from RandomExtensions or replace with inline expression
                 float sx = rng.NextFloat(8.0f, 18.0f);
                 float sy = rng.NextFloat(6.0f, 14.0f);
                 float sz = rng.NextFloat(8.0f, 18.0f);
@@ -266,9 +264,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 float pz = MathF.Sin(angle) * dist;
                 Vector3 color = new Vector3(0.4f + 0.15f * i, 0.2f + 0.1f * (3 - i), 0.3f);
 
-                // Posisi Y: center box di terrainHeight + setengah tinggi box (supaya bottom box di terrain)
-                float terrainY = terrain.GetHeightAt(px, pz);
-                boxes[i] = CreateBoxObject(sx, sy, sz, px, terrainY + sy * 0.5f, pz, color);
+                boxes[i] = CreateBoxObject(sx, sy, sz, px, sy * 0.5f, pz, color);
             }
             return boxes;
         }

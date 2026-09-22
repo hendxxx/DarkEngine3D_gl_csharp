@@ -297,7 +297,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 obj.TerrainPbrAoStrength = 1f; obj.TerrainPbrAoBrightness = 0f;
                 obj.TerrainPbrHeightStrength = 1f; obj.TerrainPbrHeightInvert = false; obj.TerrainPbrHeightBlur = 0f;
                 obj.PbrHeightContrast = 1f; obj.PbrHeightContrastCenter = 0.5f; obj.PbrHeightOffset = 0f; obj.PbrHeightScaleCenter = 0.5f;
-                obj.PbrVertexDisplace = false; obj.PbrVertexDisplaceScale = 0.15f;
+                obj.PbrVertexDisplaceScale = 0.15f;
                 obj.PbrVertexSegments = EditorObject.PbrDisplaceSegments; obj.PbrVertexChunk = 1; obj.MarkDirty();
                 obj.TerrainPbrEmissionIntensity = 1f;
                 obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0.15f; obj.PbrPomShadowStrength = 0.6f;
