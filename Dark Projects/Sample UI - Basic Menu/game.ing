@@ -1975,6 +1975,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -2248,6 +2249,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -2702,6 +2719,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -2975,6 +2993,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -3427,6 +3461,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -3700,6 +3735,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -4152,6 +4203,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -4425,6 +4477,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -4877,6 +4945,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -5150,6 +5219,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -9122,7 +9207,7 @@
             "width": 50,
             "height": 20,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
             "tilesetColumns": 25,
             "tilesetRows": 25,
             "tilesetFlipV": false,
@@ -9136,7 +9221,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -2,
@@ -9151,7 +9236,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
                 "isVisible": true,
                 "scrollFactor": 0.85,
                 "zPosition": -1,
@@ -11770,6 +11855,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -12043,6 +12129,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -12495,6 +12597,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -12768,6 +12871,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -13210,6 +13329,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -13483,6 +13603,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -13935,6 +14071,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -14208,6 +14345,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -14660,6 +14813,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -14933,6 +15087,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -15385,6 +15555,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -15658,6 +15829,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -16243,7 +16430,7 @@
           "terrainPbrAoBrightness": 0,
           "terrainPbrHeightStrength": 1,
           "terrainPbrHeightInvert": false,
-          "terrainPbrHeightBlur": 8,
+          "terrainPbrHeightBlur": 0,
           "terrainPbrEmissionIntensity": 1,
           "terrainLayers": [
             {
@@ -16343,18 +16530,19 @@
           "pbrRoughnessPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Roughness.png",
           "pbrAoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_AmbientOcclusion.png",
           "pbrHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Displacement.png",
+          "terrainHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Displacement.png",
           "pbrEmissionPath": "",
-          "pbrTexTiling": 1.7,
-          "pbrParallaxScale": 0.01,
-          "pbrPomShadowStrength": 0,
+          "pbrTexTiling": 1,
+          "pbrParallaxScale": 0.15,
+          "pbrPomShadowStrength": 0.6,
           "pbrHeightContrast": 1,
           "pbrHeightContrastCenter": 0.5,
           "pbrHeightOffset": 0,
           "pbrHeightScaleCenter": 0.5,
           "pbrVertexDisplace": true,
-          "pbrVertexDisplaceScale": 1.5,
-          "pbrVertexSegments": 256,
-          "pbrVertexChunk": 16,
+          "pbrVertexDisplaceScale": 2,
+          "pbrVertexSegments": 128,
+          "pbrVertexChunk": 1,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -16604,9 +16792,9 @@
               "tintB": 1
             }
           ],
-          "pbrSplatPaintLayerIndex": 0,
-          "pbrSplatPaintStrength": 0.45,
-          "pbrSplatTiling": 0.5,
+          "pbrSplatPaintLayerIndex": 1,
+          "pbrSplatPaintStrength": 0,
+          "pbrSplatTiling": 5,
           "pbrSplatData": "",
           "pbrSculptData": "",
           "pbrLodEnabled": false,
@@ -16616,6 +16804,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            0.25,
+            0.5,
+            0.5,
+            0.75,
+            0.75,
+            1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -16898,7 +17102,7 @@
                 "Y": 1,
                 "Z": 1
               },
-              "texturePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
+              "texturePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
               "rotationSpeed": 0,
               "phaseOffset": 0.8370237
             },
@@ -17068,6 +17272,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -17341,6 +17546,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -17793,6 +18014,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -18066,6 +18288,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -18518,6 +18756,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -18791,6 +19030,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -19243,6 +19498,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -19516,6 +19772,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -19968,6 +20240,7 @@
           "pbrRoughnessPath": "",
           "pbrAoPath": "",
           "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 1,
           "pbrParallaxScale": 0.15,
@@ -20241,6 +20514,22 @@
           "splatHeightLayersEnabled": false,
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
+          "splatHeightBands": [
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "splatSlopeTiling": 0.5,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFeather": 0.15,
+          "splatTriplanar": false,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -20292,12 +20581,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        9.861094,
-        26.836567,
-        44.67901
+        11.567726,
+        32.2232,
+        46.287437
       ],
-      "editorCameraYaw": -166.19983,
-      "editorCameraPitch": -35,
+      "editorCameraYaw": -143.69983,
+      "editorCameraPitch": -31,
       "renderProperties": {
         "backgroundColor": [
           0,
