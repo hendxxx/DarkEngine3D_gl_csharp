@@ -9207,7 +9207,7 @@
             "width": 50,
             "height": 20,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
             "tilesetColumns": 25,
             "tilesetRows": 25,
             "tilesetFlipV": false,
@@ -9221,7 +9221,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -2,
@@ -9236,7 +9236,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
                 "isVisible": true,
                 "scrollFactor": 0.85,
                 "zPosition": -1,
@@ -16428,7 +16428,7 @@
           "terrainPbrRoughnessInvert": false,
           "terrainPbrAoStrength": 1,
           "terrainPbrAoBrightness": 0,
-          "terrainPbrHeightStrength": 0,
+          "terrainPbrHeightStrength": 1,
           "terrainPbrHeightInvert": false,
           "terrainPbrHeightBlur": 0,
           "terrainPbrEmissionIntensity": 1,
@@ -16532,17 +16532,17 @@
           "pbrHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Displacement.png",
           "terrainHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Displacement.png",
           "pbrEmissionPath": "",
-          "pbrTexTiling": 10,
-          "pbrParallaxScale": 0.5,
-          "pbrPomShadowStrength": 0,
+          "pbrTexTiling": 1,
+          "pbrParallaxScale": 0,
+          "pbrPomShadowStrength": 1,
           "pbrHeightContrast": 1,
           "pbrHeightContrastCenter": 0.5,
           "pbrHeightOffset": 0,
           "pbrHeightScaleCenter": 0.5,
-          "pbrVertexDisplace": true,
+          "pbrVertexDisplace": false,
           "pbrVertexDisplaceScale": 2,
-          "pbrVertexSegments": 128,
-          "pbrVertexChunk": 1,
+          "pbrVertexSegments": 256,
+          "pbrVertexChunk": 8,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -16794,7 +16794,7 @@
           ],
           "pbrSplatPaintLayerIndex": 1,
           "pbrSplatPaintStrength": 0,
-          "pbrSplatTiling": 5,
+          "pbrSplatTiling": 0.05,
           "pbrSplatData": "",
           "pbrSculptData": "",
           "pbrLodEnabled": false,
@@ -16805,8 +16805,8 @@
           "splatHeightLayerCount": 4,
           "splatHeightLayerFeather": 0.08,
           "splatHeightBands": [
-            -1,
-            -1,
+            0,
+            1,
             0.25,
             0.5,
             0.5,
@@ -16815,11 +16815,11 @@
             1
           ],
           "splatSlopeTiling": 0.5,
-          "splatSlopeEnabled": false,
+          "splatSlopeEnabled": true,
           "splatSlopeLayer": 1,
           "splatSlopeThreshold": 0.35,
           "splatSlopeFeather": 0.15,
-          "splatTriplanar": false,
+          "splatTriplanar": true,
           "terrainLayerList": [
             {
               "name": "Layer 1",
@@ -17102,7 +17102,7 @@
                 "Y": 1,
                 "Z": 1
               },
-              "texturePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
+              "texturePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
               "rotationSpeed": 0,
               "phaseOffset": 0.8370237
             },
@@ -20581,12 +20581,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        11.567726,
-        32.2232,
-        46.287437
+        -53.48848,
+        24.50671,
+        -11.349594
       ],
-      "editorCameraYaw": -143.69983,
-      "editorCameraPitch": -31,
+      "editorCameraYaw": -299.19983,
+      "editorCameraPitch": -23.5,
       "renderProperties": {
         "backgroundColor": [
           0,
