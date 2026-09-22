@@ -381,6 +381,9 @@ public class EditorObjectData
     public string PbrRoughnessPath { get; set; } = "";
     public string PbrAoPath { get; set; } = "";
     public string PbrHeightPath { get; set; } = "";
+    /// <summary>TERRAIN heightmap for planes — vertex-displacement elevation + sculpt
+    /// base + splat height bands. Separate from PbrHeightPath (POM parallax detail).</summary>
+    public string TerrainHeightPath { get; set; } = "";
     public string PbrEmissionPath { get; set; } = "";
     public float PbrTexTiling { get; set; } = 1f;
     /// <summary>Steep POM height-map displacement depth (0 = off).</summary>
@@ -468,6 +471,20 @@ public class EditorObjectData
     public int SplatHeightLayerCount { get; set; } = 4;
     /// <summary>Band transition softness (0.01..0.5).</summary>
     public float SplatHeightLayerFeather { get; set; } = 0.08f;
+    /// <summary>Per-layer elevation bands: 4 × (HeightMin, HeightMax), -1 = off.</summary>
+    public float[] SplatHeightBands { get; set; } = [-1f, -1f, -1f, -1f, -1f, -1f, -1f, -1f];
+    /// <summary>Slope-layer world tiling (separate from the base SplatTiling).</summary>
+    public float SplatSlopeTiling { get; set; } = 0.5f;
+    /// <summary>Slope auto-paint: one splat layer auto-blends onto steep geometry.</summary>
+    public bool SplatSlopeEnabled { get; set; } = false;
+    /// <summary>Splat layer (0..3) carrying the rock/cliff texture for slope auto-paint.</summary>
+    public int SplatSlopeLayer { get; set; } = 1;
+    /// <summary>Slope where the rock layer starts taking over (0..1).</summary>
+    public float SplatSlopeThreshold { get; set; } = 0.35f;
+    /// <summary>Transition softness above the slope threshold (0.01..0.5).</summary>
+    public float SplatSlopeFeather { get; set; } = 0.15f;
+    /// <summary>Splat layers sample in world-space triplanar (no cliff texture stretch).</summary>
+    public bool SplatTriplanar { get; set; } = false;
 
     // ── Dynamic terrain layers (per-layer texture, tiling, height range, PBR, stochastic) ──
     /// <summary>Saved dynamic terrain layers. Null/empty = migrate from legacy 4-layer on load.</summary>

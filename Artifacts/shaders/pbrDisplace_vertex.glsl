@@ -21,6 +21,8 @@ uniform mat4 view;
 uniform mat4 projection;
 
 uniform sampler2D heightMap;                 // unit 5 (bound by DrawPbrPrimitive)
+uniform sampler2D terrainHeightMap;          // unit 15 — TERRAIN elevation (separate from the POM map)
+uniform float u_terrainDisplace = 0.0;       // 1 = displacement reads terrainHeightMap instead of heightMap
 uniform float u_vertexDisplace = 0.0;        // 1 = displace this draw
 uniform float u_dispScale = 0.15;            // peak height in world units
 uniform float u_dispGrid = 256.0;            // tessellation segments per side
@@ -34,18 +36,34 @@ uniform vec2 u_uvOffset[7];
 // (Marmoset: smooth microscopic surface noise to prevent displacement
 // tearing across polygon vertices) keeps vertices from spiking on per-pixel
 // 4K noise the 256² grid can't represent anyway.
+// Height sampling for DISPLACEMENT. Two sources: the POM height map (unit 5, full
+// Marmoset calibration) and the TERRAIN elevation (unit 15, RAW 0..1 — an authored
+// terrain heightmap IS the elevation, it must not be re-calibrated as a detail map).
+float dispHeightRaw(sampler2D tex, vec2 uv) {
+    vec2 o = 0.75 / vec2(textureSize(tex, 0));
+    return (texture(tex, uv).r * 2.0
+          + texture(tex, uv + vec2(o.x, 0.0)).r
+          + texture(tex, uv - vec2(o.x, 0.0)).r
+          + texture(tex, uv + vec2(0.0, o.y)).r
+          + texture(tex, uv - vec2(0.0, o.y)).r) * 0.2;
+}
+
 float dispHeight(vec2 uv) {
-    vec2 o = 0.75 / vec2(textureSize(heightMap, 0));
-    float h = (texture(heightMap, uv).r * 2.0
-             + texture(heightMap, uv + vec2(o.x, 0.0)).r
-             + texture(heightMap, uv - vec2(o.x, 0.0)).r
-             + texture(heightMap, uv + vec2(0.0, o.y)).r
-             + texture(heightMap, uv - vec2(0.0, o.y)).r) * 0.2;
+    float h = dispHeightRaw(heightMap, uv);
     h = (h - 0.5) * u_heightTuning.x + 0.5;
     if (u_heightTuning.y > 0.5) h = 1.0 - h;
     h = (h - u_heightAdvance.y) * u_heightAdvance.x + u_heightAdvance.y;
     h += u_heightAdvance.z;
     return clamp(h - u_heightAdvance.w, 0.0, 1.0);
+}
+
+float terrainHeight(vec2 uv) {
+    return clamp(dispHeightRaw(terrainHeightMap, uv), 0.0, 1.0);
+}
+
+// Active displacement source (terrain elevation wins when the plane has one).
+float displaceSource(vec2 uv) {
+    return u_terrainDisplace > 0.5 ? terrainHeight(uv) : dispHeight(uv);
 }
 
 void main() {
@@ -55,7 +73,7 @@ void main() {
 
     if (u_vertexDisplace > 0.5 && u_dispScale > 0.0) {
         // Displace along the model-space normal (plane normal = +Y up).
-        float h = dispHeight(uvH);
+        float h = displaceSource(uvH);
         worldPos.xyz += nw * h * u_dispScale;
 
         // Re-derive the normal from the height-field gradient (central
@@ -72,8 +90,8 @@ void main() {
         vec3 Bz = mat3(model) * vec3(0.0, 0.0, 1.0);
         float cellWorldU = max(length(Tx) / u_dispGrid, 1e-5);
         float cellWorldV = max(length(Bz) / u_dispGrid, 1e-5);
-        float slopeU = (dispHeight(uvH + vec2(cellUv.x, 0.0)) - dispHeight(uvH - vec2(cellUv.x, 0.0))) * u_dispScale / (2.0 * cellWorldU);
-        float slopeV = (dispHeight(uvH + vec2(0.0, cellUv.y)) - dispHeight(uvH - vec2(0.0, cellUv.y))) * u_dispScale / (2.0 * cellWorldV);
+        float slopeU = (displaceSource(uvH + vec2(cellUv.x, 0.0)) - displaceSource(uvH - vec2(cellUv.x, 0.0))) * u_dispScale / (2.0 * cellWorldU);
+        float slopeV = (displaceSource(uvH + vec2(0.0, cellUv.y)) - displaceSource(uvH - vec2(0.0, cellUv.y))) * u_dispScale / (2.0 * cellWorldV);
         nw = normalize(nw - normalize(Tx) * slopeU
                            - normalize(Bz) * slopeV);
     }

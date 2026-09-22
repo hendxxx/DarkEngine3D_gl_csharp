@@ -34,6 +34,7 @@ public class IDE : IDisposable
     private readonly PostFxPanel _postFxPanel = null!;
     private readonly FrameBufferDebugPanel _framebufferDebug = null!;
     private readonly PbrPanel _pbrPanel = null!;
+    private readonly TerrainPanel _terrainPanel = null!;
     private readonly PlayerInfoPanel _playerInfo = null!;
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
@@ -713,6 +714,7 @@ public class IDE : IDisposable
             // from inside the composite, which runs in both render paths.
             Visual.PostProcessing.DepthOfFieldFocusTracker.Bridge = Bridge;
             _pbrPanel = new PbrPanel(Bridge);
+            _terrainPanel = new TerrainPanel(Bridge);
             _playerInfo = new PlayerInfoPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
@@ -1232,6 +1234,7 @@ public class IDE : IDisposable
                 _postFxPanel.ShowInMenu();
                 _framebufferDebug.ShowInMenu();
                 _pbrPanel.ShowInMenu();
+                _terrainPanel.ShowInMenu();
                 _playerInfo.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
@@ -1319,6 +1322,7 @@ public class IDE : IDisposable
         _postFxPanel.Render();
         _framebufferDebug.Render();
         _pbrPanel.Render();
+        _terrainPanel.Render();
         _playerInfo.Render();
         _assetBrowser.Render();
         _hierarchy.Render();

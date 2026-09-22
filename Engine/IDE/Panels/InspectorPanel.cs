@@ -2610,68 +2610,6 @@ public class InspectorPanel
             }
         }
 
-        //  Displaced Plane Grid: tessellation (Segments) + chunk split (Chunks per side)
-        //    for PBR planes. Same controls as PbrPanel — surfaced here so the Inspector
-        //    alone is enough to tune the mesh. Chunks split the grid into frustum-cullable
-        //    vertex blocks (see SKILL PBR rules). Always visible on planes; the vertex-
-        //    displacement toggle lives here too so the section is never a dead end.
-        if (editorObj.PrimitiveType == EditorPrimitiveType.Plane
-            && ImGui.CollapsingHeader("Displaced Plane Grid", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            bool vd = editorObj.PbrVertexDisplace;
-            if (ImGui.Checkbox("Vertex Displacement (real geometry)", ref vd))
-            {
-                editorObj.PbrVertexDisplace = vd;
-                editorObj.MarkDirty(); // rebuild: dense grid vs single quad
-            }
-            if (vd)
-            {
-                float vds = editorObj.PbrVertexDisplaceScale;
-                if (ImGui.SliderFloat("Displace Height##insp", ref vds, 0f, 2f))
-                    editorObj.PbrVertexDisplaceScale = vds;
-                int seg = editorObj.PbrVertexSegments;
-                if (ImGui.SliderInt("Segments##insp", ref seg, 16, 512))
-                    editorObj.PbrVertexSegments = seg; // property clamps + MarkDirty (mesh rebuild)
-                int chunks = editorObj.PbrVertexChunk;
-                if (ImGui.SliderInt("Chunks per side##insp", ref chunks, 1, 16))
-                    editorObj.PbrVertexChunk = chunks; // property clamps + MarkDirty (mesh rebuild)
-
-                //  Height map PNG — editable here too (drag from Asset Browser)  
-                string hp = editorObj.PbrHeightPath;
-                ImGui.Text("Height map:");
-                ImGui.SameLine();
-                ImGui.SetNextItemWidth(-60);
-                if (ImGui.InputText("##heightpath", ref hp, 512))
-                    editorObj.PbrHeightPath = hp.Trim(); // setter drops CPU height caches
-                if (ImGui.BeginDragDropTarget())
-                {
-                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
-                    if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
-                    {
-                        editorObj.PbrHeightPath = PathHelpers.MakeRelative(AssetBrowserPanel._dragImagePath);
-                        AssetBrowserPanel._dragImagePath = null;
-                    }
-                    ImGui.EndDragDropTarget();
-                }
-                ImGui.SameLine();
-                if (ImGui.Button("X##heightclear") && !string.IsNullOrEmpty(editorObj.PbrHeightPath))
-                    editorObj.PbrHeightPath = "";
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Clear the height map.");
-                if (editorObj.PbrChunkCount > 1)
-                {
-                    int per = editorObj.PbrPlaneSegmentsBuilt / Math.Max(1, editorObj.PbrVertexChunk);
-                    ImGui.TextDisabled($"{editorObj.PbrChunkCount} chunks, {per}x{per} segs each ({editorObj.PbrPlaneSegmentsBuilt}x{editorObj.PbrPlaneSegmentsBuilt} total)");
-                    ImGui.TextDisabled($"Frustum cull: {editorObj.PbrChunksCulled}/{editorObj.PbrChunkCount} skipped last draw");
-                }
-                else
-                {
-                    ImGui.TextDisabled($"1 mesh, {editorObj.PbrPlaneSegmentsBuilt}x{editorObj.PbrPlaneSegmentsBuilt} grid (no chunking)");
-                }
-                if (string.IsNullOrEmpty(editorObj.PbrHeightPath))
-                    ImGui.TextColored(new Vector4(1f, 0.8f, 0.4f, 1f), "Assign a Height map (PBR panel) to see displacement.");
-            }
-        }
-
         //  Flags 
         if (ImGui.CollapsingHeader("Flags", ImGuiTreeNodeFlags.DefaultOpen))
         {

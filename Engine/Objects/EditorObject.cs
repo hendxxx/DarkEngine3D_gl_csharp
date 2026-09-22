@@ -681,7 +681,9 @@ public unsafe class EditorObject
     public string PbrRoughnessPath { get; set; } = "";
     /// <summary>Ambient-occlusion map (R channel) (optional; 1 when absent).</summary>
     public string PbrAoPath { get; set; } = "";
-    /// <summary>Height / displacement map (R channel, 0.5 = flat) (optional; drives parallax).</summary>
+    /// <summary>Height / displacement map (R channel, 0.5 = flat) (optional; drives parallax).
+    /// For PLANES this slot is ALSO the terrain elevation source (user decision: the heightmap
+    /// input lives here in the PBR panel — see <see cref="TerrainHeightSourcePath"/>).</summary>
     private string _pbrHeightPath = "";
     public string PbrHeightPath
     {
@@ -696,6 +698,36 @@ public unsafe class EditorObject
             _baseHeightCache = null;
             _sculptHeights = null;
             _sculptDirty = true;
+            _terrainHeightTex = 0;
+            _terrainHeightTexKey = null;
+        }
+    }
+    /// <summary>EFFECTIVE terrain elevation source for planes: the dedicated
+    /// <see cref="TerrainHeightPath"/> when set (scenes saved with the split UI),
+    /// otherwise the PBR panel "Height / Displacement" slot (<see cref="PbrHeightPath"/>)
+    /// — the heightmap input deliberately lives ONLY in the PBR panel. Non-planes never
+    /// fall back (their height slot stays parallax-only).</summary>
+    public string TerrainHeightSourcePath =>
+        !string.IsNullOrEmpty(TerrainHeightPath) ? TerrainHeightPath
+        : (PrimitiveType == EditorPrimitiveType.Plane ? PbrHeightPath : "");
+    /// <summary>TERRAIN height map for planes (vertex displacement source, sculpt base,
+    /// height-band splat auto-layers, brush raycast). DELIBERATELY SEPARATE from
+    /// <see cref="PbrHeightPath"/> — that one is the POM parallax DETAIL map on the PBR
+    /// panel; this one makes the plane an actual terrain. Setter drops the CPU height
+    /// caches + GPU texture so raycast/sculpt/displacement always see the NEW map.</summary>
+    private string _terrainHeightPath = "";
+    public string TerrainHeightPath
+    {
+        get => _terrainHeightPath;
+        set
+        {
+            if (_terrainHeightPath == value) return;
+            _terrainHeightPath = value;
+            _baseHeightCache = null;
+            _sculptHeights = null;
+            _sculptDirty = true;
+            _terrainHeightTex = 0;
+            _terrainHeightTexKey = null;
         }
     }
     /// <summary>Emissive color map (optional; 0 when absent).</summary>
@@ -791,6 +823,7 @@ public unsafe class EditorObject
         !string.IsNullOrEmpty(PbrAlbedoPath) || !string.IsNullOrEmpty(PbrNormalPath) ||
         !string.IsNullOrEmpty(PbrMetallicPath) || !string.IsNullOrEmpty(PbrRoughnessPath) ||
         !string.IsNullOrEmpty(PbrAoPath) || !string.IsNullOrEmpty(PbrHeightPath) ||
+        !string.IsNullOrEmpty(TerrainHeightPath) ||
         !string.IsNullOrEmpty(PbrEmissionPath);
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
@@ -1054,6 +1087,20 @@ public unsafe class EditorObject
     public float TerrainBrushSize { get; set; } = 10f; 
     /// <summary>Height delta per painted frame, in world units (viewport paint tool).</summary>
     public float TerrainBrushStrength { get; set; } = 1f;
+    /// <summary>Weight for a stamp at normalized radius dist (0 = center, 1 = edge).
+    /// `soft` = the existing softness 0..1; profile = TerrainBrushFalloff
+    /// (0=Linear, 1=Smooth, 2=Sharp — shared with the legacy terrain brush).</summary>
+    internal float BrushWeight(float dist, float soft)
+    {
+        float tt = 1f - dist;
+        float profile = TerrainBrushFalloff switch
+        {
+            0 => tt,                                              // Linear
+            2 => tt * tt * tt,                                    // Sharp (cubic-in)
+            _ => tt * tt * (3f - 2f * tt),                        // Smooth
+        };
+        return profile * soft + tt * (1f - soft);
+    }
     /// <summary>Brush edge falloff 0..1 (0 = hard edge, 1 = very soft).</summary>
     public float TerrainBrushSoftness { get; set; } = 1f;
     /// <summary>Layer painted with the texture brush: 0-3.</summary>
@@ -1098,6 +1145,40 @@ public unsafe class EditorObject
     public int SplatHeightLayerCount { get; set; } = 4;
     /// <summary>Softness of the transition between elevation bands (0.01..0.5).</summary>
     public float SplatHeightLayerFeather { get; set; } = 0.08f;
+
+    // ── Slope auto-paint: one splat layer takes over steep terrain (rock/cliff) ──
+    /// <summary>ON = the selected splat layer auto-blends onto STEEP geometry (computed
+    /// from the displaced surface normal — no brush painting needed).</summary>
+    public bool SplatSlopeEnabled { get; set; }
+    /// <summary>Which splat layer (0..3) carries the rock/cliff texture for slope auto-paint.</summary>
+    public int SplatSlopeLayer { get; set; } = 1;
+    /// <summary>Slope where the rock layer starts taking over (0 = any incline, 1 = vertical).</summary>
+    public float SplatSlopeThreshold { get; set; } = 0.35f;
+    /// <summary>Transition softness above the slope threshold (0.01..0.5).</summary>
+    public float SplatSlopeFeather { get; set; } = 0.15f;
+    /// <summary>Editor-only: heatmap overlay of the slope mask (blue = flat, green =
+    /// approaching threshold, red = full rock) for visually tuning the threshold.
+    /// Transient — never persisted with the scene.</summary>
+    public bool SplatShowSlopeMask { get; set; }
+    /// <summary>ON = splat layers sample in world-space triplanar — cliff/vertical faces
+    /// get a side projection instead of the top texture stretched. Planar fallback on
+    /// overhangs (no axis swimming).</summary>
+    public bool SplatTriplanar { get; set; }
+
+    // ── Per-layer height bands (legacy-terrain parity): each splat layer auto-blends
+    //    in an elevation range [min,max] (normalized 0..1 of the TERRAIN heightmap)
+    //    with a sharpness control. Bands 0..3 pair with the splat layer slots. ──
+    /// <summary>8 floats = 4 × (HeightMin, HeightMax). -1 range = band OFF for that layer.
+    /// Overlaps between adjacent bands blend smoothly (layers cross-fade).</summary>
+    public float[] SplatHeightBands { get; set; } = [-1f, -1f, -1f, -1f, -1f, -1f, -1f, -1f];
+    /// <summary>Which splat layer the Inspector band editor is currently showing (editor-only).</summary>
+    public int SplatBandEditLayer { get; set; } = 0;
+    /// <summary>Slope-layer world tiling — separate from the base SplatTiling (cliff rock
+    /// usually needs a different density than ground textures).</summary>
+    public float SplatSlopeTiling { get; set; } = 0.5f;
+    /// <summary>Editor-only: overlay the ACTIVE layer's weight (brush + auto bands) as a
+    /// blue→green→red heatmap so band ranges can be tuned visually. Transient.</summary>
+    public bool SplatShowLayerHeatmap { get; set; }
 
     // ── Splat data (RGBA weight map, painted → dynamic 3D texture) ──
     internal const int SplatRes = 16;
@@ -1177,11 +1258,11 @@ public unsafe class EditorObject
     {
         if (_sculptHeights != null) return _sculptHeights;
         var h = new float[SculptRes * SculptRes];
-        if (!string.IsNullOrEmpty(PbrHeightPath))
+        if (!string.IsNullOrEmpty(TerrainHeightSourcePath))
         {
             try
             {
-                var resolved = PathHelpers.Resolve(PbrHeightPath);
+                var resolved = PathHelpers.Resolve(TerrainHeightSourcePath);
                 if (File.Exists(resolved))
                 {
                     using var stream = File.OpenRead(resolved);
@@ -1213,10 +1294,9 @@ public unsafe class EditorObject
     internal float[]? GetBaseHeightCache()
     {
         if (_baseHeightCache != null) return _baseHeightCache;
-        if (string.IsNullOrEmpty(PbrHeightPath)) return null;
+        if (string.IsNullOrEmpty(TerrainHeightSourcePath)) return null;
         try
-        {
-            var resolved = PathHelpers.Resolve(PbrHeightPath);
+        {                var resolved = PathHelpers.Resolve(TerrainHeightSourcePath);
             if (!File.Exists(resolved)) return null;
             using var stream = File.OpenRead(resolved);
             var img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlue);
@@ -1274,7 +1354,7 @@ public unsafe class EditorObject
         var hit = o + d * t;
         if (hit.X < -0.6f || hit.X > 0.6f || hit.Z < -0.6f || hit.Z > 0.6f) return null;
 
-        bool disp = PbrVertexDisplace && (_pbrTex[5] != 0 || _sculptHeights != null);
+        bool disp = PbrVertexDisplace && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
         float h = 0f;
         if (disp)
         {
@@ -1332,10 +1412,8 @@ public unsafe class EditorObject
                 float dx = (x + 0.5f) / SplatRes - u;
                 float dist = MathF.Sqrt(dx * dx + dz * dz) / MathF.Max(radiusLocal, 1e-4f);
                 if (dist > 1f) continue;
-                float tt = 1f - dist;
-                float w = tt * tt * (3f - 2f * tt) * soft + tt * (1f - soft);
                 int b = (z * SplatRes + x) * 4 + li;
-                _splatData[b] = (byte)Math.Clamp(_splatData[b] + (erase ? -amt : amt) * w * 255f, 0f, 255f);
+                _splatData[b] = (byte)Math.Clamp(_splatData[b] + (erase ? -amt : amt) * BrushWeight(dist, soft) * 255f, 0f, 255f);
                 any = true;
             }
         }
@@ -1470,9 +1548,7 @@ public unsafe class EditorObject
                 float dx = (x + 0.5f) / SculptRes - u;
                 float dist = MathF.Sqrt(dx * dx + dz * dz) / MathF.Max(radiusLocal, 1e-4f);
                 if (dist > 1f) continue;
-                float tt = 1f - dist;
-                float w = tt * tt * (3f - 2f * tt) * soft + tt * (1f - soft);
-                stamp(ref h[z * SculptRes + x], w, z * SculptRes + x);
+                stamp(ref h[z * SculptRes + x], BrushWeight(dist, soft), z * SculptRes + x);
                 any = true;
             }
         }
@@ -1524,6 +1600,27 @@ public unsafe class EditorObject
 
     // ── Dynamic GPU textures ──
     internal uint _sculptTex;
+
+    // ── TERRAIN height GPU texture (unit 15) — separate from the POM height (unit 5) ──
+    internal uint _terrainHeightTex;
+    internal string? _terrainHeightTexKey;
+
+    /// <summary>GPU texture of the TERRAIN height source (vertex displacement + splat
+    /// height bands). While sculpting, the live R8 sculpt texture REPLACES it so the
+    /// displacement + bands see the edited surface. Distinct from the POM map (unit 5).</summary>
+    internal uint EnsureTerrainHeightTexture()
+    {
+        if (_sculptHeights != null)
+        {
+            UploadSculptTexture();          // uploads only when dirty
+            return _sculptTex;
+        }
+        if (string.IsNullOrEmpty(TerrainHeightSourcePath)) return 0;
+        if (_terrainHeightTex != 0 && _terrainHeightTexKey == TerrainHeightSourcePath) return _terrainHeightTex;
+        _terrainHeightTex = new Texture(PathHelpers.Resolve(TerrainHeightSourcePath)).ID;
+        _terrainHeightTexKey = TerrainHeightSourcePath;
+        return _terrainHeightTex;
+    }
 
     internal uint EnsureSculptTexture()
     {
@@ -1696,6 +1793,7 @@ public unsafe class EditorObject
         DisposeLodMeshes();
         DisposeOcclusionQueries();
         if (_sculptTex != 0) { fixed (uint* p = &_sculptTex) GL.DeleteTextures(1, p); _sculptTex = 0; }
+        if (_terrainHeightTex != 0) { fixed (uint* p = &_terrainHeightTex) GL.DeleteTextures(1, p); _terrainHeightTex = 0; _terrainHeightTexKey = null; }
         if (_splatTex != 0) { fixed (uint* p = &_splatTex) GL.DeleteTextures(1, p); _splatTex = 0; }
         InvalidatePbrSplatTextures();
         _lodBuilt = false;
@@ -2260,7 +2358,7 @@ public unsafe class EditorObject
                 // Displacement + a height source) OR when chunks are requested — a
                 // chunked grid gives per-chunk frustum culling even on a FLAT plane
                 // (multi-texture splat terrain without displacement still culls).
-                bool dense = (PbrVertexDisplace && (!string.IsNullOrEmpty(PbrHeightPath) || _sculptHeights != null))
+                bool dense = (PbrVertexDisplace && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null))
                              || PbrVertexChunk > 1;
                 int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
@@ -2466,7 +2564,18 @@ public unsafe class EditorObject
         public int SplatLayer0IsMap;
         // Height-layer auto-terrain bands (u_heightLayer* in the splat shader).
         public int SplatHeightLayerMode, SplatHeightLayerCount, SplatHeightLayerFeather;
+        // Slope auto-paint (u_slopeLayer* in the splat shader) — rock on steep terrain.
+        public int SplatSlopeMode, SplatSlopeLayer, SplatSlopeThreshold, SplatSlopeFeather;
+        public int SplatSlopeDebug;
+        public int SplatLayerHeatmap;  // u_layerHeatmap — per-layer band weight overlay
+        public int SplatTriplanar;
+        public int SplatHeightBandsMin; // vec4 — per-layer band elevation MIN (x=layer0..w=layer3)
+        public int SplatHeightBandsMax; // vec4 — per-layer band elevation MAX
+        public int SplatSlopeTilingLoc; // slope-layer world tiling (separate from the base tiling)
         public int SplatHasAlbedo;
+        public int TerrainHeightMap;   // unit 15 — terrain elevation (vertex displace + height bands); -1 when absent
+        public int TerrainDisplace;    // u_terrainDisplace — displacement samples terrainHeightMap
+        public int TerrainElev;        // u_terrainElev — height bands sample terrainHeightMap
         public readonly int[] SplatAlbedo = new int[MaxSplatLayers];
 
         public PbrUniformSet(uint program)
@@ -2530,7 +2639,20 @@ public unsafe class EditorObject
             SplatHeightLayerMode = GL.GetUniformLocation(Program, "u_heightLayerMode");
             SplatHeightLayerCount = GL.GetUniformLocation(Program, "u_heightLayerCount");
             SplatHeightLayerFeather = GL.GetUniformLocation(Program, "u_heightLayerFeather");
+            SplatSlopeMode = GL.GetUniformLocation(Program, "u_slopeLayerMode");
+            SplatSlopeLayer = GL.GetUniformLocation(Program, "u_slopeLayer");
+            SplatSlopeThreshold = GL.GetUniformLocation(Program, "u_slopeThreshold");
+            SplatSlopeFeather = GL.GetUniformLocation(Program, "u_slopeFeather");
+            SplatSlopeDebug = GL.GetUniformLocation(Program, "u_slopeDebug");
+            SplatLayerHeatmap = GL.GetUniformLocation(Program, "u_layerHeatmap");
+            SplatTriplanar = GL.GetUniformLocation(Program, "u_splatTriplanar");
+            SplatHeightBandsMin = GL.GetUniformLocation(Program, "u_bandMin");
+            SplatHeightBandsMax = GL.GetUniformLocation(Program, "u_bandMax");
+            SplatSlopeTilingLoc = GL.GetUniformLocation(Program, "u_slopeTiling");
             SplatHasAlbedo = GL.GetUniformLocation(Program, "u_splatHasAlbedo");
+            TerrainHeightMap = GL.GetUniformLocation(Program, "terrainHeightMap");
+            TerrainDisplace = GL.GetUniformLocation(Program, "u_terrainDisplace");
+            TerrainElev = GL.GetUniformLocation(Program, "u_terrainElev");
             for (int i = 0; i < MaxSplatLayers; i++)
                 SplatAlbedo[i] = GL.GetUniformLocation(Program, $"u_splatAlbedo{i}");
         }
@@ -2851,7 +2973,7 @@ public unsafe class EditorObject
         // splat add-on survives the displacement toggle.
         bool splat = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial && SplatIsPainted;
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && PbrVertexDisplace && (_pbrTex[5] != 0 || _sculptHeights != null);
+                         && PbrVertexDisplace && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
         var u = (displaced, splat) switch
         {
             (true, true) => _pbrUniformsSplatDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatDisplaceShaderProgram()),
@@ -2935,6 +3057,21 @@ public unsafe class EditorObject
             GL.Uniform1i(u.UseMaps[i], _pbrTex[i] != 0 ? 1 : 0);
         }
 
+        // ── TERRAIN height (unit 15) — the plane-terrain elevation source. Separate
+        //    from the POM height map (unit 5): vertex displacement + splat height
+        //    bands sample HERE; the PBR panel's Height map stays parallax-only.
+        //    While sculpting, the live R8 sculpt texture replaces it (see
+        //    EnsureTerrainHeightTexture) — sculpt strokes reach the GPU every frame. ──
+        bool terrainActive = PrimitiveType == EditorPrimitiveType.Plane
+                             && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
+        if (terrainActive && u.TerrainHeightMap >= 0)
+        {
+            uint terrainTex = EnsureTerrainHeightTexture();
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 15);
+            GL.BindTexture(Const.GL_TEXTURE_2D, terrainTex != 0 ? terrainTex : white);
+            GL.Uniform1i(u.TerrainHeightMap, 15);
+        }
+
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
         // Global PbrTexTiling multiplies into each per-map tiling so the slider
         // scales all maps uniformly in real-time.
@@ -2952,6 +3089,10 @@ public unsafe class EditorObject
         GL.Uniform2f(u.RoughnessTune, TerrainPbrRoughnessStrength, TerrainPbrRoughnessInvert ? 1f : 0f);
         GL.Uniform2f(u.AoTune, TerrainPbrAoStrength, TerrainPbrAoBrightness);
         GL.Uniform3f(u.HeightTune, TerrainPbrHeightStrength, TerrainPbrHeightInvert ? 1f : 0f, TerrainPbrHeightBlur);
+        // Terrain/POM source selection (see unit-15 binding above): displacement +
+        // height bands read the TERRAIN elevation; the POM parallax keeps unit 5.
+        if (u.TerrainDisplace >= 0) GL.Uniform1f(u.TerrainDisplace, terrainActive && displaced ? 1f : 0f);
+        if (u.TerrainElev >= 0) GL.Uniform1i(u.TerrainElev, terrainActive ? 1 : 0);
         if (u.VertexDisplace >= 0) GL.Uniform1f(u.VertexDisplace, displaced ? 1f : 0f);
         if (u.DispScale >= 0) GL.Uniform1f(u.DispScale, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f));
         if (u.DispGrid >= 0) GL.Uniform1f(u.DispGrid, PbrPlaneSegmentsBuilt > 0 ? PbrPlaneSegmentsBuilt : PbrDisplaceSegments);
@@ -2968,7 +3109,7 @@ public unsafe class EditorObject
 
         // ── Splat terrain: dynamic textures + blending uniforms (units 10..14) ──
         bool splatActive = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial
-                           && (SplatIsPainted || SplatHeightLayersEnabled);
+                           && (SplatIsPainted || SplatHeightLayersEnabled || SplatSlopeEnabled);
         if (splatActive && u.SplatMap >= 0)
         {
             if (_sculptHeights != null)
@@ -2984,9 +3125,34 @@ public unsafe class EditorObject
             GL.Uniform1f(u.SplatTiling, Math.Clamp(SplatTiling, 0.01f, 64f));
             // Height-layer bands + which layers actually have a texture (a texture-less
             // band must contribute ZERO weight, not a white stripe, in auto-terrain mode).
-            if (u.SplatHeightLayerMode >= 0) GL.Uniform1i(u.SplatHeightLayerMode, SplatHeightLayersEnabled ? 1 : 0);
+            // Height bands sample the terrain elevation — without a terrain height
+            // source they would read unit-0 garbage, so the mode only enables with one.
+            if (u.SplatHeightLayerMode >= 0) GL.Uniform1i(u.SplatHeightLayerMode,
+                SplatHeightLayersEnabled && (terrainActive || _sculptHeights != null) ? 1 : 0);
             if (u.SplatHeightLayerCount >= 0) GL.Uniform1i(u.SplatHeightLayerCount, Math.Clamp(SplatHeightLayerCount, 1, 4));
             if (u.SplatHeightLayerFeather >= 0) GL.Uniform1f(u.SplatHeightLayerFeather, Math.Clamp(SplatHeightLayerFeather, 0.01f, 0.5f));
+            // Slope auto-paint: rock layer takes over steep geometry (no brush needed).
+            if (u.SplatSlopeMode >= 0) GL.Uniform1i(u.SplatSlopeMode, SplatSlopeEnabled ? 1 : 0);
+            if (u.SplatSlopeLayer >= 0) GL.Uniform1i(u.SplatSlopeLayer, Math.Clamp(SplatSlopeLayer, 0, 3));
+            if (u.SplatSlopeThreshold >= 0) GL.Uniform1f(u.SplatSlopeThreshold, Math.Clamp(SplatSlopeThreshold, 0f, 1f));
+            if (u.SplatSlopeFeather >= 0) GL.Uniform1f(u.SplatSlopeFeather, Math.Clamp(SplatSlopeFeather, 0.01f, 0.5f));
+            if (u.SplatSlopeDebug >= 0) GL.Uniform1i(u.SplatSlopeDebug, SplatShowSlopeMask ? 1 : 0);
+            if (u.SplatTriplanar >= 0) GL.Uniform1i(u.SplatTriplanar, SplatTriplanar ? 1 : 0);
+            // Per-layer elevation bands (legacy-terrain parity): 4 × (min,max) as two
+            // vec4 uploads. min==max == -1 disables that layer's band. Bands sample the
+            // SAME elevation source as the auto-bands mode (terrain unit 15 / sculpt).
+            if (u.SplatHeightBandsMin >= 0)
+            {
+                unsafe
+                {
+                    Span<float> mn = [SplatHeightBands[0], SplatHeightBands[2], SplatHeightBands[4], SplatHeightBands[6]];
+                    Span<float> mx = [SplatHeightBands[1], SplatHeightBands[3], SplatHeightBands[5], SplatHeightBands[7]];
+                    GL.Uniform4f(u.SplatHeightBandsMin, mn[0], mn[1], mn[2], mn[3]);
+                    GL.Uniform4f(u.SplatHeightBandsMax, mx[0], mx[1], mx[2], mx[3]);
+                }
+            }
+            if (u.SplatSlopeTilingLoc >= 0) GL.Uniform1f(u.SplatSlopeTilingLoc, Math.Clamp(SplatSlopeTiling, 0.01f, 64f));
+            if (u.SplatLayerHeatmap >= 0) GL.Uniform1i(u.SplatLayerHeatmap, SplatShowLayerHeatmap ? 1 : 0);
             if (u.SplatHasAlbedo >= 0)
             {
                 GL.Uniform1i(u.SplatHasAlbedo, HasSplatTexture(0));

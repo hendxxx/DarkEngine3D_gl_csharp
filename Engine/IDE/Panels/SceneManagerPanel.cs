@@ -1049,6 +1049,13 @@ public class SceneManagerPanel
                         SplatHeightLayersEnabled = obj.SplatHeightLayersEnabled,
                         SplatHeightLayerCount = obj.SplatHeightLayerCount,
                         SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
+                        SplatHeightBands = (float[])obj.SplatHeightBands.Clone(),
+                        SplatSlopeTiling = obj.SplatSlopeTiling,
+                        SplatSlopeEnabled = obj.SplatSlopeEnabled,
+                        SplatSlopeLayer = obj.SplatSlopeLayer,
+                        SplatSlopeThreshold = obj.SplatSlopeThreshold,
+                        SplatSlopeFeather = obj.SplatSlopeFeather,
+                        SplatTriplanar = obj.SplatTriplanar,
                         //  PBR material (Box/Sphere/flat plane) 
                         PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                         PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
@@ -1056,6 +1063,11 @@ public class SceneManagerPanel
                         PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
                         PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
                         PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
+                        // Plane terrain heightmap (separate from the POM map). Migration:
+                        // scenes authored BEFORE the split stored the terrain map in
+                        // PbrHeightPath — keep it working both ways.
+                        TerrainHeightPath = PathHelpers.MakeRelative(
+                            !string.IsNullOrEmpty(obj.TerrainHeightPath) ? obj.TerrainHeightPath : obj.PbrHeightPath),
                         PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
@@ -1512,6 +1524,13 @@ public class SceneManagerPanel
                         obj.SplatHeightLayersEnabled = objData.SplatHeightLayersEnabled;
                         obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
                         obj.SplatHeightLayerFeather = Math.Clamp(objData.SplatHeightLayerFeather, 0.01f, 0.5f);
+                        if (objData.SplatHeightBands != null && objData.SplatHeightBands.Length == 8) Array.Copy(objData.SplatHeightBands, obj.SplatHeightBands, 8);
+                        obj.SplatSlopeTiling = Math.Clamp(objData.SplatSlopeTiling, 0.01f, 64f);
+                        obj.SplatSlopeEnabled = objData.SplatSlopeEnabled;
+                        obj.SplatSlopeLayer = Math.Clamp(objData.SplatSlopeLayer, 0, 3);
+                        obj.SplatSlopeThreshold = Math.Clamp(objData.SplatSlopeThreshold, 0f, 1f);
+                        obj.SplatSlopeFeather = Math.Clamp(objData.SplatSlopeFeather, 0.01f, 0.5f);
+                        obj.SplatTriplanar = objData.SplatTriplanar;
                         //  Per-layer PBR (PBR is per texture) 
                         obj.TerrainLayers = objData.TerrainLayers?.Select(l => (l ?? new TerrainPbrLayerData()).WithResolvedPaths()).ToArray()
                             ?? obj.TerrainLayers;
@@ -1546,6 +1565,12 @@ public class SceneManagerPanel
                         obj.PbrRoughnessPath = PathHelpers.Resolve(objData.PbrRoughnessPath);
                         obj.PbrAoPath = PathHelpers.Resolve(objData.PbrAoPath);
                         obj.PbrHeightPath = PathHelpers.Resolve(objData.PbrHeightPath);
+                        // Terrain heightmap: prefer the new field; fall back to the legacy
+                        // PbrHeightPath (scenes authored before the split) — but only when
+                        // this is a PLANE (only planes have terrain displacement).
+                        obj.TerrainHeightPath = !string.IsNullOrEmpty(objData.TerrainHeightPath)
+                            ? PathHelpers.Resolve(objData.TerrainHeightPath)
+                            : (obj.PrimitiveType == EditorPrimitiveType.Plane ? obj.PbrHeightPath : "");
                         obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
                         // AFTER the height path: the setter clears the sculpt buffer, so
                         // decoding the persisted sculpt data must come last or the loaded
@@ -2001,12 +2026,15 @@ public class SceneManagerPanel
                             SplatHeightLayersEnabled = obj.SplatHeightLayersEnabled,
                             SplatHeightLayerCount = obj.SplatHeightLayerCount,
                             SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
+                            SplatHeightBands = (float[])obj.SplatHeightBands.Clone(),
+                            SplatSlopeTiling = obj.SplatSlopeTiling,
                             PbrAlbedoPath = PathHelpers.MakeRelative(obj.PbrAlbedoPath),
                             PbrNormalPath = PathHelpers.MakeRelative(obj.PbrNormalPath),
                             PbrMetallicPath = PathHelpers.MakeRelative(obj.PbrMetallicPath),
                             PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
                             PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
                             PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
+                            TerrainHeightPath = PathHelpers.MakeRelative(obj.TerrainHeightPath),
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,

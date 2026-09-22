@@ -29,6 +29,19 @@ uniform int u_heightLayerMode = 0;   // 1 = layers auto-assigned by ELEVATION (t
 uniform int u_heightLayerCount = 4;  // active bands (1..4) in height-layer mode
 uniform float u_heightLayerFeather = 0.08; // band transition softness (0.01..0.5)
 uniform vec4 u_splatHasAlbedo = vec4(1.0); // per-layer texture presence (0 = empty slot)
+uniform int u_slopeLayerMode = 0;      // 1 = one layer auto-paints steep slopes (rock/cliff)
+uniform int u_slopeLayer = 1;          // splat layer carrying the rock texture (0..3)
+uniform float u_slopeThreshold = 0.35; // slope where rock starts (0 = any incline, 1 = vertical)
+uniform float u_slopeFeather = 0.15;   // transition softness above the threshold
+uniform int u_slopeDebug = 0;          // 1 = heatmap overlay of the slope mask (editor tuning aid)
+uniform vec4 u_bandMin = vec4(-1.0);   // per-layer elevation band MIN (x=layer0..w=layer3; -1 = band off)
+uniform vec4 u_bandMax = vec4(-1.0);   // per-layer elevation band MAX
+uniform int u_layerHeatmap = 0;        // 1 = overlay the highest band weight per layer (band tuning aid)
+uniform float u_slopeTiling = 0.5;     // slope-layer world tiling (separate from u_splatTiling)
+uniform int u_splatTriplanar = 0;      // 1 = sample splat layers in WORLD-SPACE triplanar
+                                       //     (no texture stretch on cliffs / vertical walls)
+uniform sampler2D terrainHeightMap;    // unit 15 — TERRAIN elevation (vertex displace + height bands)
+uniform int u_terrainElev = 0;         // 1 = height bands sample terrainHeightMap instead of the POM map
 uniform vec3 u_splatTint0 = vec3(1.0);
 uniform vec3 u_splatTint1 = vec3(1.0);
 uniform vec3 u_splatTint2 = vec3(1.0);
@@ -315,6 +328,23 @@ vec3 calcLocalLights(vec3 N, vec3 V, vec3 albedo, float roughness, float metalli
 // ======================================================
 // SHADOW — Poisson PCF (same math as the terrain shader)
 // ======================================================
+// ======================================================
+// TRIPLANAR SAMPLING (world-space, for splat layers)
+// ======================================================
+// Projects a texture from X/Y/Z planes by the world normal — a cliff wall gets the
+// texture's side projection instead of the top texture stretched vertically.
+// Weights emphasize the dominant axis (pow 4 ≈ tight transitions); blend renorma-
+// lized to 1. `scale` = tiles per world unit. NOTE: `g` here is GEOMETRIC-only —
+// never feed the tangent-frame branch (g > 0.75) in here, or every gouraud face
+// flips axis with its interpolated normal. The caller gates that branch off.
+vec3 sampleTriplanar(sampler2D tex, vec3 wp, vec3 g, float scale) {
+    float n = g.x + g.y + g.z;
+    vec3 c = texture(tex, wp.yz * scale).rgb * (g.x / n)
+           + texture(tex, wp.xz * scale).rgb * (g.y / n)
+           + texture(tex, wp.xy * scale).rgb * (g.z / n);
+    return c;
+}
+
 float randomAngle(vec2 uv) {
     return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
 }
@@ -377,6 +407,14 @@ void main() {
     //    meshes (Box/Sphere) never see backfaces — no change for them.
     if (!gl_FrontFacing) norm = -norm;
     float slope = 1.0 - norm.y;
+    // Slope auto-paint debug capture (heatmap overlay at the end of main):
+    // slopeMaskRock < 0 = slope mode off; otherwise it holds the rock weight
+    // and slopeMaskSlope the raw geometric slope.
+    float slopeMaskRock = -1.0;
+    float slopeMaskSlope = 0.0;
+    // Per-layer band capture (u_layerHeatmap overlay): elevation + 4 band weights.
+    float bandElevDbg = -1.0;
+    vec4 bandWDbg = vec4(0.0);
     vec3 viewDir = normalize(viewPos - FragPos);
     // Per-map UV transforms (each map has its own tiling/offset in TextureSettings).
     // The albedo map defines the base UV space used by parallax below.
@@ -526,7 +564,12 @@ void main() {
         //    (max blend), so the auto terrain look comes free and the brush still
         //    overrides any band locally.
         if (u_heightLayerMode == 1 && u_heightLayerCount >= 1) {
-            float hn = sampleHeight(heightMap, uvHeight, 0.0);
+            // Elevation source: the TERRAIN heightmap (unit 15, raw 0..1) when the
+            // plane is a displaced terrain — NOT the POM detail map (unit 5), which
+            // is calibrated as parallax depth and would band on noise, not elevation.
+            float hn = u_terrainElev == 1
+                ? clamp(texture(terrainHeightMap, uvHeight).r, 0.0, 1.0)
+                : sampleHeight(heightMap, uvHeight, 0.0);
             float f = max(u_heightLayerFeather, 0.01);
             int n = clamp(u_heightLayerCount, 1, 4);
             for (int i = 0; i < 4; i++) {
@@ -540,10 +583,60 @@ void main() {
                 w[i] = max(w[i], band * u_splatHasAlbedo[i]);
             }
         }
-        if (u_splatCount >= 2 || u_heightLayerMode == 1) {
+
+        // ── PER-LAYER ELEVATION BANDS (legacy-terrain parity): each layer can carry
+        //    its own [min,max] range (u_bandMin/u_bandMax; -1 = off). Inside the range
+        //    the layer fades in with a feathered smoothstep, so adjacent bands with
+        //    overlapping ranges cross-fade like the legacy dynamic layer system.
+        if (bandElevDbg < 0.0 && (u_bandMin.x + u_bandMin.y + u_bandMin.z + u_bandMin.w) > -3.5) {
+            float hn = u_terrainElev == 1
+                ? clamp(texture(terrainHeightMap, uvHeight).r, 0.0, 1.0)
+                : sampleHeight(heightMap, uvHeight, 0.0);
+            bandElevDbg = hn;
+            for (int i = 0; i < 4; i++) {
+                float lo = u_bandMin[i], hi = u_bandMax[i];
+                if (hi <= lo) continue;                     // unset / inverted = off
+                // Feather scales with the band width (5% of it, 0.02 floor).
+                float f = max((hi - lo) * 0.05, 0.02);
+                float band = smoothstep(lo - f, lo + f, hn) * (1.0 - smoothstep(hi - f, hi + f, hn));
+                bandWDbg[i] = band;
+                w[i] = max(w[i], band * u_splatHasAlbedo[i]);
+            }
+        }
+        // ── SLOPE AUTO-PAINT: the slope layer takes over on steep terrain —
+        //    geometric slope s = 1 − |N·up| (the displaced vertex stage re-derives
+        //    normals from the height gradient, so this follows the REAL sculpted
+        //    terrain without any brush). Smoothstep transition at u_slopeThreshold;
+        //    like the height bands it overrides manual paint via max-blend, and it
+        //    ATTENUATES the other layers so full cliffs turn fully rocky instead of
+        //    a muddy mix. An empty slope-layer slot must never fire (u_splatHasAlbedo
+        //    gate) — otherwise cliffs would render as blank white stripes.
+        if (u_slopeLayerMode == 1) {
+            int si = clamp(u_slopeLayer, 0, 3);
+            float s = clamp(1.0 - abs(norm.y), 0.0, 1.0);
+            float rock = smoothstep(u_slopeThreshold, u_slopeThreshold + max(u_slopeFeather, 0.01), s);
+            slopeMaskRock = rock;       // captured for the debug heatmap even without textures
+            slopeMaskSlope = s;
+            if (u_splatHasAlbedo[si] > 0.5 && rock > 0.001) {
+                w[si] = max(w[si], rock);
+                for (int i = 0; i < 4; i++)
+                    if (i != si) w[i] *= 1.0 - rock;
+            }
+        }
+        // ── TRIPLANAR AXIS WEIGHTS (world-space, computed once per fragment):
+        //    pow(|N|,4) emphasizes the dominant axis (tight X/Y/Z transitions).
+        //    splatGeo = the face fold-sign: negative ONLY on backfaces (the shader
+        //    flips `norm` via !gl_FrontFacing above) — there triplanar must stay OFF
+        //    (axes would flip with the mirrored normal → texture swimming while
+        //    orbiting); every front-face steepness (cliffs included, N·up ≈ 0) uses
+        //    triplanar. JANGAN pakai pow-weight tw.y sebagai gate — hillside 45°
+        //    dapat tw.y = 0.25 → fitur mati justru saat dibutuhkan.
+        vec3 tw = normalize(pow(abs(norm), vec3(4.0)));
+        float splatGeo = gl_FrontFacing ? 1.0 : -1.0;
+        if (u_splatCount >= 2 || u_heightLayerMode == 1 || u_slopeLayerMode == 1) {
             float sum = w.r + w.g + w.b + w.a;
             if (sum > 0.001) {
-                vec2 suv = TexCoord * u_uvScale[5] * max(u_splatTiling * 2.0, 1e-3) + u_uvOffset[5];
+                vec2 suv = TexCoord * u_uvScale[5] * max(u_splatTiling * 2.0, 0.001) + u_uvOffset[5];
                 // Layer 0 without its own albedo texture paints the base albedo MAP
                 // (its own UV space) instead of a blank white.
                 vec3 a0 = u_splatLayer0IsMap == 1
@@ -552,6 +645,48 @@ void main() {
                 vec3 a1 = texture(u_splatAlbedo1, suv).rgb * u_splatTint1;
                 vec3 a2 = texture(u_splatAlbedo2, suv).rgb * u_splatTint2;
                 vec3 a3 = texture(u_splatAlbedo3, suv).rgb * u_splatTint3;
+                // ── TRIPLANAR (opt-in): world-space projection per layer so steep
+                //    faces (cliffs, hillsides) don't stretch their texture. Falls back
+                //    to planar UV when the surface stays tangent-frame (overhangs):
+                //    no swimming / flipping while walking around an overhang.
+                if (u_splatTriplanar == 1 && splatGeo >= 0.0) {
+                    float tScale = max(u_splatTiling * 2.0 * max(abs(u_uvScale[5].x), abs(u_uvScale[5].y)), 0.001);
+                    vec3 t0 = sampleTriplanar(u_splatAlbedo0, FragPos, tw, tScale);
+                    vec3 t1 = sampleTriplanar(u_splatAlbedo1, FragPos, tw, tScale);
+                    vec3 t2 = sampleTriplanar(u_splatAlbedo2, FragPos, tw, tScale);
+                    vec3 t3 = sampleTriplanar(u_splatAlbedo3, FragPos, tw, tScale);
+                    // Layer 0 keeps its albedo-MAP fallback (map's own UV space)
+                    // when it has no texture of its own.
+                    a0 = u_splatLayer0IsMap == 1
+                        ? texture(albedoMap, uvAlbedo - pomOffPerMap[0]).rgb * u_splatTint0
+                        : t0 * u_splatTint0;
+                    a1 = t1 * u_splatTint1;
+                    a2 = t2 * u_splatTint2;
+                    a3 = t3 * u_splatTint3;
+                }
+                // ── SLOPE LAYER TILING (legacy-terrain parity): the rock layer gets its
+                //    OWN world tiling (u_slopeTiling) — cliffs usually need a different
+                //    texture density than the ground layers. Resamples the slope layer's
+                //    albedo at its own scale and mixes it into its slot by the same rock
+                //    weight (planar UV — rock keeps its own mapping even under triplanar).
+                if (u_slopeLayerMode == 1) {
+                    int si = clamp(u_slopeLayer, 0, 3);
+                    float s2 = clamp(1.0 - abs(norm.y), 0.0, 1.0);
+                    float rock2 = smoothstep(u_slopeThreshold, u_slopeThreshold + max(u_slopeFeather, 0.01), s2);
+                    if (rock2 > 0.001 && u_splatHasAlbedo[si] > 0.5) {
+                        vec2 suvS = TexCoord * u_uvScale[5] * max(u_slopeTiling * 2.0, 0.001) + u_uvOffset[5];
+                        vec3 rockTex = si == 0 ? texture(u_splatAlbedo0, suvS).rgb
+                                     : si == 1 ? texture(u_splatAlbedo1, suvS).rgb
+                                     : si == 2 ? texture(u_splatAlbedo2, suvS).rgb
+                                               : texture(u_splatAlbedo3, suvS).rgb;
+                        vec3 tintS = si == 0 ? u_splatTint0 : si == 1 ? u_splatTint1 : si == 2 ? u_splatTint2 : u_splatTint3;
+                        rockTex *= tintS;
+                        if (si == 0)      a0 = mix(a0, rockTex, rock2);
+                        else if (si == 1) a1 = mix(a1, rockTex, rock2);
+                        else if (si == 2) a2 = mix(a2, rockTex, rock2);
+                        else              a3 = mix(a3, rockTex, rock2);
+                    }
+                }
                 albedo = (a0 * w.r + a1 * w.g + a2 * w.b + a3 * w.a) / sum;
             }
         }
@@ -709,6 +844,31 @@ void main() {
             cColor = mix(prevColor, cColor, cascadeBlendT);
         }
         result = mix(result, cColor, u_CascadeOverlayAlpha);
+    }
+
+    // ── SLOPE MASK DEBUG (PbrPanel "Show slope mask") — heatmap of the auto-rock
+    //    weight so the threshold can be tuned visually: blue = flat / no rock,
+    //    green = approaching the threshold, green→red = the feather zone (the
+    //    blend band itself), full red = full rock (what the slope layer paints).
+    //    Editor aid only — no effect on the production look.
+    if (u_slopeDebug == 1 && slopeMaskRock >= 0.0) {
+        float t1 = smoothstep(0.0, max(u_slopeThreshold, 0.01), slopeMaskSlope);
+        vec3 heat = mix(vec3(0.15, 0.35, 1.0), vec3(0.1, 0.85, 0.25), t1);
+        heat = mix(heat, vec3(1.0, 0.12, 0.05), slopeMaskRock);
+        result = mix(result, heat, 0.75);
+    }
+
+    // ── LAYER BAND HEATMAP ("Show layer heatmap") — per-layer elevation-band weight:
+    //    hue = the dominant layer (1 blue, 2 green, 3 yellow, 4 red), brightness =
+    //    weight (dark gray = no band covers this elevation). Band ranges can be tuned
+    //    visually. Editor aid only — not saved.
+    if (u_layerHeatmap == 1 && bandElevDbg >= 0.0) {
+        float mxw = max(max(bandWDbg.r, bandWDbg.g), max(bandWDbg.b, bandWDbg.a));
+        vec3 hc = bandWDbg.r >= mxw ? vec3(0.15, 0.35, 1.0)
+                : bandWDbg.g >= mxw ? vec3(0.1, 0.85, 0.25)
+                : bandWDbg.b >= mxw ? vec3(1.0, 0.9, 0.1)
+                                    : vec3(1.0, 0.15, 0.05);
+        result = mix(result, hc * (0.22 + 0.78 * mxw), 0.72);
     }
 
     // ── TONEMAP + GAMMA ──

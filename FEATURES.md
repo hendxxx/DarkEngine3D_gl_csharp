@@ -640,6 +640,32 @@ identical to the standard look (zero regression).
 - Manual brush paint overrides locally (max blend), so the base terrain look is free
 - Works without any paint; needs a height map (or sculpt buffer) for elevation data
 
+**Slope Auto-Paint (rock on steep terrain)**:
+- `SplatSlopeEnabled` — one splat layer (`SplatSlopeLayer`, 0-3) auto-blends onto STEEP
+  geometry with no brush painting: slope = 1 − |N·up| computed from the displaced
+  surface normal, so sculpted cliffs and hillsides get rocky automatically
+- `SplatSlopeThreshold` (0-1, default 0.35 — 0 = any incline, 1 = vertical walls) and
+  `SplatSlopeFeather` transition softness (smoothstep above the threshold)
+- Overrides manual paint via max-blend AND attenuates the other layers (a full cliff
+  renders fully rocky, not a muddy mix); evaluated AFTER height bands so rock wins on
+  steep faces regardless of elevation
+- An empty rock-layer slot never fires (`u_splatHasAlbedo` gate — no white cliffs);
+  gate `splatActive` includes the slope toggle, so it works with zero paint
+- **Slope mask heatmap** ("Show slope mask" in the PBR panel) — viewport overlay for
+  visual threshold tuning: blue = flat, green = approaching the threshold, green→red =
+  the feather blend zone, full red = full rock; works even with no rock albedo assigned
+  (pure geometry preview). Editor aid only — transient, never persisted
+
+**Triplanar sampling** (`SplatTriplanar`):
+- Opt-in world-space X/Y/Z projection for all 4 splat layers — cliff walls get the rock
+  texture's SIDE projection instead of the top texture stretched vertically; tiling
+  becomes repetitions per world unit (shares the `SplatTiling` slider)
+- Axis weights pow(|N|,4) (tight transitions, renormalized); overhangs (folded normal,
+  `g.y < 0`) fall back to planar UV so the texture never swims while orbiting
+- Layer-0 albedo-MAP fallback stays planar (the map owns its own authored UVs)
+- Works for painted splats, height bands and slope auto-rock alike (replaces the layer
+  sampling inside the same blend)
+
 **Height sculpting (user-drawable)**:
 - Runtime R8 buffer 512² (`EnsureSculptBuffer` decodes the authored height map once —
   sculpt SMOOTHS the authored terrain, it does not replace it)
@@ -671,6 +697,8 @@ drops the CPU height caches so raycast/sculpt always see the new map)
 - `SplatPaintedData` / `PbrSculptData` — base64, empty = never painted (no size cost)
 - `PbrLodEnabled` / `PbrLodDistance` / `PbrLodDistance2` / `PbrOcclusionEnabled`
 - `SplatHeightLayersEnabled` / `SplatHeightLayerCount` / `SplatHeightLayerFeather`
+- `SplatSlopeEnabled` / `SplatSlopeLayer` / `SplatSlopeThreshold` / `SplatSlopeFeather`
+- `SplatTriplanar`
 
 ---
 
