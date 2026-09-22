@@ -65,15 +65,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public readonly static float ObjectLOD3_Distance = 250f;
 
         // ============================
-        // TERRAIN LOD — distance thresholds untuk terrain chunk
-        // (dalam satuan world unit. Gunakan multiplier chunk size atau absolute)
-        // ============================
-        public readonly static float TerrainLOD0_Distance = 60f;
-        public readonly static float TerrainLOD1_Distance = 130f;
-        public readonly static float TerrainLOD2_Distance = 250f;
-        public readonly static float TerrainLOD3_Distance = 500f;
-
-        // ============================
         // ANIMATION LOD
         // ============================
         public readonly static float AnimLOD0_Distance = 35f;
@@ -273,12 +264,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
 
         // Master toggle for occlusion culling (applies to both modes)
         public static bool UseOcclusion = true;
-
-        // Distance threshold untuk terrain occlusion quality (Software mode only):
-        // Object < TerrainOcclusionNearDist → pakai 1-corner ray-march (akurat)
-        // Object >= TerrainOcclusionNearDist → pakai quick height check (cepat)
-        // Default 50f = ObjectLOD1_Distance
-        public static float TerrainOcclusionNearDist = 50f;
 
         // Hi-Z resolution scale (0-1). 0.25f = 32×18, 0.5f = 64×36, 1.0f = 128×72
         // Lebih besar = lebih akurat, tapi lebih lambat (GetHeightAt calls)

@@ -2,7 +2,6 @@ using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
-using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Numerics;
 
@@ -593,7 +592,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // -----------------------------------------------------------------------
         //  Movement with LOD
         // -----------------------------------------------------------------------
-        public void Move(nint window, Camera camera, float dt, TerrainChunk? terrain, Vector3 center, float maxRadius)
+        public void Move(nint window, Camera camera, float dt, Vector3 center, float maxRadius)
         { 
             // ============================
             // PLAYER CONTROL
@@ -708,19 +707,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 // backward deceleration stays backward (not snap to forward)
 
                 // ── Apply movement to player position directly (no Jolt) ──
-                if (_currentSpeed > 0.01f && terrain != null)
+                if (_currentSpeed > 0.01f)
                 {
                     var pos = _obj.Position;
                     pos.X += _moveDirection.X * _currentSpeed * dt;
                     pos.Z += _moveDirection.Z * _currentSpeed * dt;
-                    pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
-                    _obj.Position = pos;
-                }
-                else if (terrain != null)
-                {
-                    // Still snap Y to terrain when standing still
-                    var pos = _obj.Position;
-                    pos.Y = terrain.GetHeightAt(pos.X, pos.Z);
                     _obj.Position = pos;
                 }
 
@@ -864,22 +855,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // NPC AI (kode lama tetap)
             // ============================
 
-            if (Dead)
-            {
-                var dp = _obj.Position;
-                dp.Y = terrain.GetHeightAt(dp.X, dp.Z);
-                _obj.Position = dp;
+            if (Dead || AiLOD == AiLodLevel.Frozen)
                 return;
-            }
-
-            // LOD3: hanya clamp Y
-            if (AiLOD == AiLodLevel.Frozen)
-            {
-                var pF = _obj.Position;
-                pF.Y = terrain.GetHeightAt(pF.X, pF.Z);
-                _obj.Position = pF;
-                return;
-            }
 
             var p = _obj.Position;
 
@@ -920,8 +897,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
     p.X += stepX;
                 p.Z += stepZ;
-            }            // ── NPC clamp to terrain height ──
-            p.Y = terrain.GetHeightAt(p.X, p.Z);
+            }
 
             _obj.Position = p;
         }

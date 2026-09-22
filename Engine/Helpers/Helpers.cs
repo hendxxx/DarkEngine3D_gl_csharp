@@ -1,6 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
-using DarkEngine3D_gl_csharp.Engine.Terrains;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using StbImageSharp;
 using System.Numerics;
@@ -71,24 +70,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
     }
 
 
-    public class TerrainsHelpers
-    {
-        // Ini untuk Noice
-        public static Vector3 CalculateNormalForNoice(float x, float z)
-        {
-            float off = 0.1f;
-            float hL = Noise.GetHeight((x - off), z);
-            float hR = Noise.GetHeight((x + off), z);
-            float hD = Noise.GetHeight(x, (z - off));
-            float hU = Noise.GetHeight(x,  (z + off));
-
-            // Semakin curam tanah, semakin kuat bayangannya
-            Vector3 normal = new(hL - hR, 2.0f * off, hD - hU);
-            return Vector3.Normalize(normal);
-        }
-      
-    }
-
     
     public class ShaderHelpers
     {
@@ -106,71 +87,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             float a = OGLMath.Lerp(1.6f, 0.55f, sunFacing);
             float b = OGLMath.Lerp(1.0f, 1.8f, tMalam);
             return a * b;
-        }
-
-        public static bool RaycastSun(float haloRadius, Camera cam, Lights lights, TerrainChunk terrain)
-        {
-            Vector3 origin = cam.Position;
-            Vector3 sunDir = Vector3.Normalize(lights.SunDir);
-
-            // radius sudut matahari (harus sama dengan shader)
-            float angularRadius = haloRadius;
-
-            // buat basis koordinat untuk offset
-            Vector3 up = Math.Abs(sunDir.Y) > 0.99f ? Vector3.UnitZ : Vector3.UnitY;
-            Vector3 right = Vector3.Normalize(Vector3.Cross(up, sunDir));
-            Vector3 sunUp = Vector3.Cross(sunDir, right);
-
-            // 5 arah raycast
-            Vector3[] dirs = new Vector3[]
-            {
-                sunDir, // pusat
-                Vector3.Normalize(sunDir + sunUp * angularRadius),     // atas
-                Vector3.Normalize(sunDir - sunUp * angularRadius),     // bawah
-                Vector3.Normalize(sunDir + right * angularRadius),     // kanan
-                Vector3.Normalize(sunDir - right * angularRadius),     // kiri
-            };
-
-            // cek semua titik
-            foreach (var dir in dirs)
-            {
-                if (!RaycastSingle(origin, dir, terrain))
-                    return false; // masih ada bagian matahari yang terlihat
-            }
-
-            return true; // seluruh matahari tertutup terrain
-        }
-
-        public static bool RaycastSingle(Vector3 origin, Vector3 dir, TerrainChunk terrain)
-        {
-            float maxDistance = 30000f;
-            float step = 5f;
-
-            float prevDiff = float.MaxValue;
-
-            for (float d = 0; d < maxDistance; d += step)
-            {
-                Vector3 p = origin + dir * d;
-                float terrainHeight = terrain.GetHeightAt(p.X, p.Z);
-                float diff = p.Y - terrainHeight;
-
-                if (diff < 0)
-                    return true; // ray menabrak terrain
-
-                if (diff < 0 && prevDiff > 0)
-                {
-                    float t = prevDiff / (prevDiff - diff);
-                    float hitDist = (d - step) + t * step;
-                    if (hitDist > 0)
-                        return true;
-                }
-
-                prevDiff = diff;
-
-                step = OGLMath.Lerp(5f, 50f, d / maxDistance);
-            }
-
-            return false;
         }
 
 

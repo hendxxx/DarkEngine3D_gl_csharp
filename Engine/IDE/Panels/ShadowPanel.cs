@@ -14,7 +14,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
     /// <item>Cascade quality preset (Low/Medium/High/Ultra) → live CSM rebuild.</item>
     /// <item>Per-cascade resolutions + split distances (cascade transition placement).</item>
     /// <item>Cascade blend range (transition width, fraction of the split distance).</item>
-    /// <item>Bias: constant + slope + minimum for the main/terrain shader, separate
+    /// <item>Bias: constant + slope + minimum for the main shader, separate
     /// values for the gltf (GLB) shader, plus the normal bias used when casting shadows.</item>
     /// <item>Filter mode (PCF/PCSS, same as the H key) and depth-map linear/nearest.</item>
     /// </list>
@@ -159,7 +159,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             // ════════════════════════════════════════════════════════════════
             if (ImGui.CollapsingHeader("Bias", ImGuiTreeNodeFlags.DefaultOpen))
             {
-                ImGui.TextDisabled("Terrain / primitives:");
+
                 ImGui.SetNextItemWidth(240);
                 if (ImGui.SliderFloat("Constant bias##c", ref _constantBias, 0.0f, 0.01f, "%.5f"))
                     ShadowSettings.ConstantBias = _constantBias;
@@ -289,7 +289,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             //  for verifying how the NDC bias translates into world-space offsets
             //  ════════════════════════════════════════════════════════════════
             // NOTE: the multiplier formula below must stay in sync with the shaders
-            // (fragment_shader.glsl / terrainEditor_fragment.glsl / gltf_fragment.glsl).
+            // (fragment_shader.glsl / gltf_fragment.glsl).
             if (ImGui.CollapsingHeader("Depth range debug"))
             {
                 var dr = CSM.LastDepthRanges;
@@ -319,7 +319,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     ImGui.Text($"Cascade {i}: range {range:F0} m · texel {tw[i]:F2} m · bias× {mult[i]:F2} · "
                              + $"offset flat {flat:F2} m / steep {steep:F2} m");
                 }
-                ImGui.TextDisabled($"Offset = bias_ndc × depth range, capped per cascade ({maxWb[0]:F2} / {maxWb[1]:F2} / {maxWb[2]:F2} m). Flat = N·L 1, steep = N·L 0 (terrain values).");
+                ImGui.TextDisabled($"Offset = bias_ndc × depth range, capped per cascade ({maxWb[0]:F2} / {maxWb[1]:F2} / {maxWb[2]:F2} m). Flat = N·L 1, steep = N·L 0.");
                 ImGui.TextDisabled("World offset is texel-proportional: {flatBase * mult[0] * dr[0] / t0:F1} flat / {steepBase * mult[0] * dr[0] / t0:F1} steep texels in cascade 0 — same across cascades while the range clamp is inactive.");
 
                 // PCF/PCSS softness — radius is in TEXELS, so per-cascade radius now scales

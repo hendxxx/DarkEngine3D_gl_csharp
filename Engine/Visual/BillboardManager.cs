@@ -757,9 +757,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
                 // Shadow sample offset: place the shadow sample at ~half the
                 // billboard extent above ground so it detects canopy/trunk
-                // shadows instead of comparing against the terrain surface.
+                // shadows instead of comparing against ground surfaces.
                 // Minimum 1m ensures even small objects (bushes, rocks) stay
-                // clear of the terrain self-shadow issue.
+                // clear of the self-shadow issue.
                 if (_bbShadowOffsetYLoc != -1)
                     GL.Uniform1f(_bbShadowOffsetYLoc, MathF.Max(radius * 0.5f, 1.0f));
 

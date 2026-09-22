@@ -10,7 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// face passes), each Spotlight into a 1024² perspective depth map — so every light
     /// casts its own shadow instead of only the sun (CSM) doing so.
     ///
-    /// The caster renderers (ObjectManager / TerrainChunk / EditorObjectManager) are
+    /// The caster renderers (ObjectManager / EditorObjectManager) are
     /// reused as-is through the CSM shim: they read <see cref="CSM.LightSpaceMatrices"/>
     /// / <see cref="CSM.OrthoCorners"/> and self-upload the light-space matrix, so this
     /// class only has to bind the right FBO, set the face matrix and invoke the same
@@ -365,7 +365,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         private void UploadLightSpace(int spotLs, int skinnedLs, int staticAlphaLs)
         {
-            // Terrain / skinned / static-alpha casters read the light-space uniform from the
+            // Skinned / static-alpha casters read the light-space uniform from the
             // currently-bound program; the editor-object renderers self-upload from the CSM.
             fixed (float* p = &LightSpaceMatrices[0].M11)
             {

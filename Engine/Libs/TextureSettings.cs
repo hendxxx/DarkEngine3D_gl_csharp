@@ -43,7 +43,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
     /// <summary>Per-texture sampling settings: filtering (min/mag), mipmapping & advanced
     /// filters (anisotropy, LOD bias), common presets, wrapping and UV tiling/offset.
     /// <see cref="Apply"/> pushes the whole set onto a bound texture; the same object is
-    /// shared by the simple texture, the PBR maps and the terrain layers of an object.</summary>
+    /// shared by the simple texture and the PBR maps of an object.</summary>
     public class TextureSettings
     {
         public const float MaxAnisotropy = 16f;

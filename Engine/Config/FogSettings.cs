@@ -11,7 +11,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static bool Enabled = true;
 
         /// <summary>Fog falloff model: 1 = Linear (start→end), 2 = Exponential,
-        /// 3 = Exp2 + height blend (default — matches the original terrain fog).</summary>
+        /// 3 = Exp2 + height blend.</summary>
         public static int Mode = 2;
 
         /// <summary>When true the fog color follows the sky/horizon (sun position);

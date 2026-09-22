@@ -1,6 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
-using DarkEngine3D_gl_csharp.Engine.Terrains;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
@@ -69,22 +68,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public SkySettings? ActiveSkySettings { get; set; } = null;
 
         /// <summary>Legacy Draw method (backward-compatible, uses the original procedural shader).</summary>
-        public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk? terrain)
+        public void Draw(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures)
         {
             // If we have new SkySettings, delegate to SkyRenderer
             if (ActiveSkySettings != null && _skyRenderer != null)
             {
                 _skyRenderer.WeatherOverride = WeatherOverride;
-                _skyRenderer.Draw(camera, lights, deltaTime, ActiveSkySettings, skyTextures, terrain);
+                _skyRenderer.Draw(camera, lights, deltaTime, ActiveSkySettings, skyTextures);
                 return;
             }
 
             // Legacy path: original procedural sky shader
-            DrawLegacy(camera, lights, deltaTime, skyTextures, terrain);
+            DrawLegacy(camera, lights, deltaTime, skyTextures);
         }
 
         /// <summary>Legacy procedural sky draw (original shader).</summary>
-        private void DrawLegacy(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures, TerrainChunk? terrain)
+        private void DrawLegacy(Camera camera, Lights lights, float deltaTime, Texture[] skyTextures)
         {
             // === PAKAI SHADER LANGIT ===
             GL.UseProgram(skyShader);

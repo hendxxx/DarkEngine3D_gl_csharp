@@ -1345,3 +1345,84 @@ Expected Result:
 Engine dapat digunakan untuk membuat game platformer, metroidvania, action RPG, dan RPG dengan sistem inventory, equipment visual, status character, HUD, quick slot, quest tracking, dan navigation tanpa perlu melakukan hardcode pada source code.
 
 
+
+
+Implement a Terrain system on top of the existing PBR-enabled Plane mesh.
+
+Requirements:
+
+1. Terrain Geometry
+- Add support for generating terrain from a grayscale heightmap.
+- Each pixel value controls vertex height.
+- Terrain resolution must be configurable.
+- Support terrain size, height scale, and height offset parameters.
+- Generate normals automatically after displacement.
+
+2. Compatibility with Existing PBR
+- Preserve the existing PBR rendering pipeline.
+- Terrain must continue supporting:
+  - Albedo/Base Color
+  - Normal Map
+  - Metallic
+  - Roughness
+  - Ambient Occlusion
+  - Emissive
+
+3. Terrain Layers
+- Add multi-layer terrain painting.
+- Each layer should support a full PBR material set:
+  - Albedo
+  - Normal
+  - Roughness
+  - Metallic
+  - AO
+  - Height Map (optional)
+- Minimum support for 4 layers.
+- Layers should blend using splat maps.
+
+4. Height-Based Material Blending
+- Support height-aware blending between layers.
+- Rock should naturally protrude through grass instead of simple linear blending.
+- Blend weights should be normalized.
+
+5. Vertex Displacement
+- Heightmap terrain defines the macro shape.
+- Material vertex displacement should remain optional.
+- Final vertex position:
+    Terrain Heightmap + Material Displacement
+- Material displacement scale must be configurable.
+- Prevent double displacement when the same height texture is used.
+
+6. Terrain Editing
+- Runtime or editor support for:
+  - Import Heightmap
+  - Export Heightmap
+  - Paint Terrain Layers
+  - Adjust Terrain Height Scale
+
+7. Performance
+- Implement terrain chunking.
+- Support LOD per chunk.
+- Avoid cracks between LOD levels.
+- Optimize for large open worlds.
+
+8. Rendering
+- Support triplanar mapping as an option.
+- Prevent texture stretching on steep slopes.
+- Support slope-based automatic material assignment:
+  - Grass on flat areas
+  - Rock on steep areas
+  - Snow on high elevations
+
+Goal:
+Create a modern terrain system comparable to Unity Terrain or Unreal Landscape while remaining fully compatible with the existing PBR material framework.
+
+Rekomendasi arsitektur:
+Terrain
+ ├─ Heightmap (Geometry)
+ ├─ Splatmap (Layer Weights)
+ ├─ Layer 0 : Grass PBR
+ ├─ Layer 1 : Rock PBR
+ ├─ Layer 2 : Sand PBR
+ ├─ Layer 3 : Snow PBR
+ └─ Optional Micro Vertex Displacement
