@@ -1354,14 +1354,19 @@ public unsafe class EditorObject
         var hit = o + d * t;
         if (hit.X < -0.6f || hit.X > 0.6f || hit.Z < -0.6f || hit.Z > 0.6f) return null;
 
-        bool disp = PbrVertexDisplace && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
+        // FORCED vertex displacement (user request): any plane with a height source
+        // (Height / Displacement map or sculpt strokes) displaces real geometry —
+        // the old PbrVertexDisplace toggle is no longer consulted.
+        bool disp = !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null;
         float h = 0f;
         if (disp)
         {
             h = _sculptHeights != null
                 ? SculptHeightAt(hit.X, hit.Z)
                 : SampleBaseHeight(hit.X, hit.Z);
-            h = CalibrateHeight(h) * Math.Clamp(PbrVertexDisplaceScale, 0f, 2f);
+            // RAW height (matches the shader's terrainHeight): terrain elevation is
+            // never re-calibrated as a POM detail map.
+            h = Math.Clamp(h, 0f, 1f) * Math.Clamp(PbrVertexDisplaceScale, 0f, 2f);
         }
         return Vector3.Transform(new Vector3(hit.X, h, hit.Z), model);
     }
@@ -1382,7 +1387,7 @@ public unsafe class EditorObject
         if (RaycastPbrSurface(rayOrigin, rayDir) is not Vector3 hit) return false;
         if (!Matrix4x4.Invert(WorldMatrix, out var inv)) return false;
         var local = Vector3.Transform(hit, inv);
-        norm = CalibrateHeight(_sculptHeights != null ? SculptHeightAt(local.X, local.Z) : SampleBaseHeight(local.X, local.Z));
+        norm = Math.Clamp(_sculptHeights != null ? SculptHeightAt(local.X, local.Z) : SampleBaseHeight(local.X, local.Z), 0f, 1f);
         return true;
     }
 
@@ -2354,11 +2359,10 @@ public unsafe class EditorObject
                     _vertexCache = null;
                     break;
                 }
-                // Dense grid when the vertex shader has vertices to move (Vertex
-                // Displacement + a height source) OR when chunks are requested — a
-                // chunked grid gives per-chunk frustum culling even on a FLAT plane
-                // (multi-texture splat terrain without displacement still culls).
-                bool dense = (PbrVertexDisplace && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null))
+                // FORCED displacement: dense grid whenever a height source exists
+                // (or chunks are requested — a chunked grid gives per-chunk frustum
+                // culling even on a FLAT plane).
+                bool dense = (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null)
                              || PbrVertexChunk > 1;
                 int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
@@ -2972,8 +2976,10 @@ public unsafe class EditorObject
         // (same PBR pipeline + 4-layer albedo blend) in BOTH variants, so the
         // splat add-on survives the displacement toggle.
         bool splat = PrimitiveType == EditorPrimitiveType.Plane && HasPbrMaterial && SplatIsPainted;
+        // FORCED displacement (user request): height source present = displaced
+        // program. PbrVertexDisplace toggle kept only for scene-file compatibility.
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && PbrVertexDisplace && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
+                         && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptHeights != null);
         var u = (displaced, splat) switch
         {
             (true, true) => _pbrUniformsSplatDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatDisplaceShaderProgram()),

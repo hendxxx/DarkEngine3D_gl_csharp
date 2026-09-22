@@ -212,20 +212,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _ => new Vector3(0.8f, 0.8f, 0.8f),
                 }
             };
-            // Planes are ALWAYS advanced heightmapped terrain (the old toggle was removed) —
-            // every setting stays editable in the Inspector.
-            if (type == EditorPrimitiveType.Plane)
-            {
-                obj.TerrainEnabled = true;
-                // Default plane: 100×100 with test.png heightmap. Layer textures are empty
-                // (render as solid colors) except first layer which uses default.jpg.
-                obj.TerrainHeightmapPath = "Artifacts/Maps/test.png";
-                obj.TerrainTextureAirPath = "Artifacts/Textures/default.jpg";
-                obj.TerrainTextureDirtPath = "";
-                obj.TerrainTextureGrassPath = "";
-                obj.TerrainTextureSnowPath = "";
-                obj.TerrainTextureSlopePath = "";
-            }
+            // Planes default to the PBR material path so the PBR panel's forced
+            // vertex displacement (Height / Displacement map = real geometry) works
+            // like before. The standalone heightmap terrain is opt-in via the
+            // Terrain panel — enabling it takes over the draw path for that plane.
 
             if (type != EditorPrimitiveType.GlbReference)
                 obj.InitGPU();

@@ -232,30 +232,13 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             float aob = obj.TerrainPbrAoBrightness; Tune("Brightness##ao", ref aob, 0.01f, 0f, 1f); obj.TerrainPbrAoBrightness = aob;
 
             ImGui.Spacing();
-            ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.9f, 1f), "Height / Displacement");
-            float hs = obj.TerrainPbrHeightStrength; Tune("Strength##height", ref hs, 0.01f, 0f, 2f); obj.TerrainPbrHeightStrength = hs;
-            bool hi = obj.TerrainPbrHeightInvert;
-            if (ImGui.Checkbox("Invert (valleys/peaks)##height", ref hi)) obj.TerrainPbrHeightInvert = hi;
-            float hb = obj.TerrainPbrHeightBlur; Tune("Blur (texels)##height", ref hb, 0.05f, 0f, 8f); obj.TerrainPbrHeightBlur = hb;
-            ImGui.Separator();
-            ImGui.TextDisabled("Calibration (Marmoset-style)");
-            float hsc = obj.PbrHeightScaleCenter; Tune("Scale Center##height", ref hsc, 0.005f, 0f, 1f); obj.PbrHeightScaleCenter = hsc;
-            float hct = obj.PbrHeightContrast; Tune("Contrast##height", ref hct, 0.01f, 0.1f, 4f); obj.PbrHeightContrast = hct;
-            float hcc = obj.PbrHeightContrastCenter; Tune("Contrast Center##height", ref hcc, 0.005f, 0f, 1f); obj.PbrHeightContrastCenter = hcc;
-            float hof = obj.PbrHeightOffset; Tune("Offset##height", ref hof, 0.005f, -0.5f, 0.5f); obj.PbrHeightOffset = hof;
-
-            // ── VERTEX DISPLACEMENT — real geometry from the Height / Displacement map
-            //    above (planes). Lives here because it consumes THAT map. ──
-            ImGui.Separator();
-            ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "Displaced Plane Grid");
-            bool vd = obj.PbrVertexDisplace;
-            if (ImGui.Checkbox("Vertex Displacement (real geometry)", ref vd))
+            if (obj.PrimitiveType == EditorPrimitiveType.Plane)
             {
-                obj.PbrVertexDisplace = vd;
-                obj.MarkDirty(); // rebuild the plane mesh: dense grid vs single quad
-            }
-            if (vd)
-            {
+                // ── DISPLACED PLANE GRID (replaces the old "Height / Displacement"
+                //    POM tuning for planes): the Height / Displacement map IS the
+                //    terrain elevation — displacement is FORCED and sampled RAW, so
+                //    Strength/Invert/Blur + Marmoset calibration no longer apply. ──
+                ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "Displaced Plane Grid");
                 float vds = obj.PbrVertexDisplaceScale; Tune("Displace Height##vdisp", ref vds, 0.005f, 0f, 2f); obj.PbrVertexDisplaceScale = vds;
                 // Grid resolution + chunk split (MarkDirty on the property rebuilds the mesh).
                 int seg = obj.PbrVertexSegments;
@@ -273,7 +256,25 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     ImGui.TextDisabled($"Mesh: {obj.PbrPlaneSegmentsBuilt}×{obj.PbrPlaneSegmentsBuilt} grid (1 draw)");
                 }
                 if (string.IsNullOrEmpty(obj.TerrainHeightSourcePath) && obj._sculptHeights == null)
-                    ImGui.TextColored(new Vector4(1f, 0.8f, 0.4f, 1f), "Assign a Height / Displacement map (slot above) to raise real geometry.");
+                    ImGui.TextDisabled("Flat plane — no height source yet.");
+                else
+                    ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Vertex displacement ACTIVE (forced — map present).");
+            }
+            else
+            {
+                // Box/Sphere keep the POM height-detail tuning (parallax only — no
+                // vertex displacement on closed primitives).
+                ImGui.TextColored(new Vector4(0.9f, 0.7f, 0.9f, 1f), "Height / Displacement (POM detail)");
+                float hs = obj.TerrainPbrHeightStrength; Tune("Strength##height", ref hs, 0.01f, 0f, 2f); obj.TerrainPbrHeightStrength = hs;
+                bool hi = obj.TerrainPbrHeightInvert;
+                if (ImGui.Checkbox("Invert (valleys/peaks)##height", ref hi)) obj.TerrainPbrHeightInvert = hi;
+                float hb = obj.TerrainPbrHeightBlur; Tune("Blur (texels)##height", ref hb, 0.05f, 0f, 8f); obj.TerrainPbrHeightBlur = hb;
+                ImGui.Separator();
+                ImGui.TextDisabled("Calibration (Marmoset-style)");
+                float hsc = obj.PbrHeightScaleCenter; Tune("Scale Center##height", ref hsc, 0.005f, 0f, 1f); obj.PbrHeightScaleCenter = hsc;
+                float hct = obj.PbrHeightContrast; Tune("Contrast##height", ref hct, 0.01f, 0.1f, 4f); obj.PbrHeightContrast = hct;
+                float hcc = obj.PbrHeightContrastCenter; Tune("Contrast Center##height", ref hcc, 0.005f, 0f, 1f); obj.PbrHeightContrastCenter = hcc;
+                float hof = obj.PbrHeightOffset; Tune("Offset##height", ref hof, 0.005f, -0.5f, 0.5f); obj.PbrHeightOffset = hof;
             }
 
             ImGui.Spacing();
