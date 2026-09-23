@@ -479,6 +479,14 @@ public unsafe class EditorObject
             if (_terrainHeightPath == value) return;
             _terrainHeightPath = value;
             DropTerrainHeightTexture();
+            // A new source invalidates any live sculpt session (stale decode)
+            // and clears the decode-failure negative cache for retry.
+            _sculptDecodeFailedPath = null;
+            if (_sculptField != null)
+            {
+                _sculptField.DisposeTexture();
+                _sculptField = null;
+            }
         }
     }
     private void DropTerrainHeightTexture()
@@ -563,6 +571,202 @@ public unsafe class EditorObject
               + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
             : 0f;
 
+    // ── Brush sculpting (CPU heightfield painted in the viewport) ──
+    private TerrainHeightfield? _sculptField;
+    /// <summary>Elevation source that FAILED to decode — re-decoding a missing/corrupt
+    /// image every frame (EnsureSculptField is called per frame while sculpting) once
+    /// tanked the FPS; the negative cache makes the failure sticky per path.</summary>
+    private string? _sculptDecodeFailedPath;
+    /// <summary>Live brush session settings (mode/radius/strength/hardness) —
+    /// set by the PBR panel while sculpt mode is on; NULL = not sculpting.</summary>
+    public TerrainBrushSession? SculptBrush { get; set; }
+    /// <summary>True once a brush stroke has modified the sculpted heightfield
+    /// this session (drives the sculpt status + gates below).</summary>
+    public bool HasSculptEdits => _sculptField?.HasAnyEdits == true;
+    /// <summary>Effective displaced-surface extent (world units): the authored
+    /// base shape PLUS the sculpted relief swing ( sculpted field ranges above the
+    /// decoded base are bounded by ±1 around it, so ±1 world unit covers worst case).</summary>
+    public float TerrainSculptExtent =>
+        HasSculptEdits ? Math.Clamp(TerrainDisplacementExtent, 0f, 750f) + 1f : TerrainDisplacementExtent;
+
+    /// <summary>Elevation source path BEFORE the first sculpt bake of the current
+    /// session — lets <see cref="RevertSculpt"/> restore the authored image.</summary>
+    private string? _preSculptPath;
+
+    /// <summary>Start (or resume) a brush-sculpt session on this plane: remembers
+    /// the authored elevation path for revert and decodes the CPU heightfield.</summary>
+    public void BeginSculptSession()
+    {
+        _preSculptPath ??= _terrainHeightPath;
+        SculptBrush ??= new TerrainBrushSession();
+        EnsureSculptField();
+    }
+
+    /// <summary>Discard ALL brush edits: reload the authored elevation image and
+    /// restore the pre-sculpt source path (the bake file is abandoned).</summary>
+    public void RevertSculpt()
+    {
+        DropSculptField();
+        if (_preSculptPath != null)
+            TerrainHeightPath = _preSculptPath;   // via the property → drops the GPU tex
+        _preSculptPath = null;
+    }
+
+    /// <summary>Decode the elevation source into a CPU heightfield for sculpting
+    /// (idempotent). Null when the plane has no elevation source or decode fails.
+    /// The brush session must be created first — sculpting starts from the UI.</summary>
+    public TerrainHeightfield? EnsureSculptField()
+    {
+        if (_sculptField != null) return _sculptField;
+        string src = TerrainHeightSourcePath;
+        if (PrimitiveType != EditorPrimitiveType.Plane || string.IsNullOrEmpty(src)) return null;
+        if (_sculptDecodeFailedPath == src) return null;   // sticky failure — no re-decode storm
+        _sculptField = TerrainHeightfield.FromImage(PathHelpers.Resolve(src));
+        if (_sculptField == null) _sculptDecodeFailedPath = src;
+        return _sculptField;
+    }
+
+    /// <summary>Finish a brush stroke: upload the touched region to the live R8
+    /// texture and, when the field changed, bake it to a TGA next to the source
+    /// elevation and repoint <see cref="TerrainHeightPath"/> at the baked file
+    /// (file-based persistence — the sculpted terrain saves with the scene).</summary>
+    public void EndSculptStroke(int frameStamp)
+    {
+        var f = _sculptField;
+        if (f == null || !f.HasAnyEdits) return;
+        f.FlushTexture();
+        if (!f.NeedsBake || f.LastStrokeStamp == frameStamp) return; // bake once per stroke
+        f.LastStrokeStamp = frameStamp;
+        BakeSculptField(f);
+    }
+
+    /// <summary>Write the current sculpted field to the bake TGA and point the
+    /// elevation source at it (shared by stroke-end and undo/redo restores).</summary>
+    private void BakeSculptField(TerrainHeightfield f)
+    {
+        string bakedRel = $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}.tga";
+        string bakedAbs = PathHelpers.Resolve(bakedRel);
+        if (f.BakeToTga(bakedAbs))
+        {
+            // Point the source at the bake WITHOUT dropping the live GPU texture:
+            // the sculpted field IS the current surface (the setter would reload
+            // the authored image and undo the stroke visually for one frame).
+            _terrainHeightPath = bakedRel;
+            f.MarkBaked();
+            Console.WriteLine($"[TerrainSculpt] '{Name}' baked → {bakedRel}");
+        }
+    }
+
+    /// <summary>Mark the start of a brush stroke (mouse press) — arms the lazy
+    /// pre-stroke snapshot so Ctrl+Z can revert exactly this stroke.</summary>
+    public void SculptBeginStroke() => _sculptField?.BeginStroke();
+
+    /// <summary>Undo the last sculpt stroke (Ctrl+Z): restore the field, upload
+    /// the whole texture and re-bake the TGA so scene saves follow the revert.</summary>
+    public bool SculptUndo()
+    {
+        var f = _sculptField;
+        if (f == null || !f.Undo()) return false;
+        f.FlushTexture();
+        BakeSculptField(f);
+        return true;
+    }
+
+    /// <summary>Re-apply the last undone sculpt stroke (Ctrl+Y / Ctrl+Shift+Z).</summary>
+    public bool SculptRedo()
+    {
+        var f = _sculptField;
+        if (f == null || !f.Redo()) return false;
+        f.FlushTexture();
+        BakeSculptField(f);
+        return true;
+    }
+
+    /// <summary>History depth for the sculpt status line (0 = nothing to undo).</summary>
+    public int SculptUndoDepth => _sculptField?.UndoDepth ?? 0;
+    public int SculptRedoDepth => _sculptField?.RedoDepth ?? 0;
+
+    /// <summary>Scene name sanitized for folder use (from the IDE bridge when
+    /// available, otherwise "Scenes").</summary>
+    private string SanitizedSceneName
+    {
+        get
+        {
+            string n = IDEBridge.Current?.SceneName ?? "";
+            if (string.IsNullOrWhiteSpace(n)) n = "Scenes";
+            var sb = new System.Text.StringBuilder(n.Length);
+            foreach (char c in n)
+                sb.Append(char.IsLetterOrDigit(c) || c == '-' || c == '_' ? c : '_');
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>Object name sanitized for file use (fallback "terrain").</summary>
+    private string SanitizedObjectName
+    {
+        get
+        {
+            string n = string.IsNullOrWhiteSpace(Name) ? "terrain" : Name;
+            var sb = new System.Text.StringBuilder(n.Length);
+            foreach (char c in n)
+                sb.Append(char.IsLetterOrDigit(c) || c == '-' || c == '_' ? c : '_');
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>Surface elevation (world units above the flat grid) at plane-local
+    /// (x, z) — mirrors the shader's BASE term (raw height × BaseHeight + offset).
+    /// Null when no elevation field is decoded (plane not paintable). Used by the
+    /// viewport to draw the paintable-region outline ON the sculpted surface.</summary>
+    public float? SampleSurfaceElevation(float localX, float localZ)
+    {
+        var f = EnsureSculptField();
+        if (f == null) return null;
+        float u = localX / MathF.Max(1e-4f, MathF.Abs(Scale.X)) + 0.5f;
+        float v = localZ / MathF.Max(1e-4f, MathF.Abs(Scale.Z)) + 0.5f;
+        float h = f.SampleBilinear(u, v,
+            Math.Clamp(TerrainHeightTilingX, 0.01f, 100f),
+            Math.Clamp(TerrainHeightTilingY, 0.01f, 100f));
+        return h * Math.Clamp(TerrainBaseHeight, 0f, 500f)
+             + Math.Clamp(TerrainHeightOffset, -250f, 250f);
+    }
+
+    /// <summary>Ray-march the sculpted surface for brush picking. World-space
+    /// ray; hit point + plane-local X/Z of the hit on success.</summary>
+    public bool TryRaycastSculptSurface(Vector3 origin, Vector3 dir,
+        float tilingX, float tilingY, out Vector3 hit, out Vector2 localXZ)
+    {
+        hit = default; localXZ = default;
+        var f = _sculptField;
+        if (f == null) return false;
+        bool ok = f.TryRaycast(WorldMatrix, Math.Clamp(TerrainBaseHeight, 0f, 500f),
+            Math.Clamp(TerrainHeightOffset, -250f, 250f), TerrainSculptExtent,
+            tilingX, tilingY, origin, dir, out hit);
+        if (ok) localXZ = f.LastHitLocalXZ;
+        return ok;
+    }
+
+    /// <summary>Apply one brush stamp at plane-local coordinates (mirrors the
+    /// vertex shader's base+detail elevation; stamps are frame-batched). The
+    /// dirty region uploads to the live R8 texture EVERY frame so the terrain
+    /// visibly rises/falls while the stroke is held (first stroke included).</summary>
+    public void SculptApply(float localX, float localZ, TerrainBrushSession b, float dt, int frameStamp)
+    {
+        var f = EnsureSculptField();
+        if (f == null) return;
+        f.ApplyBrush(localX, localZ, MathF.Abs(Scale.X), MathF.Abs(Scale.Z),
+            Math.Clamp(b.Radius, 0.01f, 500f), Math.Clamp(b.Strength, 0.01f, 10f),
+            Math.Clamp(b.Hardness, 0f, 1f), b.Mode, dt, frameStamp);
+        f.FlushTexture();   // no-op when the stamp touched nothing
+    }
+
+    /// <summary>Discard the sculpt buffer (next session re-decodes the source image).</summary>
+    public void DropSculptField()
+    {
+        _sculptField?.DisposeTexture();
+        _sculptField = null;
+    }
+
     // ── PBR map tuning (per map type, applies to the sampled map only; uniform-only
     //    uploads, so changing these never reloads a texture) ──
     public float PbrAlbedoBrightness { get; set; } = 1f;
@@ -644,7 +848,7 @@ public unsafe class EditorObject
         !string.IsNullOrEmpty(PbrMetallicPath) || !string.IsNullOrEmpty(PbrRoughnessPath) ||
         !string.IsNullOrEmpty(PbrAoPath) || !string.IsNullOrEmpty(PbrHeightPath) ||
         !string.IsNullOrEmpty(PbrEmissionPath) ||
-        !string.IsNullOrEmpty(TerrainHeightSourcePath);
+        !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null;
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
     public string? GlbFilePath { get; set; } = null;
@@ -926,6 +1130,11 @@ public unsafe class EditorObject
         }
     }
 
+    /// <summary>Inverse of <see cref="WorldMatrix"/> (world → plane-local maps for
+    /// brush projection); identity when the matrix is singular (zero scale).</summary>
+    public Matrix4x4 WorldInverse =>
+        Matrix4x4.Invert(WorldMatrix, out Matrix4x4 inv) ? inv : Matrix4x4.Identity;
+
     /// <summary>Pick the Light marker that should drive the global sun: the first DIRECT
     /// light, or null when there is none (the procedural sun takes over). Point/Spot
     /// markers never drive the sun — they are local lights. Scenes saved before the
@@ -1129,7 +1338,8 @@ public unsafe class EditorObject
                 // planes — the elevation IS the base shape) or chunks are requested.
                 // The resolution slider (PbrVertexSegments) therefore ALWAYS takes
                 // effect on a terrain plane.
-                bool dense = PbrVertexChunk > 1 || !string.IsNullOrEmpty(TerrainHeightSourcePath);
+                bool dense = PbrVertexChunk > 1 || !string.IsNullOrEmpty(TerrainHeightSourcePath)
+                             || _sculptField != null;
                 int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
                 if (verts == null)
@@ -1574,7 +1784,7 @@ public unsafe class EditorObject
         // standard one. Both share the objectPbr fragment stage. The PBR height map
         // (Pom detail) does NOT trigger geometry displacement.
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && !string.IsNullOrEmpty(TerrainHeightSourcePath);
+                         && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null);
         var u = displaced
             ? (_pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()))
             : (_pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()));
@@ -1649,8 +1859,7 @@ public unsafe class EditorObject
         // is empty, bind the ELEVATION texture to unit 5 as well: the POM detail pass
         // then reads real height data (no phantom bumps from the 1.0 white texel),
         // while the elevation stays the sole displacement source.
-        bool terrainDriven = PrimitiveType == EditorPrimitiveType.Plane
-                             && !string.IsNullOrEmpty(TerrainHeightSourcePath);
+        bool terrainDriven = displaced;   // Plane + (elevation source OR live sculpt field)
         uint white = EnsurePbrWhiteTex();
         for (int i = 0; i < 7; i++)
         {
@@ -1680,10 +1889,14 @@ public unsafe class EditorObject
                 Console.WriteLine($"[PBR] '{Name}' terrain elevation load failed: {ex.Message}");
             }
         }
-        if (terrainDriven && _terrainHeightTex != 0)
+        // Live sculpt texture (R8, CPU heightfield) wins over the authored image;
+        // when no sculpt session is active this is just the authored texture id.
+        bool liveSculpt = _sculptField != null && _sculptField.GpuTexture != 0;
+        uint elevTex = liveSculpt ? _sculptField.GpuTexture : _terrainHeightTex;
+        if (terrainDriven && elevTex != 0)
         {
             GL.ActiveTexture(Const.GL_TEXTURE0 + 15);
-            GL.BindTexture(Const.GL_TEXTURE_2D, _terrainHeightTex);
+            GL.BindTexture(Const.GL_TEXTURE_2D, elevTex);
             GL.Uniform1i(u.TerrainHeightMap, 15);
             if (u.TerrainDisplace >= 0) GL.Uniform1f(u.TerrainDisplace, 1f);
             // The elevation's OWN tiling — decoupled from PBR map tiling entirely.
@@ -1701,11 +1914,12 @@ public unsafe class EditorObject
             // (slot 5) — the elevation fallback bind must NOT count as detail.
             if (u.PbrHeightDetail >= 0)
                 GL.Uniform1f(u.PbrHeightDetail, _pbrTex[5] != 0 ? 1f : 0f);
-            // POM detail fallback: elevation as detail when the POM slot is empty.
+            // POM detail fallback: elevation as detail when the POM slot is empty
+            // (live sculpt texture included — parallax follows the sculpted surface).
             if (_pbrTex[5] == 0)
             {
                 GL.ActiveTexture(Const.GL_TEXTURE0 + 5);
-                GL.BindTexture(Const.GL_TEXTURE_2D, _terrainHeightTex);
+                GL.BindTexture(Const.GL_TEXTURE_2D, elevTex);
                 GL.Uniform1i(u.Maps[5], 5);
                 GL.Uniform1i(u.UseMaps[5], 1);
                 // POM must sample the elevation through the SAME tiling the vertex
@@ -4782,6 +4996,8 @@ void main() {
         if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
         DisposePbrTextures();
         DropTerrainHeightTexture();
+        DropSculptField();
+        SculptBrush = null;
         _object3D = null;
     }
 }

@@ -11,6 +11,13 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE;
 /// </summary>
 public class IDEBridge
 {
+    /// <summary>The most recently constructed bridge (the live IDE's). Engine
+    /// classes without a bridge reference (e.g. terrain sculpt baking) can read
+    /// the current scene name through <see cref="Current"/>.</summary>
+    public static IDEBridge? Current { get; private set; }
+
+    public IDEBridge() => Current = this;
+
     /// <summary>Host IDE back-reference (set by IDE's constructor) so panels can reach
     /// sibling panels without new constructor wiring — e.g. ViewportPanel pushing the
     /// hovered grid cell to the Map Editor for trigger placement.</summary>
@@ -101,6 +108,22 @@ public class IDEBridge
     // ── Viewport mouse/click state for click-to-select in IDE mode ──
     /// <summary>Set by ViewportPanel when the scene image is clicked.</summary>
     public bool IsViewportClicked { get; set; }
+
+    // ── Terrain brush sculpting (PBR panel ↔ viewport paint) ──
+    /// <summary>The plane whose terrain brush-sculpt session is ACTIVE (set by
+    /// the PBR panel's "Terrain Sculpt" toggle). Null = brush disabled everywhere.</summary>
+    public EditorObject? TerrainSculptObject { get; set; }
+    /// <summary>Plane-local X/Z (world units from the plane center) of the cursor
+    /// hit on the sculpt target's surface — null when the ray misses the terrain.</summary>
+    public Vector2? TerrainBrushLocalXZ { get; set; }
+    /// <summary>World-space surface point under the brush cursor (ring gizmo anchor).</summary>
+    public Vector3? TerrainBrushWorldHit { get; set; }
+    /// <summary>True while a brush stroke is being painted (LMB held on terrain).</summary>
+    public bool TerrainBrushPainting { get; set; }
+    /// <summary>True when the brush cursor sits on the REAL displaced surface
+    /// (paint possible); false = flat-grid fallback position (display only —
+    /// the ring renders dimmed so the user sees WHY painting is not happening).</summary>
+    public bool TerrainBrushOnSurface { get; set; }
     /// <summary>Scene-space pixel X of the viewport click.</summary>
     public float ViewportClickX { get; set; }
     /// <summary>Scene-space pixel Y of the viewport click.</summary>

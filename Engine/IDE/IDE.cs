@@ -34,6 +34,7 @@ public class IDE : IDisposable
     private readonly PostFxPanel _postFxPanel = null!;
     private readonly FrameBufferDebugPanel _framebufferDebug = null!;
     private readonly PbrPanel _pbrPanel = null!;
+    private readonly TerrainPanel _terrainPanel = null!;
     private readonly PlayerInfoPanel _playerInfo = null!;
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
@@ -717,6 +718,7 @@ public class IDE : IDisposable
             // from inside the composite, which runs in both render paths.
             Visual.PostProcessing.DepthOfFieldFocusTracker.Bridge = Bridge;
             _pbrPanel = new PbrPanel(Bridge);
+            _terrainPanel = new TerrainPanel(Bridge);
             _playerInfo = new PlayerInfoPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
@@ -827,6 +829,20 @@ public class IDE : IDisposable
 
     /// <summary>Called from engine's render loop, after all game rendering.</summary>
     public void Render()
+    {
+        // Push LAST frame's section timings into history and start a fresh frame
+        // window (the whole-body scope below completes FrameMs at return).
+        Helpers.FrameProfiler.NextFrame();
+        using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.FrameMs))
+        {
+            RenderEditor();
+            // The engine's own 3D stage time (scene render) — measured inside
+            // GameScene and reported through the bridge.
+            Helpers.FrameProfiler.SceneMs = Bridge.RenderTotalMs;
+        }
+    }
+
+    private void RenderEditor()
     {
         if (!IsHealthy) return;
 
@@ -1236,6 +1252,7 @@ public class IDE : IDisposable
                 _postFxPanel.ShowInMenu();
                 _framebufferDebug.ShowInMenu();
                 _pbrPanel.ShowInMenu();
+                _terrainPanel.ShowInMenu();
                 _playerInfo.ShowInMenu();
                 ImGui.Separator();
                 _sceneManagerPanel.ShowInMenu();
@@ -1318,22 +1335,29 @@ public class IDE : IDisposable
         _viewport.Render();
         _sceneView.Render();
         _inspector.Render();
-        _renderTime.Render();
-        _shadowPanel.Render();
-        _postFxPanel.Render();
-        _framebufferDebug.Render();
-        _pbrPanel.Render();
-        _playerInfo.Render();
-        _assetBrowser.Render();
-        _hierarchy.Render();
-        _console.Render();
-        _sceneManagerPanel.Render();
-        _transitionPanel.Render();
-        // ── 2D Sidescroller Panels ──
-        _spriteEditor.Render();
-        _mapEditor.Render();
-        _dialogueEditor.Render();
-        _ideSettings.Render();
+        using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.PanelsMs))
+        {
+            _renderTime.Render();
+            _shadowPanel.Render();
+            _postFxPanel.Render();
+            _framebufferDebug.Render();
+            _pbrPanel.Render();
+            _terrainPanel.Render();
+            _playerInfo.Render();
+            using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.PanelsMs))
+            {
+                _assetBrowser.Render();
+                _hierarchy.Render();
+                _console.Render();
+                _sceneManagerPanel.Render();
+                _transitionPanel.Render();
+                // ── 2D Sidescroller Panels ──
+                _spriteEditor.Render();
+                _mapEditor.Render();
+                _dialogueEditor.Render();
+                _ideSettings.Render();
+            }
+        }
 
         // ── Global undo/redo routing (after panels, before popups) ──
         // Route by LAST FOCUSED panel so the same Ctrl+Z works everywhere without

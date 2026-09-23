@@ -605,6 +605,27 @@ Per-object PBR with 7 texture slots:
   - Chunk AABB pad + plane picking proxy use the real max: base + detail + |offset|
     (`TerrainDisplacementExtent`); elevation texture load failure flattens only dedicated-
     source planes (legacy fallback planes render through the unit-5 branch).
+  - **Terrain Sculpt (viewport brush)** — brush sculpting that PAINTS the elevation heightmap.
+    `TerrainHeightfield` (Engine/Objects/TerrainHeightfield.cs) decodes the elevation source
+    once into a 512² CPU field; Raise/Lower/Smooth/Flatten stamps mutate it (frame-batched via
+    `SculptApply`); a dirty-rect GL_R8 texture REPLACES the unit-15 bind LIVE (shader unchanged,
+    POM fallback follows), and each finished stroke bakes the field to
+    `Artifacts/Terrain/<scene>/<object>.tga`, which becomes the stored `TerrainHeightPath` —
+    sculpted terrain saves/loads with the scene like any authored heightmap. Brush params:
+    radius (world units), strength (height-range fraction per second at the core), hardness
+    (falloff: 0 soft dome … 1 hard disc). Picking ray-marches the base surface
+    (`TryRaycastSculptSurface`); the viewport draws a surface-projected ring showing the TRUE
+    world radius; while the session is ON, LMB paints instead of selecting/gizmo-dragging.
+    UI: dedicated TERRAIN panel (menu "Terrain") — heightmap input, Terrain Geometry
+    (size / Base Height / Displace Height / Offset / Strength / tiling / segments / chunks)
+    and "Terrain Sculpt" brush controls + "Revert sculpt" (discard edits, reload the authored
+    image). Session state: `EditorObject.SculptBrush` +
+    `IDEBridge.TerrainSculptObject` (null = off). Viewport affordances: the paintable-region
+    boundary is drawn ON the displaced surface (96-point perimeter outline, live elevation per
+    point) so the sculptable area is always visible; the brush ring hugs the terrain (rim
+    samples lifted to live elevation) and its color encodes state — orange = cursor on the
+    paintable surface, red = painting, dim gray = projected onto the footprint but off-surface
+    (a click there will NOT sculpt).
 
 ### 5.3 Terrain PBR (terrainEditor_fragment.glsl)
 

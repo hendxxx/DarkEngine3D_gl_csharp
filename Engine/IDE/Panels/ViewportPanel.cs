@@ -2964,6 +2964,14 @@ public unsafe class ViewportPanel
 
     public void Render()
     {
+        using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.ViewportMs))
+        {
+            RenderViewportPanel();
+        }
+    }
+
+    private void RenderViewportPanel()
+    {
         //  Initial sync: ensure IsPreviewMode matches _previewMode on first frame 
         if (!_initialSyncDone)
         {
@@ -4110,9 +4118,14 @@ ImGui.SameLine();
                 // Save As dialog, context menus, etc.)  so clicks on menus never
                 // accidentally modify the scene or trigger raycast selection.
                 // suppressInput is computed above (before mouseOverImage block).
+                // While a terrain sculpt session is ON, left-clicks belong to the
+                // brush: never set the click flag (no select/deselect — the paint
+                // block below consumes the mouse via its own leftDown path).
+                bool sculptClaimsClick = !_previewMode && _bridge.TerrainSculptObject != null;
                 if (hasSceneTexture && ImGui.IsItemClicked() && _dragMode == DragMode.None
                     && !IsMouseOverViewportViewsButton() && !IsMouseOverLeftToolbar()
-                    && SkySunHandleAtMouse() == null && !suppressInput && !worldInputBlocked)
+                    && SkySunHandleAtMouse() == null && !suppressInput && !worldInputBlocked
+                    && !sculptClaimsClick)
                 {
                     _bridge.IsViewportClicked = true;
                     _bridge.ViewportClickX = sceneU * _bridge.SceneTextureWidth;
@@ -4469,6 +4482,7 @@ ImGui.SameLine();
             // overlaps another object. Only when the gizmo is NOT hit does the nearest ray win.
             if (!_previewMode && _bridge.EditorObjectManager != null && _bridge.Camera != null
                 && _bridge.IsViewportClicked
+                && !_bridge.TerrainBrushPainting
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
             {
                 var cam = _bridge.Camera;
@@ -4632,6 +4646,218 @@ ImGui.SameLine();
                 }
             }
 
+            //  Terrain brush sculpting (LMB paints the plane's CPU heightfield) 
+            // Runs BEFORE click-to-select / gizmo: while "Terrain Sculpt" is enabled
+            // for a plane (PBR panel), left-drag raises/lowers/smooths/flattens the
+            // terrain instead of selecting or moving objects. The brush cursor shows
+            // a rim-projected ring so the TRUE world radius is visible (foreshortening).
+            if (!_previewMode && _bridge.Camera != null && _bridge.TerrainSculptObject != null
+                && !suppressInput && !worldInputBlocked
+                && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0)
+            {
+                var sculptObj = _bridge.TerrainSculptObject;
+                var brush = sculptObj.SculptBrush;
+                var camB = _bridge.Camera;
+                int vpwB = _bridge.SceneTextureWidth;
+                int vphB = _bridge.SceneTextureHeight;
+                bool leftDownB = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+                bool leftClickedB = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+                bool leftReleasedB = ImGui.IsMouseReleased(ImGuiMouseButton.Left);
+
+                bool overUiOverlay = IsMouseOverLeftToolbar() || IsMouseOverViewportViewsButton();
+                float glMyB = vphB - _bridge.ViewportMouseY;
+                // The transform gizmo (drag in progress OR press-start on an axis) and
+                // the sky-sun handle own the mouse before the brush does.
+                bool gizmoClaimsMouse = _bridge.EditorGizmo?.IsDragging == true;
+                if (!gizmoClaimsMouse && leftClickedB && _bridge.SelectedEditorObject != null
+                    && _bridge.EditorGizmo != null
+                    && _bridge.GetEditorGizmoCenter() is Vector3 gizmoCenterB
+                    && _bridge.EditorGizmo.HitTest(new Vector2(_bridge.ViewportMouseX, glMyB),
+                        camB, gizmoCenterB, vpwB, vphB) != TransformGizmo.Axis.None)
+                {
+                    gizmoClaimsMouse = true;
+                }
+                if (mouseOverImage && !overUiOverlay && !gizmoClaimsMouse
+                    && SkySunHandleAtMouse() == null)
+                {
+                    camB.ScreenToRay(_bridge.ViewportMouseX, glMyB, vpwB, vphB,
+                        out Vector3 bOrigin, out Vector3 bDir);
+                    float tilingXB = Math.Clamp(sculptObj.TerrainHeightTilingX, 0.01f, 100f);
+                    float tilingYB = Math.Clamp(sculptObj.TerrainHeightTilingY, 0.01f, 100f);
+                    if (sculptObj.EnsureSculptField() != null)
+                    {
+                        // ONE raycast, narrow-scoped to the CPU ray-march only
+                        // (the brush stamp gets its own SculptStampMs slot).
+                        Vector3 bHit = default; Vector2 bLocal = default;
+                        bool sculptHit;
+                        using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.SculptPickMs))
+                            sculptHit = sculptObj.TryRaycastSculptSurface(bOrigin, bDir,
+                                tilingXB, tilingYB, out bHit, out bLocal);
+                        _bridge.TerrainBrushWorldHit = bHit;
+                        _bridge.TerrainBrushLocalXZ = bLocal;
+                        _bridge.TerrainBrushOnSurface = sculptHit;
+
+                        if (sculptHit && brush != null && leftDownB)
+                        {
+                            if (leftClickedB)
+                            {
+                                Console.WriteLine($"[TerrainSculpt] '{sculptObj.Name}' stroke start ({brush.Mode}, r={brush.Radius:F1})");
+                                sculptObj.SculptBeginStroke();   // arm the lazy pre-stroke undo snapshot
+                            }
+                            using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.SculptStampMs))
+                            {
+                                sculptObj.SculptApply(bLocal.X, bLocal.Y, brush,
+                                    ImGui.GetIO().DeltaTime, ImGui.GetFrameCount());
+                            }
+                            _bridge.TerrainBrushPainting = true;
+                        }
+                    }
+                    else
+                    {
+                        // Ray missed the displaced surface (aiming at sky/other
+                        // geometry): PROJECT the cursor onto the terrain footprint
+                        // (ray ∩ flat grid) so the dimmed ring still shows WHERE the
+                        // terrain is and what could be painted once on-surface.
+                        _bridge.TerrainBrushOnSurface = false;
+                        if (MathF.Abs(bDir.Y) > 0.0001f)
+                        {
+                            float tg = -bOrigin.Y / bDir.Y;
+                            if (tg > 0f)
+                            {
+                                Vector3 gp = bOrigin + bDir * tg;
+                                Vector3 gl = Vector3.Transform(gp, sculptObj.WorldInverse);
+                                float hx = MathF.Abs(sculptObj.Scale.X) * 0.5f;
+                                float hz = MathF.Abs(sculptObj.Scale.Z) * 0.5f;
+                                if (gl.X >= -hx && gl.X <= hx && gl.Z >= -hz && gl.Z <= hz)
+                                {
+                                    _bridge.TerrainBrushWorldHit = gp;
+                                    _bridge.TerrainBrushLocalXZ = new Vector2(gl.X, gl.Z);
+                                }
+                                else
+                                {
+                                    _bridge.TerrainBrushWorldHit = null;
+                                    _bridge.TerrainBrushLocalXZ = null;
+                                }
+                            }
+                            else { _bridge.TerrainBrushWorldHit = null; _bridge.TerrainBrushLocalXZ = null; }
+                        }
+                        else { _bridge.TerrainBrushWorldHit = null; _bridge.TerrainBrushLocalXZ = null; }
+                    }
+                }
+                else
+                {
+                    _bridge.TerrainBrushWorldHit = null;
+                    _bridge.TerrainBrushLocalXZ = null;
+                    _bridge.TerrainBrushOnSurface = false;
+                }
+
+                // Stroke end (release, cursor left, or the panel closed the session):
+                // flush the dirty region to the live GPU texture and bake the field
+                // to the TGA that becomes the elevation source (scene persistence).
+                if (_bridge.TerrainBrushPainting && (leftReleasedB || !leftDownB || brush == null))
+                {
+                    sculptObj.EndSculptStroke(ImGui.GetFrameCount());
+                    _bridge.TerrainBrushPainting = false;
+                }
+
+                // ── Per-stroke undo/redo while the sculpt session is ON ──
+                // Ctrl+Z reverts the last stroke, Ctrl+Y (or Ctrl+Shift+Z) re-applies.
+                // Field restore + full GPU upload + TGA re-bake happen in the object.
+                if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
+                {
+                    if (ImGui.GetIO().KeyShift
+                        ? sculptObj.SculptRedo()
+                        : sculptObj.SculptUndo())
+                        Console.WriteLine($"[TerrainSculpt] '{sculptObj.Name}' {(ImGui.GetIO().KeyShift ? "redo" : "undo")} (depth {sculptObj.SculptUndoDepth}/{sculptObj.SculptRedoDepth})");
+                }
+                if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))
+                {
+                    if (sculptObj.SculptRedo())
+                        Console.WriteLine($"[TerrainSculpt] '{sculptObj.Name}' redo (depth {sculptObj.SculptUndoDepth}/{sculptObj.SculptRedoDepth})");
+                }
+
+                // Brush cursor ring on the surface under the cursor (hover + paint).
+                using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.SculptOverlayMs))
+                {
+                if (brush != null && mouseOverImage && !overUiOverlay
+                    && _bridge.TerrainBrushWorldHit is Vector3 ringHit)
+                {
+                    var ringCenter = TransformGizmo.ProjectToScreen(camB, ringHit, vpwB, vphB);
+                    if (ringCenter.X >= -80f && ringCenter.X <= vpwB + 80f
+                        && ringCenter.Y >= -80f && ringCenter.Y <= vphB + 80f)
+                    {
+                        var dl = ImGui.GetWindowDrawList();
+                        // Bright orange while paintable (cursor ON the displaced
+                        // surface), red while painting, dim gray when merely projected
+                        // onto the footprint — the color itself teaches the user
+                        // whether a click will sculpt or not.
+                        uint ringCol = ImGui.ColorConvertFloat4ToU32(_bridge.TerrainBrushPainting
+                            ? new Vector4(1f, 0.25f, 0.05f, 0.95f)
+                            : _bridge.TerrainBrushOnSurface
+                                ? new Vector4(1f, 0.5f, 0.1f, 0.85f)
+                                : new Vector4(0.75f, 0.75f, 0.8f, 0.4f));
+                        // Project 32 rim points, each lifted to the surface elevation
+                        // under it → the ring hugs hills/valleys instead of floating
+                        // flat at the hit height (visualizes the brush ON the terrain).
+                        Vector2 prevRim = default;
+                        for (int i = 0; i <= 32; i++)
+                        {
+                            float a = i / 32f * MathF.PI * 2f;
+                            float rx = ringHit.X + MathF.Cos(a) * brush.Radius;
+                            float rz = ringHit.Z + MathF.Sin(a) * brush.Radius;
+                            float rElev = sculptObj.SampleSurfaceElevation(rx, rz) ?? ringHit.Y;
+                            Vector3 rim = new(rx, rElev, rz);
+                            var sp = TransformGizmo.ProjectToScreen(camB, rim, vpwB, vphB);
+                            var ss = SceneToScreen(sp.X, vphB - sp.Y);
+                            if (i > 0) dl.AddLine(prevRim, ss, ringCol, 1.5f);
+                            prevRim = ss;
+                        }
+                        var cScreen = SceneToScreen(ringCenter.X, vphB - ringCenter.Y);
+                        dl.AddCircleFilled(cScreen, 3f, ringCol);
+                    }
+                }
+
+                // ── PAINTABLE-REGION OUTLINE ── the sculptable area's boundary drawn
+                // ON the displaced surface (deformed by hills/valleys), so the user
+                // always sees WHERE brush painting can happen — even with the cursor
+                // elsewhere. 96 samples along the footprint perimeter, each lifted to
+                // its live surface elevation; cheap (one bilinear sample per point).
+                if (sculptObj.SampleSurfaceElevation(0f, 0f) is float _elevProbe)
+                {
+                    const int steps = 96;
+                    var dlT = ImGui.GetWindowDrawList();
+                    uint boundCol = ImGui.ColorConvertFloat4ToU32(_bridge.TerrainBrushPainting
+                        ? new Vector4(1f, 0.65f, 0.15f, 0.8f)
+                        : new Vector4(1f, 0.65f, 0.15f, 0.55f));
+                    Vector2 prevB = default;
+                    for (int i = 0; i <= steps; i++)
+                    {
+                        float s = i / (float)steps;
+                        float fx, fz;
+                        if (s < 0.25f) { fx = s * 4f - 0.5f; fz = -0.5f; }
+                        else if (s < 0.5f) { fx = 0.5f; fz = (s - 0.25f) * 4f - 0.5f; }
+                        else if (s < 0.75f) { fx = 0.5f - (s - 0.5f) * 4f; fz = 0.5f; }
+                        else { fx = -0.5f; fz = 0.5f - (s - 0.75f) * 4f; }
+                        float lx = fx * MathF.Abs(sculptObj.Scale.X);
+                        float lz = fz * MathF.Abs(sculptObj.Scale.Z);
+                        float elev = sculptObj.SampleSurfaceElevation(lx, lz) ?? 0f;
+                        Vector3 wp = Vector3.Transform(new Vector3(lx, elev, lz),
+                            sculptObj.WorldMatrix);
+                        var sp = TransformGizmo.ProjectToScreen(camB, wp, vpwB, vphB);
+                        var ss = SceneToScreen(sp.X, vphB - sp.Y);
+                        if (i > 0) dlT.AddLine(prevB, ss, boundCol, 1.5f);
+                        prevB = ss;
+                    }
+                }
+                }
+            }
+            else if (_bridge.TerrainSculptObject == null)
+            {
+                _bridge.TerrainBrushWorldHit = null;
+                _bridge.TerrainBrushLocalXZ = null;
+                _bridge.TerrainBrushPainting = false;
+            }
+
             //  Gizmo mouse interaction (drag to transform selected editor object) 
             // Uses screen-space coordinates  gizmo renders at bottom-center of viewport
             if (!_previewMode && _bridge.Camera != null && _bridge.EditorGizmo != null
@@ -4639,6 +4865,7 @@ ImGui.SameLine();
                     && !_mapPaintActive
                 && _skySunDragObj == null && SkySunHandleAtMouse() == null
                 && _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0
+                && !_bridge.TerrainBrushPainting
                 && !worldInputBlocked)
             {
                 var cam = _bridge.Camera;

@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using ImGuiNET;
@@ -106,6 +107,10 @@ public class RenderTimePanel
             }
             ImGui.TextDisabled("Averages reset when the CSM toggle changes (Shadow panel or viewport toolbar).");
         }
+
+        // ── FRAME PROFILER — editor-frame section breakdown + history graph ──
+        if (ImGui.CollapsingHeader("Frame Profiler (editor frame)", ImGuiTreeNodeFlags.DefaultOpen))
+            DrawFrameProfiler();
 
         // ── Per-object breakdown ──
         if (ImGui.CollapsingHeader("Per-Object", ImGuiTreeNodeFlags.DefaultOpen))
@@ -264,5 +269,83 @@ public class RenderTimePanel
             ImGui.SameLine();
             ImGui.TextColored(col, $"{value:F2} ms");
         }
+    }
+
+    // ── Frame Profiler (editor frame sections, FrameProfiler ring history) ──
+
+    private void DrawFrameProfiler()
+    {
+        double frame = FrameProfiler.FrameMs;
+        if (frame < 0.0001) frame = FrameProfiler.Average(FrameProfiler.HistFrame);
+
+        // Sparkline: the last FrameProfiler.History editor-frame totals, 16-bit-graph
+        // style. Scale = max(20 ms, worst sample) so 60 fps sits at ~mid-height.
+        float width = ImGui.GetContentRegionAvail().X;
+        float height = 56f;
+        var dl = ImGui.GetWindowDrawList();
+        var p0 = ImGui.GetCursorScreenPos();
+        double maxMs = 20.0;
+        int n = FrameProfiler.HistCount;
+        double worst = 0;
+        for (int i = 0; i < n; i++)
+            if (FrameProfiler.Sample(FrameProfiler.HistFrame, i) > worst)
+                worst = FrameProfiler.Sample(FrameProfiler.HistFrame, i);
+        if (worst > maxMs) maxMs = worst;
+        Vector2 prev = default;
+        for (int i = 0; i < n; i++)
+        {
+            float x = p0.X + (i + 1) / (float)FrameProfiler.History * width;
+            float y = p0.Y + height - (float)(FrameProfiler.Sample(FrameProfiler.HistFrame, i) / maxMs) * height;
+            if (i > 0) dl.AddLine(prev, new Vector2(x, y), 0xFF40B0FF, 1.5f); // ABGR: orange
+            prev = new Vector2(x, y);
+        }
+        // 60 fps reference line (16.7 ms).
+        float refY = p0.Y + height - (float)(16.7 / maxMs) * height;
+        dl.AddLine(new Vector2(p0.X, refY), new Vector2(p0.X + width, refY), 0x6030C030, 1f);
+        dl.AddRectFilled(p0, p0 + new Vector2(width, height), 0x3A20201F, 3f);
+        ImGui.Dummy(new Vector2(width, height));
+        ImGui.TextDisabled($"last {FrameProfiler.History} editor frames · scale {maxMs:F0} ms · green line = 60 fps");
+
+        ImGui.Separator();
+
+        // Section rows: value, share of frame, colored bar.
+        DrawSection("Editor frame (total)", FrameProfiler.FrameMs, frame, frame, new Vector4(1f, 1f, 1f, 1f));
+        DrawSection("Scene render (engine 3D)", FrameProfiler.SceneMs, frame, frame, new Vector4(0.4f, 0.75f, 1f, 1f));
+        DrawSection("Viewport panel (UI/gizmo/brush)", FrameProfiler.ViewportMs, frame, frame, new Vector4(1f, 0.75f, 0.3f, 1f));
+        DrawSection("All other panels", FrameProfiler.PanelsMs, frame, frame, new Vector4(0.65f, 0.85f, 0.55f, 1f));
+
+        ImGui.Separator();
+        ImGui.TextDisabled("Terrain sculpt (while a session is ON):");
+        double sculptTotal = FrameProfiler.SculptPickMs + FrameProfiler.SculptStampMs + FrameProfiler.SculptOverlayMs;
+        DrawSection("· Pick (CPU ray-march)", FrameProfiler.SculptPickMs, frame, frame, new Vector4(0.95f, 0.55f, 0.9f, 1f));
+        DrawSection("· Stamp + upload", FrameProfiler.SculptStampMs, frame, frame, new Vector4(0.95f, 0.4f, 0.4f, 1f));
+        DrawSection("· Ring + outline", FrameProfiler.SculptOverlayMs, frame, frame, new Vector4(0.9f, 0.9f, 0.4f, 1f));
+        DrawSection("· Sculpt total", sculptTotal, frame, frame, new Vector4(1f, 0.6f, 0.2f, 1f));
+
+        if (sculptTotal > 0.5)
+            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f),
+                $"Sculpt is eating {sculptTotal / Math.Max(frame, 0.01) * 100f:F0}% of the frame!");
+    }
+
+    /// <summary>One labeled row: ms value + % of frame + proportional bar.</summary>
+    private void DrawSection(string label, double value, double frame, double totalForBar, Vector4 col)
+    {
+        double pct = totalForBar > 0.0001 ? value / totalForBar * 100.0 : 0.0;
+        ImGui.Text(label);
+        ImGui.SameLine(230);
+        ImGui.Text($"{value,7:F2} ms");
+        ImGui.SameLine(330);
+        ImGui.Text($"{pct,5:F1}%");
+        ImGui.SameLine(385);
+        float barW = MathF.Min(160f, MathF.Max(0f, ImGui.GetContentRegionAvail().X));
+        var p0 = ImGui.GetCursorScreenPos();
+        float frac = frame > 0.0001 ? (float)(value / frame) : 0f;
+        frac = Math.Clamp(frac, 0f, 1f);
+        ImGui.GetWindowDrawList().AddRectFilled(p0, p0 + new Vector2(barW, 10f),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.2f, 0.25f, 1f)), 2f);
+        if (frac > 0.001f)
+            ImGui.GetWindowDrawList().AddRectFilled(p0, p0 + new Vector2(barW * frac, 10f),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(col.X, col.Y, col.Z, 0.9f)), 2f);
+        ImGui.Dummy(new Vector2(barW, 10f));
     }
 }
