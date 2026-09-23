@@ -574,12 +574,37 @@ Per-object PBR with 7 texture slots:
   - `PbrHeightOffset` — shifts the whole height field (raise valleys / tame crumpled spikes)
 - Smear guards: physical tangent kept up to ~87° view elevation (no depth squashing at low angles),
   hard ±0.16 UV offset cap prevents cross-tile texture smearing, far-field fade 80–160u for stability
-- **Vertex Displacement** (planes, opt-in): TRUE geometric displacement — the plane mesh is
-  tessellated into a 256×256 grid (`Object3D.CreatePlaneVertices`) and a dedicated vertex stage
-  (`pbrDisplace_vertex.glsl` + the shared objectPbr fragment) pushes vertices along the height map
-  via vertex texture fetch, re-deriving normals from the height gradient. Real silhouette, real
-  parallax, real self-occlusion (Marmoset "Height" model); view-ray POM auto-disables so depth is
-  not doubled. Sliders: enable toggle + `PbrVertexDisplaceScale` (peak height, world units); both persist
+- **Vertex Displacement** (planes): TRUE geometric displacement — the plane mesh is tessellated
+  (16..512 segments, `PbrVertexSegments`) and a dedicated vertex stage (`pbrDisplace_vertex.glsl`
+  + the shared objectPbr fragment) pushes vertices along the displacement source via vertex
+  texture fetch, re-deriving normals from the height gradient. Real silhouette, real parallax,
+  real self-occlusion; view-ray POM auto-reduces (micro 0.3) so depth is not doubled.
+  `PbrVertexDisplaceScale`/`PbrVertexOffset` are the LEGACY PBR fields (no UI on planes).
+- **Terrain Geometry (heightmap → mesh)** — planes with a terrain elevation heightmap are
+  ALWAYS displaced (forced, no toggle). Elevation is a SEPARATE source from the PBR height map:
+  - `TerrainHeightPath` — dedicated grayscale heightmap (GPU unit 15, RAW 0..1, no Marmoset
+    calibration); lazy texture load, dropped on path change, disposed with the object.
+  - `TerrainHeightSourcePath` — effective source (plane-only legacy fallback to the PBR height
+    slot); every elevation reader (dense-grid gate, displaced program gate, `HasPbrMaterial`,
+    panel status) MUST use it, never the raw fields.
+  - **Two height sliders from two separate images** (`displaceWorld(uvT, uvP)` in the shader):
+    * `TerrainBaseHeight` — "Base Height (from heightmap)": how tall the raw elevation image
+      stands (the SHAPE); uniform `u_terrainBaseHeight`.
+    * `TerrainHeightScale` — "Displace Height (from PBR)": amplitude of the vertex-displacement
+      DETAIL from the PBR height map (unit 5, POM-calibrated, its own per-map tiling); uniform
+      `u_dispScale` on the terrain branch, gated by `u_pbrHeightDetail` (1 only when the PBR
+      slot is real — the elevation fallback bind to unit 5 does NOT count as detail).
+  - `TerrainHeightOffset` (−250..250) — shifts the whole displaced surface; `TerrainHeightStrength`
+    (0..3) reshapes the raw elevation around mid-gray (0 flat, 1 as-authored, >1 steeper).
+  - `TerrainHeightTilingX/Y` — the elevation's OWN tiling (uniform `u_terrainUvScale`), decoupled
+    from PBR per-map tiling and global Map Tiling; slopes use two separate footprints (terrain
+    tiling for base, POM tiling for detail) so gradients add correctly.
+  - All uniforms upload every draw (live, no mesh rebuild); persist symmetric (SceneAsset +
+    save ×2 + load clamp, −1 sentinels migrate legacy scenes: BaseHeight inherits the old PBR
+    peak, Displace starts 0 — shape unchanged).
+  - Chunk AABB pad + plane picking proxy use the real max: base + detail + |offset|
+    (`TerrainDisplacementExtent`); elevation texture load failure flattens only dedicated-
+    source planes (legacy fallback planes render through the unit-5 branch).
 
 ### 5.3 Terrain PBR (terrainEditor_fragment.glsl)
 

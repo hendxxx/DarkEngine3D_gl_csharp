@@ -21,8 +21,24 @@ uniform mat4 view;
 uniform mat4 projection;
 
 uniform sampler2D heightMap;                 // unit 5 (bound by DrawPbrPrimitive)
+uniform sampler2D terrainHeightMap;          // unit 15 — terrain ELEVATION (base shape),
+                                             // separate from the POM detail height map
+uniform float u_terrainDisplace = 0.0;       // 1 = displace from terrainHeightMap (RAW 0..1)
+uniform vec2 u_terrainUvScale = vec2(1.0);   // terrain elevation OWN tiling — independent
+                                             // from the PBR per-map tiling / global Map Tiling
 uniform float u_vertexDisplace = 0.0;        // 1 = displace this draw
 uniform float u_dispScale = 0.15;            // peak height in world units
+uniform float u_dispOffset = 0.0;            // base offset in world units — shifts the WHOLE
+                                             // height field up/down (negative = sink the base)
+uniform float u_dispStrength = 1.0;          // relief intensity: reshapes the RAW elevation
+                                             // around mid-gray (1 = unchanged, <1 = flatter,
+                                             // >1 = steeper peaks/deeper valleys, 0 = flat)
+uniform float u_terrainBaseHeight = 0.15;    // BASE heightmap amplitude — the terrain shape
+                                             // from the image stands this tall (raw h scaled)
+uniform float u_pbrHeightDetail = 0.0;       // 1 = a REAL PBR height map exists (unit 5) —
+                                             // its calibrated value drives the DETAIL
+                                             // vertex displacement (u_dispScale). The
+                                             // elevation fallback bind does NOT count
 uniform float u_dispGrid = 256.0;            // tessellation segments per side
 uniform vec3 u_heightTuning = vec3(1.0, 0.0, 0.0);       // strength, invert, blur
 uniform vec4 u_heightAdvance = vec4(1.0, 0.5, 0.0, 0.5); // contrast, ctr, offset, scale center
@@ -54,20 +70,43 @@ float dispHeight(vec2 uv) {
     return clamp(h - u_heightAdvance.w, 0.0, 1.0);
 }
 
-// Active displacement source.
-float displaceSource(vec2 uv) {
-    return dispHeight(uv);
+// Active displacement source. TERRAIN ELEVATION (base shape) comes from the
+// dedicated unit-15 map RAW 0..1 — NO Marmoset calibration (calibration fakes
+// slopes and desyncs CPU picking); the PBR height map (unit 5) stays a POM
+// DETAIL source with full calibration, never geometry.
+// WORLD-UNIT elevation of the displaced surface. TWO SEPARATE SOURCES:
+//   base   = raw terrain heightmap (unit 15) × u_terrainBaseHeight → the SHAPE
+//   detail = PBR height map (unit 5, calibrated — POM tuning applies) × u_dispScale
+//            → extra VERTEX DISPLACEMENT detail from the PBR map (own tiling)
+// The slope/normal derivation reads this SAME function, so lighting stays
+// physically consistent with the displaced geometry.
+float displaceWorld(vec2 uvT, vec2 uvP) {
+    if (u_terrainDisplace > 0.5) {
+        float base = texture(terrainHeightMap, uvT).r * u_terrainBaseHeight;
+        float detail = (u_pbrHeightDetail > 0.5 && u_dispScale > 0.0)
+            ? dispHeight(uvP) * u_dispScale   // baseline-relative 0..1 (calibrated)
+            : 0.0;
+        return base + detail;
+    }
+    return dispHeight(uvP) * u_dispScale;
 }
 
 void main() {
     vec4 worldPos = model * vec4(aPos, 1.0);
     vec3 nw = normalize(mat3(transpose(inverse(model))) * aNormal);
-    vec2 uvH = aTexCoord * u_uvScale[5] + u_uvOffset[5];
+    // TWO SEPARATE UVs: the terrain elevation samples through its OWN tiling;
+    // the PBR height DETAIL samples through the POM slot's tiling/offset.
+    vec2 uvT = aTexCoord * u_terrainUvScale;
+    vec2 uvP = aTexCoord * u_uvScale[5] + u_uvOffset[5];
 
-    if (u_vertexDisplace > 0.5 && u_dispScale > 0.0) {
+    // Displace when flagged. For terrain-driven planes the heights live in the
+    // decomposed uniforms (base + detail), so u_dispScale is NOT part of the gate.
+    if (u_vertexDisplace > 0.5 && (u_terrainDisplace > 0.5 || u_dispScale > 0.0)) {
         // Displace along the model-space normal (plane normal = +Y up).
-        float h = displaceSource(uvH);
-        worldPos.xyz += nw * h * u_dispScale;
+        // u_dispOffset lifts the WHOLE displaced surface — a terrain "height
+        // offset": raise islands above water level or sink the base below the grid.
+        float elev = displaceWorld(uvT, uvP);
+        worldPos.xyz += nw * (elev + u_dispOffset);
 
         // Re-derive the normal from the height-field gradient (central
         // differences). Footprint = ONE GRID CELL measured in mesh-UV space,
@@ -78,13 +117,20 @@ void main() {
         // Slope = Δh over the cell / cell world size. Tiling cancels because
         // the sample window scales with u_uvScale (cell in height-UV space) and
         // the world span of a mesh-UV cell is planeLength / gridSegments.
-        vec2 cellUv = max(u_uvScale[5], vec2(1e-3)) / u_dispGrid;   // one cell, height-map UV space
+        // One GRID CELL per SOURCE: the base (terrain tiling) and the detail
+        // (POM tiling) each step through their own UV space — gradients of the
+        // two sources add up just like the elevations do.
+        vec2 cellT = max(u_terrainUvScale, vec2(1e-3)) / u_dispGrid;
+        vec2 cellP = max(u_uvScale[5], vec2(1e-3)) / u_dispGrid;
         vec3 Tx = mat3(model) * vec3(1.0, 0.0, 0.0);
         vec3 Bz = mat3(model) * vec3(0.0, 0.0, 1.0);
         float cellWorldU = max(length(Tx) / u_dispGrid, 1e-5);
         float cellWorldV = max(length(Bz) / u_dispGrid, 1e-5);
-        float slopeU = (displaceSource(uvH + vec2(cellUv.x, 0.0)) - displaceSource(uvH - vec2(cellUv.x, 0.0))) * u_dispScale / (2.0 * cellWorldU);
-        float slopeV = (displaceSource(uvH + vec2(0.0, cellUv.y)) - displaceSource(uvH - vec2(0.0, cellUv.y))) * u_dispScale / (2.0 * cellWorldV);
+        // displaceWorld already returns WORLD UNITS — slope = Δelev / Δworld.
+        float slopeU = (displaceWorld(uvT + vec2(cellT.x, 0.0), uvP + vec2(cellP.x, 0.0))
+                      - displaceWorld(uvT - vec2(cellT.x, 0.0), uvP - vec2(cellP.x, 0.0))) / (2.0 * cellWorldU);
+        float slopeV = (displaceWorld(uvT + vec2(0.0, cellT.y), uvP + vec2(0.0, cellP.y))
+                      - displaceWorld(uvT - vec2(0.0, cellT.y), uvP - vec2(0.0, cellP.y))) / (2.0 * cellWorldV);
         nw = normalize(nw - normalize(Tx) * slopeU
                            - normalize(Bz) * slopeV);
     }

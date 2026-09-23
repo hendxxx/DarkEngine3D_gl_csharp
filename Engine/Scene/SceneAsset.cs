@@ -326,6 +326,10 @@ public class EditorObjectData
     public string PbrRoughnessPath { get; set; } = "";
     public string PbrAoPath { get; set; } = "";
     public string PbrHeightPath { get; set; } = "";
+    /// <summary>Terrain elevation heightmap (base shape — vertex displacement).
+    /// SEPARATE from PbrHeightPath (POM surface detail). Legacy scenes may leave this
+    /// empty and keep the heightmap in the PBR height slot (plane-only migration).</summary>
+    public string TerrainHeightPath { get; set; } = "";
 
     public string PbrEmissionPath { get; set; } = "";
     public float PbrTexTiling { get; set; } = 1f;
@@ -341,9 +345,28 @@ public class EditorObjectData
     public float PbrHeightOffset { get; set; } = 0f;
     /// <summary>Marmoset-style height calibration: baseline gray treated as zero depth.</summary>
     public float PbrHeightScaleCenter { get; set; } = 0.5f;
-    /// <summary>Peak displacement height in world units for vertex displacement.
-    /// Vertex displacement is always active whenever a height source exists.</summary>
+    /// <summary>Legacy PBR vertex displacement height (0.15 default). Planes driven by
+    /// a terrain elevation map use <see cref="TerrainHeightScale"/> instead.</summary>
     public float PbrVertexDisplaceScale { get; set; } = 0.15f;
+    /// <summary>Legacy PBR vertex displacement offset. Planes driven by a terrain
+    /// elevation map use <see cref="TerrainHeightOffset"/> instead.</summary>
+    public float PbrVertexOffset { get; set; } = 0f;
+    /// <summary>BASE heightmap amplitude (world units) — the terrain SHAPE slider.
+    /// Absent = legacy scene → falls back to <see cref="PbrVertexDisplaceScale"/>.</summary>
+    public float TerrainBaseHeight { get; set; } = -1f;
+    /// <summary>VERTEX DISPLACEMENT height (world units) — extra relief on top of the
+    /// base shape. Absent = legacy scene → 0 (pure base, no behavior change).</summary>
+    public float TerrainHeightScale { get; set; } = -1f;
+    /// <summary>Terrain BASE-SHAPE offset (world units). Absent = legacy →
+    /// <see cref="PbrVertexOffset"/>.</summary>
+    public float TerrainHeightOffset { get; set; } = -1f;
+    /// <summary>Terrain relief intensity (0 = flat, 1 = as-authored, up to 3 = steep).
+    /// Absent = legacy scene → 1 (as-authored).</summary>
+    public float TerrainHeightStrength { get; set; } = -1f;
+    /// <summary>Terrain elevation map's OWN tiling (X/Y) — decoupled from the PBR
+    /// per-map tiling and the global Map Tiling. Absent = legacy scene → 1×1.</summary>
+    public float TerrainHeightTilingX { get; set; } = 1f;
+    public float TerrainHeightTilingY { get; set; } = 1f;
     /// <summary>Tessellation segments per side for the displaced plane grid (16..512).
     /// Null/absent = legacy scene → <see cref="EditorObject.PbrDisplaceSegments"/> (256).</summary>
     public int? PbrVertexSegments { get; set; }

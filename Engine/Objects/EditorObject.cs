@@ -464,6 +464,40 @@ public unsafe class EditorObject
     }
     /// <summary>Emissive color map (optional; 0 when absent).</summary>
     public string PbrEmissionPath { get; set; } = "";
+
+    // ── Terrain elevation heightmap (SEPARATE from the PBR height detail map) ──
+    // Two DIFFERENT sources by design: this one drives the base SHAPE (vertex
+    // displacement of the plane grid — grayscale, white = peaks) while    // <see cref="PbrHeightPath"/> stays a POM surface-detail map consumed by the    // fragment shader's parallax. Keeping them apart means a terrain can be shaped    // by one image and micro-detailed by another.
+    private string _terrainHeightPath = "";
+    private uint _terrainHeightTex;   // GPU texture for the elevation source (unit 15)
+    /// <summary>Grayscale terrain elevation heightmap — the base shape. Empty = flat    /// plane (PBR maps may still apply). Changing it drops the GPU texture (lazy reload).</summary>
+    public string TerrainHeightPath
+    {
+        get => _terrainHeightPath;
+        set
+        {
+            if (_terrainHeightPath == value) return;
+            _terrainHeightPath = value;
+            DropTerrainHeightTexture();
+        }
+    }
+    private void DropTerrainHeightTexture()
+    {
+        if (_terrainHeightTex != 0)
+        {
+            fixed (uint* p = &_terrainHeightTex) GL.DeleteTextures(1, p);
+            _terrainHeightTex = 0;
+        }
+    }
+    /// <summary>Effective terrain elevation source for this plane. Prefer the dedicated
+    /// TerrainHeightPath; legacy scenes that stored the elevation in the PBR height slot
+    /// keep working through a PLANE-ONLY fallback to <see cref="PbrHeightPath"/>.
+    /// ALL elevation readers (displacement gate, dense grid, program choice, AABB extent)
+    /// MUST use this — never the raw fields.</summary>
+    public string TerrainHeightSourcePath =>
+        PrimitiveType == EditorPrimitiveType.Plane
+            ? (!string.IsNullOrEmpty(_terrainHeightPath) ? _terrainHeightPath : PbrHeightPath)
+            : "";
     /// <summary>UV tiling multiplier for all PBR maps on this object (legacy — new scenes
     /// store per-map tiling in <see cref="PbrTexSettings"/>; kept for old files).</summary>
     public float PbrTexTiling { get; set; } = 1f;
@@ -483,10 +517,51 @@ public unsafe class EditorObject
     public float PbrHeightOffset { get; set; } = 0f;
     /// <summary>Height scale center: the baseline gray level treated as zero displacement depth.</summary>
     public float PbrHeightScaleCenter { get; set; } = 0.5f;
-    /// <summary>Peak displacement height in world units for vertex displacement.
+    /// <summary>Peak displacement height in world units for vertex displacement
+    /// (terrain "height scale" — how tall the highest height-map value stands).
     /// Vertex displacement is always active whenever a height source exists —
     /// there is no longer a boolean toggle gating it.</summary>
     public float PbrVertexDisplaceScale { get; set; } = 0.15f;
+    /// <summary>Height offset in world units — shifts the WHOLE displaced surface
+    /// up/down along the plane normal (negative sinks the base below the grid).
+    /// Terrain "height offset": raise islands above water level or sink valleys.
+    /// Normals are unaffected (uniform shift does not change the gradient).</summary>
+    public float PbrVertexOffset { get; set; } = 0f;
+    /// <summary>Terrain elevation map's OWN tiling (X/Y) — independent from the PBR
+    /// per-map tiling AND the global Map Tiling slider. Only controls how the
+    /// elevation wraps across the plane for displacement; PBR maps keep their own
+    /// tiling. Uploaded as a uniform every draw (no mesh rebuild needed).</summary>
+    public float TerrainHeightTilingX { get; set; } = 1f;
+    public float TerrainHeightTilingY { get; set; } = 1f;
+    /// <summary>BASE heightmap amplitude (world units) — the raw heightmap image
+    /// stands this tall. This is the terrain SHAPE slider.</summary>
+    public float TerrainBaseHeight { get; set; } = 0.15f;
+    /// <summary>VERTEX DISPLACEMENT height (world units) — EXTRA relief around
+    /// mid-gray added on top of the base shape (peaks rise, valleys sink).
+    /// SEPARATE from the base so shape and extra displacement are 2 sliders.
+    /// Legacy scenes migrate their old peak into BaseHeight and start at 0.</summary>
+    public float TerrainHeightScale { get; set; } = 0f;
+    /// <summary>Terrain BASE-SHAPE offset in world units — shifts the whole displaced
+    /// terrain up/down (raise islands above water / sink valleys). Geometry-only;
+    /// POM detail offset lives in the PBR height calibration.</summary>
+    public float TerrainHeightOffset { get; set; } = 0f;
+    /// <summary>Terrain relief intensity — reshapes the raw elevation around mid-gray
+    /// before displacement: 0 = flat, 1 = map as-authored, >1 = steeper peaks/deeper
+    /// valleys (peak height itself comes from <see cref="TerrainHeightScale"/>).
+    /// Geometry-only; the POM detail path is untouched.</summary>
+    public float TerrainHeightStrength { get; set; } = 1f;
+    /// <summary>Maximum vertical extent (world units) vertex displacement can push
+    /// this terrain above/below its flat grid — height scale + |height offset|.
+    /// Used by the plane selection/culling proxy AABB so sunken or raised terrain
+    /// never falls outside its own pick box.</summary>
+    /// <summary>Max height above the flat grid the displacement can reach —
+    /// base shape (raw ×1) + PBR-detail swing (calibrated 0..disp) + |offset|.</summary>
+    public float TerrainDisplacementExtent =>
+        PrimitiveType == EditorPrimitiveType.Plane
+            ? Math.Clamp(TerrainBaseHeight, 0f, 500f)
+              + Math.Clamp(TerrainHeightScale, 0f, 500f)
+              + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
+            : 0f;
 
     // ── PBR map tuning (per map type, applies to the sampled map only; uniform-only
     //    uploads, so changing these never reloads a texture) ──
@@ -561,12 +636,15 @@ public unsafe class EditorObject
             arr[i] = TexSettings.Clone();
         return arr;
     }
-    /// <summary>True when any PBR map is set — switches the object to the PBR shader.</summary>
+    /// <summary>True when any PBR map is set — switches the object to the PBR shader.
+    /// A terrain elevation heightmap alone also qualifies so a plane with only a base
+    /// shape (no PBR maps at all) still renders through the PBR displaced pipeline.</summary>
     public bool HasPbrMaterial =>
         !string.IsNullOrEmpty(PbrAlbedoPath) || !string.IsNullOrEmpty(PbrNormalPath) ||
         !string.IsNullOrEmpty(PbrMetallicPath) || !string.IsNullOrEmpty(PbrRoughnessPath) ||
         !string.IsNullOrEmpty(PbrAoPath) || !string.IsNullOrEmpty(PbrHeightPath) ||
-        !string.IsNullOrEmpty(PbrEmissionPath);
+        !string.IsNullOrEmpty(PbrEmissionPath) ||
+        !string.IsNullOrEmpty(TerrainHeightSourcePath);
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
     public string? GlbFilePath { get; set; } = null;
@@ -989,8 +1067,11 @@ public unsafe class EditorObject
             AABB localAABB = PrimitiveType switch
             {
                 EditorPrimitiveType.Plane => new AABB(
-                    new Vector3(-0.5f, -0.5f, -0.5f),
-                    new Vector3( 0.5f,  0.5f,  0.5f)),
+                    // Bottom extends below the flat grid by the maximum possible
+                    // displacement extent (height scale + |offset|) so selection and
+                    // culling still contain a terrain sunk below / raised above the grid.
+                    new Vector3(-0.5f, -0.5f - TerrainDisplacementExtent, -0.5f),
+                    new Vector3( 0.5f,  0.5f + TerrainDisplacementExtent,  0.5f)),
                 EditorPrimitiveType.Box => new AABB(
                     new Vector3(-0.5f, -0.5f, -0.5f),
                     new Vector3( 0.5f,  0.5f,  0.5f)),
@@ -1043,10 +1124,12 @@ public unsafe class EditorObject
         {
             case EditorPrimitiveType.Plane:
             {
-                // FORCED displacement: dense grid whenever a height source exists
-                // (or chunks are requested — a chunked grid gives per-chunk frustum
-                // culling even on a FLAT plane).
-                bool dense = PbrVertexChunk > 1;
+                // FORCED displacement: a dense grid is required whenever a TERRAIN
+                // ELEVATION heightmap exists (vertex displacement is always active on
+                // planes — the elevation IS the base shape) or chunks are requested.
+                // The resolution slider (PbrVertexSegments) therefore ALWAYS takes
+                // effect on a terrain plane.
+                bool dense = PbrVertexChunk > 1 || !string.IsNullOrEmpty(TerrainHeightSourcePath);
                 int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
                 if (verts == null)
@@ -1239,7 +1322,9 @@ public unsafe class EditorObject
         /// <summary>Calibrated zero-displacement baseline (u_heightAdvance.w) — used as the
         /// world-AABB padding so per-chunk frustum culling never culls displaced peaks.</summary>
         public float HeightAdvancePad = 0.5f;
-        public int VertexDisplace, DispScale, DispGrid;
+        public int VertexDisplace, DispScale, DispOffset, DispGrid;
+        public int TerrainDisplace, TerrainHeightMap, TerrainUvScale, TerrainDispStrength, TerrainBaseHeight;
+        public int PbrHeightDetail;   // u_pbrHeightDetail — real PBR height map present?
         public PbrUniformSet(uint program)
         {
             Program = program;
@@ -1288,7 +1373,14 @@ public unsafe class EditorObject
             HeightAdvance = GL.GetUniformLocation(Program, "u_heightAdvance");
             VertexDisplace = GL.GetUniformLocation(Program, "u_vertexDisplace");
             DispScale = GL.GetUniformLocation(Program, "u_dispScale");
+            DispOffset = GL.GetUniformLocation(Program, "u_dispOffset");
             DispGrid = GL.GetUniformLocation(Program, "u_dispGrid");
+            TerrainDisplace = GL.GetUniformLocation(Program, "u_terrainDisplace");
+            TerrainHeightMap = GL.GetUniformLocation(Program, "terrainHeightMap");
+            TerrainUvScale = GL.GetUniformLocation(Program, "u_terrainUvScale");
+            TerrainDispStrength = GL.GetUniformLocation(Program, "u_dispStrength");
+            TerrainBaseHeight = GL.GetUniformLocation(Program, "u_terrainBaseHeight");
+            PbrHeightDetail = GL.GetUniformLocation(Program, "u_pbrHeightDetail");
         }
     }
 
@@ -1385,13 +1477,14 @@ public unsafe class EditorObject
     }
     /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
     /// Returns false when there is nothing chunked (caller falls back to one full draw).</summary>
-    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, float dispScale, float dispHeightNorm, bool twoSided)
+    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, float dispScale, float dispHeightNorm, bool twoSided, float dispOffset = 0f)
     {
         if (PbrChunkCount <= 1 || _object3D == null || _chunkAABBs.Count != PbrChunkCount)
             return false;
-        // Displacement pushes vertices UP along +Y by up to dispScale — widen the
-        // world AABB so peaks never disappear while looking at the flat block edge.
-        float pad = MathF.Max(0.05f, dispScale * dispHeightNorm + 0.05f);
+        // Displacement pushes vertices UP along +Y by up to dispScale (plus the
+        // height offset, which can also sink the surface) — widen the world AABB so
+        // peaks never disappear while looking at the flat block edge.
+        float pad = MathF.Max(0.05f, dispScale * dispHeightNorm + MathF.Abs(dispOffset) + 0.05f);
         int culled = 0;
         int drawn = 0;
         // Capture the incoming cull state BEFORE disabling — checking GL.IsEnabled after
@@ -1476,11 +1569,12 @@ public unsafe class EditorObject
     {
         EnsurePbrTextures();
 
-        // Program choice: planes with "Vertex Displacement" on use the geometric-
+        // Program choice: planes with a terrain elevation heightmap use the geometric-
         // displacement vertex stage (true moving geometry); everything else the
-        // standard one. Both share the objectPbr fragment stage.
+        // standard one. Both share the objectPbr fragment stage. The PBR height map
+        // (Pom detail) does NOT trigger geometry displacement.
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && !string.IsNullOrEmpty(PbrHeightPath);
+                         && !string.IsNullOrEmpty(TerrainHeightSourcePath);
         var u = displaced
             ? (_pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()))
             : (_pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()));
@@ -1551,6 +1645,12 @@ public unsafe class EditorObject
         }
 
         // ── PBR maps (units 0-6); missing maps get the shared white texture ──
+        // When a terrain elevation map drives the base shape but the POM height slot
+        // is empty, bind the ELEVATION texture to unit 5 as well: the POM detail pass
+        // then reads real height data (no phantom bumps from the 1.0 white texel),
+        // while the elevation stays the sole displacement source.
+        bool terrainDriven = PrimitiveType == EditorPrimitiveType.Plane
+                             && !string.IsNullOrEmpty(TerrainHeightSourcePath);
         uint white = EnsurePbrWhiteTex();
         for (int i = 0; i < 7; i++)
         {
@@ -1558,6 +1658,74 @@ public unsafe class EditorObject
             GL.BindTexture(Const.GL_TEXTURE_2D, _pbrTex[i] != 0 ? _pbrTex[i] : white);
             GL.Uniform1i(u.Maps[i], i);
             GL.Uniform1i(u.UseMaps[i], _pbrTex[i] != 0 ? 1 : 0);
+        }
+        // ── Terrain elevation (unit 15) — lazy-load the dedicated base-shape map ──
+        if (terrainDriven && _terrainHeightTex == 0 && !string.IsNullOrEmpty(_terrainHeightPath))
+        {
+            try
+            {
+                var resolvedTerrain = PathHelpers.Resolve(_terrainHeightPath);
+                if (File.Exists(resolvedTerrain))
+                {
+                    _terrainHeightTex = new Texture(resolvedTerrain).ID;
+                    Console.WriteLine($"[PBR] '{Name}' terrain elevation loaded: {Path.GetFileName(resolvedTerrain)}");
+                }
+                else
+                {
+                    Console.WriteLine($"[PBR] '{Name}' terrain elevation missing: {_terrainHeightPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PBR] '{Name}' terrain elevation load failed: {ex.Message}");
+            }
+        }
+        if (terrainDriven && _terrainHeightTex != 0)
+        {
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 15);
+            GL.BindTexture(Const.GL_TEXTURE_2D, _terrainHeightTex);
+            GL.Uniform1i(u.TerrainHeightMap, 15);
+            if (u.TerrainDisplace >= 0) GL.Uniform1f(u.TerrainDisplace, 1f);
+            // The elevation's OWN tiling — decoupled from PBR map tiling entirely.
+            if (u.TerrainUvScale >= 0)
+                GL.Uniform2f(u.TerrainUvScale,
+                    Math.Clamp(TerrainHeightTilingX, 0.01f, 100f),
+                    Math.Clamp(TerrainHeightTilingY, 0.01f, 100f));
+            // Relief intensity for the raw elevation (0 flat … 1 as-authored … 3 max).
+            if (u.TerrainDispStrength >= 0)
+                GL.Uniform1f(u.TerrainDispStrength, Math.Clamp(TerrainHeightStrength, 0f, 3f));
+            // BASE heightmap amplitude (the terrain SHAPE slider).
+            if (u.TerrainBaseHeight >= 0)
+                GL.Uniform1f(u.TerrainBaseHeight, Math.Clamp(TerrainBaseHeight, 0f, 500f));
+            // Vertex-displacement DETAIL is driven by the REAL PBR height map
+            // (slot 5) — the elevation fallback bind must NOT count as detail.
+            if (u.PbrHeightDetail >= 0)
+                GL.Uniform1f(u.PbrHeightDetail, _pbrTex[5] != 0 ? 1f : 0f);
+            // POM detail fallback: elevation as detail when the POM slot is empty.
+            if (_pbrTex[5] == 0)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 5);
+                GL.BindTexture(Const.GL_TEXTURE_2D, _terrainHeightTex);
+                GL.Uniform1i(u.Maps[5], 5);
+                GL.Uniform1i(u.UseMaps[5], 1);
+                // POM must sample the elevation through the SAME tiling the vertex
+                // displacement used (NO global Map Tiling factor — the vertex stage
+                // does not apply it either), or detail bumps misalign with geometry.
+                if (u.UvScale[5] >= 0)
+                    GL.Uniform2f(u.UvScale[5],
+                        Math.Clamp(TerrainHeightTilingX, 0.01f, 100f),
+                        Math.Clamp(TerrainHeightTilingY, 0.01f, 100f));
+            }
+            GL.ActiveTexture(Const.GL_TEXTURE0);
+        }
+        else if (u.TerrainDisplace >= 0)
+        {
+            GL.Uniform1f(u.TerrainDisplace, 0f);
+            // Flatten ONLY when the dedicated TerrainHeightPath itself failed to load.
+            // The legacy fallback (elevation living in the PBR slot) renders through
+            // the non-terrain branch (unit 5 is real) and must NOT be flattened.
+            if (displaced && !string.IsNullOrEmpty(_terrainHeightPath) && u.VertexDisplace >= 0)
+                GL.Uniform1f(u.VertexDisplace, 0f);
         }
 
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
@@ -1584,7 +1752,17 @@ public unsafe class EditorObject
         GL.Uniform2f(u.AoTune, PbrAoStrength, PbrAoBrightness);
         GL.Uniform3f(u.HeightTune, PbrHeightStrength, PbrHeightInvert ? 1f : 0f, PbrHeightBlur);
         if (u.VertexDisplace >= 0) GL.Uniform1f(u.VertexDisplace, displaced ? 1f : 0f);
-        if (u.DispScale >= 0) GL.Uniform1f(u.DispScale, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f));
+        // u_dispScale = DETAIL amplitude from the PBR height map when terrain-driven
+        // (the "Displace Height" slider); the non-terrain (legacy/fallback) branch
+        // uses it as the whole-displacement scale from the old PBR field.
+        if (u.DispScale >= 0)
+            GL.Uniform1f(u.DispScale, displaced
+                ? Math.Clamp(TerrainHeightScale, 0f, 500f)
+                : Math.Clamp(PbrVertexDisplaceScale, 0f, 500f));
+        if (u.DispOffset >= 0)
+            GL.Uniform1f(u.DispOffset, displaced
+                ? Math.Clamp(TerrainHeightOffset, -250f, 250f)
+                : Math.Clamp(PbrVertexOffset, -250f, 250f));
         if (u.DispGrid >= 0) GL.Uniform1f(u.DispGrid, PbrPlaneSegmentsBuilt > 0 ? PbrPlaneSegmentsBuilt : PbrDisplaceSegments);
         GL.Uniform4f(u.HeightAdvance,
             Math.Clamp(PbrHeightContrast, 0.1f, 4f),
@@ -1612,7 +1790,12 @@ public unsafe class EditorObject
         bool drewChunks = false;
         if (PbrChunkCount > 1)
         {
-            try { drewChunks = DrawChunkedPlane(model, view * proj, Math.Clamp(PbrVertexDisplaceScale, 0f, 2f), u.HeightAdvancePad, twoSided); }
+            // Chunk AABB pad must cover the REAL max elevation above the grid:
+            // base shape + PBR-detail swing (0..disp) + |offset| (pad baseline 1.0).
+            float maxY = Math.Clamp(TerrainBaseHeight, 0f, 500f)
+                       + Math.Clamp(TerrainHeightScale, 0f, 500f)
+                       + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f));
+            try { drewChunks = DrawChunkedPlane(model, view * proj, maxY, 1f, twoSided, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
             catch (Exception ex)
             {
                 Console.WriteLine($"[PBR] Chunked draw FAILED on '{Name}' → full-draw fallback: {ex.Message}");
@@ -4598,6 +4781,7 @@ void main() {
         if (_player2dVAO != 0) { uint v = _player2dVAO; GL.DeleteVertexArrays(1, &v); _player2dVAO = 0; }
         if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
         DisposePbrTextures();
+        DropTerrainHeightTexture();
         _object3D = null;
     }
 }

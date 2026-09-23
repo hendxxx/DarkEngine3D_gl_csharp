@@ -1004,7 +1004,10 @@ public class SceneManagerPanel
                         PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
                         PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
                         PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
+                        TerrainHeightPath = PathHelpers.MakeRelative(obj.TerrainHeightPath),
                         PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
+                        TerrainHeightTilingX = obj.TerrainHeightTilingX,
+                        TerrainHeightTilingY = obj.TerrainHeightTilingY,
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
                         PbrPomShadowStrength = obj.PbrPomShadowStrength,
@@ -1013,6 +1016,11 @@ public class SceneManagerPanel
                         PbrHeightOffset = obj.PbrHeightOffset,
                         PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
                         PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
+                        PbrVertexOffset = obj.PbrVertexOffset,
+                        TerrainBaseHeight = obj.TerrainBaseHeight,
+                        TerrainHeightScale = obj.TerrainHeightScale,
+                        TerrainHeightOffset = obj.TerrainHeightOffset,
+                        TerrainHeightStrength = obj.TerrainHeightStrength,
                         PbrVertexSegments = obj.PbrVertexSegments,
                         PbrVertexChunk = obj.PbrVertexChunk,
                         TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
@@ -1392,6 +1400,14 @@ public class SceneManagerPanel
                         obj.PbrRoughnessPath = PathHelpers.Resolve(objData.PbrRoughnessPath);
                         obj.PbrAoPath = PathHelpers.Resolve(objData.PbrAoPath);
                         obj.PbrHeightPath = PathHelpers.Resolve(objData.PbrHeightPath);
+                        // Terrain elevation (base shape) — SEPARATE from the POM height
+                        // detail above. Legacy scenes that kept the elevation in the PBR
+                        // height slot keep working through the PLANE-ONLY fallback in
+                        // TerrainHeightSourcePath (non-destructive, no copy here).
+                        obj.TerrainHeightPath = PathHelpers.Resolve(objData.TerrainHeightPath);
+                        // Elevation's own tiling — decoupled from PBR map tiling.
+                        obj.TerrainHeightTilingX = Math.Clamp(objData.TerrainHeightTilingX, 0.01f, 100f);
+                        obj.TerrainHeightTilingY = Math.Clamp(objData.TerrainHeightTilingY, 0.01f, 100f);
                         obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
                         obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
                         obj.PbrParallaxScale = Math.Clamp(objData.PbrParallaxScale, 0f, 0.5f);
@@ -1400,7 +1416,27 @@ public class SceneManagerPanel
                         obj.PbrHeightContrastCenter = Math.Clamp(objData.PbrHeightContrastCenter, 0f, 1f);
                         obj.PbrHeightOffset = Math.Clamp(objData.PbrHeightOffset, -0.5f, 0.5f);
                         obj.PbrHeightScaleCenter = Math.Clamp(objData.PbrHeightScaleCenter, 0f, 1f);
-                        obj.PbrVertexDisplaceScale = Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 2f);
+                        obj.PbrVertexDisplaceScale = Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 500f);
+                        obj.PbrVertexOffset = Math.Clamp(objData.PbrVertexOffset, -250f, 250f);
+                        // Terrain base-shape height/offset — separate from the PBR vertex
+                        // fields. Legacy scenes without the fields (−1 sentinel) MIGRATE
+                        // from the old PBR values; new scenes always carry explicit values.
+                        // Base heightmap amplitude vs vertex displacement height are TWO
+                        // sliders: legacy scenes (−1 sentinels) migrate the old peak into
+                        // BaseHeight (shape unchanged) and start Displace at 0.
+                        obj.TerrainBaseHeight = objData.TerrainBaseHeight >= 0f
+                            ? Math.Clamp(objData.TerrainBaseHeight, 0f, 500f)
+                            : Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 500f);
+                        obj.TerrainHeightScale = objData.TerrainHeightScale >= 0f
+                            ? Math.Clamp(objData.TerrainHeightScale, 0f, 500f)
+                            : 0f;
+                        obj.TerrainHeightOffset = objData.TerrainHeightOffset >= 0f
+                            ? Math.Clamp(objData.TerrainHeightOffset, -250f, 250f)
+                            : Math.Clamp(objData.PbrVertexOffset, -250f, 250f);
+                        // Relief intensity — legacy scenes (−1 sentinel) default to 1.
+                        obj.TerrainHeightStrength = objData.TerrainHeightStrength >= 0f
+                            ? Math.Clamp(objData.TerrainHeightStrength, 0f, 3f)
+                            : 1f;
                         if (objData.PbrVertexSegments is int s && s > 0) obj.PbrVertexSegments = Math.Clamp(s, 16, 512);
                         if (objData.PbrVertexChunk is int ck && ck > 0) obj.PbrVertexChunk = Math.Clamp(ck, 1, 16);
                         obj.MarkDirty(); // displaced planes always need the dense grid
@@ -1756,6 +1792,9 @@ public class SceneManagerPanel
                             PbrRoughnessPath = PathHelpers.MakeRelative(obj.PbrRoughnessPath),
                             PbrAoPath = PathHelpers.MakeRelative(obj.PbrAoPath),
                             PbrHeightPath = PathHelpers.MakeRelative(obj.PbrHeightPath),
+                            TerrainHeightPath = PathHelpers.MakeRelative(obj.TerrainHeightPath),
+                            TerrainHeightTilingX = obj.TerrainHeightTilingX,
+                            TerrainHeightTilingY = obj.TerrainHeightTilingY,
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,
@@ -1765,6 +1804,11 @@ public class SceneManagerPanel
                             PbrHeightOffset = obj.PbrHeightOffset,
                             PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
                             PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
+                            PbrVertexOffset = obj.PbrVertexOffset,
+                            TerrainBaseHeight = obj.TerrainBaseHeight,
+                            TerrainHeightScale = obj.TerrainHeightScale,
+                            TerrainHeightOffset = obj.TerrainHeightOffset,
+                            TerrainHeightStrength = obj.TerrainHeightStrength,
                             PbrVertexSegments = obj.PbrVertexSegments,
                             PbrVertexChunk = obj.PbrVertexChunk,
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
