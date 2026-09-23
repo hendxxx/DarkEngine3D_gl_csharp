@@ -467,11 +467,13 @@ public unsafe class EditorObject
     /// <summary>UV tiling multiplier for all PBR maps on this object (legacy — new scenes
     /// store per-map tiling in <see cref="PbrTexSettings"/>; kept for old files).</summary>
     public float PbrTexTiling { get; set; } = 1f;
-    /// <summary>PBR parallax depth (0 = off, 0.15 = default strong). Steep POM height-map displacement.</summary>
-    public float PbrParallaxScale { get; set; } = 0.15f;
-    /// <summary>Relief self-shadowing strength for the height-map POM (0 = off, 0.6 default, 1 = hard).
-    /// Marches the height field toward the sun so displaced slopes cast contact shadows.</summary>
-    public float PbrPomShadowStrength { get; set; } = 0.6f;
+    /// <summary>PBR parallax depth (0 = OFF — the default; up to 0.5 for strong relief).
+    /// Steep POM height-map displacement. Non-zero enables the height-map parallax.</summary>
+    public float PbrParallaxScale { get; set; } = 0f;
+    /// <summary>Relief self-shadowing strength for the height-map POM (0 = OFF — the default;
+    /// 1 = hard). Marches the height field toward the sun so displaced slopes cast contact
+    /// shadows. Only visible while parallax depth is non-zero.</summary>
+    public float PbrPomShadowStrength { get; set; } = 0f;
     // ── Marmoset-style height calibration (Displacement module equivalents) ──
     /// <summary>Height contrast: exaggerates separation between low/high areas (1 = off).</summary>
     public float PbrHeightContrast { get; set; } = 1f;
@@ -1560,14 +1562,20 @@ public unsafe class EditorObject
 
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
         // Global PbrTexTiling multiplies into each per-map tiling so the slider
-        // scales all maps uniformly in real-time.
+        // scales ALL 7 maps uniformly in real-time (albedo, normal, metallic,
+        // roughness, ao, height, emission — every sampled map shares one UV).
+        // Guard: a per-map setting of 0 (corrupt/legacy data) would pin that map
+        // at a frozen scale and make the global slider look dead — clamp to 1.
         float globalTiling = PbrTexTiling;
         for (int i = 0; i < 7; i++)
         {
+            var map = PbrTexSettings[i];
+            float mapTilingX = map.TilingX > 0f ? map.TilingX : 1f;
+            float mapTilingY = map.TilingY > 0f ? map.TilingY : 1f;
             if (u.UvScale[i] >= 0)
-                GL.Uniform2f(u.UvScale[i], PbrTexSettings[i].TilingX * globalTiling, PbrTexSettings[i].TilingY * globalTiling);
+                GL.Uniform2f(u.UvScale[i], mapTilingX * globalTiling, mapTilingY * globalTiling);
             if (u.UvOffset[i] >= 0)
-                GL.Uniform2f(u.UvOffset[i], PbrTexSettings[i].OffsetX, PbrTexSettings[i].OffsetY);
+                GL.Uniform2f(u.UvOffset[i], map.OffsetX, map.OffsetY);
         }
         GL.Uniform3f(u.AlbedoTune, PbrAlbedoBrightness, PbrAlbedoSaturation, PbrAlbedoContrast);
         GL.Uniform2f(u.NormalTune, PbrNormalStrength, PbrNormalBlur);

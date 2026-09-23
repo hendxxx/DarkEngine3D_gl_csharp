@@ -298,7 +298,8 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 obj.PbrVertexDisplaceScale = 0.15f;
                 obj.PbrVertexSegments = EditorObject.PbrDisplaceSegments; obj.PbrVertexChunk = 1; obj.MarkDirty();
                 obj.PbrEmissionIntensity = 1f;
-                obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0.15f; obj.PbrPomShadowStrength = 0.6f;
+                // Mapping defaults: tiling 1×, parallax OFF (0), relief shadow OFF (0).
+                obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0f; obj.PbrPomShadowStrength = 0f;
             }
         }
 
