@@ -1,7 +1,6 @@
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec3 aColor;
 layout (location = 3) in vec2 aTexCoord;
 
 // ── GEOMETRIC DISPLACEMENT vertex stage (PBR planes with a height map) ──
@@ -154,7 +153,7 @@ void main() {
 
     FragPos = worldPos.xyz;
     Normal = nw;
-    ObjColor = aColor;
+    ObjColor = vec3(1.0);
     TexCoord = aTexCoord;
     vec4 viewPos = view * worldPos;
     viewDepth = -viewPos.z;

@@ -419,7 +419,7 @@ void main() {
 
         texColor = mix(base, t3 * 0.8, cliffMask);
     }
-    else texColor = ObjColor;
+    else texColor = vec3(1.0); // no per-vertex color buffer -> neutral white fallback
 
      // LIGHTING
     float nightBlendFactor = smoothstep(0.15, 0.0, realSunDir.y);

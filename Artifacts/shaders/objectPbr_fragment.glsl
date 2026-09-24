@@ -53,7 +53,6 @@ uniform int u_pomMinSteps = 16;       // POM ray-march steps head-on → min (ch
 uniform int u_pomMaxSteps = 96;       // POM ray-march steps grazing → max (detail, no banding)
 uniform float u_pomShadowStrength = 0.6; // relief self-shadowing strength (0 = off, 1 = hard)
 uniform float u_vertexDisplace = 0.0; // 1 = geometry ALREADY displaced by the vertex stage → skip view-ray POM
-uniform float u_splatDetail = 0.0;    // splat per-layer POM detail amplitude (0 = off)
 
 // ── PBR MAP TUNING (uploaded from the PBR panel; applies to the selected object) ──
 uniform vec3 u_albedoTuning = vec3(1.0, 1.0, 1.0);    // brightness, saturation, contrast
@@ -107,42 +106,6 @@ uniform vec2 u_lightCone[MAX_LOCAL_LIGHTS];    // x = cos(outer), y = cos(inner)
 uniform sampler2D u_localShadowSpot[4];
 uniform samplerCube u_localShadowPoint[3];
 
-// ── TERRAIN SPLAT (4 texture layers blended on the displaced plane) ──
-// Weight map: RGBA8 (unit 10) — one channel per layer, weights sum to 1 per
-// texel. Layer textures live on units 11-14 (albedo), the whole set samples
-// through the BASE albedo map's tiling/offset (uniform look across the map).
-// Weights come from TWO sources combined with max: manual viewport painting and
-// AUTO height bands computed CPU-side from the sculpted elevation.
-uniform sampler2D u_splatWeights;        // unit 10 (RGBA weights)
-uniform sampler2D u_splatAlbedo[4];      // units 11-14 (layer albedo)
-uniform sampler2D u_splatNormal[4];      // per-layer tangent-space normals
-uniform sampler2D u_splatMetal[4];       // per-layer metallic (R)
-uniform sampler2D u_splatRough[4];       // per-layer roughness (R)
-uniform sampler2D u_splatAo[4];          // per-layer AO (R)
-uniform sampler2D u_splatHeight[4];      // per-layer POM detail height (R)
-uniform int u_splatActive;               // 1 = blend the layers (else plain PBR path)
-uniform vec4 u_splatHasAlbedo;           // per-layer presence (empty slot w → weight 0)
-uniform vec4 u_splatHasNormal;
-uniform vec4 u_splatHasMetal;
-uniform vec4 u_splatHasRough;
-uniform vec4 u_splatHasAo;
-uniform vec4 u_splatHasHeight;
-uniform vec3 u_splatTint[4];             // layer fallback tint (empty slot OR no albedo tex)
-uniform float u_splatNormalStr = 1.0;    // normal-map strength for layer normals
-
-// Blend two already-tuned PBR parameter sets by weight w (0..1).
-// NOTE: emission is intentionally NOT blended — layers carry no emission maps,
-// so faking it from layer albedo would make every terrain glow.
-void splatMerge(inout vec3 albA, inout vec3 nrmA, inout float metA,
-                inout float rghA, inout float aoA,
-                vec3 albB, vec3 nrmB, float metB, float rghB, float aoB,
-                float w) {
-    albA = mix(albA, albB, w);
-    nrmA = normalize(mix(nrmA, nrmB, w));
-    metA = mix(metA, metB, w);
-    rghA = mix(rghA, rghB, w);
-    aoA  = mix(aoA, aoB, w);
-}
 uniform mat4 u_localLightSpace[MAX_LOCAL_LIGHTS];
 uniform int u_localShadowSpotIdx[MAX_LOCAL_LIGHTS];
 uniform int u_localShadowPointIdx[MAX_LOCAL_LIGHTS];
@@ -438,9 +401,6 @@ void main() {
     int pomSteps = u_pomMinSteps;
     vec2 pomOff = vec2(0.0);
     float pomShadow = 1.0;
-    // Splat per-layer POM detail amplitude (0 = off): uses the base POM slider so
-    // the layer relief is always proportional to the base relief depth.
-    float effSplatDetail = (u_splatDetail > 0.0) ? parallaxScale : 0.0;
     if (useHeight == 1 && parallaxScale > 0.0) {
         // ── SMEAR GUARDS (relief stays FULL at every angle) — the classic POM
         //    failure mode is the huge OFFSET at grazing angles, not the depth
@@ -519,8 +479,7 @@ void main() {
     // ── Occlusion offset per map: the POM march runs in the HEIGHT map's UV
     //    space; convert its shift into each map's own UV space
     //    (off_i = off_h · tiling_i / tiling_h) so per-map tiling stays
-    //    pixel-locked under displacement. Shared by the plain path and the
-    //    splat layer path below. ──
+    //    pixel-locked under displacement. ──
     vec2 pomOffPerMap[7];
     {
         vec2 sH = max(abs(u_uvScale[5]), vec2(1e-3));
@@ -528,77 +487,18 @@ void main() {
             pomOffPerMap[m] = clamp(pomOff * (u_uvScale[m] / sH), vec2(-0.25), vec2(0.25));
     }
 
-    // ── TERRAIN SPLAT — blend up to 4 texture layers by the weight map ──
-    // Runs BEFORE albedo tuning so the combined surface flows through the same
-    // brightness/saturation/contrast pipeline as a single-texture material.
-    vec3 albedo = useAlbedo == 1 ? texture(albedoMap, uvAlbedo - pomOffPerMap[0]).rgb : ObjColor;
-    vec3 tsNormalSplat = useNormal == 1
+    // ── SAMPLE PBR MAPS ──
+    vec3 albedo   = useAlbedo   == 1 ? texture(albedoMap,    uvAlbedo   - pomOffPerMap[0]).rgb : ObjColor;
+    vec3 tsNormal = useNormal   == 1
         ? sampleNormalBlurred(normalMap, uvNormal - pomOffPerMap[1], max(u_normalTuning.y, 0.0))
         : vec3(0.0, 0.0, 1.0);
-    float metallicSplat  = useMetallic  == 1 ? texture(metallicMap,  uvMetallic  - pomOffPerMap[2]).r : 0.0;
-    float roughnessSplat = useRoughness == 1 ? texture(roughnessMap, uvRough     - pomOffPerMap[3]).r : 0.6;
-    float aoSplat        = useAo        == 1 ? texture(aoMap,        uvAo        - pomOffPerMap[4]).r : 1.0;
-    vec3  emission       = useEmission  == 1 ? texture(emissionMap,  uvEmission  - pomOffPerMap[6]).rgb : vec3(0.0);
-
-    if (u_splatActive == 1) {
-        // Weights + layer texture footprint: the WHOLE set samples through the
-        // BASE albedo map's tiling/offset (uniform across the terrain, no
-        // per-layer tiling panels — one consistent texture scale).
-        vec4 splatW = texture(u_splatWeights, uvAlbedo - pomOffPerMap[0]);
-        // NOTE: do NOT zero weights of albedo-empty layers here — their fallback
-        // is the TINT below (u_splatTint). Zeroing made paint/bands on texture-less
-        // layers invisible: the renormalize poured every weight back into layer 0
-        // and painting appeared to do nothing at all.
-        float splatSum = splatW.x + splatW.y + splatW.z + splatW.w;
-        if (splatSum > 0.001) splatW /= splatSum; else splatW = vec4(1.0, 0.0, 0.0, 0.0);
-        // Layer 0 full → the plain PBR path below is already exactly right.
-        if (dot(splatW, vec4(0.0, 1.0, 1.0, 1.0)) > 0.001) {
-            vec3 tsN = tsNormalSplat;
-            for (int l = 0; l < 4; l++) {
-                float w = splatW[l];
-                if (w <= 0.001) continue;
-                vec3 albL = u_splatHasAlbedo[l] > 0.5
-                    ? texture(u_splatAlbedo[l], uvAlbedo - pomOffPerMap[0]).rgb
-                    : u_splatTint[l];
-                vec3 nrmL = u_splatHasNormal[l] > 0.5
-                    ? sampleNormalBlurred(u_splatNormal[l], uvNormal - pomOffPerMap[1], max(u_normalTuning.y, 0.0))
-                    : vec3(0.0, 0.0, 1.0);
-                float metL = u_splatHasMetal[l] > 0.5
-                    ? texture(u_splatMetal[l], uvMetallic - pomOffPerMap[2]).r
-                    : 0.0;
-                float rghL = u_splatHasRough[l] > 0.5
-                    ? texture(u_splatRough[l], uvRough - pomOffPerMap[3]).r
-                    : 0.6;
-                float aoL = u_splatHasAo[l] > 0.5
-                    ? texture(u_splatAo[l], uvAo - pomOffPerMap[4]).r
-                    : 1.0;
-                // Per-layer POM detail: layer heights share the base height map's
-                // UV footprint so the existing pomOff march stays valid.
-                if (u_splatHasHeight[l] > 0.5 && useHeight == 1 && parallaxScale > 0.0) {
-                    float hL = sampleHeight(u_splatHeight[l], uvHeight - pomOff, max(u_heightTuning.z, 0.0));
-                    // Subtract the BASE map's own depth at the same footprint: the
-                    // march below already accounts for the base relief, only the
-                    // layer's DELTA detail may bend the occlusion further.
-                    float hB = sampleHeight(heightMap, uvHeight - pomOff, max(u_heightTuning.z, 0.0));
-                    pomOff += clamp(vec2((hB - hL) * effSplatDetail), vec2(-0.16), vec2(0.16));
-                }
-                // Weighted layer color set — layer 0 folds in with weight (1 − Σ others)
-                // so manual paint over the default layer stays exact.
-                splatMerge(albedo, tsN, metallicSplat, roughnessSplat, aoSplat,
-                    albL, nrmL * u_splatNormalStr + vec3(0.0, 0.0, 1.0 - u_splatNormalStr),
-                    metL, rghL, aoL, w);
-            }
-            tsNormalSplat = tsN;
-        }
-    }
+    float metallic  = useMetallic  == 1 ? texture(metallicMap,  uvMetallic - pomOffPerMap[2]).r : 0.0;
+    float roughness = useRoughness == 1 ? texture(roughnessMap, uvRough    - pomOffPerMap[3]).r : 0.6;
+    float ao        = useAo        == 1 ? texture(aoMap,        uvAo       - pomOffPerMap[4]).r : 1.0;
+    vec3  emission  = useEmission  == 1 ? texture(emissionMap,  uvEmission - pomOffPerMap[6]).rgb : vec3(0.0);
 
     // ── NORMAL: tangent-space map → world via TBN (flat geometry normal when absent). ──
-    vec3 tsNormal = tsNormalSplat;
     vec3 mapNormal = normalize(T * tsNormal.x + B * tsNormal.y + norm * tsNormal.z);
-
-    float metallic  = metallicSplat;
-    float roughness = roughnessSplat;
-    float ao        = aoSplat;
 
     // ── CREVICE AO from the height field: darken occluded valleys (cheap 4-tap
     //    height diff) — sells contact between relief and the surface, boosting
