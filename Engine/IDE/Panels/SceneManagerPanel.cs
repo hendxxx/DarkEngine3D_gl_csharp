@@ -1008,6 +1008,22 @@ public class SceneManagerPanel
                         PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                         TerrainHeightTilingX = obj.TerrainHeightTilingX,
                         TerrainHeightTilingY = obj.TerrainHeightTilingY,
+                        // ── Additive sculpt layer (delta + amplitude) ──
+                        SculptDeltaPath = PathHelpers.MakeRelative(obj.SculptDeltaPath),
+                        TerrainSculptAmp = obj.TerrainSculptAmp,
+                        // ── Terrain splat (texture layers + weight map + height bands) ──
+                        SplatMapPath = PathHelpers.MakeRelative(obj.SplatMapPath),
+                        SplatLayerAlbedo = [.. obj.SplatLayerAlbedoPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                        SplatLayerNormal = [.. obj.SplatLayerNormalPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                        SplatLayerMetallic = [.. obj.SplatLayerMetallicPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                        SplatLayerRoughness = [.. obj.SplatLayerRoughnessPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                        SplatLayerAo = [.. obj.SplatLayerAoPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                        SplatLayerHeight = [.. obj.SplatLayerHeightPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                        SplatLayerTints = obj.SplatLayerTint.SelectMany(t => new[] { t.X, t.Y, t.Z }).ToArray(),
+                        SplatHeightBandsEnabled = obj.SplatHeightBandsEnabled,
+                        SplatHeightLayerCount = obj.SplatHeightLayerCount,
+                        SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
+                        SplatHeightBands = obj.SplatHeightBands.SelectMany(b => new[] { b.X, b.Y }).ToArray(),
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
                         PbrPomShadowStrength = obj.PbrPomShadowStrength,
@@ -1405,9 +1421,49 @@ public class SceneManagerPanel
                         // height slot keep working through the PLANE-ONLY fallback in
                         // TerrainHeightSourcePath (non-destructive, no copy here).
                         obj.TerrainHeightPath = PathHelpers.Resolve(objData.TerrainHeightPath);
+                        // Additive sculpt layer (delta bake + amplitude) — legacy scenes
+                        // have no fields → empty delta, amp 2.
+                        obj.SculptDeltaPath = PathHelpers.Resolve(objData.SculptDeltaPath);
+                        obj.TerrainSculptAmp = objData.TerrainSculptAmp >= 0f
+                            ? Math.Clamp(objData.TerrainSculptAmp, 0f, 250f) : 2f;
                         // Elevation's own tiling — decoupled from PBR map tiling.
                         obj.TerrainHeightTilingX = Math.Clamp(objData.TerrainHeightTilingX, 0.01f, 100f);
                         obj.TerrainHeightTilingY = Math.Clamp(objData.TerrainHeightTilingY, 0.01f, 100f);
+                        // ── Terrain splat (texture layers + weight map + height bands).
+                        // Legacy scenes have no splat fields → defaults (empty, layer 0).
+                        // Splat band params route through the setters so the band buffer
+                        // invalidates; layer paths through the invalidating accessors.
+                        obj.SplatMapPath = PathHelpers.Resolve(objData.SplatMapPath);
+                        if (objData.SplatLayerAlbedo is { Length: 3 } la)
+                            for (int l = 0; l < 3; l++) obj.SplatLayerAlbedoPath[l + 1] = la[l] ?? "";
+                        if (objData.SplatLayerNormal is { Length: 3 } ln)
+                            for (int l = 0; l < 3; l++) obj.SplatLayerNormalPath[l + 1] = ln[l] ?? "";
+                        if (objData.SplatLayerMetallic is { Length: 3 } lm)
+                            for (int l = 0; l < 3; l++) obj.SplatLayerMetallicPath[l + 1] = lm[l] ?? "";
+                        if (objData.SplatLayerRoughness is { Length: 3 } lr)
+                            for (int l = 0; l < 3; l++) obj.SplatLayerRoughnessPath[l + 1] = lr[l] ?? "";
+                        if (objData.SplatLayerAo is { Length: 3 } lo)
+                            for (int l = 0; l < 3; l++) obj.SplatLayerAoPath[l + 1] = lo[l] ?? "";
+                        if (objData.SplatLayerHeight is { Length: 3 } lh)
+                            for (int l = 0; l < 3; l++) obj.SplatLayerHeightPath[l + 1] = lh[l] ?? "";
+                        if (objData.SplatLayerTints is { Length: 12 } tt)
+                            for (int l = 0; l < 4; l++)
+                                obj.SplatLayerTint[l] = new Vector3(tt[l * 3], tt[l * 3 + 1], tt[l * 3 + 2]);
+                        obj.SplatHeightBandsEnabled = objData.SplatHeightBandsEnabled;
+                        if (objData.SplatHeightLayerCount > 0)
+                            obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
+                        if (objData.SplatHeightLayerFeather >= 0f)
+                            obj.SplatHeightLayerFeather = Math.Clamp(objData.SplatHeightLayerFeather, 0.05f, 50f);
+                        if (objData.SplatHeightBands is { Length: 8 } bb)
+                            for (int l = 0; l < 4; l++)
+                                obj.SplatHeightBands[l] = new Vector2(bb[l * 2], bb[l * 2 + 1]);
+                        obj.InvalidateSplatTextures();
+                        // Bands build lazily on first draw ONLY when nothing is stored:
+                        // a saved splat file is the source of truth (its texels already
+                        // contain the painted-over bands) — recomputing here would
+                        // overwrite the loaded weights.
+                        if (string.IsNullOrEmpty(obj.SplatMapPath))
+                            obj.InvalidateSplatBands();
                         obj.PbrEmissionPath = PathHelpers.Resolve(objData.PbrEmissionPath);
                         obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
                         obj.PbrParallaxScale = Math.Clamp(objData.PbrParallaxScale, 0f, 0.5f);
@@ -1795,6 +1851,22 @@ public class SceneManagerPanel
                             TerrainHeightPath = PathHelpers.MakeRelative(obj.TerrainHeightPath),
                             TerrainHeightTilingX = obj.TerrainHeightTilingX,
                             TerrainHeightTilingY = obj.TerrainHeightTilingY,
+                            // ── Additive sculpt layer (delta + amplitude) ──
+                            SculptDeltaPath = PathHelpers.MakeRelative(obj.SculptDeltaPath),
+                            TerrainSculptAmp = obj.TerrainSculptAmp,
+                            // ── Terrain splat (texture layers + weight map + height bands) ──
+                            SplatMapPath = PathHelpers.MakeRelative(obj.SplatMapPath),
+                            SplatLayerAlbedo = [.. obj.SplatLayerAlbedoPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                            SplatLayerNormal = [.. obj.SplatLayerNormalPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                            SplatLayerMetallic = [.. obj.SplatLayerMetallicPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                            SplatLayerRoughness = [.. obj.SplatLayerRoughnessPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                            SplatLayerAo = [.. obj.SplatLayerAoPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                            SplatLayerHeight = [.. obj.SplatLayerHeightPath.Skip(1).Select(PathHelpers.MakeRelative)],
+                            SplatLayerTints = obj.SplatLayerTint.SelectMany(t => new[] { t.X, t.Y, t.Z }).ToArray(),
+                            SplatHeightBandsEnabled = obj.SplatHeightBandsEnabled,
+                            SplatHeightLayerCount = obj.SplatHeightLayerCount,
+                            SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
+                            SplatHeightBands = obj.SplatHeightBands.SelectMany(b => new[] { b.X, b.Y }).ToArray(),
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,

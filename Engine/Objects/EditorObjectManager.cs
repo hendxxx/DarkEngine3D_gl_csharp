@@ -1,5 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
+using System.Linq;
 using System.Numerics;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
@@ -325,8 +326,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GizmoPivotOverride = null,
                 TexSettings = source.TexSettings.Clone(),
                 PbrTexSettings = source.PbrTexSettings.Select(s => s.Clone()).ToArray(),
+                // Terrain elevation + splat state travels with the duplicate (the
+                // weight map path is SHARED — the file is scene-persistent; the clone
+                // drops its live GPU buffers and re-decodes/recomputes lazily).
+                TerrainHeightPath = source.TerrainHeightPath,
+                TerrainBaseHeight = source.TerrainBaseHeight,
+                TerrainHeightTilingX = source.TerrainHeightTilingX,
+                TerrainHeightTilingY = source.TerrainHeightTilingY,
+                SculptDeltaPath = source.SculptDeltaPath,
+                TerrainSculptAmp = source.TerrainSculptAmp,
+                SplatMapPath = source.SplatMapPath,
+                SplatHeightBandsEnabled = source.SplatHeightBandsEnabled,
+                SplatHeightLayerCount = source.SplatHeightLayerCount,
+                SplatHeightLayerFeather = source.SplatHeightLayerFeather,
 
             };
+            for (int l = 1; l <= 3; l++)
+            {
+                for (int m = 0; m < 6; m++)
+                    clone.SetSplatLayerPath(m, l, source.GetSplatLayerPath(m, l));
+                clone.SplatLayerTint[l] = source.SplatLayerTint[l];
+            }
+            for (int l = 0; l < 4; l++)
+                clone.SplatHeightBands[l] = source.SplatHeightBands[l];
             if (clone.PrimitiveType != EditorPrimitiveType.GlbReference)
                 clone.InitGPU();
             _objects.Add(clone);

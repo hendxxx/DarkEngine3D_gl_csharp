@@ -3,6 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Objects;
 using ImGuiNET;
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
@@ -169,6 +170,12 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             {
                 if (sculptOn)
                 {
+                    // Sessions are mutually exclusive — turn the splat brush off first.
+                    if (_bridge.TerrainSplatObject != null)
+                    {
+                        _bridge.TerrainSplatObject.SplatBrush = null;
+                        _bridge.TerrainSplatObject = null;
+                    }
                     obj.BeginSculptSession();
                     _bridge.TerrainSculptObject = obj;
                 }
@@ -180,31 +187,211 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Paint the terrain directly in the viewport:\nLMB drag = apply the brush, the ring shows the TRUE world radius.\nWhile ON, left-click paints instead of selecting objects.");
-            if (sculptOn && string.IsNullOrEmpty(obj.TerrainHeightSourcePath))
-                ImGui.TextDisabled("↳ assign a Terrain Heightmap first — the brush starts from it.");
+            if (sculptOn)
+                ImGui.TextDisabled("↳ brush edits are ADDITIVE — they ride on top of the base heightmap\n(the base image file is never modified). 'Sculpt Add Height' scales the effect.");
             if (sculptOn && obj.SculptBrush is { } br)
             {
                 ImGui.Indent();
                 int mode = (int)br.Mode;
-                if (ImGui.Combo("Brush##terrain_sculpt", ref mode, "Raise\0Lower\0Smooth\0Flatten\0"))
+                if (ImGui.Combo("Brush##terrain_sculpt", ref mode, "Raise\0Lower\0Smooth\0Flatten\0Noise\0Terrace\0"))
                     br.Mode = (TerrainBrushMode)mode;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Raise/Lower push heights, Smooth relaxes, Flatten levels the footprint.\nNoise paints fractal detail between the footprint's elevation range\n(one coherent pattern per stroke), Terrace quantizes into stepped plateaus.\nSHIFT-TAP in the viewport cycles the mode.");
                 float rad = br.Radius;
                 if (ImGui.SliderFloat("Radius (world)##terrain_sculpt", ref rad, 0.5f, 100f, "%.1f")) br.Radius = rad;
                 float str = br.Strength;
                 if (ImGui.SliderFloat("Strength##terrain_sculpt", ref str, 0.05f, 6f, "%.2f")) br.Strength = str;
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Application speed (fraction of the height range per second at the brush core).");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Application speed (fraction of the height range per second at the brush core).\nNoise/Terrace: convergence speed toward the noise field / stepped grid.");
                 float hard = br.Hardness;
                 if (ImGui.SliderFloat("Hardness##terrain_sculpt", ref hard, 0f, 1f, "%.2f")) br.Hardness = hard;
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Falloff shape: 0 = fully soft (smooth dome), 1 = hard-edged disc.");
+                if (br.Mode == TerrainBrushMode.Terrace)
+                {
+                    int steps = br.Steps;
+                    if (ImGui.SliderInt("Terrace Steps##terrain_sculpt", ref steps, 2, 64))
+                        br.Steps = steps;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Number of discrete height levels (2..64) over the full height range.\n8 = coarse mesas, 32 = fine shelfing. All texels share one grid,\nso terraces continue across stamps.");
+                }
+                // ADDITIVE sculpt amplitude — how far brush edits push the surface
+                // up/down away from the base heightmap (bidirectional, ±).
+                float samp = obj.TerrainSculptAmp;
+                if (ImGui.SliderFloat("Sculpt Add Height##terrain_sculpt", ref samp, 0f, 100f, "%.1f"))
+                    obj.TerrainSculptAmp = samp;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Amplitude of the ADDITIVE sculpt layer (world units):\nbrush edits displace ±this far from the base heightmap.\n0 = sculpt hidden; the base image itself is never modified.");
                 if (obj.HasSculptEdits)
                 {
-                    ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Sculpted — each stroke bakes into the heightmap file.");
+                    ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Sculpted — each stroke bakes into the sculpt layer (base image untouched).");
                     if (obj.SculptUndoDepth > 0 || obj.SculptRedoDepth > 0)
                         ImGui.TextDisabled($"Ctrl+Z undo · Ctrl+Y redo — {obj.SculptUndoDepth} stroke(s) back, {obj.SculptRedoDepth} to redo");
                     if (ImGui.SmallButton("Revert sculpt##terrain_sculpt"))
                         obj.RevertSculpt();
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL brush edits and reload the original heightmap image.");
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL brush edits (the sculpt layer resets to neutral).\nThe base heightmap image is never modified by sculpting.");
                 }
+                ImGui.Unindent();
+            }
+
+            // ── TERRAIN PAINT — splat-map painting of texture layers. Layer 0 IS the
+            //    base PBR material; layers 1-3 carry their own albedo/PBR textures.
+            //    Weights come from the viewport brush AND auto height bands over the
+            //    sculpted elevation (valleys → layer 0 … peaks → top layer); the brush
+            //    always wins where it painted. Each stroke bakes the weight map to
+            //    Artifacts/Terrain/<scene>/<object>_splat.tga (R/G/B/A = layers 0-3)
+            //    which persists with the scene.
+            ImGui.Separator();
+            ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "Terrain Paint (Texture Layers)");
+            bool paintOn = _bridge.TerrainSplatObject == obj;
+            if (ImGui.Checkbox("Enable paint##terrain_splat", ref paintOn))
+            {
+                if (paintOn)
+                {
+                    if (_bridge.TerrainSculptObject != null)
+                    {
+                        // Sessions are mutually exclusive — turn the sculpt brush off first.
+                        _bridge.TerrainSculptObject.SculptBrush = null;
+                        _bridge.TerrainSculptObject = null;
+                    }
+                    obj.BeginSplatSession();
+                    _bridge.TerrainSplatObject = obj;
+                }
+                else
+                {
+                    _bridge.TerrainSplatObject = null;
+                    obj.SplatBrush = null;
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Paint texture layers on the terrain in the viewport:\nLMB drag = paint the selected layer (weights sum to 1).\nWhile ON, left-click paints instead of selecting objects.");
+            if (paintOn && string.IsNullOrEmpty(obj.TerrainHeightSourcePath) && obj.SplatLayerAlbedoPath.Skip(1).All(string.IsNullOrEmpty))
+                ImGui.TextDisabled("↳ assign a Terrain Heightmap or a layer texture first.");
+            if (paintOn && obj.SplatBrush is { } sp)
+            {
+                ImGui.Indent();
+                int smode = (int)sp.Mode;
+                if (ImGui.Combo("Brush##terrain_splat", ref smode, "Paint\0Erase\0Smooth\0"))
+                    sp.Mode = (SplatBrushMode)smode;
+                int layer = Math.Clamp(sp.Layer, 0, 3);
+                if (ImGui.SliderInt("Layer##terrain_splat", ref layer, 0, 3))
+                    sp.Layer = layer;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("0 = the base PBR material (PBR panel maps), 1-3 = the layers below.");
+                float srad = sp.Radius;
+                if (ImGui.SliderFloat("Radius (world)##terrain_splat", ref srad, 0.5f, 100f, "%.1f")) sp.Radius = srad;
+                float sstr = sp.Strength;
+                if (ImGui.SliderFloat("Strength##terrain_splat", ref sstr, 0.05f, 6f, "%.2f")) sp.Strength = sstr;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Application speed (fraction of full weight per second at the brush core).");
+                float shard = sp.Hardness;
+                if (ImGui.SliderFloat("Hardness##terrain_splat", ref shard, 0f, 1f, "%.2f")) sp.Hardness = shard;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Falloff shape: 0 = fully soft, 1 = hard-edged disc.");
+
+                // ── AUTO height bands (weights from the sculpted elevation) ──
+                bool bandsOn = obj.SplatHeightBandsEnabled;
+                if (ImGui.Checkbox("Auto layers from height##terrain_splat", ref bandsOn))
+                {
+                    obj.SplatHeightBandsEnabled = bandsOn;
+                    obj.InvalidateSplatBands();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Assign texture layers by ELEVATION automatically:\nvalleys take layer 0 … peaks take the top layer. Manual paint always wins.");
+                if (bandsOn)
+                {
+                    ImGui.Indent();
+                    int bandCount = obj.SplatHeightLayerCount;
+                    if (ImGui.SliderInt("Bands##terrain_splat", ref bandCount, 1, 4))
+                    {
+                        obj.SplatHeightLayerCount = bandCount;
+                        obj.InvalidateSplatBands();
+                    }
+                    float feather = obj.SplatHeightLayerFeather;
+                    if (ImGui.SliderFloat("Band feather (world)##terrain_splat", ref feather, 0.05f, 20f, "%.2f"))
+                    {
+                        obj.SplatHeightLayerFeather = feather;
+                        obj.InvalidateSplatBands();
+                    }
+                    for (int l = 0; l < 4; l++)
+                    {
+                        ImGui.PushID($"splatband{l}");
+                        var bandLo = obj.SplatHeightBands[l].X;
+                        var bandHi = obj.SplatHeightBands[l].Y;
+                        bool inf = bandHi >= 1e5f;
+                        ImGui.TextDisabled($"L{l}");
+                        ImGui.SameLine();
+                        ImGui.SetNextItemWidth(100);
+                        if (ImGui.DragFloat("Low##terrain_splat", ref bandLo, 0.05f, 0f, 500f))
+                        {
+                            obj.SplatHeightBands[l] = new Vector2(bandLo, obj.SplatHeightBands[l].Y);
+                            obj.InvalidateSplatBands();
+                        }
+                        ImGui.SameLine();
+                        ImGui.SetNextItemWidth(100);
+                        if (!inf && ImGui.DragFloat("High##terrain_splat", ref bandHi, 0.05f, 0f, 500f))
+                        {
+                            obj.SplatHeightBands[l] = new Vector2(obj.SplatHeightBands[l].X, bandHi);
+                            obj.InvalidateSplatBands();
+                        }
+                        else if (inf)
+                        {
+                            ImGui.SameLine();
+                            ImGui.TextDisabled("+∞");
+                        }
+                        ImGui.PopID();
+                    }
+                    ImGui.Unindent();
+                }
+
+                // ── Layer textures (albedo + full PBR map set per layer) ──
+                if (ImGui.TreeNode("Layer textures##terrain_splat"))
+                {
+                    string[] mapNames = ["Albedo", "Normal", "Metallic", "Roughness", "AO", "Height"];
+                    string[] mapTags = ["alb", "nrm", "met", "rgh", "ao", "hgt"];
+                    for (int l = 1; l <= 3; l++)
+                    {
+                        ImGui.PushID($"splatlayer{l}");
+                        var col = obj.SplatLayerTint[l];
+                        if (ImGui.ColorEdit3("Tint##terrain_splat", ref col,
+                                ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoLabel))
+                            obj.SplatLayerTint[l] = col;
+                        ImGui.SameLine();
+                        ImGui.Text($"Layer {l}");
+                        for (int m = 0; m < 6; m++)
+                        {
+                            string path = obj.GetSplatLayerPath(m, l) ?? "";
+                            ImGui.Text($"{mapNames[m]}:");
+                            ImGui.SameLine();
+                            ImGui.SetNextItemWidth(-70);
+                            if (ImGui.InputText($"##{mapTags[m]}{l}", ref path, 512))
+                                obj.SetSplatLayerPath(m, l, path.Trim());
+                            if (ImGui.BeginDragDropTarget())
+                            {
+                                var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                                if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                                {
+                                    obj.SetSplatLayerPath(m, l, AssetBrowserPanel._dragImagePath);
+                                    AssetBrowserPanel._dragImagePath = null;
+                                }
+                                ImGui.EndDragDropTarget();
+                            }
+                            ImGui.SameLine();
+                            if (ImGui.Button($"X##clear{mapTags[m]}{l}") && !string.IsNullOrEmpty(obj.GetSplatLayerPath(m, l)))
+                                obj.SetSplatLayerPath(m, l, "");
+                        }
+                        ImGui.PopID();
+                        ImGui.Separator();
+                    }
+                    ImGui.TextDisabled("Layer 0 = the base PBR material (PBR panel).\nEmpty slots keep neutral defaults (no texture, tint shows).\nAlbedo slot empty → the tint colors the band.");
+                    ImGui.TreePop();
+                }
+                float cov = obj.SplatPaintCoverage() * 100f;
+                if (cov > 0.01f)
+                    ImGui.TextDisabled($"Painted coverage: {cov:F1}% of the terrain");
+                if (obj.HasSplatEdits)
+                    ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Painted — each stroke bakes into the splat file.");
+                if (obj.SplatUndoDepth > 0 || obj.SplatRedoDepth > 0)
+                    ImGui.TextDisabled($"Ctrl+Z undo · Ctrl+Y redo — {obj.SplatUndoDepth} stroke(s) back, {obj.SplatRedoDepth} to redo");
+                if (ImGui.SmallButton("Revert paint##terrain_splat"))
+                    obj.RevertSplat();
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL paint edits and reload the stored splat map (or reset to layer 0).\nLayer textures and height-band settings are kept.");
                 ImGui.Unindent();
             }
 

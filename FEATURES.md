@@ -460,7 +460,7 @@ File
 
 | Shader | Vertex | Fragment | Purpose |
 |--------|--------|----------|---------|
-| Editor Terrain | `vertex_shader.glsl` | `terrainEditor_fragment.glsl` | Terrain with PBR |
+| Editor Terrain | `pbrDisplace_vertex.glsl` | `objectPbr_fragment.glsl` | Terrain with PBR |
 | Object PBR | `static_vertex.glsl` | `objectPbr_fragment.glsl` | GLB/PBR objects |
 | GLTF | `gltf_vertex.glsl` | `gltf_fragment.glsl` | Standard glTF |
 | Impostor | `impostor_vertex.glsl` | `impostor_fragment.glsl` | Billboard impostors |
@@ -606,45 +606,47 @@ Per-object PBR with 7 texture slots:
     (`TerrainDisplacementExtent`); elevation texture load failure flattens only dedicated-
     source planes (legacy fallback planes render through the unit-5 branch).
   - **Terrain Sculpt (viewport brush)** — brush sculpting that PAINTS the elevation heightmap.
-    `TerrainHeightfield` (Engine/Objects/TerrainHeightfield.cs) decodes the elevation source
-    once into a 512² CPU field; Raise/Lower/Smooth/Flatten stamps mutate it (frame-batched via
-    `SculptApply`); a dirty-rect GL_R8 texture REPLACES the unit-15 bind LIVE (shader unchanged,
-    POM fallback follows), and each finished stroke bakes the field to
-    `Artifacts/Terrain/<scene>/<object>.tga`, which becomes the stored `TerrainHeightPath` —
-    sculpted terrain saves/loads with the scene like any authored heightmap. Brush params:
+    **ADDITIVE sculpt delta** — brush edits NEVER touch the authored base heightmap:
+    `TerrainHeightfield` (Engine/Objects/TerrainHeightfield.cs) decodes the sculpt delta
+    (stored bake, else a 0.5-neutral buffer) into a 512² CPU field; Raise/Lower/Smooth/
+    Flatten/Noise/Terrace stamps mutate it (frame-batched via `SculptApply`; Noise paints
+    an absolute fractal-value-noise field between the footprint's min/max elevation — one
+    coherent pattern per stroke via a per-stroke seed, converging like Smooth; Terrace    quantizes the local 3×3 mean onto a shared N-step grid — per-texel Round() on a
+    steep slope alternates levels (sawtooth teeth), so the MEAN is what snaps;
+    `Steps` 2..64, and the grid stays shared across stamps); a dirty-rect GL_R8 texture binds at unit 16 (`u_sculptDeltaMap`) and the
+    vertex stage composes elevation = base·BaseHeight + (delta − 0.5)·2·`SculptAmp` +
+    POM detail — so "Sculpt Add Height" (TerrainSculptAmp, world units) scales the
+    sculpted relief while the Base Height slider keeps driving the shaped terrain.
+    Each finished stroke bakes the delta to `Artifacts/Terrain/<scene>/<object>_sculpt.tga`
+    (`SculptDeltaPath`) — persistence without overwriting the base. CPU picking/rings and
+    splat height bands read the COMBINED surface (base + delta).
+    Brush params:
     radius (world units), strength (height-range fraction per second at the core), hardness
-    (falloff: 0 soft dome … 1 hard disc). Picking ray-marches the base surface
+    (falloff: 0 soft dome … 1 hard disc). Picking ray-marches the combined surface
     (`TryRaycastSculptSurface`); the viewport draws a surface-projected ring showing the TRUE
     world radius; while the session is ON, LMB paints instead of selecting/gizmo-dragging.
     UI: dedicated TERRAIN panel (menu "Terrain") — heightmap input, Terrain Geometry
     (size / Base Height / Displace Height / Offset / Strength / tiling / segments / chunks)
-    and "Terrain Sculpt" brush controls + "Revert sculpt" (discard edits, reload the authored
-    image). Session state: `EditorObject.SculptBrush` +
-    `IDEBridge.TerrainSculptObject` (null = off). Viewport affordances: the paintable-region
+    and "Terrain Sculpt" brush controls + "Sculpt Add Height" amplitude + "Revert sculpt"
+    (reset the delta layer to neutral — the base image is untouched). Session state:
+    `EditorObject.SculptBrush` +
+    `IDEBridge.TerrainSculptObject` (null = off). SHIFT-TAP in the viewport cycles the
+    brush mode (Raise → Lower → Smooth → Flatten → Noise → Terrace → Raise, per-stroke
+    console log, synced back into the Terrain panel). Viewport affordances: the paintable-region
     boundary is drawn ON the displaced surface (96-point perimeter outline, live elevation per
     point) so the sculptable area is always visible; the brush ring hugs the terrain (rim
     samples lifted to live elevation) and its color encodes state — orange = cursor on the
     paintable surface, red = painting, dim gray = projected onto the footprint but off-surface
     (a click there will NOT sculpt).
 
-### 5.3 Terrain PBR (terrainEditor_fragment.glsl)
+### 5.3 Terrain rendering (displaced PBR plane — objectPbr pipeline)
 
-Same BRDF as objects, with dynamic layer blending:
-
-**Uniforms** (driven by first layer's PBR Tuning):
-- `terrainPbrMetallic` — Global metallic (0-1)
-- `terrainPbrRoughness` — Global roughness (0-1)
-- `terrainPbrMetallicThreshold/Softness` — Smoothstep for texture
-- `terrainPbrNormalStr` — Normal map strength (0-2)
-- `terrainPbrAoStr/Brightness` — AO strength + brightness
-- `terrainPbrHeightStr` — Height strength
-- `terrainPbrEmissionIntensity` — Emission intensity
-- `terrainPbrAlbedoBright/Sat/Contrast` — Albedo adjustment
-
-**PBR Texture Arrays** (optional, per-layer):
-- `sampler2DArray pbrNormalMap/MetallicMap/RoughnessMap/AoMap/HeightMap/EmissionMap`
-- 6 texture units (30-35), 8 layers max
-- Fallback to uniforms when no texture assigned (texture returns 0)
+Terrain IS a PBR Plane: the geometric-displacement vertex stage (pbrDisplace_vertex.glsl,
+unit-15 elevation, base + POM-detail decomposition — see 5.2) displaces the tessellated
+grid while the SHARED objectPbr_fragment.glsl shades it (Cook-Torrance, POM, CSM, local
+lights, fog). The old dedicated terrainEditor_fragment.glsl / sampler2DArray layer
+system was stripped; terrain-specific behavior lives in the vertex stage + CPU fields
++ the splat layer path below.
 
 ### 5.4 Local Light PBR
 
@@ -654,97 +656,63 @@ float spec = pow(max(dot(N, H), 0.0), 24.0) * 0.6;  // Terrain
 vec3 specular = D * G * F / (4.0 * NdotV * NdotL);    // Objects
 ```
 
-### 5.5 PBR Splat Terrain (paintable multi-texture plane)
+### 5.5 Terrain Splat — paintable texture layers driven by the sculpted height
 
-An add-on layer over the objectPbr pipeline (never a replacement): an RGBA splat map
-blends up to **4 albedo layers** while normal/metallic/roughness/AO/POM/CSM come from the
-unchanged objectPbr shader. A plane with no paint and height layers off renders pixel-
-identical to the standard look (zero regression).
+4-layer texture blending INSIDE the shared objectPbr_fragment.glsl (no separate shader):
+an RGBA8 weight map (one channel per layer, weights sum to 1 per texel) blends four
+albedo/PBR layer sets. **Layer 0 IS the base PBR material** (the PBR-panel maps incl. the
+ObjColor fallback), so an unpainted terrain renders identically to the plain path.
 
-**Shader**: `objectPbrSplat_fragment.glsl` (flat + displaced variants; programs
-`GetObjectPbrSplatShaderProgram` / `GetObjectPbrSplatDisplaceShaderProgram`).
-
-**Texture units**:
+**Texture units** (splat block, per draw in `DrawPbrPrimitive`):
 
 | Unit | Texture |
 |------|---------|
-| 0-6 | Standard PBR maps (albedo/normal/metallic/roughness/AO/height/emission) |
+| 0-6 | Base PBR maps (= splat layer 0) |
 | 7/8/9 | CSM shadow cascades |
-| 10 | Splat map — `GL_TEXTURE_3D` 16×16×16 RGBA, dynamic |
-| 11-14 | Splat layer albedo × 4 |
+| 15 | Terrain elevation (vertex displacement) |
+| 10 | Splat weight map — GL_RGBA8 256², live-updated (dirty-rect `TexSubImage2D`) |
+| 11-14 | Layer albedo ×4 (layer 0 = base albedo map) |
+| 21-24 / 31-34 / 41-44 / 51-54 / 61-64 | Layer normal / metallic / roughness / AO / POM-height ×4 |
 
-**Layer painting** (PBR Material panel → "PBR Splat Terrain"):
-- 4 layer slots: albedo texture (drag-drop from Asset Browser / browse / clear) + tint (ColorEdit3)
-- `SplatTiling` — per-layer world tiling; `SplatPaintStrength` — brush strength
-- Layer 0 without its own texture falls back to the object's albedo MAP (never blank white)
-- Empty layer slots contribute zero weight (uniform `u_splatHasAlbedo`)
+Gate `u_splatActive` = a live weight field (paint session, band buffer) exists AND
+(`SplatIsPainted` — any layer 1-3 map or paint — OR `SplatHeightBandsEnabled`). Uniform
+vec4 `u_splatHasAlbedo/Normal/Metal/Rough/Ao/Height` gate per-slot presence (uploaded as
+4× `Uniform1i` — the wrapper has no `Uniform4i`); empty slots force weight 0 and the
+remainder renormalizes (never white/black). Layers without an albedo texture use
+`u_splatTint[l]` (layer 0 = the object color). The whole set samples through the BASE
+albedo map's tiling/offset (uniform look, `pomOffPerMap` shared); per-layer POM height
+detail bends the existing march by the layer-vs-base delta (`u_splatDetail` gate).
 
-**Height Layers (auto-terrain by elevation)**:
-- `SplatHeightLayersEnabled` — layer weights are auto-assigned by height-map elevation:
-  layer 1 = valleys … layer N = peaks (soft smoothstep bands, `SplatHeightLayerCount`
-  active bands 1-4, `SplatHeightLayerFeather` transition softness)
-- Manual brush paint overrides locally (max blend), so the base terrain look is free
-- Works without any paint; needs a height map (or sculpt buffer) for elevation data
+**Two weight sources, max-blend (the brush always wins where it painted)**:
+- **Manual paint** — `TerrainSplatField` (Engine/Objects/TerrainSplatField.cs, 256² RGBA
+  CPU field): Paint/Erase/Smooth stamps on the selected layer via `SplatApply`, weights
+  renormalized per texel so the sum stays 1; dirty-rect GL_RGBA8 upload; per-stroke undo
+  (40 snapshots) via `SplatUndo/Redo`; each finished stroke bakes the field to
+  `Artifacts/Terrain/<scene>/<object>_splat.tga` (32-bit RGBA, BGRA on disk) and points
+  `SplatMapPath` at it — painted weights persist with the scene.
+- **AUTO height bands** — `ComputeHeightBands` maps each texel's elevation (the SAME
+  `TerrainHeightfield` the vertex stage displaces with, sampled through the terrain's
+  OWN tiling ×BaseHeight +Offset) into per-layer smoothstep bands
+  (`SplatHeightBands[l]` low/high, `SplatHeightLayerFeather` softness in world units,
+  `SplatHeightLayerCount` 1-4 active layers). The strongest band owns the texel.
+  Recompute is amortized (at most once per draw while `_splatBandsPending`); elevation/
+  BaseHeight/Offset/tiling/band-param setters raise the flag. Bands never overwrite a
+  decoded splat file (the stored weights ARE the painted-over bands).
 
-**Slope Auto-Paint (rock on steep terrain)**:
-- `SplatSlopeEnabled` — one splat layer (`SplatSlopeLayer`, 0-3) auto-blends onto STEEP
-  geometry with no brush painting: slope = 1 − |N·up| computed from the displaced
-  surface normal, so sculpted cliffs and hillsides get rocky automatically
-- `SplatSlopeThreshold` (0-1, default 0.35 — 0 = any incline, 1 = vertical walls) and
-  `SplatSlopeFeather` transition softness (smoothstep above the threshold)
-- Overrides manual paint via max-blend AND attenuates the other layers (a full cliff
-  renders fully rocky, not a muddy mix); evaluated AFTER height bands so rock wins on
-  steep faces regardless of elevation
-- An empty rock-layer slot never fires (`u_splatHasAlbedo` gate — no white cliffs);
-  gate `splatActive` includes the slope toggle, so it works with zero paint
-- **Slope mask heatmap** ("Show slope mask" in the PBR panel) — viewport overlay for
-  visual threshold tuning: blue = flat, green = approaching the threshold, green→red =
-  the feather blend zone, full red = full rock; works even with no rock albedo assigned
-  (pure geometry preview). Editor aid only — transient, never persisted
+**Viewport painting** (Terrain panel → "Terrain Paint"): brush session
+(`EditorObject.SplatBrush`: mode Paint/Erase/Smooth, Layer 0-3, radius, strength,
+hardness) + `IDEBridge.TerrainSplatObject` — mutually exclusive with the sculpt session
+(enabling one turns the other off). Same precedence as sculpt (gizmo/sun-handle first,
+click-to-select blocked); ring color green = paintable, red = painting, gray = projected.
+Ctrl+Z / Ctrl+Y per-stroke undo. Painting works on FLAT planes too (exact local-space
+ray∩plane fallback when no elevation field exists — splat needs no displacement).
+Layer textures (albedo + 5 optional PBR maps per layer 1-3, drag-drop `ASSET_IMAGE_PATH`)
+plus per-layer tint live under "Layer textures"; "Auto layers from height" exposes the
+bands; "Revert paint" reloads the stored splat file.
 
-**Triplanar sampling** (`SplatTriplanar`):
-- Opt-in world-space X/Y/Z projection for all 4 splat layers — cliff walls get the rock
-  texture's SIDE projection instead of the top texture stretched vertically; tiling
-  becomes repetitions per world unit (shares the `SplatTiling` slider)
-- Axis weights pow(|N|,4) (tight transitions, renormalized); overhangs (folded normal,
-  `g.y < 0`) fall back to planar UV so the texture never swims while orbiting
-- Layer-0 albedo-MAP fallback stays planar (the map owns its own authored UVs)
-- Works for painted splats, height bands and slope auto-rock alike (replaces the layer
-  sampling inside the same blend)
-
-**Height sculpting (user-drawable)**:
-- Runtime R8 buffer 512² (`EnsureSculptBuffer` decodes the authored height map once —
-  sculpt SMOOTHS the authored terrain, it does not replace it)
-- Dynamic texture (`GL_R8` + `TexSubImage2D`) replaces the height unit while sculpted →
-  displacement + POM see the live surface with no shader changes
-- Viewport brush modes: **Sculpt** (drag raise, Ctrl lower), **Paint layer** (Ctrl erase),
-  **Smooth**, **Flatten** — Shift = soft, Ctrl+scroll = brush size; 3D ring follows the
-  displaced surface (CPU raycast mirrors the shader height calibration)
-- Per-stroke undo via bridge events (`OnPbrSplatPainted` / `OnPbrSculpted`)
-
-**Optimizations (all per-plane, Inspector/PbrPanel toggles)**:
-- **Per-chunk frustum culling** — chunk grid builds whenever `Chunks per side > 1`
-  (flat splat planes included); Gribb–Hartmann AABB test from the view-projection matrix,
-  analytic chunk bounds + Y padding so displaced peaks never pop at screen edges
-- **Per-chunk LOD** (`PbrLodEnabled`) — LOD1/LOD2 meshes at ½/¼ segments; each chunk picks
-  its level per frame from camera distance (`PbrLodDistance`, `PbrLodDistance2`)
-- **GPU occlusion culling** (`PbrOcclusionEnabled`) — `GL_ANY_SAMPLES_PASSED` queries per
-  2×2 chunk block, drawn invisible with color+depth writes off; results applied next frame
-  (never stalls), miss = 2 force-draw frames
-- Live info: chunks/cull counts in the Inspector ("Frustum cull: N/M skipped"),
-  "LOD drawn" and "Occluded" lines in the PBR panel
-
-**Height map input**: PBR panel slot (browse / auto-detect) **or** Inspector
-"Displaced Plane Grid" → drag-drop a PNG straight from the Asset Browser (path setter
-drops the CPU height caches so raycast/sculpt always see the new map)
-
-**Persistence** (symmetric across SceneAsset, SceneManagerPanel save/load ×3 sites, object clone):
-- `PbrSplatLayers` (albedo path + tint per layer)
-- `SplatPaintedData` / `PbrSculptData` — base64, empty = never painted (no size cost)
-- `PbrLodEnabled` / `PbrLodDistance` / `PbrLodDistance2` / `PbrOcclusionEnabled`
-- `SplatHeightLayersEnabled` / `SplatHeightLayerCount` / `SplatHeightLayerFeather`
-- `SplatSlopeEnabled` / `SplatSlopeLayer` / `SplatSlopeThreshold` / `SplatSlopeFeather`
-- `SplatTriplanar`
+**Persistence** (SceneAsset + save ×2 + load + `EditorObjectManager.Duplicate`):
+`SplatMapPath`, `SplatLayerAlbedo/Normal/Metallic/Roughness/Ao/Height` (layers 1-3),
+`SplatLayerTints` (12 floats), `SplatHeightBandsEnabled/Count/Feather/Bands`.
 
 ---
 
