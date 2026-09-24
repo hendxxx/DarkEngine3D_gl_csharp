@@ -1426,3 +1426,12 @@ Terrain
  ├─ Layer 2 : Sand PBR
  ├─ Layer 3 : Snow PBR
  └─ Optional Micro Vertex Displacement
+
+
+ 1. buatkan Player ada di layer mana, sama dengan NPC dan sprite lain
+2. buatkan add tilemap, jadi bisa ditambahkan beberapa tilemap
+3. buatkan action portal:
+	1. portal 1 arah > bisa masuk saja, portal akan menghilang. 
+	2. portal 2 arah bisa masuk dan kembali lagi keasal, portal tetap.
+	
+4. buatkan sprite editor untuk vlip Y. default false.
