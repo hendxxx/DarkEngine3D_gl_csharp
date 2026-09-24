@@ -278,13 +278,28 @@ public sealed class TerrainHeightfield
         for (int z = _minZ; z <= _maxZ; z++)
             for (int x = _minX; x <= _maxX; x++)
                 _upload[z * Res + x] = (byte)(Math.Clamp(_h[z * Res + x], 0f, 1f) * 255f + 0.5f);
+        // Serialize the sub-rectangle rows contiguously — TexSubImage2D reads
+        // PACKED rows (UNPACK_ROW_LENGTH = 0), but the mirror is row-pitched at
+        // Res bytes. Passing p + dirtyOffset made every row after the first
+        // SHIFT by (Res − w) texels: the LIVE sculpt surface rendered as jagged
+        // diagonal teeth while the CPU field and the TGA bake stayed smooth
+        // (sculpt ≠ reload). Full-size uploads (512-wide) coincidentally match
+        // the stride, which is why freshly-loaded terrain rendered correctly.
+        // Rows are padded to 4 bytes so the default UNPACK_ALIGNMENT also
+        // holds for arbitrary dirty-rect widths (R8 = 1 byte/px). Same fix as
+        // TerrainSplatField.FlushTexture.
+        int stride = (w + 3) & ~3;   // GL_UNPACK_ALIGNMENT default = 4
+        byte[] buf = new byte[stride * h];
+        for (int z = 0; z < h; z++)
+            for (int x = 0; x < w; x++)
+                buf[z * stride + x] = _upload[(_minZ + z) * Res + _minX + x];
         unsafe
         {
-            fixed (byte* p = _upload)
+            fixed (byte* p = buf)
             {
                 GL.BindTexture(Const.GL_TEXTURE_2D, tex);
                 GL.TexSubImage2D(Const.GL_TEXTURE_2D, 0, _minX, _minZ, w, h,
-                    Const.GL_RED, Const.GL_UNSIGNED_BYTE, p + (_minZ * Res + _minX));
+                    Const.GL_RED, Const.GL_UNSIGNED_BYTE, p);
             }
         }
         _minX = int.MaxValue; _maxX = int.MinValue;

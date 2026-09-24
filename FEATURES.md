@@ -615,7 +615,14 @@ Per-object PBR with 7 texture slots:
     steep slope alternates levels (sawtooth teeth), so the MEAN is what snaps;
     `Steps` 2..64, and the grid stays shared across stamps); a dirty-rect GL_R8 texture binds at unit 16 (`u_sculptDeltaMap`) and the
     vertex stage composes elevation = base·BaseHeight + (delta − 0.5)·2·`SculptAmp` +
-    POM detail — so "Sculpt Add Height" (TerrainSculptAmp, world units) scales the
+    POM detail. **Dirty-rect uploads serialize PACKED rows with 4-byte row padding**
+    (`FlushTexture` in TerrainHeightfield.cs): `TexSubImage2D` reads rows at
+    `UNPACK_ROW_LENGTH = 0`, so uploading straight from the row-pitched (512-byte) CPU
+    mirror shifted every row after the first by (Res − rect width) texels — the LIVE
+    sculpt surface rendered as jagged diagonal teeth while the CPU field and the TGA
+    bake stayed smooth ("sculpt ≠ reload"; full-size 512-wide uploads coincidentally
+    matched the stride, which is why freshly-loaded terrain always rendered correct).
+    Same convention as `TerrainSplatField.FlushTexture`. — so "Sculpt Add Height" (TerrainSculptAmp, world units) scales the
     sculpted relief while the Base Height slider keeps driving the shaped terrain.
     Each finished stroke bakes the delta to `Artifacts/Terrain/<scene>/<object>_sculpt.tga`
     (`SculptDeltaPath`) — persistence without overwriting the base. CPU picking/rings and
