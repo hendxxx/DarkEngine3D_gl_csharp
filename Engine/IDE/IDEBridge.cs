@@ -124,6 +124,12 @@ public class IDEBridge
     /// (paint possible); false = flat-grid fallback position (display only —
     /// the ring renders dimmed so the user sees WHY painting is not happening).</summary>
     public bool TerrainBrushOnSurface { get; set; }
+
+    // ── Terrain splat painting (Terrain panel ↔ viewport paint) ──
+    /// <summary>The plane whose splat paint session is ACTIVE (set by the Terrain
+    /// panel's paint toggle). Null = no splat painting anywhere. Mutually exclusive
+    /// with <see cref="TerrainSculptObject"/> — enabling one disables the other.</summary>
+    public EditorObject? TerrainSplatObject { get; set; }
     /// <summary>Scene-space pixel X of the viewport click.</summary>
     public float ViewportClickX { get; set; }
     /// <summary>Scene-space pixel Y of the viewport click.</summary>

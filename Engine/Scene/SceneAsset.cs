@@ -367,6 +367,33 @@ public class EditorObjectData
     /// per-map tiling and the global Map Tiling. Absent = legacy scene → 1×1.</summary>
     public float TerrainHeightTilingX { get; set; } = 1f;
     public float TerrainHeightTilingY { get; set; } = 1f;
+    /// <summary>ADDITIVE sculpt delta map (0.5-neutral grayscale TGA — brush edits
+    /// ride ON TOP of the base heightmap; the base image file is never written).
+    /// Empty = never sculpted. Absent = legacy scene → none.</summary>
+    public string SculptDeltaPath { get; set; } = "";
+    /// <summary>Sculpt delta amplitude (world units): (delta − 0.5)·2·this is added
+    /// to the base elevation. Absent = legacy scene → 2.</summary>
+    public float TerrainSculptAmp { get; set; } = -1f;
+    /// <summary>Terrain SPLAT weight map (RGBA TGA — R/G/B/A = layers 0-3) written
+    /// by the viewport paint brush. Empty = never painted (weights derive from the
+    /// height bands / default layer 0). Absent = legacy scene → no splat.</summary>
+    public string SplatMapPath { get; set; } = "";
+    /// <summary>Splat texture layers 1-3 (layer 0 IS the base PBR material, its maps
+    /// live in the Pbr*Path fields above).</summary>
+    public string?[] SplatLayerAlbedo { get; set; }
+    public string?[] SplatLayerNormal { get; set; }
+    public string?[] SplatLayerMetallic { get; set; }
+    public string?[] SplatLayerRoughness { get; set; }
+    public string?[] SplatLayerAo { get; set; }
+    public string?[] SplatLayerHeight { get; set; }
+    /// <summary>Per-layer fallback tints when the layer's albedo slot is empty.</summary>
+    public float[]? SplatLayerTints { get; set; }   // 12 floats: 4 layers × RGB
+    /// <summary>AUTO height bands over the sculpted elevation (weights per layer).</summary>
+    public bool SplatHeightBandsEnabled { get; set; } = false;
+    public int SplatHeightLayerCount { get; set; } = -1;      // absent = legacy → 4
+    public float SplatHeightLayerFeather { get; set; } = -1f; // absent = legacy → 2
+    /// <summary>Per-layer band edges (world units): 8 floats — L0.low, L0.high, L1.low, …</summary>
+    public float[]? SplatHeightBands { get; set; }
     /// <summary>Tessellation segments per side for the displaced plane grid (16..512).
     /// Null/absent = legacy scene → <see cref="EditorObject.PbrDisplaceSegments"/> (256).</summary>
     public int? PbrVertexSegments { get; set; }

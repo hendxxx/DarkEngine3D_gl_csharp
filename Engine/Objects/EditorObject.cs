@@ -444,13 +444,80 @@ public unsafe class EditorObject
     /// <summary>Base-color / albedo map (optional). When empty, the vertex color is used.</summary>
     public string PbrAlbedoPath { get; set; } = "";
     /// <summary>Tangent-space normal map (optional; flat when absent).</summary>
-    public string PbrNormalPath { get; set; } = "";
-    /// <summary>Metallic mask (R channel) (optional; 0 when absent).</summary>
+    public string PbrNormalPath { get; set; } = "";    /// <summary>Metallic mask (R channel) (optional; 0 when absent).</summary>
     public string PbrMetallicPath { get; set; } = "";
     /// <summary>Roughness map (R channel) (optional; 0.6 default when absent).</summary>
     public string PbrRoughnessPath { get; set; } = "";
     /// <summary>Ambient-occlusion map (R channel) (optional; 1 when absent).</summary>
     public string PbrAoPath { get; set; } = "";
+
+    // ── SPLAT LAYER PATHS (terrain texture layers 1-3; layer 0 = these base maps) ──
+    // The setters invalidate the splat layer GPU textures (lazy reload) and mark
+    // the height bands dirty (presence caps change which bands may fire).
+    private void InvalidateSplatLayer(int slotBase, int layer)
+    {
+        int i = slotBase + layer;
+        if (_splatTex != null && _splatTex[i] != 0)
+        {
+            fixed (uint* p = &_splatTex[i]) GL.DeleteTextures(1, p);
+            _splatTex[i] = 0;
+        }
+        _splatBandsPending = true;
+    }
+    private string SplatLayerGet(string[] arr, int i) => arr[i];
+    private void SplatLayerSet(string[] arr, int i, string value, int slotBase)
+    {
+        value ??= "";
+        if (arr[i] == value) return;
+        arr[i] = value;
+        InvalidateSplatLayer(slotBase, i);
+    }
+    /// <summary>Splat layer 1-3 albedo (layer 0 = <see cref="PbrAlbedoPath"/>).</summary>
+    public string SplatLayer1Albedo { get => SplatLayerGet(SplatLayerAlbedoPath, 1); set => SplatLayerSet(SplatLayerAlbedoPath, 1, value, 0); }
+    public string SplatLayer2Albedo { get => SplatLayerGet(SplatLayerAlbedoPath, 2); set => SplatLayerSet(SplatLayerAlbedoPath, 2, value, 0); }
+    public string SplatLayer3Albedo { get => SplatLayerGet(SplatLayerAlbedoPath, 3); set => SplatLayerSet(SplatLayerAlbedoPath, 3, value, 0); }
+    public string SplatLayer1Normal { get => SplatLayerGet(SplatLayerNormalPath, 1); set => SplatLayerSet(SplatLayerNormalPath, 1, value, 4); }
+    public string SplatLayer2Normal { get => SplatLayerGet(SplatLayerNormalPath, 2); set => SplatLayerSet(SplatLayerNormalPath, 2, value, 4); }
+    public string SplatLayer3Normal { get => SplatLayerGet(SplatLayerNormalPath, 3); set => SplatLayerSet(SplatLayerNormalPath, 3, value, 4); }
+    public string SplatLayer1Metallic { get => SplatLayerGet(SplatLayerMetallicPath, 1); set => SplatLayerSet(SplatLayerMetallicPath, 1, value, 8); }
+    public string SplatLayer2Metallic { get => SplatLayerGet(SplatLayerMetallicPath, 2); set => SplatLayerSet(SplatLayerMetallicPath, 2, value, 8); }
+    public string SplatLayer3Metallic { get => SplatLayerGet(SplatLayerMetallicPath, 3); set => SplatLayerSet(SplatLayerMetallicPath, 3, value, 8); }
+    public string SplatLayer1Roughness { get => SplatLayerGet(SplatLayerRoughnessPath, 1); set => SplatLayerSet(SplatLayerRoughnessPath, 1, value, 12); }
+    public string SplatLayer2Roughness { get => SplatLayerGet(SplatLayerRoughnessPath, 2); set => SplatLayerSet(SplatLayerRoughnessPath, 2, value, 12); }
+    public string SplatLayer3Roughness { get => SplatLayerGet(SplatLayerRoughnessPath, 3); set => SplatLayerSet(SplatLayerRoughnessPath, 3, value, 12); }
+    public string SplatLayer1Ao { get => SplatLayerAoPath[1]; set => SplatLayerSet(SplatLayerAoPath, 1, value, 16); }
+    public string SplatLayer2Ao { get => SplatLayerAoPath[2]; set => SplatLayerSet(SplatLayerAoPath, 2, value, 16); }
+    public string SplatLayer3Ao { get => SplatLayerAoPath[3]; set => SplatLayerSet(SplatLayerAoPath, 3, value, 16); }
+    public string SplatLayer1Height { get => SplatLayerHeightPath[1]; set => SplatLayerSet(SplatLayerHeightPath, 1, value, 20); }
+    public string SplatLayer2Height { get => SplatLayerHeightPath[2]; set => SplatLayerSet(SplatLayerHeightPath, 2, value, 20); }
+    public string SplatLayer3Height { get => SplatLayerHeightPath[3]; set => SplatLayerSet(SplatLayerHeightPath, 3, value, 20); }
+
+    /// <summary>Indexed accessors for editor panels — routed through the invalidating
+    /// setters above so path changes drop the layer GPU texture immediately.</summary>
+    public string GetSplatLayerPath(int map, int layer) => map switch
+    {
+        0 => SplatLayerAlbedoPath[layer],
+        1 => SplatLayerNormalPath[layer],
+        2 => SplatLayerMetallicPath[layer],
+        3 => SplatLayerRoughnessPath[layer],
+        4 => SplatLayerAoPath[layer],
+        5 => SplatLayerHeightPath[layer],
+        _ => "",
+    };
+    public void SetSplatLayerPath(int map, int layer, string value)
+    {
+        switch (map)
+        {
+            case 0: SetSplatLayerPathIndexed(SplatLayerAlbedoPath, layer, value, 0); break;
+            case 1: SetSplatLayerPathIndexed(SplatLayerNormalPath, layer, value, 4); break;
+            case 2: SetSplatLayerPathIndexed(SplatLayerMetallicPath, layer, value, 8); break;
+            case 3: SetSplatLayerPathIndexed(SplatLayerRoughnessPath, layer, value, 12); break;
+            case 4: SetSplatLayerPathIndexed(SplatLayerAoPath, layer, value, 16); break;
+            case 5: SetSplatLayerPathIndexed(SplatLayerHeightPath, layer, value, 20); break;
+        }
+    }
+    private void SetSplatLayerPathIndexed(string[] arr, int i, string value, int slotBase)
+        => SplatLayerSet(arr, i, value, slotBase);
     /// <summary>Height / displacement map (R channel, 0.5 = flat) (optional; drives parallax).</summary>
     private string _pbrHeightPath = "";
     public string PbrHeightPath
@@ -469,8 +536,8 @@ public unsafe class EditorObject
     // Two DIFFERENT sources by design: this one drives the base SHAPE (vertex
     // displacement of the plane grid — grayscale, white = peaks) while    // <see cref="PbrHeightPath"/> stays a POM surface-detail map consumed by the    // fragment shader's parallax. Keeping them apart means a terrain can be shaped    // by one image and micro-detailed by another.
     private string _terrainHeightPath = "";
-    private uint _terrainHeightTex;   // GPU texture for the elevation source (unit 15)
-    /// <summary>Grayscale terrain elevation heightmap — the base shape. Empty = flat    /// plane (PBR maps may still apply). Changing it drops the GPU texture (lazy reload).</summary>
+    private uint _terrainHeightTex;   // GPU texture for the elevation source (unit 15)    /// <summary>Grayscale terrain elevation heightmap — the base shape. Empty = flat
+    /// plane (PBR maps may still apply). Changing it drops the GPU texture (lazy reload).</summary>
     public string TerrainHeightPath
     {
         get => _terrainHeightPath;
@@ -486,6 +553,21 @@ public unsafe class EditorObject
             {
                 _sculptField.DisposeTexture();
                 _sculptField = null;
+            }
+            // The splat height bands follow the elevation — a new source drops the
+            // weight fields (manual paint keeps its FILE: the bake path survives in
+            // _splatMapPath and reloads on the next paint session).
+            InvalidateSplatBands();
+            if (_splatField is { HasAnyEdits: false })
+            {
+                _splatField.DisposeTexture();
+                _splatField = null;
+                _splatLoadedPath = null;
+            }
+            if (_splatFieldForBands != null)
+            {
+                _splatFieldForBands.DisposeTexture();
+                _splatFieldForBands = null;
             }
         }
     }
@@ -539,11 +621,26 @@ public unsafe class EditorObject
     /// per-map tiling AND the global Map Tiling slider. Only controls how the
     /// elevation wraps across the plane for displacement; PBR maps keep their own
     /// tiling. Uploaded as a uniform every draw (no mesh rebuild needed).</summary>
-    public float TerrainHeightTilingX { get; set; } = 1f;
-    public float TerrainHeightTilingY { get; set; } = 1f;
+    private float _terrainHeightTilingX = 1f;
+    public float TerrainHeightTilingX
+    {
+        get => _terrainHeightTilingX;
+        set { if (_terrainHeightTilingX != value) { _terrainHeightTilingX = value; InvalidateSplatBands(); } }
+    }
+    private float _terrainHeightTilingY = 1f;
+    public float TerrainHeightTilingY
+    {
+        get => _terrainHeightTilingY;
+        set { if (_terrainHeightTilingY != value) { _terrainHeightTilingY = value; InvalidateSplatBands(); } }
+    }
     /// <summary>BASE heightmap amplitude (world units) — the raw heightmap image
     /// stands this tall. This is the terrain SHAPE slider.</summary>
-    public float TerrainBaseHeight { get; set; } = 0.15f;
+    private float _terrainBaseHeight = 0.15f;
+    public float TerrainBaseHeight
+    {
+        get => _terrainBaseHeight;
+        set { if (_terrainBaseHeight != value) { _terrainBaseHeight = value; InvalidateSplatBands(); } }
+    }
     /// <summary>VERTEX DISPLACEMENT height (world units) — EXTRA relief around
     /// mid-gray added on top of the base shape (peaks rise, valleys sink).
     /// SEPARATE from the base so shape and extra displacement are 2 sliders.
@@ -552,7 +649,12 @@ public unsafe class EditorObject
     /// <summary>Terrain BASE-SHAPE offset in world units — shifts the whole displaced
     /// terrain up/down (raise islands above water / sink valleys). Geometry-only;
     /// POM detail offset lives in the PBR height calibration.</summary>
-    public float TerrainHeightOffset { get; set; } = 0f;
+    private float _terrainHeightOffset = 0f;
+    public float TerrainHeightOffset
+    {
+        get => _terrainHeightOffset;
+        set { if (_terrainHeightOffset != value) { _terrainHeightOffset = value; InvalidateSplatBands(); } }
+    }
     /// <summary>Terrain relief intensity — reshapes the raw elevation around mid-gray
     /// before displacement: 0 = flat, 1 = map as-authored, >1 = steeper peaks/deeper
     /// valleys (peak height itself comes from <see cref="TerrainHeightScale"/>).
@@ -569,10 +671,53 @@ public unsafe class EditorObject
             ? Math.Clamp(TerrainBaseHeight, 0f, 500f)
               + Math.Clamp(TerrainHeightScale, 0f, 500f)
               + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
+              + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f)
             : 0f;
 
     // ── Brush sculpting (CPU heightfield painted in the viewport) ──
+    // SCULPT = ADDITIVE DELTA LAYER (0.5 = neutral) — the authored base heightmap
+    // is NEVER overwritten. Brush edits live on a separate buffer (unit 16 in the
+    // vertex stage: elevation = base·BaseHeight + (delta − 0.5)·2·SculptAmp + POM
+    // detail). The base slider keeps driving the SHAPED terrain while sculpted
+    // detail rides on top — the user request "impact di base-nya aja, sebagai
+    // tambahan dari base heightmap".
     private TerrainHeightfield? _sculptField;
+    /// <summary>Stored sculpt delta TGA (0.5-neutral grayscale — written by the
+    /// paint bake). Empty = never sculpted.</summary>
+    private string _sculptDeltaPath = "";
+    public string SculptDeltaPath
+    {
+        get => _sculptDeltaPath;
+        set
+        {
+            value ??= "";
+            if (_sculptDeltaPath == value) return;
+            _sculptDeltaPath = value;
+            _sculptDecodeFailedPath = null;
+            // The lazy-loaded STORED delta texture is now stale — drop it.
+            if (_sculptDeltaTex != 0)
+            {
+                fixed (uint* p = &_sculptDeltaTex) GL.DeleteTextures(1, p);
+                _sculptDeltaTex = 0;
+            }
+            // Drop a NON-edited live buffer so the stored delta reloads lazily
+            // (an active session keeps its in-memory strokes).
+            if (_sculptField != null && !_sculptField.HasAnyEdits)
+            {
+                _sculptField.DisposeTexture();
+                _sculptField = null;
+            }
+        }
+    }
+    /// <summary>Sculpt delta amplitude (world units): (delta − 0.5)·2·this is added
+    /// to the base elevation. 0 = sculpt hidden (base heightmap only).</summary>
+    private float _terrainSculptAmp = 2f;
+    public float TerrainSculptAmp
+    {
+        get => _terrainSculptAmp;
+        set { if (_terrainSculptAmp != value) { _terrainSculptAmp = value; InvalidateSplatBands(); } }
+    }
+    private uint _sculptDeltaTex;   // GPU texture for the STORED delta (lazy)
     /// <summary>Elevation source that FAILED to decode — re-decoding a missing/corrupt
     /// image every frame (EnsureSculptField is called per frame while sculpting) once
     /// tanked the FPS; the negative cache makes the failure sticky per path.</summary>
@@ -583,83 +728,103 @@ public unsafe class EditorObject
     /// <summary>True once a brush stroke has modified the sculpted heightfield
     /// this session (drives the sculpt status + gates below).</summary>
     public bool HasSculptEdits => _sculptField?.HasAnyEdits == true;
+    /// <summary>True when ANY sculpt delta exists — a live session or a stored
+    /// bake (drives the delta-bind gate in the draw).</summary>
+    public bool HasSculptDelta => _sculptField != null || _sculptDeltaPath.Length > 0;
     /// <summary>Effective displaced-surface extent (world units): the authored
     /// base shape PLUS the sculpted relief swing ( sculpted field ranges above the
     /// decoded base are bounded by ±1 around it, so ±1 world unit covers worst case).</summary>
     public float TerrainSculptExtent =>
-        HasSculptEdits ? Math.Clamp(TerrainDisplacementExtent, 0f, 750f) + 1f : TerrainDisplacementExtent;
+        HasSculptDelta ? Math.Clamp(TerrainDisplacementExtent, 0f, 750f) + 1f : TerrainDisplacementExtent;
 
     /// <summary>Elevation source path BEFORE the first sculpt bake of the current
     /// session — lets <see cref="RevertSculpt"/> restore the authored image.</summary>
     private string? _preSculptPath;
 
-    /// <summary>Start (or resume) a brush-sculpt session on this plane: remembers
-    /// the authored elevation path for revert and decodes the CPU heightfield.</summary>
+    /// <summary>Start (or resume) a brush-sculpt session on this plane: decodes
+    /// the CPU DELTA buffer (stored bake, else 0.5-neutral — the base image is
+    /// never touched). MARKS THE MESH DIRTY — a flat plane was built as a 1×1
+    /// quad (5 vertices); vertex displacement of the delta NEEDS the dense grid,
+    /// so the session start must force the rebuild or strokes stay invisible.</summary>
     public void BeginSculptSession()
     {
-        _preSculptPath ??= _terrainHeightPath;
         SculptBrush ??= new TerrainBrushSession();
         EnsureSculptField();
+        MarkDirty();   // rebuild → dense gate now sees the sculpt delta
     }
 
-    /// <summary>Discard ALL brush edits: reload the authored elevation image and
-    /// restore the pre-sculpt source path (the bake file is abandoned).</summary>
+    /// <summary>Discard ALL brush edits: drop the live delta buffer and reload the
+    /// stored delta bake (or fall back to neutral = zero sculpt). The BASE
+    /// heightmap is untouched by definition.</summary>
     public void RevertSculpt()
     {
         DropSculptField();
-        if (_preSculptPath != null)
-            TerrainHeightPath = _preSculptPath;   // via the property → drops the GPU tex
-        _preSculptPath = null;
+        _sculptDecodeFailedPath = null;
     }
 
-    /// <summary>Decode the elevation source into a CPU heightfield for sculpting
-    /// (idempotent). Null when the plane has no elevation source or decode fails.
+    /// <summary>Decode the SCULPT DELTA into a CPU heightfield (idempotent):
+    /// the stored delta bake if any, else a 0.5-neutral buffer (fresh edits).
+    /// Null only on non-planes or sticky decode failure.
     /// The brush session must be created first — sculpting starts from the UI.</summary>
     public TerrainHeightfield? EnsureSculptField()
     {
         if (_sculptField != null) return _sculptField;
-        string src = TerrainHeightSourcePath;
-        if (PrimitiveType != EditorPrimitiveType.Plane || string.IsNullOrEmpty(src)) return null;
-        if (_sculptDecodeFailedPath == src) return null;   // sticky failure — no re-decode storm
-        _sculptField = TerrainHeightfield.FromImage(PathHelpers.Resolve(src));
-        if (_sculptField == null) _sculptDecodeFailedPath = src;
+        if (PrimitiveType != EditorPrimitiveType.Plane) return null;
+        if (!string.IsNullOrEmpty(_sculptDeltaPath) && _sculptDecodeFailedPath != _sculptDeltaPath)
+        {
+            var loaded = TerrainHeightfield.FromImage(PathHelpers.Resolve(_sculptDeltaPath));
+            if (loaded != null)
+            {
+                _sculptField = loaded;
+                loaded.FlushTexture();   // build the GPU texture for the draw gate
+                return _sculptField;
+            }
+            _sculptDecodeFailedPath = _sculptDeltaPath;
+        }
+        _sculptField = TerrainHeightfield.CreateNeutral();
         return _sculptField;
     }
 
     /// <summary>Finish a brush stroke: upload the touched region to the live R8
-    /// texture and, when the field changed, bake it to a TGA next to the source
-    /// elevation and repoint <see cref="TerrainHeightPath"/> at the baked file
-    /// (file-based persistence — the sculpted terrain saves with the scene).</summary>
+    /// DELTA texture and, when the field changed, bake the delta to its own TGA
+    /// (Artifacts/Terrain/&lt;scene&gt;/&lt;object&gt;_sculpt.tga) — the BASE
+    /// heightmap file is never written. Logs stroke telemetry.</summary>
     public void EndSculptStroke(int frameStamp)
     {
         var f = _sculptField;
         if (f == null || !f.HasAnyEdits) return;
         f.FlushTexture();
+        Console.WriteLine($"[TerrainSculpt] '{Name}' stroke end: {f.StrokeTexels} texels mutated this stroke");
         if (!f.NeedsBake || f.LastStrokeStamp == frameStamp) return; // bake once per stroke
         f.LastStrokeStamp = frameStamp;
         BakeSculptField(f);
     }
 
-    /// <summary>Write the current sculpted field to the bake TGA and point the
-    /// elevation source at it (shared by stroke-end and undo/redo restores).</summary>
+    /// <summary>Write the sculpt DELTA to its bake TGA and store the path — the
+    /// base elevation source is left alone (shared by stroke-end and undo/redo).</summary>
     private void BakeSculptField(TerrainHeightfield f)
     {
-        string bakedRel = $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}.tga";
+        string bakedRel = $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}_sculpt.tga";
         string bakedAbs = PathHelpers.Resolve(bakedRel);
         if (f.BakeToTga(bakedAbs))
         {
-            // Point the source at the bake WITHOUT dropping the live GPU texture:
-            // the sculpted field IS the current surface (the setter would reload
-            // the authored image and undo the stroke visually for one frame).
-            _terrainHeightPath = bakedRel;
+            // Store the path WITHOUT dropping the live GPU texture (the live field
+            // IS the current delta; the setter would reload the file needlessly).
+            _sculptDeltaPath = bakedRel;
             f.MarkBaked();
-            Console.WriteLine($"[TerrainSculpt] '{Name}' baked → {bakedRel}");
+            Console.WriteLine($"[TerrainSculpt] '{Name}' delta baked → {bakedRel}");
         }
     }
 
     /// <summary>Mark the start of a brush stroke (mouse press) — arms the lazy
-    /// pre-stroke snapshot so Ctrl+Z can revert exactly this stroke.</summary>
-    public void SculptBeginStroke() => _sculptField?.BeginStroke();
+    /// pre-stroke snapshot and re-rolls the Noise-mode seed so one continuous
+    /// drag paints ONE coherent noise pattern (fresh detail on the next stroke).</summary>
+    public void SculptBeginStroke()
+    {
+        _sculptField?.BeginStroke();
+        if (SculptBrush is { } b)
+            b.NoiseSeed = Random.Shared.Next(1, int.MaxValue - 1);
+    }
 
     /// <summary>Undo the last sculpt stroke (Ctrl+Z): restore the field, upload
     /// the whole texture and re-bake the TGA so scene saves follow the revert.</summary>
@@ -715,34 +880,77 @@ public unsafe class EditorObject
     }
 
     /// <summary>Surface elevation (world units above the flat grid) at plane-local
-    /// (x, z) — mirrors the shader's BASE term (raw height × BaseHeight + offset).
-    /// Null when no elevation field is decoded (plane not paintable). Used by the
-    /// viewport to draw the paintable-region outline ON the sculpted surface.</summary>
+    /// (x, z) — mirrors the shader's displacement: base heightmap × BaseHeight +
+    /// offset, PLUS the additive sculpt delta (delta − 0.5)·2·SculptAmp when a
+    /// session/bake exists. Used by the viewport for ring/outline ON the surface.</summary>
     public float? SampleSurfaceElevation(float localX, float localZ)
     {
-        var f = EnsureSculptField();
-        if (f == null) return null;
+        string src = TerrainHeightSourcePath;
+        var d = HasSculptDelta ? EnsureSculptField() : null;
+        if (string.IsNullOrEmpty(src) && d == null) return null;
         float u = localX / MathF.Max(1e-4f, MathF.Abs(Scale.X)) + 0.5f;
         float v = localZ / MathF.Max(1e-4f, MathF.Abs(Scale.Z)) + 0.5f;
-        float h = f.SampleBilinear(u, v,
-            Math.Clamp(TerrainHeightTilingX, 0.01f, 100f),
-            Math.Clamp(TerrainHeightTilingY, 0.01f, 100f));
-        return h * Math.Clamp(TerrainBaseHeight, 0f, 500f)
-             + Math.Clamp(TerrainHeightOffset, -250f, 250f);
+        float tx = Math.Clamp(TerrainHeightTilingX, 0.01f, 100f);
+        float ty = Math.Clamp(TerrainHeightTilingY, 0.01f, 100f);
+        float h = 0f;
+        if (!string.IsNullOrEmpty(src))
+        {
+            // Re-decode when the source path changed (stale base = rings/bands on
+            // the wrong terrain after re-assigning the heightmap).
+            if (_baseFieldForSampling == null || _baseFieldForSamplingSource != src)
+            {
+                _baseFieldForSampling = TerrainHeightfield.FromImage(PathHelpers.Resolve(src));
+                _baseFieldForSamplingSource = _baseFieldForSampling != null ? src : null;
+            }
+            if (_baseFieldForSampling != null)
+                h += _baseFieldForSampling.SampleBilinear(u, v, tx, ty) * Math.Clamp(TerrainBaseHeight, 0f, 500f);
+            else
+                h += Math.Clamp(TerrainBaseHeight, 0f, 500f);   // GPU fallback = white texel
+        }
+        if (d != null)
+            h += (d.SampleBilinear(u, v, 1f, 1f) - 0.5f) * 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f);
+        return h + Math.Clamp(TerrainHeightOffset, -250f, 250f);
     }
+    /// <summary>Decoded BASE elevation for CPU sampling (rings/bands/picking) —
+    /// separate from the sculpt delta; decoded once, dropped when the path changes.</summary>
+    private TerrainHeightfield? _baseFieldForSampling;
+    private string? _baseFieldForSamplingSource;
 
     /// <summary>Ray-march the sculpted surface for brush picking. World-space
-    /// ray; hit point + plane-local X/Z of the hit on success.</summary>
+    /// ray; hit point + plane-local X/Z of the hit on success. The march reads
+    /// the COMBINED surface (base heightmap + additive delta) so the brush sits
+    /// exactly on the rendered terrain.</summary>
     public bool TryRaycastSculptSurface(Vector3 origin, Vector3 dir,
         float tilingX, float tilingY, out Vector3 hit, out Vector2 localXZ)
     {
         hit = default; localXZ = default;
-        var f = _sculptField;
-        if (f == null) return false;
-        bool ok = f.TryRaycast(WorldMatrix, Math.Clamp(TerrainBaseHeight, 0f, 500f),
+        string src = TerrainHeightSourcePath;
+        if (PrimitiveType != EditorPrimitiveType.Plane) return false;
+        // Base-only surface: decode the base field for the march.
+        if (!string.IsNullOrEmpty(src))
+        {                if (_baseFieldForSampling == null || _baseFieldForSamplingSource != src)
+                {
+                    _baseFieldForSampling = TerrainHeightfield.FromImage(PathHelpers.Resolve(src));
+                    _baseFieldForSamplingSource = _baseFieldForSampling != null ? src : null;
+                    if (_baseFieldForSampling == null) return false;
+                }
+            }
+            else if (_baseFieldForSampling == null)
+            {
+                // Flat base — mid-gray field for the delta to ride on (matches the
+                // GPU's white-texel base × BaseHeight = flat plane at BaseHeight... 
+                // actually the GPU white texel gives base·BaseHeight; CPU mirrors
+                // with a 1.0 field, NOT 0.5 — wrong constant = floating ring).
+                _baseFieldForSampling = TerrainHeightfield.CreateFlat(1f);
+                _baseFieldForSamplingSource = null;
+            }
+        var d = HasSculptDelta ? EnsureSculptField() : null;
+        var bf = _baseFieldForSampling!;
+        bool ok = bf.TryRaycast(WorldMatrix, Math.Clamp(TerrainBaseHeight, 0f, 500f),
             Math.Clamp(TerrainHeightOffset, -250f, 250f), TerrainSculptExtent,
-            tilingX, tilingY, origin, dir, out hit);
-        if (ok) localXZ = f.LastHitLocalXZ;
+            tilingX, tilingY, d, Math.Clamp(TerrainSculptAmp, 0f, 250f),
+            origin, dir, out hit);
+        if (ok) localXZ = bf.LastHitLocalXZ;
         return ok;
     }
 
@@ -756,15 +964,379 @@ public unsafe class EditorObject
         if (f == null) return;
         f.ApplyBrush(localX, localZ, MathF.Abs(Scale.X), MathF.Abs(Scale.Z),
             Math.Clamp(b.Radius, 0.01f, 500f), Math.Clamp(b.Strength, 0.01f, 10f),
-            Math.Clamp(b.Hardness, 0f, 1f), b.Mode, dt, frameStamp);
+            Math.Clamp(b.Hardness, 0f, 1f), b.Mode, dt, frameStamp,
+            b.Steps, b.NoiseSeed);
         f.FlushTexture();   // no-op when the stamp touched nothing
     }
 
-    /// <summary>Discard the sculpt buffer (next session re-decodes the source image).</summary>
+    /// <summary>Discard the live DELTA buffer (next session reloads the stored
+    /// bake or starts neutral — the base image is never touched).</summary>
     public void DropSculptField()
     {
         _sculptField?.DisposeTexture();
         _sculptField = null;
+        if (_sculptDeltaTex != 0)
+        {
+            fixed (uint* p = &_sculptDeltaTex) GL.DeleteTextures(1, p);
+            _sculptDeltaTex = 0;
+        }
+    }
+
+    // ── TERRAIN SPLAT — 4 texture layers blended by a weight map (unit 10) ──
+    // Layer 0 IS the base PBR material (the maps assigned in the PBR panel, incl.
+    // the ObjColor/albedo fallback) so an unpainted terrain renders exactly like
+    // the plain PBR path; layers 1-3 carry their own albedo/normal/metallic/
+    // roughness/AO/height textures (units 11-14…31-34, see DrawPbrPrimitive).
+    // Weights come from manual viewport painting AND auto height bands over the
+    // sculpted elevation; the brush always wins where it painted.
+    private TerrainSplatField? _splatField;
+    private TerrainSplatField? _splatFieldForBands;   // band-computed buffer while paint owns the live one
+    private string? _splatLoadedPath;                 // file the live field was decoded from
+    private string? _splatDecodeFailedPath;           // sticky failure cache (no decode storms)
+    private bool _splatBandsPending;                  // bands recompute requested (param/sculpt change)
+
+    /// <summary>Stored splat weight map (RGBA TGA — R/G/B/A = layers 0-3). Written
+    /// by the paint bake; loadable from any 32-bit image. Empty = never painted.</summary>
+    private string _splatMapPath = "";
+    public string SplatMapPath
+    {
+        get => _splatMapPath;
+        set
+        {
+            value ??= "";
+            if (_splatMapPath == value) return;
+            _splatMapPath = value;
+            _splatDecodeFailedPath = null;
+            // Drop a NON-painted live field (band buffer) so the new file loads
+            // lazily; an active paint session keeps its in-memory strokes.
+            if (_splatField == null || !_splatField.HasAnyEdits)
+            {
+                _splatField?.DisposeTexture();
+                _splatField = null;
+                _splatLoadedPath = null;
+            }
+        }
+    }
+
+    /// <summary>Live splat paint session settings — null = NOT painting.</summary>
+    public SplatBrushSession? SplatBrush { get; set; }
+
+    /// <summary>True when this object carries a splat LAYER SET (any layer 1-3 map
+    /// assigned) or a painted weight map — the splat-active gate half.</summary>
+    public bool SplatIsPainted =>
+        SplatLayerAlbedoPath.Skip(1).Any(p => !string.IsNullOrEmpty(p))
+        || _splatField?.HasAnyEdits == true;
+
+    /// <summary>AUTO height bands from the sculpted elevation (the "driven by
+    /// terrain height" half of the splat system).</summary>
+    public bool SplatHeightBandsEnabled { get; set; }
+    /// <summary>Number of elevation bands that influence weights (1..4) — the
+    /// remaining layers keep weight 0 unless painted.</summary>
+    public int SplatHeightLayerCount { get; set; } = 4;
+    /// <summary>Band edge softness in WORLD units (0.05 = sharp cliffs, 10 = foggy blends).</summary>
+    public float SplatHeightLayerFeather { get; set; } = 2f;
+    /// <summary>Per-layer elevation band (X = low edge, Y = high edge, world units
+    /// above the flat grid — the same axis as Base Height / Height Offset).</summary>
+    public Vector2[] SplatHeightBands { get; } =
+    [
+        new(0f, 8f), new(6f, 14f), new(12f, 20f), new(18f, 1e5f),
+    ];
+
+    /// <summary>Per-splat-layer texture paths (index 0 = base PBR maps — the paths
+    /// here are unused for layer 0; layers 1-3 are authored here).</summary>
+    public string[] SplatLayerAlbedoPath { get; } = ["", "", "", ""];
+    public string[] SplatLayerNormalPath { get; } = ["", "", "", ""];
+    public string[] SplatLayerMetallicPath { get; } = ["", "", "", ""];
+    public string[] SplatLayerRoughnessPath { get; } = ["", "", "", ""];
+    public string[] SplatLayerAoPath { get; } = ["", "", "", ""];
+    public string[] SplatLayerHeightPath { get; } = ["", "", "", ""];
+    /// <summary>Fallback tint per layer when the layer's albedo slot is EMPTY
+    /// (layer 0 mirrors the plain path's ObjColor fallback — uploaded at draw).</summary>
+    public Vector3[] SplatLayerTint { get; } =
+    [
+        new(1f, 1f, 1f), new(0.55f, 0.45f, 0.35f), new(0.5f, 0.55f, 0.5f), new(0.75f, 0.72f, 0.7f),
+    ];
+
+    /// <summary>GPU textures for the splat layers: slots 0-3 albedo, 4-7 normal,
+    /// 8-11 metallic, 12-15 roughness, 16-19 AO, 20-23 height (layer 0 slots are
+    /// bound from the base PBR maps at draw — these stay 0).</summary>
+    private readonly uint[] _splatTex = new uint[24];
+
+    /// <summary>Lazy-load the splat layer textures from their paths (missing files
+    /// just leave the slot at 0 — the shader gates per-layer presence).</summary>
+    private void EnsureSplatTextures()
+    {
+        LoadSplatRange(0, SplatLayerAlbedoPath);
+        LoadSplatRange(4, SplatLayerNormalPath);
+        LoadSplatRange(8, SplatLayerMetallicPath);
+        LoadSplatRange(12, SplatLayerRoughnessPath);
+        LoadSplatRange(16, SplatLayerAoPath);
+        LoadSplatRange(20, SplatLayerHeightPath);
+    }
+
+    private void LoadSplatRange(int slotBase, string[] paths)
+    {
+        for (int l = 1; l < 4; l++)   // layer 0 binds from the base PBR maps
+        {
+            string p = paths[l];
+            if (_splatTex[slotBase + l] != 0 || string.IsNullOrEmpty(p)) continue;
+            try
+            {
+                string resolved = PathHelpers.Resolve(p);
+                if (File.Exists(resolved))
+                    _splatTex[slotBase + l] = new Texture(resolved).ID;
+                else
+                    Console.WriteLine($"[TerrainSplat] '{Name}' layer texture missing: {p}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TerrainSplat] '{Name}' layer texture load failed ({p}): {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>Drop + reload the splat layer textures (path changes / clear).</summary>
+    public void InvalidateSplatTextures()
+    {
+        for (int i = 0; i < _splatTex.Length; i++)
+        {
+            if (_splatTex[i] != 0)
+            {
+                fixed (uint* p = &_splatTex[i]) GL.DeleteTextures(1, p);
+                _splatTex[i] = 0;
+            }
+        }
+    }
+
+    /// <summary>Start (or resume) a splat paint session: creates the brush settings
+    /// and the CPU weight field (from the stored splat file, the band buffer or an
+    /// empty layer-0 field).</summary>
+    public void BeginSplatSession()
+    {
+        SplatBrush ??= new SplatBrushSession();
+        EnsureSplatPaintField();
+    }
+
+    /// <summary>Live CPU splat field for PAINTING: the stored splat file (if any),
+    /// else the band buffer, else a fresh layer-0 field. Idempotent.</summary>
+    public TerrainSplatField? EnsureSplatPaintField()
+    {
+        if (PrimitiveType != EditorPrimitiveType.Plane) return null;
+        if (_splatField != null) return _splatField;
+        // Adopt the band buffer if one exists (bands computed while no session ran).
+        if (_splatFieldForBands != null)
+        {
+            _splatField = _splatFieldForBands;
+            _splatFieldForBands = null;
+            return _splatField;
+        }
+        string stored = _splatMapPath;
+        if (!string.IsNullOrEmpty(stored) && _splatDecodeFailedPath != stored)
+        {
+            var loaded = TerrainSplatField.FromFile(PathHelpers.Resolve(stored));
+            if (loaded != null)
+            {
+                _splatField = loaded;
+                _splatLoadedPath = stored;
+                loaded.FlushTexture();   // build the GPU texture NOW — the draw gate
+                                        // needs GpuTexture != 0 to activate the splat
+                return _splatField;
+            }
+            _splatDecodeFailedPath = stored;
+        }
+        _splatField = TerrainSplatField.CreateDefault();
+        return _splatField;
+    }
+
+    /// <summary>Band-only field (used when bands are enabled but no paint session
+    /// is running) — a separate buffer so painting never mixes into it accidentally.</summary>
+    private TerrainSplatField? EnsureSplatBandField()
+    {
+        if (_splatField != null) return _splatField;
+        if (_splatFieldForBands != null) return _splatFieldForBands;
+        string stored = _splatMapPath;
+        if (!string.IsNullOrEmpty(stored) && _splatDecodeFailedPath != stored)
+        {
+            var loaded = TerrainSplatField.FromFile(PathHelpers.Resolve(stored));
+            if (loaded != null)
+            {
+                _splatFieldForBands = loaded;
+                _splatLoadedPath = stored;
+                loaded.FlushTexture();   // same as above — activate without a stamp
+                return _splatFieldForBands;
+            }
+            _splatDecodeFailedPath = stored;
+        }
+        _splatFieldForBands = TerrainSplatField.CreateDefault();
+        return _splatFieldForBands;
+    }
+
+    /// <summary>Request a height-band recompute (called when the sculpted elevation,
+    /// base height, offset, tiling or band parameters change). Amortized: the actual
+    /// 256² pass runs at most once per frame inside the draw.</summary>
+    public void InvalidateSplatBands() => _splatBandsPending = true;
+
+    /// <summary>Recompute the auto height-band weights from the sculpted elevation
+    /// (the "splat driven by terrain height" half). Runs in the draw when pending.</summary>
+    private void ComputeSplatBands()
+    {
+        _splatBandsPending = false;
+        if (!SplatHeightBandsEnabled)
+        {
+            // Bands turned OFF — drop the band-only buffer (paint fields stay).
+            if (_splatFieldForBands != null && !_splatFieldForBands.HasAnyEdits)
+            {
+                _splatFieldForBands.DisposeTexture();
+                _splatFieldForBands = null;
+            }
+            return;
+        }
+        // BASE elevation (unit-15 image) + the additive sculpt delta — the SAME
+        // combination the vertex stage displaces with, so bands hug the surface.
+        // Missing base image → the GPU binds a white 1.0 texel: mirror that with
+        // CreateFlat(1) so the bands don't sit half a Base Height off.
+        string src = TerrainHeightSourcePath;
+        TerrainHeightfield? hf = _baseFieldForSampling;   // refreshed by SampleSurfaceElevation's path cache
+        if (hf == null && string.IsNullOrEmpty(src))
+            hf = _baseFieldForSampling = TerrainHeightfield.CreateFlat(1f);
+        var d = HasSculptDelta ? EnsureSculptField() : null;
+        var sf = SplatIsPainted ? EnsureSplatPaintField() : EnsureSplatBandField();
+        if (sf == null) return;
+        // The field was decoded from the STORED splat file — its texels already
+        // contain the painted-over bands; recomputing would discard the paint.
+        if (!string.IsNullOrEmpty(_splatLoadedPath) && _splatLoadedPath == _splatMapPath)
+            return;
+        // Per-layer presence: layer 0 = base albedo map; layers 1-3 = their own
+        // splat albedo textures (_splatTex[0..3] slot layout: index == layer).
+        var caps = new float[4]
+        {
+            _pbrTex[0] != 0 ? 1f : 0f,
+            _splatTex[1] != 0 ? 1f : 0f,
+            _splatTex[2] != 0 ? 1f : 0f,
+            _splatTex[3] != 0 ? 1f : 0f,
+        };
+        sf.ComputeHeightBands(hf,
+            Math.Clamp(TerrainBaseHeight, 0f, 500f),
+            Math.Clamp(TerrainHeightOffset, -250f, 250f),
+            Math.Clamp(TerrainHeightTilingX, 0.01f, 100f),
+            Math.Clamp(TerrainHeightTilingY, 0.01f, 100f),
+            SplatHeightBands, caps,
+            Math.Clamp(SplatHeightLayerFeather, 0.05f, 50f),
+            Math.Clamp(SplatHeightLayerCount, 1, 4),
+            d, Math.Clamp(TerrainSculptAmp, 0f, 250f));
+        sf.FlushTexture();
+    }
+
+    /// <summary>Apply one splat brush stamp at plane-local coordinates (same
+    /// convention as <see cref="SculptApply"/>). The dirty region uploads live.</summary>
+    public void SplatApply(float localX, float localZ, SplatBrushSession b, float dt, int frameStamp)
+    {
+        var f = EnsureSplatPaintField();
+        if (f == null) return;
+        f.ApplyBrush(localX, localZ, MathF.Abs(Scale.X), MathF.Abs(Scale.Z), b, dt, frameStamp);
+        f.FlushTexture();   // no-op when the stamp touched nothing
+    }
+
+    /// <summary>Mark the start of a splat stroke (mouse press) — arms the lazy
+    /// pre-stroke snapshot.</summary>
+    public void SplatBeginStroke() => _splatField?.BeginStroke();
+
+    /// <summary>Finish a splat stroke: flush + bake the weights (+ paint mask) to
+    /// the splat TGA files and repoint <see cref="SplatMapPath"/> at the bake.</summary>
+    public void EndSplatStroke(int frameStamp)
+    {
+        var f = _splatField;
+        if (f == null || !f.HasAnyEdits) return;
+        f.FlushTexture();
+        Console.WriteLine($"[TerrainSplat] '{Name}' stroke end: {f.StrokeTexels} texels mutated this stroke");
+        if (!f.NeedsBake || f.LastStrokeStamp == frameStamp) return;
+        f.LastStrokeStamp = frameStamp;
+        BakeSplatField(f);
+    }
+
+    /// <summary>Write the splat bake files (weights RGBA + painted mask R8) under
+    /// Artifacts/Terrain/&lt;scene&gt;/&lt;object&gt;_splat.tga and store the path.</summary>
+    private void BakeSplatField(TerrainSplatField f)
+    {
+        string baseRel = $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}_splat.tga";
+        string baseAbs = PathHelpers.Resolve(baseRel);
+        if (f.BakeToTga(baseAbs))
+        {
+            // Point the stored path at the bake WITHOUT dropping the live field.
+            _splatMapPath = baseRel;
+            _splatLoadedPath = baseRel;
+            f.MarkBaked();
+            Console.WriteLine($"[TerrainSplat] '{Name}' baked → {baseRel}");
+        }
+    }
+
+    /// <summary>Undo the last splat stroke (Ctrl+Z while painting).</summary>
+    public bool SplatUndo()
+    {
+        var f = _splatField;
+        if (f == null || !f.Undo()) return false;
+        f.FlushTexture();
+        BakeSplatField(f);
+        return true;
+    }
+
+    /// <summary>Re-apply the last undone splat stroke (Ctrl+Y / Ctrl+Shift+Z).</summary>
+    public bool SplatRedo()
+    {
+        var f = _splatField;
+        if (f == null || !f.Redo()) return false;
+        f.FlushTexture();
+        BakeSplatField(f);
+        return true;
+    }
+
+    public int SplatUndoDepth => _splatField?.UndoDepth ?? 0;
+    public int SplatRedoDepth => _splatField?.RedoDepth ?? 0;
+
+    /// <summary>True when the live splat field carries paint (this session or a
+    /// decoded splat file) — drives the paint status line in the Terrain panel.</summary>
+    public bool HasSplatEdits => _splatField?.HasAnyEdits == true;
+
+    /// <summary>Discard ALL paint edits: drop the live field and reload the stored
+    /// splat map on next use (or reset to the empty layer-0 field when none was
+    /// saved). Layer textures and height-band settings are kept.</summary>
+    public void RevertSplat()
+    {
+        DropSplatField();
+        _splatDecodeFailedPath = null;
+        InvalidateSplatBands();
+    }
+
+    /// <summary>Weight coverage of layers 1-3 (0 = fully layer 0) — drives the
+    /// splat status line and the paintable-region outline visibility.</summary>
+    public float SplatPaintCoverage()
+    {
+        var f = _splatField ?? _splatFieldForBands;
+        if (f == null) return 0f;
+        return f.PaintCoverage();
+    }
+
+    /// <summary>Discard splat GPU buffers (layers keep their textures — paths own
+    /// those; the weight field re-decodes/recomputes on next use).</summary>
+    public void DropSplatField()
+    {
+        _splatField?.DisposeTexture();
+        _splatField = null;
+        _splatFieldForBands?.DisposeTexture();
+        _splatFieldForBands = null;
+        _splatLoadedPath = null;
+    }
+
+    private void DisposeSplatTextures()
+    {
+        for (int i = 0; i < _splatTex.Length; i++)
+        {
+            if (_splatTex[i] != 0)
+            {
+                fixed (uint* p = &_splatTex[i]) GL.DeleteTextures(1, p);
+                _splatTex[i] = 0;
+            }
+        }
     }
 
     // ── PBR map tuning (per map type, applies to the sampled map only; uniform-only
@@ -1339,7 +1911,7 @@ public unsafe class EditorObject
                 // The resolution slider (PbrVertexSegments) therefore ALWAYS takes
                 // effect on a terrain plane.
                 bool dense = PbrVertexChunk > 1 || !string.IsNullOrEmpty(TerrainHeightSourcePath)
-                             || _sculptField != null;
+                             || HasSculptDelta;   // path-based: a stored delta bake needs the dense grid too
                 int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
                 if (verts == null)
@@ -1535,6 +2107,17 @@ public unsafe class EditorObject
         public int VertexDisplace, DispScale, DispOffset, DispGrid;
         public int TerrainDisplace, TerrainHeightMap, TerrainUvScale, TerrainDispStrength, TerrainBaseHeight;
         public int PbrHeightDetail;   // u_pbrHeightDetail — real PBR height map present?
+        // ── Terrain splat (4 texture layers blended by the unit-10 weight map) ──
+        public int SculptDeltaMap, SculptAmp;   // u_sculptDeltaMap (unit 16) + u_sculptAmp
+        public int SplatWeights, SplatActive;
+        public int SplatHasAlbedo, SplatHasNormal, SplatHasMetal, SplatHasRough, SplatHasAo, SplatHasHeight;
+        public int SplatTint, SplatNormalStr, SplatDetail;
+        public readonly int[] SplatAlbedo = new int[4];
+        public readonly int[] SplatNormal = new int[4];
+        public readonly int[] SplatMetal = new int[4];
+        public readonly int[] SplatRough = new int[4];
+        public readonly int[] SplatAo = new int[4];
+        public readonly int[] SplatHeight = new int[4];
         public PbrUniformSet(uint program)
         {
             Program = program;
@@ -1591,6 +2174,28 @@ public unsafe class EditorObject
             TerrainDispStrength = GL.GetUniformLocation(Program, "u_dispStrength");
             TerrainBaseHeight = GL.GetUniformLocation(Program, "u_terrainBaseHeight");
             PbrHeightDetail = GL.GetUniformLocation(Program, "u_pbrHeightDetail");
+            SculptDeltaMap = GL.GetUniformLocation(Program, "u_sculptDeltaMap");
+            SculptAmp = GL.GetUniformLocation(Program, "u_sculptAmp");
+            SplatWeights = GL.GetUniformLocation(Program, "u_splatWeights");
+            for (int l = 0; l < 4; l++)
+            {
+                SplatAlbedo[l] = GL.GetUniformLocation(Program, $"u_splatAlbedo[{l}]");
+                SplatNormal[l] = GL.GetUniformLocation(Program, $"u_splatNormal[{l}]");
+                SplatMetal[l] = GL.GetUniformLocation(Program, $"u_splatMetal[{l}]");
+                SplatRough[l] = GL.GetUniformLocation(Program, $"u_splatRough[{l}]");
+                SplatAo[l] = GL.GetUniformLocation(Program, $"u_splatAo[{l}]");
+                SplatHeight[l] = GL.GetUniformLocation(Program, $"u_splatHeight[{l}]");
+            }
+            SplatActive = GL.GetUniformLocation(Program, "u_splatActive");
+            SplatHasAlbedo = GL.GetUniformLocation(Program, "u_splatHasAlbedo");
+            SplatHasNormal = GL.GetUniformLocation(Program, "u_splatHasNormal");
+            SplatHasMetal = GL.GetUniformLocation(Program, "u_splatHasMetal");
+            SplatHasRough = GL.GetUniformLocation(Program, "u_splatHasRough");
+            SplatHasAo = GL.GetUniformLocation(Program, "u_splatHasAo");
+            SplatHasHeight = GL.GetUniformLocation(Program, "u_splatHasHeight");
+            SplatTint = GL.GetUniformLocation(Program, "u_splatTint");
+            SplatNormalStr = GL.GetUniformLocation(Program, "u_splatNormalStr");
+            SplatDetail = GL.GetUniformLocation(Program, "u_splatDetail");
         }
     }
 
@@ -1779,12 +2384,18 @@ public unsafe class EditorObject
     {
         EnsurePbrTextures();
 
-        // Program choice: planes with a terrain elevation heightmap use the geometric-
-        // displacement vertex stage (true moving geometry); everything else the
-        // standard one. Both share the objectPbr fragment stage. The PBR height map
-        // (Pom detail) does NOT trigger geometry displacement.
+        // ── Splat setup (once per draw, before the program choice) ──
+        // Height bands: recompute at most once per frame while pending (param
+        // changes/sculpts raise the flag; the 256² pass is amortized).
+        if (PrimitiveType == EditorPrimitiveType.Plane && (_splatBandsPending || SplatHeightBandsEnabled && _splatFieldForBands == null && _splatField == null))
+            ComputeSplatBands();
+        EnsureSplatTextures();
+
+        // Program choice: planes with a terrain elevation heightmap (or a sculpt
+        // delta) use the geometric-displacement vertex stage; everything else the
+        // standard one. Both share the objectPbr fragment stage.
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null);
+                         && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || HasSculptDelta);
         var u = displaced
             ? (_pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()))
             : (_pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()));
@@ -1854,13 +2465,157 @@ public unsafe class EditorObject
             GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
         }
 
+        // ── ADDITIVE SCULPT DELTA (unit 16) — brush edits ride ON TOP of the
+        // authored base heightmap (unit 15 stays the base image, untouched):
+        // elevation = base·BaseHeight + (delta − 0.5)·2·SculptAmp + POM detail.
+        // The live session buffer wins over the stored delta bake. ──
+        if (u.SculptDeltaMap >= 0)
+            GL.Uniform1i(u.SculptDeltaMap, displaced ? 16 : 0);
+        if (u.SculptAmp >= 0)
+            GL.Uniform1f(u.SculptAmp, displaced ? Math.Clamp(TerrainSculptAmp, 0f, 250f) : 0f);
+        if (displaced)
+        {
+            uint deltaTex = 0;
+            if (_sculptField != null && _sculptField.GpuTexture != 0)
+                deltaTex = _sculptField.GpuTexture;
+            else if (_sculptDeltaPath.Length > 0)
+            {
+                // Lazy-load the stored delta bake (once per path).
+                if (_sculptDeltaTex == 0)
+                {
+                    try { _sculptDeltaTex = new Texture(PathHelpers.Resolve(_sculptDeltaPath)).ID; }
+                    catch (Exception ex) { Console.WriteLine($"[TerrainSculpt] '{Name}' delta load failed: {ex.Message}"); }
+                }
+                deltaTex = _sculptDeltaTex;
+            }
+            if (deltaTex != 0)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 16);
+                GL.BindTexture(Const.GL_TEXTURE_2D, deltaTex);
+            }
+            else if (u.SculptAmp >= 0)
+            {
+                GL.Uniform1f(u.SculptAmp, 0f);   // nothing to add — flatten the term
+                GL.Uniform1i(u.SculptDeltaMap, 0);
+            }
+        }
+
+        // ── Terrain splat bind (units 10-74). Weights: a live paint/band buffer
+        // wins over the stored splat file; layers 1-3 load their own textures.
+        // Layer 0 IS the base PBR material — its slots bind the base maps, so an
+        // unpainted terrain renders identically to the plain PBR path. ──
+        uint white = EnsurePbrWhiteTex();
+        // Lazy-decode the stored splat file (once per path) so painted weights
+        // survive scene reloads without a running paint session.
+        if (_splatField == null && _splatFieldForBands == null
+            && _splatMapPath.Length > 0 && _splatDecodeFailedPath != _splatMapPath)
+            _ = EnsureSplatBandField();
+        bool splatLiveField = _splatField != null && _splatField.GpuTexture != 0;
+        bool splatLiveBands = _splatFieldForBands != null && _splatFieldForBands.GpuTexture != 0;
+        bool splatActive = (splatLiveField || splatLiveBands)
+                           && (SplatIsPainted || SplatHeightBandsEnabled);
+        if (u.SplatWeights >= 0)
+            GL.Uniform1i(u.SplatWeights, splatActive ? 10 : 0);
+        if (u.SplatActive >= 0)
+            GL.Uniform1i(u.SplatActive, splatActive ? 1 : 0);
+        if (splatActive)
+        {
+            uint splatWeightsTex = splatLiveField ? _splatField!.GpuTexture
+                : _splatFieldForBands!.GpuTexture;
+            GL.ActiveTexture(Const.GL_TEXTURE0 + 10);
+            GL.BindTexture(Const.GL_TEXTURE_2D, splatWeightsTex);
+            // Per-layer presence (vec4 uploaded as 4 × Uniform1i — no Uniform4i).
+            if (u.SplatHasAlbedo >= 0)
+            {
+                GL.Uniform1i(u.SplatHasAlbedo, _pbrTex[0] != 0 ? 1 : 0);
+                GL.Uniform1i(u.SplatHasAlbedo + 1, _splatTex[1] != 0 ? 1 : 0);
+                GL.Uniform1i(u.SplatHasAlbedo + 2, _splatTex[2] != 0 ? 1 : 0);
+                GL.Uniform1i(u.SplatHasAlbedo + 3, _splatTex[3] != 0 ? 1 : 0);
+                if (u.SplatHasNormal >= 0)
+                {
+                    GL.Uniform1i(u.SplatHasNormal, _pbrTex[1] != 0 ? 1 : 0);
+                    GL.Uniform1i(u.SplatHasNormal + 1, _splatTex[5] != 0 ? 1 : 0);
+                    GL.Uniform1i(u.SplatHasNormal + 2, _splatTex[6] != 0 ? 1 : 0);
+                    GL.Uniform1i(u.SplatHasNormal + 3, _splatTex[7] != 0 ? 1 : 0);
+                    if (u.SplatHasMetal >= 0)
+                    {
+                        GL.Uniform1i(u.SplatHasMetal, _pbrTex[2] != 0 ? 1 : 0);
+                        GL.Uniform1i(u.SplatHasMetal + 1, _splatTex[9] != 0 ? 1 : 0);
+                        GL.Uniform1i(u.SplatHasMetal + 2, _splatTex[10] != 0 ? 1 : 0);
+                        GL.Uniform1i(u.SplatHasMetal + 3, _splatTex[11] != 0 ? 1 : 0);
+                        if (u.SplatHasRough >= 0)
+                        {
+                            GL.Uniform1i(u.SplatHasRough, _pbrTex[3] != 0 ? 1 : 0);
+                            GL.Uniform1i(u.SplatHasRough + 1, _splatTex[13] != 0 ? 1 : 0);
+                            GL.Uniform1i(u.SplatHasRough + 2, _splatTex[14] != 0 ? 1 : 0);
+                            GL.Uniform1i(u.SplatHasRough + 3, _splatTex[15] != 0 ? 1 : 0);
+                            if (u.SplatHasAo >= 0)
+                            {
+                                GL.Uniform1i(u.SplatHasAo, _pbrTex[4] != 0 ? 1 : 0);
+                                GL.Uniform1i(u.SplatHasAo + 1, _splatTex[17] != 0 ? 1 : 0);
+                                GL.Uniform1i(u.SplatHasAo + 2, _splatTex[18] != 0 ? 1 : 0);
+                                GL.Uniform1i(u.SplatHasAo + 3, _splatTex[19] != 0 ? 1 : 0);
+                                if (u.SplatHasHeight >= 0)
+                                {
+                                    GL.Uniform1i(u.SplatHasHeight, _pbrTex[5] != 0 ? 1 : 0);
+                                    GL.Uniform1i(u.SplatHasHeight + 1, _splatTex[21] != 0 ? 1 : 0);
+                                    GL.Uniform1i(u.SplatHasHeight + 2, _splatTex[22] != 0 ? 1 : 0);
+                                    GL.Uniform1i(u.SplatHasHeight + 3, _splatTex[23] != 0 ? 1 : 0);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Layer 0 tint = the object color (mirrors the plain path's fallback).
+            if (u.SplatTint >= 0)
+            {
+                GL.Uniform3f(u.SplatTint, Color.X, Color.Y, Color.Z);
+                GL.Uniform3f(u.SplatTint + 1, SplatLayerTint[1].X, SplatLayerTint[1].Y, SplatLayerTint[1].Z);
+                GL.Uniform3f(u.SplatTint + 2, SplatLayerTint[2].X, SplatLayerTint[2].Y, SplatLayerTint[2].Z);
+                GL.Uniform3f(u.SplatTint + 3, SplatLayerTint[3].X, SplatLayerTint[3].Y, SplatLayerTint[3].Z);
+            }
+            if (u.SplatNormalStr >= 0) GL.Uniform1f(u.SplatNormalStr, Math.Clamp(PbrNormalStrength, 0f, 2f));
+            if (u.SplatDetail >= 0) GL.Uniform1f(u.SplatDetail, Math.Clamp(PbrParallaxScale, 0f, 0.5f) > 0f ? 1f : 0f);
+            // Layer textures: units 11-14 albedo, 21-24 normal, 31-34 metal,
+            // 41-44 rough, 51-54 AO, 61-64 height (layer 0 → the base maps).
+            uint[] layerAlbedo = [_pbrTex[0], _splatTex[1], _splatTex[2], _splatTex[3]];
+            uint[] layerNormal = [_pbrTex[1], _splatTex[5], _splatTex[6], _splatTex[7]];
+            uint[] layerMetal = [_pbrTex[2], _splatTex[9], _splatTex[10], _splatTex[11]];
+            uint[] layerRough = [_pbrTex[3], _splatTex[13], _splatTex[14], _splatTex[15]];
+            uint[] layerAo = [_pbrTex[4], _splatTex[17], _splatTex[18], _splatTex[19]];
+            uint[] layerHeight = [_pbrTex[5], _splatTex[21], _splatTex[22], _splatTex[23]];
+            uint[] allLayerTex = [.. layerAlbedo, .. layerNormal, .. layerMetal, .. layerRough, .. layerAo, .. layerHeight];
+            for (int l = 0; l < 4; l++)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 11 + (uint)l);
+                GL.BindTexture(Const.GL_TEXTURE_2D, layerAlbedo[l] != 0 ? layerAlbedo[l] : white);
+                if (u.SplatAlbedo[l] >= 0) GL.Uniform1i(u.SplatAlbedo[l], 11 + l);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 21 + (uint)l);
+                GL.BindTexture(Const.GL_TEXTURE_2D, layerNormal[l] != 0 ? layerNormal[l] : white);
+                if (u.SplatNormal[l] >= 0) GL.Uniform1i(u.SplatNormal[l], 21 + l);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 31 + (uint)l);
+                GL.BindTexture(Const.GL_TEXTURE_2D, layerMetal[l] != 0 ? layerMetal[l] : white);
+                if (u.SplatMetal[l] >= 0) GL.Uniform1i(u.SplatMetal[l], 31 + l);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 41 + (uint)l);
+                GL.BindTexture(Const.GL_TEXTURE_2D, layerRough[l] != 0 ? layerRough[l] : white);
+                if (u.SplatRough[l] >= 0) GL.Uniform1i(u.SplatRough[l], 41 + l);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 51 + (uint)l);
+                GL.BindTexture(Const.GL_TEXTURE_2D, layerAo[l] != 0 ? layerAo[l] : white);
+                if (u.SplatAo[l] >= 0) GL.Uniform1i(u.SplatAo[l], 51 + l);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 61 + (uint)l);
+                GL.BindTexture(Const.GL_TEXTURE_2D, layerHeight[l] != 0 ? layerHeight[l] : white);
+                if (u.SplatHeight[l] >= 0) GL.Uniform1i(u.SplatHeight[l], 61 + l);
+            }
+            GL.ActiveTexture(Const.GL_TEXTURE0);
+        }
+
         // ── PBR maps (units 0-6); missing maps get the shared white texture ──
         // When a terrain elevation map drives the base shape but the POM height slot
         // is empty, bind the ELEVATION texture to unit 5 as well: the POM detail pass
         // then reads real height data (no phantom bumps from the 1.0 white texel),
         // while the elevation stays the sole displacement source.
         bool terrainDriven = displaced;   // Plane + (elevation source OR live sculpt field)
-        uint white = EnsurePbrWhiteTex();
         for (int i = 0; i < 7; i++)
         {
             GL.ActiveTexture(Const.GL_TEXTURE0 + (uint)i);
@@ -1889,10 +2644,11 @@ public unsafe class EditorObject
                 Console.WriteLine($"[PBR] '{Name}' terrain elevation load failed: {ex.Message}");
             }
         }
-        // Live sculpt texture (R8, CPU heightfield) wins over the authored image;
-        // when no sculpt session is active this is just the authored texture id.
-        bool liveSculpt = _sculptField != null && _sculptField.GpuTexture != 0;
-        uint elevTex = liveSculpt ? _sculptField.GpuTexture : _terrainHeightTex;
+        // DELTA ARCHITECTURE: unit 15 is ALWAYS the authored BASE heightmap —
+        // the sculpt delta lives at unit 16 and must never replace the base
+        // (the old live-sculpt substitution turned the terrain into a flat
+        // mid-gray slab the moment a brush session started: "reset").
+        uint elevTex = _terrainHeightTex;
         if (terrainDriven && elevTex != 0)
         {
             GL.ActiveTexture(Const.GL_TEXTURE0 + 15);
@@ -1932,14 +2688,28 @@ public unsafe class EditorObject
             }
             GL.ActiveTexture(Const.GL_TEXTURE0);
         }
-        else if (u.TerrainDisplace >= 0)
+        else if (terrainDriven)
         {
-            GL.Uniform1f(u.TerrainDisplace, 0f);
-            // Flatten ONLY when the dedicated TerrainHeightPath itself failed to load.
-            // The legacy fallback (elevation living in the PBR slot) renders through
-            // the non-terrain branch (unit 5 is real) and must NOT be flattened.
-            if (displaced && !string.IsNullOrEmpty(_terrainHeightPath) && u.VertexDisplace >= 0)
-                GL.Uniform1f(u.VertexDisplace, 0f);
+            if (HasSculptDelta)
+            {
+                // DELTA-ONLY plane (no base map): the GPU white texel (1.0) becomes
+                // the flat base so the sculpt delta still displaces — the CPU pick
+                // mirror uses CreateFlat(1f), the exact same constant.
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 15);
+                GL.BindTexture(Const.GL_TEXTURE_2D, white);
+                GL.Uniform1i(u.TerrainHeightMap, 15);
+                if (u.TerrainDisplace >= 0) GL.Uniform1f(u.TerrainDisplace, 1f);
+            }
+            else
+            {
+                GL.Uniform1f(u.TerrainDisplace, 0f);
+                // Flatten ONLY when the dedicated TerrainHeightPath itself failed to load.
+                // The legacy fallback (elevation living in the PBR slot) renders through
+                // the non-terrain branch (unit 5 is real) and must NOT be flattened.
+                if (displaced && !string.IsNullOrEmpty(_terrainHeightPath) && u.VertexDisplace >= 0)
+                    GL.Uniform1f(u.VertexDisplace, 0f);
+            }
+            GL.ActiveTexture(Const.GL_TEXTURE0);
         }
 
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
@@ -2005,10 +2775,13 @@ public unsafe class EditorObject
         if (PbrChunkCount > 1)
         {
             // Chunk AABB pad must cover the REAL max elevation above the grid:
-            // base shape + PBR-detail swing (0..disp) + |offset| (pad baseline 1.0).
+            // base shape + PBR-detail swing (0..disp) + |offset| + the ADDITIVE
+            // sculpt delta swing (±amp — without it, sculpted peaks on culled
+            // chunks pop out of existence as screen-space shards).
             float maxY = Math.Clamp(TerrainBaseHeight, 0f, 500f)
                        + Math.Clamp(TerrainHeightScale, 0f, 500f)
-                       + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f));
+                       + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
+                       + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f);
             try { drewChunks = DrawChunkedPlane(model, view * proj, maxY, 1f, twoSided, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
             catch (Exception ex)
             {
@@ -4998,6 +5771,9 @@ void main() {
         DropTerrainHeightTexture();
         DropSculptField();
         SculptBrush = null;
+        DropSplatField();
+        DisposeSplatTextures();
+        SplatBrush = null;
         _object3D = null;
     }
 }

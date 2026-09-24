@@ -1864,6 +1864,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -2292,6 +2350,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -2718,6 +2834,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -3144,6 +3318,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -3570,6 +3802,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -7627,7 +7917,7 @@
             "width": 50,
             "height": 20,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
             "tilesetColumns": 25,
             "tilesetRows": 25,
             "tilesetFlipV": false,
@@ -7641,7 +7931,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
+                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\2.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -2,
@@ -7656,7 +7946,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
+                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\3.png",
                 "isVisible": true,
                 "scrollFactor": 0.85,
                 "zPosition": -1,
@@ -10164,6 +10454,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -10590,6 +10938,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -11006,6 +11412,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -11432,6 +11896,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -11858,6 +12380,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -12284,6 +12864,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -12920,13 +13558,13 @@
               "enabled": true
             }
           },
-          "pbrAlbedoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Color.png",
-          "pbrNormalPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_NormalDX.png",
+          "pbrAlbedoPath": "",
+          "pbrNormalPath": "",
           "pbrMetallicPath": "",
-          "pbrRoughnessPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Roughness.png",
-          "pbrAoPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_AmbientOcclusion.png",
-          "pbrHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Ground 108\\Ground108_4K-PNG_Displacement.png",
-          "terrainHeightPath": "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\Maps\\map.png",
+          "pbrRoughnessPath": "",
+          "pbrAoPath": "",
+          "pbrHeightPath": "",
+          "terrainHeightPath": "",
           "pbrEmissionPath": "",
           "pbrTexTiling": 10,
           "pbrParallaxScale": 0,
@@ -12937,12 +13575,70 @@
           "pbrHeightScaleCenter": 0.5,
           "pbrVertexDisplaceScale": 0.54,
           "pbrVertexOffset": 0,
-          "terrainBaseHeight": 8,
+          "terrainBaseHeight": 8.52,
           "terrainHeightScale": 2,
           "terrainHeightOffset": 0,
           "terrainHeightStrength": 3,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "..\\..\\..\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\Tiles133A\\Tiles133A_4K-JPG_Color.jpg",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": true,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 4,
           "texSettings": {
@@ -13310,7 +14006,7 @@
                 "Y": 1,
                 "Z": 1
               },
-              "texturePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
+              "texturePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
               "rotationSpeed": 0,
               "phaseOffset": 0.8370237
             },
@@ -13369,6 +14065,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -13795,6 +14549,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -14221,6 +15033,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -14647,6 +15517,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -15073,6 +16001,64 @@
           "terrainHeightStrength": 1,
           "terrainHeightTilingX": 1,
           "terrainHeightTilingY": 1,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
           "texSettings": {
@@ -15209,12 +16195,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        -2.5523388,
-        7.58233,
-        -13.027651
+        0.011819303,
+        7.8203726,
+        -16.104662
       ],
-      "editorCameraYaw": 401.5,
-      "editorCameraPitch": -15.5,
+      "editorCameraYaw": 418,
+      "editorCameraPitch": -5,
       "renderProperties": {
         "backgroundColor": [
           0,
