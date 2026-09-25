@@ -2969,6 +2969,49 @@ public class InspectorPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Fire-like flicker for the player's glow.\nRequires Glow > 0.");
 
+        // Render layer: same layer system as Sprite2D — the player is drawn in the
+        // same sorted pass as NPC/sprites, so higher layers render on top of them.
+        var pMap = _bridge.ActiveTilemap ?? _bridge.EditorObjectManager?.Objects.FirstOrDefault(o => o?.PrimitiveType == EditorPrimitiveType.Map2D && o.Map2dTilemap != null)?.Map2dTilemap;
+        int pLayer = editorObj.Player2DRenderLayer;
+
+        if (pMap != null && pMap.Layers.Count > 0)
+        {
+            string pLayerLabel = (pLayer >= 0 && pLayer < pMap.Layers.Count)
+                ? $"[{pLayer}] {pMap.Layers[pLayer].Name}"
+                : $"Custom ({pLayer})";
+
+            if (ImGui.BeginCombo("Map / Render Layer##player", pLayerLabel))
+            {
+                for (int i = 0; i < pMap.Layers.Count; i++)
+                {
+                    bool isSel = (pLayer == i);
+                    if (ImGui.Selectable($"[{i}] {pMap.Layers[i].Name}", isSel))
+                        editorObj.Player2DRenderLayer = i;
+                    if (isSel) ImGui.SetItemDefaultFocus();
+                }
+
+                ImGui.Separator();
+                if (ImGui.Selectable("Custom (Behind Map, -1)", pLayer == -1))
+                    editorObj.Player2DRenderLayer = -1;
+                if (ImGui.Selectable("Custom (Foreground, 99)", pLayer == 99))
+                    editorObj.Player2DRenderLayer = 99;
+
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Pilih layer Map Editor tempat player berada.\nPlayer digambar satu urutan dengan NPC/sprite:\nlayer lebih tinggi tampil DI ATAS yang lebih rendah.");
+
+            if (ImGui.SliderInt("Layer Offset##player", ref pLayer, -10, 10))
+                editorObj.Player2DRenderLayer = pLayer;
+        }
+        else
+        {
+            if (ImGui.SliderInt("Render Layer##player", ref pLayer, -10, 10))
+                editorObj.Player2DRenderLayer = pLayer;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Draw order antara player dan NPC/sprite yang tumpang tindih:\nlayer lebih tinggi digambar DI ATAS yang lebih rendah.\nDefault 0 = layer dasar (sama dengan NPC/sprite).");
+        }
+
         // ── Gameplay physics ──
         float g = editorObj.Player2DGravity;
         if (ImGui.DragFloat("Gravity", ref g, 0.5f, 0f, 100f, "%.1f"))

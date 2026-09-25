@@ -433,7 +433,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             DrawGlbReferences(camera, light, csm);
 
             // ── Player2D animated sprites (own shader pass, world-space quad) ──
-            foreach (var obj in _objects)
+            // Sorted by Player2DRenderLayer ascending so the player shares the same layer
+            // system as NPC/Sprite2D: higher layers draw LATER (on top). Each step also
+            // nudges the quad 0.01 units toward the camera inside DrawPlayer2D.
+            foreach (var obj in _objects.OrderBy(o => o.Player2DRenderLayer))
             {
                 if (obj is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D })
                     obj.DrawPlayer2D(camera);

@@ -258,6 +258,8 @@ public class EditorObjectData
     public bool Player2DGlowFlicker { get; set; }
     /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
     public int Sprite2DRenderLayer { get; set; } = 0;
+    /// <summary>Player2D render layer — higher draws on top of NPC/sprites on lower layers.</summary>
+    public int Player2DRenderLayer { get; set; } = 0;
     // ── Player2D camera-follow tuning ──
     public float CameraFollowSpeed { get; set; } = 6f;
     public float CameraDeadZoneWidth { get; set; } = 96f;

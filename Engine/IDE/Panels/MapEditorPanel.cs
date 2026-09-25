@@ -55,6 +55,7 @@ public class MapEditorPanel
     public (int X, int Y)? LastHoverGrid { get; set; }
     // ── Brush settings ──
     private int _brushSize = 1;
+    private float _paintHeight = 0f;
 
     // ── Tile palette ──
     private int _paletteCols = 8;
@@ -114,6 +115,8 @@ public class MapEditorPanel
                 s.MapEditorGridColorB, s.MapEditorGridColorA);
             _paletteCols = Math.Max(1, s.MapEditorPaletteCols);
             _paletteCellSize = Math.Clamp(s.MapEditorPaletteCell, 16f, 64f);
+            // Multi-tilemap: these are DEFAULTS for maps without their own saved values —
+            // the live editing values come from the tilemap itself (see AdoptPerMapSettings).
             _prefsLoaded = true;
             Console.WriteLine("[MapEditor] Loaded grid/palette prefs from settings.");
         }
@@ -165,6 +168,7 @@ public class MapEditorPanel
     {
         if (!_prefsLoaded) return;
         if (ImGui.GetTime() - _lastPrefsSaveTime < 0.5) return;
+        SavePerMapSettings(); // per-tilemap state lives on the map, not settings.json
         SaveMapEditorPrefs();
     }
 
@@ -217,6 +221,9 @@ public class MapEditorPanel
             ImGui.SameLine();
             if (ImGui.Button("Load"))
                 LoadMapDialog();
+
+            // ── Tilemap selector (multi-tilemap) ──
+            RenderTilemapSelector();
 
             if (ActiveTilemap == null)
             {
@@ -282,6 +289,16 @@ public class MapEditorPanel
                 if (_hoveredTileX >= 0)
                     ImGui.Text($"Hover: ({_hoveredTileX}, {_hoveredTileY}) Tile: {ActiveTilemap.GetTile(_selectedLayerIdx, _hoveredTileX, _hoveredTileY)}");
             }
+
+            // ── Delete Tilemap confirm modal — MUST run inside the Map Editor window:
+            // ImGui popups render in the CURRENT window scope, and outside Begin/End
+            // they never open (the old top-level placement silently did nothing). ──
+            if (_showDeleteMapPopup)
+            {
+                ImGui.OpenPopup("Delete Tilemap?");
+                _showDeleteMapPopup = false;
+            }
+            RenderDeleteTilemapModal(CollectSceneTilemaps());
         }
         ImGui.End();
 
@@ -464,11 +481,55 @@ public class MapEditorPanel
         var active = _bridge.ActiveTilemap;
         if (active == null || ReferenceEquals(active, ActiveTilemap)) return;
 
+        // Multi-tilemap: the panel edits whichever tilemap the bridge currently
+        // targets — just retarget (per-map editing state resets below).
+        RetargetActiveTilemap(active);
+    }
+
+    /// <summary>Multi-tilemap: adopt THIS tilemap's own grid/palette settings into the
+    /// panel UI. Every tilemap carries its own values (palette columns/cell size, grid
+    /// visibility + colors) because tileset sizes differ per map — switching the active
+    /// tilemap switches the whole editing setup with it.</summary>
+    private void AdoptPerMapSettings()
+    {
+        if (ActiveTilemap == null) return;
+        _showGrid = ActiveTilemap.ShowGrid;
+        _gridColor = ActiveTilemap.GridColor;
+        _paletteCols = Math.Max(1, ActiveTilemap.PaletteColumns);
+        _paletteCellSize = Math.Clamp(ActiveTilemap.PaletteCellSize, 16f, 64f);
+        _showPaletteGrid = ActiveTilemap.PaletteShowGrid;
+        _paletteGridColor = ActiveTilemap.PaletteGridColor;
+    }
+
+    /// <summary>Multi-tilemap: write the panel's current grid/palette values back onto
+    /// the ACTIVE tilemap (its own per-map settings — not shared). Mirrors the viewport
+    /// sync in RenderToolbar; called before prefs persist so settings.json only stores
+    /// defaults, never the per-map state.</summary>
+    private void SavePerMapSettings()
+    {
+        if (ActiveTilemap == null) return;
+        ActiveTilemap.ShowGrid = _showGrid;
+        ActiveTilemap.GridColor = _gridColor;
+        ActiveTilemap.PaletteColumns = Math.Max(1, _paletteCols);
+        ActiveTilemap.PaletteCellSize = Math.Clamp(_paletteCellSize, 16f, 64f);
+        ActiveTilemap.PaletteShowGrid = _showPaletteGrid;
+        ActiveTilemap.PaletteGridColor = _paletteGridColor;
+    }
+
+    /// <summary>Point the panel at a DIFFERENT tilemap (multi-tilemap editing):
+    /// resets per-map editing state (tile/layer selection, hover, undo history) and
+    /// refreshes the tileset preview + grid/parallax adoption from the new tilemap.</summary>
+    private void RetargetActiveTilemap(Tilemap2D active)
+    {
         ActiveTilemap = active;
+        AdoptPerMapSettings(); // per-tilemap grid/palette settings
         _selectedLayerIdx = ActiveTilemap.Layers.Count > 0 ? 0 : -1;
         _selectedTileId = 0;
         _hoveredTileX = -1;
         _hoveredTileY = -1;
+        // Undo history is per-map — stale entries could restore tiles across maps.
+        _undoStack.Clear();
+        _redoStack.Clear();
 
         // Refresh tileset texture + grid from the tilemap's stored tileset path.
         if (_tilesetTextureId != 0)
@@ -553,6 +614,247 @@ public class MapEditorPanel
         Console.WriteLine($"[MapEditor] Adopted level '{ActiveTilemap.Name}' ({ActiveTilemap.Width}x{ActiveTilemap.Height}, {ActiveTilemap.Layers.Count} layers)");
     }
 
+    /// <summary>Multi-tilemap UI: a combo listing every tilemap in the scene
+    /// (Map2D-owned first, then any adopted panel tilemaps) + "Add Tilemap" (new empty
+    /// level), "Delete Tilemap" (removes the ACTIVE tilemap: Map2D object + its save
+    /// file via the recycle-safe confirm popup), and "Focus" (snap the editor camera
+    /// to the active map's bottom-left). Below the combo: rename + per-map grid/palette
+    /// settings (each tilemap keeps its OWN grid setup — tileset sizes differ per map).</summary>
+    private void RenderTilemapSelector()
+    {
+        var maps = CollectSceneTilemaps();
+        if (maps.Count == 0) return;
+
+        string current = ActiveTilemap?.Name ?? "<none>";
+        ImGui.SetNextItemWidth(-60);
+        if (ImGui.BeginCombo("##tilemapSelector", current))
+        {
+            foreach (var (map, _) in maps)
+            {
+                bool isSel = ReferenceEquals(map, ActiveTilemap);
+                if (ImGui.Selectable($"{map.Name} ({map.Width}x{map.Height})##map{map.Name}", isSel))
+                {
+                    if (!isSel)
+                        _bridge.ActiveTilemap = map;   // SyncTilemapFromBridge retargets the panel
+                }
+                if (isSel) ImGui.SetItemDefaultFocus();
+            }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Semua tilemap di scene ini. Pilih untuk berganti target edit.\nTilemap AKTIF dipakai untuk melukis tile, collision, trigger,\ndan fisika player (preview/in-game). Map lain tetap dirender.");
+         
+        if (ImGui.Button("+ Add Tilemap"))
+            CreateNewMap();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Tambah tilemap BARU sebagai level tambahan\n(level lama tidak dihapus). Nama dibuat unik otomatis.");
+
+        if (ActiveTilemap == null) return;
+
+        ImGui.SameLine();
+        ImGui.BeginDisabled(maps.Count <= 1);
+        if (ImGui.Button("Delete Tilemap"))
+            _showDeleteMapPopup = true;
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Hapus tilemap AKTIF dari scene: objek Map2D-nya dihapus\n(dan tilemap lain tidak tersentuh). File .tilemap.json di\nAssets/Maps ikut dihapus melalui popup konfirmasi.");
+
+        ImGui.SameLine();
+        if (ImGui.Button("Focus"))
+            FocusActiveTilemap();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Arahkan kamera editor ke tilemap aktif\n(poja kiri-bawah peta, pemandangan level penuh).");
+
+        // ── Rename + per-map grid/palette settings (multi-tilemap: NOT shared) ──
+        ImGui.SetNextItemWidth(-60);
+        string name = ActiveTilemap.Name;
+        if (ImGui.InputText("##mapName", ref name, 64))
+        {
+            ActiveTilemap.Name = name;
+            var owner = _bridge.EditorObjectManager?.Objects.FirstOrDefault(o =>
+                o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+                && ReferenceEquals(o.Map2dTilemap, ActiveTilemap));
+            if (owner != null) owner.Name = name;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Nama tilemap aktif (juga dipakai sebagai nama file save\ndan nama objek Map2D di scene).");
+
+        int palCols = ActiveTilemap.PaletteColumns;
+        if (ImGui.SliderInt("Palette Columns##permap", ref palCols, 1, 32))
+            ActiveTilemap.PaletteColumns = palCols;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Kolom palet tile khusus tilemap INI\n(tiap map punya tileset ukuran berbeda).");
+
+        float palCell = ActiveTilemap.PaletteCellSize;
+        if (ImGui.SliderFloat("Palette Cell##permap", ref palCell, 16f, 64f, "%.0f px"))
+            ActiveTilemap.PaletteCellSize = palCell;
+
+        bool palGrid = ActiveTilemap.PaletteShowGrid;
+        if (ImGui.Checkbox("Palette Grid##permap", ref palGrid))
+            ActiveTilemap.PaletteShowGrid = palGrid;
+        ImGui.SameLine();
+        var palCol = ActiveTilemap.PaletteGridColor;
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.ColorEdit4("##palgridcolpermap", ref palCol, ImGuiColorEditFlags.NoInputs))
+            ActiveTilemap.PaletteGridColor = palCol;
+
+        bool sGrid = ActiveTilemap.ShowGrid;
+        if (ImGui.Checkbox("Map Grid##permap", ref sGrid))
+            ActiveTilemap.ShowGrid = sGrid;
+        ImGui.SameLine();
+        var gCol = ActiveTilemap.GridColor;
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.ColorEdit4("##mapgridcolpermap", ref gCol, ImGuiColorEditFlags.NoInputs))
+            ActiveTilemap.GridColor = gCol;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Grid peta + warnanya khusus tilemap INI\n(ditampilkan di viewport saat map aktif).");
+
+        // Keep the panel's live editing vars on the ACTIVE tilemap's values so the
+        // toolbar checkboxes + palette below stay in perfect sync (two-way binding).
+        _showGrid = ActiveTilemap.ShowGrid;
+        _gridColor = ActiveTilemap.GridColor;
+        _paletteCols = Math.Max(1, ActiveTilemap.PaletteColumns);
+        _paletteCellSize = Math.Clamp(ActiveTilemap.PaletteCellSize, 16f, 64f);
+        _showPaletteGrid = ActiveTilemap.PaletteShowGrid;
+        _paletteGridColor = ActiveTilemap.PaletteGridColor;
+    }
+
+    /// <summary>All tilemaps editable in this scene: Map2D-owned ones (with their owning
+    /// object flagged) first, then any adopted panel tilemaps without a Map2D object.</summary>
+    private List<(Tilemap2D map, Engine.Objects.EditorObject? owner)> CollectSceneTilemaps()
+    {
+        var result = new List<(Tilemap2D, Engine.Objects.EditorObject?)>();
+        var seen = new HashSet<Tilemap2D>();
+        if (_bridge.EditorObjectManager != null)
+        {
+            foreach (var o in _bridge.EditorObjectManager.Objects)
+            {
+                if (o is { PrimitiveType: Engine.Objects.EditorPrimitiveType.Map2D }
+                    && o.Map2dTilemap != null && seen.Add(o.Map2dTilemap))
+                    result.Add((o.Map2dTilemap, o));
+            }
+        }
+        if (_bridge.Tilemaps != null)
+        {
+            foreach (var m in _bridge.Tilemaps)
+            {
+                if (m != null && seen.Add(m))
+                    result.Add((m, null));
+            }
+        }
+        return result;
+    }
+
+    private bool _showDeleteMapPopup;
+    private bool _deleteTilemapFileToo;
+
+    private void RenderDeleteTilemapModal(List<(Tilemap2D map, Engine.Objects.EditorObject? owner)> maps)
+    {
+        // NOTE: Do NOT pass ref _showDeleteMapPopup here — it was already set to false
+        // by the OpenPopup block above, which causes BeginPopupModal to immediately close.
+        bool open = true;
+        if (!ImGui.BeginPopupModal("Delete Tilemap?", ref open, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        var target = ActiveTilemap;
+        if (target == null) { ImGui.EndPopup(); return; }
+
+        ImGui.Text($"Hapus tilemap '{target.Name}' dari scene?");
+        ImGui.TextDisabled("Objek Map2D-nya dihapus; tilemap lain tidak tersentuh.");
+        ImGui.Checkbox("Juga hapus file Assets/Maps/<nama>.tilemap.json", ref _deleteTilemapFileToo);
+        ImGui.Separator();
+
+        if (ImGui.Button("Delete", new Vector2(120, 0)))
+        {
+            DeleteActiveTilemap(maps);
+            ImGui.CloseCurrentPopup();
+        }
+        ImGui.SetItemDefaultFocus();
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            ImGui.CloseCurrentPopup();
+        ImGui.EndPopup();
+    }
+
+    /// <summary>Remove the ACTIVE tilemap: its Map2D object (and any other manager's
+    /// copy), from the bridge registry, its save file (optional), then activate the
+    /// first remaining tilemap so editing continues seamlessly.</summary>
+    private void DeleteActiveTilemap(List<(Tilemap2D map, Engine.Objects.EditorObject? owner)> maps)
+    {
+        var target = ActiveTilemap;
+        if (target == null) return;
+
+        // 1) Remove the owning Map2D object from the active manager (multi-tilemap:
+        //    every map has its own object — nothing else is removed).
+        if (_bridge.EditorObjectManager != null)
+        {
+            var doomed = _bridge.EditorObjectManager.Objects
+                .Where(o => o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+                            && ReferenceEquals(o.Map2dTilemap, target))
+                .ToList();
+            foreach (var o in doomed)
+            {
+                _bridge.DeselectEditorObject(o);
+                _bridge.EditorObjectManager.Remove(o);
+            }
+        }
+
+        // 2) Drop it from the bridge registry + panel (SyncTilemapFromBridge guard:
+        //    clear ActiveTilemap FIRST so retargeting below is a clean switch).
+        _bridge.Tilemaps?.Remove(target);
+        if (ReferenceEquals(_bridge.ActiveTilemap, target))
+            _bridge.ActiveTilemap = null;
+        ActiveTilemap = null;
+
+        // 3) Optional: delete the standalone save file (recycle bin-safe path is not
+        //    wrapped here — plain delete, the popup warned the user).
+        if (_deleteTilemapFileToo && !string.IsNullOrWhiteSpace(target.Name))
+        {
+            try
+            {
+                string dir = Engine.Project.ProjectManager.IsProjectLoaded
+                    ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Assets", "Maps")
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Maps");
+                string file = Path.Combine(dir, $"{target.Name}.tilemap.json");
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                    Console.WriteLine($"[MapEditor] Deleted map file: {file}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MapEditor] Failed to delete map file: {ex.Message}");
+            }
+        }
+        _deleteTilemapFileToo = false;
+
+        // 4) Retarget to the first remaining tilemap (panel + bridge + Map2D binding).
+        var next = maps.FirstOrDefault(t => !ReferenceEquals(t.map, target)).map;
+        if (next != null)
+            LoadMapTilemap(next);
+
+        Console.WriteLine($"[MapEditor] Deleted tilemap '{target.Name}' (remaining: {Math.Max(0, maps.Count - 1)})");
+    }
+
+    /// <summary>Snap the editor camera to the ACTIVE tilemap: frames the map's
+    /// bottom-left (default level framing) so a newly added tilemap is immediately
+    /// visible and editable.</summary>
+    private void FocusActiveTilemap()
+    {
+        var cam = _bridge.Camera;
+        if (cam == null || ActiveTilemap == null) return;
+        float cell = ActiveTilemap.TileSize * Tilemap2D.WorldScale;
+        float mapW = ActiveTilemap.Width * cell;
+        float mapH = ActiveTilemap.Height * cell;
+        float dist = MathF.Max(mapW, mapH) * 1.4f + 2f;
+        // Level view: centered on the map, ortho camera pulled back along -Z.
+        cam.Position = new System.Numerics.Vector3(mapW * 0.5f, mapH * 0.5f, dist);
+        cam.Yaw = 0f;
+        cam.Pitch = 0f;
+        Console.WriteLine($"[MapEditor] Focused tilemap '{ActiveTilemap.Name}'");
+    }
+
     private void RenderToolbar()
     {
         // ── Undo/Redo (tile painting) ──
@@ -585,6 +887,7 @@ public class MapEditorPanel
         ImGui.NewLine();
 
         ImGui.SliderInt("Brush Size", ref _brushSize, 1, 10);
+        ImGui.SliderFloat("Paint Height", ref _paintHeight, -10f, 10f);
         if (ImGui.Checkbox("Show Grid##toolbar", ref _showGrid))
             _gridPrefsDirty = true;
         ImGui.SameLine();
@@ -596,6 +899,7 @@ public class MapEditorPanel
 
         // Sync to bridge for viewport painting
         _bridge.MapPaintTool = (int)_currentTool;
+        _bridge.MapPaintHeight = _paintHeight;
         // Push multi-selection onto the bridge so viewport painting can use the full
         // selected tile set, preserving the dragged block's SHAPE (width x height in
         // palette grid cells, row-major with row 0 = top row). A rectangular drag keeps
@@ -653,8 +957,9 @@ public class MapEditorPanel
         {
             foreach (var o in _bridge.EditorObjectManager.Objects)
             {
-                if (o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
-                    && ReferenceEquals(o.Map2dTilemap, ActiveTilemap))
+                if (o == null || o.PrimitiveType != Engine.Objects.EditorPrimitiveType.Map2D)
+                    continue;
+                if (ReferenceEquals(o.Map2dTilemap, ActiveTilemap))
                 {
                     o.Map2dShowGrid = _showGrid;
                     o.Map2dGridColor = _gridColor;
@@ -662,11 +967,25 @@ public class MapEditorPanel
                     o.Map2dTilesetRows = _tilesetRows;
                     o.Map2dTilesetFlipV = _tilesetFlipV;
                     o.Map2dActiveLayer = _selectedLayerIdx;
+                    o.Map2dPaintHeight = _paintHeight;
                     o.Map2dShowCollision = _showCollisions;
                     o.Map2dShowTriggers = _showTriggers;
                 }
+                else
+                {
+                    // Multi-tilemap: hide the grid overlay of INACTIVE maps so stacked
+                    // maps don't paint a pile of grids over each other (their own saved
+                    // grid settings re-apply the moment they become active).
+                    o.Map2dShowGrid = false;
+                }
             }
         }
+
+        // Multi-tilemap: write the panel's live grid/palette edits onto the ACTIVE
+        // tilemap immediately (in-memory) — the per-map section at the top of the panel
+        // re-adopts these values next frame, so a toolbar edit must land on the map
+        // first or it would visibly snap back. Disk persist stays throttled.
+        SavePerMapSettings();
     }
 
     // Prefs change tracker: set when a grid/palette UI control reports an edit; consumed
@@ -859,6 +1178,12 @@ public class MapEditorPanel
                 Width = ActiveTilemap.Width,
                 Height = ActiveTilemap.Height
             };
+            // Pre-allocate the tile array NOW — SetTile lazily allocates, but the mesh
+            // cache key READS tiles via GetTile (which returns -1 for an empty array),
+            // so painting a NEW layer would mutate nothing the key watches: the viewport
+            // mesh never rebaked and the tiles stayed invisible until another edit
+            // touched an already-allocated layer.
+            newLayer.AllocateTiles();
             ActiveTilemap.Layers.Add(newLayer);
             _selectedLayerIdx = ActiveTilemap.Layers.Count - 1;
             // No per-layer scene object is created (the single whole-map Map2D object renders
@@ -1018,7 +1343,7 @@ public class MapEditorPanel
                 // Uses the SELECTED layer (same one paint/undo/viewport boxes use) —
                 // Tilemap2D.ActiveLayer is the LAST layer, not the selected one, and
                 // reading it here made the badges disagree with the viewport boxes.
-                if (ActiveTileLayerForOps.TileHasCollision(tileId))
+                if (ActiveTileLayerForOps?.TileHasCollision(tileId) == true)
                 {
                     float badge = _paletteCellSize * 0.22f;
                     var cMin = new Vector2(x + _paletteCellSize - badge - 2f, y + 2f);
@@ -1159,28 +1484,14 @@ public class MapEditorPanel
         }
 
         ImGui.Separator();
-        if (ImGui.Checkbox("Show Grid##gridsettings", ref _showGrid))
-            _gridPrefsDirty = true;
-        if (ImGui.ColorEdit4("Grid Color", ref _gridColor))
-            _gridPrefsDirty = true;
-        if (ImGui.InputInt("Palette Columns", ref _paletteCols))
-        {
-            _paletteCols = Math.Max(1, _paletteCols);
-            _gridPrefsDirty = true;
-        }
-        if (ImGui.SliderFloat("Palette Cell", ref _paletteCellSize, 16f, 64f))
-            _gridPrefsDirty = true;
+        // Multi-tilemap: map grid + palette settings are PER-TILEMAP now (edited in the
+        // tilemap section at the top of the panel) — tileset sizes differ per map.
+        ImGui.TextDisabled("Map grid & palette: PER-TILEMAP —");
+        ImGui.TextDisabled("edit di bagian pilihan tilemap di atas.");
 
         ImGui.Separator();
-        ImGui.Text("Viewport Grid:");
-        ImGui.Text("Viewport Grid:");
+        ImGui.Text("Viewport Grid (global editor):");
         if (ImGui.Checkbox("Show World Grid##vpgrid", ref _showWorldGrid))
-            _gridPrefsDirty = true;
-        ImGui.Separator();
-        ImGui.TextWrapped("Tile Palette Grid:");
-        if (ImGui.Checkbox("Show Palette Grid##palgrid", ref _showPaletteGrid))
-            _gridPrefsDirty = true;
-        if (ImGui.ColorEdit4("Palette Grid Color##palgrid", ref _paletteGridColor))
             _gridPrefsDirty = true;
     }
 
@@ -1364,6 +1675,20 @@ public class MapEditorPanel
                     if (ImGui.InputText("Intensity (default 1)", ref p1, 32)) act.Param = p1;
                     if (ImGui.InputText("Duration s (default 0.4)", ref p2, 32)) act.Param2 = p2;
                     break;
+                case TriggerActionTypes.Portal:
+                case TriggerActionTypes.PortalOneWay:
+                    if (ImGui.InputText("Portal tujuan", ref p1, 128)) act.Param = p1;
+                    ImGui.TextDisabled("'x,y' = koordinat world (kaki player), atau nama\nportal/trigger tujuan (dicari di semua tilemap).");
+                    if (act.Type == TriggerActionTypes.PortalOneWay)
+                        ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "1 arah: portal MENGHILANG (animasi Out lalu\nNotActive) setelah dipakai (muncul lagi saat reload).");
+                    else
+                        ImGui.TextColored(new Vector4(0.5f, 0.9f, 0.6f, 1f), "2 arah: portal tetap ada — masuk lagi untuk kembali\nke asal (pasangkan dengan portal tujuannya).\nTujuan berupa nama portal: pemain tiba di tengah portal itu.");
+                    break;
+                case TriggerActionTypes.EnablePortal:
+                case TriggerActionTypes.DisablePortal:
+                    if (ImGui.InputText("Nama portal", ref p1, 128)) act.Param = p1;
+                    ImGui.TextDisabled("Portal/trigger bernama ini diaktifkan/dinonaktifkan\n(nama sama di semua map ikut — pasangan portal mudah di-gate).\nPortal nonaktif: animasi NotActive + abaikan player.");
+                    break;
                 default:
                     if (ImGui.InputText("Param", ref p1, 256)) act.Param = p1;
                     if (ImGui.InputText("Param 2", ref p2, 256)) act.Param2 = p2;
@@ -1396,10 +1721,68 @@ public class MapEditorPanel
         }
 
         if (ImGui.Button("+ Add Action"))
-            trig.Actions.Add(new TilemapTriggerAction { Type = TriggerActionTypes.SaveGame });
+            trig.Actions.Add(new TilemapTriggerAction { Type = TriggerActionTypes.SaveGame });        // ── Portal section: mode, key, sheet + 4-state animation, visual size ──
+        bool hasPortalAction = trig.Actions.Any(a =>
+            a != null && (a.Type == TriggerActionTypes.Portal || a.Type == TriggerActionTypes.PortalOneWay));
+        if (hasPortalAction)
+        {
+            if (ImGui.CollapsingHeader("Portal", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                // ── Enter mode: auto (touch) or button (interact key) ──
+                bool autoEnter = trig.PortalAutoEnter;
+                if (ImGui.RadioButton("Auto enter (masuk saat menyentuh)", autoEnter))
+                    trig.PortalAutoEnter = true;
+                ImGui.SameLine();
+                if (ImGui.RadioButton("Tekan tombol", !autoEnter))
+                    trig.PortalAutoEnter = false;
+                if (!autoEnter)
+                {
+                    string keyBuf = trig.PortalEnterKey;
+                    ImGui.SetNextItemWidth(70);
+                    if (ImGui.InputText("Tombol##pkey", ref keyBuf, 16))
+                        trig.PortalEnterKey = keyBuf.Trim();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Nama ImGuiKey untuk masuk portal (default: E).\nHanya tombol pertama yang dipakai runtime.");
+                    ImGui.SameLine();
+                    ImGui.TextDisabled("(default: E)");
+                }
 
-        // Extra geometry editing (precise numbers, complements viewport dragging).
-        ImGui.SeparatorText("Geometry (pixels)");
+                // ── Sheet + 4-state animation clips (Sprite Editor registry) ──
+                var sheets = IDEBridge.GetSpriteSheetNames();
+                int sheetIdx = sheets.IndexOf(trig.PortalSheet);
+                if (sheetIdx < 0) sheetIdx = 0;
+                ImGui.SetNextItemWidth(200);
+                if (ImGui.Combo("Sheet", ref sheetIdx, sheets.Count > 0 ? sheets.ToArray() : new[] { "(no sheets loaded)" }, Math.Max(1, sheets.Count))
+                    && sheets.Count > 0)
+                {
+                    trig.PortalSheet = sheets[sheetIdx];
+                    trig.PortalAnimNotActive = ""; trig.PortalAnimActive = "";
+                    trig.PortalAnimEnter = ""; trig.PortalAnimOut = "";
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Sheet sprite portal (dibuat di Sprite Editor).\nGunakan SATU sheet dengan clip: NotActive, Active, Enter, Out.");
+
+                var clips = sheets.Count > 0 ? IDEBridge.GetClipNames(sheets[sheetIdx]) : new List<string>();
+                if (clips.Count > 0)
+                {
+                    PortalAnimCombo("Anim NotActive", clips, trig, PortalAnimTarget.NotActive);
+                    PortalAnimCombo("Anim Active", clips, trig, PortalAnimTarget.Active);
+                    PortalAnimCombo("Anim Enter (masuk)", clips, trig, PortalAnimTarget.Enter);
+                    PortalAnimCombo("Anim Out (pakai)", clips, trig, PortalAnimTarget.Out);
+                }
+                else
+                    ImGui.TextDisabled("Sheet belum punya clip — buat 4 clip di Sprite Editor:");
+                ImGui.TextDisabled("NotActive (nonaktif), Active (aktif), Enter (masuk), Out (terpakai)");
+
+                // ── Visual size (sprite boleh beda dari area deteksi) ──
+                float vw = trig.PortalVisualWidthPx, vh = trig.PortalVisualHeightPx;
+                if (ImGui.DragFloat("Visual W (px, 0=area)", ref vw, 1f, 0f, 512f, "%.0f"))
+                    trig.PortalVisualWidthPx = MathF.Max(0f, vw);
+                if (ImGui.DragFloat("Visual H (px, 0=area)", ref vh, 1f, 0f, 512f, "%.0f"))
+                    trig.PortalVisualHeightPx = MathF.Max(0f, vh);
+                ImGui.TextDisabled("Ukuran sprite portal (px). 0 = ikut ukuran area trigger.");
+            }
+        }
         float l = trig.LeftPx, t = trig.TopPx, w = trig.WidthPx, h = trig.HeightPx;
         ImGui.SetNextItemWidth(120);
         if (ImGui.DragFloat("Left##tg", ref l)) trig.LeftPx = MathF.Max(0f, l);
@@ -1409,6 +1792,49 @@ public class MapEditorPanel
         if (ImGui.DragFloat("Width##tg", ref w)) trig.WidthPx = MathF.Max(map.TileSize * 0.25f, w);
         ImGui.SetNextItemWidth(120);
         if (ImGui.DragFloat("Height##tg", ref h)) trig.HeightPx = MathF.Max(map.TileSize * 0.25f, h);
+    }
+
+    /// <summary>Multi-tilemap: switch the ACTIVE editing target to an EXISTING tilemap
+    /// (selector click / after delete). Panel adopts the map's own grid/palette settings
+    /// and the bridge is pointed at it; the Map2D binding is ensured via the normal
+    /// SyncTilemapFromBridge flow on the next frame.</summary>
+    private void LoadMapTilemap(Tilemap2D map)
+    {
+        _bridge.ActiveTilemap = map;
+        RetargetActiveTilemap(map);
+    }
+
+    private enum PortalAnimTarget { NotActive, Active, Enter, Out }
+
+    /// <summary>Clip picker for one portal animation state (Sprite Editor clips of the
+    /// selected portal sheet). Empty selection = state has no animation (falls back:
+    /// Out→skip, NotActive→nothing drawn for a disabled portal without a clip).</summary>
+    private void PortalAnimCombo(string label, List<string> clips, TilemapTriggerArea trig, PortalAnimTarget target)
+    {
+        string current = target switch
+        {
+            PortalAnimTarget.NotActive => trig.PortalAnimNotActive,
+            PortalAnimTarget.Active => trig.PortalAnimActive,
+            PortalAnimTarget.Enter => trig.PortalAnimEnter,
+            _ => trig.PortalAnimOut
+        };
+        int idx = clips.IndexOf(current);
+        if (idx < 0) idx = 0;
+        string preview = idx >= 0 && clips.Count > 0 ? clips[idx] : "(none)";
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.Combo(label, ref idx, clips.ToArray(), clips.Count) && clips.Count > 0)
+        {
+            string picked = clips[idx];
+            switch (target)
+            {
+                case PortalAnimTarget.NotActive: trig.PortalAnimNotActive = picked; break;
+                case PortalAnimTarget.Active: trig.PortalAnimActive = picked; break;
+                case PortalAnimTarget.Enter: trig.PortalAnimEnter = picked; break;
+                case PortalAnimTarget.Out: trig.PortalAnimOut = picked; break;
+            }
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clip animasi untuk state ini (looping untuk\nNotActive/Active; sekali jalan untuk Enter/Out).");
     }
 
     private bool IsCurrentSceneGameScene()
@@ -1430,16 +1856,72 @@ public class MapEditorPanel
 
         int width = 50;
         int height = 20;
-        int tileSize = 32;
+        int tileSize = 32;            // Multi-tilemap: previous maps are KEPT — creating a map now ADDS an
+            // additional level (each with its own Map2D object). Unique-name it so
+            // save files don't collide with an already-loaded level.
+            string baseName = "New Level";
+            string levelName = baseName;
+            int copy = 1;
+            while (SceneHasMapNamed(levelName)) levelName = $"{baseName} {++copy}";
 
-        // Only one level/map object may exist at a time — drop Map2D objects created for
-        // the previous tilemap (e.g. an auto-loaded map) before creating the new one.
-        RemoveAllSceneMapObjects();
+            ActiveTilemap = new Tilemap2D(width, height, tileSize)
+            {
+                Name = levelName
+            };
 
-        ActiveTilemap = new Tilemap2D(width, height, tileSize)
-        {
-            Name = "New Level"
-        };
+            // Always start with 1 layer (default "Ground")
+            ActiveTilemap.Layers.Clear();
+            var newLayer = new TileLayer
+            {
+                Name = "Ground",
+                LayerType = "2D",
+                IsVisible = true,
+                IsLocked = false,
+                Opacity = 1.0f,
+                Width = width,
+                Height = height,
+                CollisionTileIds = new HashSet<int>()
+            };
+            newLayer.AllocateTiles();
+            ActiveTilemap.Layers.Add(newLayer);
+
+            // If a base map exists, carry its active layer's properties to this single layer
+            _bridge.Tilemaps ??= new List<Tilemap2D>();
+            var baseMap = _bridge.Tilemaps.Count > 0 ? _bridge.Tilemaps[^1] : null;
+            if (baseMap != null && baseMap.Layers.Count > 0)
+            {
+                var srcLayer = baseMap.ActiveLayer;
+                var carriedLayer = ActiveTilemap.Layers[0];
+                carriedLayer.Name = srcLayer.Name;
+                carriedLayer.LayerType = srcLayer.LayerType;
+                carriedLayer.IsVisible = srcLayer.IsVisible;
+                carriedLayer.IsLocked = srcLayer.IsLocked;
+                carriedLayer.Opacity = srcLayer.Opacity;
+                carriedLayer.CollisionTileIds = new HashSet<int>(srcLayer.CollisionTileIds);
+                ActiveTilemap.Offset = baseMap.Offset;
+            }
+
+            // Reset Tileset for the new map
+            ActiveTilemap.TilesetImagePath = "";
+            ActiveTilemap.TilesetColumns = 32;
+            ActiveTilemap.TilesetRows = 32;
+
+            // Reset local UI tileset state
+            _tilesetTextureId = 0;
+            _tilesetCols = 32;
+            _tilesetRows = 32;
+            _tilesetFlipV = false;
+
+            // Multi-tilemap: seed the new level's OWN per-map grid/palette setup from
+            // the panel's current values — from here on each map keeps its own settings.
+            ActiveTilemap.ShowGrid = _showGrid;
+            ActiveTilemap.GridColor = _gridColor;
+            ActiveTilemap.PaletteColumns = Math.Max(1, _paletteCols);
+            ActiveTilemap.PaletteCellSize = Math.Clamp(_paletteCellSize, 16f, 64f);
+            ActiveTilemap.PaletteShowGrid = _showPaletteGrid;
+            ActiveTilemap.PaletteGridColor = _paletteGridColor;
+            _bridge.Tilemaps ??= new List<Tilemap2D>();
+            if (!_bridge.Tilemaps.Contains(ActiveTilemap)) _bridge.Tilemaps.Add(ActiveTilemap);
         _bridge.ActiveTilemap = ActiveTilemap;
         _selectedLayerIdx = 0;
         _showSceneWarning = false;
@@ -1489,6 +1971,48 @@ public class MapEditorPanel
             .ToList();
         foreach (var o in maps)
             mgr.Remove(o);
+    }
+
+    /// <summary>True when any editor scene already holds a tilemap with this name —
+    /// used to unique-name levels (multi-tilemap) so their save files never collide.</summary>
+    private bool SceneHasMapNamed(string name)
+    {
+        string wanted = name.Trim();
+        if (_bridge.EditorObjectManager != null)
+        {
+            foreach (var o in _bridge.EditorObjectManager.Objects)
+            {
+                if (o is { PrimitiveType: Engine.Objects.EditorPrimitiveType.Map2D }
+                    && o.Map2dTilemap != null
+                    && string.Equals(o.Map2dTilemap.Name?.Trim(), wanted, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        if (_bridge.EditorScenes != null)
+        {
+            foreach (var kvp in _bridge.EditorScenes)
+            {
+                var mgr = kvp.Value.ObjectManager;
+                if (mgr == null || ReferenceEquals(mgr, _bridge.EditorObjectManager)) continue;
+                foreach (var o in mgr.Objects)
+                {
+                    if (o is { PrimitiveType: Engine.Objects.EditorPrimitiveType.Map2D }
+                        && o.Map2dTilemap != null
+                        && string.Equals(o.Map2dTilemap.Name?.Trim(), wanted, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        }
+        // Adopted (Map2D-less) tilemaps registered on the bridge count too.
+        if (_bridge.Tilemaps != null)
+        {
+            foreach (var m in _bridge.Tilemaps)
+            {
+                if (m != null && string.Equals(m.Name?.Trim(), wanted, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Find an existing Map2D EditorObject bound to ActiveTilemap, or create one
@@ -1621,12 +2145,22 @@ public class MapEditorPanel
                 return;
             }
 
-            // Only one level/map object may exist at a time — drop Map2D objects bound to
-            // the previously loaded tilemap before swapping in the newly loaded one.
-            RemoveAllSceneMapObjects();
+            // Multi-tilemap: loading ADDS a level alongside the existing ones (each has
+            // its own Map2D object) and makes it the active editing target. Rename on
+            // collision so two loaded levels never share one save file name.
+            var loaded = Tilemap2D.FromData(data.Tilemap);
+            string baseName = string.IsNullOrWhiteSpace(loaded.Name) ? "Level" : loaded.Name.Trim();
+            string levelName = baseName;
+            int copy = 1;
+            while (SceneHasMapNamed(levelName)) levelName = $"{baseName} {++copy}";
+            loaded.Name = levelName;
 
-            ActiveTilemap = Tilemap2D.FromData(data.Tilemap);
+            ActiveTilemap = loaded;
             _bridge.ActiveTilemap = ActiveTilemap;
+            // Multi-tilemap: register adopted tilemaps so the selector lists them even
+            // before their Map2D object is ensured (and removal finds them).
+            _bridge.Tilemaps ??= new List<Tilemap2D>();
+            if (!_bridge.Tilemaps.Contains(loaded)) _bridge.Tilemaps.Add(loaded);
             _selectedLayerIdx = Math.Min(1, ActiveTilemap.Layers.Count - 1);
             // A freshly loaded map has no history — stale undo entries could restore
             // tiles from the previous map into this one.
@@ -1697,6 +2231,20 @@ public class MapEditorPanel
         _redoStack.Clear();
 
         if (string.IsNullOrEmpty(projectRoot)) return;
+
+        // Multi-tilemap: Map2D objects (carrying their tilemaps) are restored from the
+        // scene .ing. If the current scene already has one, ADOPT it as the active
+        // editing target instead of loading a file copy — loading here would duplicate
+        // the level (a fresh Tilemap2D instance next to the scene-owned one).
+        var existingMapObj = _bridge.EditorObjectManager?.Objects.FirstOrDefault(o =>
+            o != null && o.PrimitiveType == Engine.Objects.EditorPrimitiveType.Map2D
+            && o.Map2dTilemap != null);
+        if (existingMapObj?.Map2dTilemap != null)
+        {
+            _bridge.ActiveTilemap = existingMapObj.Map2dTilemap;
+            Console.WriteLine($"[MapEditor] AutoLoad adopted scene tilemap '{existingMapObj.Map2dTilemap.Name}' (multi-tilemap: map file not reloaded)");
+            return;
+        }
 
         string mapsDir = Path.Combine(projectRoot, "Assets", "Maps");
         if (!Directory.Exists(mapsDir)) return;

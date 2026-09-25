@@ -17,6 +17,8 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 15,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 0,
@@ -101,6 +103,8 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 15,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 10,
@@ -249,6 +253,8 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 6,
       "SpriteOffsetY": 15,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 0,
@@ -509,6 +515,8 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 15,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 0,
@@ -593,6 +601,8 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 15,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 0,
@@ -661,6 +671,8 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": -1,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 15,
@@ -809,6 +821,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 0,
@@ -1469,6 +1483,8 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 0,
@@ -1617,6 +1633,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": true,
       "CustomFrames": [
         {
           "X": 4,
@@ -2757,6 +2775,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -3897,6 +3917,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -5037,6 +5059,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -6177,6 +6201,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -7317,6 +7343,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": true,
       "CustomFrames": [
         {
           "X": 4,
@@ -8457,6 +8485,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -9597,6 +9627,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -10737,6 +10769,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -11877,6 +11911,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -13017,6 +13053,8 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
       "CustomFrames": [
         {
           "X": 4,
@@ -14139,6 +14177,220 @@
           "Tags": {}
         }
       ]
+    },
+    {
+      "Name": "Cooking area",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\GandalfHardcore FREE Platformer Assets\\Cooking area.png",
+      "ImageWidth": 768,
+      "ImageHeight": 64,
+      "Columns": 12,
+      "Rows": 1,
+      "FrameWidth": 64,
+      "FrameHeight": 64,
+      "PaddingX": 0,
+      "PaddingY": 0,
+      "OffsetX": 0,
+      "OffsetY": 0,
+      "MasterWidth": 0,
+      "MasterHeight": 0,
+      "SpriteOffsetX": 0,
+      "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
+      "CustomFrames": [
+        {
+          "X": 0,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 0",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 64,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 1",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 128,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 2",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 192,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 3",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 256,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 4",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 320,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 5",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 384,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 6",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 448,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 7",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 512,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 8",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 576,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 9",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 640,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 10",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        },
+        {
+          "X": 704,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 11",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        }
+      ]
     }
   ],
   "AnimationClips": [
@@ -14374,25 +14626,6 @@
       "MasterHeight": 80,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 15
-    },
-    {
-      "Name": "Man 1 - Idle",
-      "SpriteSheetName": "Male Skin1",
-      "FrameIndices": [
-        1,
-        2,
-        3,
-        4
-      ],
-      "FPS": 6,
-      "Loop": true,
-      "Reverse": false,
-      "SpeedMultiplier": 1,
-      "Events": {},
-      "MasterWidth": 0,
-      "MasterHeight": 0,
-      "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
     },
     {
       "Name": "Man 1 - Walk",
@@ -15864,10 +16097,56 @@
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0
+    },
+    {
+      "Name": "Man 1 - Idle",
+      "SpriteSheetName": "Male Skin1",
+      "FrameIndices": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "FPS": 4,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {},
+      "MasterWidth": 0,
+      "MasterHeight": 0,
+      "SpriteOffsetX": 0,
+      "SpriteOffsetY": 0
+    },
+    {
+      "Name": "Alat Masak 1",
+      "SpriteSheetName": "Cooking area",
+      "FrameIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "FPS": 10,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {},
+      "MasterWidth": 0,
+      "MasterHeight": 0,
+      "SpriteOffsetX": 0,
+      "SpriteOffsetY": 0
     }
   ],
   "PreviewStartFrame": 0,
   "PreviewEndFrame": 3,
-  "PreviewFps": 12,
+  "PreviewFps": 10,
   "PreviewLoop": true
 }

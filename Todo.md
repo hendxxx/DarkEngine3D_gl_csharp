@@ -1427,11 +1427,6 @@ Terrain
  ├─ Layer 3 : Snow PBR
  └─ Optional Micro Vertex Displacement
 
-
- 1. buatkan Player ada di layer mana, sama dengan NPC dan sprite lain
-2. buatkan add tilemap, jadi bisa ditambahkan beberapa tilemap
-3. buatkan action portal:
-	1. portal 1 arah > bisa masuk saja, portal akan menghilang. 
-	2. portal 2 arah bisa masuk dan kembali lagi keasal, portal tetap.
-	
-4. buatkan sprite editor untuk vlip Y. default false.
+1. portal animasinya tidak jalan.
+2. ketika close proejct pastikan new map nya kereset.
+3. untuk portal, muncul nya sesuai titik portal tujuan + lebar portal (jadi ada di depan portal supaya engg kena loop), contoh jika dari kiri muncul di portal tujuan + lebar portal, jika dari kanan muncul di portal tujuan - lebar portal.

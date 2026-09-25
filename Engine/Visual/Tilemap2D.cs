@@ -30,6 +30,17 @@ public class Tilemap2D
     public bool ShowGrid = true;
     public Vector4 GridColor = new(1f, 1f, 1f, 0.12f);
 
+    // ── Editor palette/grid settings (per-tilemap) ──
+    /// <summary>Tile palette columns for THIS map's tileset — maps with different
+    /// tileset sizes keep their own palette layout (multi-tilemap: not shared).</summary>
+    public int PaletteColumns = 8;
+    /// <summary>Palette cell size in px for THIS map's tileset.</summary>
+    public float PaletteCellSize = 32f;
+    /// <summary>Whether the tile palette grid overlay shows for THIS map.</summary>
+    public bool PaletteShowGrid = true;
+    /// <summary>Tile palette grid overlay color for THIS map.</summary>
+    public Vector4 PaletteGridColor = new(1f, 1f, 1f, 0.25f);
+
     /// <summary>Parallax layer definitions carried with the map. The Map Editor panel
     /// syncs its live layer list here so both the standalone Assets/Maps/*.tilemap.json
     /// AND the scene's .ing (via EditorObjectData.Tilemap) round-trip the parallax setup.</summary>
@@ -218,6 +229,13 @@ public class Tilemap2D
         GridColorG = GridColor.Y,
         GridColorB = GridColor.Z,
         GridColorA = GridColor.W,
+        PaletteColumns = PaletteColumns,
+        PaletteCellSize = PaletteCellSize,
+        PaletteShowGrid = PaletteShowGrid,
+        PaletteGridColorR = PaletteGridColor.X,
+        PaletteGridColorG = PaletteGridColor.Y,
+        PaletteGridColorB = PaletteGridColor.Z,
+        PaletteGridColorA = PaletteGridColor.W,
         ParallaxLayers = ParallaxLayers.ToList(),
         TriggerAreas = TriggerAreas.ToList(),
         CameraStartX = CameraStartPos.X,
@@ -248,6 +266,10 @@ public class Tilemap2D
             Offset = new Vector2(data.OffsetX, data.OffsetY),
             ShowGrid = data.ShowGrid,
             GridColor = new Vector4(data.GridColorR, data.GridColorG, data.GridColorB, data.GridColorA),
+            PaletteColumns = data.PaletteColumns > 0 ? data.PaletteColumns : 8,
+            PaletteCellSize = Math.Clamp(data.PaletteCellSize, 16f, 64f),
+            PaletteShowGrid = data.PaletteShowGrid,
+            PaletteGridColor = new Vector4(data.PaletteGridColorR, data.PaletteGridColorG, data.PaletteGridColorB, data.PaletteGridColorA),
             ParallaxLayers = data.ParallaxLayers ?? new(),
             TriggerAreas = data.TriggerAreas ?? new(),
             CameraStartPos = new Vector3(data.CameraStartX, data.CameraStartY, data.CameraStartZ),
@@ -305,6 +327,19 @@ public class TileLayer
         _tiles[y * Width + x] = tileId;
     }
 
+    /// <summary>Eagerly allocate the tile array (all empty). The Map Editor calls this
+    /// when adding a layer: without it, GetTile keeps returning -1 from the empty array
+    /// while the mesh cache key watches tiles — painting a brand-new layer mutated the
+    /// data without ever rebaking the viewport mesh (tiles stayed invisible).</summary>
+    public void AllocateTiles()
+    {
+        if (Width > 0 && Height > 0)
+        {
+            _tiles = new int[Width * Height];
+            Array.Fill(_tiles, -1);
+        }
+    }
+
     public void Resize(int newWidth, int newHeight)
     {
         var oldTiles = _tiles;
@@ -356,6 +391,18 @@ public class TileLayer
             _tiles = data.Tiles?.ToArray() ?? [],
             CollisionTileIds = new HashSet<int>(data.CollisionTileIds ?? [])
         };
+        // Normalize: an empty/null Tiles payload (new layer saved before any paint, or
+        // hand-edited JSON) must become a real W×H array — GetTile on an empty array
+        // reports -1 everywhere, so painting such a layer would mutate data the mesh
+        // cache key never sees (viewport never rebaked → tiles invisible).
+        if (layer.Width > 0 && layer.Height > 0 &&
+            (layer._tiles.Length == 0 || layer._tiles.Length != layer.Width * layer.Height))
+        {
+            var fixedTiles = new int[layer.Width * layer.Height];
+            Array.Fill(fixedTiles, -1);
+            Array.Copy(layer._tiles, fixedTiles, Math.Min(layer._tiles.Length, fixedTiles.Length));
+            layer._tiles = fixedTiles;
+        }
         return layer;
     }
 }
@@ -379,6 +426,14 @@ public class Tilemap2DData
     public float GridColorG { get; set; } = 1f;
     public float GridColorB { get; set; } = 1f;
     public float GridColorA { get; set; } = 0.12f;
+    // ── Editor palette/grid settings (per-tilemap) ──
+    public int PaletteColumns { get; set; } = 8;
+    public float PaletteCellSize { get; set; } = 32f;
+    public bool PaletteShowGrid { get; set; } = true;
+    public float PaletteGridColorR { get; set; } = 1f;
+    public float PaletteGridColorG { get; set; } = 1f;
+    public float PaletteGridColorB { get; set; } = 1f;
+    public float PaletteGridColorA { get; set; } = 0.25f;
     /// <summary>Parallax layers carried inside the map payload so scene files persist them.</summary>
     public List<TilemapParallaxLayerData>? ParallaxLayers { get; set; }
     /// <summary>Trigger areas carried inside the map payload so scene files persist them.</summary>
@@ -467,6 +522,50 @@ public class TilemapTriggerArea
     /// spam itself the same frame. Not serialized.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public float RuntimeCooldown { get; set; }
+    /// <summary>Runtime-only: set by a one-way portal ("Portal One Way") after it
+    /// teleports the player — the portal "menghilang": it is skipped by trigger
+    /// detection AND hidden by the map render until ResetRuntime (session/map reload).
+    /// Not serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool RuntimeHidden { get; set; }
+
+    // ── Portal behavior (used when a Portal / Portal One Way action is attached) ──
+    /// <summary>True = the portal triggers as soon as the player touches the area
+    /// (classic enter portal). False = the player must press the enter key INSIDE the
+    /// area (door-style; a hint bubble shows which key).</summary>
+    public bool PortalAutoEnter { get; set; } = true;
+    /// <summary>Key name that activates the portal when PortalAutoEnter is false
+    /// (ImGuiKey enum name, e.g. "E"). Only used for the button mode.</summary>
+    public string PortalEnterKey { get; set; } = "E";
+    /// <summary>Sprite sheet name for the portal's 4-state animation (Sprite Editor
+    /// sheets). Empty = draw nothing (invisible portal volume, original behavior).</summary>
+    public string PortalSheet { get; set; } = "";
+    /// <summary>Animation clip played while the portal is disabled/inactive.</summary>
+    public string PortalAnimNotActive { get; set; } = "";
+    /// <summary>Animation clip played while the portal is enabled and idle.</summary>
+    public string PortalAnimActive { get; set; } = "";
+    /// <summary>Animation clip played once when the player steps INTO the portal
+    /// (before teleporting). Empty = skip straight to teleport.</summary>
+    public string PortalAnimEnter { get; set; } = "";
+    /// <summary>Animation clip played once after the portal fired (one-way vanish or
+    /// teleport flash). Empty = return to Active/NotActive loop.</summary>
+    public string PortalAnimOut { get; set; } = "";
+    /// <summary>Portal size in PIXELS (world = px × WorldScale). 0 = use the trigger
+    /// rect's size. Lets the visual sprite be bigger/smaller than the detection area.</summary>
+    public float PortalVisualWidthPx { get; set; }
+    public float PortalVisualHeightPx { get; set; }
+
+    // ── Portal runtime state (not serialized) ──
+    /// <summary>Runtime-only: portal state machine phase (idle/entering/out).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string RuntimePortalPhase { get; set; } = "idle";
+    /// <summary>Runtime-only: clock for the portal's animation (seconds).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public float RuntimePortalClock { get; set; }
+    /// <summary>Runtime-only: set once the player is inside a button-mode portal —
+    /// the OnEnter fire already ran, so leaving + re-entering doesn't re-arm weirdly.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool RuntimePortalWasInside { get; set; }
 
     public TilemapTriggerArea Clone()
     {
@@ -476,6 +575,12 @@ public class TilemapTriggerArea
             LeftPx = LeftPx, TopPx = TopPx, WidthPx = WidthPx, HeightPx = HeightPx,
             OnEnter = OnEnter, OnStayIntervalSeconds = OnStayIntervalSeconds, OnExit = OnExit,
             RequireMovingRight = RequireMovingRight,
+            RuntimeHidden = RuntimeHidden,
+            PortalAutoEnter = PortalAutoEnter, PortalEnterKey = PortalEnterKey,
+            PortalSheet = PortalSheet,
+            PortalAnimNotActive = PortalAnimNotActive, PortalAnimActive = PortalAnimActive,
+            PortalAnimEnter = PortalAnimEnter, PortalAnimOut = PortalAnimOut,
+            PortalVisualWidthPx = PortalVisualWidthPx, PortalVisualHeightPx = PortalVisualHeightPx,
             Actions = Actions.Select(a => a.Clone()).ToList()
         };
         return c;
@@ -521,6 +626,8 @@ public static class TriggerActionTypes
     public const string ActivateQuest = "Activate Quest";
     public const string CompleteQuest = "Complete Quest";
     public const string RunScript = "Run Script";
+    public const string EnablePortal = "Enable Portal";
+    public const string DisablePortal = "Disable Portal";
     public const string Portal = "Portal";
     public const string PortalOneWay = "Portal One Way";
 
@@ -529,7 +636,7 @@ public static class TriggerActionTypes
     [
         SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect,
         SpawnObject, StartDialogue, ShowBubble, HideBubble, StartCutscene, CameraShake, UnlockDoor,
-        GiveItem, ActivateQuest, CompleteQuest, RunScript, Portal, PortalOneWay
+        GiveItem, ActivateQuest, CompleteQuest, RunScript, EnablePortal, DisablePortal, Portal, PortalOneWay
     ];
 
     /// <summary>True when the action type actually executes something today. Types
@@ -538,7 +645,8 @@ public static class TriggerActionTypes
     public static bool IsImplemented(string type) => type switch
     {
         SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake
-            or StartDialogue or ShowBubble or HideBubble or Portal or PortalOneWay => true,
+            or StartDialogue or ShowBubble or HideBubble or Portal or PortalOneWay
+            or EnablePortal or DisablePortal => true,
         _ => false
     };
 }

@@ -268,6 +268,10 @@ public class IDEBridge
 
     // ── Active Tilemap (for 2D map editor) ──
     public Tilemap2D? ActiveTilemap { get; set; }
+    /// <summary>Multi-tilemap: adopted tilemaps WITHOUT a Map2D object of their own
+    /// (their Map2D was created outside the current scene). Kept so the Map Editor
+    /// selector can still list/switch/delete them. May be null.</summary>
+    public List<Tilemap2D>? Tilemaps { get; set; }
     public int ActiveTileLayer { get; set; } = 1;
     public int SelectedTileId { get; set; } = 0;
     public int TilePaletteSelectionCount { get; set; } = 0;
@@ -277,6 +281,7 @@ public class IDEBridge
     public int TilePaletteSelW { get; set; } = 1;
     public int TilePaletteSelH { get; set; } = 1;
     public int MapPaintTool { get; set; } = 0; // 0=Paint, 1=Erase, 2=Fill, 3=Pick, 4=Trigger
+    public float MapPaintHeight { get; set; } = 0f;
 
     // ── Trigger Area editing (viewport ↔ Map Editor panel) ──
     /// <summary>Trigger currently selected in the Map Editor's Triggers list. The

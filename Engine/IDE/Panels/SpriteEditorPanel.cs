@@ -249,6 +249,18 @@ public class SpriteEditorPanel
                         SelectedSheet.SpriteOffsetY = Math.Clamp(sOffY, -512f, 512f);
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Sheet-wide vertical nudge from the ground line applied to every frame. Positive = up.");
+
+                    bool flipY = SelectedSheet.FlipY;
+                    if (ImGui.Checkbox("Flip Y (vertical mirror)", ref flipY))
+                        SelectedSheet.FlipY = flipY;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Cermin vertikal (Flip Y) untuk semua frame sheet ini.\nDefault OFF. Art yang tergambar terbalik di file sumber\nakan tampil benar saat dirender (Player2D, Sprite2D, DoF mask,\ndan preview editor ini). Tersimpan di data sheet.");
+
+                    bool flipX = SelectedSheet.FlipX;
+                    if (ImGui.Checkbox("Flip X (horizontal mirror)", ref flipX))
+                        SelectedSheet.FlipX = flipX;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Cermin horizontal (Flip X / HFlip) untuk semua frame sheet ini.\nDefault OFF. Art yang menghadap arah salah di file sumber tampil\ntercermin saat dirender. Gabungan dengan facing object:\ndua cermin horizontal saling meniadakan (FlipX + hadap kiri = normal).\nTersimpan di data sheet.");
                 }
 
                 ImGui.Separator();
@@ -716,8 +728,14 @@ public class SpriteEditorPanel
             // so the editor preview shows exactly what the viewport will render.
             float mOffY = (SelectedSheet.SpriteOffsetY + SelectedFrame.RenderOffsetY) * mScale;
             var imgMin = new Vector2(mPos.X + (miniBox - mW) * 0.5f + mOffX, mPos.Y + miniBox - mH - mOffY);
+            // Flip Y / Flip X sheet: mirror in the WYSIWYG preview (same as viewport).
+            // The editing canvas above stays in source-art space so hitbox/anchor
+            // mouse mapping keeps working unchanged.
+            bool mFX = SelectedSheet.FlipX, mFY = SelectedSheet.FlipY;
+            var mUvMin = new Vector2(mFX ? u1 : u0, mFY ? v1 : v0);
+            var mUvMax = new Vector2(mFX ? u0 : u1, mFY ? v0 : v1);
             drawList.AddImage((nint)texId, imgMin, new Vector2(imgMin.X + mW, imgMin.Y + mH),
-                new Vector2(u0, v0), new Vector2(u1, v1));
+                mUvMin, mUvMax);
 
             string mLabel = mNorm
                 ? $"master {mMasterW:0}×{mMasterH:0}px · frame {mCellW:0}×{mCellH:0}px"

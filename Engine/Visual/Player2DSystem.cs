@@ -502,7 +502,15 @@ public static class Player2DSystem
             // test uses the resolved position of this frame. Triggers never block —
             // detection only.
             TriggerEventSystem.LastPlayerPosition = pos;
-            TriggerEventSystem.Update(map, new Vector3(pos.X + capOffX, pos.Y + capOffY, pos.Z), r, height, dt, velX, capOffX, capOffY);
+            // Portal button mode: edge-detect the interact key so holding it doesn't
+            // re-fire every frame. Default edge = E; the probe lets each portal use its
+            // OWN configured key (PortalEnterKey, ImGuiKey name).
+            bool portalKeyE = ImGui.IsKeyPressed(ImGuiKey.E, false);
+            TriggerEventSystem.PortalKeyProbe = keyName =>
+                Enum.TryParse<ImGuiKey>(keyName, out var k) && k != ImGuiKey.None
+                    ? ImGui.IsKeyPressed(k, false)
+                    : false;
+            TriggerEventSystem.Update(map, new Vector3(pos.X + capOffX, pos.Y + capOffY, pos.Z), r, height, dt, velX, capOffX, capOffY, portalKeyE);
 
             // ── Pit death: the world origin (0,0) is the map's bottom-left, so any
             // Y well below zero means the player fell through a hole. Respawn at the

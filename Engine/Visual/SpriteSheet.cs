@@ -51,6 +51,17 @@ public class SpriteSheet
     /// raises art that sits low in this sheet's frame so feet align across sheets.
     /// Positive = shift up.</summary>
     public float SpriteOffsetY { get; set; } = 0f;
+    /// <summary>Flip Y (vertical mirror) when rendering frames from this sheet —
+    /// art drawn upside-down in the source is displayed right-side-up. Default false.
+    /// Applied in every world-render path (Player2D, Sprite2D, DoF draw data).
+    /// Set in the Sprite Editor → Sheet Settings.</summary>
+    public bool FlipY { get; set; } = false;
+    /// <summary>Flip X (horizontal mirror / HFlip) when rendering frames from this
+    /// sheet — art drawn facing the wrong way in the source is displayed mirrored.
+    /// Default false. Combines with the object's runtime facing (two horizontal
+    /// mirrors cancel). Applied in every world-render path (Player2D, Sprite2D, DoF
+    /// draw data). Set in the Sprite Editor → Sheet Settings.</summary>
+    public bool FlipX { get; set; } = false;
 
     /// <summary>Custom frame regions (non-uniform mode). Null = use uniform grid.</summary>
     public List<SpriteFrame>? CustomFrames;
@@ -171,6 +182,8 @@ public class SpriteSheet
         MasterHeight = MasterHeight,
         SpriteOffsetX = SpriteOffsetX,
         SpriteOffsetY = SpriteOffsetY,
+        FlipY = FlipY,
+        FlipX = FlipX,
         CustomFrames = CustomFrames?.Select(f => new SpriteFrameData
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
@@ -200,6 +213,8 @@ public class SpriteSheet
         MasterHeight = data.MasterHeight,
         SpriteOffsetX = data.SpriteOffsetX,
         SpriteOffsetY = data.SpriteOffsetY,
+        FlipY = data.FlipY,
+        FlipX = data.FlipX,
         CustomFrames = data.CustomFrames?.Select(f => new SpriteFrame
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
@@ -260,6 +275,10 @@ public class SpriteSheetData
     public float MasterHeight { get; set; } = 0f;
     public float SpriteOffsetX { get; set; } = 0f;
     public float SpriteOffsetY { get; set; } = 0f;
+    /// <summary>Vertical mirror (Flip Y) — default false.</summary>
+    public bool FlipY { get; set; } = false;
+    /// <summary>Horizontal mirror (Flip X / HFlip) — default false.</summary>
+    public bool FlipX { get; set; } = false;
     public List<SpriteFrameData>? CustomFrames { get; set; }
 }
 

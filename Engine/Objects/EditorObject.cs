@@ -381,6 +381,11 @@ public unsafe class EditorObject
     /// the quad 0.01 world units closer to the camera (Position.Z + 0.01/layer) so the
     /// ordering survives even when depth testing is enabled. Default 0 = base layer.</summary>
     public int Sprite2DRenderLayer { get; set; }
+    /// <summary>Render layer for Player2D — works exactly like <see cref="Sprite2DRenderLayer"/>:
+    /// higher layers draw ON TOP of lower ones (and in front of same-layer sprites),
+    /// each step nudging the quad 0.01 world units closer to the camera. Default 0 =
+    /// base layer, same as NPC/sprites.</summary>
+    public int Player2DRenderLayer { get; set; }
     /// <summary>Runtime playback clock (transient — not serialized).</summary>
     public float Sprite2DAnimTime { get; set; }
     /// <summary>Glfw.FrameId when the clock last advanced — DrawSprite2D can run
@@ -1625,6 +1630,9 @@ public unsafe class EditorObject
     /// math) while the rendered layer follows the editor selection.
     /// </summary>
     public int Map2dActiveLayer { get; set; } = -1;
+    /// <summary>Additional depth offset applied to the active layer's tiles so the
+    /// paint-height slider visually lifts or sinks them relative to other layers.</summary>
+    public float Map2dPaintHeight { get; set; } = 0f;
     /// <summary>Show FULL 3D collision helper boxes over tiles flagged for collision
     /// (like Unreal's collision previews): one shaded box with bright edges per
     /// collision tile, sticking OUT of the grid plane toward the viewer so the player
@@ -3669,6 +3677,9 @@ public unsafe class EditorObject
     {
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
         if (!TryGetPlayer2DActiveClip(out var sheet, out var clip) || sheet == null || clip == null) return;
+
+        // Portal sprites render right after the player pass (same shader/binding flow).
+        DrawPortalSprites(camera);
         // Debug aid: print which animation is active whenever it changes (dedup'd).
         LogActiveAnimChange();
 
@@ -3857,6 +3868,13 @@ public unsafe class EditorObject
         float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
         float svBot = 1f - uvMinRaw.Y;
         float svTop = 1f - uvMaxRaw.Y;
+        // Sheet-level Flip Y (Sprite Editor → Sheet Settings): vertical mirror.
+        if (drawSheet.FlipY)
+            (svBot, svTop) = (svTop, svBot);
+        // Sheet-level Flip X (HFlip): horizontal mirror — combines with the facing
+        // swap below (two horizontal mirrors cancel: FlipX + facing left = original).
+        if (drawSheet.FlipX)
+            (su0, su1) = (su1, su0);
 
         // Facing: sprite art is assumed right-facing. Facing left → swap U so the frame
         // mirrors horizontally (per-object runtime state, never saved to disk).
@@ -3895,7 +3913,7 @@ public unsafe class EditorObject
             pxToWorld = Player2DHeight / cellH; // unsaved clip → native proportions
         float w = MathF.Max(0.05f, cellW * pxToWorld);   // frame as-is (native px)
         float h = MathF.Max(0.05f, cellH * pxToWorld);
-        float mirror = Player2DFacingRight ? 1f : -1f;
+        float mirror = (Player2DFacingRight ? 1f : -1f) * (drawSheet.FlipX ? -1f : 1f);
         // Base offsets come from the clip snapshot only; sheet offsets don't apply here.
         float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
@@ -3905,7 +3923,7 @@ public unsafe class EditorObject
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
-        float z = Position.Z + 0.05f;
+        float z = Position.Z + 0.05f + Math.Clamp(Player2DRenderLayer, -1000, 1000) * 0.01f;
 
         EnsureMap2DShader();
         if (_map2dShader == 0) return;
@@ -4033,6 +4051,13 @@ public unsafe class EditorObject
         float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
         float svBot = 1f - uvMinRaw.Y;
         float svTop = 1f - uvMaxRaw.Y;
+        // Sheet-level Flip Y (Sprite Editor → Sheet Settings): vertical mirror.
+        if (sheet.FlipY)
+            (svBot, svTop) = (svTop, svBot);
+        // Sheet-level Flip X (HFlip): horizontal mirror — combines with the facing
+        // swap below (two horizontal mirrors cancel: FlipX + facing left = original).
+        if (sheet.FlipX)
+            (su0, su1) = (su1, su0);
         if (!Sprite2DFacingRight)
             (su0, su1) = (su1, su0);
 
@@ -4054,7 +4079,7 @@ public unsafe class EditorObject
         float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
         float w = MathF.Max(0.05f, cellW * pxToWorld);
         float h = MathF.Max(0.05f, cellH * pxToWorld);
-        float mirror = Sprite2DFacingRight ? 1f : -1f;
+        float mirror = (Sprite2DFacingRight ? 1f : -1f) * (sheet.FlipX ? -1f : 1f);
         float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
         // AS-IS: centered on Position.X, bottom on Position.Y.
@@ -4171,6 +4196,13 @@ public unsafe class EditorObject
         float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
         float svBot = 1f - uvMinRaw.Y;
         float svTop = 1f - uvMaxRaw.Y;
+        // Sheet-level Flip Y (Sprite Editor → Sheet Settings): vertical mirror.
+        if (sheet.FlipY)
+            (svBot, svTop) = (svTop, svBot);
+        // Sheet-level Flip X (HFlip): horizontal mirror — combines with the facing
+        // swap below (two horizontal mirrors cancel: FlipX + facing left = original).
+        if (sheet.FlipX)
+            (su0, su1) = (su1, su0);
         if (!Sprite2DFacingRight)
             (su0, su1) = (su1, su0);
 
@@ -4190,7 +4222,7 @@ public unsafe class EditorObject
         float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
         float w = MathF.Max(0.05f, cellW * pxToWorld);
         float h = MathF.Max(0.05f, cellH * pxToWorld);
-        float mirror = Sprite2DFacingRight ? 1f : -1f;
+        float mirror = (Sprite2DFacingRight ? 1f : -1f) * (sheet.FlipX ? -1f : 1f);
         float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
         float x0 = Position.X - w * 0.5f + offX;
@@ -4206,6 +4238,140 @@ public unsafe class EditorObject
         tr = new System.Numerics.Vector3(x1, y1, z);
         tl = new System.Numerics.Vector3(x0, y1, z);
         return true;
+    }
+
+    // ── Portal sprite rendering ──
+
+    /// <summary>Draw every visible portal's 4-state animation (NotActive / Active /
+    /// Enter / Out clips from the Sprite Editor registry) as upright world-space
+    /// quads. Uses the player's VAO/VBO (identical Map2DVertex layout) inside its own
+    /// shader/binding session; hidden or disabled portals show their NotActive clip.
+    /// Runs behind the player so a walking-in player overlaps the portal art.</summary>
+    private unsafe void DrawPortalSprites(Camera camera)
+    {
+        var mgr = TriggerEventSystem.LastEditorObjectManager;
+        if (mgr == null) return;
+
+        var maps = mgr.Objects
+            .Where(o => o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Map2D })
+            .Select(o => o.Map2dTilemap)
+            .OfType<Tilemap2D>()
+            .Distinct();
+
+        foreach (var map in maps)
+        {
+            foreach (var t in map.TriggerAreas)
+            {
+                if (t == null || !t.IsEnabled && string.IsNullOrEmpty(t.PortalSheet)) continue;
+                if (string.IsNullOrEmpty(t.PortalSheet)) continue;
+                if (t.RuntimeHidden && string.IsNullOrEmpty(t.PortalAnimOut)) continue;
+                if (!IDEBridge.TryGetSpriteSheetTexture(t.PortalSheet, out uint texId, out int _, out int _))
+                    continue;
+                if (texId == 0) continue;
+
+                var (clipName, once, clock) = TriggerEventSystem.GetPortalDisplayState(t);
+                if (string.IsNullOrEmpty(clipName)) continue;
+                if (!IDEBridge.TryGetSpriteClip(t.PortalSheet, clipName, out var sheet, out var clip)
+                    || sheet == null || clip == null) continue;
+
+                int count = clip.FrameIndices.Count;
+                if (count <= 0) continue;
+                float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier));
+                int f = once ? Math.Clamp((int)(clock / frameDur), 0, count - 1)
+                             : ((int)(clock / frameDur) % count + count) % count;
+                int frameIdx = clip.FrameIndices[f];
+
+                var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+                // Same top-row-first upload convention as the player/sprite paths.
+                float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
+                float svBot = 1f - uvMinRaw.Y;
+                float svTop = 1f - uvMaxRaw.Y;
+                // Sheet-level Flip Y (Sprite Editor) applies to portals too. NOTE: the
+                // X-mirror must NOT be applied as a UV swap for a centered portal —
+                // two X swaps would cancel and the offset would misalign the art.
+                if (sheet.FlipY) (svBot, svTop) = (svTop, svBot);
+
+                // Rect: portal visual size (px → world), centered on the trigger area,
+                // bottom aligned to the area's bottom edge (feet line).
+                float cell = map.TileSize * Tilemap2D.WorldScale;
+                float mapHWorld = map.Height * cell;
+                float areaL = t.LeftPx * Tilemap2D.WorldScale;
+                float areaR = (t.LeftPx + t.WidthPx) * Tilemap2D.WorldScale;
+                float areaB = mapHWorld - (t.TopPx + t.HeightPx) * Tilemap2D.WorldScale;
+                float areaCy = (areaL + areaR) * 0.5f;
+                float w = (t.PortalVisualWidthPx > 0f ? t.PortalVisualWidthPx : t.WidthPx) * Tilemap2D.WorldScale;
+                float h = (t.PortalVisualHeightPx > 0f ? t.PortalVisualHeightPx : t.HeightPx) * Tilemap2D.WorldScale;
+                float x0 = areaCy - w * 0.5f;
+                float x1 = areaCy + w * 0.5f;
+                float y0 = areaB;
+                float y1 = areaB + h;
+                float z = 0.055f; // map plane + hair above the max layer lift (0.01 × layers)
+
+                if (_portalVAO == 0) EnsurePortalQuadBuffers();
+                if (_portalVAO == 0) continue;
+                EnsureMap2DShader();
+                if (_map2dShader == 0) continue;
+
+                GL.UseProgram(_map2dShader);
+                var view = camera.GetViewMatrix();
+                var proj = camera.GetProjectionMatrix();
+                GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
+                GL.UniformMatrix4fv(_map2dLocProj, 1, false, &proj.M11);
+                var identity = Matrix4x4.Identity;
+                GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+                GL.Uniform1i(_map2dLocTex, 0);
+                GL.Enable(Const.GL_BLEND);
+                GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+                bool cull = GL.IsEnabled(Const.GL_CULL_FACE);
+                GL.Disable(Const.GL_CULL_FACE);
+                bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+
+                var verts = stackalloc Map2DVertex[6]
+                {
+                    new(x0, y0, z, su0, svBot, 1f, 1f, 1f, 1f),
+                    new(x1, y0, z, su1, svBot, 1f, 1f, 1f, 1f),
+                    new(x1, y1, z, su1, svTop, 1f, 1f, 1f, 1f),
+                    new(x0, y0, z, su0, svBot, 1f, 1f, 1f, 1f),
+                    new(x1, y1, z, su1, svTop, 1f, 1f, 1f, 1f),
+                    new(x0, y1, z, su0, svTop, 1f, 1f, 1f, 1f),
+                };
+                {
+                    GL.BindVertexArray(_portalVAO);
+                    GL.BindBuffer(Const.GL_ARRAY_BUFFER, _portalVBO);
+                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
+                    GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+                    GL.BindVertexArray(0);
+                }
+
+                // Restore state (single-frame scope: portal passes run between the
+                // player pass and the Sprite2D pass).
+                if (cull) GL.Enable(Const.GL_CULL_FACE);
+                if (depth) GL.Enable(Const.GL_DEPTH_TEST);
+            }
+        }
+    }
+
+    private uint _portalVAO, _portalVBO;
+
+    /// <summary>One-time GPU buffers for the portal quad (same Map2DVertex layout as
+    /// the player/sprite passes so the map2d shader serves all of them).</summary>
+    private unsafe void EnsurePortalQuadBuffers()
+    {
+        uint vao = 0, vbo = 0;
+        GL.GenVertexArrays(1, &vao);
+        GL.BindVertexArray(vao);
+        GL.GenBuffers(1, &vbo);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+        GL.EnableVertexAttribArray(0);
+        GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+        GL.EnableVertexAttribArray(1);
+        GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+        GL.EnableVertexAttribArray(2);
+        GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+        GL.BindVertexArray(0);
+        _portalVAO = vao; _portalVBO = vbo;
     }
 
     /// <summary>Extract live draw parameters for this Player2D object: texture ID,
@@ -4261,6 +4427,13 @@ public unsafe class EditorObject
         float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
         float svBot = 1f - uvMinRaw.Y;
         float svTop = 1f - uvMaxRaw.Y;
+        // Sheet-level Flip Y (Sprite Editor → Sheet Settings): vertical mirror.
+        if (drawSheet.FlipY)
+            (svBot, svTop) = (svTop, svBot);
+        // Sheet-level Flip X (HFlip): horizontal mirror — combines with the facing
+        // swap below (two horizontal mirrors cancel: FlipX + facing left = original).
+        if (drawSheet.FlipX)
+            (su0, su1) = (su1, su0);
 
         if (!Player2DFacingRight)
             (su0, su1) = (su1, su0);
@@ -4283,7 +4456,7 @@ public unsafe class EditorObject
         float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
         float w = MathF.Max(0.05f, cellW * pxToWorld);
         float h = MathF.Max(0.05f, cellH * pxToWorld);
-        float mirror = Player2DFacingRight ? 1f : -1f;
+        float mirror = (Player2DFacingRight ? 1f : -1f) * (drawSheet.FlipX ? -1f : 1f);
         float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
 
@@ -4291,7 +4464,7 @@ public unsafe class EditorObject
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
-        float z = Position.Z + 0.05f;
+        float z = Position.Z + 0.05f + Math.Clamp(Player2DRenderLayer, -1000, 1000) * 0.01f;
 
         uvMin = new System.Numerics.Vector2(su0, svTop);
         uvMax = new System.Numerics.Vector2(su1, svBot);
@@ -4879,7 +5052,7 @@ void main() {
         // through the -90° X rotation) — enough to win the depth test without any
         // visible offset.
         const float layerLiftStep = 0.01f; // world depth units between stacked layers
-        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}";
+        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}|{Map2dPaintHeight:R}";
         foreach (var l in map.Layers)
         {
             cacheKey += $"|{l.IsVisible}|{l.Opacity}";
@@ -4911,6 +5084,7 @@ void main() {
             var layer = map.Layers[li];
             if (!layer.IsVisible) continue;
             float liftY = -li * layerLiftStep; // higher layer index → closer to the front camera
+            if (Map2dActiveLayer >= 0 && li == Map2dActiveLayer) liftY -= Map2dPaintHeight * layerLiftStep;
             for (int ty = 0; ty < mapH; ty++)
             {
                 for (int tx = 0; tx < mapW; tx++)
@@ -4929,12 +5103,18 @@ void main() {
                     float v1 = (tr + (vFlip < 0f ? 1f : 0f)) * tileVH * vFlip;
 
                     float worldTs = map.TileSize * Tilemap2D.WorldScale;
-                    float x0 = tx * worldTs;
-                    float x1 = x0 + worldTs;
+                    // Scale tile size by paint height for all layers
+                    float scale = Math.Max(1f, Map2dPaintHeight);
+                    float scaledTs = worldTs * scale;
+                    // Center the scaled tile on the original grid cell
+                    float offsetX = (worldTs - scaledTs) * 0.5f;
+                    float offsetZ = (worldTs - scaledTs) * 0.5f;
+                    float x0 = tx * worldTs + offsetX;
+                    float x1 = x0 + scaledTs;
                     // Row 0 at the top (matches Tilemap2D.GridToWorld, where y is
                     // flipped); the -90° X rotation turns this into upright +Y.
-                    float z0 = (mapH - 1 - ty) * worldTs;
-                    float z1 = z0 + worldTs;
+                    float z0 = (mapH - 1 - ty) * worldTs + offsetZ;
+                    float z1 = z0 + scaledTs;
                     float a = layer.Opacity;
 
                     verts.Add(new Map2DVertex(x0, liftY, z0, u0, v0, 1, 1, 1, a));
@@ -5021,8 +5201,15 @@ void main() {
         float tileUW = 1f / tsCols;
         float tileVH = 1f / tsRows;
         float worldTs = map.TileSize * Tilemap2D.WorldScale;
+        // Scale tile size by paint height for all layers
+        float scale = Math.Max(1f, Map2dPaintHeight);
+        float scaledTs = worldTs * scale;
+        // Center the scaled tile on the original grid cell
+        float offsetX = (worldTs - scaledTs) * 0.5f;
+        float offsetZ = (worldTs - scaledTs) * 0.5f;
         float layerZ = Map2dLayerIndex >= 0 ? (float)Map2dLayerIndex : 0f;
         float liftY = -layerIndex * 0.01f;
+        liftY -= Map2dPaintHeight * 0.01f;
         float z = layerZ + liftY;
 
         int drawn = 0;
@@ -5044,10 +5231,10 @@ void main() {
                 float u1 = u0 + tileUW;
                 float v1 = (tr + (vFlip < 0f ? 1f : 0f)) * tileVH * vFlip;
 
-                float x0 = tx * worldTs;
-                float x1 = x0 + worldTs;
-                float y0 = (mapH - 1 - ty) * worldTs;
-                float y1 = y0 + worldTs;
+                float x0 = tx * worldTs + offsetX;
+                float x1 = x0 + scaledTs;
+                float y0 = (mapH - 1 - ty) * worldTs + offsetZ;
+                float y1 = y0 + scaledTs;
 
                 var pBL = TransformGizmo.ProjectToScreen(camera, new Vector3(x0, y0, z), maskW, maskH);
                 var pBR = TransformGizmo.ProjectToScreen(camera, new Vector3(x1, y0, z), maskW, maskH);
@@ -5147,9 +5334,21 @@ void main() {
                 bool cullEnabled = GL.IsEnabled(Const.GL_CULL_FACE);
                 GL.Disable(Const.GL_CULL_FACE);
 
+                // Explicit depth state for THIS pass: stacked layers rely on the
+                // per-layer lift to composite correctly, but a previous pass may leave
+                // depth test/writes OFF (parallax/portal/2D quads) — without forcing it
+                // back on, upper tile layers silently lost the depth test and painted
+                // UNDER lower layers (invisible when the lower layer filled the map).
+                bool depthWasEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
+                GL.Enable(Const.GL_DEPTH_TEST);
+                GL.DepthMask(true);
+
                 GL.BindVertexArray(_map2dVAO);
                 GL.DrawArrays(Const.GL_TRIANGLES, 0, _map2dVertCount);
                 GL.BindVertexArray(0);
+
+                if (!depthWasEnabled)
+                    GL.Disable(Const.GL_DEPTH_TEST);
 
                 if (cullEnabled)
                     GL.Enable(Const.GL_CULL_FACE);

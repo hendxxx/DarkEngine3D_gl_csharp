@@ -4247,7 +4247,7 @@ ImGui.SameLine();
                 // stacked in the same mesh — so intersect that plane, not the active
                 // layer index.  The chosen layer only decides WHICH TileLayer data the
                 // stamp writes into, never where the plane sits.
-                float layerZ = 0f;
+                float layerZ = _bridge.MapPaintHeight;
                 if (MathF.Abs(rayDir.Z) > 0.0001f)
                 {
                     float t = (layerZ - rayOrigin.Z) / rayDir.Z;
