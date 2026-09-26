@@ -51,12 +51,26 @@ static T GetFn<T>(string name) where T : Delegate
 
 // ── Compile a vertex+fragment pair; returns the linked program (0 on failure). ──
 unsafe uint Compile(string vertexPath, string fragmentPath, out string error)
+    => CompilePrefixed(vertexPath, fragmentPath, null, out error);
+
+// Variant support: inject a #define prefix after the fragment #version line
+// (mirrors ShaderHelpers.LoadShader's fragmentPrefix parameter).
+unsafe uint CompilePrefixed(string vertexPath, string fragmentPath, string? fragmentPrefix, out string error)
 {
     error = "";
     uint vs = glCreateShader(0x8B31); // GL_VERTEX_SHADER
     uint fs = glCreateShader(0x8B30); // GL_FRAGMENT_SHADER
+    string fsSrc = File.ReadAllText(fragmentPath);
+    if (!string.IsNullOrEmpty(fragmentPrefix))
+    {
+        int vIdx = fsSrc.IndexOf("#version");
+        int lineEnd = vIdx >= 0 ? fsSrc.IndexOf('\n', vIdx) : -1;
+        fsSrc = lineEnd >= 0
+            ? fsSrc.Substring(0, lineEnd + 1) + fragmentPrefix + fsSrc.Substring(lineEnd + 1)
+            : fsSrc + "\n" + fragmentPrefix;
+    }
     string vsErr = CompileOne(vs, File.ReadAllText(vertexPath));
-    string fsErr = CompileOne(fs, File.ReadAllText(fragmentPath));
+    string fsErr = CompileOne(fs, fsSrc);
     if (vsErr.Length > 0 || fsErr.Length > 0)
     {
         error = vsErr + fsErr;
@@ -145,12 +159,18 @@ unsafe
     glGetIntegerv(0x821C, &glMinor); // GL_MINOR_VERSION
 }
 Console.WriteLine($"[SMOKE] GL context {glMajor}.{glMinor}");
+int maxTexUnits = 0;
+unsafe { glGetIntegerv(0x8872, &maxTexUnits); }   // GL_MAX_TEXTURE_IMAGE_UNITS
+Console.WriteLine($"[SMOKE] GL_MAX_TEXTURE_IMAGE_UNITS = {maxTexUnits}");
 
-string e1 = "", e2 = "", e3 = "";
+string e1 = "", e2 = "", e3 = "", e4 = "", e5 = "";
 (uint Program, string Name, string Err)[] checks =
 [
     (Compile("Artifacts/shaders/vertex_shader.glsl", "Artifacts/shaders/objectPbr_fragment.glsl", out e1), "objectPbr", e1),
     (Compile("Artifacts/shaders/pbrDisplace_vertex.glsl", "Artifacts/shaders/objectPbr_fragment.glsl", out e2), "objectPbr (displaced)", e2),
+    // TERRAIN_SPLAT variant — prefix injection AFTER #version, same as Shader.cs.
+    (CompilePrefixed("Artifacts/shaders/vertex_shader.glsl", "Artifacts/shaders/objectPbr_fragment.glsl", "#define TERRAIN_SPLAT 1\n", out e4), "objectPbr (splat)", e4),
+    (CompilePrefixed("Artifacts/shaders/pbrDisplace_vertex.glsl", "Artifacts/shaders/objectPbr_fragment.glsl", "#define TERRAIN_SPLAT 1\n", out e5), "objectPbr (splat displaced)", e5),
 ];
 
 int failures = 0;

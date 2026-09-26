@@ -1021,6 +1021,7 @@ public class SceneManagerPanel
                         SplatLayerAo = [.. obj.SplatLayerAoPath.Skip(1).Select(PathHelpers.MakeRelative)],
                         SplatLayerHeight = [.. obj.SplatLayerHeightPath.Skip(1).Select(PathHelpers.MakeRelative)],
                         SplatLayerTints = obj.SplatLayerTint.SelectMany(t => new[] { t.X, t.Y, t.Z }).ToArray(),
+                        SplatLayerTilings = obj.SplatLayerTiling.ToArray(),
                         SplatHeightBandsEnabled = obj.SplatHeightBandsEnabled,
                         SplatHeightLayerCount = obj.SplatHeightLayerCount,
                         SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
@@ -1028,6 +1029,7 @@ public class SceneManagerPanel
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
                         PbrPomShadowStrength = obj.PbrPomShadowStrength,
+                        PbrRandomTiling = obj.PbrRandomTiling ? 1f : 0f,
                         PbrHeightContrast = obj.PbrHeightContrast,
                         PbrHeightContrastCenter = obj.PbrHeightContrastCenter,
                         PbrHeightOffset = obj.PbrHeightOffset,
@@ -1450,6 +1452,9 @@ public class SceneManagerPanel
                         if (objData.SplatLayerTints is { Length: 12 } tt)
                             for (int l = 0; l < 4; l++)
                                 obj.SplatLayerTint[l] = new Vector3(tt[l * 3], tt[l * 3 + 1], tt[l * 3 + 2]);
+                        if (objData.SplatLayerTilings is { Length: 4 } stl)
+                            for (int l = 0; l < 4; l++)
+                                obj.SplatLayerTiling[l] = Math.Clamp(stl[l], 0.01f, 100f);
                         obj.SplatHeightBandsEnabled = objData.SplatHeightBandsEnabled;
                         if (objData.SplatHeightLayerCount > 0)
                             obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
@@ -1469,6 +1474,7 @@ public class SceneManagerPanel
                         obj.PbrTexTiling = objData.PbrTexTiling > 0f ? objData.PbrTexTiling : 1f;
                         obj.PbrParallaxScale = Math.Clamp(objData.PbrParallaxScale, 0f, 0.5f);
                         obj.PbrPomShadowStrength = Math.Clamp(objData.PbrPomShadowStrength, 0f, 1f);
+                        obj.PbrRandomTiling = objData.PbrRandomTiling > 0.5f;
                         obj.PbrHeightContrast = Math.Clamp(objData.PbrHeightContrast, 0.1f, 4f);
                         obj.PbrHeightContrastCenter = Math.Clamp(objData.PbrHeightContrastCenter, 0f, 1f);
                         obj.PbrHeightOffset = Math.Clamp(objData.PbrHeightOffset, -0.5f, 0.5f);
@@ -1865,6 +1871,7 @@ public class SceneManagerPanel
                             SplatLayerAo = [.. obj.SplatLayerAoPath.Skip(1).Select(PathHelpers.MakeRelative)],
                             SplatLayerHeight = [.. obj.SplatLayerHeightPath.Skip(1).Select(PathHelpers.MakeRelative)],
                             SplatLayerTints = obj.SplatLayerTint.SelectMany(t => new[] { t.X, t.Y, t.Z }).ToArray(),
+                            SplatLayerTilings = obj.SplatLayerTiling.ToArray(),
                             SplatHeightBandsEnabled = obj.SplatHeightBandsEnabled,
                             SplatHeightLayerCount = obj.SplatHeightLayerCount,
                             SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
@@ -1873,6 +1880,7 @@ public class SceneManagerPanel
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,
                             PbrPomShadowStrength = obj.PbrPomShadowStrength,
+                            PbrRandomTiling = obj.PbrRandomTiling ? 1f : 0f,
                             PbrHeightContrast = obj.PbrHeightContrast,
                             PbrHeightContrastCenter = obj.PbrHeightContrastCenter,
                             PbrHeightOffset = obj.PbrHeightOffset,

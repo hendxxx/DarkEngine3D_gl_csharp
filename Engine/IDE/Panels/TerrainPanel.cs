@@ -354,6 +354,13 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                             obj.SplatLayerTint[l] = col;
                         ImGui.SameLine();
                         ImGui.Text($"Layer {l}");
+                        // Per-layer texture density — independent of the global Map
+                        // Tiling (the paint mask always stays 1:1 with the terrain).
+                        float lt = obj.SplatLayerTiling[l];
+                        if (ImGui.SliderFloat("Tiling##terrain_splat", ref lt, 0.25f, 16f, "%.2f", ImGuiSliderFlags.Logarithmic))
+                            obj.SplatLayerTiling[l] = lt;
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("This layer's texture tiling across the whole terrain.\nIndependent from the PBR panel's Map Tiling —\nthe paint mask never tiles.");
                         for (int m = 0; m < 6; m++)
                         {
                             string path = obj.GetSplatLayerPath(m, l) ?? "";

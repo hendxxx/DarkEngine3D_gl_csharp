@@ -960,6 +960,45 @@ public static unsafe class DialogueSystem
             }
         }
 
+        // ── Button-mode PORTAL key badge ("[E]" above the portal) ──
+        // Mirrors the NPC "[E] Talk" prompt: a dark plate + key label floats above the
+        // portal whenever the player is INSIDE its area (armed). Auto-enter portals
+        // need no key → no badge. Skipped while a conversation owns the screen.
+        if (ShowPrompts && Active == null && manager != null && camera != null)
+        {
+            var player = manager.Objects.FirstOrDefault(o =>
+                o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D });
+            if (player != null)
+            {
+                foreach (var (area, map) in TriggerEventSystem.ButtonModePortals(manager))
+                {
+                    if (!area.RuntimePortalWasInside) continue; // player not inside → no badge
+                    if (string.IsNullOrWhiteSpace(area.PortalEnterKey)) continue;
+
+                    // Badge anchor: the portal's TOP edge (visual height follows the
+                    // PortalVisual override, else the area rect), centered in X.
+                    float cellB = map.TileSize * Tilemap2D.WorldScale;
+                    float visHPx = area.PortalVisualHeightPx > 0f ? area.PortalVisualHeightPx : area.HeightPx;
+                    float cy = map.Height * cellB - (area.TopPx + visHPx) * Tilemap2D.WorldScale;
+                    var top = Project(new Vector3(
+                        (area.LeftPx + area.WidthPx * 0.5f) * Tilemap2D.WorldScale,
+                        cy + 0.45f, player.Position.Z), w, h);
+                    var scrP = sceneToScreen(new Vector2(top.X, top.Y));
+
+                    string key = area.PortalEnterKey.Trim().ToUpperInvariant();
+                    if (key.Length == 0) key = "E";
+                    string label = $"[{key}]";
+                    float lw = TextW(label), lh = TextH(label);
+                    float padX = 6f, padY = 4f;
+                    dl.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX - 1f, scrP.Y - lh - padY * 2 - 1f),
+                        new Vector2(scrP.X + lw / 2 + padX + 1f, scrP.Y + 1f), Rgba(new Vector3(1f, 0.85f, 0.25f), 0.85f));
+                    dl.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX, scrP.Y - lh - padY * 2),
+                        new Vector2(scrP.X + lw / 2 + padX, scrP.Y), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.85f));
+                    Text(label, new Vector2(scrP.X - lw / 2, scrP.Y - lh - padY), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f));
+                }
+            }
+        }
+
         // ── NPC "!" indicators + interact prompt (world-anchored) ──
         if (ShowPrompts && manager != null && camera != null)
         {

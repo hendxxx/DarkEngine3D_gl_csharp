@@ -339,6 +339,9 @@ public class EditorObjectData
     public float PbrParallaxScale { get; set; } = 0.15f;
     /// <summary>Relief self-shadowing strength for the height-map POM (0 = off, 1 = hard).</summary>
     public float PbrPomShadowStrength { get; set; } = 0.6f;
+    /// <summary>Random tiling anti-repetition strength (0 = exact tiling … 1 = random
+    /// quarter-turn + offset per tile, seamless border-blended).</summary>
+    public float PbrRandomTiling { get; set; } = 0f;
     /// <summary>Marmoset-style height calibration: contrast (1 = off).</summary>
     public float PbrHeightContrast { get; set; } = 1f;
     /// <summary>Marmoset-style height calibration: contrast center (mid gray).</summary>
@@ -390,6 +393,8 @@ public class EditorObjectData
     public string?[] SplatLayerHeight { get; set; }
     /// <summary>Per-layer fallback tints when the layer's albedo slot is empty.</summary>
     public float[]? SplatLayerTints { get; set; }   // 12 floats: 4 layers × RGB
+    /// <summary>Per-layer texture tiling for splat layers 1-3 (4 floats — index 0 unused).</summary>
+    public float[]? SplatLayerTilings { get; set; }
     /// <summary>AUTO height bands over the sculpted elevation (weights per layer).</summary>
     public bool SplatHeightBandsEnabled { get; set; } = false;
     public int SplatHeightLayerCount { get; set; } = -1;      // absent = legacy → 4

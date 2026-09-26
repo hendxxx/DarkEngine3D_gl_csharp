@@ -603,6 +603,11 @@ public unsafe class EditorObject
     /// 1 = hard). Marches the height field toward the sun so displaced slopes cast contact
     /// shadows. Only visible while parallax depth is non-zero.</summary>
     public float PbrPomShadowStrength { get; set; } = 0f;
+    /// <summary>Random tiling anti-repetition ON/OFF. When ON, every tile gets a
+    /// random quarter-turn + offset (border-blended so tiles stay seamless).
+    /// Applies to the 6 color/detail maps and the splat layers — NEVER the height map
+    /// (vertex displacement + POM march + CPU picking must stay UV-locked).</summary>
+    public bool PbrRandomTiling { get; set; } = false;
     // ── Marmoset-style height calibration (Displacement module equivalents) ──
     /// <summary>Height contrast: exaggerates separation between low/high areas (1 = off).</summary>
     public float PbrHeightContrast { get; set; } = 1f;
@@ -777,12 +782,19 @@ public unsafe class EditorObject
         if (PrimitiveType != EditorPrimitiveType.Plane) return null;
         if (!string.IsNullOrEmpty(_sculptDeltaPath) && _sculptDecodeFailedPath != _sculptDeltaPath)
         {
-            var loaded = TerrainHeightfield.FromImage(PathHelpers.Resolve(_sculptDeltaPath));
-            if (loaded != null)
+            var resolvedDelta = PathHelpers.Resolve(_sculptDeltaPath);
+            // MISSING file → skip silently (sticky marker) — no sculpt bake yet.
+            if (!File.Exists(resolvedDelta))
+                _sculptDecodeFailedPath = _sculptDeltaPath;
+            else
             {
-                _sculptField = loaded;
-                loaded.FlushTexture();   // build the GPU texture for the draw gate
-                return _sculptField;
+                var loaded = TerrainHeightfield.FromImage(resolvedDelta);
+                if (loaded != null)
+                {
+                    _sculptField = loaded;
+                    loaded.FlushTexture();   // build the GPU texture for the draw gate
+                    return _sculptField;
+                }
             }
             _sculptDecodeFailedPath = _sculptDeltaPath;
         }
@@ -1061,6 +1073,11 @@ public unsafe class EditorObject
     [
         new(1f, 1f, 1f), new(0.55f, 0.45f, 0.35f), new(0.5f, 0.55f, 0.5f), new(0.75f, 0.72f, 0.7f),
     ];
+    /// <summary>Per-layer texture tiling for splat layers 1-3 (index 0 unused — layer 0
+    /// IS the base PBR material and carries its own per-map tiling). INDEPENDENT from
+    /// the global Map Tiling so the paint weight mask always maps 1:1 onto the terrain
+    /// while each layer picks its own texture density.</summary>
+    public float[] SplatLayerTiling { get; } = [1f, 1f, 1f, 1f];
 
     /// <summary>GPU textures for the splat layers: slots 0-3 albedo, 4-7 normal,
     /// 8-11 metallic, 12-15 roughness, 16-19 AO, 20-23 height (layer 0 slots are
@@ -1068,7 +1085,9 @@ public unsafe class EditorObject
     private readonly uint[] _splatTex = new uint[24];
 
     /// <summary>Lazy-load the splat layer textures from their paths (missing files
-    /// just leave the slot at 0 — the shader gates per-layer presence).</summary>
+    /// just leave the slot at 0 — the shader gates per-layer presence). Also part of
+    /// the HasPbrMaterial splat term: layers must LOAD before the PBR-path draw so
+    /// the per-layer presence uniforms read real values on the first frame.</summary>
     private void EnsureSplatTextures()
     {
         LoadSplatRange(0, SplatLayerAlbedoPath);
@@ -1088,10 +1107,10 @@ public unsafe class EditorObject
             try
             {
                 string resolved = PathHelpers.Resolve(p);
+                // MISSING file → silent skip (the shader gates per-layer presence; a
+                // per-frame log for a path the user simply cleared is just noise).
                 if (File.Exists(resolved))
                     _splatTex[slotBase + l] = new Texture(resolved).ID;
-                else
-                    Console.WriteLine($"[TerrainSplat] '{Name}' layer texture missing: {p}");
             }
             catch (Exception ex)
             {
@@ -1138,14 +1157,22 @@ public unsafe class EditorObject
         string stored = _splatMapPath;
         if (!string.IsNullOrEmpty(stored) && _splatDecodeFailedPath != stored)
         {
-            var loaded = TerrainSplatField.FromFile(PathHelpers.Resolve(stored));
-            if (loaded != null)
+            var resolvedSplat = PathHelpers.Resolve(stored);
+            // MISSING file → skip silently (sticky marker) — no paint bake yet; the
+            // session simply starts from an empty layer-0 field.
+            if (!File.Exists(resolvedSplat))
+                _splatDecodeFailedPath = stored;
+            else
             {
-                _splatField = loaded;
-                _splatLoadedPath = stored;
-                loaded.FlushTexture();   // build the GPU texture NOW — the draw gate
-                                        // needs GpuTexture != 0 to activate the splat
-                return _splatField;
+                var loaded = TerrainSplatField.FromFile(resolvedSplat);
+                if (loaded != null)
+                {
+                    _splatField = loaded;
+                    _splatLoadedPath = stored;
+                    loaded.FlushTexture();   // build the GPU texture NOW — the draw gate
+                                            // needs GpuTexture != 0 to activate the splat
+                    return _splatField;
+                }
             }
             _splatDecodeFailedPath = stored;
         }
@@ -1162,13 +1189,20 @@ public unsafe class EditorObject
         string stored = _splatMapPath;
         if (!string.IsNullOrEmpty(stored) && _splatDecodeFailedPath != stored)
         {
-            var loaded = TerrainSplatField.FromFile(PathHelpers.Resolve(stored));
-            if (loaded != null)
+            var resolvedSplat = PathHelpers.Resolve(stored);
+            // MISSING file → skip silently (sticky marker) — same as the paint field.
+            if (!File.Exists(resolvedSplat))
+                _splatDecodeFailedPath = stored;
+            else
             {
-                _splatFieldForBands = loaded;
-                _splatLoadedPath = stored;
-                loaded.FlushTexture();   // same as above — activate without a stamp
-                return _splatFieldForBands;
+                var loaded = TerrainSplatField.FromFile(resolvedSplat);
+                if (loaded != null)
+                {
+                    _splatFieldForBands = loaded;
+                    _splatLoadedPath = stored;
+                    loaded.FlushTexture();   // same as above — activate without a stamp
+                    return _splatFieldForBands;
+                }
             }
             _splatDecodeFailedPath = stored;
         }
@@ -1207,9 +1241,13 @@ public unsafe class EditorObject
         var d = HasSculptDelta ? EnsureSculptField() : null;
         var sf = SplatIsPainted ? EnsureSplatPaintField() : EnsureSplatBandField();
         if (sf == null) return;
-        // The field was decoded from the STORED splat file — its texels already
-        // contain the painted-over bands; recomputing would discard the paint.
-        if (!string.IsNullOrEmpty(_splatLoadedPath) && _splatLoadedPath == _splatMapPath)
+        // PAINT ALWAYS WINS over an auto recompute. A band pass REWRITES every
+        // texel from the elevation — running it over a painted field (brush strokes
+        // OR a decoded splat file) silently erases the strokes; the next stroke end
+        // then bakes the band-only weights and the paint is gone. Parameter edits
+        // while paint exists must toggle the bands checkbox instead (fresh band
+        // buffer from the OFF→ON transition).
+        if (sf.HasPaint)
             return;
         // Per-layer presence: layer 0 = base albedo map; layers 1-3 = their own
         // splat albedo textures (_splatTex[0..3] slot layout: index == layer).
@@ -1246,14 +1284,17 @@ public unsafe class EditorObject
     /// pre-stroke snapshot.</summary>
     public void SplatBeginStroke() => _splatField?.BeginStroke();
 
-    /// <summary>Finish a splat stroke: flush + bake the weights (+ paint mask) to
-    /// the splat TGA files and repoint <see cref="SplatMapPath"/> at the bake.</summary>
+    /// <summary>Finish a splat stroke: flush + bake the weights to the splat TGA
+    /// and repoint <see cref="SplatMapPath"/> at the bake. A stroke that mutated
+    /// zero texels (pick miss — stamp landed outside its window) never bakes and
+    /// never overwrites the previous splat file.</summary>
     public void EndSplatStroke(int frameStamp)
     {
         var f = _splatField;
-        if (f == null || !f.HasAnyEdits) return;
+        if (f == null) return;
         f.FlushTexture();
         Console.WriteLine($"[TerrainSplat] '{Name}' stroke end: {f.StrokeTexels} texels mutated this stroke");
+        if (!f.HasPaint) return;          // bands-only / no-op stroke → nothing to bake
         if (!f.NeedsBake || f.LastStrokeStamp == frameStamp) return;
         f.LastStrokeStamp = frameStamp;
         BakeSplatField(f);
@@ -1366,9 +1407,14 @@ public unsafe class EditorObject
     // Lazy uniform-location sets for the two PBR programs (standard / vertex-displaced).
     private PbrUniformSet? _pbrUniformsStd;
     private PbrUniformSet? _pbrUniformsDisp;
+    private PbrUniformSet? _pbrUniformsSplatStd;     // TERRAIN_SPLAT variant (per-object — the
+    private PbrUniformSet? _pbrUniformsSplatDisp;    // uniform locations differ per program)
     /// <summary>One-shot diagnostic latch (per object): which program was last seen as 0
     /// (bit0 = standard, bit1 = displaced) — prevents console spam every frame.</summary>
     private int _warnedDispProgramZero;
+    /// <summary>One-shot diagnostic: the TERRAIN_SPLAT variant failed to link and the
+    /// draw fell back to the plain program (splat textures will not show).</summary>
+    private bool _warnedSplatProgramZero;
     /// <summary>Legacy tessellation constant (kept for shader default + legacy scenes).</summary>
     public const int PbrDisplaceSegments = 256;
     // ── Chunked vertex grid (PBR displaced planes) ──
@@ -1419,13 +1465,27 @@ public unsafe class EditorObject
     }
     /// <summary>True when any PBR map is set — switches the object to the PBR shader.
     /// A terrain elevation heightmap alone also qualifies so a plane with only a base
-    /// shape (no PBR maps at all) still renders through the PBR displaced pipeline.</summary>
+    /// shape (no PBR maps at all) still renders through the PBR displaced pipeline.
+    /// SPLAT state qualifies too: paint sessions, band buffers, stored splat files and
+    /// splat layer textures all live INSIDE DrawPbrPrimitive (weight texture + uniforms
+    /// + shader block) — without this term a plain plane (no heightmap, no PBR maps)
+    /// painted the CPU field silently while the render took the plain vertex-color
+    /// path, so paint NEVER showed (and stored splats vanished after reload).</summary>
     public bool HasPbrMaterial =>
         !string.IsNullOrEmpty(PbrAlbedoPath) || !string.IsNullOrEmpty(PbrNormalPath) ||
         !string.IsNullOrEmpty(PbrMetallicPath) || !string.IsNullOrEmpty(PbrRoughnessPath) ||
         !string.IsNullOrEmpty(PbrAoPath) || !string.IsNullOrEmpty(PbrHeightPath) ||
         !string.IsNullOrEmpty(PbrEmissionPath) ||
-        !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null;
+        // Legacy Inspector "Texture Path" feeds the PBR albedo slot (see EnsurePbrTextures)
+        // — without this term a Box textured only through that slot never entered the PBR
+        // path (the plain path forces useTexture=0) and rendered plain gray.
+        (PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere or EditorPrimitiveType.Plane
+            && !string.IsNullOrEmpty(TexturePath)) ||
+        !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null ||
+        (PrimitiveType == EditorPrimitiveType.Plane &&
+            (_splatField != null || _splatFieldForBands != null ||
+             _splatMapPath.Length > 0 || SplatHeightBandsEnabled ||
+             SplatLayerAlbedoPath.Skip(1).Any(p => !string.IsNullOrEmpty(p))));
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
     public string? GlbFilePath { get; set; } = null;
@@ -2029,12 +2089,21 @@ public unsafe class EditorObject
 
     private void EnsurePbrTextures()
     {
-        string key = $"{PbrAlbedoPath}|{PbrNormalPath}|{PbrMetallicPath}|{PbrRoughnessPath}|{PbrAoPath}|{PbrHeightPath}|{PbrEmissionPath}";
+        // Legacy Inspector "Texture Path" bridges into the PBR ALBEDO slot when no
+        // dedicated albedo map is assigned (Box/Sphere/Plane). It used to load into a
+        // GPU texture that NO draw path ever bound (the plain path forces useTexture=0,
+        // and HasPbrMaterial never counted the slot) — a textured Box rendered plain
+        // gray. The path participates in the cache key so clearing/changing it reloads.
+        bool legacyAlbedo = string.IsNullOrEmpty(PbrAlbedoPath)
+            && PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere or EditorPrimitiveType.Plane
+            && !string.IsNullOrEmpty(TexturePath);
+        string albedoSrc = legacyAlbedo ? TexturePath! : PbrAlbedoPath;
+        string key = $"{albedoSrc}|{PbrNormalPath}|{PbrMetallicPath}|{PbrRoughnessPath}|{PbrAoPath}|{PbrHeightPath}|{PbrEmissionPath}";
         if (key == _pbrCacheKey) return;
         DisposePbrTextures();
         _pbrCacheKey = key;
 
-        string[] paths = [PbrAlbedoPath, PbrNormalPath, PbrMetallicPath, PbrRoughnessPath, PbrAoPath, PbrHeightPath, PbrEmissionPath];
+        string[] paths = [albedoSrc, PbrNormalPath, PbrMetallicPath, PbrRoughnessPath, PbrAoPath, PbrHeightPath, PbrEmissionPath];
         string[] names = ["albedo", "normal", "metallic", "roughness", "ao", "height", "emission"];
         var loaded = new List<string>();
         for (int i = 0; i < 7; i++)
@@ -2097,8 +2166,7 @@ public unsafe class EditorObject
     private class PbrUniformSet
     {
         public readonly uint Program;
-        public int View, Proj, Model, SunDir, LightColor, ViewPos, FogColor, UseFog;
-        public readonly int[] UvScale = new int[7];   // per-map u_uvScale[i]
+        public int View, Proj, Model, SunDir, LightColor, ViewPos, FogColor, UseFog;        public readonly int[] UvScale = new int[7];   // per-map u_uvScale[i]
         public readonly int[] UvOffset = new int[7];  // per-map u_uvOffset[i]
         public readonly int[] Maps = new int[7];     // albedo..emission (units 0-6)
         public readonly int[] UseMaps = new int[7];  // useAlbedo..useEmission
@@ -2108,6 +2176,7 @@ public unsafe class EditorObject
         public int ShowCSMCascadeColor;
         public int ParallaxScale;
         public int PomShadowStrength;
+        public int RandomTiling;
         public int HeightAdvance;
         /// <summary>Calibrated zero-displacement baseline (u_heightAdvance.w) — used as the
         /// world-AABB padding so per-chunk frustum culling never culls displaced peaks.</summary>
@@ -2120,6 +2189,7 @@ public unsafe class EditorObject
         public int SplatWeights, SplatActive;
         public int SplatHasAlbedo, SplatHasNormal, SplatHasMetal, SplatHasRough, SplatHasAo, SplatHasHeight;
         public int SplatTint, SplatNormalStr, SplatDetail;
+        public readonly int[] SplatLayerTiling = new int[4];   // u_splatLayerTiling[4]
         public readonly int[] SplatAlbedo = new int[4];
         public readonly int[] SplatNormal = new int[4];
         public readonly int[] SplatMetal = new int[4];
@@ -2171,6 +2241,7 @@ public unsafe class EditorObject
             ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
             ParallaxScale = GL.GetUniformLocation(Program, "parallaxScale");
             PomShadowStrength = GL.GetUniformLocation(Program, "u_pomShadowStrength");
+            RandomTiling = GL.GetUniformLocation(Program, "u_randomTiling");
             HeightAdvance = GL.GetUniformLocation(Program, "u_heightAdvance");
             VertexDisplace = GL.GetUniformLocation(Program, "u_vertexDisplace");
             DispScale = GL.GetUniformLocation(Program, "u_dispScale");
@@ -2193,6 +2264,7 @@ public unsafe class EditorObject
                 SplatRough[l] = GL.GetUniformLocation(Program, $"u_splatRough[{l}]");
                 SplatAo[l] = GL.GetUniformLocation(Program, $"u_splatAo[{l}]");
                 SplatHeight[l] = GL.GetUniformLocation(Program, $"u_splatHeight[{l}]");
+                SplatLayerTiling[l] = GL.GetUniformLocation(Program, $"u_splatLayerTiling[{l}]");
             }
             SplatActive = GL.GetUniformLocation(Program, "u_splatActive");
             SplatHasAlbedo = GL.GetUniformLocation(Program, "u_splatHasAlbedo");
@@ -2401,12 +2473,37 @@ public unsafe class EditorObject
 
         // Program choice: planes with a terrain elevation heightmap (or a sculpt
         // delta) use the geometric-displacement vertex stage; everything else the
-        // standard one. Both share the objectPbr fragment stage.
+        // standard one. Both share the objectPbr fragment stage. A plane with splat
+        // state (live field / band buffer / stored weight file) uses the
+        // TERRAIN_SPLAT VARIANT of the same fragment source — the base program has
+        // no splat samplers at all (GL_MAX_TEXTURE_IMAGE_UNITS budget: 17 base vs
+        // 31 splat; one program cannot carry both, which is exactly why the old
+        // single-program splat block got stripped as "dead code" when the link
+        // started failing with 'Number of sampler exceeds the limitation').
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
                          && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || HasSculptDelta);
-        var u = displaced
-            ? (_pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()))
-            : (_pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()));
+        bool splatVariant = PrimitiveType == EditorPrimitiveType.Plane
+            && (_splatField != null || _splatFieldForBands != null || _splatMapPath.Length > 0);
+        var u = (displaced, splatVariant) switch
+        {
+            (true, true) => (_pbrUniformsSplatDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatDisplaceShaderProgram())),
+            (true, false) => (_pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram())),
+            (false, true) => (_pbrUniformsSplatStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrSplatShaderProgram())),
+            (false, false) => (_pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram())),
+        };
+        // Splat-variant link failure → fall back to the plain program (the splat
+        // binds degrade to no-op uniform -1 writes; the plane still renders).
+        if (splatVariant && u.Program == 0)
+        {
+            if (!_warnedSplatProgramZero)
+            {
+                _warnedSplatProgramZero = true;
+                Console.WriteLine($"[PBR] SPLAT shader variant == 0 (failed to link) — '{Name}' falls back to the plain objectPbr program (splat textures will NOT show).");
+            }
+            u = displaced
+                ? (_pbrUniformsDisp ??= new PbrUniformSet((uint)Shader.GetObjectPbrDisplaceShaderProgram()))
+                : (_pbrUniformsStd ??= new PbrUniformSet((uint)Shader.GetObjectPbrShaderProgram()));
+        }
         uint pbr = u.Program;
         if (pbr == 0)
         {
@@ -2488,11 +2585,19 @@ public unsafe class EditorObject
                 deltaTex = _sculptField.GpuTexture;
             else if (_sculptDeltaPath.Length > 0)
             {
-                // Lazy-load the stored delta bake (once per path).
-                if (_sculptDeltaTex == 0)
+                // Lazy-load the stored delta bake (once per path). A MISSING file is
+                // skipped SILENTLY (sticky per-path) — the scene simply has no sculpt
+                // bake yet; a decode error on an EXISTING file still logs.
+                if (_sculptDeltaTex == 0 && _sculptDecodeFailedPath != _sculptDeltaPath)
                 {
-                    try { _sculptDeltaTex = new Texture(PathHelpers.Resolve(_sculptDeltaPath)).ID; }
-                    catch (Exception ex) { Console.WriteLine($"[TerrainSculpt] '{Name}' delta load failed: {ex.Message}"); }
+                    var resolvedDelta = PathHelpers.Resolve(_sculptDeltaPath);
+                    if (!File.Exists(resolvedDelta))
+                        _sculptDecodeFailedPath = _sculptDeltaPath;
+                    else
+                    {
+                        try { _sculptDeltaTex = new Texture(resolvedDelta).ID; }
+                        catch (Exception ex) { Console.WriteLine($"[TerrainSculpt] '{Name}' delta load failed: {ex.Message}"); }
+                    }
                 }
                 deltaTex = _sculptDeltaTex;
             }
@@ -2532,49 +2637,50 @@ public unsafe class EditorObject
                 : _splatFieldForBands!.GpuTexture;
             GL.ActiveTexture(Const.GL_TEXTURE0 + 10);
             GL.BindTexture(Const.GL_TEXTURE_2D, splatWeightsTex);
-            // Per-layer presence (vec4 uploaded as 4 × Uniform1i — no Uniform4i).
+            // Per-layer presence: the shader uniforms are FLOAT vec4s — they MUST be
+            // uploaded with Uniform4f. The old 4 × Uniform1i(loc+i) scheme was a silent
+            // double bug: glUniform1i on a vec4 location = GL_INVALID_OPERATION (call
+            // dropped → presence stayed (0,0,0,0) → assigned layer textures were NEVER
+            // sampled, the tint color always showed), AND loc+1..+3 on a non-array vec4
+            // are not the vec4's other components (a vec4 has ONE location) — those
+            // writes landed on UNRELATED uniforms, corrupting whatever sat next in the
+            // splat program (wrong sampler units → random wrong textures).
             if (u.SplatHasAlbedo >= 0)
-            {
-                GL.Uniform1i(u.SplatHasAlbedo, _pbrTex[0] != 0 ? 1 : 0);
-                GL.Uniform1i(u.SplatHasAlbedo + 1, _splatTex[1] != 0 ? 1 : 0);
-                GL.Uniform1i(u.SplatHasAlbedo + 2, _splatTex[2] != 0 ? 1 : 0);
-                GL.Uniform1i(u.SplatHasAlbedo + 3, _splatTex[3] != 0 ? 1 : 0);
-                if (u.SplatHasNormal >= 0)
-                {
-                    GL.Uniform1i(u.SplatHasNormal, _pbrTex[1] != 0 ? 1 : 0);
-                    GL.Uniform1i(u.SplatHasNormal + 1, _splatTex[5] != 0 ? 1 : 0);
-                    GL.Uniform1i(u.SplatHasNormal + 2, _splatTex[6] != 0 ? 1 : 0);
-                    GL.Uniform1i(u.SplatHasNormal + 3, _splatTex[7] != 0 ? 1 : 0);
-                    if (u.SplatHasMetal >= 0)
-                    {
-                        GL.Uniform1i(u.SplatHasMetal, _pbrTex[2] != 0 ? 1 : 0);
-                        GL.Uniform1i(u.SplatHasMetal + 1, _splatTex[9] != 0 ? 1 : 0);
-                        GL.Uniform1i(u.SplatHasMetal + 2, _splatTex[10] != 0 ? 1 : 0);
-                        GL.Uniform1i(u.SplatHasMetal + 3, _splatTex[11] != 0 ? 1 : 0);
-                        if (u.SplatHasRough >= 0)
-                        {
-                            GL.Uniform1i(u.SplatHasRough, _pbrTex[3] != 0 ? 1 : 0);
-                            GL.Uniform1i(u.SplatHasRough + 1, _splatTex[13] != 0 ? 1 : 0);
-                            GL.Uniform1i(u.SplatHasRough + 2, _splatTex[14] != 0 ? 1 : 0);
-                            GL.Uniform1i(u.SplatHasRough + 3, _splatTex[15] != 0 ? 1 : 0);
-                            if (u.SplatHasAo >= 0)
-                            {
-                                GL.Uniform1i(u.SplatHasAo, _pbrTex[4] != 0 ? 1 : 0);
-                                GL.Uniform1i(u.SplatHasAo + 1, _splatTex[17] != 0 ? 1 : 0);
-                                GL.Uniform1i(u.SplatHasAo + 2, _splatTex[18] != 0 ? 1 : 0);
-                                GL.Uniform1i(u.SplatHasAo + 3, _splatTex[19] != 0 ? 1 : 0);
-                                if (u.SplatHasHeight >= 0)
-                                {
-                                    GL.Uniform1i(u.SplatHasHeight, _pbrTex[5] != 0 ? 1 : 0);
-                                    GL.Uniform1i(u.SplatHasHeight + 1, _splatTex[21] != 0 ? 1 : 0);
-                                    GL.Uniform1i(u.SplatHasHeight + 2, _splatTex[22] != 0 ? 1 : 0);
-                                    GL.Uniform1i(u.SplatHasHeight + 3, _splatTex[23] != 0 ? 1 : 0);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+                GL.Uniform4f(u.SplatHasAlbedo,
+                    _pbrTex[0] != 0 ? 1f : 0f,
+                    _splatTex[1] != 0 ? 1f : 0f,
+                    _splatTex[2] != 0 ? 1f : 0f,
+                    _splatTex[3] != 0 ? 1f : 0f);
+            if (u.SplatHasNormal >= 0)
+                GL.Uniform4f(u.SplatHasNormal,
+                    _pbrTex[1] != 0 ? 1f : 0f,
+                    _splatTex[5] != 0 ? 1f : 0f,
+                    _splatTex[6] != 0 ? 1f : 0f,
+                    _splatTex[7] != 0 ? 1f : 0f);
+            if (u.SplatHasMetal >= 0)
+                GL.Uniform4f(u.SplatHasMetal,
+                    _pbrTex[2] != 0 ? 1f : 0f,
+                    _splatTex[9] != 0 ? 1f : 0f,
+                    _splatTex[10] != 0 ? 1f : 0f,
+                    _splatTex[11] != 0 ? 1f : 0f);
+            if (u.SplatHasRough >= 0)
+                GL.Uniform4f(u.SplatHasRough,
+                    _pbrTex[3] != 0 ? 1f : 0f,
+                    _splatTex[13] != 0 ? 1f : 0f,
+                    _splatTex[14] != 0 ? 1f : 0f,
+                    _splatTex[15] != 0 ? 1f : 0f);
+            if (u.SplatHasAo >= 0)
+                GL.Uniform4f(u.SplatHasAo,
+                    _pbrTex[4] != 0 ? 1f : 0f,
+                    _splatTex[17] != 0 ? 1f : 0f,
+                    _splatTex[18] != 0 ? 1f : 0f,
+                    _splatTex[19] != 0 ? 1f : 0f);
+            if (u.SplatHasHeight >= 0)
+                GL.Uniform4f(u.SplatHasHeight,
+                    _pbrTex[5] != 0 ? 1f : 0f,
+                    _splatTex[21] != 0 ? 1f : 0f,
+                    _splatTex[22] != 0 ? 1f : 0f,
+                    _splatTex[23] != 0 ? 1f : 0f);
             // Layer 0 tint = the object color (mirrors the plain path's fallback).
             if (u.SplatTint >= 0)
             {
@@ -2584,6 +2690,11 @@ public unsafe class EditorObject
                 GL.Uniform3f(u.SplatTint + 3, SplatLayerTint[3].X, SplatLayerTint[3].Y, SplatLayerTint[3].Z);
             }
             if (u.SplatNormalStr >= 0) GL.Uniform1f(u.SplatNormalStr, Math.Clamp(PbrNormalStrength, 0f, 2f));
+            // Per-layer texture tiling (layers 1-3; each slot uploads independently —
+            // the compiler may drop unused array slots so [0] can legitimately be −1).
+            for (int l = 0; l < 4; l++)
+                if (u.SplatLayerTiling[l] >= 0)
+                    GL.Uniform1f(u.SplatLayerTiling[l], Math.Clamp(SplatLayerTiling[l], 0.01f, 100f));
             if (u.SplatDetail >= 0) GL.Uniform1f(u.SplatDetail, Math.Clamp(PbrParallaxScale, 0f, 0.5f) > 0f ? 1f : 0f);
             // Layer textures: units 11-14 albedo, 21-24 normal, 31-34 metal,
             // 41-44 rough, 51-54 AO, 61-64 height (layer 0 → the base maps).
@@ -2766,6 +2877,7 @@ public unsafe class EditorObject
         GL.Uniform1f(u.EmissionIntensity, PbrEmissionIntensity);
         if (u.ParallaxScale >= 0) GL.Uniform1f(u.ParallaxScale, PbrParallaxScale);
         if (u.PomShadowStrength >= 0) GL.Uniform1f(u.PomShadowStrength, Math.Clamp(PbrPomShadowStrength, 0f, 1f));
+        if (u.RandomTiling >= 0) GL.Uniform1f(u.RandomTiling, PbrRandomTiling ? 1f : 0f);
 
         GL.BindVertexArray(_object3D!.VAO);
         // ── Flat planes: single CCW quad → culled (invisible) from below. Draw PBR
@@ -4252,6 +4364,10 @@ public unsafe class EditorObject
         var mgr = TriggerEventSystem.LastEditorObjectManager;
         if (mgr == null) return;
 
+        // Hoisted out of the portal loop (CA2014): one reusable stackalloc for all
+        // portal quads this frame, refilled per portal.
+        Span<Map2DVertex> quadVerts = stackalloc Map2DVertex[6];
+
         var maps = mgr.Objects
             .Where(o => o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Map2D })
             .Select(o => o.Map2dTilemap)
@@ -4264,24 +4380,47 @@ public unsafe class EditorObject
             {
                 if (t == null || !t.IsEnabled && string.IsNullOrEmpty(t.PortalSheet)) continue;
                 if (string.IsNullOrEmpty(t.PortalSheet)) continue;
-                if (t.RuntimeHidden && string.IsNullOrEmpty(t.PortalAnimOut)) continue;
+                // A vanished (one-way) portal stays invisible; only its Out (vanish)
+                // animation still draws during the "out" phase.
+                if (t.RuntimeHidden && t.RuntimePortalPhase != "out") continue;
                 if (!IDEBridge.TryGetSpriteSheetTexture(t.PortalSheet, out uint texId, out int _, out int _))
                     continue;
                 if (texId == 0) continue;
 
                 var (clipName, once, clock) = TriggerEventSystem.GetPortalDisplayState(t);
                 if (string.IsNullOrEmpty(clipName)) continue;
-                if (!IDEBridge.TryGetSpriteClip(t.PortalSheet, clipName, out var sheet, out var clip)
-                    || sheet == null || clip == null) continue;
 
-                int count = clip.FrameIndices.Count;
+                // Clip may fail to resolve when the sheet has NO clips at all (or the
+                // named state clip is missing) — the full-sheet fallback below handles
+                // both by animating the sheet's implicit grid.
+                IDEBridge.TryGetSpriteClip(t.PortalSheet, clipName, out var sheet, out var clip);
+                // No (sheet, clip) pair → resolve the sheet object itself so the grid
+                // fallback can compute frame UVs (texture existing implies the sheet
+                // object is registered).
+                if (sheet == null)
+                    IDEBridge.TryGetSpriteSheet(t.PortalSheet, out sheet);
+
+                // Full-sheet fallback: the portal's sheet has NO animation clips at all
+                // (e.g. "Greyscale Portal-Spinning" only loaded as a sheet) → sheet/clip
+                // resolve to null. Animate the sheet's implicit frame grid (Columns×Rows)
+                // at a sensible default rate instead of skipping the portal — an authored
+                // portal must never be invisible, and a spinning-portal grid reads as an
+                // animation.
+                bool fullSheet = sheet == null || clip == null || clip.FrameIndices.Count <= 0;
+
+                int count = fullSheet
+                    ? (sheet != null && sheet.Columns > 0 && sheet.Rows > 0 ? sheet.Columns * sheet.Rows : 1)
+                    : clip!.FrameIndices.Count;
                 if (count <= 0) continue;
-                float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier));
-                int f = once ? Math.Clamp((int)(clock / frameDur), 0, count - 1)
-                             : ((int)(clock / frameDur) % count + count) % count;
-                int frameIdx = clip.FrameIndices[f];
+                const float fullSheetFPS = 8f;
+                float frameDur = fullSheet
+                    ? 1f / fullSheetFPS
+                    : 1f / MathF.Max(0.01f, clip!.FPS * MathF.Max(0.01f, clip.SpeedMultiplier));
+                int f = once && !fullSheet ? Math.Clamp((int)(clock / frameDur), 0, count - 1)
+                                           : ((int)(clock / frameDur) % count + count) % count;
+                int frameIdx = fullSheet ? Math.Clamp(f, 0, count - 1) : clip!.FrameIndices[f];
 
-                var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
+                var (uvMinRaw, uvMaxRaw) = sheet!.GetFrameUV(frameIdx);
                 // Same top-row-first upload convention as the player/sprite paths.
                 float su0 = uvMinRaw.X, su1 = uvMaxRaw.X;
                 float svBot = 1f - uvMinRaw.Y;
@@ -4289,7 +4428,7 @@ public unsafe class EditorObject
                 // Sheet-level Flip Y (Sprite Editor) applies to portals too. NOTE: the
                 // X-mirror must NOT be applied as a UV swap for a centered portal —
                 // two X swaps would cancel and the offset would misalign the art.
-                if (sheet.FlipY) (svBot, svTop) = (svTop, svBot);
+                if (sheet != null && sheet.FlipY && !fullSheet) (svBot, svTop) = (svTop, svBot);
 
                 // Rect: portal visual size (px → world), centered on the trigger area,
                 // bottom aligned to the area's bottom edge (feet line).
@@ -4328,19 +4467,19 @@ public unsafe class EditorObject
                 GL.Disable(Const.GL_CULL_FACE);
                 bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
 
-                var verts = stackalloc Map2DVertex[6]
-                {
-                    new(x0, y0, z, su0, svBot, 1f, 1f, 1f, 1f),
-                    new(x1, y0, z, su1, svBot, 1f, 1f, 1f, 1f),
-                    new(x1, y1, z, su1, svTop, 1f, 1f, 1f, 1f),
-                    new(x0, y0, z, su0, svBot, 1f, 1f, 1f, 1f),
-                    new(x1, y1, z, su1, svTop, 1f, 1f, 1f, 1f),
-                    new(x0, y1, z, su0, svTop, 1f, 1f, 1f, 1f),
-                };
+                quadVerts[0] = new(x0, y0, z, su0, svBot, 1f, 1f, 1f, 1f);
+                quadVerts[1] = new(x1, y0, z, su1, svBot, 1f, 1f, 1f, 1f);
+                quadVerts[2] = new(x1, y1, z, su1, svTop, 1f, 1f, 1f, 1f);
+                quadVerts[3] = new(x0, y0, z, su0, svBot, 1f, 1f, 1f, 1f);
+                quadVerts[4] = new(x1, y1, z, su1, svTop, 1f, 1f, 1f, 1f);
+                quadVerts[5] = new(x0, y1, z, su0, svTop, 1f, 1f, 1f, 1f);
                 {
                     GL.BindVertexArray(_portalVAO);
                     GL.BindBuffer(Const.GL_ARRAY_BUFFER, _portalVBO);
-                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
+                    fixed (Map2DVertex* pVerts = quadVerts)
+                    {
+                        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), pVerts, Const.GL_DYNAMIC_DRAW);
+                    }
                     GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
                     GL.BindVertexArray(0);
                 }

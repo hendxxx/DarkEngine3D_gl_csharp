@@ -29,6 +29,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         // program with 7 optional maps + tuning (reuses the shared vertex shader).
         static uint objectPbrShaderProgram;
         static uint objectPbrDisplaceShaderProgram;
+        static uint objectPbrSplatShaderProgram;
+        static uint objectPbrSplatDisplaceShaderProgram;
 
 #pragma warning disable CS0649
         static uint rainStreakShaderProgram;
@@ -130,6 +132,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             objectPbrDisplaceShaderProgram = Helpers.ShaderHelpers.SafeLoad(
                 "Artifacts/shaders/pbrDisplace_vertex.glsl",
                 "Artifacts/shaders/objectPbr_fragment.glsl");
+
+            // ── TERRAIN SPLAT VARIANT — the SAME objectPbr fragment source compiled
+            // with TERRAIN_SPLAT defined (the splat sampler array + layer blending
+            // are compiled in; the per-layer height sampler is dropped and local-
+            // light shadow sampling is simplified, because 7 base + 3 CSM + 7 local
+            // shadow + 25 splat samplers exceeds GL_MAX_TEXTURE_IMAGE_UNITS = 32).
+            // The base objectPbr program stays sampler-lean for every non-splat
+            // primitive — the splat path is selected per-plane in DrawPbrPrimitive.
+            objectPbrSplatShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/vertex_shader.glsl",
+                "Artifacts/shaders/objectPbr_fragment.glsl",
+                "#define TERRAIN_SPLAT 1\n");
+            objectPbrSplatDisplaceShaderProgram = Helpers.ShaderHelpers.SafeLoad(
+                "Artifacts/shaders/pbrDisplace_vertex.glsl",
+                "Artifacts/shaders/objectPbr_fragment.glsl",
+                "#define TERRAIN_SPLAT 1\n");
         }
 
         public void Use()
@@ -154,6 +172,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         /// <summary>Shader program used to render editor primitives with a PBR material
         /// (optional albedo/normal/metallic/roughness/AO/height/emission maps + tuning).</summary>
+        /// <summary>TERRAIN_SPLAT variant of the objectPbr program — adds the splat
+        /// sampler arrays (units 10-14, 21-23, 31-33, 41-43, 51-53) at the cost of
+        /// the local-light SHADOW samplers (point/spot lights still light the
+        /// surface, they just cast no shadows on splat planes). Returns 0 when the
+        /// variant failed to link (DrawPbrPrimitive then falls back to the plain
+        /// objectPbr program — splat won't render, but nothing breaks).</summary>
+        public static uint GetObjectPbrSplatShaderProgram()
+        {
+            return objectPbrSplatShaderProgram;
+        }
+
+        public static uint GetObjectPbrSplatDisplaceShaderProgram()
+        {
+            return objectPbrSplatDisplaceShaderProgram;
+        }
+
         public static uint GetObjectPbrShaderProgram()
         {
             return objectPbrShaderProgram;

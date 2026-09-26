@@ -326,6 +326,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 GizmoPivotOverride = null,
                 TexSettings = source.TexSettings.Clone(),
                 PbrTexSettings = source.PbrTexSettings.Select(s => s.Clone()).ToArray(),
+                PbrRandomTiling = source.PbrRandomTiling,   // bool — copies directly
                 // Terrain elevation + splat state travels with the duplicate (the
                 // weight map path is SHARED — the file is scene-persistent; the clone
                 // drops its live GPU buffers and re-decodes/recomputes lazily).
@@ -346,6 +347,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 for (int m = 0; m < 6; m++)
                     clone.SetSplatLayerPath(m, l, source.GetSplatLayerPath(m, l));
                 clone.SplatLayerTint[l] = source.SplatLayerTint[l];
+                clone.SplatLayerTiling[l] = source.SplatLayerTiling[l];
             }
             for (int l = 0; l < 4; l++)
                 clone.SplatHeightBands[l] = source.SplatHeightBands[l];

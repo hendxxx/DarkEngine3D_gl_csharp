@@ -299,6 +299,9 @@ public class MapEditorPanel
                 _showDeleteMapPopup = false;
             }
             RenderDeleteTilemapModal(CollectSceneTilemaps());
+
+            // Resize modal — same window-scope requirement as the delete modal.
+            RenderResizeModal();
         }
         ImGui.End();
 
@@ -2052,10 +2055,93 @@ public class MapEditorPanel
         Console.WriteLine($"[MapEditor] Created Map2D scene object for '{ActiveTilemap.Name}'");
     }
 
+    // ── Resize map (modal) ──
+    private bool _showResizePopup;
+    private int _resizeW, _resizeH;
+
     private void ResizeMap()
     {
         if (ActiveTilemap == null) return;
-        Console.WriteLine("[MapEditor] Resize dialog would open here");
+        _resizeW = ActiveTilemap.Width;
+        _resizeH = ActiveTilemap.Height;
+        _showResizePopup = true;
+    }
+
+    private void RenderResizeModal()
+    {
+        if (_showResizePopup)
+        {
+            ImGui.OpenPopup("Resize Tilemap?");
+            _showResizePopup = false;
+        }
+        // Same pattern as the delete modal: local flag (OpenPopup above already
+        // consumed _showResizePopup; a ref to it would insta-close the popup).
+        bool open = true;
+        if (!ImGui.BeginPopupModal("Resize Tilemap?", ref open, ImGuiWindowFlags.AlwaysAutoResize))
+            return;
+
+        var map = ActiveTilemap;
+        if (map == null) { ImGui.EndPopup(); return; }
+
+        ImGui.Text($"Ukuran baru untuk '{map.Name}' (tiles):");
+        ImGui.SetNextItemWidth(120);
+        ImGui.InputInt("Width##rsz", ref _resizeW);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(120);
+        ImGui.InputInt("Height##rsz", ref _resizeH);
+        ImGui.TextDisabled("Tile lama dipertahankan (anchor kiri-atas grid).\nTrigger/spawn yang keluar batas baru di-clamp.");
+
+        if (ImGui.Button("Resize", new Vector2(120, 0)))
+        {
+            ApplyResizeMap();
+            ImGui.CloseCurrentPopup();
+        }
+        ImGui.SetItemDefaultFocus();
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            ImGui.CloseCurrentPopup();
+        ImGui.EndPopup();
+    }
+
+    /// <summary>Resize the ACTIVE tilemap: every layer's tile grid grows/shrinks
+    /// (TileLayer.Resize preserves tiles at the same grid indices — top-left anchor).
+    /// Tile-anchored metadata is clamped into the new bounds: trigger areas (px space),
+    /// the player spawn (world space). The viewport mesh rebakes automatically because
+    /// the Map2D mesh cache key includes Width/Height.</summary>
+    private void ApplyResizeMap()
+    {
+        var map = ActiveTilemap;
+        if (map == null) return;
+        int newW = Math.Clamp(_resizeW, 1, 1024);
+        int newH = Math.Clamp(_resizeH, 1, 1024);
+        if (newW == map.Width && newH == map.Height) return;
+
+        int oldW = map.Width, oldH = map.Height;
+        map.Width = newW;
+        map.Height = newH;
+        foreach (var layer in map.Layers)
+            layer.Resize(newW, newH);
+
+        // Clamp trigger areas into the new pixel bounds (keep size when it fits).
+        float maxPxX = newW * map.TileSize;
+        float maxPxY = newH * map.TileSize;
+        foreach (var t in map.TriggerAreas)
+        {
+            t.LeftPx = Math.Clamp(t.LeftPx, 0f, MathF.Max(0f, maxPxX - t.WidthPx));
+            t.TopPx = Math.Clamp(t.TopPx, 0f, MathF.Max(0f, maxPxY - t.HeightPx));
+        }
+
+        // Clamp the player spawn (stored in world units) into the new map rect.
+        if (map.HasPlayerSpawn)
+        {
+            float worldW = newW * map.TileSize * Tilemap2D.WorldScale;
+            float worldH = newH * map.TileSize * Tilemap2D.WorldScale;
+            map.PlayerSpawn = new Vector2(
+                Math.Clamp(map.PlayerSpawn.X, 0f, worldW),
+                Math.Clamp(map.PlayerSpawn.Y, 0f, worldH));
+        }
+
+        Console.WriteLine($"[MapEditor] Resized '{map.Name}': {oldW}x{oldH} → {newW}x{newH} tiles");
     }
 
     // ── Save/Load ──
@@ -2221,14 +2307,48 @@ public class MapEditorPanel
         }
     }
 
-    /// <summary>Auto-load map when a project is opened.</summary>
+    /// <summary>Auto-load map when a project is opened. Called with null when the
+    /// project CLOSES: wipes the panel's whole map state (active tilemap, registry,
+    /// parallax cache, hover/selection, undo history, tileset preview) so the next
+    /// project starts clean — no ghost "New Level" from the previous project.</summary>
     public void AutoLoadMap(string? projectRoot)
     {
         ActiveTilemap = null;
         ParallaxLayers.Clear();
         _bridge.ActiveTilemap = null;
+        _bridge.Tilemaps?.Clear();
         _undoStack.Clear();
         _redoStack.Clear();
+        _hoveredTileX = -1;
+        _hoveredTileY = -1;
+        _selectedLayerIdx = -1;
+        _selectedTileId = 0;
+        _selectedTileIds.Clear();
+        _selectedParallaxIdx = -1;
+        _showDeleteMapPopup = false;
+        _deleteTilemapFileToo = false;
+        // Parallax GPU texture cache: paths of the old project are meaningless now
+        // (and stale GL textures would leak).
+        foreach (var tex in _parallaxTextures.Values)
+        {
+            if (tex != 0)
+            {
+                uint t = tex;
+                unsafe { GL.DeleteTextures(1, &t); }
+            }
+        }
+        _parallaxTextures.Clear();
+        _parallaxImageDims.Clear();
+
+        // Release the tileset preview GPU texture + reset the tileset UI state.
+        if (_tilesetTextureId != 0)
+        {
+            uint oldTex = _tilesetTextureId;
+            unsafe { GL.DeleteTextures(1, &oldTex); }
+            _tilesetTextureId = 0;
+        }
+        _tilesetImgW = 0;
+        _tilesetImgH = 0;
 
         if (string.IsNullOrEmpty(projectRoot)) return;
 

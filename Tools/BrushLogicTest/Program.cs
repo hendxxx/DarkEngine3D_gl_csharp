@@ -169,6 +169,45 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
     Check("Undo", MathF.Abs(after - before) < 0.001f, $"avg {before:F3} → {after:F3}");
 }
 
+// ── SPLAT FIELD — the paint counter-suite (mirrors the sculpt coverage) ──
+// Exercises TerrainSplatField.ApplyBrush / ComputeHeightBands / bake directly.
+// The regression being pinned: a stamp that mutates ZERO texels must NOT mark the
+// field as painted (HasAnyEdits/HasPaint) — that false positive made stroke end
+// bake an empty/pure-band splat TGA over the previous good bake.
+{
+    var sp = TerrainSplatField.CreateDefault();
+
+    // Bands-only baseline: recompute writes the band weights; the field must NOT
+    // count as painted (nothing baked on stroke end).
+    var flat = TerrainHeightfield.CreateFlat(0.5f);
+    var bands = new Vector2[4]
+    {
+        new(0f, 8f), new(6f, 14f), new(12f, 20f), new(18f, 1e5f),
+    };
+    var caps = new float[] { 1f, 1f, 1f, 1f };
+    sp.ComputeHeightBands(flat, 20f, 0f, 1f, 1f, bands, caps, 2f, 4);
+    Check("Bands → not painted", !sp.HasAnyEdits && !sp.HasPaint, $"HasAnyEdits={sp.HasAnyEdits} HasPaint={sp.HasPaint}");
+
+    // RECOMPUTE IDEMPOTENCE — a second band pass over the same params must not
+    // flip the painted state (same weights; only the flag was at risk).
+    sp.ComputeHeightBands(flat, 20f, 0f, 1f, 1f, bands, caps, 2f, 4);
+
+    // PAINT — a real stamp over the field MUST mutate texels and set the flags.
+    sp.BeginStroke();
+    for (int i = 0; i < 30; i++)
+        sp.ApplyBrush(0f, 0f, Span, Span, new SplatBrushSession { Layer = 1, Radius = 6f, Strength = 2f }, 1f / 60f, i);
+    int paintedTexels = sp.StrokeTexels;
+    Check("Paint mutates texels", paintedTexels > 0, $"{paintedTexels} texels mutated (30 stamps @ r=6)");
+    Check("Paint sets HasAnyEdits/HasPaint", sp.HasAnyEdits && sp.HasPaint, $"HasAnyEdits={sp.HasAnyEdits} HasPaint={sp.HasPaint}");
+
+    // The paint must actually stick above the band weights (bake round-trips it).
+    string spPath = Path.Combine(Path.GetTempPath(), "splat_paint_test.tga");
+    sp.BakeToTga(spPath);
+    var sp2 = TerrainSplatField.FromFile(spPath)!;
+    var c = sp2.SampleWeights(0.5f, 0.5f);
+    Check("Paint survives bake/reload", c.Y > 0.6f, $"layer-1 weight at center {c.Y:F3} — want > 0.6");
+}
+
 Console.WriteLine(fails == 0 ? "\nALL BRUSH TESTS PASSED" : $"\n{fails} TEST(S) FAILED");
 BrushProbe.Run(fails);
 return BrushProbe.Fails;

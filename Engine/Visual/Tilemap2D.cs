@@ -94,15 +94,19 @@ public class Tilemap2D
 
     /// <summary>
     /// Create an empty tilemap with given dimensions.
+    /// ONE layer ("Ground") — parity with the Map Editor's "New Map" and
+    /// "+ Add Layer" (which also create single, fully-allocated layers). The old
+    /// Background/Ground/Foreground triple seeded special-cased layer expectations
+    /// ("collision lives on Ground") that the engine never enforces: collision
+    /// resolves against EVERY layer, so all layers are created equal.
     /// </summary>
     public Tilemap2D(int width, int height, int tileSize = 32)
     {
         Width = width;
         Height = height;
         TileSize = tileSize;
-        Layers.Add(new TileLayer { Name = "Background" });
-        Layers.Add(new TileLayer { Name = "Ground" });
-        Layers.Add(new TileLayer { Name = "Foreground" });
+        Layers.Add(new TileLayer { Name = "Ground", Width = width, Height = height });
+        Layers[0].AllocateTiles();
     }
 
     public Tilemap2D() { }

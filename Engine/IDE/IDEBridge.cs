@@ -209,6 +209,36 @@ public class IDEBridge
         return false;
     }
 
+    /// <summary>Resolve a sheet object by name without needing a clip (used by the
+    /// portal renderer's full-sheet fallback for sheets with no authored clips).</summary>
+    public static bool TryGetSpriteSheet(string sheetName, out SpriteSheet? sheet)
+    {
+        sheet = null;
+        if (sheetName != null && _spriteSheets.TryGetValue(sheetName, out var entry))
+        {
+            sheet = entry.sheet;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>First registered clip name on a sheet (registry order). Used by the
+    /// portal display-state fallback when the portal's sheet has clips but none were
+    /// assigned to the Active/NotActive states.</summary>
+    public static bool TryGetFirstSpriteClipName(string sheetName, out string clipName)
+    {
+        clipName = "";
+        foreach (var kv in _spriteClips)
+        {
+            if (string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase))
+            {
+                clipName = kv.Key.clip;
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Get the player spawn point for the active map, if one was placed in the
     /// Map Editor. Returns false when no map is active or no spawn was set — gameplay
     /// should fall back to its default spawn behavior in that case. The returned world

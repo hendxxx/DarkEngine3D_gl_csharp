@@ -90,7 +90,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         }
 
 
-        public static uint LoadShader(string vertexPath, string fragmentPath)
+        public static uint LoadShader(string vertexPath, string fragmentPath,
+            string? fragmentPrefix = null)
         {
             // Resolve shader paths relative to the exe folder (shaders ship in
             // "Artifacts/shaders" next to the executable).
@@ -99,6 +100,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
 
             string vSource = File.ReadAllText(vertexPath);
             string fSource = File.ReadAllText(fragmentPath);
+            // Optional #define prefix (variant programs compiled from ONE source
+            // file — e.g. the TERRAIN_SPLAT objectPbr variant). Inserted AFTER the
+            // #version line (a #define before #version is illegal in GLSL).
+            if (!string.IsNullOrEmpty(fragmentPrefix))
+            {
+                int vIdx = fSource.IndexOf("#version");
+                if (vIdx >= 0)
+                {
+                    int lineEnd = fSource.IndexOf('\n', vIdx);
+                    if (lineEnd >= 0)
+                        fSource = fSource.Substring(0, lineEnd + 1) + fragmentPrefix + fSource.Substring(lineEnd + 1);
+                    else
+                        fSource = fSource + "\n" + fragmentPrefix;
+                }
+                else fSource = fragmentPrefix + fSource;
+            }
 
             // Compile vertex shader
             uint vs = GL.CreateShader(Const.GL_VERTEX_SHADER);
@@ -155,9 +172,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         }
 
         /// <summary>LoadShader that never throws — returns 0 on failure and logs the error.</summary>
-        public static uint SafeLoad(string vertexPath, string fragmentPath)
+        public static uint SafeLoad(string vertexPath, string fragmentPath,
+            string? fragmentPrefix = null)
         {
-            try { return LoadShader(vertexPath, fragmentPath); }
+            try { return LoadShader(vertexPath, fragmentPath, fragmentPrefix); }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Shader] SafeLoad FAILED for {vertexPath} + {fragmentPath}: {ex.Message}");

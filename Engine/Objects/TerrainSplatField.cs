@@ -22,8 +22,10 @@ public sealed class SplatBrushSession
 {
     /// <summary>Current paint operation (Paint/Erase/Smooth).</summary>
     public SplatBrushMode Mode;
-    /// <summary>Target texture layer 0..3 the Paint/Erase ops modify.</summary>
-    public int Layer;
+    /// <summary>Target texture layer 0..3 the Paint/Erase ops modify.
+    /// Default 1 (not 0): layer 0 IS the base material, so on fresh terrain painting
+    /// layer 0 is a guaranteed visual no-op — the #1 "paint tidak jalan" trap.</summary>
+    public int Layer = 1;
     /// <summary>Brush radius in world units.</summary>
     public float Radius = 5f;
     /// <summary>Application speed (fraction of full weight per second at the core).</summary>
@@ -99,6 +101,7 @@ public sealed class TerrainSplatField
             _w[i] = b[i] / 255f;
         MarkWholeDirty();
         NeedsBake = true;
+        HasPaint = true;   // undo/redo restore is a paint state too (drive the gates)
     }
 
     private void MarkWholeDirty()
@@ -128,8 +131,17 @@ public sealed class TerrainSplatField
         return true;
     }
 
-    /// <summary>True once ANY brush stamp has modified this field.</summary>
+    /// <summary>True once ANY brush stamp has MODIFIED this field (a texel
+    /// actually changed — set inside the stamp loop, not at entry). A stamp that
+    /// lands outside its texel window (pick miss, wrong span) must NOT flip this:
+    /// it would make a bands-only field look painted and bake empty splat files.</summary>
     public bool HasAnyEdits { get; private set; }
+
+    /// <summary>Whether this field carries PAINT (manual brush strokes, undo/redo
+    /// restores, or a decoded splat file — anything that must survive a band
+    /// recompute and bake on stroke end). The bands-only buffer reports false so
+    /// it is never baked as if the user had painted.</summary>
+    public bool HasPaint { get; private set; }
 
     /// <summary>Texels mutated during the CURRENT stroke (reset in BeginStroke,
     /// accumulated per stamp) — stroke-end telemetry: 0 = the stamp never landed
@@ -205,6 +217,13 @@ public sealed class TerrainSplatField
                 }
             }
             field.HasAnyEdits = true;   // a loaded splat IS a paint (drives the gates)
+            field.HasPaint = true;
+            // Mark the WHOLE field dirty so the eager FlushTexture() the callers run
+            // right after decode actually creates + uploads the GPU texture. Without
+            // this the dirty rect was empty → FlushTexture returned before EnsureTexture
+            // → GpuTexture stayed 0 → splatActive false → a reloaded scene rendered
+            // its saved paint invisible until the user stroked again.
+            field.MarkWholeDirty();
             return field;
         }
         catch (Exception ex)
@@ -224,6 +243,15 @@ public sealed class TerrainSplatField
             uint t = 0;
             GL.GenTextures(1, &t);
             _tex = t;
+            // Bind BEFORE uploading: TexImage2D/TexParameteri target whatever texture
+            // is bound to the ACTIVE unit — without this the first splat upload landed
+            // on some unrelated bound texture (silently corrupting it) and the splat
+            // texture itself stayed EMPTY (no storage → incomplete → sampled black).
+            // The shader then read splatSum == 0 and fell back to all-layer-0, so
+            // paint never showed in the 3D view even though the CPU field and the TGA
+            // bake were correct. (TerrainHeightfield.EnsureTexture already binds —
+            // that is why sculpt worked while splat didn't.)
+            GL.BindTexture(Const.GL_TEXTURE_2D, _tex);
             UploadWhole();
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
@@ -235,6 +263,9 @@ public sealed class TerrainSplatField
 
     private void UploadWhole()
     {
+        // Own the bind — callers (EnsureTexture, FlushTexture's whole-field path for
+        // undo/redo/band recomputes) must not depend on the active unit's state.
+        GL.BindTexture(Const.GL_TEXTURE_2D, _tex);
         for (int i = 0; i < Res * Res; i++)
         {
             _upload[i * 4] = (byte)(Math.Clamp(_w[i * 4], 0f, 1f) * 255f + 0.5f);
@@ -381,6 +412,10 @@ public sealed class TerrainSplatField
     {
         HasBands = hf != null;
         if (hf == null) return;
+        // NOTE: this recompute never touches HasPaint/HasAnyEdits — bands do not
+        // confer painted state (only brush stamps, undo/redo restores and decoded
+        // splat files do). Caller (EditorObject.ComputeSplatBands) skips painted
+        // fields entirely so a band pass can never erase brush strokes.
         float bh = Math.Clamp(baseHeight, 0f, 500f);
         float fe = Math.Max(feather, 0.001f);
         int layers = Math.Clamp(layerCount, 1, 4);
@@ -431,6 +466,8 @@ public sealed class TerrainSplatField
                 }
             }
         }
+        // Same bands + same params ⇒ same weights — the painted state (set only by
+        // stamps/loads/restores) is intentionally left untouched here.
         MarkWholeDirty();
         NeedsBake = true;
     }
@@ -549,7 +586,13 @@ public sealed class TerrainSplatField
                 StrokeTexels++;
             }
         }
-        HasAnyEdits = true;
+        // Painted state ONLY when a texel actually changed — a stamp that lands
+        // outside its window (pick miss / span mismatch) must not mark the field.
+        if (StrokeTexels > 0)
+        {
+            HasAnyEdits = true;
+            HasPaint = true;
+        }
     }
 
     private static float SmoothStep01(float t)

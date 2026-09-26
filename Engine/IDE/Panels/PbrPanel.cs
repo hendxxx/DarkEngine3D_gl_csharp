@@ -254,6 +254,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.7f, 0.75f, 0.85f, 1f), "Mapping");
             float til = obj.PbrTexTiling; Tune("Map Tiling##object", ref til, 0.05f, 0.1f, 10f); obj.PbrTexTiling = til;
+            bool rndTil = obj.PbrRandomTiling;
+            if (ImGui.Checkbox("Random Tiling##object", ref rndTil)) obj.PbrRandomTiling = rndTil;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Break up texture repetition: every tile gets a random\nquarter-turn + offset (seamless border blend).\nHeight map & paint mask stay UV-locked.");
             float parallax = obj.PbrParallaxScale; Tune("Parallax Depth##object", ref parallax, 0.005f, 0f, 0.5f); obj.PbrParallaxScale = parallax;
             float pomSh = obj.PbrPomShadowStrength; Tune("Relief Shadow##object", ref pomSh, 0.01f, 0f, 1f); obj.PbrPomShadowStrength = pomSh;
 
@@ -269,8 +273,8 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 obj.PbrHeightContrast = 1f; obj.PbrHeightContrastCenter = 0.5f; obj.PbrHeightOffset = 0f; obj.PbrHeightScaleCenter = 0.5f;
                 obj.PbrVertexDisplaceScale = 0.15f; obj.PbrVertexOffset = 0f;
                 obj.PbrEmissionIntensity = 1f;
-                // Mapping defaults: tiling 1×, parallax OFF (0), relief shadow OFF (0).
-                obj.PbrTexTiling = 1f; obj.PbrParallaxScale = 0f; obj.PbrPomShadowStrength = 0f;
+                // Mapping defaults: tiling 1×, random tiling OFF, parallax OFF (0), relief shadow OFF (0).
+                obj.PbrTexTiling = 1f; obj.PbrRandomTiling = false; obj.PbrParallaxScale = 0f; obj.PbrPomShadowStrength = 0f;
             }
         }
 

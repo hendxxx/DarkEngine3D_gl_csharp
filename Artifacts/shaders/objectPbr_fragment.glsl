@@ -54,6 +54,85 @@ uniform int u_pomMaxSteps = 96;       // POM ray-march steps grazing → max (de
 uniform float u_pomShadowStrength = 0.6; // relief self-shadowing strength (0 = off, 1 = hard)
 uniform float u_vertexDisplace = 0.0; // 1 = geometry ALREADY displaced by the vertex stage → skip view-ray POM
 
+// ── RANDOM TILING (anti-repetition) ──
+// 0 = exact tiling; 1 = every tile rotated by a random quarter-turn and shifted
+// by a random offset (deterministic per tile — stable frame to frame). The warp
+// fades to the plain-tiled UV at the tile EDGES (border blend), so neighbors
+// always meet on identical texel lines: no seams, no extra texture fetches.
+// Applied to the 6 color/detail maps + the splat layers, NEVER to the height
+// map — the vertex stage displaces through raw tiling, and a per-tile warp
+// there would desync the POM march and CPU picking from the geometry.
+// GATE: UV that spans ≤ 1 tile (Box faces, Sphere — u_uvScale ≈ 1) has NO
+// repetition to break, so it is returned untouched — warping a single tile
+// only shifted/rotated the whole face and rotated the NORMAL map (broken
+// shading) with zero benefit. Normal maps get their tangent XY CO-ROTATED by
+// the same per-tile angle so bump lighting follows the rotated texture.
+uniform float u_randomTiling = 0.0;
+vec2 randTiledUv(vec2 uv, vec2 tiles, out float rot) {
+    rot = 0.0;
+    float strength = u_randomTiling;
+    if (strength <= 0.001) return uv;
+    if (max(abs(tiles.x), abs(tiles.y)) <= 1.001) return uv;   // ≤ 1 tile → keep pristine
+    vec2 cell = floor(uv);
+    vec2 f = uv - cell;                            // 0..1 inside the tile
+    // Per-cell hash → quarter-turn index + offset (fract-sin is plenty here).
+    float h1 = fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453123);
+    float h2 = fract(sin(dot(cell + 19.19, vec2(269.5, 183.3))) * 28001.8384);
+    float ang = floor(h1 * 4.0) * 1.5707963;       // 0/90/180/270°
+    float cs = cos(ang), sn = sin(ang);
+    vec2 c = f - 0.5;
+    vec2 warped = vec2(c.x * cs - c.y * sn, c.x * sn + c.y * cs) + 0.5
+                + vec2(h2, fract(h2 * 77.777));    // random per-tile shift
+    // Border blend: warp weight → 0 within ~18% of each tile edge.
+    vec2 e = min(f, 1.0 - f);
+    float w = strength * smoothstep(0.0, 0.18, min(e.x, e.y));
+    rot = ang * w;                                 // blended rotation for normal co-rotation
+    return mix(uv, cell + warped, w);
+}
+vec2 randTiledUv(vec2 uv, vec2 tiles) { float r; return randTiledUv(uv, tiles, r); }
+
+// ── TERRAIN SPLAT (4 texture layers blended by the unit-10 weight map) ──
+// SAMPLER BUDGET: these 21 samplers only exist in the TERRAIN_SPLAT variant
+// (compiled via a #define prefix from Shader.cs). The BASE objectPbr program
+// stays sampler-lean (7 maps + 3 CSM + 7 local-light shadows = 17 ≤ 32); the
+// splat variant trades the local-light SHADOW samplers for them
+// (7 + 3 + 21 = 31 ≤ 32 — all 25 splat samplers exceeded the budget, which is
+// why the whole block was once stripped as "dead code": program == 0).
+#ifdef TERRAIN_SPLAT
+uniform float u_splatDetail = 0.0;    // splat per-layer POM detail amplitude (0 = off)
+uniform sampler2D u_splatWeights;        // unit 10 (RGBA weights)
+uniform sampler2D u_splatAlbedo[4];      // units 11-14 (layer albedo)
+uniform sampler2D u_splatNormal[4];      // per-layer tangent-space normals
+uniform sampler2D u_splatMetal[4];       // per-layer metallic (R)
+uniform sampler2D u_splatRough[4];       // per-layer roughness (R)
+uniform sampler2D u_splatAo[4];          // per-layer AO (R)
+uniform int u_splatActive;               // 1 = blend the layers (else plain PBR path)
+uniform vec4 u_splatHasAlbedo;           // per-layer presence (empty slot → tint fallback)
+uniform vec4 u_splatHasNormal;
+uniform vec4 u_splatHasMetal;
+uniform vec4 u_splatHasRough;
+uniform vec4 u_splatHasAo;
+uniform vec4 u_splatHasHeight;
+uniform vec3 u_splatTint[4];             // layer fallback tint (empty slot OR no albedo tex)
+uniform float u_splatLayerTiling[4];     // per-layer texture tiling for layers 1-3 — INDEPENDENT
+                                         // from the global Map Tiling (layer 0 = base maps)
+uniform float u_splatNormalStr = 1.0;    // normal-map strength for layer normals
+
+// Blend two already-tuned PBR parameter sets by weight w (0..1).
+// NOTE: emission is intentionally NOT blended — layers carry no emission maps,
+// so faking it from layer albedo would make every terrain glow.
+void splatMerge(inout vec3 albA, inout vec3 nrmA, inout float metA,
+                inout float rghA, inout float aoA,
+                vec3 albB, vec3 nrmB, float metB, float rghB, float aoB,
+                float w) {
+    albA = mix(albA, albB, w);
+    nrmA = normalize(mix(nrmA, nrmB, w));
+    metA = mix(metA, metB, w);
+    rghA = mix(rghA, rghB, w);
+    aoA  = mix(aoA, aoB, w);
+}
+#endif   // TERRAIN_SPLAT
+
 // ── PBR MAP TUNING (uploaded from the PBR panel; applies to the selected object) ──
 uniform vec3 u_albedoTuning = vec3(1.0, 1.0, 1.0);    // brightness, saturation, contrast
 uniform vec2 u_normalTuning = vec2(1.0, 0.0);         // strength, blur (texels)
@@ -103,8 +182,13 @@ uniform float u_lightRange[MAX_LOCAL_LIGHTS];
 uniform vec2 u_lightCone[MAX_LOCAL_LIGHTS];    // x = cos(outer), y = cos(inner)
 
 // ── LOCAL LIGHT SHADOWS (per-light shadow maps for Point/Spot) ──
+// The TERRAIN_SPLAT variant drops these samplers (budget: GL_MAX_TEXTURE_IMAGE
+// UNITS = 32) — local lights still LIGHT the splat surface, they just cast no
+// shadows on it. The base objectPbr program keeps full local-light shadows.
+#ifndef TERRAIN_SPLAT
 uniform sampler2D u_localShadowSpot[4];
 uniform samplerCube u_localShadowPoint[3];
+#endif
 
 uniform mat4 u_localLightSpace[MAX_LOCAL_LIGHTS];
 uniform int u_localShadowSpotIdx[MAX_LOCAL_LIGHTS];
@@ -245,6 +329,7 @@ vec3 calcLocalLights(vec3 N, vec3 V, vec3 albedo, float roughness, float metalli
         vec3 specular = D * G * F / max(4.0 * NdotV * NdotL, 0.001);
         vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
         float shadowFactor = 1.0;
+#ifndef TERRAIN_SPLAT
         if (u_lightType[i] == 1) { // Point light shadow (cube map, linear depth compare)
             int ci = u_localShadowPointIdx[i];
             if (ci >= 0) {
@@ -281,6 +366,7 @@ vec3 calcLocalLights(vec3 N, vec3 V, vec3 albedo, float roughness, float metalli
                 }
             }
         }
+#endif   // TERRAIN_SPLAT — local-light shadows (splat variant keeps shadowFactor 1.0)
         Lo += (kD * albedo / PI + specular) * u_lightColor[i] * u_lightIntensity[i] * NdotL * attenuation * shadowFactor;
     }
     return Lo;
@@ -487,15 +573,100 @@ void main() {
             pomOffPerMap[m] = clamp(pomOff * (u_uvScale[m] / sH), vec2(-0.25), vec2(0.25));
     }
 
-    // ── SAMPLE PBR MAPS ──
-    vec3 albedo   = useAlbedo   == 1 ? texture(albedoMap,    uvAlbedo   - pomOffPerMap[0]).rgb : ObjColor;
+    // ── SAMPLE PBR MAPS (＋ splat layer blend — runs BEFORE albedo tuning so the
+    //    combined surface flows through the same brightness/saturation/contrast
+    //    pipeline as a single-texture material) ──
+    vec3 albedo   = useAlbedo   == 1 ? texture(albedoMap,    randTiledUv(uvAlbedo, u_uvScale[0])   - pomOffPerMap[0]).rgb : ObjColor;
     vec3 tsNormal = useNormal   == 1
-        ? sampleNormalBlurred(normalMap, uvNormal - pomOffPerMap[1], max(u_normalTuning.y, 0.0))
+        ? sampleNormalBlurred(normalMap, randTiledUv(uvNormal, u_uvScale[1]) - pomOffPerMap[1], max(u_normalTuning.y, 0.0))
         : vec3(0.0, 0.0, 1.0);
-    float metallic  = useMetallic  == 1 ? texture(metallicMap,  uvMetallic - pomOffPerMap[2]).r : 0.0;
-    float roughness = useRoughness == 1 ? texture(roughnessMap, uvRough    - pomOffPerMap[3]).r : 0.6;
-    float ao        = useAo        == 1 ? texture(aoMap,        uvAo       - pomOffPerMap[4]).r : 1.0;
-    vec3  emission  = useEmission  == 1 ? texture(emissionMap,  uvEmission - pomOffPerMap[6]).rgb : vec3(0.0);
+    float metallic  = useMetallic  == 1 ? texture(metallicMap,  randTiledUv(uvMetallic, u_uvScale[2]) - pomOffPerMap[2]).r : 0.0;
+    float roughness = useRoughness == 1 ? texture(roughnessMap, randTiledUv(uvRough, u_uvScale[3])    - pomOffPerMap[3]).r : 0.6;
+    float ao        = useAo        == 1 ? texture(aoMap,        randTiledUv(uvAo, u_uvScale[4])       - pomOffPerMap[4]).r : 1.0;
+    vec3  emission  = useEmission  == 1 ? texture(emissionMap,  randTiledUv(uvEmission, u_uvScale[6]) - pomOffPerMap[6]).rgb : vec3(0.0);
+    // Random tiling co-rotation: the albedo/detail tiles are randomly rotated, so
+    // the tangent-space NORMAL map must rotate with its tile or bump lighting
+    // faces a stale direction (the "PBR Box jadi ngaco" report was the un-gated
+    // warp hitting single-tile Box UVs AND un-rotated normals).
+    if (useNormal == 1 && u_randomTiling > 0.001) {
+        float nrot;
+        randTiledUv(uvNormal, u_uvScale[1], nrot);
+        float ncs = cos(nrot), nsn = sin(nrot);
+        tsNormal.xy = mat2(ncs, nsn, -nsn, ncs) * tsNormal.xy;
+        tsNormal = normalize(tsNormal);
+    }
+
+    // ── TERRAIN SPLAT — blend up to 4 texture layers by the weight map ──
+#ifdef TERRAIN_SPLAT
+    if (u_splatActive == 1) {
+        // Weights sample the RAW mesh UV (1:1 with the 256² field) — NEVER the tiled
+        // albedo UV: the weight map is a SPATIAL mask, and sampling it through the
+        // tiled UV made every paint stroke repeat once per tile ("paint ketile").
+        vec4 splatW = texture(u_splatWeights, TexCoord);
+        // NOTE: do NOT zero weights of albedo-empty layers here — their fallback
+        // is the TINT below (u_splatTint). Zeroing made paint/bands on texture-less
+        // layers invisible: the renormalize poured every weight back into layer 0
+        // and painting appeared to do nothing at all.
+        float splatSum = splatW.x + splatW.y + splatW.z + splatW.w;
+        if (splatSum > 0.001) splatW /= splatSum; else splatW = vec4(1.0, 0.0, 0.0, 0.0);
+        // Layer 0 full → the plain PBR path above is already exactly right.
+        if (dot(splatW, vec4(0.0, 1.0, 1.0, 1.0)) > 0.001) {
+            vec3 tsN = tsNormal;
+            for (int l = 0; l < 4; l++) {
+                float w = splatW[l];
+                if (w <= 0.001) continue;
+                float lrotS = 0.0;   // splat layer co-rotation (random tiling)
+                // Layer 0 = the base PBR maps — their OWN per-map tiling/offset + POM
+                // shift (identical to the plain path). Layers 1-3 sample ALL their maps
+                // through ONE per-layer tiling (u_splatLayerTiling[l]) that is
+                // INDEPENDENT of the global Map Tiling — the paint mask stays 1:1 with
+                // the field while the texture density is chosen per layer. Layers 1-3
+                // also skip the POM shift: its per-map conversion assumes the base
+                // tiling, which no longer matches a decoupled layer UV space.
+                vec2 la, ln, lm, lr, lao;
+                if (l == 0) {
+                    la = uvAlbedo   - pomOffPerMap[0];
+                    ln = uvNormal   - pomOffPerMap[1];
+                    lm = uvMetallic - pomOffPerMap[2];
+                    lr = uvRough    - pomOffPerMap[3];
+                    lao = uvAo      - pomOffPerMap[4];
+                } else {
+                    float lt = max(u_splatLayerTiling[l], 0.01);
+                    float lrot;
+                    vec2 luv = randTiledUv(TexCoord * lt, vec2(lt), lrot);
+                    la = luv; ln = luv; lm = luv; lr = luv; lao = luv;
+                    lrotS = lrot;
+                }
+                vec3 albL = u_splatHasAlbedo[l] > 0.5
+                    ? texture(u_splatAlbedo[l], la).rgb
+                    : u_splatTint[l];
+                vec3 nrmL = u_splatHasNormal[l] > 0.5
+                    ? sampleNormalBlurred(u_splatNormal[l], ln, max(u_normalTuning.y, 0.0))
+                    : vec3(0.0, 0.0, 1.0);
+                if (lrotS != 0.0) {
+                    float lcs = cos(lrotS), lsn = sin(lrotS);
+                    nrmL.xy = mat2(lcs, lsn, -lsn, lcs) * nrmL.xy;
+                    nrmL = normalize(nrmL);
+                }
+                float metL = u_splatHasMetal[l] > 0.5
+                    ? texture(u_splatMetal[l], lm).r
+                    : 0.0;
+                float rghL = u_splatHasRough[l] > 0.5
+                    ? texture(u_splatRough[l], lr).r
+                    : 0.6;
+                float aoL = u_splatHasAo[l] > 0.5
+                    ? texture(u_splatAo[l], lao).r
+                    : 1.0;
+                // Weighted layer color set — layer 0 folds in with weight (1 − Σ others)
+                // so manual paint over the default layer stays exact.
+                splatMerge(albedo, tsN, metallic, roughness, ao,
+                    albL, nrmL * u_splatNormalStr + vec3(0.0, 0.0, 1.0 - u_splatNormalStr),
+                    metL, rghL, aoL, w);
+            }
+            tsNormal = tsN;
+        }
+    }
+#endif   // TERRAIN_SPLAT — splat layer blend
 
     // ── NORMAL: tangent-space map → world via TBN (flat geometry normal when absent). ──
     vec3 mapNormal = normalize(T * tsNormal.x + B * tsNormal.y + norm * tsNormal.z);

@@ -46,6 +46,14 @@ public static class TriggerEventSystem
     /// the IDE side when the scene changes.</summary>
     public static List<Tilemap2D>? ExtraMaps { get; set; }
 
+    /// <summary>Live player horizontal velocity (world units/s), refreshed by Update
+    /// so the Portal action can spawn the arrival point in FRONT of the destination
+    /// portal relative to the player's travel direction (right-moving → right side).
+    /// ZERO frames are IGNORED (last non-zero wins): a button-mode player stands still
+    /// while pressing the key — the arrival side must remember the direction they
+    /// WALKED in with, not the idle velocity of the fire frame.</summary>
+    private static float _lastPlayerVelX;
+
     /// <summary>Sets the intensity (jolt size multiplier) of the NEXT/active camera
     /// shake. Kept separate from OnCameraShake so the camera API stays simple.</summary>
     public static Action<float>? RequestShakeIntensity { get; set; }
@@ -140,6 +148,11 @@ public static class TriggerEventSystem
         _activeMap = map;
         _liveCapsuleOffsetX = capsuleOffsetX;
         _liveCapsuleOffsetY = capsuleOffsetY;
+        // Keep the last NON-ZERO horizontal velocity: button-mode portals fire while
+        // the player stands still (velX = 0) — the arrival side must come from the
+        // direction they entered with.
+        if (playerVelX != 0f)
+            _lastPlayerVelX = playerVelX;
 
         if (map == null || map.TriggerAreas.Count == 0) return;
 
@@ -374,8 +387,22 @@ public static class TriggerEventSystem
                 }
                 break;
         }
+        // Idle states: Active while enabled, NotActive while disabled/hidden.
         bool active = trigger.IsEnabled && !trigger.RuntimeHidden;
-        return (active ? trigger.PortalAnimActive : trigger.PortalAnimNotActive, false, trigger.RuntimePortalClock);
+        string idleClipName = active ? trigger.PortalAnimActive : trigger.PortalAnimNotActive;
+        // Fallback when NO idle clip is authored: reuse the sheet's own first registered
+        // clip (e.g. "Greyscale Portal-Spinning" with one spinning clip). When the sheet
+        // has NO clips at all, return a sentinel name so the renderer still draws the
+        // portal — it falls back to the sheet's implicit frame grid. An empty name would
+        // make DrawPortalSprites skip the portal entirely ("animasinya tidak jalan").
+        if (string.IsNullOrEmpty(idleClipName) && !string.IsNullOrWhiteSpace(trigger.PortalSheet))
+        {
+            if (DarkEngine3D_gl_csharp.Engine.IDE.IDEBridge.TryGetFirstSpriteClipName(trigger.PortalSheet, out string firstClip))
+                idleClipName = firstClip;
+            else
+                idleClipName = "(sheet)"; // sentinel: renderer animates the implicit grid
+        }
+        return (idleClipName, false, trigger.RuntimePortalClock);
 
     }
 
@@ -664,7 +691,14 @@ public static class TriggerEventSystem
                     float cellD = destMap!.TileSize * Tilemap2D.WorldScale;
                     float cxD = (destArea.LeftPx + destArea.WidthPx * 0.5f) * Tilemap2D.WorldScale;
                     float cyD = (destMap.Height * cellD) - (destArea.TopPx + destArea.HeightPx * 0.5f) * Tilemap2D.WorldScale;
-                    target = new Vector2(cxD, cyD);
+                    // Spawn IN FRONT of the destination portal: center ± one portal
+                    // width (the DESTINATION portal's width), side picked by the
+                    // player's travel direction. Arriving outside the trigger area
+                    // prevents the arrival frame from re-entering the twin portal
+                    // (two-way pairs would otherwise ping-pong forever).
+                    float portalW = MathF.Max(destArea.WidthPx, 1f) * Tilemap2D.WorldScale;
+                    float spawnX = cxD + (_lastPlayerVelX >= 0f ? portalW : -portalW);
+                    target = new Vector2(spawnX, cyD);
                 }
 
                 // ── Teleport ──
@@ -696,7 +730,23 @@ public static class TriggerEventSystem
                 }
 
                 OnTeleportPlayer(target, z);
-                Console.WriteLine($"[Trigger] '{triggerName}' → {(oneWay ? "Portal One Way" : "Portal")} → ({target.X:F1}, {target.Y:F1}){(directCoordsHint(dest) ? " (coords)" : $" (portal '{dest}')")}");
+                Console.WriteLine($"[Trigger] '{triggerName}' → {(oneWay ? "Portal One Way" : "Portal")} → ({target.X:F1}, {target.Y:F1}){(directCoordsHint(dest) ? " (coords)" : $" (portal '{dest}' + width offset)")}");
+
+                // ── Arrival loop guard (AUTO portals only): the player materializes
+                // with the capsule edge overlapping the destination area, so the next
+                // overlap frame would read wasInside=false + inside=true and re-fire
+                // its OnEnter (auto pairs would ping-pong forever) — mark it already-
+                // inside so only a genuine walk-out/walk-in refires it. BUTTON-mode
+                // destinations must NOT be marked: they fire on the interact key, so
+                // there is no loop — and marking inside would swallow the enter
+                // boundary that ARMS the key prompt (walking in would never enable E).
+                if (destArea != null && destArea.PortalAutoEnter
+                    && destArea.Actions.Any(a => a != null &&
+                        (a.Type == TriggerActionTypes.Portal || a.Type == TriggerActionTypes.PortalOneWay)))
+                {
+                    destArea.RuntimePlayerInside = true;
+                    destArea.RuntimePortalWasInside = false;
+                }
 
                 // ── One-way portal: "bisa masuk saja, portal akan menghilang" ──
                 // Hide + disable it until ResetRuntime (session/map reload) so it can't
@@ -832,6 +882,33 @@ public static class TriggerEventSystem
         if (!float.TryParse(parts[1], out float y)) return false;
         position = new Vector2(x, y);
         return true;
+    }
+
+    /// <summary>Enumerate every BUTTON-mode portal (has a Portal action, PortalAutoEnter
+    /// = false) that is enabled and visible right now — the interact-key badge ("[E]")
+    /// renderers iterate this so the hint above the portal shows during gameplay.
+    /// Portal-less triggers and auto-enter portals are skipped (no key needed).</summary>
+    public static IEnumerable<(TilemapTriggerArea Area, Tilemap2D Map)> ButtonModePortals(
+        DarkEngine3D_gl_csharp.Engine.Objects.EditorObjectManager? manager)
+    {
+        if (manager == null) yield break;
+        var maps = manager.Objects
+            .Where(o => o is { IsVisible: true, PrimitiveType: DarkEngine3D_gl_csharp.Engine.Objects.EditorPrimitiveType.Map2D })
+            .Select(o => o.Map2dTilemap)
+            .OfType<Tilemap2D>()
+            .Distinct();
+        foreach (var map in maps)
+        {
+            foreach (var t in map.TriggerAreas)
+            {
+                if (t == null || !t.IsEnabled || t.RuntimeHidden) continue;
+                if (t.PortalAutoEnter) continue;
+                bool hasPortal = t.Actions.Any(a => a != null &&
+                    (a.Type == TriggerActionTypes.Portal || a.Type == TriggerActionTypes.PortalOneWay));
+                if (!hasPortal) continue;
+                yield return (t, map);
+            }
+        }
     }
 
     /// <summary>Case-insensitive trigger-area lookup by name. Returns the area and

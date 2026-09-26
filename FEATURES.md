@@ -133,7 +133,7 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 
 | Feature | Description |
 |---------|-------------|
-| **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise) |
+| **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise). Resize = modal (Width/Height tiles): every layer's grid grows/shrinks preserving tiles at their grid indices (top-left anchor); trigger areas + player spawn clamped into the new bounds; viewport mesh rebakes automatically (cache key includes W/H) |
 | **Tile Palette** | Auto-detected cols/rows from tileset image (read-only); multi-select (marquee) preserves block shape when stamping |
 | **Tools** | Paint, Erase (with brush size), Fill (flood), Pick (default), Collision, Trigger — paint directly in the 3D viewport |
 | **Layers** | Multiple tile layers, visibility/lock per layer, all visible layers render (stacked in depth, tiny lift per layer) |
@@ -146,6 +146,7 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 | **Player Spawn** | Draggable cyan cross marker in viewport (or "Set at Hover"); GameScene places the player there on Enter (unless a save slot loads) |
 | **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles + parallax + spawn + camera start) and canonical scene `.ing`; autoload first map on project open |
 | **Trigger Areas** | Dedicated Trigger tool: click-drag on the grid draws a snap-to-tile box; drag body to move, 8 handles to resize; Delete / Ctrl+C/X/V / Ctrl+D supported; amber translucent boxes (selected = brighter + white handles); edited in the Trigger Areas panel (see §2.9) |
+| **Portals** | Portal / Portal One Way trigger actions render a 4-state sprite animation (NotActive/Active/Enter/Out clips from one Sprite Editor sheet, visual size px overrides the area size). Sheet with NO authored clips falls back to its implicit frame grid (8 FPS) — an authored portal never renders invisible. Arrival spawns at the destination portal center ± ONE PORTAL WIDTH (side = player travel direction) + arrival-inside guard (auto portals only), so two-way pairs don't ping-pong. Button-mode portals (PortalAutoEnter off) show a `[KEY]` badge above the portal while the player stands inside |
 | **In-Game Parity** | Parallax layers/textures sync every frame in preview mode; startup `-load=` in-game re-anchors camera (lazy reframe when tilemap adopts late) |
 
 ### 2.6 Player2D System (2D Character)
@@ -681,14 +682,82 @@ ObjColor fallback), so an unpainted terrain renders identically to the plain pat
 | 11-14 | Layer albedo ×4 (layer 0 = base albedo map) |
 | 21-24 / 31-34 / 41-44 / 51-54 / 61-64 | Layer normal / metallic / roughness / AO / POM-height ×4 |
 
-Gate `u_splatActive` = a live weight field (paint session, band buffer) exists AND
+Gate `u_splatActive` = a live weight field (paint session, band buffer) exists AND (note: the PBR render path itself is entered via `HasPbrMaterial`, which also counts splat state — field/band buffer/stored splat file/layer textures/bands-enabled — so a plain plane painted without any heightmap still renders through the splat pipeline)
+
+**Splat renders through a TERRAIN_SPLAT program VARIANT** (`Shader.GetObjectPbrSplat(Displace)ShaderProgram` — the SAME `objectPbr_fragment.glsl` compiled with a `#define TERRAIN_SPLAT 1` prefix injected after `#version`). Reason: `GL_MAX_TEXTURE_IMAGE_UNITS` = 32 on the target GPU — the base objectPbr program uses 17 samplers (7 maps + 3 CSM + 7 local-light shadows) and the full splat set needs 25 more; one program cannot carry both, which is why the splat block was once stripped as "dead code" after the link started failing with "Number of sampler exceeds the limitation". The splat variant trades the 7 local-light SHADOW samplers for 21 splat samplers (weight map + albedo/normal/metal/rough/AO per layer 0-3 — per-layer POM-height samplers dropped) = 31 ≤ 32. `DrawPbrPrimitive` picks the variant per-plane when splat state exists and falls back to the plain program if the variant failed to link (one-shot console warning). The `#version`-aware define-prefix loader lives in `ShaderHelpers.LoadShader(vertex, fragment, fragmentPrefix)`; `Tools/ShaderSmokeTest` covers all four objectPbr programs and prints `GL_MAX_TEXTURE_IMAGE_UNITS`.
 (`SplatIsPainted` — any layer 1-3 map or paint — OR `SplatHeightBandsEnabled`). Uniform
-vec4 `u_splatHasAlbedo/Normal/Metal/Rough/Ao/Height` gate per-slot presence (uploaded as
-4× `Uniform1i` — the wrapper has no `Uniform4i`); empty slots force weight 0 and the
-remainder renormalizes (never white/black). Layers without an albedo texture use
-`u_splatTint[l]` (layer 0 = the object color). The whole set samples through the BASE
-albedo map's tiling/offset (uniform look, `pomOffPerMap` shared); per-layer POM height
-detail bends the existing march by the layer-vs-base delta (`u_splatDetail` gate).
+vec4 `u_splatHasAlbedo/Normal/Metal/Rough/Ao/Height` gate per-slot presence — WAJIB
+`Uniform4f` (vec4 FLOAT): skema lama 4× `Uniform1i(loc+i)` = silent double bug —
+`glUniform1i` di lokasi vec4 = GL_INVALID_OPERATION (call dibuang → presence (0,0,0,0)
+→ layer texture yang DI-ASSIGN tidak pernah di-sample, tint warna yang selalu tampil)
+DAN `loc+1..+3` pada vec4 non-array bukan komponen vec4 (vec4 = SATU lokasi) — tulisan
+mendarat di uniform lain (sampler salah unit → texture acak). Empty slots force weight
+0 and the remainder renormalizes (never white/black). Layers without an albedo texture use
+`u_splatTint[l]` (layer 0 = the object color). **Weight map sampling = RAW mesh UV**
+(`TexCoord`, 1:1 dengan field 256² — BUKAN uvAlbedo yang di-tile: men-sample lewat
+UV tile membuat setiap stroke paint MENGULANG sekali per tile, "paint ketile").
+**Layer 0** sample base maps lewat per-map tiling/offset miliknya + POM shift
+(identik jalur biasa). **Layer 1-3** sample SEMUA map-nya lewat SATU per-layer
+tiling `u_splatLayerTiling[l]` (`SplatLayerTiling`, slider per layer di Terrain
+panel → Layer textures) yang INDEPENDEN dari global Map Tiling — mask paint tetap
+1:1 sementara densitas texture dipilih per layer; layer 1-3 skip POM shift
+(konversi per-map-nya mengasumsikan tiling base yang tak cocok lagi dengan UV
+layer yang decoupled).
+
+**GOTCHA — VERTEX LAYOUT: `aTexCoord` WAJIB location 3, BUKAN 2.** VAO primitive
+(`Object3D.SetupGPUResources`) bind loc 0 = pos, 1 = normal, **2 = COLOR vec3**,
+**3 = UV vec2**. `vertex_shader.glsl` dulu mendeklarasikan `aTexCoord` di location 2
+→ semua Box/Sphere yang digambar objectPbr menyampling map dengan `color.xy` sebagai
+UV (konstan per face) → **texture tidak pernah tampil walau ter-load & ter-bind**
+(Plane lolos karena `pbrDisplace_vertex.glsl` sudah location 3). Kini sudah location 3
+(= `pbrDisplace_vertex.glsl`), smoke test tetap hijau. Aturan: shader primitive yang
+share VAO Object3D HARUS ikut layout loc2=color/loc3=uv; VAO lain (GLB skinned,
+Map2D, ImGui) punya layout sendiri dan tidak terdampak.
+
+**GOTCHA — legacy Inspector "Texture Path" pada Box/Sphere/Plane = PBR albedo.**
+Slot itu dulu di-load ke `_textureID` yang TIDAK PERNAH di-bind jalur render mana pun
+(jalur plain memaksa `useTexture=0` = vertex color) dan `HasPbrMaterial` tidak
+menghitungnya → Box ber-texture via Inspector tampil ABU POLOS (bukan soal jumlah
+vertex — Box 36-vertex per-face UV 0..1 sudah benar). Kini `HasPbrMaterial` menghitung
+TexturePath untuk Box/Sphere/Plane dan `EnsurePbrTextures` menjembatani TexturePath →
+slot albedo PBR (cache key pakai sumber albedo efektif; PbrAlbedoPath selalu menang
+bila diisi).
+
+**GOTCHA — GenTextures/TexImage2D TANPA BindTexture: texture tak pernah berisi.**
+`TerrainSplatField.EnsureTexture()` pernah memanggil `TexImage2D` + `TexParameter`
+TANPA `GL.BindTexture` dulu: upload-nya mendarat di texture lain yang sedang bound
+dan texture weight sendiri tak pernah punya storage → sampling = hitam → `splatSum=0`
+→ shader fallback semua-layer-0 → **paint tak terlihat di 3D padahal CPU field + TGA
+benar** (sculpt lolos karena `TerrainHeightfield.EnsureTexture` memang bind). Aturan:
+setiap `GenTextures` WAJIB langsung diikuti `BindTexture` sebelum `TexImage2D`/
+`TexParameter`/`TexSubImage2D` — GL tidak mengaitkan handle baru otomatis. Kasus
+terkait yang sudah diperbaiki: `FromFile()` tak menandai dirty rect sehingga
+`FlushTexture()` eager setelah decode return tanpa membuat GPU texture (reload scene
+→ paint hilang); sekarang `FromFile` memanggil `MarkWholeDirty()`.
+
+**RANDOM TILING (anti-repetisi, panel PBR → "Mapping → Random Tiling" — CHECKBOX on/off; kini `bool PbrRandomTiling`, upload 1.0/0.0, persist tetap float > 0.5 = on).**
+`u_randomTiling` + `randTiledUv()` di `objectPbr_fragment.glsl`: per tile alamat UV
+di-hash (fract-sin, deterministik — beku antar-frame) → rotasi 90° (index 0-3 dari
+hash) + offset acak; warp di-BLEND ke UV tiling asli mendekati tepi tile
+(smoothstep 0..0.18 dari tepi) sehingga tile bertetangga selalu bertemu di jalur
+teksel identik — seamless, tanpa fetch/split tambahan. Diterapkan ke 6 map
+albedo/normal/metal/rough/AO/emission dan SEMUA sampler layer splat (masing-masing
+lewat UV sendiri, POM offset tetap dikurangi sesudahnya). TIDAK diterapkan ke
+height map (unit 5) dan splat weight map (unit 10): vertex stage men-displace
+melalui tiling MENTAH di `pbrDisplace_vertex.glsl` — warp per-tile di sana akan
+mendesinkronkan POM march, relief shadow, dan CPU picking dari geometri.
+**GATE UV ≤ 1 TILE**: UV yang membentang ≤ 1 tile (face Box, Sphere — u_uvScale ≈ 1)
+DIKEMBALIKAN MENTAH tanpa warp — single tile tidak punya repetisi untuk dipecah,
+warp hanya memutar/menggeser seluruh face DAN merotasi normal map (bug "PBR Box
+jadi ngaco" setelah random tiling pertama; kini Box/Sphere tiling 1 identik dengan
+jalur biasa). **CO-ROTATION NORMAL**: normal map di-rotasi dengan sudut tile yang
+sama (`randTiledUv(..., out rot)` → rotasi XY tangent-space berbobot w) supaya
+bump lighting mengikuti tekstur yang dirotasi — juga untuk normal layer splat
+(`lrotS`). Property
+`PbrRandomTiling` (default 0), upload `u.RandomTiling` di `DrawPbrPrimitive`,
+persist `PbrRandomTiling` di SceneAsset + save ×2 + load (clamp 0..1) + Duplicate.
+Slider "Random Tiling##object" di PbrPanel mapping section + masuk "Reset tuning
+to defaults".
 
 **Two weight sources, max-blend (the brush always wins where it painted)**:
 - **Manual paint** — `TerrainSplatField` (Engine/Objects/TerrainSplatField.cs, 256² RGBA
@@ -703,16 +772,30 @@ detail bends the existing march by the layer-vs-base delta (`u_splatDetail` gate
   (`SplatHeightBands[l]` low/high, `SplatHeightLayerFeather` softness in world units,
   `SplatHeightLayerCount` 1-4 active layers). The strongest band owns the texel.
   Recompute is amortized (at most once per draw while `_splatBandsPending`); elevation/
-  BaseHeight/Offset/tiling/band-param setters raise the flag. Bands never overwrite a
-  decoded splat file (the stored weights ARE the painted-over bands).
+  BaseHeight/Offset/tiling/band-param setters raise the flag. Bands never overwrite
+  PAINTED state: `ComputeSplatBands` returns early when the field carries paint
+  (`TerrainSplatField.HasPaint` — brush strokes, undo/redo restores, or a decoded
+  splat file), and a band recompute over an unpainted field keeps that field
+  unpainted (deterministic weights — the sticky `_bandsComputedPaint` lock prevents
+  the recompute from ever clearing the flag).
 
 **Viewport painting** (Terrain panel → "Terrain Paint"): brush session
 (`EditorObject.SplatBrush`: mode Paint/Erase/Smooth, Layer 0-3, radius, strength,
 hardness) + `IDEBridge.TerrainSplatObject` — mutually exclusive with the sculpt session
 (enabling one turns the other off). Same precedence as sculpt (gizmo/sun-handle first,
-click-to-select blocked); ring color green = paintable, red = painting, gray = projected.
+click-to-select blocked); the rubber-band MARQUEE is also suppressed while a terrain
+sculpt/paint session is active (a terrain drag used to draw a stray selection
+rectangle). Ring color green = paintable, red = painting, gray = projected.
 Ctrl+Z / Ctrl+Y per-stroke undo. Painting works on FLAT planes too (exact local-space
-ray∩plane fallback when no elevation field exists — splat needs no displacement).
+ray∩plane fallback when no elevation field exists AND there is no sculpt delta — on
+sculpted terrain the flat y=0 grid lies BELOW the surface, so a missed surface
+ray-march must not fall back to it or the stamp lands through the rock at the wrong
+spot; the brush ring just dims to the projection color instead).
+Stroke end bakes ONLY when texels actually mutated: `TerrainSplatField.HasAnyEdits`
+is set inside the stamp loop (a stamp that lands outside its texel window no longer
+flips it), so a pick-miss stroke can never overwrite the previous splat bake with
+band-only weights (`EndSplatStroke` guards on `HasPaint` + logs
+`stroke end: N texels mutated` — 0 means the stamp never landed).
 Layer textures (albedo + 5 optional PBR maps per layer 1-3, drag-drop `ASSET_IMAGE_PATH`)
 plus per-layer tint live under "Layer textures"; "Auto layers from height" exposes the
 bands; "Revert paint" reloads the stored splat file.

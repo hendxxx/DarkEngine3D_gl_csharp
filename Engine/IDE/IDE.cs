@@ -355,6 +355,9 @@ public class IDE : IDisposable
             Bridge.SelectedUIElements.Clear();
             Bridge.SelectedEditorObjects.Clear();
             Bridge.ActiveTilemap = null;
+            // Multi-tilemap registry belongs to the project — a stale list would keep
+            // the old levels selectable after Close Project.
+            Bridge.Tilemaps?.Clear();
             // Reset Asset Browser to default
             _assetBrowser?.SetProjectRoot(null);
             // Zoom limits follow the active settings file — with no project open this

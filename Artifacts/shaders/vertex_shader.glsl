@@ -1,7 +1,12 @@
 ﻿#version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec2 aTexCoord;
+// aTexCoord MUST be location 3: the shared primitive VAO (Object3D.SetupGPUResources)
+// binds loc 2 = COLOR (vec3) and loc 3 = UV (vec2). Declaring the UV at loc 2 made
+// every objectPbr-drawn Box/Sphere sample its maps through color.xy as UV (constant →
+// textures never showed), while the plain path's useTexture=0 hid the same bug.
+// pbrDisplace_vertex.glsl already used location 3 — planes were unaffected.
+layout (location = 3) in vec2 aTexCoord;
 
 out vec3 FragPos;
 out vec3 Normal;

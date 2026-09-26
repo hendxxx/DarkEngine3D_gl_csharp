@@ -4429,6 +4429,9 @@ ImGui.SameLine();
                 // NOT hovering the views button, NOT dragging a UI element, and NOT
                 if (_marqueeStart == null && leftPressedNow && mouseOverImage && _dragMode == DragMode.None
                     && !_mapPaintActive
+                    // Terrain sculpt/paint sessions own the left button in the viewport —
+                    // a drag there must NOT also draw the marquee selection rectangle.
+                    && _bridge.TerrainSculptObject == null && _bridge.TerrainSplatObject == null
                     && !_spawnDragActive && !_spawnHover && !_triggerHover
                     && _triggerDrag == TriggerDragMode.None
                     && !IsGizmoHitAtMouse() && SkySunHandleAtMouse() == null
@@ -4937,23 +4940,29 @@ ImGui.SameLine();
                         {
                             // Flat-plane fallback (no elevation field): paint straight
                             // onto the flat grid — splat weights need NO displacement.
-                            // EXACT ray ∩ local-y=0 plane (rotated/positioned planes
-                            // included) via the world-inverse, like TerrainHeightfield.
-                            Vector3 l0 = Vector3.Transform(sOrigin, splatObj.WorldInverse);
-                            Vector3 ld = Vector3.TransformNormal(sDir, splatObj.WorldInverse);
-                            if (MathF.Abs(ld.Y) > 0.0001f)
+                            // GUARD: only on a genuinely FLAT terrain (no base heightmap
+                            // and no sculpt delta). On sculpted terrain the y=0 grid sits
+                            // BELOW the surface — a "hit" there stamps weights at the
+                            // wrong spot (through the rock) instead of where the user
+                            // aimed; a missed ray-march must simply not paint.
+                            if (string.IsNullOrEmpty(splatObj.TerrainHeightSourcePath) && !splatObj.HasSculptDelta)
                             {
-                                float tl = -l0.Y / ld.Y;
-                                if (tl > 0f)
+                                Vector3 l0 = Vector3.Transform(sOrigin, splatObj.WorldInverse);
+                                Vector3 ld = Vector3.TransformNormal(sDir, splatObj.WorldInverse);
+                                if (MathF.Abs(ld.Y) > 0.0001f)
                                 {
-                                    Vector3 lp = l0 + ld * tl;
-                                    float hx = MathF.Abs(splatObj.Scale.X) * 0.5f;
-                                    float hz = MathF.Abs(splatObj.Scale.Z) * 0.5f;
-                                    if (lp.X >= -hx && lp.X <= hx && lp.Z >= -hz && lp.Z <= hz)
+                                    float tl = -l0.Y / ld.Y;
+                                    if (tl > 0f)
                                     {
-                                        sLocal = new Vector2(lp.X, lp.Z);
-                                        sHit = Vector3.Transform(new Vector3(lp.X, 0f, lp.Z), splatObj.WorldMatrix);
-                                        splatHit = true;   // paintable — no surface needed
+                                        Vector3 lp = l0 + ld * tl;
+                                        float hx = MathF.Abs(splatObj.Scale.X) * 0.5f;
+                                        float hz = MathF.Abs(splatObj.Scale.Z) * 0.5f;
+                                        if (lp.X >= -hx && lp.X <= hx && lp.Z >= -hz && lp.Z <= hz)
+                                        {
+                                            sLocal = new Vector2(lp.X, lp.Z);
+                                            sHit = Vector3.Transform(new Vector3(lp.X, 0f, lp.Z), splatObj.WorldMatrix);
+                                            splatHit = true;   // paintable — no surface needed
+                                        }
                                     }
                                 }
                             }
