@@ -402,6 +402,14 @@ public class EditorObjectData
     public float[]? SplatLayerTilings { get; set; }
     /// <summary>AUTO height bands over the sculpted elevation (weights per layer).</summary>
     public bool SplatHeightBandsEnabled { get; set; } = false;
+    /// <summary>SLOPE layer (PBR): auto-assign one layer by surface steepness.</summary>
+    public bool SplatSlopeEnabled { get; set; } = false;
+    /// <summary>Slope target layer 1..3.</summary>
+    public int SplatSlopeLayer { get; set; } = 1;
+    /// <summary>Slope threshold (1−N.Y at which the layer starts appearing).</summary>
+    public float SplatSlopeThreshold { get; set; } = 0.35f;
+    /// <summary>Slope blend width above the threshold.</summary>
+    public float SplatSlopeFade { get; set; } = 0.2f;
     public int SplatHeightLayerCount { get; set; } = -1;      // absent = legacy → 4
     public float SplatHeightLayerFeather { get; set; } = -1f; // absent = legacy → 2
     /// <summary>Per-layer band edges (world units): 8 floats — L0.low, L0.high, L1.low, …</summary>

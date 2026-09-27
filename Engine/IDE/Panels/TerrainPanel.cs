@@ -340,6 +340,33 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     ImGui.Unindent();
                 }
 
+                // ── AUTO slope layer (PBR steepness mask) ──
+                bool slopeOn = obj.SplatSlopeEnabled;
+                if (ImGui.Checkbox("Auto layer from slope (PBR)##terrain_splat", ref slopeOn))
+                    obj.SplatSlopeEnabled = slopeOn;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Assign ONE texture layer by surface STEEPNESS automatically:\nflat ground keeps its layers, slopes take the slope layer.\nUses the REAL displaced-geometry normal (same as the PBR shading).\nManual paint always wins over the slope mask.");
+                if (slopeOn)
+                {
+                    ImGui.Indent();
+                    int slopeLayer = obj.SplatSlopeLayer;
+                    if (ImGui.SliderInt("Layer##terrain_slope", ref slopeLayer, 1, 3))
+                        obj.SplatSlopeLayer = slopeLayer;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Which layer (1-3) takes the steep areas.\nAssign its textures in 'Layer textures' below.");
+                    float slopeTh = obj.SplatSlopeThreshold;
+                    if (ImGui.SliderFloat("Threshold##terrain_slope", ref slopeTh, 0f, 0.95f, "%.2f"))
+                        obj.SplatSlopeThreshold = slopeTh;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("0 = the layer appears on any non-flat surface,\n0.7 = near-vertical cliffs only (N.Y of the displaced mesh).");
+                    float slopeFade = obj.SplatSlopeFade;
+                    if (ImGui.SliderFloat("Blend##terrain_slope", ref slopeFade, 0.005f, 0.6f, "%.3f"))
+                        obj.SplatSlopeFade = slopeFade;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Blend width above the threshold —\n0.02 = hard cliff edge, 0.4 = soft gradual transition.");
+                    ImGui.Unindent();
+                }
+
                 // ── Layer textures (albedo + full PBR map set per layer) ──
                 if (ImGui.TreeNode("Layer textures##terrain_splat"))
                 {

@@ -898,7 +898,7 @@ persist `PbrRandomTiling` di SceneAsset + save ×2 + load (clamp 0..1) + Duplica
 Slider "Random Tiling##object" di PbrPanel mapping section + masuk "Reset tuning
 to defaults".
 
-**Two weight sources, max-blend (the brush always wins where it painted)**:
+**Three weight sources, max-blend (the brush always wins where it painted)**:
 - **Manual paint** — `TerrainSplatField` (Engine/Objects/TerrainSplatField.cs, 256² RGBA
   CPU field): Paint/Erase/Smooth stamps on the selected layer via `SplatApply`, weights
   renormalized per texel so the sum stays 1; dirty-rect GL_RGBA8 upload; per-stroke undo
@@ -917,6 +917,19 @@ to defaults".
   splat file), and a band recompute over an unpainted field keeps that field
   unpainted (deterministic weights — the sticky `_bandsComputedPaint` lock prevents
   the recompute from ever clearing the flag).
+- **AUTO slope layer (PBR)** — `TerrainSplatField.ComputeSlopeWeights` folds a
+  STEEPNESS mask into ONE layer (1-3): weight = smoothstep(threshold, threshold+fade,
+  1−N.Y) with N derived from the COMBINED displaced elevation (base×BaseHeight +
+  offset + delta×amp — exactly the vertex stage's surface) via central differences
+  in world units, through the terrain's own tiling. The fold is sum-preserving
+  (target += t·(1−target), others ×(1−t)) so paint/bands keep their share; painted
+  fields are skipped (brush wins). Bands + slope share ONE buffer
+  (`_splatFieldForBands`): every rebuild rewrites the base first (bands or a neutral
+  layer-0 fill) then re-folds the slope — the pass is NOT idempotent, never fold
+  twice. UI: TerrainPanel "Auto layer from slope (PBR)" (Layer/Threshold/Blend).
+  Persist ×5 site: SceneAsset `SplatSlope*`, save ×2 + load clamp, Duplicate.
+  Plane-only (per-face Box/Sphere UVs carry no world slope meaning). CPU tests:
+  SLOPE suite in `Tools/BrushLogicTest` (flat untouched / steep flank → 1 / sum=1).
 
 **Viewport painting** (Terrain panel → "Terrain Paint"): brush session
 (`EditorObject.SplatBrush`: mode Paint/Erase/Smooth, Layer 0-3, radius, strength,

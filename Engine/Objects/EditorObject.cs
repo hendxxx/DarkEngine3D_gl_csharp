@@ -1011,6 +1011,7 @@ public unsafe class EditorObject
     private string? _splatLoadedPath;                 // file the live field was decoded from
     private string? _splatDecodeFailedPath;           // sticky failure cache (no decode storms)
     private bool _splatBandsPending;                  // bands recompute requested (param/sculpt change)
+    private bool _splatSlopeDirty = true;             // slope weights need (re)building / re-applying
 
     /// <summary>Stored splat weight map (RGBA TGA — R/G/B/A = layers 0-3). Written
     /// by the paint bake; loadable from any 32-bit image. Empty = never painted.</summary>
@@ -1047,6 +1048,41 @@ public unsafe class EditorObject
     /// <summary>AUTO height bands from the sculpted elevation (the "driven by
     /// terrain height" half of the splat system).</summary>
     public bool SplatHeightBandsEnabled { get; set; }
+    /// <summary>SLOPE layer (PBR): auto-assign a texture layer by surface STEEPNESS.
+    /// Weight = smoothstep(threshold, threshold+fade, slope) where slope = 1−N.Y of
+    /// the REAL displaced geometry (plane) or the mesh normal (Box/Sphere) — the same
+    /// normal the PBR lighting uses, so paint/bands and slope agree visually.
+    /// Manual paint always wins (the slope weight is MULTIPLIED by the painted
+    /// weight, never added), and the slope term scales smoothly into it.
+    /// Plane-only implementation; the term rides the existing splat program.</summary>
+    private bool _splatSlopeEnabled;
+    /// <summary>Slope layer on/off — flipping it dirties the auto weight buffer.</summary>
+    public bool SplatSlopeEnabled
+    {
+        get => _splatSlopeEnabled;
+        set { if (_splatSlopeEnabled != value) { _splatSlopeEnabled = value; _splatSlopeDirty = true; } }
+    }
+    private int _splatSlopeLayer = 1;
+    /// <summary>Slope layer index 1..3 (0 = base PBR material is not a slope target).</summary>
+    public int SplatSlopeLayer
+    {
+        get => _splatSlopeLayer;
+        set { var v = Math.Clamp(value, 1, 3); if (_splatSlopeLayer != v) { _splatSlopeLayer = v; _splatSlopeDirty = true; } }
+    }
+    private float _splatSlopeThreshold = 0.35f;
+    /// <summary>Slope threshold: 0 = every surface, 1 = vertical cliffs only (N.Y).</summary>
+    public float SplatSlopeThreshold
+    {
+        get => _splatSlopeThreshold;
+        set { var v = Math.Clamp(value, 0f, 0.98f); if (_splatSlopeThreshold != v) { _splatSlopeThreshold = v; _splatSlopeDirty = true; } }
+    }
+    private float _splatSlopeFade = 0.2f;
+    /// <summary>Blend width above the threshold (same units as the threshold).</summary>
+    public float SplatSlopeFade
+    {
+        get => _splatSlopeFade;
+        set { var v = Math.Clamp(value, 0.002f, 1f); if (_splatSlopeFade != v) { _splatSlopeFade = v; _splatSlopeDirty = true; } }
+    }
     /// <summary>Number of elevation bands that influence weights (1..4) — the
     /// remaining layers keep weight 0 unless painted.</summary>
     public int SplatHeightLayerCount { get; set; } = 4;
@@ -1215,6 +1251,10 @@ public unsafe class EditorObject
     /// 256² pass runs at most once per frame inside the draw.</summary>
     public void InvalidateSplatBands() => _splatBandsPending = true;
 
+    /// <summary>Force the slope weight pass to re-run next draw (threshold/fade/layer
+    /// edits, or the elevation/sculpt changed underneath).</summary>
+    public void InvalidateSplatSlope() => _splatSlopeDirty = true;
+
     /// <summary>Recompute the auto height-band weights from the sculpted elevation
     /// (the "splat driven by terrain height" half). Runs in the draw when pending.</summary>
     private void ComputeSplatBands()
@@ -1270,7 +1310,61 @@ public unsafe class EditorObject
         sf.FlushTexture();
     }
 
-    /// <summary>Apply one splat brush stamp at plane-local coordinates (same
+    /// <summary>SLOPE layer rebuild (runs in the draw when enabled & dirty): make
+    /// sure base weights exist (height bands, or a neutral layer-0 fill when bands
+    /// are off), then fold the steepness mask into the chosen layer. Painted fields
+    /// are NEVER touched — the brush always wins. Sculpt/bands rebuilds clear
+    /// SlopeApplied → this re-applies the mask on top of the fresh base.</summary>
+    private void ComputeSplatSlopeBands()
+    {
+        if (!SplatSlopeEnabled)
+        {
+            // Slope OFF — drop the auto buffer only when it carries no paint (the
+            // same rule as the bands OFF path).
+            if (_splatFieldForBands != null && !_splatFieldForBands.HasAnyEdits)
+            {
+                _splatFieldForBands.DisposeTexture();
+                _splatFieldForBands = null;
+            }
+            _splatSlopeDirty = false;
+            return;
+        }
+        var sf = SplatIsPainted ? EnsureSplatPaintField() : EnsureSplatBandField();
+        if (sf == null) { _splatSlopeDirty = false; return; }
+        if (sf.HasPaint) { _splatSlopeDirty = false; return; }   // paint wins, no auto pass
+        // ALWAYS rebuild the base weights first: a slope fold is not idempotent, so
+        // re-running it over already-slope-weighted weights would double-apply. A
+        // fresh base (bands or neutral) each rebuild makes the pass deterministic.
+        // Cost is one 256² pass, and only while a rebuild is actually pending.
+        if (SplatHeightBandsEnabled)
+        {
+            _splatBandsPending = true;
+            ComputeSplatBands();            // fresh band-weighted base
+        }
+        else
+        {
+            sf.FillNeutralLayer0();         // flat base — slope is the only term
+        }
+        if (!sf.HasWeights) { _splatSlopeDirty = false; return; }
+        // Elevation sources — the SAME combination the vertex stage displaces with.
+        string src = TerrainHeightSourcePath;
+        TerrainHeightfield? hf = _baseFieldForSampling;
+        if (hf == null && string.IsNullOrEmpty(src))
+            hf = _baseFieldForSampling = TerrainHeightfield.CreateFlat(1f);
+        var d = HasSculptDelta ? EnsureSculptField() : null;
+        int layer = Math.Clamp(SplatSlopeLayer, 1, 3);
+        sf.ComputeSlopeWeights(hf, d, Math.Clamp(TerrainSculptAmp, 0f, 250f),
+            Math.Clamp(TerrainBaseHeight, 0f, 500f),
+            Math.Clamp(TerrainHeightOffset, -250f, 250f),
+            Math.Clamp(TerrainHeightTilingX, 0.01f, 100f),
+            Math.Clamp(TerrainHeightTilingY, 0.01f, 100f),
+            MathF.Abs(Scale.X), MathF.Abs(Scale.Z),
+            layer,
+            Math.Clamp(SplatSlopeThreshold, 0f, 0.98f),
+            Math.Max(SplatSlopeFade, 0.002f));
+        sf.FlushTexture();
+        _splatSlopeDirty = false;
+    }
     /// convention as <see cref="SculptApply"/>). The dirty region uploads live.</summary>
     public void SplatApply(float localX, float localZ, SplatBrushSession b, float dt, int frameStamp)
     {
@@ -1501,7 +1595,7 @@ public unsafe class EditorObject
         !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null ||
         (PrimitiveType == EditorPrimitiveType.Plane &&
             (_splatField != null || _splatFieldForBands != null ||
-             _splatMapPath.Length > 0 || SplatHeightBandsEnabled ||
+             _splatMapPath.Length > 0 || SplatHeightBandsEnabled || SplatSlopeEnabled ||
              SplatLayerAlbedoPath.Skip(1).Any(p => !string.IsNullOrEmpty(p))));
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
@@ -2497,6 +2591,13 @@ public unsafe class EditorObject
         if (PrimitiveType == EditorPrimitiveType.Plane && (_splatBandsPending || SplatHeightBandsEnabled && _splatFieldForBands == null && _splatField == null))
             ComputeSplatBands();
         EnsureSplatTextures();
+        // SLOPE layer: rebuild the 256² weight buffer when enabled (or parameters just
+        // changed) and no painted field exists. Bands + slope share ONE buffer — the
+        // rebuilder folds both terms, manual paint (a live _splatField) always wins.
+        // Fires after ANY band recompute too (bands reset SlopeApplied → re-fold).
+        if (PrimitiveType == EditorPrimitiveType.Plane && SplatSlopeEnabled && _splatField == null
+            && (_splatFieldForBands == null || _splatSlopeDirty || !_splatFieldForBands.SlopeApplied))
+            ComputeSplatSlopeBands();
 
         // Program choice: planes with a terrain elevation heightmap (or a sculpt
         // delta) use the geometric-displacement vertex stage; everything else the
@@ -2670,7 +2771,7 @@ public unsafe class EditorObject
         bool splatLiveField = _splatField != null && _splatField.GpuTexture != 0;
         bool splatLiveBands = _splatFieldForBands != null && _splatFieldForBands.GpuTexture != 0;
         bool splatActive = (splatLiveField || splatLiveBands)
-                           && (SplatIsPainted || SplatHeightBandsEnabled);
+                           && (SplatIsPainted || SplatHeightBandsEnabled || SplatSlopeEnabled);
         if (u.SplatWeights >= 0)
             GL.Uniform1i(u.SplatWeights, splatActive ? 10 : 0);
         if (u.SplatActive >= 0)

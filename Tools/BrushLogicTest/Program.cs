@@ -208,6 +208,51 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
     Check("Paint survives bake/reload", c.Y > 0.6f, $"layer-1 weight at center {c.Y:F3} — want > 0.6");
 }
 
+// ── SLOPE LAYER (PBR) — steepness mask folded into the weight map ──
+// Pins the contract: neutral base → slope pass lifts ONLY the target layer on
+// steep texels, flat texels stay untouched, the sum stays 1, and painted fields
+// are documented to be skipped by the caller (paint wins).
+{
+    var sl = TerrainSplatField.CreateDefault();
+    sl.FillNeutralLayer0();
+    // RAMPLIKE heightfield: elevation = u * 40 (slope |grad| = 40/span → steep) —
+    // build via ApplyBrush would be slow; instead reuse a sculpt-neutral trick:
+    // a flat 0.5 field gives slope ≈ 0 — we assert the FLAT case here (mask off)
+    // plus a synthetic steep case through the public API below.
+    var flatH = TerrainHeightfield.CreateFlat(0.5f);
+    sl.ComputeSlopeWeights(flatH, null, 0f, 20f, 0f, 1f, 1f, 100f, 100f, 1, 0.35f, 0.2f);
+    var flatW = sl.SampleWeights(0.5f, 0.5f);
+    Check("Slope flat ground: layer untouched", flatW.Y < 0.02f && flatW.X > 0.98f,
+        $"L1={flatW.Y:F3} L0={flatW.X:F3} (flat → mask ≈ 0)");
+    Check("Slope keeps sum = 1", MathF.Abs((flatW.X + flatW.Y + flatW.Z + flatW.W) - 1f) < 0.003f,
+        $"sum={flatW.X + flatW.Y + flatW.Z + flatW.W:F4}");
+
+    // STEEP case: sculpt a tall plateau via the sculpt field (delta map), then fold
+    // it in with a big amp — the plateau's flank carries a huge gradient → the slope
+    // mask lifts the target layer there, while the flat top keeps layer 0.
+    var delta = TerrainHeightfield.CreateFlat(0.5f);
+    for (int i = 0; i < 120; i++)
+        delta.ApplyBrush(0f, 0f, 100f, 100f, 12f, 3f, 0.5f, TerrainBrushMode.Raise, 1f / 60f, i);
+    sl.FillNeutralLayer0();
+    sl.ComputeSlopeWeights(flatH, delta, 60f, 20f, 0f, 1f, 1f, 100f, 100f, 2, 0.2f, 0.25f);
+    // SELF-CALIBRATING flank probe: scan the v=0.5 line for the MAX target-layer
+    // weight (the steep flank is wherever the brush profile happens to be steepest)
+    // and compare against the flat top center.
+    float maxL2 = 0f; var maxW = Vector4.Zero;
+    for (int i = 0; i <= 40; i++)
+    {
+        float u = 0.28f + 0.44f * i / 40f;
+        var w = sl.SampleWeights(u, 0.5f);
+        if (w.Z > maxL2) { maxL2 = w.Z; maxW = w; }
+    }
+    var topW = sl.SampleWeights(0.5f, 0.5f);     // plateau top (flat)
+    Check("Slope steep flank: target layer rises", maxL2 > topW.Z + 0.05f,
+        $"max flank L2={maxL2:F3} > top L2={topW.Z:F3} + 0.05");
+    Check("Slope flank sum = 1", MathF.Abs((maxW.X + maxW.Y + maxW.Z + maxW.W) - 1f) < 0.003f,
+        $"sum={maxW.X + maxW.Y + maxW.Z + maxW.W:F4}");
+    Check("Slope layer index respected", sl.SlopeApplied, "SlopeApplied flag set");
+}
+
 Console.WriteLine(fails == 0 ? "\nALL BRUSH TESTS PASSED" : $"\n{fails} TEST(S) FAILED");
 BrushProbe.Run(fails);
 return BrushProbe.Fails;

@@ -153,6 +153,14 @@ public sealed class TerrainSplatField
     /// sculpted elevation (splat is ACTIVE even without manual paint).</summary>
     public bool HasBands { get; private set; }
 
+    /// <summary>True once the buffer carries REAL base weights (bands computed or
+    /// neutral-filled) — gates the slope pass (needs a base to blend into).</summary>
+    public bool HasWeights { get; private set; }
+
+    /// <summary>True after the slope mask was folded into the current weights —
+    /// lets the caller know a base rewrite (bands/params) needs the slope re-applied.</summary>
+    public bool SlopeApplied { get; private set; }
+
     /// <summary>Edits accumulated since the last finished stroke — only then does
     /// the stroke-end path flush + bake.</summary>
     public bool NeedsBake { get; private set; }
@@ -411,6 +419,8 @@ public sealed class TerrainSplatField
         float feather, int layerCount, TerrainHeightfield? delta = null, float deltaAmp = 0f)
     {
         HasBands = hf != null;
+        HasWeights = true;      // the buffer now carries real base weights
+        SlopeApplied = false;   // any base rewrite drops the slope term (re-applied after)
         if (hf == null) return;
         // NOTE: this recompute never touches HasPaint/HasAnyEdits — bands do not
         // confer painted state (only brush stamps, undo/redo restores and decoded
@@ -468,6 +478,78 @@ public sealed class TerrainSplatField
         }
         // Same bands + same params ⇒ same weights — the painted state (set only by
         // stamps/loads/restores) is intentionally left untouched here.
+        MarkWholeDirty();
+        NeedsBake = true;
+    }
+
+    /// <summary>Reset every texel to layer-0-full (1,0,0,0) — the neutral base for
+    /// the slope-only pass (no height bands enabled). Marks the whole texture dirty.</summary>
+    public void FillNeutralLayer0()
+    {
+        for (int i = 0; i < Res * Res; i++)
+        {
+            int idx = i * 4;
+            _w[idx] = 1f;
+            _w[idx + 1] = _w[idx + 2] = _w[idx + 3] = 0f;
+        }
+        HasWeights = true;
+        SlopeApplied = false;
+        MarkWholeDirty();
+        NeedsBake = true;
+    }
+
+    /// <summary>SLOPE layer (PBR): multiply a steepness mask into ONE layer's weight
+    /// and renormalize by taking the share from the others (sum stays 1). The mask is
+    /// smoothstep(threshold, threshold+fade, 1−N.Y) with N derived from the REAL
+    /// displaced elevation (base × BaseHeight + offset + sculpt delta) via central
+    /// differences in WORLD units — the same surface the vertex stage renders, so the
+    /// slope layer hugs the visible geometry (paint/bands keep their share underneath).
+    /// Call AFTER the base weights exist (ComputeHeightBands / FillNeutralLayer0); on
+    /// a painted field this must never run (paint wins — caller checks HasPaint).
+    /// Requires a subsequent FlushTexture().</summary>
+    public void ComputeSlopeWeights(TerrainHeightfield? hf, TerrainHeightfield? delta, float deltaAmp,
+        float baseHeight, float offset, float tilingX, float tilingY,
+        float spanX, float spanZ, int layer, float threshold, float fade)
+    {
+        if (hf == null || layer < 0 || layer > 3 || !HasWeights) return;
+        float bh = Math.Clamp(baseHeight, 0f, 500f);
+        float tx = Math.Clamp(tilingX, 0.01f, 100f), ty = Math.Clamp(tilingY, 0.01f, 100f);
+        float th = Math.Clamp(threshold, 0f, 0.98f);
+        float fd = Math.Max(fade, 0.002f);
+        float stepX = MathF.Max(Math.Abs(spanX) / Res, 1e-4f);   // world per texel
+        float stepZ = MathF.Max(Math.Abs(spanZ) / Res, 1e-4f);
+
+        float Elev(float uu, float vv)
+        {
+            float e = hf.SampleBilinear(uu, vv, tx, ty) * bh;
+            if (delta != null && deltaAmp > 0f)
+                e += (delta.SampleBilinear(uu, vv, tx, ty) - 0.5f) * 2f * deltaAmp;
+            return e;
+        }
+
+        for (int z = 0; z < Res; z++)
+        {
+            for (int x = 0; x < Res; x++)
+            {
+                float u = (x + 0.5f) / Res, v = (z + 0.5f) / Res;
+                // Central differences in WORLD units → surface gradient → N.Y.
+                float gx = (Elev(u + 1f / Res, v) - Elev(u - 1f / Res, v)) / (2f * stepX);
+                float gz = (Elev(u, v + 1f / Res) - Elev(u, v - 1f / Res)) / (2f * stepZ);
+                float ny = 1f / MathF.Sqrt(1f + gx * gx + gz * gz);
+                float slope = Math.Clamp(1f - ny, 0f, 1f);   // 0 flat … 1 vertical
+                float t = Math.Clamp((slope - th) / fd, 0f, 1f);
+                t = t * t * (3f - 2f * t);                    // smoothstep
+                if (t <= 0.001f) continue;
+                int idx = (z * Res + x) * 4;
+                // Target layer takes t·(everything it doesn't already have); the other
+                // layers keep (1−t) of their share — the sum stays exactly 1.
+                float keep = 1f - t;
+                _w[idx + layer] = _w[idx + layer] + t * (1f - _w[idx + layer]);
+                for (int l = 0; l < 4; l++)
+                    if (l != layer) _w[idx + l] *= keep;
+            }
+        }
+        SlopeApplied = true;
         MarkWholeDirty();
         NeedsBake = true;
     }

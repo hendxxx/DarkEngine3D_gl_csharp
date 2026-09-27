@@ -1029,6 +1029,10 @@ public class SceneManagerPanel
                         SplatHeightLayerCount = obj.SplatHeightLayerCount,
                         SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
                         SplatHeightBands = obj.SplatHeightBands.SelectMany(b => new[] { b.X, b.Y }).ToArray(),
+                        SplatSlopeEnabled = obj.SplatSlopeEnabled,
+                        SplatSlopeLayer = obj.SplatSlopeLayer,
+                        SplatSlopeThreshold = obj.SplatSlopeThreshold,
+                        SplatSlopeFade = obj.SplatSlopeFade,
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
                         PbrPomShadowStrength = obj.PbrPomShadowStrength,
@@ -1461,6 +1465,10 @@ public class SceneManagerPanel
                             for (int l = 0; l < 4; l++)
                                 obj.SplatLayerTiling[l] = Math.Clamp(stl[l], 0.01f, 100f);
                         obj.SplatHeightBandsEnabled = objData.SplatHeightBandsEnabled;
+                        obj.SplatSlopeEnabled = objData.SplatSlopeEnabled;
+                        obj.SplatSlopeLayer = Math.Clamp(objData.SplatSlopeLayer, 1, 3);
+                        obj.SplatSlopeThreshold = Math.Clamp(objData.SplatSlopeThreshold, 0f, 0.98f);
+                        obj.SplatSlopeFade = Math.Clamp(objData.SplatSlopeFade, 0.002f, 1f);
                         if (objData.SplatHeightLayerCount > 0)
                             obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
                         if (objData.SplatHeightLayerFeather >= 0f)
@@ -1891,6 +1899,10 @@ public class SceneManagerPanel
                             SplatHeightLayerCount = obj.SplatHeightLayerCount,
                             SplatHeightLayerFeather = obj.SplatHeightLayerFeather,
                             SplatHeightBands = obj.SplatHeightBands.SelectMany(b => new[] { b.X, b.Y }).ToArray(),
+                            SplatSlopeEnabled = obj.SplatSlopeEnabled,
+                            SplatSlopeLayer = obj.SplatSlopeLayer,
+                            SplatSlopeThreshold = obj.SplatSlopeThreshold,
+                            SplatSlopeFade = obj.SplatSlopeFade,
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,

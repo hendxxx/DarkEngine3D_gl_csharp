@@ -342,6 +342,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 SplatHeightBandsEnabled = source.SplatHeightBandsEnabled,
                 SplatHeightLayerCount = source.SplatHeightLayerCount,
                 SplatHeightLayerFeather = source.SplatHeightLayerFeather,
+                SplatSlopeEnabled = source.SplatSlopeEnabled,
+                SplatSlopeLayer = source.SplatSlopeLayer,
+                SplatSlopeThreshold = source.SplatSlopeThreshold,
+                SplatSlopeFade = source.SplatSlopeFade,
 
             };
             for (int l = 1; l <= 3; l++)
