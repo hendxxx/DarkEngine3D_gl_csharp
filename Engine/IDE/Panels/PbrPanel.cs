@@ -261,6 +261,39 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             float parallax = obj.PbrParallaxScale; Tune("Parallax Depth##object", ref parallax, 0.005f, 0f, 0.5f); obj.PbrParallaxScale = parallax;
             float pomSh = obj.PbrPomShadowStrength; Tune("Relief Shadow##object", ref pomSh, 0.01f, 0f, 1f); obj.PbrPomShadowStrength = pomSh;
 
+            // ── VERTEX DISPLACEMENT (all primitives — geometry from the height map) ──
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.95f, 0.8f, 0.6f, 1f), "Vertex Displacement");
+            bool vd = obj.PbrVertexDisplaceEnabled;
+            if (ImGui.Checkbox("Enable##vdisp", ref vd)) obj.PbrVertexDisplaceEnabled = vd;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Move REAL vertices by the Height/Displacement map:\nBox/Sphere switch to the geometric-displacement program\n(terrain planes already use it when a heightmap exists).\nNeeds the Height map slot filled.");
+            if (vd)
+            {
+                ImGui.Indent();
+                if (string.IsNullOrEmpty(obj.PbrHeightPath))
+                    ImGui.TextDisabled("↳ set the Height / Displacement (POM Detail) map first");
+                float vds = obj.PbrVertexDisplaceScale; Tune("Height Scale##vdisp", ref vds, 0.01f, 0f, 500f); obj.PbrVertexDisplaceScale = vds;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Peak height in world units the height map displaces vertices.");
+                float vdo = obj.PbrVertexOffset; Tune("Height Offset##vdisp", ref vdo, 0.01f, -250f, 250f); obj.PbrVertexOffset = vdo;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Lifts (or sinks) the whole displaced surface in world units.");
+                if (obj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere)
+                {
+                    int tess = obj.PbrPrimTessellation;
+                    if (ImGui.SliderInt("Tessellation##vdisp", ref tess, 1, 64))
+                        obj.PbrPrimTessellation = tess;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Subdivisions per face — the mesh needs interior vertices\nto displace (1 = legacy low-poly, nothing moves).\nMore = finer detail, heavier mesh.");
+                    if (obj.PrimitiveType == EditorPrimitiveType.Sphere && tess > 0)
+                        ImGui.TextDisabled($"Mesh: {tess * 12}×{tess * 8} grid");
+                    else if (tess > 1)
+                        ImGui.TextDisabled($"Mesh: 6 faces × {tess}×{tess} quads");
+                }
+                if (obj.PrimitiveType == EditorPrimitiveType.Plane)
+                    ImGui.TextDisabled("↳ terrain planes: resolution/chunks live in the Terrain panel");
+                ImGui.Unindent();
+            }
+
             ImGui.Spacing();
             if (ImGui.Button("Reset tuning to defaults"))
             {

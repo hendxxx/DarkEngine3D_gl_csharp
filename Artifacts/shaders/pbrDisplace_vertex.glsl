@@ -47,6 +47,18 @@ uniform float u_pbrHeightDetail = 0.0;       // 1 = a REAL PBR height map exists
                                              // vertex displacement (u_dispScale). The
                                              // elevation fallback bind does NOT count
 uniform float u_dispGrid = 256.0;            // tessellation segments per side
+uniform float u_dispEdgeFade = 0.0;          // 1 = fade displacement to 0 at the UV tile
+                                             // borders — Box/Sphere faces carry PER-FACE UVs,
+                                             // so an edge vertex samples a different height
+                                             // texel on each adjacent face; without the fade
+                                             // the faces TEAR apart at every seam (stretched
+                                             // strips between faces). Fading the border ring to
+                                             // the undisplaced surface keeps all seams welded.
+uniform float u_dispRecomputeNormal = 1.0;   // 0 = keep the geometric normal — the gradient
+                                             // re-derivation below assumes a PLANE grid (cell
+                                             // world size from the model X/Z axes); on a
+                                             // Box/Sphere it produces garbage per-face normals
+                                             // (streaky shading).
 uniform vec3 u_heightTuning = vec3(1.0, 0.0, 0.0);       // strength, invert, blur
 uniform vec4 u_heightAdvance = vec4(1.0, 0.5, 0.0, 0.5); // contrast, ctr, offset, scale center
 uniform vec2 u_uvScale[7];
@@ -117,11 +129,29 @@ void main() {
     // decomposed uniforms (base + detail), so u_dispScale is NOT part of the gate.
     vec2 uvD = aTexCoord;   // sculpt delta: RAW mesh UV (no tiling — 1:1 edit layer)
     if (u_vertexDisplace > 0.5 && (u_terrainDisplace > 0.5 || u_dispScale > 0.0)) {
+        // Per-face-UV primitives (Box/Sphere): fade the displacement to zero within a
+        // thin ring at each FACE border (raw mesh UV — 0..1 per face) so coincident
+        // edge vertices from adjacent faces stay at the SAME undisplaced position —
+        // seams stay welded shut. MUST use the MESH UV (uvD), NOT the tiled height UV:
+        // a per-TILE ring (fract(uvP)) made every height-map tile bulge separately and
+        // tore cracks between tiles across the face interior.
+        float edgeFade = 1.0;
+        if (u_dispEdgeFade > 0.5) {
+            vec2 fu = fract(uvD);
+            vec2 e = min(fu, 1.0 - fu);
+            edgeFade = smoothstep(0.0, 0.15, min(e.x, e.y) * 2.0);
+        }
         // Displace along the model-space normal (plane normal = +Y up).
         // u_dispOffset lifts the WHOLE displaced surface — a terrain "height
         // offset": raise islands above water level or sink the base below the grid.
-        float elev = displaceWorld(uvT, uvD, uvP);
-        worldPos.xyz += nw * (elev + u_dispOffset);
+        float elev = displaceWorld(uvT, uvD, uvP) * edgeFade;
+        // OFFSET MUST RIDE THE FADE TOO: u_dispOffset added OUTSIDE the fade pushed
+        // every vertex — on a Box/Sphere adjacent faces have DIFFERENT normals, so the
+        // unfaded offset shoved shared-edge vertices in DIFFERENT directions and TORE
+        // the faces apart (gap between top and side faces even at Height Scale 0 when
+        // an offset was set). Multiplying the whole (elev + offset) by edgeFade keeps
+        // edges welded; planes are unaffected (their edgeFade is always 1).
+        worldPos.xyz += nw * ((elev + u_dispOffset) * edgeFade);
 
         // Re-derive the normal from the height-field gradient (central
         // differences). Footprint = ONE GRID CELL measured in mesh-UV space,
@@ -135,6 +165,10 @@ void main() {
         // One GRID CELL per SOURCE: the base (terrain tiling) and the detail
         // (POM tiling) each step through their own UV space — gradients of the
         // two sources add up just like the elevations do.
+        // PLANE-ONLY: the cell math below derives world cell size from the model
+        // X/Z axes — meaningless on a Box/Sphere (their faces face every axis), so
+        // those keep the geometric normal via u_dispRecomputeNormal = 0.
+        if (u_dispRecomputeNormal > 0.5) {
         vec2 cellT = max(u_terrainUvScale, vec2(1e-3)) / u_dispGrid;
         vec2 cellD = vec2(1.0) / u_dispGrid;   // delta = raw UV, one mesh-UV cell
         vec2 cellP = max(u_uvScale[5], vec2(1e-3)) / u_dispGrid;
@@ -149,6 +183,7 @@ void main() {
                       - displaceWorld(uvT - vec2(0.0, cellT.y), uvD - vec2(0.0, cellD.y), uvP - vec2(0.0, cellP.y))) / (2.0 * cellWorldV);
         nw = normalize(nw - normalize(Tx) * slopeU
                            - normalize(Bz) * slopeV);
+        }
     }
 
     FragPos = worldPos.xyz;

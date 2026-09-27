@@ -1066,6 +1066,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             cam.Position = pos;
             cam.Yaw = bridge.PendingCameraYaw ?? cam.Yaw;
             cam.Pitch = bridge.PendingCameraPitch ?? cam.Pitch;
+            if (bridge.PendingCameraOrtho is bool savedOrtho) cam.IsOrthographic = savedOrtho;
+            if (bridge.PendingCameraOrthoSize is float savedSize) cam.OrthoSize = savedSize;
             cam.UpdateVectors();
             cam.SyncSmoothVectors();
             bridge.PendingCameraPos = null;

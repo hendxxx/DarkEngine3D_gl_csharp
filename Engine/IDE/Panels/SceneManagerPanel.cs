@@ -850,20 +850,23 @@ public class SceneManagerPanel
             // selected scene, and keep each other scene's saved camera as-is. 
             if (string.Equals(name, _bridge.SelectedEditorScene, StringComparison.OrdinalIgnoreCase)
                 && _bridge.Camera != null)
-            {
-                var cam = _bridge.Camera;
-                editorScene.CameraPos = cam.Position;
-                editorScene.CameraYaw = cam.Yaw;
-                editorScene.CameraPitch = cam.Pitch;
-            }
-            if (editorScene.CameraPos is Vector3 camPos)
-            {
-                asset.EditorCameraPosition = [camPos.X, camPos.Y, camPos.Z];
-                asset.EditorCameraYaw = editorScene.CameraYaw;
-                asset.EditorCameraPitch = editorScene.CameraPitch;
-            }
+            {                    var cam = _bridge.Camera;
+                    editorScene.CameraPos = cam.Position;
+                    editorScene.CameraYaw = cam.Yaw;
+                    editorScene.CameraPitch = cam.Pitch;
+                    editorScene.CameraOrtho = cam.IsOrthographic;
+                    editorScene.CameraOrthoSize = cam.OrthoSize;
+                }
+                if (editorScene.CameraPos is Vector3 camPos)
+                {
+                    asset.EditorCameraPosition = [camPos.X, camPos.Y, camPos.Z];
+                    asset.EditorCameraYaw = editorScene.CameraYaw;
+                    asset.EditorCameraPitch = editorScene.CameraPitch;
+                    asset.EditorCameraOrtho = editorScene.CameraOrtho;
+                    asset.EditorCameraOrthoSize = editorScene.CameraOrthoSize;
+                }
 
-            //  Save per-scene render properties (background color, wireframe, VSync, etc.) 
+                //  Save per-scene render properties  (background color, wireframe, VSync, etc.) 
             if (editorScene.RenderProperties != null)
             {
                 var rp = editorScene.RenderProperties;
@@ -1035,6 +1038,8 @@ public class SceneManagerPanel
                         PbrHeightOffset = obj.PbrHeightOffset,
                         PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
                         PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
+                        PbrVertexDisplaceEnabled = obj.PbrVertexDisplaceEnabled,
+                        PbrPrimTessellation = obj.PbrPrimTessellation,
                         PbrVertexOffset = obj.PbrVertexOffset,
                         TerrainBaseHeight = obj.TerrainBaseHeight,
                         TerrainHeightScale = obj.TerrainHeightScale,
@@ -1480,6 +1485,8 @@ public class SceneManagerPanel
                         obj.PbrHeightOffset = Math.Clamp(objData.PbrHeightOffset, -0.5f, 0.5f);
                         obj.PbrHeightScaleCenter = Math.Clamp(objData.PbrHeightScaleCenter, 0f, 1f);
                         obj.PbrVertexDisplaceScale = Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 500f);
+                        obj.PbrVertexDisplaceEnabled = objData.PbrVertexDisplaceEnabled;
+                        obj.PbrPrimTessellation = Math.Clamp(objData.PbrPrimTessellation, 1, 64);
                         obj.PbrVertexOffset = Math.Clamp(objData.PbrVertexOffset, -250f, 250f);
                         // Terrain base-shape height/offset — separate from the PBR vertex
                         // fields. Legacy scenes without the fields (−1 sentinel) MIGRATE
@@ -1633,6 +1640,8 @@ public class SceneManagerPanel
                     loadedScene.CameraPos = new Vector3(camArr[0], camArr[1], camArr[2]);
                     loadedScene.CameraYaw = asset.EditorCameraYaw;
                     loadedScene.CameraPitch = asset.EditorCameraPitch;
+                    loadedScene.CameraOrtho = asset.EditorCameraOrtho;
+                    loadedScene.CameraOrthoSize = asset.EditorCameraOrthoSize;
                 }
                 // Legacy fallback: pre-per-scene .ing files stored ONE global camera on
                 // the manifest  apply it to every scene that has no per-scene camera.
@@ -1689,6 +1698,8 @@ public class SceneManagerPanel
                     _bridge.PendingCameraPos = fp;
                     _bridge.PendingCameraYaw = firstScene.CameraYaw;
                     _bridge.PendingCameraPitch = firstScene.CameraPitch;
+                    _bridge.PendingCameraOrtho = firstScene.CameraOrtho;
+                    _bridge.PendingCameraOrthoSize = firstScene.CameraOrthoSize;
                 }
 
                 Console.WriteLine($"[SceneManagerPanel] Loaded {sceneCount} scene(s) from {filePath}");
@@ -1777,12 +1788,16 @@ public class SceneManagerPanel
                     editorScene.CameraPos = cam.Position;
                     editorScene.CameraYaw = cam.Yaw;
                     editorScene.CameraPitch = cam.Pitch;
+                    editorScene.CameraOrtho = cam.IsOrthographic;
+                    editorScene.CameraOrthoSize = cam.OrthoSize;
                 }
                 if (editorScene.CameraPos is Vector3 camPos)
                 {
                     asset.EditorCameraPosition = [camPos.X, camPos.Y, camPos.Z];
                     asset.EditorCameraYaw = editorScene.CameraYaw;
                     asset.EditorCameraPitch = editorScene.CameraPitch;
+                    asset.EditorCameraOrtho = editorScene.CameraOrtho;
+                    asset.EditorCameraOrthoSize = editorScene.CameraOrthoSize;
                 }
 
                 //  Save per-scene render properties 
@@ -1886,6 +1901,8 @@ public class SceneManagerPanel
                             PbrHeightOffset = obj.PbrHeightOffset,
                             PbrHeightScaleCenter = obj.PbrHeightScaleCenter,
                             PbrVertexDisplaceScale = obj.PbrVertexDisplaceScale,
+                            PbrVertexDisplaceEnabled = obj.PbrVertexDisplaceEnabled,
+                            PbrPrimTessellation = obj.PbrPrimTessellation,
                             PbrVertexOffset = obj.PbrVertexOffset,
                             TerrainBaseHeight = obj.TerrainBaseHeight,
                             TerrainHeightScale = obj.TerrainHeightScale,

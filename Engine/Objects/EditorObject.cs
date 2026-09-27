@@ -1438,6 +1438,23 @@ public unsafe class EditorObject
     }
     /// <summary>Segments per side actually built last rebuild (0 = not a displaced plane).</summary>
     public int PbrPlaneSegmentsBuilt { get; private set; }
+    /// <summary>Universal vertex-displacement toggle (PBR panel → Vertex Displacement).
+    /// When ON, a plane uses the geometric-displacement program (terrain elevation /
+    /// sculpt delta / PBR height detail move REAL vertices) and a Box/Sphere switches
+    /// to the PBR-displace vertex stage so its POM height map displaces vertices too
+    /// (default Box/Sphere tessellation is raised by <see cref="PbrPrimTessellation"/>).
+    /// OFF (default) = legacy behavior: planes displace only when a height source
+    /// exists; Box/Sphere stay closed low-poly meshes.</summary>
+    public bool PbrVertexDisplaceEnabled { get; set; } = false;
+    /// <summary>Tessellation segments for Box/Sphere when vertex displacement is ON
+    /// (slices/stacks per sphere face, segments per box edge — low values displace
+    /// nothing). 1 = the legacy low-poly mesh. Rebuilds the mesh on change.</summary>
+    private int _pbrPrimTessellation = 1;
+    public int PbrPrimTessellation
+    {
+        get => _pbrPrimTessellation;
+        set { var v = Math.Clamp(value, 1, 64); if (_pbrPrimTessellation != v) { _pbrPrimTessellation = v; MarkDirty(); } }
+    }
     /// <summary>Number of vertex chunks built last rebuild (0 = single unchunked mesh).</summary>
     public int PbrChunkCount { get; private set; }
     /// <summary>Chunks skipped by the frustum cull on the last PBR draw (diagnostics).</summary>
@@ -1994,7 +2011,12 @@ public unsafe class EditorObject
             }
             case EditorPrimitiveType.Box:
             {
-                var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color);
+                // Vertex displacement ON → subdivide each face into a dense grid so
+                // the PBR height map can move real vertices (a 2-triangle face has
+                // nothing to displace). UVs stay 0..1 per face; the displace vertex
+                // stage reads the height through the POM slot's tiling.
+                int t = PbrVertexDisplaceEnabled ? Math.Clamp(PbrPrimTessellation, 1, 64) : 1;
+                var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color, t);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
                 _vertexCache = verts;
@@ -2002,7 +2024,9 @@ public unsafe class EditorObject
             }
             case EditorPrimitiveType.Sphere:
             {
-                var verts = Object3D.CreateSphereVertices(0.5f, Color);
+                int t = PbrVertexDisplaceEnabled ? Math.Clamp(PbrPrimTessellation, 1, 64) : 0;
+                var verts = Object3D.CreateSphereVertices(0.5f, Color,
+                    t > 0 ? t * 12 : 12, t > 0 ? t * 8 : 8);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
                 _vertexCache = verts;
@@ -2182,6 +2206,7 @@ public unsafe class EditorObject
         /// world-AABB padding so per-chunk frustum culling never culls displaced peaks.</summary>
         public float HeightAdvancePad = 0.5f;
         public int VertexDisplace, DispScale, DispOffset, DispGrid;
+        public int DispEdgeFade, DispRecomputeNormal;
         public int TerrainDisplace, TerrainHeightMap, TerrainUvScale, TerrainDispStrength, TerrainBaseHeight;
         public int PbrHeightDetail;   // u_pbrHeightDetail — real PBR height map present?
         // ── Terrain splat (4 texture layers blended by the unit-10 weight map) ──
@@ -2247,6 +2272,8 @@ public unsafe class EditorObject
             DispScale = GL.GetUniformLocation(Program, "u_dispScale");
             DispOffset = GL.GetUniformLocation(Program, "u_dispOffset");
             DispGrid = GL.GetUniformLocation(Program, "u_dispGrid");
+            DispEdgeFade = GL.GetUniformLocation(Program, "u_dispEdgeFade");
+            DispRecomputeNormal = GL.GetUniformLocation(Program, "u_dispRecomputeNormal");
             TerrainDisplace = GL.GetUniformLocation(Program, "u_terrainDisplace");
             TerrainHeightMap = GL.GetUniformLocation(Program, "terrainHeightMap");
             TerrainUvScale = GL.GetUniformLocation(Program, "u_terrainUvScale");
@@ -2480,8 +2507,22 @@ public unsafe class EditorObject
         // 31 splat; one program cannot carry both, which is exactly why the old
         // single-program splat block got stripped as "dead code" when the link
         // started failing with 'Number of sampler exceeds the limitation').
+        // Universal vertex displacement (PBR panel → Vertex Displacement): planes use
+        // the displace program whenever ANY height source exists (terrain elevation /
+        // sculpt delta / PBR height detail when toggled ON); Box/Sphere only when the
+        // toggle is ON (their tessellated mesh can actually move). The toggle-OFF
+        // plane keeps the legacy gates exactly.
         bool displaced = PrimitiveType == EditorPrimitiveType.Plane
-                         && (!string.IsNullOrEmpty(TerrainHeightSourcePath) || HasSculptDelta);
+                         ? (!string.IsNullOrEmpty(TerrainHeightSourcePath) || HasSculptDelta
+                            || (PbrVertexDisplaceEnabled && _pbrTex[5] != 0))
+                         : PbrVertexDisplaceEnabled && _pbrTex[5] != 0;
+        // TERRAIN-driven displacement is PLANE-ONLY. Box/Sphere displaced by the
+        // universal toggle must NEVER take the terrain branch: the displace program is
+        // SHARED, and uniforms not explicitly written LEAK from the last drawn terrain
+        // plane (u_terrainDisplace=1 + sculpt amp) — the box then bulged with the
+        // terrain elevation map + unbound sculpt sampler even at Height Scale 0
+        // (invisible at tess=1 — no interior vertices — glaring at tess>1).
+        bool terrainDriven = displaced && PrimitiveType == EditorPrimitiveType.Plane;   // Plane + (elevation source OR live sculpt field)
         bool splatVariant = PrimitiveType == EditorPrimitiveType.Plane
             && (_splatField != null || _splatFieldForBands != null || _splatMapPath.Length > 0);
         var u = (displaced, splatVariant) switch
@@ -2575,9 +2616,12 @@ public unsafe class EditorObject
         // elevation = base·BaseHeight + (delta − 0.5)·2·SculptAmp + POM detail.
         // The live session buffer wins over the stored delta bake. ──
         if (u.SculptDeltaMap >= 0)
-            GL.Uniform1i(u.SculptDeltaMap, displaced ? 16 : 0);
+            GL.Uniform1i(u.SculptDeltaMap, terrainDriven ? 16 : 0);
+        // Sculpt amp ONLY for terrain-driven planes — a displaced Box/Sphere must read
+        // 0 here (the term is sampled from the sculpt delta texture, meaningless on
+        // per-face UVs, and an unbound unit-16 sampler would return garbage).
         if (u.SculptAmp >= 0)
-            GL.Uniform1f(u.SculptAmp, displaced ? Math.Clamp(TerrainSculptAmp, 0f, 250f) : 0f);
+            GL.Uniform1f(u.SculptAmp, terrainDriven ? Math.Clamp(TerrainSculptAmp, 0f, 250f) : 0f);
         if (displaced)
         {
             uint deltaTex = 0;
@@ -2734,7 +2778,7 @@ public unsafe class EditorObject
         // is empty, bind the ELEVATION texture to unit 5 as well: the POM detail pass
         // then reads real height data (no phantom bumps from the 1.0 white texel),
         // while the elevation stays the sole displacement source.
-        bool terrainDriven = displaced;   // Plane + (elevation source OR live sculpt field)
+        // (terrainDriven declared right after `displaced` — Plane-only by design.)
         for (int i = 0; i < 7; i++)
         {
             GL.ActiveTexture(Const.GL_TEXTURE0 + (uint)i);
@@ -2830,6 +2874,15 @@ public unsafe class EditorObject
             }
             GL.ActiveTexture(Const.GL_TEXTURE0);
         }
+        else
+        {
+            // NON-terrain draw (Box/Sphere displaced by the toggle, or a plain plane):
+            // the displace program is SHARED across objects — u_terrainDisplace must be
+            // EXPLICITLY zeroed or it LEAKS from the last terrain plane (its unit-15
+            // texture binding stays live too), re-creating the bulged-box bug even
+            // after the terrainDriven gate was fixed.
+            if (u.TerrainDisplace >= 0) GL.Uniform1f(u.TerrainDisplace, 0f);
+        }
 
         // ── UV tiling + offset per map (uniform-only, no texture reload) ──
         // Global PbrTexTiling multiplies into each per-map tiling so the slider
@@ -2857,16 +2910,26 @@ public unsafe class EditorObject
         if (u.VertexDisplace >= 0) GL.Uniform1f(u.VertexDisplace, displaced ? 1f : 0f);
         // u_dispScale = DETAIL amplitude from the PBR height map when terrain-driven
         // (the "Displace Height" slider); the non-terrain (legacy/fallback) branch
-        // uses it as the whole-displacement scale from the old PBR field.
+        // uses it as the whole-displacement scale from the old PBR field. A Box/Sphere
+        // with the universal toggle always takes the non-terrain scale.
         if (u.DispScale >= 0)
-            GL.Uniform1f(u.DispScale, displaced
+            GL.Uniform1f(u.DispScale, displaced && PrimitiveType == EditorPrimitiveType.Plane && !string.IsNullOrEmpty(TerrainHeightSourcePath)
                 ? Math.Clamp(TerrainHeightScale, 0f, 500f)
                 : Math.Clamp(PbrVertexDisplaceScale, 0f, 500f));
+        // Offset mirrors Scale: only the terrain-driven plane reads TerrainHeightOffset;
+        // Box/Sphere (and PBR-height planes) use the Vertex Displacement panel's offset.
         if (u.DispOffset >= 0)
-            GL.Uniform1f(u.DispOffset, displaced
+            GL.Uniform1f(u.DispOffset, displaced && PrimitiveType == EditorPrimitiveType.Plane && !string.IsNullOrEmpty(TerrainHeightSourcePath)
                 ? Math.Clamp(TerrainHeightOffset, -250f, 250f)
                 : Math.Clamp(PbrVertexOffset, -250f, 250f));
         if (u.DispGrid >= 0) GL.Uniform1f(u.DispGrid, PbrPlaneSegmentsBuilt > 0 ? PbrPlaneSegmentsBuilt : PbrDisplaceSegments);
+        // Per-face-UV primitives (Box/Sphere) displaced along their own UVs: fade the
+        // displacement at the UV tile border (adjacent faces sample different height
+        // texels at shared edge vertices → tears) and keep the geometric normal (the
+        // gradient re-derivation assumes a plane grid — garbage on arbitrary faces).
+        bool perFaceUvDisp = PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere;
+        if (u.DispEdgeFade >= 0) GL.Uniform1f(u.DispEdgeFade, perFaceUvDisp ? 1f : 0f);
+        if (u.DispRecomputeNormal >= 0) GL.Uniform1f(u.DispRecomputeNormal, perFaceUvDisp ? 0f : 1f);
         GL.Uniform4f(u.HeightAdvance,
             Math.Clamp(PbrHeightContrast, 0.1f, 4f),
             Math.Clamp(PbrHeightContrastCenter, 0f, 1f),
@@ -5719,11 +5782,17 @@ void main() {
         //    flag draws NO box. Uses the Map2D tint shader with the shared white texture.
         if (Map2dShowCollision && !Editor2DAidsHidden && Map2dTilemap != null)
         {
-            var colLayer = Map2dActiveLayer >= 0 && Map2dActiveLayer < Map2dTilemap.Layers.Count
-                ? Map2dTilemap.Layers[Map2dActiveLayer]
-                : (Map2dTilemap.Layers.Count > 0 ? Map2dTilemap.Layers[0] : null);
+            // UNION OF ALL LAYERS — the collision preview must match the runtime physics
+            // (Player2DSystem resolves against EVERY layer that carries collision tile
+            // IDs). The old single-layer read (active layer, else layer 0) hid collision
+            // tiles living on other layers, so the preview showed less collision than the
+            // player actually hit.
+            var colLayers = new List<TileLayer>();
+            foreach (var l in Map2dTilemap.Layers)
+                if (l != null && l.CollisionTileIds.Count > 0)
+                    colLayers.Add(l);
 
-            if (colLayer != null && colLayer.CollisionTileIds.Count > 0)
+            if (colLayers.Count > 0)
             {
                 EnsureMap2DShader();
                 if (_map2dShader != 0)
@@ -5774,6 +5843,7 @@ void main() {
                         boxVerts.Add(new Map2DVertex(dx, dy, dz, 0, 0, cR * m, cG * m, cB * m, cA));
                     }
 
+                    foreach (var colLayer in colLayers)
                     for (int ty = 0; ty < mapH; ty++)
                     {
                         for (int tx = 0; tx < mapW; tx++)

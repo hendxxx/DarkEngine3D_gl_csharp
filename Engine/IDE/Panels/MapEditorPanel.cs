@@ -525,6 +525,10 @@ public class MapEditorPanel
     private void RetargetActiveTilemap(Tilemap2D active)
     {
         ActiveTilemap = active;
+        // NOTE: this method NEVER touches the camera — it also runs from
+        // SyncTilemapFromBridge when a scene switch / .ing restore adopts the new
+        // scene's tilemap, and (user rule) no map switch may move the editor camera.
+        // Framing is manual only: the "Focus" button.
         AdoptPerMapSettings(); // per-tilemap grid/palette settings
         _selectedLayerIdx = ActiveTilemap.Layers.Count > 0 ? 0 : -1;
         _selectedTileId = 0;
@@ -638,7 +642,7 @@ public class MapEditorPanel
                 if (ImGui.Selectable($"{map.Name} ({map.Width}x{map.Height})##map{map.Name}", isSel))
                 {
                     if (!isSel)
-                        _bridge.ActiveTilemap = map;   // SyncTilemapFromBridge retargets the panel
+                        LoadMapTilemap(map); // user switch: retarget + AUTO-FOCUS the level
                 }
                 if (isSel) ImGui.SetItemDefaultFocus();
             }
@@ -1805,6 +1809,10 @@ public class MapEditorPanel
     {
         _bridge.ActiveTilemap = map;
         RetargetActiveTilemap(map);
+        // CAMERA NEVER MOVES on a map switch (user rule, supersedes the old
+        // auto-focus): the editor stays exactly where the user left it — same
+        // philosophy as per-scene cameras. The manual "Focus" button is there
+        // when a map needs framing.
     }
 
     private enum PortalAnimTarget { NotActive, Active, Enter, Out }
@@ -1871,6 +1879,7 @@ public class MapEditorPanel
             {
                 Name = levelName
             };
+            // No camera move on create (user rule) — "Focus" frames the level on demand.
 
             // Always start with 1 layer (default "Ground")
             ActiveTilemap.Layers.Clear();
@@ -2243,6 +2252,7 @@ public class MapEditorPanel
 
             ActiveTilemap = loaded;
             _bridge.ActiveTilemap = ActiveTilemap;
+            // No camera move on load (user rule) — "Focus" frames the level on demand.
             // Multi-tilemap: register adopted tilemaps so the selector lists them even
             // before their Map2D object is ensured (and removal finds them).
             _bridge.Tilemaps ??= new List<Tilemap2D>();

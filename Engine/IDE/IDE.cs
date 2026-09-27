@@ -406,19 +406,28 @@ public class IDE : IDisposable
 
         if (level == null)
         {
-            // No level shown — undo level mode if it was active.
+            // No level shown — undo level mode if it was active. ONLY restore the view
+            // when the level mode actually MOVED the camera (a play-mode framing): the
+            // snapshot is taken once and goes stale across scene switches, so firing it
+            // in edit mode FORCED the camera to an old position when hopping between 2D
+            // and non-2D scenes (stomping the per-scene restore). Edit mode never moves
+            // the view anymore — there is nothing to restore there.
             if (_levelCameraApplied)
             {
-                cam.IsOrthographic = _levelCameraSavedOrtho;
-                cam.OrthoSize = _levelCameraSavedOrthoSize;
-                cam.IsFlyMode = _levelCameraSavedFly;
-                cam.FlyMouseLook = _levelCameraSavedFlyLook;
-                cam.LockTranslation = false;
-                cam.SetEditorViewTransform(
-                    _levelCameraSavedPos, _levelCameraSavedYaw, _levelCameraSavedPitch, cam.FoV);
+                if (_levelCameraMoved)
+                {
+                    cam.IsOrthographic = _levelCameraSavedOrtho;
+                    cam.OrthoSize = _levelCameraSavedOrthoSize;
+                    cam.IsFlyMode = _levelCameraSavedFly;
+                    cam.FlyMouseLook = _levelCameraSavedFlyLook;
+                    cam.LockTranslation = false;
+                    cam.SetEditorViewTransform(
+                        _levelCameraSavedPos, _levelCameraSavedYaw, _levelCameraSavedPitch, cam.FoV);
+                    Console.WriteLine("[IDE] Level camera: restored previous view");
+                }
                 _levelCameraApplied = false;
                 _levelCameraMap = null;
-                Console.WriteLine("[IDE] Level camera: restored previous view");
+                _levelCameraMoved = false;
             }
             _levelCameraReframePending = false;
             return;
@@ -471,8 +480,11 @@ public class IDE : IDisposable
         bool framingForInGame = _levelCameraReframePending;
         _levelCameraReframePending = false;
 
-        // Play in Preview / in-game re-entry: restore the map's SAVED camera start so
-        // previewing begins from the same anchored view as when it was captured.
+        // USER RULE: the EDITOR camera is never FORCED anywhere. Scene switches restore
+        // the per-scene saved view (SelectedEditorScene setter) and that stands — even
+        // if it does not frame the level. Only PLAY (preview F7 / in-game F8) may move
+        // the camera: restore the map's saved camera start so playing begins from the
+        // captured anchor view.
         if (level.HasCameraStart && framingForInGame)
         {
             cam.IsOrthographic = true;
@@ -483,13 +495,34 @@ public class IDE : IDisposable
             cam.LockTranslation = true; // play frame: camera owned by the 2D follow
             _levelCameraApplied = true;
             _levelCameraMap = level;
+            _levelCameraMoved = true; // play moved the view → it must be restored later
             Console.WriteLine($"[IDE] Level camera: restored saved camera start for '{level.Name}'");
             return;
         }
 
-        // No saved start yet — frame the whole map in ortho, anchored so world (0,0) —
-        // the map's bottom-left corner — is at the bottom-left of the viewport. The map
-        // plane is upright at z = layer index, spanning x/y in [0, W*cell] × [0, H*cell].
+        // Edit mode (framingForInGame == false): manage ONLY the play-mode lock state —
+        // NEVER touch position/yaw/pitch/zoom/EVEN projection — the per-scene saved
+        // camera (now including ortho mode + zoom) or the user's freefly view stands.
+        if (!framingForInGame)
+        {
+            bool playing = _inGameMode || Bridge.IsPreviewMode;
+            cam.FlyMouseLook = false;
+            if (playing)
+            {
+                cam.IsFlyMode = false;
+                cam.LockTranslation = true;
+            }
+            else
+            {
+                cam.LockTranslation = false;
+            }
+            _levelCameraApplied = true;
+            _levelCameraMap = level;
+            return;
+        }
+
+        // Play with NO saved camera start — anchor the play view to the map (one-time
+        // at play entry; edit-mode views are never forced, see the guard above).
         float cell = level.TileSize * Visual.Tilemap2D.WorldScale;
         float extentW = level.Width * cell;
         float extentH = level.Height * cell;
@@ -524,6 +557,7 @@ public class IDE : IDisposable
 
         _levelCameraApplied = true;
         _levelCameraMap = level;
+        _levelCameraMoved = true; // play framing wrote the view → restore it on exit
 
         // Remember this framing as the map's camera start if none saved yet — Play in
         // Preview then begins exactly where the level view is anchored. A user-captured
@@ -593,6 +627,10 @@ public class IDE : IDisposable
     private bool _levelCameraReframePending;
     /// <summary>The level the camera was framed for (re-frames when a different map loads).</summary>
     private Visual.Tilemap2D? _levelCameraMap;
+    /// <summary>True only when the level camera actually WROTE the view (a play-mode
+    /// framing); gates the "restore previous view" so a stale edit-mode snapshot can
+    /// never stomp the per-scene camera restore on 2D↔non-2D scene switches.</summary>
+    private bool _levelCameraMoved;
     // Camera state saved when level mode started, so leaving the level restores the view.
     private System.Numerics.Vector3 _levelCameraSavedPos;
     private float _levelCameraSavedYaw, _levelCameraSavedPitch, _levelCameraSavedOrthoSize;
@@ -752,7 +790,17 @@ public class IDE : IDisposable
                     return false;
                 }
                 _mapEditor.LoadMapFromFile(path);
+                // Multi-map session: reset the trigger runtime on EVERY scene map so
+                // portals/doors on other levels start clean after the file swap too.
+                if (Bridge.EditorObjectManager != null)
+                    foreach (var o in Bridge.EditorObjectManager.Objects)
+                        if (o is { PrimitiveType: EditorPrimitiveType.Map2D, Map2dTilemap: { } om })
+                            Visual.TriggerEventSystem.ResetRuntime(om);
                 Visual.TriggerEventSystem.ResetRuntime(Bridge.ActiveTilemap);
+                // The file swap re-targeted the ACTIVE map → the session's runtime
+                // level moves with it (checkpoint snapping + trigger context). The
+                // CAMERA is NOT re-framed — it keeps following the player smoothly.
+                Visual.TriggerEventSystem.RuntimeMap = Bridge.ActiveTilemap;
                 return true;
             };
             Visual.TriggerEventSystem.OnCameraShake = duration =>

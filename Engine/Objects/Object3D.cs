@@ -67,7 +67,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             modelLocation = GL.GetUniformLocation(shaderProgram, "model");
         }
 
-        public static Vertex[] CreateBoxVertices(float sx, float sy, float sz, Vector3 color)
+        public static Vertex[] CreateBoxVertices(float sx, float sy, float sz, Vector3 color, int tess = 1)
         {
             float hx = sx * 0.5f;
             float hy = sy * 0.5f;
@@ -87,8 +87,53 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             var verts = new List<Vertex>(36);
 
+            // tess > 1 → subdivide each face into tess×tess quads (vertex-displacement
+            // needs interior vertices; a 2-triangle face cannot move). The grid walks
+            // the face corner-to-corner with the SAME corner UV mapping as the flat
+            // quads below and keeps the exact CCW winding order per cell
+            // (bl, tl, br) + (tl, tr, br) so culling behavior is identical.
+            void Face(Vector3 o, Vector3 du, Vector3 dv, int n)
+            {
+                for (int iz = 0; iz < n; iz++)
+                    for (int ix = 0; ix < n; ix++)
+                    {
+                        float u0 = (float)ix / n, u1 = (float)(ix + 1) / n;
+                        float v0 = (float)iz / n, v1 = (float)(iz + 1) / n;
+                        Vector3 bl = o + du * u0 + dv * v0;
+                        Vector3 br = o + du * u1 + dv * v0;
+                        Vector3 tl = o + du * u0 + dv * v1;
+                        Vector3 tr = o + du * u1 + dv * v1;
+                        var nrm = Vector3.Normalize(Vector3.Cross(dv, du));
+                        verts.Add(V(bl, nrm, color, u0, v0));
+                        verts.Add(V(tl, nrm, color, u0, v1));
+                        verts.Add(V(br, nrm, color, u1, v0));
+                        verts.Add(V(tl, nrm, color, u0, v1));
+                        verts.Add(V(tr, nrm, color, u1, v1));
+                        verts.Add(V(br, nrm, color, u1, v0));
+                    }
+            }
+
             // NOTE: All faces use CCW winding (front faces point outward) so that
             // back-face culling works correctly with the default GL_CCW front-face convention.
+            if (tess > 1)
+            {
+                // du/dv per face walk the SAME corner/UV layout as the flat quads below;
+                // the (bl, tl, br) triangle order makes cross(dv, du) the face normal —
+                // outward for every face listed (verified against nBack/nFront/…).
+                Face(p0, p1 - p0, p3 - p0, tess);   // back  (−Z out)
+                Face(p5, p4 - p5, p6 - p5, tess);   // front (+Z out)
+                Face(p4, p0 - p4, p7 - p4, tess);   // left  (−X out)
+                // RIGHT: dv MUST be p2−p1 (pure +Y). p6−p1 is the face DIAGONAL
+                // (0,2hy,2hz) — the corner walk then lands tr at p5+p6−p1 =
+                // (hx, hy, 3hz), one half-depth BEYOND the front face: the right side
+                // stretched into a skewed parallelogram hanging off the box (visible
+                // at tess ≥ 2; tess = 1 uses the flat quads below and hid it).
+                Face(p1, p5 - p1, p2 - p1, tess);   // right (+X out)
+                Face(p4, p5 - p4, p0 - p4, tess);   // bottom (−Y out)
+                Face(p3, p2 - p3, p7 - p3, tess);   // top (+Y out)
+                return verts.ToArray();
+            }
+
             Vector3 nBack = new(0, 0, -1);
             verts.AddRange(new[] {
                 V(p0,nBack,color,0,0), V(p2,nBack,color,1,1), V(p1,nBack,color,1,0),

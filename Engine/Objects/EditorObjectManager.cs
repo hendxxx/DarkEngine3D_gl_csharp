@@ -327,6 +327,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 TexSettings = source.TexSettings.Clone(),
                 PbrTexSettings = source.PbrTexSettings.Select(s => s.Clone()).ToArray(),
                 PbrRandomTiling = source.PbrRandomTiling,   // bool — copies directly
+                PbrVertexDisplaceEnabled = source.PbrVertexDisplaceEnabled,
+                PbrPrimTessellation = source.PbrPrimTessellation,
                 // Terrain elevation + splat state travels with the duplicate (the
                 // weight map path is SHARED — the file is scene-persistent; the clone
                 // drops its live GPU buffers and re-decodes/recomputes lazily).

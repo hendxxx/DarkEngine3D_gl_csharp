@@ -146,6 +146,7 @@ public static class TriggerEventSystem
     {
         // Keep save-slot checkpoint loading able to ground-snap against the live map.
         _activeMap = map;
+        RuntimeMap ??= map; // adopt the first map seen as the runtime level (session start)
         _liveCapsuleOffsetX = capsuleOffsetX;
         _liveCapsuleOffsetY = capsuleOffsetY;
         // Keep the last NON-ZERO horizontal velocity: button-mode portals fire while
@@ -531,14 +532,16 @@ public static class TriggerEventSystem
                     if (CheckpointPosition.HasValue)
                     {
                         // CheckpointPosition is OBJECT space → convert to feet space once.
+                        // Snap against the RUNTIME level (portals can move the session to
+                        // another scene map — the checkpoint must land on THAT collision).
                         float feetX = CheckpointPosition.Value.X + _liveCapsuleOffsetX;
-                        float feetY = SnapFeetToGround(_activeMap, feetX,
+                        float feetY = SnapFeetToGround(RuntimeMap ?? _activeMap, feetX,
                             CheckpointPosition.Value.Y + _liveCapsuleOffsetY);
                         target = new Vector2(feetX, feetY);
                         z = CheckpointZ;
                         source = "(session checkpoint)";
                     }
-                    else if (TryLoadCheckpointFromSaves(_activeMap, _liveCapsuleOffsetX, _liveCapsuleOffsetY, out var saved, out float savedZ))
+                    else if (TryLoadCheckpointFromSaves(RuntimeMap ?? _activeMap, _liveCapsuleOffsetX, _liveCapsuleOffsetY, out var saved, out float savedZ))
                     {
                         target = saved; // already capsule-space feet + ground-snapped
                         z = savedZ;
@@ -552,7 +555,7 @@ public static class TriggerEventSystem
                         z = CheckpointZ;
                         source = "(start point — no checkpoint saved yet)";
                     }
-                    OnTeleportPlayer(target, z);
+                    OnTeleportPlayer(target, z, null); // checkpoint: same runtime level
                     Console.WriteLine($"[Trigger] '{triggerName}' → Load Checkpoint → teleport to ({target.X:F1}, {target.Y:F1}) {source}");
                 }
                 else
@@ -727,10 +730,8 @@ public static class TriggerEventSystem
                     float feetX = target.X + _liveCapsuleOffsetX;
                     float feetY = SnapFeetToGround(snapMap, feetX, target.Y + _liveCapsuleOffsetY);
                     target = new Vector2(feetX, feetY);
-                }
-
-                OnTeleportPlayer(target, z);
-                Console.WriteLine($"[Trigger] '{triggerName}' → {(oneWay ? "Portal One Way" : "Portal")} → ({target.X:F1}, {target.Y:F1}){(directCoordsHint(dest) ? " (coords)" : $" (portal '{dest}' + width offset)")}");
+                }                    OnTeleportPlayer(target, z, destMap); // portal: destination map becomes the runtime level
+                    Console.WriteLine($"[Trigger] '{triggerName}' → {(oneWay ? "Portal One Way" : "Portal")} → ({target.X:F1}, {target.Y:F1}){(directCoordsHint(dest) ? " (coords)" : $" (portal '{dest}' + width offset)")}{(destMap != null ? $" [map '{destMap.Name}']" : "")}");
 
                 // ── Arrival loop guard (AUTO portals only): the player materializes
                 // with the capsule edge overlapping the destination area, so the next
@@ -838,7 +839,14 @@ public static class TriggerEventSystem
 
     /// <summary>Set by the IDE-side player system: teleports the player's capsule to
     /// the given feet position and zeroes velocity (Load Checkpoint execution).</summary>
-    public static Action<Vector2, float>? OnTeleportPlayer { get; set; }
+    public static Action<Vector2, float, Tilemap2D?>? OnTeleportPlayer { get; set; }
+
+    /// <summary>The RUNTIME level the session currently plays on. The active map at
+    /// session start, then swapped by portals whose destination lives on ANOTHER
+    /// scene map (or by the Change Map action's file load). Checkpoint save/load and
+    /// camera world-bounds consult this instead of the editor's selected map, so
+    /// changing map levels also moves the camera framing and ground snapping.</summary>
+    public static Tilemap2D? RuntimeMap { get; set; }
 
     /// <summary>Clear per-session runtime state (delayed queue + warned set + saved
     /// checkpoint). Call when entering in-game/preview so a new session starts from
@@ -924,6 +932,31 @@ public static class TriggerEventSystem
         }
         return null;
     }
+
+    /// <summary>Every tilemap visible in the scene via Map2D objects: the ACTIVE map
+    /// first (the usual single-map case), then all other maps. Physics + trigger
+    /// evaluation enumerate this so multi-map 2D levels apply everywhere — a solid
+    /// tile or portal painted on ANY map level works no matter which map is active.</summary>
+    public static IEnumerable<Tilemap2D> EnumerateSceneMaps(
+        DarkEngine3D_gl_csharp.Engine.Objects.EditorObjectManager? manager, Tilemap2D? activeMap)
+    {
+        if (activeMap != null) yield return activeMap;
+        if (manager != null)
+        {
+            foreach (var o in manager.Objects)
+            {
+                if (o is not { IsVisible: true, PrimitiveType: DarkEngine3D_gl_csharp.Engine.Objects.EditorPrimitiveType.Map2D }) continue;
+                var m = o.Map2dTilemap;
+                if (m == null || ReferenceEquals(m, activeMap)) continue;
+                yield return m;
+            }
+        }
+    }
+
+    /// <summary>Re-pin the checkpoint/save-slot snapping map after a multi-map
+    /// trigger pass (Update overwrites _activeMap on every call; the ACTIVE map is
+    /// the authoritative one for checkpoints).</summary>
+    public static void PinActiveMap(Tilemap2D? map) => _activeMap = map;
 
     /// <summary>Maps the portal destination search may consult: every Map2D object in
     /// the scene (the ACTIVE map first — the usual single-map case) plus any map

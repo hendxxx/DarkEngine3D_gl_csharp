@@ -84,6 +84,8 @@ public class IDEBridge
     public Vector3? PendingCameraPos { get; set; }
     public float? PendingCameraYaw { get; set; }
     public float? PendingCameraPitch { get; set; }
+    public bool? PendingCameraOrtho { get; set; }
+    public float? PendingCameraOrthoSize { get; set; }
 
     // ── Viewport HUD font size (view label, stats, etc.) ──
     public float ViewportFontSize { get; set; } = 16f;
@@ -683,6 +685,11 @@ public class IDEBridge
         public float? CameraYaw { get; set; }
         /// <summary>Saved freefly camera pitch (degrees).</summary>
         public float? CameraPitch { get; set; }
+        /// <summary>Saved projection mode (null = keep current). 2D level scenes are
+        /// viewed orthographic — the per-scene restore must re-apply that too.</summary>
+        public bool? CameraOrtho { get; set; }
+        /// <summary>Saved ortho half-height (zoom). Null = keep current.</summary>
+        public float? CameraOrthoSize { get; set; }
     }
 
     /// <summary>All scenes created/managed by the UI Editor. Keyed by scene name.</summary>
@@ -716,6 +723,8 @@ public class IDEBridge
                 prev.CameraPos = Camera.Position;
                 prev.CameraYaw = Camera.Yaw;
                 prev.CameraPitch = Camera.Pitch;
+                prev.CameraOrtho = Camera.IsOrthographic;
+                prev.CameraOrthoSize = Camera.OrthoSize;
             }
 
             _selectedEditorScene = value;
@@ -729,6 +738,8 @@ public class IDEBridge
                 Camera.Position = p;
                 Camera.Yaw = next.CameraYaw ?? Camera.Yaw;
                 Camera.Pitch = next.CameraPitch ?? Camera.Pitch;
+                if (next.CameraOrtho is bool savedOrtho) Camera.IsOrthographic = savedOrtho;
+                if (next.CameraOrthoSize is float savedSize) Camera.OrthoSize = savedSize;
                 Camera.UpdateVectors();
                 Camera.SyncSmoothVectors();
             }

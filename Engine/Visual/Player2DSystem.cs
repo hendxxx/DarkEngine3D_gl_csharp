@@ -11,8 +11,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual;
 /// <summary>
 /// Minimal capsule-vs-tile physics for Player2D objects in preview/in-game.
 /// Applies gravity to every Player2D EditorObject, then resolves the player's
-/// feet-anchored capsule AABB against the active tilemap's collision tiles
-/// (CollisionTileIds) using swept-axis resolution: move X, resolve X (walls),
+/// feet-anchored capsule AABB against the collision tiles (CollisionTileIds) of
+/// EVERY visible Map2D tilemap in the scene (the active map first — multi-map 2D
+/// levels: a solid tile painted on ANY map level stops the capsule) using
+/// swept-axis resolution: move X, resolve X (walls),
 /// then move Y, resolve Y (ground/ceiling). Visible Box objects in the scene
 /// also act as solid AABB colliders (capsule vs box): land on top, bump the
 /// ceiling, get pushed out sideways. Runs ONLY in preview/in-game — Update is
@@ -29,9 +31,9 @@ public static class Player2DSystem
     /// <summary>Advance animation clocks + run physics for all Player2D objects.
     /// Call once per frame from GameScene/SceneManager update when in-game or
     /// preview is active (not in pure edit mode).</summary>
-    public static void Update(Objects.EditorObjectManager? manager, Tilemap2D? map, float dt, IDEBridge? bridge)
+    public static void Update(Objects.EditorObjectManager? manager, Tilemap2D? activeMap, float dt, IDEBridge? bridge)
     {
-        if (manager == null || map == null) return;
+        if (manager == null) return;
 
         // Refresh the trigger runtime's manager reference (bubble actions anchor to
         // the player object found here). Also drives dialogue NPC interaction input.
@@ -82,7 +84,14 @@ public static class Player2DSystem
                     // first time the player crosses each zone. Also resets any saved
                     // checkpoint so Load Checkpoint falls back to this start point.
                     TriggerEventSystem.BeginSession();
-                    TriggerEventSystem.ResetRuntime(map);
+                    TriggerEventSystem.ResetRuntime(activeMap);
+                    // Multi-map: reset the trigger runtime on EVERY scene map so
+                    // portals/doors on other levels start the session clean too.
+                    foreach (var o in manager.Objects)
+                        if (o is { PrimitiveType: Objects.EditorPrimitiveType.Map2D, Map2dTilemap: { } om })
+                            TriggerEventSystem.ResetRuntime(om);
+                    // Fresh session: the runtime level restarts on the active map.
+                    TriggerEventSystem.RuntimeMap = activeMap;
                 }
             }
         }
@@ -99,17 +108,34 @@ public static class Player2DSystem
             boxes.Add((b.Position - half, b.Position + half));
         }
 
-        float cell = map.TileSize * Tilemap2D.WorldScale;
-        if (cell <= 0f) return;
-
-        // Collision layers — resolve against EVERY layer that carries collision IDs,
-        // not just the palette-selected ActiveLayer (which may be a paint-only layer).
-        var collisionLayers = new List<(TileLayer layer, int idx)>();
-        for (int i = 0; i < map.Layers.Count; i++)
+        // ── Multi-map collision collection ──
+        // Collision applies from EVERY visible Map2D tilemap in the scene (the
+        // active map first), each against ALL of its collision-carrying layers.
+        // Maps all bake at the world origin — one shared world↔grid mapping — so a
+        // collision tile painted on ANY map level stops the capsule wherever it
+        // stands (player on map 1, wall on map 3 → still solid).
+        var mapData = new List<(Tilemap2D map, float cell, List<(TileLayer layer, int idx)> layers)>();
+        foreach (var m in CollectCollisionMaps(manager, activeMap))
         {
-            var l = map.Layers[i];
-            if (l != null && l.CollisionTileIds.Count > 0) collisionLayers.Add((l, i));
+            float cell = m.TileSize * Tilemap2D.WorldScale;
+            if (cell <= 0f) continue;
+            // Collision layers — resolve against EVERY layer that carries collision
+            // IDs, not just the palette-selected ActiveLayer (paint-only layer).
+            var collisionLayers = new List<(TileLayer layer, int idx)>();
+            for (int i = 0; i < m.Layers.Count; i++)
+            {
+                var l = m.Layers[i];
+                if (l != null && l.CollisionTileIds.Count > 0) collisionLayers.Add((l, i));
+            }
+            if (collisionLayers.Count > 0) mapData.Add((m, cell, collisionLayers));
         }
+
+        // Pit-death threshold: the largest cell among collision maps (any level);
+        // fall back to the active map's cell when nothing carries collision.
+        float pitCell = 0f;
+        foreach (var md in mapData) pitCell = MathF.Max(pitCell, md.cell);
+        if (pitCell <= 0f && activeMap != null)
+            pitCell = activeMap.TileSize * Tilemap2D.WorldScale;
 
         foreach (var player in manager.Objects)
         {
@@ -305,43 +331,32 @@ public static class Player2DSystem
             float newX = pos.X + velX * dt;
 
             // Vertical span covered during the X sweep (Y is unchanged here).
-            // World +Y maps to DECREASING grid row, so the feet are the LARGER row
-            // index and the head the SMALLER — iterate yHeadRow..yFeetRow.
             float yBot = pos.Y + capOffY;
             float yTop = pos.Y + capOffY + height;
-            int yFeetRow = WorldRowFloor(map, yBot + 0.001f, cell);
-            int yHeadRow = WorldRowFloor(map, yTop - 0.001f, cell);
 
-            foreach (var (collisionLayer, layerIdx) in collisionLayers)
+            // X sweep against EVERY map's collision tiles. The push is Y-aware —
+            // only tiles whose world band overlaps the capsule [yBot, yTop] block —
+            // so sweeping other maps with all their rows can't phantom-block from a
+            // solid tile far above the head in the same column.
+            if (velX > 0f)
             {
-                if (velX > 0f)
+                foreach (var (cmap, ccell, clayers) in mapData)
                 {
                     // Right wall: the capsule's right edge enters column gxEdge —
                     // push back to that column's LEFT face (newX stores pos.X, so the
                     // capsule center newX+capOffX lands skin-width from the face).
-                    int gxEdge = WorldColFloor(map, newX + capOffX + r, cell);
-                    for (int gy = yHeadRow; gy <= yFeetRow; gy++)
-                    {
-                        if (IsSolid(map, collisionLayer, layerIdx, gxEdge, gy))
-                        {
-                            newX = TileWorldMinX(gxEdge, cell) - r - SkinWidth - capOffX;
-                            break;
-                        }
-                    }
+                    int gxEdge = (int)MathF.Floor((newX + capOffX + r) / ccell);
+                    TryResolveXPush(cmap, ccell, clayers, gxEdge, yBot, yTop, +1f, r, capOffX, ref newX);
                 }
-                else if (velX < 0f)
+            }
+            else if (velX < 0f)
+            {
+                foreach (var (cmap, ccell, clayers) in mapData)
                 {
                     // Left wall: the capsule's left edge enters column gxEdge —
                     // push back to that column's RIGHT face.
-                    int gxEdge = WorldColFloor(map, newX + capOffX - r, cell);
-                    for (int gy = yHeadRow; gy <= yFeetRow; gy++)
-                    {
-                        if (IsSolid(map, collisionLayer, layerIdx, gxEdge, gy))
-                        {
-                            newX = TileWorldMaxX(gxEdge, cell) + r + SkinWidth - capOffX;
-                            break;
-                        }
-                    }
+                    int gxEdge = (int)MathF.Floor((newX + capOffX - r) / ccell);
+                    TryResolveXPush(cmap, ccell, clayers, gxEdge, yBot, yTop, -1f, r, capOffX, ref newX);
                 }
             }
 
@@ -376,88 +391,106 @@ public static class Player2DSystem
             }
             float newY = pos.Y + player.Player2DVelocityY * dt;
 
-            // Horizontal span of the capsule after the X resolve — used for the
-            // tile column range of every vertical probe.
-            int gx0 = WorldColFloor(map, capX - r + 0.001f, cell);
-            int gx1 = WorldColFloor(map, capX + r - 0.001f, cell);
-
             bool grounded = false;
 
             if (player.Player2DVelocityY <= 0f)
             {
-                // ── Falling: swept feet probe from old feet to new feet ──
+                // ── Falling: swept feet probe (per map) from old feet to new feet ──
                 // Check every row the feet cross (topmost solid wins) plus the row
                 // the new feet rest in, so tunneling can't slip through a tile.
-                int rowFeetNew = WorldRowFloor(map, newY + capOffY, cell);
-                int rowFeetOld = WorldRowFloor(map, pos.Y + capOffY, cell);
-                int rowTop = Math.Min(rowFeetOld, rowFeetNew); // smallest index = highest band
-                int rowBottom = Math.Max(rowFeetOld, rowFeetNew);
-                // Cross rows in the order the feet pass them: highest band first.
-                for (int gy = rowTop; gy <= rowBottom; gy++)
+                // Across maps the HIGHEST qualifying surface wins (a bridge tile on
+                // map 3 lands the player even with map 1 open below).
+                float? landTop = null;
+                foreach (var (cmap, ccell, clayers) in mapData)
                 {
-                    bool solid = false;
-                    foreach (var (collisionLayer, layerIdx) in collisionLayers)
+                    int gx0 = WorldColFloor(cmap, capX - r + 0.001f, ccell);
+                    int gx1 = WorldColFloor(cmap, capX + r - 0.001f, ccell);
+                    int rowFeetNew = WorldRowFloor(cmap, newY + capOffY, ccell);
+                    int rowFeetOld = WorldRowFloor(cmap, pos.Y + capOffY, ccell);
+                    int rowTop = Math.Min(rowFeetOld, rowFeetNew); // smallest index = highest band
+                    int rowBottom = Math.Max(rowFeetOld, rowFeetNew);
+                    // Cross rows in the order the feet pass them: highest band first.
+                    for (int gy = rowTop; gy <= rowBottom; gy++)
                     {
-                        for (int gx = gx0; gx <= gx1; gx++)
+                        bool solid = false;
+                        foreach (var (collisionLayer, layerIdx) in clayers)
                         {
-                            if (IsSolid(map, collisionLayer, layerIdx, gx, gy))
+                            for (int gx = gx0; gx <= gx1; gx++)
                             {
-                                solid = true;
-                                break;
+                                if (IsSolid(cmap, collisionLayer, layerIdx, gx, gy))
+                                {
+                                    solid = true;
+                                    break;
+                                }
                             }
+                            if (solid) break;
                         }
-                        if (solid) break;
-                    }
-                    if (!solid) continue;
+                        if (!solid) continue;
 
-                    float tileTop = TileWorldMaxY(map, gy, cell);
-                    if (pos.Y + capOffY >= tileTop - 0.01f)
-                    {
-                        // Came from above → land on top of this tile (feet = pos.Y + capOffY).
-                        newY = tileTop - capOffY;
-                        player.Player2DVelocityY = 0f;
-                        grounded = true;
-                        break;
+                        float tileTop = TileWorldMaxY(cmap, gy, ccell);
+                        if (pos.Y + capOffY >= tileTop - 0.01f)
+                        {
+                            // Came from above → candidate landing on this tile's top.
+                            if (!landTop.HasValue || tileTop > landTop.Value) landTop = tileTop;
+                            break; // topmost qualifying band of THIS map
+                        }
+                        // Feet started inside/below this band's top edge → not a landing
+                        // surface; keep checking lower rows.
                     }
-                    // Feet started inside/below this band's top edge → not a landing
-                    // surface; keep checking lower rows.
+                }
+                if (landTop.HasValue)
+                {
+                    newY = landTop.Value - capOffY;
+                    player.Player2DVelocityY = 0f;
+                    grounded = true;
                 }
             }
             else
             {
-                // ── Rising: swept head probe from old head to new head ──
-                int rowHeadNew = WorldRowFloor(map, newY + capOffY + height, cell);
-                int rowHeadOld = WorldRowFloor(map, pos.Y + capOffY + height, cell);
-                int rowTop = Math.Min(rowHeadOld, rowHeadNew);
-                int rowBottom = Math.Max(rowHeadOld, rowHeadNew);
-                // Cross rows in the order the head passes them: lowest band first.
-                for (int gy = rowBottom; gy >= rowTop; gy--)
+                // ── Rising: swept head probe (per map) from old head to new head ──
+                // Across maps the LOWEST qualifying ceiling wins.
+                float? ceilBottom = null;
+                foreach (var (cmap, ccell, clayers) in mapData)
                 {
-                    bool solid = false;
-                    foreach (var (collisionLayer, layerIdx) in collisionLayers)
+                    int gx0 = WorldColFloor(cmap, capX - r + 0.001f, ccell);
+                    int gx1 = WorldColFloor(cmap, capX + r - 0.001f, ccell);
+                    int rowHeadNew = WorldRowFloor(cmap, newY + capOffY + height, ccell);
+                    int rowHeadOld = WorldRowFloor(cmap, pos.Y + capOffY + height, ccell);
+                    int rowTop = Math.Min(rowHeadOld, rowHeadNew);
+                    int rowBottom = Math.Max(rowHeadOld, rowHeadNew);
+                    // Cross rows in the order the head passes them: lowest band first.
+                    for (int gy = rowBottom; gy >= rowTop; gy--)
                     {
-                        for (int gx = gx0; gx <= gx1; gx++)
+                        bool solid = false;
+                        foreach (var (collisionLayer, layerIdx) in clayers)
                         {
-                            if (IsSolid(map, collisionLayer, layerIdx, gx, gy))
+                            for (int gx = gx0; gx <= gx1; gx++)
                             {
-                                solid = true;
-                                break;
+                                if (IsSolid(cmap, collisionLayer, layerIdx, gx, gy))
+                                {
+                                    solid = true;
+                                    break;
+                                }
                             }
+                            if (solid) break;
                         }
-                        if (solid) break;
-                    }
-                    if (!solid) continue;
+                        if (!solid) continue;
 
-                    float tileBottom = TileWorldMinY(map, gy, cell);
-                    if (pos.Y + capOffY + height <= tileBottom + 0.01f)
-                    {
-                        // Came from below → bump the ceiling.
-                        newY = tileBottom - height - capOffY;
-                        player.Player2DVelocityY = 0f;
-                        break;
+                        float tileBottom = TileWorldMinY(cmap, gy, ccell);
+                        if (pos.Y + capOffY + height <= tileBottom + 0.01f)
+                        {
+                            // Came from below → candidate ceiling on this tile's bottom.
+                            if (!ceilBottom.HasValue || tileBottom < ceilBottom.Value) ceilBottom = tileBottom;
+                            break; // lowest qualifying band of THIS map
+                        }
+                        // Head started above this band's bottom edge → not a ceiling here;
+                        // keep checking higher rows.
                     }
-                    // Head started above this band's bottom edge → not a ceiling here;
-                    // keep checking higher rows.
+                }
+                if (ceilBottom.HasValue)
+                {
+                    newY = ceilBottom.Value - height - capOffY;
+                    player.Player2DVelocityY = 0f;
                 }
             }
 
@@ -510,7 +543,14 @@ public static class Player2DSystem
                 Enum.TryParse<ImGuiKey>(keyName, out var k) && k != ImGuiKey.None
                     ? ImGui.IsKeyPressed(k, false)
                     : false;
-            TriggerEventSystem.Update(map, new Vector3(pos.X + capOffX, pos.Y + capOffY, pos.Z), r, height, dt, velX, capOffX, capOffY, portalKeyE);
+            // Trigger areas are map-local pixel rects mapped through each map's own
+            // cell — evaluate EVERY visible scene map so portals/doors on other map
+            // levels fire too (active map first). Then re-pin the checkpoint/snapping
+            // map back to the ACTIVE one (Update overwrites it on every call).
+            var feetPos = new Vector3(pos.X + capOffX, pos.Y + capOffY, pos.Z);
+            foreach (var tmap in TriggerEventSystem.EnumerateSceneMaps(manager, activeMap))
+                TriggerEventSystem.Update(tmap, feetPos, r, height, dt, velX, capOffX, capOffY, portalKeyE);
+            TriggerEventSystem.PinActiveMap(activeMap);
 
             // ── Pit death: the world origin (0,0) is the map's bottom-left, so any
             // Y well below zero means the player fell through a hole. Respawn at the
@@ -519,7 +559,7 @@ public static class Player2DSystem
             // CheckpointPosition is stored in OBJECT space by SaveCheckpoint, so the
             // respawn must NOT subtract the capsule offsets again (double-applying the
             // offset put the player back BELOW the map → infinite respawn loop).
-            if (pos.Y < -cell * 2f)
+            if (pitCell > 0f && pos.Y < -pitCell * 2f)
             {
                 // Feet-space target: object X + offset, ground-snapped onto the top of
                 // the collision column at that X — never inside a tile, never floating.
@@ -536,7 +576,7 @@ public static class Player2DSystem
                     feetY = start2d.Position.Y + player.Player2DCapsuleOffsetY;
                 else
                     feetY = 0f;
-                feetY = TriggerEventSystem.SnapFeetToGroundPublic(map, feetX, feetY);
+                feetY = SnapFeetToGroundAny(mapData, feetX, feetY);
 
                 player.Position = new System.Numerics.Vector3(
                     feetX - player.Player2DCapsuleOffsetX,
@@ -563,8 +603,16 @@ public static class Player2DSystem
 
         // Live session → Player Info panel + UI Bars read fresh values.
         Player2DStats.SessionActive = true;
-        TriggerEventSystem.OnTeleportPlayer = (target, z) =>
+        TriggerEventSystem.RuntimeMap ??= activeMap; // session start: runtime level = active map
+        TriggerEventSystem.OnTeleportPlayer = (target, z, destMap) =>
         {
+            // Portals whose destination lives on ANOTHER scene map switch the runtime
+            // LEVEL (checkpoint snapping re-targets the new map). The CAMERA is
+            // deliberately NOT touched — no re-frame, no jump: the smooth follow
+            // carries it to the arrival point like any other movement (user rule:
+            // "camera tetap jangan berubah" saat pindah map level).
+            if (destMap != null)
+                TriggerEventSystem.RuntimeMap = destMap;
             foreach (var p in manager.Objects)
             {
                 if (p is not { PrimitiveType: Objects.EditorPrimitiveType.Player2D }) continue;
@@ -583,7 +631,11 @@ public static class Player2DSystem
         // ReturnSpeed), look-ahead (LookAhead px toward the facing), world boundary
         // (clamped to the map's painted-tile extent), Camera Start Point (position +
         // zoom) honored on entry. Runs ONLY in preview/in-game.
-        if (bridge?.Camera != null)
+        // The camera NEVER re-targets on level switches (portal to another map):
+        // framing + world bounds stay tied to the session's ACTIVE map and the
+        // smooth follow carries the camera to the player's arrival point (user rule:
+        // "camera tetap jangan berubah" saat pindah map level).
+        if (bridge?.Camera != null && activeMap != null)
         {
             var first = manager.Objects.FirstOrDefault(o =>
                 o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Player2D });
@@ -603,7 +655,7 @@ public static class Player2DSystem
                 // (world Y = 0) is at the bottom edge of the view. Use at least the
                 // full map height so nothing is cut off; a zoom factor can shrink it
                 // when a CameraStart2D marker requests a tighter view.
-                float mapHWorld = map.Height * PxToWorld(map);
+                float mapHWorld = activeMap.Height * PxToWorld(activeMap);
                 float startZoom = camStart != null && camStart.Scale.Y > 0.1f ? camStart.Scale.Y : 1f;
                 float halfH = MathF.Max(mapHWorld * 0.5f, 1f) / startZoom;
                 cam.OrthoSize = MathF.Max(0.5f, halfH);
@@ -655,11 +707,11 @@ public static class Player2DSystem
             else if (first != null)
             {
                 float followSpeed = MathF.Max(0.1f, first.CameraFollowSpeed);
-                float deadW = MathF.Max(0f, first.CameraDeadZoneWidth) * PxToWorld(map);
-                float deadH = MathF.Max(0f, first.CameraDeadZoneHeight) * PxToWorld(map);
-                float vThreshold = MathF.Max(0f, first.CameraVerticalThreshold) * PxToWorld(map);
+                float deadW = MathF.Max(0f, first.CameraDeadZoneWidth) * PxToWorld(activeMap);
+                float deadH = MathF.Max(0f, first.CameraDeadZoneHeight) * PxToWorld(activeMap);
+                float vThreshold = MathF.Max(0f, first.CameraVerticalThreshold) * PxToWorld(activeMap);
                 float returnSpeed = MathF.Max(0.1f, first.CameraReturnSpeed);
-                float lookAhead = first.CameraLookAhead * PxToWorld(map);
+                float lookAhead = first.CameraLookAhead * PxToWorld(activeMap);
 
                 // Target: player lower-body (feet + a little), offset by look-ahead.
                 var target = first.Position + new Vector3(0f, first.Player2DCapsuleHeight * 0.35f, 0f);
@@ -688,7 +740,11 @@ public static class Player2DSystem
                 // ── World boundary: clamp the view inside the map's painted extent.
                 // The bottom/left corner of the view is (camPos - halfExtent); keep it
                 // at or above world (0,0) so the grid origin never leaves the viewport.
-                ComputeWorldBounds(map, out float worldL, out float worldR, out float worldB, out float worldT);
+                // World-bound clamp follows the session's RUNTIME level: a portal
+                // arrival point lives inside THAT map's painted extent — clamping to
+                // the active map would fight the follow after a cross-map teleport.
+                ComputeWorldBounds(TriggerEventSystem.RuntimeMap ?? activeMap,
+                    out float worldL, out float worldR, out float worldB, out float worldT);
                 float halfH = cam.OrthoSize;
                 float halfW = halfH * cam.GetAspect();
                 if (worldR - worldL > halfW * 2f)
@@ -782,5 +838,76 @@ public static class Player2DSystem
         if (gx < 0 || gy < 0 || gx >= map.Width || gy >= map.Height) return false;
         int tile = map.GetTile(layerIdx, gx, gy);
         return tile >= 0 && layer.TileHasCollision(tile);
+    }
+
+    /// <summary>Visible scene maps carrying collision: the ACTIVE map first, then
+    /// every other visible Map2D tilemap (multi-map 2D levels). A map qualifies when
+    /// ANY of its layers carries CollisionTileIds.</summary>
+    private static List<Tilemap2D> CollectCollisionMaps(Objects.EditorObjectManager manager, Tilemap2D? activeMap)
+    {
+        var maps = new List<Tilemap2D>();
+        foreach (var m in TriggerEventSystem.EnumerateSceneMaps(manager, activeMap))
+        {
+            if (m == null) continue;
+            foreach (var l in m.Layers)
+            {
+                if (l != null && l.CollisionTileIds.Count > 0) { maps.Add(m); break; }
+            }
+        }
+        return maps;
+    }
+
+    /// <summary>X-sweep push for ONE map: the capsule's leading edge entered column
+    /// gxEdge — if any collision tile in that column overlaps the capsule's Y span
+    /// [yBot, yTop], push newX back to the column face (dir +1 → left face, −1 →
+    /// right face). Y-aware so sweeping other maps with all their rows can't
+    /// phantom-block from a solid tile far above/below the capsule.</summary>
+    private static void TryResolveXPush(Tilemap2D map, float cell,
+        List<(TileLayer layer, int idx)> layers, int gxEdge,
+        float yBot, float yTop, float dir, float r, float capOffX, ref float newX)
+    {
+        for (int gy = 0; gy < map.Height; gy++)
+        {
+            float tMinY = (map.Height - 1 - gy) * cell;
+            float tMaxY = tMinY + cell;
+            if (yTop <= tMinY || yBot >= tMaxY) continue; // row outside the capsule span
+            foreach (var (collisionLayer, layerIdx) in layers)
+            {
+                if (!IsSolid(map, collisionLayer, layerIdx, gxEdge, gy)) continue;
+                newX = dir > 0f
+                    ? TileWorldMinX(gxEdge, cell) - r - SkinWidth - capOffX
+                    : TileWorldMaxX(gxEdge, cell) + r + SkinWidth - capOffX;
+                return;
+            }
+        }
+    }
+
+    /// <summary>Multi-map pit-respawn snap: scan EVERY collision map from the feet
+    /// row DOWN and land on the HIGHEST collision tile top at/below the feet
+    /// (feet inside a tile pop to ITS top, same as the single-map snap). Returns
+    /// feetY unchanged when no map has ground under the column.</summary>
+    private static float SnapFeetToGroundAny(
+        List<(Tilemap2D map, float cell, List<(TileLayer layer, int idx)> layers)> mapData,
+        float worldX, float feetY)
+    {
+        float best = feetY;
+        foreach (var (m, cell, layers) in mapData)
+        {
+            int gx = (int)MathF.Floor(worldX / cell);
+            if (gx < 0 || gx >= m.Width) continue;
+            int gy0 = (int)MathF.Floor((m.Height * cell - feetY) / cell);
+            for (int gy = Math.Max(0, gy0); gy < m.Height; gy++)
+            {
+                bool solid = false;
+                foreach (var (collisionLayer, layerIdx) in layers)
+                {
+                    if (IsSolid(m, collisionLayer, layerIdx, gx, gy)) { solid = true; break; }
+                }
+                if (!solid) continue;
+                best = MathF.Max(best, (m.Height - gy) * cell + 0.001f);
+                break; // topmost solid row of THIS map
+            }
+        }
+        return best;
     }
 }

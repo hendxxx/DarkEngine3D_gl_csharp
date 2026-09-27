@@ -353,6 +353,11 @@ public class EditorObjectData
     /// <summary>Legacy PBR vertex displacement height (0.15 default). Planes driven by
     /// a terrain elevation map use <see cref="TerrainHeightScale"/> instead.</summary>
     public float PbrVertexDisplaceScale { get; set; } = 0.15f;
+    /// <summary>Universal vertex-displacement toggle (PBR panel → Vertex Displacement).
+    /// ON = the height map moves REAL vertices on Box/Sphere/Plane.</summary>
+    public bool PbrVertexDisplaceEnabled { get; set; } = false;
+    /// <summary>Tessellation subdivisions per face for Box/Sphere when displacement is ON.</summary>
+    public int PbrPrimTessellation { get; set; } = 1;
     /// <summary>Legacy PBR vertex displacement offset. Planes driven by a terrain
     /// elevation map use <see cref="TerrainHeightOffset"/> instead.</summary>
     public float PbrVertexOffset { get; set; } = 0f;
@@ -458,6 +463,11 @@ public class SceneAsset
     public float? EditorCameraYaw { get; set; }
     /// <summary>Editor camera pitch (degrees).</summary>
     public float? EditorCameraPitch { get; set; }
+    /// <summary>Editor camera projection (true = orthographic). Null = keep current.
+    /// 2D level scenes are viewed ortho — the restore must re-apply that as well.</summary>
+    public bool? EditorCameraOrtho { get; set; }
+    /// <summary>Editor camera ortho half-height (zoom). Null = keep current.</summary>
+    public float? EditorCameraOrthoSize { get; set; }
 
     // ── Per-scene render properties (background color, wireframe, VSync, etc.) ──
     /// <summary>Serialized render properties. Null = use engine defaults.</summary>

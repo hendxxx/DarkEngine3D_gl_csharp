@@ -704,6 +704,145 @@ panel → Layer textures) yang INDEPENDEN dari global Map Tiling — mask paint 
 (konversi per-map-nya mengasumsikan tiling base yang tak cocok lagi dengan UV
 layer yang decoupled).
 
+**VERTEX DISPLACEMENT UNIVERSAL (PBR panel → "Vertex Displacement", semua primitive).**
+Checkbox `PbrVertexDisplaceEnabled` (default OFF — legacy behavior) + `PbrPrimTessellation`
+(1..64, subdivisi per face Box / slices·stacks Sphere; 1 = mesh legacy):
+- **Plane**: toggle ON menambah jalur displaced saat HANYA PBR height map terisi (tanpa
+  terrain elevation / sculpt) — sebelumnya plane polos dengan PBR height tidak pernah
+  masuk program displace. Terrain elevation/sculpt tetap displaced tanpa toggle.
+- **Box**: mesh di-subdivide `tess×tess` quads per face (`Object3D.CreateBoxVertices(…, tess)`;
+  layout corner/UV sama persis dengan quad flat, winding CCW terjaga) → height map
+  memindahkan vertex sungguhan lewat `pbrDisplace_vertex.glsl` (program dipilih di
+  `DrawPbrPrimitive`: `displaced = PbrVertexDisplaceEnabled && _pbrTex[5] != 0` untuk
+  Box/Sphere; scale/offset = `PbrVertexDisplaceScale`/`PbrVertexOffset`).
+- **Sphere**: slices = 12·tess, stacks = 8·tess.
+- UI: section "Vertex Displacement" di PbrPanel (Enable + Height Scale + Height Offset +
+  Tessellation utk Box/Sphere + hint) — terpisah dari Terrain panel (yang tetap memegang
+  terrain elevation/sculpt/chunks). Persist: `PbrVertexDisplaceEnabled` +
+  `PbrPrimTessellation` di SceneAsset + save ×2 + load clamp + Duplicate.
+Kunci: displacement butuh VERTEX interior — mesh 2-triangle per face tidak bisa bergerak;
+sebelum tessellation dinaikkan, toggle ON di Box/Sphere tidak menghasilkan apa-apa.
+**ANTI-ARTIFAK Box/Sphere displaced**: (1) `u_dispEdgeFade` = displacement di-FADE ke 0
+dalam ring tipis di tepi **FACE (raw mesh UV `uvD`, bukan UV height yang di-tile** —
+ring per-TILE via `fract(uvP)` membuat tiap tile height-map menggelembung terpisah dan
+ter-retak antar tile di tengah face) — vertex tepi shared antar face bersebelahan men-sample
+tinggi BERBEDA (UV per-face), tanpa fade face TERSOBEK (strip terentang antar face);
+(2) `u_dispRecomputeNormal = 0` untuk Box/Sphere — re-derivation gradient di
+`pbrDisplace_vertex.glsl` mengasumsikan grid PLANE (cell world dari axis X/Z model), di
+face yang menghadap segala arah hasilnya normal sampah (shading bergaris). Keduanya
+di-upload dari `DrawPbrPrimitive` (`perFaceUvDisp = Box || Sphere`); Plane tetap fade off
++ recompute on (elevasi terrain harus menyambung penuh sampai tepi + butuh normal slope).
+**BUG "Box tess>1 masih rusak" (DUA penyebab, keduanya fixed)**: (1) **mesh** — di
+`Object3D.CreateBoxVertices`, Face KANAN memakai `dv = p6−p1` = DIAGONAL face
+`(0,2hy,2hz)` (seharusnya `p2−p1` murni +Y) → corner walk mendarat di
+`p5+p6−p1 = (hx,hy,3hz)`, setengah depth DI LUAR box → face kanan melar jadi jajar
+genjang miring yang menggantung di depan (tess=1 tersembunyi karena memakai quad
+flat; tess≥2 meledak) — screenshot "merah bergaris melar"; (2) **shader** —
+`u_dispOffset` dijumlahkan DI LUAR edge-fade (`nw*(elev+offset)`): face bersebelahan
+punya normal BERBEDA → offset tanpa fade mendorong vertex tepi ke arah berbeda →
+face TERKOYAK (gap antara top dan side) walau Height Scale 0 tapi offset terisi —
+kini seluruh `(elev+offset)*edgeFade`. Rule mesh: **basis face HARUS edge vektor
+sisi (satu axis), bukan diagonal**; rule shader tetap: offset ikut fade.
+**BUG "Box tessellation > 1 jadi aneh" (fixed — uniform leakage jalur terrain)**:
+`terrainDriven = displaced` membuat Box/Sphere ikut jalur terrain → `u_terrainDisplace`
++ `u_sculptAmp` TIDAK PERNAH ditulis untuk non-terrain, dan program displace DI-SHARE
+antar objek → Box mewarisi `u_terrainDisplace=1` + amp sculpt dari plane terrain yang
+digambar terakhir, PLUS sampler unit 15/16 masih memegang tekstur terrain/white → tiap
+face Box ter-displace pakai elevasi terrain (Height Scale 0 pun kena, karena cabang
+terrain pakai BaseHeight/amp — dan di tess=1 TIDAK TERLIHAT karena fade tepi = semua
+vertex ada di ring fade; tess=2 vertex interior muncul → menggelembung). Fix tiga lapis:
+(1) `terrainDriven = displaced && PrimitiveType == Plane`; (2) `u_sculptAmp`/unit-16
+HANYA terrain-driven, non-terrain = 0 eksplisit; (3) cabang else non-terrain menulis
+`u_terrainDisplace = 0` EKSPLISIT — uniform bersama wajib ditulis SETIAP draw. Rule:
+**uniform program bersama yang gated per-objek WAJIB ditulis di SEMUA cabang** (0 pun
+harus), kalau tidak bocor lintas objek.
+
+**2D MERGE DOWN — DIHAPUS (revert).** Tombol "⇓ Merge Down" sempat dibuat lalu
+dicabut: user TIDAK butuh flatten/merge layer — collision 2D memang SEDERHANA
+(kapsul player vs kotak tile overlap = kena, di semua layer sekaligus, lihat
+bawah). Layer tinggal urutan gambar; fisika membaca semua layer secara
+transparan. JANGAN tambahkan lagi alat union/merge untuk 2D collision.
+
+**2D COLLISION SEDERHANA: kapsul player vs kotak tile (semua layer).** Aturan user:
+"capsule dan kotak bertabrakan → collision kena", DONE — TANPA union/merge UI.
+Implementasi: `Player2DSystem` menguji AABB kapsul terhadap tile box di SETIAP
+layer yang punya `CollisionTileIds` (X sweep, ground/ceiling sweep,
+`TriggerEventSystem.SnapFeetToGround` — semua iterasi `map.Layers`); tile solid =
+ada tile DAN ID-nya terdaftar collision (`IsSolid`). Collision helper boxes di
+viewport (`EditorObject`, blok `Map2dShowCollision`) dulu hanya membaca SATU layer
+(aktif, fallback layer 0) → tile collision di layer lain tidak tergambar (preview <
+collision nyata). Kini boxes menggambar semua layer ber-collision (`colLayers`
+loop). Aturan: reader collision BARU WAJIB iterasi semua layer yang punya
+`CollisionTileIds.Count > 0` — collision adalah properti per-layer-ID, gameplay =
+semua layer sekaligus, tanpa UI union/merge apapun.
+
+**2D COLLISION MULTI-MAP (setiap level map tetap kena).** Fisika (`Player2DSystem`)
+dan trigger (`TriggerEventSystem`) kini mengevaluasi SEMUA tilemap yang tampil lewat
+object Map2D di scene (map AKTIF pertama, lalu map-map lain — `EnumerateSceneMaps`),
+masing-masing terhadap semua layer ber-collision. Semua map bake di world origin
+(Position object Map2D diabaikan renderer) → mapping world↔grid SAMA untuk semua
+map, jadi solid di map level mana pun menahan kapsul (player di Map Level 1, kotak
+collision di Map Level 3 → tetap kena — bug lama: fisika hanya menerima
+`ActiveTilemap`, player jatuh menembus collision map lain). Detail penting: X-push
+Y-aware (hanya band tile yang overlap span kapsul yang menahan — map lain tidak
+phantom-block dari tile solid jauh di atas kepala); jatuh/naik antar map = kandidat
+permukaan TERTINGGI (landing) / TERENDAH (ceiling) yang menang; pit-respawn snap
+pilih tanah tertinggi antar map (`SnapFeetToGroundAny`), threshold pit = cell
+terbesar antar map ber-collision; kamera follow tetap memakai map AKTIF
+(`ComputeWorldBounds(activeMap)`). Trigger per-map dievaluasi untuk semua map per
+frame → `_activeMap` di-re-pin ke map aktif (`PinActiveMap`) supaya checkpoint/
+save-slot tetap ground-snap ke map aktif. JANGAN kembalikan pola "fisika hanya
+ActiveTilemap".
+
+**PINDAH MAP LEVEL = RUNTIME LEVEL IKUT PINDAH (kamera re-frame).** Portal dengan
+tujuan di map lain kini MEMINDAHKAN level runtime: `TriggerEventSystem.RuntimeMap`
+(mulai = map aktif saat sesi start, reset tiap spawn Start2D). Handler teleport
+(`OnTeleportPlayer(target, z, destMap)`) — destMap != null → `RuntimeMap = destMap`
+TANPA menyentuh kamera (REVISI: versi pertama me-reset `CameraFollowInitialized`
+→ kamera LOMPAT/re-frame ke level baru — user menolak: "camera pindah ke posisi lain,
+harusnya tetap jangan berubah"). Kamera follow + framing TETAP terkunci map aktif
+sesi; smooth follow yang membawa kamera ke titik mendarat seperti gerakan biasa.
+SATU-satunya pengecualian: world-bound clamp memakai `RuntimeMap ?? activeMap`
+(portal tujuan ada di extent map RUNTIME — clamp map aktif akan melawan follow).
+Save/Load Checkpoint ground-snap ke `RuntimeMap` (checkpoint di level manapun
+mendarat benar). Change Map (file load, IDE.cs) set `RuntimeMap = ActiveTilemap`
+TANPA reset flag kamera. Portal dalam SATU map tidak mengubah apa pun.
+
+**GANTI MAP 2D = KAMERA TIDAK DISENTUH (FINAL, mencabut auto-focus).** Semua jalur
+ganti map aktif (combo selector, retarget pasca-Delete, Add Tilemap, Load file,
+restore .ing) TIDAK menyentuh kamera editor — `RetargetActiveTilemap`/
+`LoadMapTilemap`/`CreateNewMap`/`LoadMapFromFile` tanpa `FocusActiveTilemap()`;
+framing manual lewat tombol "Focus". Riwayat: auto-focus dibuat atas permintaan
+"auto focus ketika ganti-ganti map", lalu DICABUT setelah user sadar kamera ikut
+reset tiap ganti map juga mengganggu ("untuk 2D kalau bisa tiap ganti map jangan di
+reset juga kameranya") — dan versi pertamanya (fokus di RetargetActiveTilemap)
+terbukti MENIMPA kamera per-scene saat ganti scene/restore .ing. JANGAN hidupkan
+lagi; kalau mau, khusus aksi user eksplisit dan konfirmasi dulu.
+
+**KAMERA PER-SCENE (save & load simetris — double-checked).** EditorScene menyimpan
+`CameraPos/CameraYaw/CameraPitch + CameraOrtho/CameraOrthoSize`: (1) setter
+`IDEBridge.SelectedEditorScene` STASH kamera live ke scene keluar sebelum switch,
+lalu RESTORE kamera scene masuk (+`UpdateVectors`/`SyncSmoothVectors`); (2) load
+`.ing` → `SceneAsset.EditorCamera*` → `EditorScene.CameraPos` + `PendingCameraPos`
+untuk scene pertama (di-apply sekali oleh `SceneManager.ApplyPendingEditorCamera`);
+legacy manifest-level fallback untuk file lama; (3) save ×2 mensnapshot kamera live
+ke scene TERPILIH saja (scene lain menyimpan nilai tersimpannya). Rename scene ikut
+memindahkan kamera agar view tidak reset. **AUDIT "KAMERA DIPAKSA" (keputusan
+user: "cek semua yg maksa meubah posisi camera, jangan dipaksa")**: penulis kamera
+editor di edit mode = HANYA user (input, Focus Selection, auto-focus jalur user map
+editor) + restore per-scene. `SyncLevelCamera` dulu MEMAKSA framing ortho + capture
+`HasCameraStart` di edit mode tiap level tampil → menimpa restore per-scene (bug
+"ganti scene kamera pindah sendiri", pelaku kedua setelah auto-focus map editor);
+kini edit mode TIDAK menulis kamera sama sekali (lock state saja); framing/anchor
+camera start HANYA saat PLAY (preview/in-game/startup). **Pelaku ketiga (2D↔non-2D
+scene switch): cabang "restore previous view" di SyncLevelCamera (`level == null`)
+melempar snapshot `_levelCameraSavedPos` yang diambil SEKALI saat level-mode aktif —
+stale lintas ganti scene; kini di-gate `_levelCameraMoved` (true HANYA saat play-mode
+pernah menulis view) → edit mode tidak pernah me-restore apa pun. Persist per-scene dilengkapi
+`EditorCameraOrtho/OrthoSize` (dulu cuma posisi/yaw/pitch — zoom & proyeksi 2D
+tidak balik). Reset-default kamera di ClearState hanya untuk "New Project". JANGAN
+tambahkan penulis kamera edit-mode lain.
+
 **GOTCHA — VERTEX LAYOUT: `aTexCoord` WAJIB location 3, BUKAN 2.** VAO primitive
 (`Object3D.SetupGPUResources`) bind loc 0 = pos, 1 = normal, **2 = COLOR vec3**,
 **3 = UV vec2**. `vertex_shader.glsl` dulu mendeklarasikan `aTexCoord` di location 2
