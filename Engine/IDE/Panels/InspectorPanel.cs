@@ -1770,6 +1770,7 @@ public class InspectorPanel
                 EditorPrimitiveType.Player2D => "Player2D",
                 EditorPrimitiveType.Start2D => "Spawn Player",
                 EditorPrimitiveType.CameraStart2D => "Camera Start",
+                EditorPrimitiveType.Effect2D => "Effect2D (Particles)",
                 _ => "Unknown"
             };
             ImGui.Text($"Type: {typeStr}");
@@ -1787,6 +1788,10 @@ public class InspectorPanel
         // ── Sprite2D: decorative animated clip sprite (no controller) ──
         if (editorObj.PrimitiveType == EditorPrimitiveType.Sprite2D)
             RenderSprite2DInspector(editorObj);
+
+        // ── Effect2D: particle emitter (preset + rate + wind) ──
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Effect2D)
+            RenderEffect2DInspector(editorObj);
 
         // ── NPC Dialogue: bind a dialogue asset + interaction range (Dialogue System) ──
         if (editorObj.PrimitiveType is EditorPrimitiveType.Sprite2D or EditorPrimitiveType.Player2D)
@@ -2581,6 +2586,47 @@ public class InspectorPanel
     /// <summary>Player2D settings: sprite sheet + animation clip pickers (from the
     /// Sprite Editor), sprite size, capsule collider tuning, and gameplay physics
     /// (gravity). Sheet/clip lists come from the IDEBridge static sprite registry.</summary>
+    /// <summary>Inspector for Effect2D emitters: preset dropdown, emission rate,
+    /// wind advection factor, vertical offset, and an enable toggle.</summary>
+    private void RenderEffect2DInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Effect 2D (Particles)", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        // Preset combo (order = Effect2DSystem.Presets).
+        string[] presets = Effect2DSystem.Presets;
+        int presetIdx = Array.IndexOf(presets, editorObj.Effect2DPreset);
+        if (presetIdx < 0) presetIdx = 0;
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.Combo("Preset", ref presetIdx, presets, presets.Length))
+            editorObj.Effect2DPreset = presets[presetIdx];
+
+        float rate = editorObj.Effect2DEmitRate < 0f
+            ? Effect2DSystem.PresetConfig(editorObj.Effect2DPreset).Rate
+            : editorObj.Effect2DEmitRate;
+        if (ImGui.SliderFloat("Rate (particles/s)", ref rate, 1f, 120f, "%.0f"))
+            editorObj.Effect2DEmitRate = rate;
+        if (ImGui.Button("Use Preset Rate"))
+            editorObj.Effect2DEmitRate = -1f;
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Follow the preset's default emission rate.");
+
+        float wind = editorObj.Effect2DWindFactor < 0f
+            ? Effect2DSystem.PresetConfig(editorObj.Effect2DPreset).WindFactor
+            : editorObj.Effect2DWindFactor;
+        if (ImGui.SliderFloat("Wind Factor", ref wind, 0f, 2f, "%.2f"))
+            editorObj.Effect2DWindFactor = wind;
+
+        float offY = editorObj.Effect2DOffsetY;
+        if (ImGui.DragFloat("Offset Y", ref offY, 0.05f))
+            editorObj.Effect2DOffsetY = offY;
+
+        bool enabled = editorObj.Effect2DEnabled;
+        if (ImGui.Checkbox("Emitting", ref enabled))
+            editorObj.Effect2DEnabled = enabled;
+
+        ImGui.TextDisabled("Particles render in preview/in-game. Global wind comes\nfrom a trigger action 'Set Wind'; rain via 'Rain'.");
+    }
+
     /// <summary>Inspector for Sprite2D: sheet/clip pickers (or drag a clip box from the
     /// Asset Browser onto this Inspector), render height, loop/speed/offset playback.</summary>
     private unsafe void RenderSprite2DInspector(EditorObject editorObj)
@@ -3255,6 +3301,164 @@ public class InspectorPanel
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("KeyDown = fires when the key is pressed (hold J = keep playing, release = back to idle).\nKeyUp = fires when the key is RELEASED (press-impulse: the action plays out regardless of hold length).\nKeyDownOnce = fires once on press; user must release the key before it can fire another time.\nKeyUpOnce = fires once on release; user must press the key again before it can fire another time.");
+
+                // ── Projectile launch: the action fires a flying animated sprite ──
+                // Opt-in: "None" (default) = plain animation, no projectile.
+                bool hasProj = ImGui.TreeNodeEx("Projectile##phead", ImGuiTreeNodeFlags.FramePadding);
+                if (hasProj)
+                {
+                    // Mode row: None | (action art) | <sheet name>. None disables the
+                    // projectile entirely — the action is then just its animation.
+                    string[] projModes = new string[sheets.Count + 2];
+                    string[] projModeVals = new string[sheets.Count + 2];
+                    projModes[0] = "None";              projModeVals[0] = "";
+                    projModes[1] = "(action art)";      projModeVals[1] = Player2DAction.ProjectileUseActionArt;
+                    for (int s = 0; s < sheets.Count; s++) { projModes[s + 2] = sheets[s]; projModeVals[s + 2] = sheets[s]; }
+                    int pModeIdx;
+                    if (!act.ProjectileEnabled) pModeIdx = 0;
+                    else if (string.IsNullOrEmpty(act.ProjectileSheet)) pModeIdx = 1;
+                    else
+                    {
+                        pModeIdx = 0;
+                        for (int s = 2; s < projModes.Length; s++)
+                            if (projModeVals[s] == act.ProjectileSheet) { pModeIdx = s; break; }
+                    }
+                    ImGui.SetNextItemWidth(200);
+                    if (ImGui.Combo("Sheet", ref pModeIdx, projModes, projModes.Length))
+                    {
+                        if (pModeIdx == 0)
+                        {
+                            act.ProjectileEnabled = false; // None: no projectile at all
+                            act.ProjectileSheet = "";
+                        }
+                        else
+                        {
+                            act.ProjectileEnabled = true;
+                            act.ProjectileSheet = pModeIdx == 1 ? "" : projModeVals[pModeIdx];
+                            act.ProjectileClip = ""; // re-pick below
+                        }
+                    }
+
+                    // Nothing below matters when the projectile is off.
+                    if (!act.ProjectileEnabled)
+                    {
+                        ImGui.TextDisabled("None — this action launches no projectile.");
+                        ImGui.TreePop();
+                        goto afterProj;
+                    }
+
+                    ImGui.TextDisabled("Action start → launch a flying sprite.");
+
+                    // Clip dropdown (disabled for "(action art)")
+                    if (string.IsNullOrEmpty(act.ProjectileSheet))
+                    {
+                        ImGui.TextDisabled("Clip: uses this action's own clip (reuse)");
+                    }
+                    else
+                    {
+                        var pClips = IDEBridge.GetClipNames(act.ProjectileSheet);
+                        string[] pClipArr = pClips.Count > 0 ? pClips.ToArray() : [""];
+                        int pClipIdx = 0;
+                        for (int c = 0; c < pClipArr.Length; c++)
+                            if (pClipArr[c] == act.ProjectileClip) { pClipIdx = c; break; }
+                        if (ImGui.BeginCombo("Clip", pClipArr[pClipIdx]))
+                        {
+                            for (int c = 0; c < pClipArr.Length; c++)
+                            {
+                                bool sel = c == pClipIdx;
+                                if (ImGui.Selectable(pClipArr[c], sel))
+                                    act.ProjectileClip = pClipArr[c];
+                                if (sel) ImGui.SetItemDefaultFocus();
+                            }
+                            ImGui.EndCombo();
+                        }
+                    }
+
+                    float pSpeed = act.ProjectileSpeed;
+                    if (ImGui.DragFloat("Speed", ref pSpeed, 0.25f, 0.5f, 60f)) act.ProjectileSpeed = pSpeed;
+                    float pDist = act.ProjectileMaxDistance;
+                    if (ImGui.DragFloat("Max Distance", ref pDist, 0.25f, 1f, 200f)) act.ProjectileMaxDistance = pDist;
+                    float pGrav = act.ProjectileGravity;
+                    if (ImGui.DragFloat("Gravity", ref pGrav, 0.25f, 0f, 60f)) act.ProjectileGravity = pGrav;
+                    float pVelY = act.ProjectileVelY;
+                    if (ImGui.DragFloat("Vel Y", ref pVelY, 0.25f, -30f, 30f)) act.ProjectileVelY = pVelY;
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Initial vertical velocity — with Gravity > 0 this makes an arc.");
+                    float pH = act.ProjectileWorldHeight;
+                    if (ImGui.DragFloat("World Height", ref pH, 0.05f, 0.1f, 8f)) act.ProjectileWorldHeight = pH;
+                    float pOffX = act.ProjectileOffsetX;
+                    if (ImGui.DragFloat("Offset X", ref pOffX, 0.05f)) act.ProjectileOffsetX = pOffX;
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Spawn distance in FRONT of the character (mirrors with facing).");
+                    float pOffY = act.ProjectileOffsetY;
+                    if (ImGui.DragFloat("Offset Y", ref pOffY, 0.05f)) act.ProjectileOffsetY = pOffY;
+
+                    float pDmgHp = act.ProjectileDamageHP;
+                    if (ImGui.DragFloat("Damage HP", ref pDmgHp, 0.5f, -50f, 200f)) act.ProjectileDamageHP = pDmgHp;
+                    float pDmgMp = act.ProjectileDamageMP;
+                    if (ImGui.DragFloat("Damage MP", ref pDmgMp, 0.5f, -50f, 200f)) act.ProjectileDamageMP = pDmgMp;
+
+                    // Hit animation pickers (sheet + clip, optional).
+                    string[] hSheetArr = sheets.Count > 0 ? sheets.ToArray() : [""];
+                    int hSheetIdx = 0;
+                    for (int s = 0; s < hSheetArr.Length; s++)
+                        if (hSheetArr[s] == act.ProjectileHitSheet) { hSheetIdx = s; break; }
+                    if (ImGui.BeginCombo("Hit Sheet", hSheetArr[hSheetIdx]))
+                    {
+                        for (int s = 0; s < hSheetArr.Length; s++)
+                        {
+                            bool sel = s == hSheetIdx;
+                            if (ImGui.Selectable(hSheetArr[s], sel))
+                            {
+                                act.ProjectileHitSheet = hSheetArr[s];
+                                act.ProjectileHitClip = "";
+                            }
+                            if (sel) ImGui.SetItemDefaultFocus();
+                        }
+                        ImGui.EndCombo();
+                    }
+                    if (!string.IsNullOrEmpty(act.ProjectileHitSheet))
+                    {
+                        var hClips = IDEBridge.GetClipNames(act.ProjectileHitSheet);
+                        string[] hClipArr = hClips.Count > 0 ? hClips.ToArray() : [""];
+                        int hClipIdx = 0;
+                        for (int c = 0; c < hClipArr.Length; c++)
+                            if (hClipArr[c] == act.ProjectileHitClip) { hClipIdx = c; break; }
+                        if (ImGui.BeginCombo("Hit Clip", hClipArr[hClipIdx]))
+                        {
+                            for (int c = 0; c < hClipArr.Length; c++)
+                            {
+                                bool sel = c == hClipIdx;
+                                if (ImGui.Selectable(hClipArr[c], sel))
+                                    act.ProjectileHitClip = hClipArr[c];
+                                if (sel) ImGui.SetItemDefaultFocus();
+                            }
+                            ImGui.EndCombo();
+                        }
+                    }
+
+                    string[] fxCfg = ["", .. Effect2DSystem.Presets];
+                    string[] fxLabel = ["(none)", .. Effect2DSystem.Presets];
+                    int fxIdx = Array.IndexOf(fxCfg, act.ProjectileHitFx);
+                    if (fxIdx < 0) fxIdx = 0;
+                    if (ImGui.BeginCombo("Hit FX", fxLabel[fxIdx]))
+                    {
+                        for (int fx = 0; fx < fxCfg.Length; fx++)
+                        {
+                            bool sel = fx == fxIdx;
+                            if (ImGui.Selectable(fxLabel[fx], sel))
+                                act.ProjectileHitFx = fxCfg[fx];
+                            if (sel) ImGui.SetItemDefaultFocus();
+                        }
+                        ImGui.EndCombo();
+                    }
+
+                    bool pRot = act.ProjectileRotateToVelocity;
+                    if (ImGui.Checkbox("Rotate to Velocity", ref pRot)) act.ProjectileRotateToVelocity = pRot;
+                    bool pPierce = act.ProjectilePiercing;
+                    if (ImGui.Checkbox("Piercing", ref pPierce)) act.ProjectilePiercing = pPierce;
+
+                    ImGui.TreePop();
+                }
+            afterProj:;
 
                 if (ImGui.SmallButton("Test"))
                     editorObj.TryStartAction(act.Name);

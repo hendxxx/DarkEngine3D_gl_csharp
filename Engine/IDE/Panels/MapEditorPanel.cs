@@ -1696,6 +1696,71 @@ public class MapEditorPanel
                     if (ImGui.InputText("Nama portal", ref p1, 128)) act.Param = p1;
                     ImGui.TextDisabled("Portal/trigger bernama ini diaktifkan/dinonaktifkan\n(nama sama di semua map ikut — pasangan portal mudah di-gate).\nPortal nonaktif: animasi NotActive + abaikan player.");
                     break;
+
+                // ── Simple gameplay scripts + weather + inventory ──
+                case TriggerActionTypes.ModifyStat:
+                {
+                    // Stat dropdown (HP/MP/Level/EXP/Fitness) + delta input.
+                    string[] statOpts = ["Health (HP)", "Mana (MP)", "Level", "Experience (EXP)", "Fitness"];
+                    string[] statVals = ["HP", "MP", "Level", "EXP", "Fitness"];
+                    int statIdx = Array.IndexOf(statVals, (act.Param ?? "").Trim().ToUpperInvariant() switch
+                    {
+                        "HP" or "HEALTH" or "LIFE" => "HP",
+                        "MP" or "MANA" or "SP" => "MP",
+                        "LEVEL" or "LV" or "LVL" => "Level",
+                        "EXP" or "XP" => "EXP",
+                        "FITNESS" or "ST" or "STA" => "Fitness",
+                        _ => "",
+                    });
+                    if (statIdx < 0) statIdx = 0;
+                    ImGui.SetNextItemWidth(170);
+                    if (ImGui.Combo("Stat", ref statIdx, statOpts, statOpts.Length))
+                        act.Param = statVals[statIdx];
+                    if (ImGui.InputText("Delta", ref p2, 32)) act.Param2 = p2;
+                    ImGui.TextDisabled("HP -1, MP -1, +5, -10.5 … (positif = tambah).\nHasil di-clamp ke [0, Max] otomatis.");
+                    break;
+                }
+                case TriggerActionTypes.Rain:
+                {
+                    string[] rainOpts = ["Toggle", "On", "Off"];
+                    string[] rainVals = ["toggle", "on", "off"];
+                    int rainIdx = Array.IndexOf(rainVals, (act.Param ?? "toggle").Trim().ToLowerInvariant());
+                    if (rainIdx < 0) rainIdx = 0;
+                    ImGui.SetNextItemWidth(170);
+                    if (ImGui.Combo("Mode", ref rainIdx, rainOpts, rainOpts.Length))
+                        act.Param = rainVals[rainIdx];
+                    if (ImGui.InputText("Intensity (0-1)", ref p2, 32)) act.Param2 = p2;
+                    ImGui.TextDisabled("Hujan global dengan arah angin (Set Wind).\nIntensity kosong = tetap seperti sebelumnya.");
+                    break;
+                }
+                case TriggerActionTypes.SetWind:
+                    if (ImGui.InputText("Wind (u/s)", ref p1, 32)) act.Param = p1;
+                    ImGui.TextDisabled("Kecepatan angin dunia. Positif = ke kanan,\nnegatif = ke kiri. Miringkan hujan + dorong partikel.");
+                    break;
+                case TriggerActionTypes.SpawnEffect:
+                {
+                    string[] fxOpts = Effect2DSystem.Presets;
+                    int fxIdx = Array.IndexOf(fxOpts, (act.Param ?? "").Trim());
+                    if (fxIdx < 0) fxIdx = 0;
+                    ImGui.SetNextItemWidth(170);
+                    if (ImGui.Combo("Preset", ref fxIdx, fxOpts, fxOpts.Length))
+                        act.Param = fxOpts[fxIdx];
+                    if (ImGui.InputText("Scale", ref p2, 32)) act.Param2 = p2;
+                    ImGui.TextDisabled("Ledakan partikel sekali di posisi player\n(Scale kosong/1 = normal, 2 = dua kali lipat).");
+                    break;
+                }
+                case TriggerActionTypes.SpawnProjectile:
+                {
+                    if (ImGui.InputText("Sheet|Clip", ref p1, 160)) act.Param = p1;
+                    if (ImGui.InputText("Speed,Dist,Gravity", ref p2, 80)) act.Param2 = p2;
+                    ImGui.TextDisabled("Projectile sprite terbang dari trigger ke arah player.\nParam: 'Sheet|Clip' (nama Sprite Editor).\nParam2: 'speed,maxDist,gravity' (kosong = 8,15,0).");
+                    break;
+                }
+                case TriggerActionTypes.GiveItem:
+                    if (ImGui.InputText("Item ID", ref p1, 64)) act.Param = p1;
+                    if (ImGui.InputText("Amount", ref p2, 32)) act.Param2 = p2;
+                    ImGui.TextDisabled("Item harus terdaftar di InventorySystem.Items\n(fase 2: editor item catalog + grid UI).");
+                    break;
                 default:
                     if (ImGui.InputText("Param", ref p1, 256)) act.Param = p1;
                     if (ImGui.InputText("Param 2", ref p2, 256)) act.Param2 = p2;
@@ -2337,6 +2402,14 @@ public class MapEditorPanel
         _selectedParallaxIdx = -1;
         _showDeleteMapPopup = false;
         _deleteTilemapFileToo = false;
+        // Project close → FULL new-map reset: the "New Map" defaults (brush/paint
+        // height/trigger tool state + the map-name collision counter) must not leak
+        // into the next project (reported: "close project pastikan new map reset").
+        _brushSize = 1;
+        _paintHeight = 0f;
+        _currentTool = PaintTool.Pick;
+        _bridge.SelectedTrigger = null;
+        EditorObject.SelectedTriggerForHighlight = null;
         // Parallax GPU texture cache: paths of the old project are meaningless now
         // (and stale GL textures would leak).
         foreach (var tex in _parallaxTextures.Values)

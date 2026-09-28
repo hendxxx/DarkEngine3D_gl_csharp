@@ -664,6 +664,19 @@ public class HierarchyPanel
 
                     ImGui.SameLine();
 
+                    var colFx = new Vector4(0.85f, 0.5f, 0.1f, 1f);
+                    var colFxHov = new Vector4(1f, 0.65f, 0.2f, 1f);
+                    ImGui.PushStyleColor(ImGuiCol.Button, colFx);
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, colFxHov);
+                    if (ImGui.Button("Effect", new Vector2(btnW2, 24)))
+                    {
+                        QuickAdd3D(EditorPrimitiveType.Effect2D);
+                    }
+                    ImGui.PopStyleColor(2);
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add an Effect2D particle emitter (fire, smoke, dust, explosion… — set preset in Inspector)");
+
+                    ImGui.SameLine();
+
                     var colCs = new Vector4(0.2f, 0.55f, 0.75f, 1f);
                     var colCsHov = new Vector4(0.3f, 0.7f, 0.9f, 1f);
                     ImGui.PushStyleColor(ImGuiCol.Button, colCs);
@@ -856,6 +869,7 @@ public class HierarchyPanel
                             EditorPrimitiveType.Player2D => "🏃",
                             EditorPrimitiveType.Start2D => "🚩",
                             EditorPrimitiveType.CameraStart2D => "👁",
+                            EditorPrimitiveType.Effect2D => "✨",
                             _ => "",
                         };
 
@@ -959,6 +973,7 @@ public class HierarchyPanel
                         EditorPrimitiveType.Map2D => "🗺",
                         EditorPrimitiveType.Player2D => "🏃",
                         EditorPrimitiveType.Start2D => "🚩",
+                        EditorPrimitiveType.Effect2D => "✨",
                         EditorPrimitiveType.CameraStart2D => "👁",
                         _ => "",
                     };
@@ -1777,6 +1792,7 @@ public class HierarchyPanel
                 19 => EditorPrimitiveType.Sprite2D,
                 17 => EditorPrimitiveType.Start2D,
                 18 => EditorPrimitiveType.CameraStart2D,
+                20 => EditorPrimitiveType.Effect2D,
                 _ => EditorPrimitiveType.Box,
             };
 

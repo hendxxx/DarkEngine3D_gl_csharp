@@ -364,6 +364,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     "sprite2d" => EditorPrimitiveType.Sprite2D,
                     "start2d" => EditorPrimitiveType.Start2D,
                     "camerastart2d" => EditorPrimitiveType.CameraStart2D,
+                    "effect2d" => EditorPrimitiveType.Effect2D,
                     _ => EditorPrimitiveType.Box,
                 };
 
@@ -427,6 +428,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         Priority = a.Priority,
                         KeyBinding = a.KeyBinding,
                         KeyTrigger = a.KeyTrigger,
+                        FxPreset = a.FxPreset,
+                        FxFollow = a.FxFollow,
+                        ProjectileEnabled = a.ProjectileEnabled,
+                        ProjectileSheet = a.ProjectileSheet, ProjectileClip = a.ProjectileClip,
+                        ProjectileSpeed = a.ProjectileSpeed,
+                        ProjectileMaxDistance = a.ProjectileMaxDistance,
+                        ProjectileGravity = a.ProjectileGravity, ProjectileVelY = a.ProjectileVelY,
+                        ProjectileWorldHeight = a.ProjectileWorldHeight,
+                        ProjectileOffsetX = a.ProjectileOffsetX, ProjectileOffsetY = a.ProjectileOffsetY,
+                        ProjectileDamageHP = a.ProjectileDamageHP, ProjectileDamageMP = a.ProjectileDamageMP,
+                        ProjectileHitSheet = a.ProjectileHitSheet, ProjectileHitClip = a.ProjectileHitClip,
+                        ProjectileHitFx = a.ProjectileHitFx,
+                        ProjectileRotateToVelocity = a.ProjectileRotateToVelocity,
+                        ProjectilePiercing = a.ProjectilePiercing,
                     }).ToList();
                 }
                 else
@@ -440,6 +455,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
                 obj.Player2DCapsuleOffsetX = objData.Player2DCapsuleOffsetX;
                 obj.Player2DCapsuleOffsetY = objData.Player2DCapsuleOffsetY;
+
+                // ── Effect2D emitter payload (runtime twin of the editor load path) ──
+                obj.Effect2DPreset = objData.Effect2DPreset;
+                obj.Effect2DEmitRate = objData.Effect2DEmitRate;
+                obj.Effect2DWindFactor = objData.Effect2DWindFactor;
+                obj.Effect2DOffsetY = objData.Effect2DOffsetY;
+                obj.Effect2DEnabled = objData.Effect2DEnabled;
+                if (objData.EquipmentSlots is { Count: > 0 } eqPairsRuntime)
+                {
+                    foreach (var pair in eqPairsRuntime)
+                    {
+                        int eq = pair.IndexOf('=');
+                        if (eq <= 0 || eq >= pair.Length - 1) continue;
+                        obj.Equipment.Slots[pair[..eq].Trim()] = pair[(eq + 1)..].Trim();
+                    }
+                }
 
                 // Restore per-object gizmo pivot override (nullable).
                 if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)

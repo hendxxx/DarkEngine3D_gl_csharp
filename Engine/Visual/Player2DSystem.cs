@@ -28,6 +28,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual;
 /// </summary>
 public static class Player2DSystem
 {
+    /// <summary>Sub-1 emission accumulator for action-bound follow FX (carry-over
+    /// between frames so low rates still emit deterministically).</summary>
+    private static float _actionFxEmit;
     /// <summary>Advance animation clocks + run physics for all Player2D objects.
     /// Call once per frame from GameScene/SceneManager update when in-game or
     /// preview is active (not in pure edit mode).</summary>
@@ -288,10 +291,22 @@ public static class Player2DSystem
                 if (string.IsNullOrWhiteSpace(act.KeyBinding) || act.KeyBinding == "None") continue;
                 if (Enum.TryParse<ImGuiKey>(act.KeyBinding, out var k) && k != ImGuiKey.None)
                 {
-                    // Trigger mode: KeyDown fires on press; KeyUp fires on RELEASE —
-                    // a press-impulse action (charge up, release to swing/spin).
-                    if (act.KeyTriggered(k))
-                        player.TryStartAction(act.Name);
+                // Trigger mode: KeyDown fires on press; KeyUp fires on RELEASE —
+                // a press-impulse action (charge up, release to swing/spin).
+                if (act.KeyTriggered(k))
+                {
+                    bool started = player.TryStartAction(act.Name);
+                    // Action-bound projectile (opt-in via the Inspector "Projectile →
+                    // Sheet ≠ None"): launch when the action starts (K → fireball).
+                    if (started && act.ProjectileEnabled)
+                        Projectile2DSystem.SpawnFromAction(player, act, manager,
+                            act.ProjectileOffsetX, act.ProjectileOffsetY,
+                            act.ProjectileSpeed, act.ProjectileMaxDistance,
+                            act.ProjectileGravity, act.ProjectileVelY,
+                            act.ProjectileWorldHeight, act.ProjectileDamageHP, act.ProjectileDamageMP,
+                            act.ProjectileHitSheet, act.ProjectileHitClip, act.ProjectileHitFx,
+                            act.ProjectileRotateToVelocity, act.ProjectilePiercing);
+                }
                     if (act.Name == player.Player2DCurrentAction)
                         // Hold logic per trigger mode:
                         // - KeyDown: held while key is down (hold = keep playing)
@@ -312,6 +327,23 @@ public static class Player2DSystem
             // active key-bound action's key is still held — if released, locomotion takes
             // over (e.g. Run bound to J: hold = Run, release = back to Idle/Walk).
             player.ResolveLocomotionAction(currentActionKeyHeld);
+
+            // ── Action-bound follow FX (fireball trail, magic aura…): stream particles
+            // from the character while the action is active. One-shot FX burst inside
+            // TryStartAction; this handles the Follow style via the runtime anchor.
+            var fxCur = player.Actions.FirstOrDefault(a => a.Name == player.Player2DCurrentAction);
+            if (fxCur != null && !string.IsNullOrWhiteSpace(fxCur.FxPreset) && fxCur.FxFollow)
+            {
+                var anchor = new Vector3(player.Position.X,
+                    player.Position.Y + player.Player2DHeight * 0.5f, player.Position.Z + 0.05f);
+                player.Effect2DRuntimeAnchor = anchor;
+                var fxCfg = Effect2DSystem.PresetConfig(fxCur.FxPreset.Trim());
+                fxCfg.Pos = anchor;
+                _actionFxEmit += fxCfg.Rate * dt;
+                while (_actionFxEmit >= 1f) { _actionFxEmit -= 1f; Effect2DSystem.Spawn(fxCfg); }
+            }
+            else
+                _actionFxEmit = 0f;
 
             var pos = player.Position;
             float r = player.Player2DCapsuleRadius;
@@ -594,6 +626,20 @@ public static class Player2DSystem
         }
         // Delayed trigger actions (queued with a Delay) tick every frame.
         TriggerEventSystem.TickDelayed(dt);
+
+        // ── Particle effects: advance emitters + rain + integrate (render happens in
+        // EditorObjectManager's 2D pass). Preview/in-game only, like physics above.
+        Effect2DSystem.Tick(manager, activeMap, bridge?.Camera, dt);
+
+        // ── Projectiles: integrate + collide + expire (render in the manager 2D pass).
+        Projectile2DSystem.Tick(manager, TriggerEventSystem.EnumerateSceneMaps(manager, activeMap), dt);
+
+        // ── Particle effects: advance emitters + rain + integrate (render happens in
+        // EditorObjectManager's 2D pass). Preview/in-game only, like physics above.
+        Effect2DSystem.Tick(manager, activeMap, bridge?.Camera, dt);
+
+        // ── Projectiles: integrate + collide + expire (render in the manager 2D pass).
+        Projectile2DSystem.Tick(manager, TriggerEventSystem.EnumerateSceneMaps(manager, activeMap), dt);
 
         // Keep the trigger runtime's start-point fallback + teleport handler fresh.
         // Load Checkpoint without a saved checkpoint teleports to this fallback

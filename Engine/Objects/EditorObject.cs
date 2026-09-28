@@ -60,6 +60,46 @@ public class Player2DAction
     /// Only meaningful when KeyTrigger == "KeyDownOnce".</summary>
     [JsonIgnore]
     public bool KeyDownOnceArmed { get; set; } = true;
+    /// <summary>Optional particle FX preset (Effect2DSystem.Presets, e.g. "Fireball")
+    /// emitted from the character while this action plays. Empty = no FX.</summary>
+    public string FxPreset { get; set; } = "";
+    /// <summary>True = FX streams continuously from the character while the action is
+    /// active (fireball trail); false = a one-shot burst when the action starts.</summary>
+    public bool FxFollow { get; set; }
+
+    // ── Projectile launch (action → flying animated sprite) ──
+    /// <summary>Master switch: the action launches a projectile at all. False (None)
+    /// = plain animation action, nothing spawns. Opt-in so every existing action
+    /// doesn't suddenly fire a sprite.</summary>
+    public bool ProjectileEnabled { get; set; }
+    /// <summary>Sprite sheet of the projectile itself (Sprite Editor registry). Empty =
+    /// reuse this action's own sheet/clip ("(action art)").</summary>
+    public string ProjectileSheet { get; set; } = "";
+    public string ProjectileClip { get; set; } = "";
+    /// <summary>"" = use ProjectileSheet/ProjectileClip; "(action)" = reuse THIS
+    /// action's sheet/clip as the projectile art (the common case — one dropdown).</summary>
+    public const string ProjectileUseActionArt = "(action)";
+    /// <summary>Projectile flight tuning (Inspector "Projectile" section).</summary>
+    public float ProjectileSpeed { get; set; } = 8f;
+    public float ProjectileMaxDistance { get; set; } = 15f;
+    public float ProjectileGravity { get; set; } = 0f;
+    public float ProjectileVelY { get; set; } = 0f;
+    public float ProjectileWorldHeight { get; set; } = 0.8f;
+    /// <summary>Spawn offset from the character (world units; X mirrors with facing).</summary>
+    public float ProjectileOffsetX { get; set; } = 0.6f;
+    public float ProjectileOffsetY { get; set; } = 0f;
+    /// <summary>Damage on hit (HP/MP; negative values heal the target).</summary>
+    public float ProjectileDamageHP { get; set; } = 10f;
+    public float ProjectileDamageMP { get; set; } = 0f;
+    /// <summary>Hit animation (sheet + clip) played once at the impact point.</summary>
+    public string ProjectileHitSheet { get; set; } = "";
+    public string ProjectileHitClip { get; set; } = "";
+    /// <summary>Optional particle burst preset at the impact point.</summary>
+    public string ProjectileHitFx { get; set; } = "Explosion";
+    /// <summary>Rotate the projectile sprite along its velocity (arc shots).</summary>
+    public bool ProjectileRotateToVelocity { get; set; }
+    /// <summary>Pass through targets/tiles instead of stopping at the first hit.</summary>
+    public bool ProjectilePiercing { get; set; }
     /// <summary>True this frame when the configured trigger fires for <paramref name="k"/>.</summary>
     public bool KeyTriggered(ImGuiKey k)
     {
@@ -122,7 +162,10 @@ public enum EditorPrimitiveType
     Sprite2D,
     /// <summary>Camera start marker for 2D levels: preview/in-game cameras begin here
     /// (position = camera center, Scale.Y>0 marker field CameraStartZoom = ortho zoom).</summary>
-    CameraStart2D
+    CameraStart2D,
+    /// <summary>Particle effect emitter (torch fire, smoke, rain zone, dust…). Renders
+    /// through Effect2DSystem in preview/in-game; has no 3D mesh of its own.</summary>
+    Effect2D,
 }
 
 /// <summary>
@@ -1814,6 +1857,37 @@ public unsafe class EditorObject
     /// Same pattern as Map2dShowCollision; persist via EditorObjectData → scene .ing.
     /// Triggers are always hidden in-game (Editor2DAidsHidden) regardless of this flag.</summary>
     public bool Map2dShowTriggers { get; set; } = true;
+
+    // ═══════════ Effect2D particle emitter (visual + runtime state) ═══════════
+
+    /// <summary>Effect2D preset name (Effect2DSystem.Presets). Drives all emission
+    /// defaults; the inspector only overrides rate/wind. Persisted per object.</summary>
+    public string Effect2DPreset { get; set; } = "Fire";
+    /// <summary>Effect2D: particles per second override (-1 = preset default).</summary>
+    public float Effect2DEmitRate { get; set; } = -1f;
+    /// <summary>Effect2D: how strongly the GLOBAL wind advects this emitter's particles
+    /// (0 = unaffected, 1 = fully). -1 = preset default. (JSON-safe sentinel — NaN
+    /// would crash scene serialization.)</summary>
+    public float Effect2DWindFactor { get; set; } = -1f;
+    /// <summary>Effect2D: vertical offset (world units) above the object origin.</summary>
+    public float Effect2DOffsetY { get; set; } = 0f;
+    /// <summary>Effect2D: emission toggle (editor comfort — pause without deleting).</summary>
+    public bool Effect2DEnabled { get; set; } = true;
+
+    /// <summary>Effect2D runtime-only emission accumulator (sub-1 rates emit
+    /// deterministically across frames). Not serialized.</summary>
+    [JsonIgnore]
+    public float Effect2DEmitAcc { get; set; }
+
+    /// <summary>Runtime emission anchor for action-bound FX ("Attack spits fireball").
+    /// Player2DSystem pushes the player's position each frame; ActionFxConfig's
+    /// FollowEmitter flag makes the spawned FX stream from this point.</summary>
+    public Vector3 Effect2DRuntimeAnchor { get; set; }
+
+    /// <summary>Per-character equipment (paperdoll slots → item ids). Applies to the
+    /// Player2D and any NPC/enemy object; the HUD hotbar + stat bonuses read this.</summary>
+    [JsonIgnore]
+    public Visual.InventorySystem.Equipment Equipment { get; } = new();
     /// <summary>RGBA color of the collision helper boxes (default: translucent green).</summary>
     public Vector4 Map2dCollisionColor { get; set; } = new(0.25f, 0.85f, 0.45f, 0.35f);
     /// <summary>Parallax background/foreground layers to render with this map. Each layer
@@ -1863,6 +1937,7 @@ public unsafe class EditorObject
             EditorPrimitiveType.Map2D => new Vector3(0.8f, 0.8f, 0.9f),
             EditorPrimitiveType.Player2D => new Vector3(0.2f, 0.9f, 0.4f),
             EditorPrimitiveType.Sprite2D => new Vector3(0.95f, 0.6f, 0.2f),
+            EditorPrimitiveType.Effect2D => new Vector3(1f, 0.65f, 0.15f),
             EditorPrimitiveType.CameraStart2D => new Vector3(0.25f, 0.85f, 1f),
             _ => new Vector3(0.8f, 0.8f, 0.9f),
         };
@@ -2044,7 +2119,8 @@ public unsafe class EditorObject
                 // Player2D/Start2D: feet-anchored capsule AABB — Position.Y is the
                 // capsule BOTTOM (matches DrawPlayer2DCapsule + Player2DSystem).
                 // Sprite2D reuses the same fields (selection box only — no physics).
-                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D or EditorPrimitiveType.CameraStart2D or EditorPrimitiveType.Sprite2D => new AABB(
+                // Effect2D: small selection box around the emitter point.
+                EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D or EditorPrimitiveType.CameraStart2D or EditorPrimitiveType.Sprite2D or EditorPrimitiveType.Effect2D => new AABB(
                     new Vector3(-Player2DCapsuleRadius, 0f, -Player2DCapsuleRadius),
                     new Vector3( Player2DCapsuleRadius, Player2DCapsuleHeight,  Player2DCapsuleRadius)),
                 _ => new AABB(
@@ -2149,6 +2225,13 @@ public unsafe class EditorObject
                 // Player/Start/Sprite markers have no solid mesh — the player renders
                 // as an animated sprite quad (DrawPlayer2D / DrawSprite2D) and all draw
                 // gizmo outlines via Draw2DMarker. Keep _object3D null.
+                _vertexCache = null;
+                break;
+            }
+            case EditorPrimitiveType.Effect2D:
+            {
+                // Particle emitters own no mesh: Effect2DSystem renders them (and their
+                // editor-only cone gizmo) — nothing to build here.
                 _vertexCache = null;
                 break;
             }
@@ -3571,6 +3654,7 @@ public unsafe class EditorObject
             && PrimitiveType != EditorPrimitiveType.Light && PrimitiveType != EditorPrimitiveType.Sky
             && PrimitiveType != EditorPrimitiveType.Player2D && PrimitiveType != EditorPrimitiveType.Start2D
             && PrimitiveType != EditorPrimitiveType.Sprite2D
+            && PrimitiveType != EditorPrimitiveType.Effect2D
             && PrimitiveType != EditorPrimitiveType.CameraStart2D)) return;
 
         // Derive a camera-facing basis from Front (Right/Up fields can be stale in fly
@@ -3640,6 +3724,20 @@ public unsafe class EditorObject
             Line(P(-0.7f, 0.55f), P(-0.7f, -0.45f));
             Line(P(-0.45f, 0.2f), P(-0.45f, -0.1f));
             Line(P(0.45f, 0.2f), P(0.45f, -0.1f));
+        }
+        else if (PrimitiveType == EditorPrimitiveType.Effect2D)
+        {
+            // The burst-star glyph is an EDITOR aid only — during preview/in-game the
+            // emitter is represented by its live particles instead.
+            if (Editor2DAidsHidden) return;
+            // Emitter icon: small burst star (dot + 6 rays) — pure editor aid, hidden
+            // in-game via Editor2DAidsHidden (the manager gate skips marker draws).
+            const int burst = 6;
+            for (int i = 0; i < burst; i++)
+            {
+                float a = i * MathF.PI * 2f / burst;
+                Line(P(MathF.Cos(a) * 0.25f, MathF.Sin(a) * 0.25f), P(MathF.Cos(a) * 0.75f, MathF.Sin(a) * 0.75f));
+            }
         }
         else if (PrimitiveType == EditorPrimitiveType.Start2D)
         {
@@ -4850,6 +4948,12 @@ public unsafe class EditorObject
             Player2DCurrentAction = name;
             Player2DActionTime = 0f;
             Player2DActionHoldingEnd = false; // new action: clear the finished-hold latch
+            // Action-bound FX: one-shot burst (e.g. shield spark, coin pop) when the
+            // action starts. Follow-style FX (fireball trail) stream from the runtime
+            // anchor instead — Player2DSystem pushes it while the action is active.
+            if (!string.IsNullOrWhiteSpace(act.FxPreset) && !act.FxFollow)
+                Effect2DSystem.SpawnBurst(act.FxPreset.Trim(),
+                    new System.Numerics.Vector3(Position.X, Position.Y + Player2DHeight * 0.5f, Position.Z + 0.05f));
         }
         return true;
     }
@@ -4940,9 +5044,10 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D/CameraStart2D/Sprite2D have no solid mesh — selection shows via their line gizmos.
+        // Player2D/Start2D/CameraStart2D/Sprite2D/Effect2D have no solid mesh — selection shows via their line gizmos.
         if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
-            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D)
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D
+            || PrimitiveType == EditorPrimitiveType.Effect2D)
             return;
 
         // ── GLB reference: draw the model's own meshes into the stencil mask. ──
@@ -4998,9 +5103,10 @@ public unsafe class EditorObject
     {
         if (!IsVisible) return;
 
-        // Player2D/Start2D/CameraStart2D/Sprite2D have no solid mesh — selection shows via their line gizmos.
+        // Player2D/Start2D/CameraStart2D/Sprite2D/Effect2D have no solid mesh — selection shows via their line gizmos.
         if (PrimitiveType == EditorPrimitiveType.Player2D || PrimitiveType == EditorPrimitiveType.Start2D
-            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D)
+            || PrimitiveType == EditorPrimitiveType.CameraStart2D || PrimitiveType == EditorPrimitiveType.Sprite2D
+            || PrimitiveType == EditorPrimitiveType.Effect2D)
             return;
 
         // ── GLB reference: inverted-hull outline over the model's meshes. ──
@@ -5266,6 +5372,49 @@ public unsafe class EditorObject
     // Dedicated shader for Map2D (simple textured quad with per-vertex alpha)
     private static uint _map2dShader;
     private static int _map2dLocView, _map2dLocProj, _map2dLocModel, _map2dLocTex;
+
+    /// <summary>Shared accessors for sibling 2D quad passes (Projectile2DSystem) —
+    /// the map2d shader/locations are engine-global statics.</summary>
+    public static uint Map2DShaderProgram => _map2dShader;
+    public static int Map2DLocView => _map2dLocView;
+    public static int Map2DLocProj => _map2dLocProj;
+    public static int Map2DLocModel => _map2dLocModel;
+    public static int Map2DLocTex => _map2dLocTex;
+
+    /// <summary>Ensure the map2d shader exists and return its program id (0 = failed).
+    /// Public twin of EnsureMap2DShader for the projectile/hit-quad passes.</summary>
+    public static uint EnsureMap2DShaderPublic()
+    {
+        EnsureMap2DShader();
+        return _map2dShader;
+    }
+
+    /// <summary>One shared quad VAO/VBO (Map2DVertex layout) any 2D pass may borrow —
+    /// created on first use, never freed (engine-lifetime resource).</summary>
+    private static uint _sharedQuadVao, _sharedQuadVbo;
+    public static (uint vao, uint vbo) GetSharedSpriteQuadVao()
+    {
+        unsafe
+        {
+            if (_sharedQuadVao == 0)
+            {
+                uint vao = 0, vbo = 0;
+                GL.GenVertexArrays(1, &vao);
+                GL.BindVertexArray(vao);
+                GL.GenBuffers(1, &vbo);
+                GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                GL.EnableVertexAttribArray(0);
+                GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)0);
+                GL.EnableVertexAttribArray(1);
+                GL.VertexAttribPointer(1, 2, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(3 * sizeof(float)));
+                GL.EnableVertexAttribArray(2);
+                GL.VertexAttribPointer(2, 4, Const.GL_FLOAT, false, sizeof(Map2DVertex), (void*)(5 * sizeof(float)));
+                GL.BindVertexArray(0);
+                _sharedQuadVao = vao; _sharedQuadVbo = vbo;
+            }
+            return (_sharedQuadVao, _sharedQuadVbo);
+        }
+    }
 
     private static unsafe void EnsureMap2DShader()
     {

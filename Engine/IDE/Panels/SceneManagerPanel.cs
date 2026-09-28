@@ -989,13 +989,33 @@ public class SceneManagerPanel
                         CameraReturnSpeed = obj.CameraReturnSpeed,
                         CameraLookAhead = obj.CameraLookAhead,
                         CameraViewOffset = obj.CameraViewOffset,
+                        Effect2DPreset = obj.Effect2DPreset,
+                        Effect2DEmitRate = obj.Effect2DEmitRate,
+                        Effect2DWindFactor = obj.Effect2DWindFactor,
+                        Effect2DOffsetY = obj.Effect2DOffsetY,
+                        Effect2DEnabled = obj.Effect2DEnabled,
+                        EquipmentSlots = obj.Equipment.Slots.Count > 0
+                            ? obj.Equipment.Slots.Select(kv => $"{kv.Key}={kv.Value}").ToList()
+                            : null,
                         Actions = obj.Actions.Count > 0
                             ? obj.Actions.Select(a => new Player2DActionData
                             {
                                 Name = a.Name, SpriteSheet = a.SpriteSheet, Clip = a.Clip,
                                 Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
                                 Priority = a.Priority, KeyBinding = a.KeyBinding,
-                                KeyTrigger = a.KeyTrigger,
+                                KeyTrigger = a.KeyTrigger, FxPreset = a.FxPreset, FxFollow = a.FxFollow,
+                                ProjectileEnabled = a.ProjectileEnabled,
+                                ProjectileSheet = a.ProjectileSheet, ProjectileClip = a.ProjectileClip,
+                                ProjectileSpeed = a.ProjectileSpeed,
+                                ProjectileMaxDistance = a.ProjectileMaxDistance,
+                                ProjectileGravity = a.ProjectileGravity, ProjectileVelY = a.ProjectileVelY,
+                                ProjectileWorldHeight = a.ProjectileWorldHeight,
+                                ProjectileOffsetX = a.ProjectileOffsetX, ProjectileOffsetY = a.ProjectileOffsetY,
+                                ProjectileDamageHP = a.ProjectileDamageHP, ProjectileDamageMP = a.ProjectileDamageMP,
+                                ProjectileHitSheet = a.ProjectileHitSheet, ProjectileHitClip = a.ProjectileHitClip,
+                                ProjectileHitFx = a.ProjectileHitFx,
+                                ProjectileRotateToVelocity = a.ProjectileRotateToVelocity,
+                                ProjectilePiercing = a.ProjectilePiercing,
                             }).ToList()
                             : null,
                         PivotOverrideX = obj.GizmoPivotOverride?.X,
@@ -1382,6 +1402,7 @@ public class SceneManagerPanel
                             "sprite2d" => EditorPrimitiveType.Sprite2D,
                             "start2d" => EditorPrimitiveType.Start2D,
                             "camerastart2d" => EditorPrimitiveType.CameraStart2D,
+                            "effect2d" => EditorPrimitiveType.Effect2D,
                             _ => EditorPrimitiveType.Box,
                         };
 
@@ -1592,9 +1613,40 @@ public class SceneManagerPanel
                                 Loop = a.Loop, StopOnFrameEnd = a.StopOnFrameEnd,
                                 Priority = a.Priority, KeyBinding = a.KeyBinding,
                                 KeyTrigger = a.KeyTrigger,
+                                FxPreset = a.FxPreset, FxFollow = a.FxFollow,
+                                ProjectileEnabled = a.ProjectileEnabled,
+                                ProjectileSheet = a.ProjectileSheet, ProjectileClip = a.ProjectileClip,
+                                ProjectileSpeed = a.ProjectileSpeed,
+                                ProjectileMaxDistance = a.ProjectileMaxDistance,
+                                ProjectileGravity = a.ProjectileGravity, ProjectileVelY = a.ProjectileVelY,
+                                ProjectileWorldHeight = a.ProjectileWorldHeight,
+                                ProjectileOffsetX = a.ProjectileOffsetX, ProjectileOffsetY = a.ProjectileOffsetY,
+                                ProjectileDamageHP = a.ProjectileDamageHP, ProjectileDamageMP = a.ProjectileDamageMP,
+                                ProjectileHitSheet = a.ProjectileHitSheet, ProjectileHitClip = a.ProjectileHitClip,
+                                ProjectileHitFx = a.ProjectileHitFx,
+                                ProjectileRotateToVelocity = a.ProjectileRotateToVelocity,
+                                ProjectilePiercing = a.ProjectilePiercing,
                             }).ToList();
                         else
                             obj.EnsureDefaultActions();
+
+                        // ── Effect2D emitter payload ──
+                        obj.Effect2DPreset = objData.Effect2DPreset;
+                        obj.Effect2DEmitRate = objData.Effect2DEmitRate;
+                        obj.Effect2DWindFactor = objData.Effect2DWindFactor;
+                        obj.Effect2DOffsetY = objData.Effect2DOffsetY;
+                        obj.Effect2DEnabled = objData.Effect2DEnabled;
+
+                        // ── Equipment ("SlotName=ItemId" pairs → dictionary) ──
+                        if (objData.EquipmentSlots is { Count: > 0 } eqPairs)
+                        {
+                            foreach (var pair in eqPairs)
+                            {
+                                int eq = pair.IndexOf('=');
+                                if (eq <= 0 || eq >= pair.Length - 1) continue;
+                                obj.Equipment.Slots[pair[..eq].Trim()] = pair[(eq + 1)..].Trim();
+                            }
+                        }
 
                         // 2D Map (level): rebind the tilemap payload saved in the scene file.
                         // A level is only shown for scenes that actually contain one.

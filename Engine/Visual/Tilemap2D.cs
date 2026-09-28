@@ -627,6 +627,10 @@ public static class TriggerActionTypes
     public const string CameraShake = "Camera Shake";
     public const string UnlockDoor = "Unlock Door";
     public const string GiveItem = "Give Item";
+    public const string ModifyStat = "Modify Stat";
+    public const string SpawnProjectile = "Spawn Projectile";
+    public const string Rain = "Rain";
+    public const string SetWind = "Set Wind";
     public const string ActivateQuest = "Activate Quest";
     public const string CompleteQuest = "Complete Quest";
     public const string RunScript = "Run Script";
@@ -640,7 +644,8 @@ public static class TriggerActionTypes
     [
         SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect,
         SpawnObject, StartDialogue, ShowBubble, HideBubble, StartCutscene, CameraShake, UnlockDoor,
-        GiveItem, ActivateQuest, CompleteQuest, RunScript, EnablePortal, DisablePortal, Portal, PortalOneWay
+        GiveItem, ModifyStat, SpawnProjectile, Rain, SetWind, ActivateQuest, CompleteQuest, RunScript, EnablePortal,
+        DisablePortal, Portal, PortalOneWay
     ];
 
     /// <summary>True when the action type actually executes something today. Types
@@ -650,7 +655,8 @@ public static class TriggerActionTypes
     {
         SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake
             or StartDialogue or ShowBubble or HideBubble or Portal or PortalOneWay
-            or EnablePortal or DisablePortal => true,
+            or EnablePortal or DisablePortal or ModifyStat or Rain or SetWind
+            or SpawnEffect or GiveItem or SpawnProjectile => true,
         _ => false
     };
 }

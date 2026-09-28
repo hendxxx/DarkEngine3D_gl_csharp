@@ -346,7 +346,14 @@ public static class TriggerEventSystem
             {
                 float dur = enterClip.FrameIndices.Count / MathF.Max(0.01f, enterClip.FPS * MathF.Max(0.01f, enterClip.SpeedMultiplier));
                 if (trigger.RuntimePortalClock < dur)
-                    return; // still playing the Enter animation (clock advanced at the bottom)
+                {
+                    // Still playing the Enter animation — advance the clock HERE and
+                    // bail. (The old code returned BEFORE the advance at the bottom,
+                    // so the clock froze at ~0 and the Enter/Active clip never moved —
+                    // the reported "portal animasinya tidak jalan".)
+                    trigger.RuntimePortalClock += dt;
+                    return;
+                }
             }
         }
 
@@ -803,6 +810,150 @@ public static class TriggerEventSystem
                 break;
             }
 
+            case TriggerActionTypes.ModifyStat:
+            {
+                // Simple gameplay script: Param = stat name (Health/Mana/Level/...
+                // or HP/MP shorthands), Param2 = delta like "-1", "+5", "-10.5".
+                // Positive adds, negative subtracts; result clamps into [0, Max].
+                string stat = (action.Param ?? "").Trim();
+                string deltaStr = (action.Param2 ?? "").Trim();
+                if (stat.Length == 0 || deltaStr.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Modify Stat FAILED: set Param (stat name) and Param2 (delta, e.g. -1)");
+                    break;
+                }
+                // Friendly shorthands → canonical stat names.
+                string canonical = stat.ToUpperInvariant() switch
+                {
+                    "HP" or "HEALTH" or "LIFE" => PlayerStatNames.Health,
+                    "MP" or "MANA" or "SP" => PlayerStatNames.Mana,
+                    "LV" or "LVL" or "LEVEL" => PlayerStatNames.Level,
+                    "EXP" or "XP" => PlayerStatNames.Experience,
+                    "ST" or "STA" or "FITNESS" => PlayerStatNames.Fitness,
+                    _ => stat,
+                };
+                if (!float.TryParse(deltaStr, out float delta))
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Modify Stat FAILED: '{deltaStr}' is not a number");
+                    break;
+                }
+                float before = Player2DStats.GetCurrent(canonical);
+                float after = MathF.Max(0f, before + delta);
+                Player2DStats.SetCurrent(canonical, after);
+                Player2DStats.ClampAll();
+                Console.WriteLine($"[Trigger] '{triggerName}' → Modify Stat {canonical} {before:F0} {(delta >= 0 ? "+" : "−")}{MathF.Abs(delta):F0} → {Player2DStats.GetCurrent(canonical):F0}");
+                break;
+            }
+
+            case TriggerActionTypes.Rain:
+            {
+                // Weather: Param = "on"/"off"/"toggle" (empty = toggle), Param2 =
+                // intensity 0..1 (optional, persists while rain stays on).
+                string mode = (action.Param ?? "").Trim().ToLowerInvariant();
+                bool nowOn = mode switch
+                {
+                    "on" or "start" or "1" or "true" => true,
+                    "off" or "stop" or "0" or "false" => false,
+                    _ => !Effect2DSystem.RainEnabled,
+                };
+                Effect2DSystem.RainEnabled = nowOn;
+                if (!string.IsNullOrWhiteSpace(action.Param2)
+                    && float.TryParse(action.Param2.Trim(), out float inten))
+                    Effect2DSystem.RainIntensity = Math.Clamp(inten, 0f, 1f);
+                Console.WriteLine($"[Trigger] '{triggerName}' → Rain {(nowOn ? "ON" : "OFF")} (intensity {Effect2DSystem.RainIntensity:F2})");
+                break;
+            }
+
+            case TriggerActionTypes.SetWind:
+            {
+                // Weather: Param = wind speed in world units/second (+ right, − left).
+                if (!float.TryParse((action.Param ?? "").Trim(), out float wind))
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Set Wind FAILED: Param must be a number (world units/s, negative = left)");
+                    break;
+                }
+                Effect2DSystem.WindX = wind;
+                Console.WriteLine($"[Trigger] '{triggerName}' → Set Wind → {wind:F2} u/s");
+                break;
+            }
+
+            case TriggerActionTypes.SpawnEffect:
+            {
+                // One-shot particle burst: Param = preset name (Explosion, Coin, Sparks,
+                // Fire, Fireball, Dust, Smoke, Snow), Param2 = scale multiplier (optional).
+                string preset = (action.Param ?? "").Trim();
+                if (preset.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Spawn Effect FAILED: set Param to a preset ({string.Join(", ", Effect2DSystem.Presets)})");
+                    break;
+                }
+                Vector3 pos = _lastPlayerPos ?? Vector3.Zero;
+                float scale = 1f;
+                if (!string.IsNullOrWhiteSpace(action.Param2))
+                    float.TryParse(action.Param2.Trim(), out scale);
+                if (scale <= 0f) scale = 1f;
+                Effect2DSystem.SpawnBurst(preset, pos, scale);
+                Console.WriteLine($"[Trigger] '{triggerName}' → Spawn Effect '{preset}' ×{scale:F1} at ({pos.X:F1}, {pos.Y:F1})");
+                break;
+            }
+
+            case TriggerActionTypes.SpawnProjectile:
+            {
+                // Sprite projectile launcher: Param = "Sheet|Clip" (Sprite Editor
+                // registry), Param2 = "speed,maxDist,gravity" (optional). Flies toward
+                // the player's side (trap/turret). Damage fields come from the XML
+                // defaults (10 HP) — phase 2 exposes them per-trigger in the editor.
+                string raw = action.Param ?? "";
+                var parts = raw.Split('|');
+                string sheet = parts.Length > 0 ? parts[0].Trim() : "";
+                string clip = parts.Length > 1 ? parts[1].Trim() : "";
+                if (sheet.Length == 0 || clip.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Spawn Projectile FAILED: Param must be 'Sheet|Clip' (Sprite Editor names)");
+                    break;
+                }
+                var cfg = new Projectile2DSystem.Config { Sheet = sheet, Clip = clip };
+                if (!string.IsNullOrWhiteSpace(action.Param2))
+                {
+                    var nums = action.Param2.Split(',');
+                    if (nums.Length > 0 && float.TryParse(nums[0].Trim(), out float spd)) cfg.Speed = spd;
+                    if (nums.Length > 1 && float.TryParse(nums[1].Trim(), out float dist)) cfg.MaxDistance = dist;
+                    if (nums.Length > 2 && float.TryParse(nums[2].Trim(), out float grav)) cfg.Gravity = grav;
+                }
+                // Origin: the firing trigger's center (falls back to the player position).
+                Vector3 origin = _lastPlayerPos ?? Vector3.Zero;
+                if (trigger != null && _activeMap != null)
+                {
+                    float cellD = _activeMap.TileSize * Tilemap2D.WorldScale;
+                    origin = new Vector3(
+                        (trigger.LeftPx + trigger.WidthPx * 0.5f) * Tilemap2D.WorldScale,
+                        _activeMap.Height * cellD - (trigger.TopPx + trigger.HeightPx * 0.5f) * Tilemap2D.WorldScale,
+                        origin.Z);
+                }
+                Projectile2DSystem.SpawnFromTrigger(cfg, origin, towardPlayer: true);
+                Console.WriteLine($"[Trigger] '{triggerName}' → Spawn Projectile '{sheet}|{clip}' speed {cfg.Speed:F1}");
+                break;
+            }
+
+            case TriggerActionTypes.GiveItem:
+            {
+                // Inventory phase 1: Param = item id (Inventory.AddItem), Param2 = amount
+                // (default 1). Equips nothing — just deposits into the player's inventory.
+                string itemId = (action.Param ?? "").Trim();
+                if (itemId.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Give Item FAILED: no item id in Param");
+                    break;
+                }
+                int amount = 1;
+                if (!string.IsNullOrWhiteSpace(action.Param2))
+                    int.TryParse(action.Param2.Trim(), out amount);
+                if (amount <= 0) amount = 1;
+                int added = InventorySystem.AddItem(itemId, amount);
+                Console.WriteLine($"[Trigger] '{triggerName}' → Give Item '{itemId}' ×{amount} → added {added}");
+                break;
+            }
+
             default:
             {
                 string key = action.Type;
@@ -858,6 +1009,12 @@ public static class TriggerEventSystem
         CheckpointPosition = null;
         Player2DStats.ResetToDefaults(); // fresh session → default HP/MP/Level/EXP/Fitness
         DialogueSystem.ResetSession();   // fresh session → no flags/vars/progress/bubbles
+        InventorySystem.ResetSession();  // fresh session → empty player bag
+        // Fresh session → clear weather + particles (rain/wind don't leak between runs).
+        Effect2DSystem.RainEnabled = false;
+        Effect2DSystem.WindX = 0f;
+        Effect2DSystem.Clear();
+        Projectile2DSystem.Clear();   // fresh session → no leftover projectiles / enemy HP
     }
 
     /// <summary>Find the first visible Player2D object in the editor scene (used to

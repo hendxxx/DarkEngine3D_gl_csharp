@@ -24,6 +24,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private int _map2dCounter = 1;
         private int _player2dCounter = 1;
         private int _sprite2dCounter = 1;
+        private int _effect2dCounter = 1;
         private int _start2dCounter = 1;
         private int _cameraStart2dCounter = 1;
         private readonly uint _shaderProgram;
@@ -149,6 +150,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 EditorPrimitiveType.Map2D => $"map2d{_map2dCounter++}",
                 EditorPrimitiveType.Player2D => $"player{_player2dCounter++}",
                 EditorPrimitiveType.Sprite2D => $"sprite{_sprite2dCounter++}",
+                EditorPrimitiveType.Effect2D => $"effect{_effect2dCounter++}",
                 EditorPrimitiveType.Start2D => $"start{_start2dCounter++}",
                 EditorPrimitiveType.CameraStart2D => $"camstart{_cameraStart2dCounter++}",
                 _ => $"object{_boxCounter++}",
@@ -176,6 +178,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         case EditorPrimitiveType.Map2D:     if (num >= _map2dCounter) _map2dCounter = num + 1; break;
                         case EditorPrimitiveType.Player2D:  if (num >= _player2dCounter) _player2dCounter = num + 1; break;
                         case EditorPrimitiveType.Sprite2D:  if (num >= _sprite2dCounter) _sprite2dCounter = num + 1; break;
+                        case EditorPrimitiveType.Effect2D:  if (num >= _effect2dCounter) _effect2dCounter = num + 1; break;
                         case EditorPrimitiveType.Start2D:   if (num >= _start2dCounter) _start2dCounter = num + 1; break;
                         case EditorPrimitiveType.CameraStart2D: if (num >= _cameraStart2dCounter) _cameraStart2dCounter = num + 1; break;
                     }
@@ -460,6 +463,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     obj.DrawSprite2D(camera);
             }
 
+            // ── Effect2D particles (world-space quads, one draw call per texture run).
+            // Rendered AFTER all sprite layers so the FX sit in front of sprites/portals.
+            Effect2DSystem.Render(camera);
+
+            // ── Projectile + impact sprites (animated sheet quads, fireballs/hits).
+            Projectile2DSystem.Render(camera);
+
+            // ── Equipped-item hotbar above each character's head (phase-1 inventory
+            // render): icons crop from tilesets, batched through the same quad pass.
+            // A GAMEPLAY display — shown whenever the scene draws a live session
+            // (early-outs instantly when no character carries equipment).
+            {
+                bool batchOpen = false;
+                foreach (var obj in _objects)
+                {
+                    if (obj is not { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D }) continue;
+                    if (obj.Equipment.Slots.Count == 0) continue;
+                    if (!batchOpen) { Effect2DSystem.BeginBatch(camera); batchOpen = true; }
+                    InventorySystem.RenderEquippedHotbar(camera, obj.Equipment,
+                        obj.Position.X, obj.Position.Y, obj.Player2DHeight, 0f);
+                }
+                if (batchOpen) Effect2DSystem.EndBatch();
+            }
+
             // ── Editor gizmos for special marker types (drawn after the solid objects so
             // the wireframe lines always render on top; depth test is disabled internally
             // so they show through geometry): real-camera frustum for cameras, a direction
@@ -475,6 +502,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 if (obj.PrimitiveType == EditorPrimitiveType.Player2D ||
                     obj.PrimitiveType == EditorPrimitiveType.Start2D ||
                     obj.PrimitiveType == EditorPrimitiveType.Sprite2D ||
+                    obj.PrimitiveType == EditorPrimitiveType.Effect2D ||
                     obj.PrimitiveType == EditorPrimitiveType.CameraStart2D)
                 {
                     if (showEditorGizmos || !EditorObject.Editor2DAidsHidden)

@@ -256,6 +256,16 @@ public class EditorObjectData
     /// objects use Player2DGlowFlicker.</summary>
     public bool Sprite2DGlowFlicker { get; set; }
     public bool Player2DGlowFlicker { get; set; }
+    // ── Effect2D particle emitter (only used when PrimitiveType == Effect2D) ──
+    public string Effect2DPreset { get; set; } = "Fire";
+    public float Effect2DEmitRate { get; set; } = -1f;
+    public float Effect2DWindFactor { get; set; } = -1f;
+    public float Effect2DOffsetY { get; set; } = 0f;
+    public bool Effect2DEnabled { get; set; } = true;
+    // ── Equipment (per character: Player2D / NPC / enemy) — slot → item id ──
+    /// <summary>Flat "SlotName=ItemId" pairs so the dictionary survives JSON without
+    /// a custom converter. Empty strings are skipped on load.</summary>
+    public List<string>? EquipmentSlots { get; set; }
     /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
     public int Sprite2DRenderLayer { get; set; } = 0;
     /// <summary>Player2D render layer — higher draws on top of NPC/sprites on lower layers.</summary>
@@ -538,4 +548,26 @@ public class Player2DActionData
     /// (fire once on release, requires re-press to fire again). Default keeps
     /// old scenes behaving exactly as before.</summary>
     public string KeyTrigger { get; set; } = "KeyDown";
+    /// <summary>Optional particle FX preset (Effect2DSystem.Presets) bound to this
+    /// action — burst at action start, or a stream while it plays (FxFollow).</summary>
+    public string FxPreset { get; set; } = "";
+    public bool FxFollow { get; set; }
+    // ── Projectile launch (action → flying animated sprite) ──
+    public bool ProjectileEnabled { get; set; }
+    public string ProjectileSheet { get; set; } = "";
+    public string ProjectileClip { get; set; } = "";
+    public float ProjectileSpeed { get; set; } = 8f;
+    public float ProjectileMaxDistance { get; set; } = 15f;
+    public float ProjectileGravity { get; set; } = 0f;
+    public float ProjectileVelY { get; set; } = 0f;
+    public float ProjectileWorldHeight { get; set; } = 0.8f;
+    public float ProjectileOffsetX { get; set; } = 0.6f;
+    public float ProjectileOffsetY { get; set; } = 0f;
+    public float ProjectileDamageHP { get; set; } = 10f;
+    public float ProjectileDamageMP { get; set; } = 0f;
+    public string ProjectileHitSheet { get; set; } = "";
+    public string ProjectileHitClip { get; set; } = "";
+    public string ProjectileHitFx { get; set; } = "Explosion";
+    public bool ProjectileRotateToVelocity { get; set; }
+    public bool ProjectilePiercing { get; set; }
 }

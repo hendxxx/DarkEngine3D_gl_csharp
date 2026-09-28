@@ -370,6 +370,9 @@ public class IDE : IDisposable
             // Clear sprite sheets + map editor state
             _spriteEditor?.OnProjectChanged(null);
             _mapEditor?.AutoLoadMap(null);
+            // Weather/particles belong to the project session — clear on close.
+            Visual.Effect2DSystem.ResetWeather();
+            Visual.InventorySystem.ResetSession();
         }
     }
 
